@@ -5,6 +5,7 @@
 compile_commands.json
 Makefile
 **CTestTestfile.cmake
+CMakeExternals/
 
 # Conan files
 /conan.cmake
