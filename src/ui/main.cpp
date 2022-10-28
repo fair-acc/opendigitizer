@@ -7,10 +7,10 @@
 #include <thread>
 #include <vector>
 
-#include <emscripten.h>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl.h"
+#include <emscripten.h>
 #include <implot.h>
 
 // Emscripten requires to have full control over the main loop. We're going to
@@ -97,8 +97,8 @@ static void main_loop(void *arg) {
     IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
     // Our state (make them static = more or less global) as a convenience to keep the example terse.
-    static ImVec4 clear_color         = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    static bool show_demo_window      = true;
+    static ImVec4 clear_color      = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    static bool   show_demo_window = true;
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;

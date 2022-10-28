@@ -4,9 +4,9 @@
 #include <majordomo/Worker.hpp>
 
 #include <atomic>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
-#include <cmath>
 #include <ranges>
 #include <string_view>
 #include <thread>
@@ -38,7 +38,8 @@ public:
     using super_t = Worker<serviceName, FilterContext, Empty, Reply, Meta...>;
 
     template<typename BrokerType>
-    explicit FlowgraphWorker(const BrokerType &broker) : super_t(broker, {}) {
+    explicit FlowgraphWorker(const BrokerType &broker)
+        : super_t(broker, {}) {
         super_t::setCallback([this](const RequestContext &rawCtx, const FilterContext &filterIn, const Empty & /*in - unused*/, FilterContext &filterOut, Reply &out) {
             if (rawCtx.request.command() == Command::Get) {
                 fmt::print("worker received 'get' request\n");
@@ -48,19 +49,19 @@ public:
                 handleSetRequest(filterIn, filterOut, out);
             }
         });
-        auto   fs = cmrc::flowgraphFilesystem::get_filesystem();
+        auto fs                   = cmrc::flowgraphFilesystem::get_filesystem();
         auto defaultFlowgraphFile = fs.open("flowgraph.grc");
         std::copy(defaultFlowgraphFile.begin(), defaultFlowgraphFile.end(), flowgraph.end());
     }
 
 private:
-    void handleGetRequest(const FilterContext &/*filterIn*/, FilterContext & /*filterOut*/, Reply &out) {
+    void handleGetRequest(const FilterContext & /*filterIn*/, FilterContext & /*filterOut*/, Reply &out) {
         fmt::print("handleGetRequest for flowgraph\n");
         std::lock_guard lockGuard(flowgraphLock);
         out.flowgraph = flowgraph;
     }
 
-    void handleSetRequest(const FilterContext &/*filterIn*/, FilterContext & /*filterOut*/, Reply &out) {
+    void handleSetRequest(const FilterContext & /*filterIn*/, FilterContext & /*filterOut*/, Reply &out) {
         fmt::print("handleSetRequest for flowgraph\n");
         std::lock_guard lockGuard(flowgraphLock);
         flowgraph = out.flowgraph;
@@ -69,10 +70,10 @@ private:
 
     void notifyUpdate() {
         for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
-            const auto          queryMap = subTopic.queryParamMap();
-            const FilterContext filterIn = opencmw::query::deserialise<FilterContext>(queryMap);
-            FilterContext filterOut = filterIn;
-            Reply         subscriptionReply;
+            const auto          queryMap  = subTopic.queryParamMap();
+            const FilterContext filterIn  = opencmw::query::deserialise<FilterContext>(queryMap);
+            FilterContext       filterOut = filterIn;
+            Reply               subscriptionReply;
             try {
                 handleGetRequest(filterIn, filterOut, subscriptionReply);
                 super_t::notify(std::string(serviceName.c_str()), filterOut, subscriptionReply);
