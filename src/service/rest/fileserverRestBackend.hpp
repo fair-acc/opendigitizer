@@ -17,7 +17,7 @@ public:
     using super_t::RestBackend;
 
     FileServerRestBackend(Broker<Roles...> &broker, const VirtualFS &vfs, std::filesystem::path serverRoot, opencmw::URI<> restAddress = opencmw::URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
-            : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {
+        : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {
     }
 
     static auto deserializeSemicolonFormattedMessage(std::string_view method, std::string_view serialized) {
