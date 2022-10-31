@@ -59,11 +59,6 @@ table td input {
   width: 100%;
 }
 
-#menu li {
-  float: left;
-  margin: 0 10px;
-}
-
 #menu li a,
 #logout {
   background: transparent;
@@ -134,19 +129,15 @@ table td input {
   font-size: 14px;
 }
 
-nav li,
-nav ul {
-  margin: 0;
-  padding: 0;
-  list-style-type: none;
-}
-
 /* Needlessly fancy menu hover effect */
 #menu li {
+  float: left;
+  margin: 0 10px;
   position: relative;
 }
 
-#menu li a::after, #logout:after {
+#menu li a::after,
+#logout::after {
   position: absolute;
   top: 28px;
   left: 0;
@@ -162,7 +153,17 @@ nav ul {
   transform: translateY(10px);
 }
 
-#logout:hover::after, #logout:focus::after, #menu li a:hover::after, #menu li a:focus::after {
+nav li,
+nav ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
+#logout:hover::after,
+#logout:focus::after,
+#menu li a:hover::after,
+#menu li a:focus::after {
   opacity: 1;
   -webkit-transform: translateY(0);
   transform: translateY(0);
