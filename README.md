@@ -15,22 +15,22 @@ equipment experts, operation, and FAIR users in their development of top-level m
 ## Contents
 
 The project consists of two parts:
- - a UI part
-   - which can be compiled either as a native UI application or as a WebAssembly binary
-   - shows an imGUI/imPlot based view
-     - empty start frame
-     - imPlot wasm sample for testing
- - and a service part which provides different services
-   - flowgraph worker: provides access to a string property which provides the current flowgraph configuration and is
-     initialized with a static default flowgraph.
-     Later on, changes to the flowgraph will have to trigger updating the running flowgraph.
-   - acquisition worker: provides access to an Acquisition property, which provides the signals shown in the UI. For now
-     it will provide generated mock data.
-     Later this should provide the data from the running flowgraph.
-   - REST worker: provides access over HTTP to:
-     - the aforementioned MDP properties (flowgraph and acquisition) via REST/Json
-     - a simple web UI for the properties
-     - the WebAssembly binary and assets as static assets served at a specific URI.
+- a UI part
+  - which can be compiled either as a native UI application or as a WebAssembly binary
+  - shows an imGUI/imPlot based view
+    - empty start frame
+    - imPlot wasm sample for testing
+- and a service part which provides different services
+  - flowgraph worker: provides access to a string property which provides the current flowgraph configuration and is
+    initialized with a static default flowgraph.
+    Later on, changes to the flowgraph will have to trigger updating the running flowgraph.
+  - acquisition worker: provides access to an Acquisition property, which provides the signals shown in the UI. For now
+    it will provide generated mock data.
+    Later this should provide the data from the running flowgraph.
+  - REST worker: provides access over HTTP to:
+    - the aforementioned MDP properties (flowgraph and acquisition) via REST/Json
+    - a simple web UI for the properties
+    - the WebAssembly binary and assets as static assets served at a specific URI.
 
 ## Building
 
