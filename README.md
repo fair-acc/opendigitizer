@@ -15,6 +15,7 @@ equipment experts, operation, and FAIR users in their development of top-level m
 ## Contents
 
 The project consists of two parts:
+
 - a UI part
   - which can be compiled either as a native UI application or as a WebAssembly binary
   - shows an imGUI/imPlot based view
@@ -55,5 +56,6 @@ xdg-open http://localhost:8080/acquisition    # launches the html based web ui f
 ```
 
 ## References
+
 - [Digitization of Analog Signals](https://edms.cern.ch/document/1823376/1)
 - OpenCMW [repo](https://github.com/fair-acc/opencmw-cpp/) and [specification](https://edms.cern.ch/document/2444348/1)

@@ -129,6 +129,13 @@ table td input {
   font-size: 14px;
 }
 
+nav li,
+nav ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
 /* Needlessly fancy menu hover effect */
 #menu li {
   float: left;
@@ -151,13 +158,6 @@ table td input {
   transition: opacity 0.3s, transform 0.3s;
   -webkit-transform: translateY(10px);
   transform: translateY(10px);
-}
-
-nav li,
-nav ul {
-  margin: 0;
-  padding: 0;
-  list-style-type: none;
 }
 
 #logout:hover::after,
