@@ -23,12 +23,11 @@ ExternalProject_Add( ui-wasm
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
+  BUILD_BYPRODUCTS
+    ${BUILD_DIR}/web/index.html
+    ${BUILD_DIR}/web/index.js
+    ${BUILD_DIR}/web/index.wasm
 )
 set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
-# touch files so cmrc does not complain that they don't exist. acutal copying is done after the compilation
-file(MAKE_DIRECTORY ${BUILD_DIR}/web/)
-file(TOUCH ${BUILD_DIR}/web/index.html)
-file(TOUCH ${BUILD_DIR}/web/index.js)
-file(TOUCH ${BUILD_DIR}/web/index.wasm)
 
 add_subdirectory(src/service)
