@@ -5,8 +5,8 @@
 #include <iomanip>
 #include <thread>
 
+#include "acquisition/acqWorker.hpp"
 #include "flowgraph/flowgraphWorker.hpp"
-//#include "acquisition/acqWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
 using namespace opencmw::majordomo;
@@ -37,13 +37,14 @@ int main() {
                                                                                                      });
 
     // acquisition worker (mock) todo: implement
-    // AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker);
-    // std::jthread acquisitionWorkerThread([&acquisitionWorker] {
-    //     acquisitionWorker.run();
-    // });
+    AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker, 2000ms); // todo: change to 25Hz, just slow for debugging
+    std::jthread                                                                       acquisitionWorkerThread([&acquisitionWorker] {
+        acquisitionWorker.run();
+                                                                          });
 
     // shutdown
     brokerThread.join();
     // workers terminate when broker shuts down
     flowgraphWorkerThread.join();
+    acquisitionWorkerThread.join();
 }
