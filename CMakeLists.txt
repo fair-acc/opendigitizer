@@ -11,7 +11,7 @@ set(BUILD_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Build)
 set(INSTALL_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Install)
 
 
-# add_subdirectory(src/ui) # todo: make client also compile on native
+add_subdirectory(src/ui)
 
 ExternalProject_Add( ui-wasm
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui

@@ -6,19 +6,26 @@ FetchContent_Declare(
     GIT_TAG         v1.88
 )
 
+# Enables 32 bit vertex indices for ImGui
+add_compile_definitions("ImDrawIdx=unsigned int")
+
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
     GIT_TAG         master #v0.13
 )
-
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY  https://github.com/nlohmann/json.git
-    GIT_TAG         69d744867f8847c91a126fa25e9a6a3d67b3be41 #v3.11.1
-)
-
-FetchContent_MakeAvailable(nlohmann_json imgui implot)
+if (EMSCRIPTEN)
+    FetchContent_MakeAvailable(imgui implot)
+else () # native build
+    FetchContent_Declare(
+            sdl2
+            GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
+            GIT_TAG        release-2.24.2
+    )
+    FetchContent_MakeAvailable(sdl2 imgui implot)
+    target_link_libraries(SDL2 PUBLIC GL)
+    target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
+endif()
 
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
 add_library(
@@ -32,10 +39,13 @@ add_library(
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/imgui.cpp
 )
+if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
+    target_link_libraries(imgui PUBLIC SDL2main SDL2)
+endif()
+
 target_include_directories(
     imgui BEFORE
     PUBLIC
-        ${CURRENT_SOURCE_DIR}/imgui # include the modified imconfig header
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends
 )
@@ -50,4 +60,3 @@ target_include_directories(
         ${implot_SOURCE_DIR}
 )
 target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
-

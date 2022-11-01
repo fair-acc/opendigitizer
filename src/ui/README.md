@@ -13,7 +13,7 @@ emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Debug && (cd build-wasm && E
 ```
 Note: `cmake --build` is broken with em(c)make, hence the cd + make call.
 
-To test, launch a python http server and navigate your browser to http://localhost:8080;
+To test, launch a python http server and navigate your browser to http://localhost:8000;
 ```shell
 (cd build-wasm/ && make serve)
 ```

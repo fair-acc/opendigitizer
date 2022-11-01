@@ -1,17 +1,17 @@
-#include <chrono>
-#include <iostream>
-#include <SDL.h>
-#include <SDL_opengles2.h>
-#include <stdio.h>
-#include <string.h>
-#include <thread>
-#include <vector>
-
-#include "imgui.h"
-#include "imgui_impl_opengl3.h"
-#include "imgui_impl_sdl.h"
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#endif
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl.h>
 #include <implot.h>
+#include <SDL.h>
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+#include <SDL_opengles2.h>
+#else
+#include <SDL_opengl.h>
+#endif
+#include <cstdio>
 
 // Emscripten requires to have full control over the main loop. We're going to
 // store our SDL book-keeping variables globally. Having a single function that
@@ -19,6 +19,7 @@
 // we need some location for this.
 SDL_Window   *g_Window    = NULL;
 SDL_GLContext g_GLContext = NULL;
+bool          running     = true;
 
 static void   main_loop(void *);
 
@@ -88,7 +89,21 @@ int           main(int, char **) {
 #endif
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
+#ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(main_loop, NULL, 0, true);
+#else
+    while (running) {
+        main_loop(NULL);
+    }
+    // Cleanup
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
+    SDL_GL_DeleteContext(g_GLContext);
+    SDL_DestroyWindow(g_Window);
+    SDL_Quit();
+#endif
     // emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 10);
 }
 
@@ -104,6 +119,10 @@ static void main_loop(void *arg) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT)
+            running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(g_Window))
+            running = false;
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
 
