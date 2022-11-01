@@ -39,7 +39,7 @@ Follow these instructions in the subdirectories to compile the individual parts 
 The top-level CMakeList can be used to compile the complete project in one go:
 
 ```shell
-cmake -S . -B build && cmake --build build
+cmake -S . -B build -DEMCMAKE_COMMAND=`which emcmake` && cmake --build build
 ```
 
 This will compile the native UI, the WebAssemblyUI (in a subbuild), and the service which includes the wasm artifacts in its
