@@ -55,4 +55,4 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATIO
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 add_executable(opendigitizer main.cpp)
-target_link_libraries(opendigitizer PRIVATE od_flowgraph od_rest majordomo project_options project_warnings)
+target_link_libraries(opendigitizer PRIVATE od_flowgraph od_rest majordomo project_options project_warnings assets::rest)

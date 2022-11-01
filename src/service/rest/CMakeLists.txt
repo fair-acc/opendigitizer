@@ -1,5 +1,5 @@
 cmrc_add_resource_library(
-        OPENDIGITIZER_ASSETS ALIAS assets::opencmw NAMESPACE assets_opencmw
+        OPENDIGITIZER_ASSETS ALIAS assets::rest NAMESPACE assets
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/error.mustache
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/main.css
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/img/english.png
@@ -20,4 +20,4 @@ cmrc_add_resources(OPENDIGITIZER_ASSETS WHENCE ${WASM_BUILD_DIR}
 
 add_library(od_rest INTERFACE fileserverRestBackend.hpp)
 target_include_directories(od_rest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/.)
-target_link_libraries(od_rest INTERFACE majordomo project_options project_warnings assets::opencmw)
+target_link_libraries(od_rest INTERFACE majordomo project_options project_warnings assets::rest)

@@ -1,8 +1,6 @@
 #include <majordomo/base64pp.hpp>
 #include <majordomo/RestBackend.hpp>
 
-CMRC_DECLARE(assets_opencmw);
-
 using namespace opencmw::majordomo;
 
 template<typename Mode, typename VirtualFS, role... Roles>
