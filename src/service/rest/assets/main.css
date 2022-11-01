@@ -59,6 +59,13 @@ table td input {
   width: 100%;
 }
 
+nav li,
+nav ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
 #menu li a,
 #logout {
   background: transparent;
@@ -127,13 +134,6 @@ table td input {
   background: #fff;
   border-top: 2px solid #ffb446;
   font-size: 14px;
-}
-
-nav li,
-nav ul {
-  margin: 0;
-  padding: 0;
-  list-style-type: none;
 }
 
 /* Needlessly fancy menu hover effect */

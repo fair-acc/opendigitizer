@@ -49,7 +49,7 @@ assets.
 
 ```shell
 build/service/opendigitizer-service &         # launches the service
-# build/ui/opendigitizer_ui &                 # launches the native digitizer UI (not yet implemented)
+build/ui/opendigitizer_ui &                   # launches the native digitizer UI
 xdg-open http://localhost:8080/web/index.html # launches the webassembly UI
 xdg-open http://localhost:8080/flowchart      # launches the html based web ui for the flowgraph property
 xdg-open http://localhost:8080/acquisition    # launches the html based web ui for the acquisition property
@@ -59,3 +59,4 @@ xdg-open http://localhost:8080/acquisition    # launches the html based web ui f
 
 - [Digitization of Analog Signals](https://edms.cern.ch/document/1823376/1)
 - OpenCMW [repo](https://github.com/fair-acc/opencmw-cpp/) and [specification](https://edms.cern.ch/document/2444348/1)
+
