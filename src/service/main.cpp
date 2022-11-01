@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <thread>
 
-//#include "flowgraph/flowgraphWorker.hpp"
+#include "flowgraph/flowgraphWorker.hpp"
 //#include "acquisition/acqWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
@@ -107,10 +107,10 @@ int main() {
                                                                                          });
 
     // flowgraph worker (mock)
-    // FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">> flowgraphWorker(broker);
-    // std::jthread flowgraphWorkerThread([&flowgraphWorker] {
-    //    flowgraphWorker.run();
-    //});
+    FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">> flowgraphWorker(broker);
+    std::jthread                                                                                                  flowgraphWorkerThread([&flowgraphWorker] {
+        flowgraphWorker.run();
+                                                                                                     });
 
     // acquisition worker (mock) todo: implement
     // AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker);
@@ -121,7 +121,7 @@ int main() {
     // shutdown
     brokerThread.join();
     // workers terminate when broker shuts down
-    // flowgraphWorkerThread.join();
+    flowgraphWorkerThread.join();
     // acquisitionWorkerThread.join();
     helloWorldThread.join();
 }
