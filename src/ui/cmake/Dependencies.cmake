@@ -24,7 +24,7 @@ else () # native build
     )
     FetchContent_MakeAvailable(sdl2 imgui implot)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-    target_link_libraries(SDL2 PUBLIC OpenGL::OpenGL )
+    target_link_libraries(SDL2 PUBLIC OpenGL::GL )
     target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
 endif()
 
