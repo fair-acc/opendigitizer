@@ -23,7 +23,8 @@ else () # native build
             GIT_TAG        release-2.24.2
     )
     FetchContent_MakeAvailable(sdl2 imgui implot)
-    target_link_libraries(SDL2 PUBLIC GL)
+    find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+    target_link_libraries(SDL2 PUBLIC OpenGL::OpenGL )
     target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
 endif()
 
