@@ -83,7 +83,7 @@
 #
 # 1. Copy this file into your cmake modules path.
 #
-# 2. Add the following line to your CMakeLists.txt (best inside an if-condition
+# 2. Add the following line to your CMakeLists2.txt (best inside an if-condition
 #    using a CMake option() to enable it just optionally):
 #      include(CodeCoverage)
 #
@@ -239,7 +239,7 @@ function(setup_target_for_coverage_lcov)
     if(DEFINED Coverage_BASE_DIRECTORY)
         get_filename_component(BASEDIR ${Coverage_BASE_DIRECTORY} ABSOLUTE)
     else()
-        set(BASEDIR ${PROJECT_SOURCE_DIR})
+        set(BASEDIR ../../..)
     endif()
 
     # Collect excludes (CMake 3.4+: Also compute absolute paths)
@@ -393,7 +393,7 @@ function(setup_target_for_coverage_gcovr_xml)
     if(DEFINED Coverage_BASE_DIRECTORY)
         get_filename_component(BASEDIR ${Coverage_BASE_DIRECTORY} ABSOLUTE)
     else()
-        set(BASEDIR ${PROJECT_SOURCE_DIR})
+        set(BASEDIR ../../..)
     endif()
 
     # Collect excludes (CMake 3.4+: Also compute absolute paths)
@@ -485,7 +485,7 @@ function(setup_target_for_coverage_gcovr_html)
     if(DEFINED Coverage_BASE_DIRECTORY)
         get_filename_component(BASEDIR ${Coverage_BASE_DIRECTORY} ABSOLUTE)
     else()
-        set(BASEDIR ${PROJECT_SOURCE_DIR})
+        set(BASEDIR ../../..)
     endif()
 
     # Collect excludes (CMake 3.4+: Also compute absolute paths)
@@ -592,7 +592,7 @@ function(setup_target_for_coverage_fastcov)
     if(Coverage_BASE_DIRECTORY)
         get_filename_component(BASEDIR ${Coverage_BASE_DIRECTORY} ABSOLUTE)
     else()
-        set(BASEDIR ${PROJECT_SOURCE_DIR})
+        set(BASEDIR ../../..)
     endif()
 
     # Collect excludes (Patterns, not paths, for fastcov)

@@ -1,0 +1,13 @@
+options:
+  parameters:
+    author: 'E. X. Ample'
+    comment: 'An example flowgraph which can be modified in the node editor'
+
+  blocks:
+  - name: samp_rate
+    id: variable
+    parameters:
+      comment: ''
+      value: 1.0e4
+    states:
+      state: enabled
