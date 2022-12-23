@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 
 project(opendigitizer CXX)
 
-option(EMCMAKE_COMMAND "path to the emcmake command" "emcmake")
+set(EMCMAKE_COMMAND "emcmake" CACHE FILEPATH "Path to the emcmake command")
 
 include(ExternalProject)
 

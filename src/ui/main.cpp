@@ -13,6 +13,11 @@
 #endif
 #include <cstdio>
 
+#ifndef EMSCRIPTEN
+#include "flowgraph.h"
+#include "flowgraphitem.h"
+#endif
+
 // Emscripten requires to have full control over the main loop. We're going to
 // store our SDL book-keeping variables globally. Having a single function that
 // acts as a loop prevents us to store state in the stack of said function. So
@@ -22,6 +27,14 @@ SDL_GLContext g_GLContext = NULL;
 bool          running     = true;
 
 static void   main_loop(void *);
+
+struct App
+{
+#ifndef EMSCRIPTEN
+    DigitizerUi::FlowGraph flowGraph;
+    DigitizerUi::FlowGraphItem fgItem;
+#endif
+};
 
 int           main(int, char **) {
     // Setup SDL
@@ -88,12 +101,25 @@ int           main(int, char **) {
     // IM_ASSERT(font != NULL);
 #endif
 
+    App app = {
+#ifndef EMSCRIPTEN
+        .flowGraph = {},
+        .fgItem = { &app.flowGraph }
+    };
+
+    app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+    app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
+
+#else
+    };
+#endif
+
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(main_loop, NULL, 0, true);
+    emscripten_set_main_loop_arg(main_loop, &app, 0, true);
 #else
     while (running) {
-        main_loop(NULL);
+        main_loop(&app);
     }
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
@@ -108,12 +134,13 @@ int           main(int, char **) {
 }
 
 static void main_loop(void *arg) {
+    App *app = static_cast<App *>(arg);
+
     ImGuiIO &io = ImGui::GetIO();
     IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
     // Our state (make them static = more or less global) as a convenience to keep the example terse.
     static ImVec4 clear_color      = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    static bool   show_demo_window = true;
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
@@ -131,9 +158,28 @@ static void main_loop(void *arg) {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    // Show ImGui and ImPlot demo windows - TODO: replace with flowgraph editor and charting implementation
-    ImGui::ShowDemoWindow(&show_demo_window);
-    ImPlot::ShowDemoWindow();
+    ImGui::SetNextWindowPos({ 0, 0 });
+    int width, height;
+    SDL_GetWindowSize(g_Window, &width, &height);
+    ImGui::SetNextWindowSize({ float(width), float(height) });
+    ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    ImGui::BeginTabBar("maintabbar");
+    if (ImGui::BeginTabItem("Dashboard")) {
+
+        ImGui::EndTabItem();
+    }
+#ifndef EMSCRIPTEN
+    if (ImGui::BeginTabItem("Flowgraph")) {
+
+        app->fgItem.draw();
+
+        ImGui::EndTabItem();
+    }
+#endif
+    ImGui::EndTabBar();
+
+    ImGui::End();
 
     // Rendering
     ImGui::Render();

@@ -14,15 +14,28 @@ FetchContent_Declare(
     GIT_REPOSITORY  https://github.com/epezent/implot.git
     GIT_TAG         master #v0.13
 )
+
+FetchContent_Declare(
+    imgui-node-editor
+    GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
+    GIT_TAG         master
+)
+
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY  https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG         yaml-cpp-0.7.0
+)
+
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp)
 else () # native build
     FetchContent_Declare(
             sdl2
             GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
             GIT_TAG        release-2.24.2
     )
-    FetchContent_MakeAvailable(sdl2 imgui implot)
+    FetchContent_MakeAvailable(sdl2 imgui implot imgui-node-editor yaml-cpp)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
     target_link_libraries(SDL2 PUBLIC OpenGL::GL )
     target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
@@ -61,3 +74,18 @@ target_include_directories(
         ${implot_SOURCE_DIR}
 )
 target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(
+    imgui-node-editor
+    OBJECT
+        ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor.cpp
+        ${imgui-node-editor_SOURCE_DIR}/imgui_canvas.cpp
+        ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor_api.cpp
+        ${imgui-node-editor_SOURCE_DIR}/crude_json.cpp
+)
+target_include_directories(
+    imgui-node-editor BEFORE
+    PUBLIC
+        ${imgui-node-editor_SOURCE_DIR}
+)
+target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)

@@ -10,6 +10,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+set(sources
+        main.cpp
+        flowgraph.cpp
+        flowgraphitem.cpp
+)
 
 if (EMSCRIPTEN)
     message(STATUS "Detected emscripten webassembly build")
@@ -69,7 +74,7 @@ else () # native build
 
     add_executable(opendigitizer-ui)
 
-    target_sources(opendigitizer-ui PRIVATE main.cpp)
+    target_sources(opendigitizer-ui PRIVATE ${sources})
 
     # link the executable
     target_link_libraries(
@@ -78,5 +83,10 @@ else () # native build
             SDL2main
             SDL2
             implot
+            imgui-node-editor
+            yaml-cpp::yaml-cpp
+            core
+            client
     )
+    target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="/usr/share/gnuradio/grc/blocks")
 endif()
