@@ -42,9 +42,35 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     }
 }
 
-void FlowGraphItem::draw()
+void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, std::span<const ImVec2> sinks)
 {
-    ax::NodeEditor::Begin("My Editor", ImVec2(0.0, 0.0f));
+    float left = ImGui::GetCursorPosX() - 10;
+    ax::NodeEditor::Begin("My Editor", size);
+
+    int sourceId = 2000;
+    for (int i = 0; i < sources.size(); ++i) {
+        const auto &s = sources[i];
+        ax::NodeEditor::BeginNode(sourceId);
+        ax::NodeEditor::SetNodePosition(sourceId++, ax::NodeEditor::ScreenToCanvas({left - 100, 0}));
+        ax::NodeEditor::BeginPin(sourceId++, ax::NodeEditor::PinKind::Output);
+        ax::NodeEditor::PinRect(ax::NodeEditor::ScreenToCanvas({left, s.x}), ax::NodeEditor::ScreenToCanvas({left + 20, s.y}));
+
+        ax::NodeEditor::EndPin();
+        ax::NodeEditor::EndNode();
+    }
+
+    int sinkId = 4000;
+    for (int i = 0; i < sinks.size(); ++i) {
+        const auto &s = sinks[i];
+        ax::NodeEditor::BeginNode(sinkId);
+        ax::NodeEditor::SetNodePosition(sinkId++, ax::NodeEditor::ScreenToCanvas({left + size.x + 100, 0}));
+        ax::NodeEditor::BeginPin(sinkId++, ax::NodeEditor::PinKind::Input);
+        ax::NodeEditor::PinRect(ax::NodeEditor::ScreenToCanvas({left + size.x - 20, s.x}),
+                                ax::NodeEditor::ScreenToCanvas({left + size.x, s.y}));
+
+        ax::NodeEditor::EndPin();
+        ax::NodeEditor::EndNode();
+    }
 
     for (const auto &b : m_flowGraph->blocks()) {
         ax::NodeEditor::BeginNode(b->id);

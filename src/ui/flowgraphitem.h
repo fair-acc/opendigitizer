@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <span>
 
 #include <imgui_node_editor.h>
 
@@ -16,7 +17,7 @@ class FlowGraphItem
 public:
     FlowGraphItem(FlowGraph *fg);
 
-    void draw();
+    void draw(const ImVec2 &size, std::span<const ImVec2> sources, std::span<const ImVec2> sinks);
 
 private:
     struct LinkInfo {

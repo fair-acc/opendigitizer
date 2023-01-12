@@ -28,12 +28,27 @@ bool          running     = true;
 
 static void   main_loop(void *);
 
+ImFont *addDefaultFont(float pixel_size)
+{
+    ImGuiIO &io = ImGui::GetIO();
+    ImFontConfig config;
+    config.SizePixels = pixel_size;
+    config.OversampleH = config.OversampleV = 1;
+    config.PixelSnapH = true;
+    ImFont *font = io.Fonts->AddFontDefault(&config);
+    return font;
+}
+
 struct App
 {
 #ifndef EMSCRIPTEN
     DigitizerUi::FlowGraph flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
 #endif
+
+    ImFont *font12 = nullptr;
+    ImFont *font14 = nullptr;
+    ImFont *font16 = nullptr;
 };
 
 int           main(int, char **) {
@@ -93,7 +108,7 @@ int           main(int, char **) {
     // Load Fonts
     // io.Fonts->AddFontDefault();
 #ifndef IMGUI_DISABLE_FILE_FUNCTIONS
-    io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f);
+    // io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/Cousine-Regular.ttf", 15.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/DroidSans.ttf", 16.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/ProggyTiny.ttf", 10.0f);
@@ -113,6 +128,10 @@ int           main(int, char **) {
 #else
     };
 #endif
+
+    app.font12 = addDefaultFont(12);
+    app.font14 = addDefaultFont(14);
+    app.font16 = addDefaultFont(16);
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
@@ -172,7 +191,74 @@ static void main_loop(void *arg) {
 #ifndef EMSCRIPTEN
     if (ImGui::BeginTabItem("Flowgraph")) {
 
-        app->fgItem.draw();
+        auto contentRegion = ImGui::GetContentRegionAvail();
+
+        const float left = ImGui::GetCursorPosX();
+
+        std::vector<ImVec2> sources;
+        const int listsWidth = 130;
+        ImGui::PushFont(app->font14);
+        if (ImGui::BeginChild("##sources_list", { listsWidth, contentRegion.y }, false, ImGuiWindowFlags_NoBackground)) {
+            for (int i = 0; i < 100; ++i) {
+                ImGui::Text("Data source %d", i);
+                sources.push_back({ ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().y });
+            }
+
+            ImGui:: Button("Add new data source");
+
+            ImGui::EndChild();
+        }
+        ImGui::PopFont();
+
+        ImGui::SameLine();
+        auto cursorPos = ImGui::GetCursorPos();
+
+        const float actualListWidth = cursorPos.x - left;
+
+        ImGui::SetCursorPosX(left + contentRegion.x - listsWidth);
+        ImGui::PushFont(app->font14);
+        std::vector<ImVec2> sinks;
+        if (ImGui::BeginChild("##sinks_list", { listsWidth, contentRegion.y }, false, ImGuiWindowFlags_NoBackground)) {
+            for (int i = 0; i < 100; ++i) {
+                ImGui::Text("Data sink %d", i);
+                sinks.push_back({ ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().y });
+            }
+            ImGui::EndChild();
+        }
+        ImGui::PopFont();
+
+        ImGui::SetCursorPos(cursorPos);
+        const float fgWidth = contentRegion.x - 2 * actualListWidth;
+        app->fgItem.draw({ fgWidth, contentRegion.y }, sources, sinks);
+
+        ImGui::SetCursorPos(cursorPos);
+        if (ImGui::BeginChild("##source_pins", { 100, contentRegion.y }, false,
+                          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                          ImGuiWindowFlags_NoInputs)) {
+            ImGui::PushFont(app->font14);
+            for (int i = 0; i < sources.size(); ++i) {
+                const auto &s = sources[i];
+                ImGui::SetCursorPosY(s.x - cursorPos.y);
+                ImGui::TextColored({1, 1, 1, 1}, "»");
+            }
+            ImGui::PopFont();
+            ImGui::EndChild();
+        }
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(cursorPos.x + fgWidth - 20);
+        if (ImGui::BeginChild("##sinks_pins", { 100, contentRegion.y }, false,
+                          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                          ImGuiWindowFlags_NoInputs)) {
+            ImGui::PushFont(app->font14);
+            for (int i = 0; i < sinks.size(); ++i) {
+                const auto &s = sinks[i];
+                ImGui::SetCursorPosY(s.x - cursorPos.y);
+                ImGui::TextColored({1, 1, 1, 1}, "«");
+            }
+            ImGui::PopFont();
+            ImGui::EndChild();
+        }
 
         ImGui::EndTabItem();
     }
