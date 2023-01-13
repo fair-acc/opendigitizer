@@ -116,6 +116,9 @@ public:
     Block             *findBlock(uint32_t id) const;
 
     inline const auto &blocks() const { return m_blocks; }
+    inline const auto &blockTypes() const { return m_types; }
+
+    void               addBlock(std::unique_ptr<Block> &&block);
 
 private:
     std::vector<std::unique_ptr<Block>>                         m_blocks;

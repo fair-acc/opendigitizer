@@ -31,6 +31,8 @@ private:
     int m_linkId = 10000;
     Block *m_editingBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
+    BlockType                    *m_selectedBlockType = nullptr;
+    ImVec2                        m_mouseDrag         = { 0, 0 };
 };
 
 }

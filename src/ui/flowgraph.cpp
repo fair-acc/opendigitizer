@@ -35,6 +35,29 @@ Block::Block(std::string_view name, BlockType *type)
     : id(nextId())
     , type(type)
     , name(name) {
+    if (!type) {
+        return;
+    }
+
+    m_parameters.reserve(type->parameters.size());
+    for (auto &p : type->parameters) {
+        if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
+            m_parameters.push_back(Block::EnumParameter{ *e, 0 });
+        } else if (auto *i = std::get_if<BlockType::IntParameter>(&p.impl)) {
+            m_parameters.push_back(Block::IntParameter{ 0 });
+        } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
+            m_parameters.push_back(Block::RawParameter{ r->defaultValue });
+        }
+    }
+
+    m_outputs.reserve(type->outputs.size());
+    m_inputs.reserve(type->inputs.size());
+    for (auto &o : type->outputs) {
+        m_outputs.push_back({ o.type, nextId() });
+    }
+    for (auto &o : type->inputs) {
+        m_inputs.push_back({ o.type, nextId() });
+    }
 }
 
 void Block::connectTo(uint32_t srcPort, Block *dst, uint32_t dstPort) {
@@ -323,17 +346,6 @@ void FlowGraph::parse(const std::string &str) {
             continue;
         }
 
-        block->m_parameters.reserve(type->parameters.size());
-        for (auto &p : type->parameters) {
-            if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
-                block->m_parameters.push_back(Block::EnumParameter{ *e, 0 });
-            } else if (auto *i = std::get_if<BlockType::IntParameter>(&p.impl)) {
-                block->m_parameters.push_back(Block::IntParameter{ 0 });
-            } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
-                block->m_parameters.push_back(Block::RawParameter{ r->defaultValue });
-            }
-        }
-
         auto pars = b["parameters"];
         if (pars && pars.IsMap()) {
             for (auto it = pars.begin(); it != pars.end(); ++it) {
@@ -370,15 +382,6 @@ void FlowGraph::parse(const std::string &str) {
                     }
                 }
             }
-        }
-
-        block->m_outputs.reserve(type->outputs.size());
-        block->m_inputs.reserve(type->inputs.size());
-        for (auto &o : type->outputs) {
-            block->m_outputs.push_back({ o.type, nextId() });
-        }
-        for (auto &o : type->inputs) {
-            block->m_inputs.push_back({ o.type, nextId() });
         }
 
         block->update();
@@ -423,6 +426,11 @@ Block *FlowGraph::findBlock(uint32_t id) const {
         }
     }
     return nullptr;
+}
+
+void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
+    block->update();
+    m_blocks.push_back(std::move(block));
 }
 
 } // namespace ImChart

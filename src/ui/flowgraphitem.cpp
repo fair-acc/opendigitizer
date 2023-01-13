@@ -90,7 +90,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
                 const ImVec2 rmin = ImVec2(min.x, (min.y + max.y) / 2.f);
                 const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
                 ax::NodeEditor::PinPivotRect(rmin, rmax);
-                ax::NodeEditor::PinRect(rmin, rmax);
+                ax::NodeEditor::PinRect(min, max);
                 ax::NodeEditor::EndPin();
             }
             ImGuiEx_NextColumn();
@@ -107,7 +107,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
                 const ImVec2 rmin = ImVec2(max.x, (min.y + max.y) / 2.f);
                 const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
                 ax::NodeEditor::PinPivotRect(rmin, rmax);
-                ax::NodeEditor::PinRect(rmin, rmax);
+                ax::NodeEditor::PinRect(min, max);
 
                 ax::NodeEditor::EndPin();
             }
@@ -158,6 +158,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     }
     ax::NodeEditor::EndCreate(); // Wraps up object creation action handling.
 
+    const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
     ax::NodeEditor::End();
 
     if (ImGui::IsMouseDoubleClicked(ImGuiPopupFlags_MouseButtonLeft)) {
@@ -220,6 +221,43 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
             m_editingBlock = nullptr;
         }
 
+        ImGui::EndPopup();
+    }
+
+    bool openNewBlockDialog = false;
+    if (backgroundClicked == ImGuiMouseButton_Right && m_mouseDrag.x < 10 && m_mouseDrag.y < 10) {
+        ImGui::OpenPopup("ctx_menu");
+    }
+    m_mouseDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
+
+    if (ImGui::BeginPopup("ctx_menu")) {
+        if (ImGui::MenuItem("New block")) {
+            openNewBlockDialog = true;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (openNewBlockDialog) {
+        ImGui::OpenPopup("New block");
+    }
+
+    ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
+    if (ImGui::BeginPopupModal("New block")) {
+        if (ImGui::BeginListBox("##Available Block types", { 200, 200 })) {
+            for (auto &t : m_flowGraph->blockTypes()) {
+                if (ImGui::Selectable(t.first.c_str(), t.second.get() == m_selectedBlockType)) {
+                    m_selectedBlockType = t.second.get();
+                }
+            }
+            ImGui::EndListBox();
+        }
+
+        if (ImGui::Button("Ok")) {
+            if (m_selectedBlockType) {
+                m_flowGraph->addBlock(std::make_unique<Block>("new block", m_selectedBlockType));
+            }
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }
