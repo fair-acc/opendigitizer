@@ -108,6 +108,13 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
         ImGui::TextColored({ 1, 1, 1, 1 }, "<-       sink %d\n", i);
     }
 
+    if (m_createNewBlock) {
+        auto b = std::make_unique<Block>("new block", m_selectedBlockType);
+        ax::NodeEditor::SetNodePosition(b->id, m_contextMenuPosition);
+        m_flowGraph->addBlock(std::move(b));
+        m_createNewBlock = false;
+    }
+
     for (const auto &b : m_flowGraph->blocks()) {
         ax::NodeEditor::BeginNode(b->id);
         ImGui::TextUnformatted(b->name.c_str());
@@ -263,6 +270,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     bool openNewBlockDialog = false;
     if (backgroundClicked == ImGuiMouseButton_Right && std::abs(m_mouseDrag.x) < 10 && std::abs(m_mouseDrag.y) < 10) {
         ImGui::OpenPopup("ctx_menu");
+        m_contextMenuPosition = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     }
     m_mouseDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
 
@@ -290,7 +298,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
 
         if (ImGui::Button("Ok")) {
             if (m_selectedBlockType) {
-                m_flowGraph->addBlock(std::make_unique<Block>("new block", m_selectedBlockType));
+                m_createNewBlock = true;
             }
             ImGui::CloseCurrentPopup();
         }
