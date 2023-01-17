@@ -190,75 +190,20 @@ static void main_loop(void *arg) {
     }
 #ifndef EMSCRIPTEN
     if (ImGui::BeginTabItem("Flowgraph")) {
-
         auto contentRegion = ImGui::GetContentRegionAvail();
 
-        const float left = ImGui::GetCursorPosX();
-
         std::vector<ImVec2> sources;
-        const int listsWidth = 130;
-        ImGui::PushFont(app->font14);
-        if (ImGui::BeginChild("##sources_list", { listsWidth, contentRegion.y }, false, ImGuiWindowFlags_NoBackground)) {
-            for (int i = 0; i < 100; ++i) {
-                ImGui::Text("Data source %d", i);
-                sources.push_back({ ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().y });
-            }
-
-            ImGui:: Button("Add new data source");
-
-            ImGui::EndChild();
+        for (int i = 0; i < 100; ++i) {
+            sources.push_back({ 0, 0 });
         }
-        ImGui::PopFont();
+        // ImGui:: Button("Add new data source");
 
-        ImGui::SameLine();
-        auto cursorPos = ImGui::GetCursorPos();
-
-        const float actualListWidth = cursorPos.x - left;
-
-        ImGui::SetCursorPosX(left + contentRegion.x - listsWidth);
-        ImGui::PushFont(app->font14);
         std::vector<ImVec2> sinks;
-        if (ImGui::BeginChild("##sinks_list", { listsWidth, contentRegion.y }, false, ImGuiWindowFlags_NoBackground)) {
-            for (int i = 0; i < 100; ++i) {
-                ImGui::Text("Data sink %d", i);
-                sinks.push_back({ ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().y });
-            }
-            ImGui::EndChild();
-        }
-        ImGui::PopFont();
-
-        ImGui::SetCursorPos(cursorPos);
-        const float fgWidth = contentRegion.x - 2 * actualListWidth;
-        app->fgItem.draw({ fgWidth, contentRegion.y }, sources, sinks);
-
-        ImGui::SetCursorPos(cursorPos);
-        if (ImGui::BeginChild("##source_pins", { 100, contentRegion.y }, false,
-                          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
-                          ImGuiWindowFlags_NoInputs)) {
-            ImGui::PushFont(app->font14);
-            for (int i = 0; i < sources.size(); ++i) {
-                const auto &s = sources[i];
-                ImGui::SetCursorPosY(s.x - cursorPos.y);
-                ImGui::TextColored({1, 1, 1, 1}, "»");
-            }
-            ImGui::PopFont();
-            ImGui::EndChild();
+        for (int i = 0; i < 100; ++i) {
+            sinks.push_back({ 0, 0 });
         }
 
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(cursorPos.x + fgWidth - 20);
-        if (ImGui::BeginChild("##sinks_pins", { 100, contentRegion.y }, false,
-                          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
-                          ImGuiWindowFlags_NoInputs)) {
-            ImGui::PushFont(app->font14);
-            for (int i = 0; i < sinks.size(); ++i) {
-                const auto &s = sinks[i];
-                ImGui::SetCursorPosY(s.x - cursorPos.y);
-                ImGui::TextColored({1, 1, 1, 1}, "«");
-            }
-            ImGui::PopFont();
-            ImGui::EndChild();
-        }
+        app->fgItem.draw(contentRegion, sources, sinks);
 
         ImGui::EndTabItem();
     }

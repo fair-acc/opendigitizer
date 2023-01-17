@@ -44,32 +44,68 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
 
 void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, std::span<const ImVec2> sinks)
 {
-    float left = ImGui::GetCursorPosX() - 10;
+    const float left = ImGui::GetCursorPosX() + 10;
     ax::NodeEditor::Begin("My Editor", size);
 
     int sourceId = 2000;
+    int y        = 0;
     for (int i = 0; i < sources.size(); ++i) {
         const auto &s = sources[i];
         ax::NodeEditor::BeginNode(sourceId);
-        ax::NodeEditor::SetNodePosition(sourceId++, ax::NodeEditor::ScreenToCanvas({left - 100, 0}));
+        auto p = ax::NodeEditor::ScreenToCanvas({ left, 0 });
+        p.y    = y;
+
+        ax::NodeEditor::SetNodePosition(sourceId++, p);
+        ImGui::Dummy({ 100, 10 });
+
+        int y2 = y + 40;
         ax::NodeEditor::BeginPin(sourceId++, ax::NodeEditor::PinKind::Output);
-        ax::NodeEditor::PinRect(ax::NodeEditor::ScreenToCanvas({left, s.x}), ax::NodeEditor::ScreenToCanvas({left + 20, s.y}));
+        auto p1 = p;
+        p1.x += 100;
+        auto p2 = p;
+        p2.x += 120;
+        p2.y = y2;
+        ax::NodeEditor::PinRect(p1, p2);
+        y = y2;
 
         ax::NodeEditor::EndPin();
         ax::NodeEditor::EndNode();
+
+        p.y += 10;
+        p.x += 10;
+        ImGui::SetCursorPos(p);
+        ImGui::TextColored({ 1, 1, 1, 1 }, "source %d        ->\n", i);
     }
 
     int sinkId = 4000;
+    y          = 0;
     for (int i = 0; i < sinks.size(); ++i) {
         const auto &s = sinks[i];
         ax::NodeEditor::BeginNode(sinkId);
-        ax::NodeEditor::SetNodePosition(sinkId++, ax::NodeEditor::ScreenToCanvas({left + size.x + 100, 0}));
+        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x, 0 });
+        p.x -= 140;
+        p.y = y;
+
+        ax::NodeEditor::SetNodePosition(sinkId++, p);
+        ImGui::Dummy({ 100, 10 });
+
+        int y2 = y + 40;
         ax::NodeEditor::BeginPin(sinkId++, ax::NodeEditor::PinKind::Input);
-        ax::NodeEditor::PinRect(ax::NodeEditor::ScreenToCanvas({left + size.x - 20, s.x}),
-                                ax::NodeEditor::ScreenToCanvas({left + size.x, s.y}));
+        auto p1 = p;
+        // p1.x += 100;
+        auto p2 = p;
+        p2.x += 20;
+        p2.y = y2;
+        ax::NodeEditor::PinRect(p1, p2);
+        y = y2;
 
         ax::NodeEditor::EndPin();
         ax::NodeEditor::EndNode();
+
+        p.y += 10;
+        p.x -= 10;
+        ImGui::SetCursorPos(p);
+        ImGui::TextColored({ 1, 1, 1, 1 }, "<-       sink %d\n", i);
     }
 
     for (const auto &b : m_flowGraph->blocks()) {
@@ -225,7 +261,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     }
 
     bool openNewBlockDialog = false;
-    if (backgroundClicked == ImGuiMouseButton_Right && m_mouseDrag.x < 10 && m_mouseDrag.y < 10) {
+    if (backgroundClicked == ImGuiMouseButton_Right && std::abs(m_mouseDrag.x) < 10 && std::abs(m_mouseDrag.y) < 10) {
         ImGui::OpenPopup("ctx_menu");
     }
     m_mouseDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
