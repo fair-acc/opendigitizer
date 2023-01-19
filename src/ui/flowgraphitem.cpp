@@ -181,6 +181,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     for (int i = 0; i < sources.size(); ++i) {
         auto nodeId = sourceId++;
         ax::NodeEditor::BeginNode(nodeId);
+        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
         auto p = ax::NodeEditor::ScreenToCanvas({ left, 0 });
         p.y = y;
         y += 40;
@@ -208,6 +209,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     for (int i = 0; i < sinks.size(); ++i) {
         auto nodeId = sinkId++;
         ax::NodeEditor::BeginNode(nodeId);
+        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
         auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x, 0 });
         p.x -= 140;
         p.y = y;
