@@ -31,6 +31,27 @@ uint32_t nextId() {
 
 } // namespace
 
+const std::string &DataType::toString() const
+{
+    const static std::string names[] = {
+        "int32", "float32", "complex float 32"
+    };
+    return names[m_id];
+}
+
+std::string Block::Parameter::toString() const
+{
+    if (auto *e = std::get_if<Block::EnumParameter>(this)) {
+        return e->toString();
+    } else if (auto *r = std::get_if<Block::RawParameter>(this)) {
+        return r->value;
+    } else if (auto *i = std::get_if<Block::IntParameter>(this)) {
+        return std::to_string(i->value);
+    }
+    assert(0);
+    return {};
+}
+
 Block::Block(std::string_view name, BlockType *type)
     : id(nextId())
     , type(type)
@@ -140,14 +161,37 @@ void Block::setParameter(int index, const Parameter &p) {
 }
 
 void Block::update() {
+    auto parseType = [](const std::string &t) -> DataType {
+        if (t == "fc64") return DataType::ComplexFloat64;
+        if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
+        if (t == "sc64") return DataType::ComplexInt64;
+        if (t == "sc32") return DataType::ComplexInt32;
+        if (t == "sc16") return DataType::ComplexInt16;
+        if (t == "sc8") return DataType::ComplexInt8;
+        if (t == "f64") return DataType::Float64;
+        if (t == "f32" || t == "float") return DataType::Float32;
+        if (t == "s64") return DataType::Int64;
+        if (t == "s32" || t == "int") return DataType::Int32;
+        if (t == "s16" || t == "short") return DataType::Int16;
+        if (t == "s8" || t == "byte") return DataType::Int8;
+        if (t == "bit" || t == "bits") return DataType::Bits;
+        if (t == "message") return DataType::AsyncMessage;
+        if (t == "bus") return DataType::BusConnection;
+        if (t == "") return DataType::Wildcard;
+        if (t == "untyped") return DataType::Untyped;
+
+        fmt::print("unhandled type {}\n", t);
+        assert(0);
+        return DataType::Untyped;
+    };
     auto getType = [&](const std::string &t) {
         if (t.starts_with("${") && t.ends_with("}")) {
             auto val = getParameterValue(t.substr(2, t.size() - 3));
             if (auto type = std::get_if<std::string>(&val)) {
-                return *type;
+                return parseType(*type);
             }
         }
-        return t;
+        return parseType(t);
     };
     for (auto &in : m_inputs) {
         in.type = getType(in.m_rawType);
@@ -200,7 +244,7 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
 
         auto       id     = config["id"].as<std::string>();
 
-        auto def        = m_types.insert({ id, std::make_unique<BlockType>() }).first->second.get();
+        auto def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
 
         auto parameters = config["parameters"];
         for (const auto &p : parameters) {
@@ -265,21 +309,29 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
         auto outputs = config["outputs"];
         for (const auto &o : outputs) {
             auto        n    = o["dtype"];
-            std::string type = "unknown";
+            std::string type = "";
             if (n) {
                 type = n.as<std::string>();
             }
-            def->outputs.push_back({ type });
+            std::string name = "out";
+            if (auto id = o["id"]) {
+                name = id.as<std::string>(name);
+            }
+            def->outputs.push_back({ type, name });
         }
 
         auto inputs = config["inputs"];
         for (const auto &o : inputs) {
             auto        n    = o["dtype"];
-            std::string type = "unknown";
+            std::string type = "";
             if (n) {
                 type = n.as<std::string>();
             }
-            def->inputs.push_back({ type });
+            std::string name = "in";
+            if (auto id = o["id"]) {
+                name = id.as<std::string>(name);
+            }
+            def->inputs.push_back({ type, name });
         }
     }
 }

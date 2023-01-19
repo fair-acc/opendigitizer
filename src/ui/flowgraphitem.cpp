@@ -4,27 +4,10 @@
 #include <imgui_node_editor.h>
 
 #include "flowgraph.h"
+#include "imguiutils.h"
 
 namespace DigitizerUi
 {
-
-namespace {
-
-void ImGuiEx_BeginColumn() {
-    ImGui::BeginGroup();
-}
-
-void ImGuiEx_NextColumn() {
-    ImGui::EndGroup();
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-}
-
-void ImGuiEx_EndColumn() {
-    ImGui::EndGroup();
-}
-
-}
 
 FlowGraphItem::FlowGraphItem(FlowGraph *fg)
              : m_flowGraph(fg)
@@ -32,12 +15,158 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     auto ed = ax::NodeEditor::CreateEditor();
     ax::NodeEditor::SetCurrentEditor(ed);
 
+    auto &style = ax::NodeEditor::GetStyle();
+    style.NodeRounding = 0;
+    style.PinRounding = 0;
+    style.Colors[ax::NodeEditor::StyleColor_Bg] = { 1, 1, 1, 1 };
+    style.Colors[ax::NodeEditor::StyleColor_NodeBg] = { 0.94, 0.92, 1, 1 };
+    style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
+
     for (const auto &b : m_flowGraph->blocks()) {
         for (const auto &port : b->outputs()) {
             for (auto &conn : port.connections) {
                 auto inPort = conn.block->inputs()[conn.portNumber];
                 m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), port.id, inPort.id });
             }
+        }
+    }
+}
+
+static uint32_t colorForDataType(DataType t)
+{
+    switch (t) {
+        case DataType::ComplexFloat64: return 0xff795548;
+        case DataType::ComplexFloat32: return 0xff2196F3;
+        case DataType::ComplexInt64: return 0xff8BC34A;
+        case DataType::ComplexInt32: return 0xff4CAF50;
+        case DataType::ComplexInt16: return 0xffFFC107;
+        case DataType::ComplexInt8: return 0xff9C27B0;
+        case DataType::Float64: return 0xff00BCD4;
+        case DataType::Float32: return 0xffF57C00;
+        case DataType::Int64: return 0xffCDDC39;
+        case DataType::Int32: return 0xff009688;
+        case DataType::Int16: return 0xffFFEB3B;
+        case DataType::Int8: return 0xffD500F9;
+        case DataType::Bits: return 0xffEA80FC;
+        case DataType::AsyncMessage: return 0xffDBDBD;
+        case DataType::BusConnection: return 0xffffffff;
+        case DataType::Wildcard: return 0xffffffff;
+        case DataType::Untyped: return 0xffffffff;
+    }
+    assert(0);
+    return 0;
+}
+
+static uint32_t darken(uint32_t c)
+{
+    uint32_t r = c & 0xff000000;
+    for (int i = 0; i < 3; ++i) {
+        int shift = 8 * i;
+        r |= uint32_t(((c >> shift) & 0xff) * 0.5) << shift;
+    }
+    return r;
+}
+
+static void addPin(uint32_t id, ax::NodeEditor::PinKind kind, ImVec2 &p, ImVec2 size, float spacing) {
+    const bool input = kind == ax::NodeEditor::PinKind::Input;
+    const ImVec2   min  = input ? p - ImVec2(size.x, 0) : p;
+    const ImVec2   max  = input ? p + ImVec2(0, size.y) : p + size;
+    const ImVec2 rmin = ImVec2(min.x, (min.y + max.y) / 2.f);
+    const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
+    ax::NodeEditor::BeginPin(id, kind);
+    ax::NodeEditor::PinPivotRect(rmin, rmax);
+    ax::NodeEditor::PinRect(min, max);
+    ax::NodeEditor::EndPin();
+
+    p.y += size.y + spacing;
+};
+
+static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float textMargin,
+                    const std::string &name, DataType type) {
+    auto p = ImGui::GetCursorScreenPos();
+    drawList->AddRectFilled(p, p + rectSize, colorForDataType(type));
+    drawList->AddRect(p, p + rectSize, darken(colorForDataType(type)));
+
+    auto y = ImGui::GetCursorPosY();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textMargin);
+    ImGui::TextUnformatted(name.c_str());
+
+    ImGui::SetCursorPosY(y + rectSize.y + spacing);
+};
+
+static void addBlock(const Block &b)
+{
+    ax::NodeEditor::BeginNode(b.id);
+
+    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
+
+    ImGui::TextUnformatted(b.name.c_str());
+
+    const auto curPos = ImGui::GetCursorPos();
+    const auto leftPos = curPos.x - padding.x;
+    const int rectHeight = 14;
+    const int rectsSpacing = 5;
+    const int textMargin = 2;
+
+    if (!b.type) {
+        ImGui::TextUnformatted("Unkown type");
+        ax::NodeEditor::EndNode();
+    } else {
+        // Use a dummy to ensure a minimum sensible size on the nodees
+        ImGui::Dummy(ImVec2(80.0f, 45.0f));
+        ImGui::SetCursorPos(curPos);
+
+        for (int i = 0; i < b.parameters().size(); ++i) {
+            ImGui::Text("%s:", b.type->parameters[i].label.c_str());
+            ImGui::SameLine();
+            ImGui::TextUnformatted(b.parameters()[i].toString().c_str());
+        }
+
+        ImGui::SetCursorPos(curPos);
+
+        // auto y = curPos.y;
+        const auto &inputs = b.inputs();
+        auto *inputWidths = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
+
+        ImVec2 pos = { leftPos, curPos.y };
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
+            addPin(inputs[i].id, ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight }, rectsSpacing);
+        }
+
+        // ImGui::SetCursorPosY(y);
+        const auto &outputs = b.outputs();
+        auto *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
+        auto s = ax::NodeEditor::GetNodeSize(b.id);
+        pos = { leftPos + s.x, curPos.y };
+        for (std::size_t i = 0; i < outputs.size(); ++i) {
+            outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
+            addPin(outputs[i].id, ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight }, rectsSpacing);
+        }
+
+        ax::NodeEditor::EndNode();
+
+        // The input/output pins are drawn after ending the node because otherwise
+        // drawing them would increase the node size, which we need to know to correctly place the
+        // output pins, and that would cause the nodes to continuously grow in width
+
+        ImGui::SetCursorPos(curPos);
+        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(b.id);
+
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            const auto &in = inputs[i];
+
+            ImGui::SetCursorPosX(leftPos - inputWidths[i]);
+            drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->inputs[i].name, in.type);
+        }
+
+        ImGui::SetCursorPos(curPos);
+        for (std::size_t i = 0; i < outputs.size(); ++i) {
+            const auto &out = outputs[i];
+
+            auto s = ax::NodeEditor::GetNodeSize(b.id);
+            ImGui::SetCursorPosX(leftPos + s.x);
+            drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->outputs[i].name, out.type);
         }
     }
 }
@@ -50,62 +179,56 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     int sourceId = 2000;
     int y        = 0;
     for (int i = 0; i < sources.size(); ++i) {
-        const auto &s = sources[i];
-        ax::NodeEditor::BeginNode(sourceId);
+        auto nodeId = sourceId++;
+        ax::NodeEditor::BeginNode(nodeId);
         auto p = ax::NodeEditor::ScreenToCanvas({ left, 0 });
-        p.y    = y;
+        p.y = y;
+        y += 40;
 
-        ax::NodeEditor::SetNodePosition(sourceId++, p);
+        ax::NodeEditor::SetNodePosition(nodeId, p);
         ImGui::Dummy({ 100, 10 });
 
-        int y2 = y + 40;
-        ax::NodeEditor::BeginPin(sourceId++, ax::NodeEditor::PinKind::Output);
-        auto p1 = p;
-        p1.x += 100;
-        auto p2 = p;
-        p2.x += 120;
-        p2.y = y2;
-        ax::NodeEditor::PinRect(p1, p2);
-        y = y2;
+        const auto nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
 
-        ax::NodeEditor::EndPin();
+        const ImVec2 size(20, 14);
+        ImVec2 pos = p + ImVec2(nodeSize.x, (nodeSize.y - size.y) / 2);
+        addPin(sourceId++, ax::NodeEditor::PinKind::Output, pos, size, 0);
+
         ax::NodeEditor::EndNode();
 
-        p.y += 10;
-        p.x += 10;
-        ImGui::SetCursorPos(p);
-        ImGui::TextColored({ 1, 1, 1, 1 }, "source %d        ->\n", i);
+        ImGui::SetCursorPos(p + ImVec2(nodeSize.x, (nodeSize.y - size.y) / 2));
+        drawPin(ax::NodeEditor::GetNodeBackgroundDrawList(nodeId), size, 0, 0, "out", DataType::Wildcard);
+
+        ImGui::SetCursorPos(p + ImVec2(10, 10));
+        ImGui::Text("source %d\n", i);
     }
 
     int sinkId = 4000;
     y          = 0;
     for (int i = 0; i < sinks.size(); ++i) {
-        const auto &s = sinks[i];
-        ax::NodeEditor::BeginNode(sinkId);
+        auto nodeId = sinkId++;
+        ax::NodeEditor::BeginNode(nodeId);
         auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x, 0 });
         p.x -= 140;
         p.y = y;
+        y += 40;
 
-        ax::NodeEditor::SetNodePosition(sinkId++, p);
+        ax::NodeEditor::SetNodePosition(nodeId, p);
         ImGui::Dummy({ 100, 10 });
 
-        int y2 = y + 40;
-        ax::NodeEditor::BeginPin(sinkId++, ax::NodeEditor::PinKind::Input);
-        auto p1 = p;
-        // p1.x += 100;
-        auto p2 = p;
-        p2.x += 20;
-        p2.y = y2;
-        ax::NodeEditor::PinRect(p1, p2);
-        y = y2;
+        const auto nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
 
-        ax::NodeEditor::EndPin();
+        const ImVec2 size(20, 14);
+        ImVec2 pos = p + ImVec2(0, (nodeSize.y - size.y) / 2);
+        addPin(sourceId++, ax::NodeEditor::PinKind::Input, pos, size, 0);
+
         ax::NodeEditor::EndNode();
 
-        p.y += 10;
-        p.x -= 10;
-        ImGui::SetCursorPos(p);
-        ImGui::TextColored({ 1, 1, 1, 1 }, "<-       sink %d\n", i);
+        ImGui::SetCursorPos(p + ImVec2(-size.x, (nodeSize.y - size.y) / 2));
+        drawPin(ax::NodeEditor::GetNodeBackgroundDrawList(nodeId), size, 0, 0, "in", DataType::Wildcard);
+
+        ImGui::SetCursorPos(p + ImVec2(10, 10));
+        ImGui::Text("sink %d\n", i);
     }
 
     if (m_createNewBlock) {
@@ -116,58 +239,15 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     }
 
     for (const auto &b : m_flowGraph->blocks()) {
-        ax::NodeEditor::BeginNode(b->id);
-        ImGui::TextUnformatted(b->name.c_str());
-
-        if (!b->type) {
-            ImGui::TextUnformatted("Unkown type");
-        } else {
-            ImGuiEx_BeginColumn();
-            const auto &inputs = b->inputs();
-            for (std::size_t i = 0; i < inputs.size(); ++i) {
-                ax::NodeEditor::BeginPin(b->inputs()[i].id, ax::NodeEditor::PinKind::Input);
-                ImGui::Text("-> In1 (%s)", inputs[i].type.c_str());
-
-                const auto   min  = ImGui::GetItemRectMin();
-                const auto   max  = ImGui::GetItemRectMax();
-                const ImVec2 rmin = ImVec2(min.x, (min.y + max.y) / 2.f);
-                const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
-                ax::NodeEditor::PinPivotRect(rmin, rmax);
-                ax::NodeEditor::PinRect(min, max);
-                ax::NodeEditor::EndPin();
-            }
-            ImGuiEx_NextColumn();
-
-            int         x       = ImGui::GetCursorPosX();
-            const auto &outputs = b->outputs();
-            for (std::size_t i = 0; i < outputs.size(); ++i) {
-                ImGui::SetCursorPosX(x + 100);
-                ax::NodeEditor::BeginPin(b->outputs()[i].id, ax::NodeEditor::PinKind::Output);
-                ImGui::Text("Out (%s) ->", outputs[i].type.c_str());
-
-                const auto   min  = ImGui::GetItemRectMin();
-                const auto   max  = ImGui::GetItemRectMax();
-                const ImVec2 rmin = ImVec2(max.x, (min.y + max.y) / 2.f);
-                const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
-                ax::NodeEditor::PinPivotRect(rmin, rmax);
-                ax::NodeEditor::PinRect(min, max);
-
-                ax::NodeEditor::EndPin();
-            }
-            ImGuiEx_EndColumn();
-        }
-
-        ImGui::Dummy(ImVec2(80.0f, 45.0f));
-
-        ax::NodeEditor::EndNode();
+        addBlock(*b);
     }
 
     for (auto &linkInfo : m_links) {
-        ax::NodeEditor::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId);
+        ax::NodeEditor::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId, { 0, 0, 0, 1 });
     }
 
     // Handle creation action, returns true if editor want to create new object (node or link)
-    if (ax::NodeEditor::BeginCreate()) {
+    if (ax::NodeEditor::BeginCreate({  0, 0, 0, 1 })) {
         ax::NodeEditor::PinId inputPinId, outputPinId;
         if (ax::NodeEditor::QueryNewLink(&inputPinId, &outputPinId)) {
             // QueryNewLink returns true if editor want to create new link between pins.
@@ -190,7 +270,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
                     m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), inputPinId, outputPinId });
 
                     // Draw new link.
-                    ax::NodeEditor::Link(m_links.back().Id, m_links.back().InputId, m_links.back().OutputId);
+                    ax::NodeEditor::Link(m_links.back().Id, m_links.back().InputId, m_links.back().OutputId, { 0, 0, 0, 1 });
                 }
 
                 // You may choose to reject connection between these nodes
@@ -221,6 +301,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
     if (ImGui::BeginPopupModal("Block parameters")) {
         auto contentRegion = ImGui::GetContentRegionAvail();
         int w = contentRegion.x / 2;
+        ImGui::TextUnformatted(m_editingBlock->type ? m_editingBlock->type->name.c_str() : "Unknown type");
         for (int i = 0; i < m_editingBlock->type->parameters.size(); ++i) {
             const auto &p = m_editingBlock->type->parameters[i];
 

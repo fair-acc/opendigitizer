@@ -14,6 +14,7 @@ class BlockType {
 public:
     struct PortDefinition {
         std::string type;
+        std::string name;
     };
 
     struct EnumParameter {
@@ -38,9 +39,46 @@ public:
         std::variant<EnumParameter, IntParameter, RawParameter> impl;
     };
 
+    inline BlockType(const std::string &n) : name(n) {}
+
+
+    const std::string name;
     std::vector<Parameter>      parameters;
     std::vector<PortDefinition> inputs;
     std::vector<PortDefinition> outputs;
+};
+
+struct DataType
+{
+    enum Id {
+        ComplexFloat64,
+        ComplexFloat32,
+        ComplexInt64,
+        ComplexInt32,
+        ComplexInt16,
+        ComplexInt8,
+        Float64,
+        Float32,
+        Int64,
+        Int32,
+        Int16,
+        Int8,
+        Bits,
+        AsyncMessage,
+        BusConnection,
+        Wildcard,
+        Untyped,
+    };
+
+    inline DataType() {}
+    inline DataType(Id id) : m_id(id) {}
+
+    const std::string &toString() const;
+
+    inline operator Id() const { return m_id; }
+
+private:
+    Id m_id = Id::Untyped;
 };
 
 class Block {
@@ -56,7 +94,7 @@ public:
         const std::string       m_rawType;
 
         const uint32_t          id;
-        std::string             type;
+        DataType                type;
         std::vector<Connection> connections;
     };
 
@@ -78,7 +116,13 @@ public:
         std::string value;
     };
 
-    using Parameter      = std::variant<EnumParameter, IntParameter, RawParameter>;
+    struct Parameter : std::variant<EnumParameter, IntParameter, RawParameter>
+    {
+        using Super = std::variant<EnumParameter, IntParameter, RawParameter>;
+
+        using Super::Super;
+        std::string toString() const;
+    };
 
     using ParameterValue = std::variant<std::string, int>;
 

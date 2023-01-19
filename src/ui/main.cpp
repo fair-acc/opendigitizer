@@ -33,7 +33,8 @@ ImFont *addDefaultFont(float pixel_size)
     ImGuiIO &io = ImGui::GetIO();
     ImFontConfig config;
     config.SizePixels = pixel_size;
-    config.OversampleH = config.OversampleV = 1;
+    // high oversample to have better looking text when zooming in on the flowgraph
+    config.OversampleH = config.OversampleV = 4;
     config.PixelSnapH = true;
     ImFont *font = io.Fonts->AddFontDefault(&config);
     return font;
