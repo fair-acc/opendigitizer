@@ -62,12 +62,22 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, ImVec
     const bool input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2   min  = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2   max  = input ? p + ImVec2(0, size.y) : p + size;
-    const ImVec2 rmin = ImVec2(min.x, (min.y + max.y) / 2.f);
+    const ImVec2   rmin  = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
     const ImVec2 rmax = ImVec2(rmin.x + 1, rmin.y + 1);
+
+    if (input) {
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, 10);
+    }
+
     ax::NodeEditor::BeginPin(id, kind);
     ax::NodeEditor::PinPivotRect(rmin, rmax);
     ax::NodeEditor::PinRect(min, max);
     ax::NodeEditor::EndPin();
+
+    if (input) {
+        ax::NodeEditor::PopStyleVar(2);
+    }
 
     p.y += size.y + spacing;
 };
