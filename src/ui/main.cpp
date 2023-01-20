@@ -193,15 +193,19 @@ static void main_loop(void *arg) {
     if (ImGui::BeginTabItem("Flowgraph")) {
         auto contentRegion = ImGui::GetContentRegionAvail();
 
-        std::vector<ImVec2> sources;
-        for (int i = 0; i < 100; ++i) {
-            sources.push_back({ 0, 0 });
+        static std::vector<DigitizerUi::Block::Port> sources;
+        if (sources.empty()) {
+            for (int i = 0; i < 100; ++i) {
+                sources.push_back({ {}, DigitizerUi::Block::Port::Kind::Output, 0, DigitizerUi::DataType::Wildcard });
+            }
+            // ImGui:: Button("Add new data source");
         }
-        // ImGui:: Button("Add new data source");
 
-        std::vector<ImVec2> sinks;
-        for (int i = 0; i < 100; ++i) {
-            sinks.push_back({ 0, 0 });
+        static std::vector<DigitizerUi::Block::Port> sinks;
+        if (sinks.empty()) {
+            for (int i = 0; i < 100; ++i) {
+                sinks.push_back({ {}, DigitizerUi::Block::Port::Kind::Input, 0, DigitizerUi::DataType::Wildcard });
+            }
         }
 
         app->fgItem.draw(contentRegion, sources, sinks);

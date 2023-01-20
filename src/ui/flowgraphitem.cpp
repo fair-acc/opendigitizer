@@ -67,7 +67,7 @@ static uint32_t darken(uint32_t c)
     return r;
 }
 
-static void addPin(uint32_t id, ax::NodeEditor::PinKind kind, ImVec2 &p, ImVec2 size, float spacing) {
+static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, ImVec2 &p, ImVec2 size, float spacing) {
     const bool input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2   min  = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2   max  = input ? p + ImVec2(0, size.y) : p + size;
@@ -131,7 +131,7 @@ static void addBlock(const Block &b)
         ImVec2 pos = { leftPos, curPos.y };
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
-            addPin(inputs[i].id, ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight }, rectsSpacing);
+            addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight }, rectsSpacing);
         }
 
         // ImGui::SetCursorPosY(y);
@@ -141,7 +141,7 @@ static void addBlock(const Block &b)
         pos = { leftPos + s.x, curPos.y };
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
-            addPin(outputs[i].id, ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight }, rectsSpacing);
+            addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight }, rectsSpacing);
         }
 
         ax::NodeEditor::EndNode();
@@ -171,8 +171,7 @@ static void addBlock(const Block &b)
     }
 }
 
-void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, std::span<const ImVec2> sinks)
-{
+void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> sources, std::span<const Block::Port> sinks) {
     const float left = ImGui::GetCursorPosX() + 10;
     ax::NodeEditor::Begin("My Editor", size);
 
@@ -193,7 +192,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
 
         const ImVec2 size(20, 14);
         ImVec2 pos = p + ImVec2(nodeSize.x, (nodeSize.y - size.y) / 2);
-        addPin(sourceId++, ax::NodeEditor::PinKind::Output, pos, size, 0);
+        addPin(ax::NodeEditor::PinId(&sources[i]), ax::NodeEditor::PinKind::Output, pos, size, 0);
 
         ax::NodeEditor::EndNode();
 
@@ -222,7 +221,7 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
 
         const ImVec2 size(20, 14);
         ImVec2 pos = p + ImVec2(0, (nodeSize.y - size.y) / 2);
-        addPin(sourceId++, ax::NodeEditor::PinKind::Input, pos, size, 0);
+        addPin(ax::NodeEditor::PinId(&sinks[i]), ax::NodeEditor::PinKind::Input, pos, size, 0);
 
         ax::NodeEditor::EndNode();
 
@@ -266,18 +265,24 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
 
             if (inputPinId && outputPinId) // both are valid, let's accept link
             {
-                // ed::AcceptNewItem() return true when user release mouse button.
-                if (ax::NodeEditor::AcceptNewItem()) {
-                    // Since we accepted new link, lets add one to our list of links.
-                    m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), inputPinId, outputPinId });
+                auto inputPort  = inputPinId.AsPointer<Block::Port>();
+                auto outputPort = outputPinId.AsPointer<Block::Port>();
 
-                    // Draw new link.
-                    ax::NodeEditor::Link(m_links.back().Id, m_links.back().InputId, m_links.back().OutputId, { 0, 0, 0, 1 });
+                if (inputPort->kind == outputPort->kind) {
+                    ax::NodeEditor::RejectNewItem();
+                } else {
+                    bool compatibleTypes = inputPort->type == outputPort->type || inputPort->type == DataType::Wildcard || outputPort->type == DataType::Wildcard;
+                    if (!compatibleTypes) {
+                        ax::NodeEditor::RejectNewItem();
+                    } else if (ax::NodeEditor::AcceptNewItem()) {
+                        // ed::AcceptNewItem() return true when user release mouse button.
+                        // Since we accepted new link, lets add one to our list of links.
+                        m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), inputPinId, outputPinId });
+
+                        // Draw new link.
+                        ax::NodeEditor::Link(m_links.back().Id, m_links.back().InputId, m_links.back().OutputId, { 0, 0, 0, 1 });
+                    }
                 }
-
-                // You may choose to reject connection between these nodes
-                // by calling ed::RejectNewItem(). This will allow editor to give
-                // visual feedback by changing link thickness and color.
             }
         }
     }
@@ -388,5 +393,4 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const ImVec2> sources, st
         ImGui::EndPopup();
     }
 }
-
 }

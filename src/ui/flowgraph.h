@@ -91,7 +91,13 @@ public:
 
     class Port {
     public:
+        enum class Kind {
+            Input,
+            Output,
+        };
+
         const std::string       m_rawType;
+        const Kind              kind;
 
         const uint32_t          id;
         DataType                type;

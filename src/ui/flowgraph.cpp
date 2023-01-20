@@ -74,10 +74,10 @@ Block::Block(std::string_view name, BlockType *type)
     m_outputs.reserve(type->outputs.size());
     m_inputs.reserve(type->inputs.size());
     for (auto &o : type->outputs) {
-        m_outputs.push_back({ o.type, nextId() });
+        m_outputs.push_back({ o.type, Port::Kind::Output, nextId() });
     }
     for (auto &o : type->inputs) {
-        m_inputs.push_back({ o.type, nextId() });
+        m_inputs.push_back({ o.type, Port::Kind::Input, nextId() });
     }
 }
 
