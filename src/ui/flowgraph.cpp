@@ -74,16 +74,10 @@ Block::Block(std::string_view name, BlockType *type)
     m_outputs.reserve(type->outputs.size());
     m_inputs.reserve(type->inputs.size());
     for (auto &o : type->outputs) {
-        m_outputs.push_back({ o.type, Port::Kind::Output, nextId() });
+        m_outputs.push_back({ o.type, Port::Kind::Output });
     }
     for (auto &o : type->inputs) {
-        m_inputs.push_back({ o.type, Port::Kind::Input, nextId() });
-    }
-}
-
-void Block::connectTo(uint32_t srcPort, Block *dst, uint32_t dstPort) {
-    if (srcPort < m_outputs.size() && dst->inputs().size() > dstPort) {
-        m_outputs[srcPort].connections.push_back({ dst, dstPort });
+        m_inputs.push_back({ o.type, Port::Kind::Input });
     }
 }
 
@@ -458,7 +452,7 @@ void FlowGraph::parse(const std::string &str) {
         auto dstBlock = findBlock(dstBlockName);
         assert(dstBlock);
 
-        srcBlock->connectTo(srcPort, dstBlock, dstPort);
+        connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
     }
 }
 
@@ -483,6 +477,43 @@ Block *FlowGraph::findBlock(uint32_t id) const {
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->update();
     m_blocks.push_back(std::move(block));
+}
+
+void FlowGraph::deleteBlock(Block *block) {
+    auto it = std::find_if(m_blocks.begin(), m_blocks.end(), [&](const auto &b) {
+        return block == b.get();
+    });
+    assert(it != m_blocks.end());
+
+    for (auto &p : block->inputs()) {
+        for (auto *c : p.connections) {
+            disconnect(c);
+        }
+    }
+    for (auto &p : block->outputs()) {
+        for (auto *c : p.connections) {
+            disconnect(c);
+        }
+    }
+
+    m_blocks.erase(it);
+}
+
+void FlowGraph::connect(Block::Port *a, Block::Port *b) {
+    auto it = m_connections.insert(Connection(a, b));
+    a->connections.push_back(&(*it));
+    b->connections.push_back(&(*it));
+}
+
+void FlowGraph::disconnect(Connection *c) {
+    auto it = m_connections.get_iterator(c);
+    assert(it != m_connections.end());
+
+    for (auto *p : c->ports) {
+        p->connections.erase(std::remove(p->connections.begin(), p->connections.end(), c));
+    }
+
+    m_connections.erase(it);
 }
 
 } // namespace ImChart

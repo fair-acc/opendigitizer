@@ -27,6 +27,12 @@ FetchContent_Declare(
     GIT_TAG         yaml-cpp-0.7.0
 )
 
+FetchContent_Declare(
+    plf_colony
+    GIT_REPOSITORY  https://github.com/mattreecebentley/plf_colony.git
+    GIT_TAG         master
+)
+
 if (EMSCRIPTEN)
     FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp)
 else () # native build
@@ -35,7 +41,7 @@ else () # native build
             GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
             GIT_TAG        release-2.24.2
     )
-    FetchContent_MakeAvailable(sdl2 imgui implot imgui-node-editor yaml-cpp)
+    FetchContent_MakeAvailable(sdl2 imgui implot imgui-node-editor yaml-cpp plf_colony)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
     target_link_libraries(SDL2 PUBLIC OpenGL::GL )
     target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)

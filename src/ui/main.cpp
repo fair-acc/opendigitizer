@@ -196,7 +196,7 @@ static void main_loop(void *arg) {
         static std::vector<DigitizerUi::Block::Port> sources;
         if (sources.empty()) {
             for (int i = 0; i < 100; ++i) {
-                sources.push_back({ {}, DigitizerUi::Block::Port::Kind::Output, 0, DigitizerUi::DataType::Wildcard });
+                sources.push_back({ {}, DigitizerUi::Block::Port::Kind::Output, DigitizerUi::DataType::Wildcard });
             }
             // ImGui:: Button("Add new data source");
         }
@@ -204,7 +204,7 @@ static void main_loop(void *arg) {
         static std::vector<DigitizerUi::Block::Port> sinks;
         if (sinks.empty()) {
             for (int i = 0; i < 100; ++i) {
-                sinks.push_back({ {}, DigitizerUi::Block::Port::Kind::Input, 0, DigitizerUi::DataType::Wildcard });
+                sinks.push_back({ {}, DigitizerUi::Block::Port::Kind::Input, DigitizerUi::DataType::Wildcard });
             }
         }
 

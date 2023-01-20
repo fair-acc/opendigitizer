@@ -88,5 +88,6 @@ else () # native build
             core
             client
     )
+    target_include_directories(opendigitizer-ui PRIVATE ${plf_colony_SOURCE_DIR})
     target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="/usr/share/gnuradio/grc/blocks")
 endif()

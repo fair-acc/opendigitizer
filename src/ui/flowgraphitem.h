@@ -20,16 +20,8 @@ public:
     void draw(const ImVec2 &size, std::span<const Block::Port> sources, std::span<const Block::Port> sinks);
 
 private:
-    struct LinkInfo {
-        ax::NodeEditor::LinkId Id;
-        ax::NodeEditor::PinId  InputId;
-        ax::NodeEditor::PinId  OutputId;
-    };
-
     FlowGraph *m_flowGraph;
-    std::vector<LinkInfo> m_links;
-    int m_linkId = 10000;
-    Block *m_editingBlock = nullptr;
+    Block                        *m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
     BlockType                    *m_selectedBlockType = nullptr;
     ImVec2                        m_mouseDrag         = { 0, 0 };

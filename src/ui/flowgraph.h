@@ -6,9 +6,14 @@
 #include <variant>
 #include <vector>
 
+#include <plf_colony.h>
+
 #include <URI.hpp>
 
 namespace DigitizerUi {
+
+class FlowGraph;
+class Connection;
 
 class BlockType {
 public:
@@ -83,12 +88,6 @@ private:
 
 class Block {
 public:
-    class Connection {
-    public:
-        Block   *block;
-        uint32_t portNumber;
-    };
-
     class Port {
     public:
         enum class Kind {
@@ -99,9 +98,8 @@ public:
         const std::string       m_rawType;
         const Kind              kind;
 
-        const uint32_t          id;
         DataType                type;
-        std::vector<Connection> connections;
+        std::vector<Connection *> connections;
     };
 
     struct EnumParameter {
@@ -134,8 +132,6 @@ public:
 
     Block(std::string_view name, BlockType *type);
 
-    void              connectTo(uint32_t srcPort, Block *dst, uint32_t dstPort);
-
     const auto       &inputs() const { return m_inputs; }
     const auto       &outputs() const { return m_outputs; }
 
@@ -155,6 +151,17 @@ public:
     std::vector<Parameter> m_parameters;
 };
 
+class Connection {
+public:
+    Block::Port *const ports[2];
+
+private:
+    inline Connection(Block::Port *a, Block::Port *b)
+        : ports{ a, b } {}
+
+    friend FlowGraph;
+};
+
 class FlowGraph {
 public:
     void               loadBlockDefinitions(const std::filesystem::path &dir);
@@ -167,12 +174,19 @@ public:
 
     inline const auto &blocks() const { return m_blocks; }
     inline const auto &blockTypes() const { return m_types; }
+    inline const auto &connections() const { return m_connections; }
 
     void               addBlock(std::unique_ptr<Block> &&block);
+    void               deleteBlock(Block *block);
+
+    void               connect(Block::Port *a, Block::Port *b);
+
+    void               disconnect(Connection *c);
 
 private:
     std::vector<std::unique_ptr<Block>>                         m_blocks;
     std::unordered_map<std::string, std::unique_ptr<BlockType>> m_types;
+    plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
 };
 
 } // namespace ImChart

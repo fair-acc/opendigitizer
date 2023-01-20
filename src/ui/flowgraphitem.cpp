@@ -21,15 +21,6 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     style.Colors[ax::NodeEditor::StyleColor_Bg] = { 1, 1, 1, 1 };
     style.Colors[ax::NodeEditor::StyleColor_NodeBg] = { 0.94, 0.92, 1, 1 };
     style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
-
-    for (const auto &b : m_flowGraph->blocks()) {
-        for (const auto &port : b->outputs()) {
-            for (auto &conn : port.connections) {
-                auto inPort = conn.block->inputs()[conn.portNumber];
-                m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), port.id, inPort.id });
-            }
-        }
-    }
 }
 
 static uint32_t colorForDataType(DataType t)
@@ -243,8 +234,9 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
         addBlock(*b);
     }
 
-    for (auto &linkInfo : m_links) {
-        ax::NodeEditor::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId, { 0, 0, 0, 1 });
+    for (auto &c : m_flowGraph->connections()) {
+        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(c.ports[0]), ax::NodeEditor::PinId(c.ports[1]),
+                { 0, 0, 0, 1 });
     }
 
     // Handle creation action, returns true if editor want to create new object (node or link)
@@ -275,12 +267,8 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
                     if (!compatibleTypes) {
                         ax::NodeEditor::RejectNewItem();
                     } else if (ax::NodeEditor::AcceptNewItem()) {
-                        // ed::AcceptNewItem() return true when user release mouse button.
-                        // Since we accepted new link, lets add one to our list of links.
-                        m_links.push_back({ ax::NodeEditor::LinkId(m_linkId++), inputPinId, outputPinId });
-
-                        // Draw new link.
-                        ax::NodeEditor::Link(m_links.back().Id, m_links.back().InputId, m_links.back().OutputId, { 0, 0, 0, 1 });
+                        // AcceptNewItem() return true when user release mouse button.
+                        m_flowGraph->connect(inputPort, outputPort);
                     }
                 }
             }
@@ -291,16 +279,23 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
     ax::NodeEditor::End();
 
-    if (ImGui::IsMouseDoubleClicked(ImGuiPopupFlags_MouseButtonLeft)) {
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = m_flowGraph->findBlock(n.Get());
         if (block && block->type) {
             ImGui::OpenPopup("Block parameters");
-            m_editingBlock = block;
+            m_selectedBlock = block;
             m_parameters.clear();
             for (auto &p : block->parameters()) {
                 m_parameters.push_back(p);
             }
+        }
+    } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        auto n     = ax::NodeEditor::GetHoveredNode();
+        auto block = m_flowGraph->findBlock(n.Get());
+        if (block) {
+            ImGui::OpenPopup("block_ctx_menu");
+            m_selectedBlock = block;
         }
     }
 
@@ -308,9 +303,9 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
     if (ImGui::BeginPopupModal("Block parameters")) {
         auto contentRegion = ImGui::GetContentRegionAvail();
         int w = contentRegion.x / 2;
-        ImGui::TextUnformatted(m_editingBlock->type ? m_editingBlock->type->name.c_str() : "Unknown type");
-        for (int i = 0; i < m_editingBlock->type->parameters.size(); ++i) {
-            const auto &p = m_editingBlock->type->parameters[i];
+        ImGui::TextUnformatted(m_selectedBlock->type ? m_selectedBlock->type->name.c_str() : "Unknown type");
+        for (int i = 0; i < m_selectedBlock->type->parameters.size(); ++i) {
+            const auto &p = m_selectedBlock->type->parameters[i];
 
             // Split the window in half and put the labels on the left and the widgets on the right
             ImGui::Text("%s", p.label.c_str());
@@ -346,10 +341,10 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
         if (ImGui::Button("Ok")) {
             ImGui::CloseCurrentPopup();
             for (int i = 0; i < m_parameters.size(); ++i) {
-                m_editingBlock->setParameter(i, m_parameters[i]);
+                m_selectedBlock->setParameter(i, m_parameters[i]);
             }
-            m_editingBlock->update();
-            m_editingBlock = nullptr;
+            m_selectedBlock->update();
+            m_selectedBlock = nullptr;
         }
 
         ImGui::EndPopup();
@@ -365,6 +360,13 @@ void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> source
     if (ImGui::BeginPopup("ctx_menu")) {
         if (ImGui::MenuItem("New block")) {
             openNewBlockDialog = true;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopup("block_ctx_menu")) {
+        if (ImGui::MenuItem("Delete")) {
+            m_flowGraph->deleteBlock(m_selectedBlock);
         }
         ImGui::EndPopup();
     }
