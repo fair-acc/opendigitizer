@@ -46,7 +46,7 @@ add_library(project_warnings INTERFACE)
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
-# add_subdirectory(acquisition) # worker providing mock data
+add_subdirectory(acquisition)
 add_subdirectory(flowgraph) # worker providing access to the mock flowgraph and allows editing it
 add_subdirectory(rest) # worker providing access to static assets
 
@@ -55,4 +55,4 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATIO
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 add_executable(opendigitizer main.cpp)
-target_link_libraries(opendigitizer PRIVATE od_flowgraph od_rest majordomo project_options project_warnings assets::rest)
+target_link_libraries(opendigitizer PRIVATE od_flowgraph od_acquisition od_rest majordomo project_options project_warnings assets::rest)
