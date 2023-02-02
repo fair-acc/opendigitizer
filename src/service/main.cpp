@@ -13,6 +13,8 @@ using namespace opencmw::majordomo;
 
 int main() {
     using opencmw::URI;
+    using namespace opendigitizer::acq;
+    using namespace opencmw::majordomo;
     // broker
     Broker broker("PrimaryBroker");
     // REST backend
@@ -31,16 +33,15 @@ int main() {
     });
 
     // flowgraph worker (mock)
-    FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">> flowgraphWorker(broker);
-    std::jthread                                                                                                  flowgraphWorkerThread([&flowgraphWorker] {
-        flowgraphWorker.run();
-                                                                                                     });
+    using FgWorker = FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">>;
+    FgWorker     flowgraphWorker(broker);
+    std::jthread flowgraphWorkerThread([&flowgraphWorker] { flowgraphWorker.run(); });
 
     // acquisition worker (mock) todo: implement
-    AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker); // todo: change to 25Hz, just slow for debugging
-    std::jthread                                                                       acquisitionWorkerThread([&acquisitionWorker] {
-        acquisitionWorker.run();
-                                                                          });
+    using AcqWorker = AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">>;
+    std::vector<AcqWorker::sink_buffer> sinks = {};
+    AcqWorker    acquisitionWorker(broker, sinks); // todo: change to 25Hz, just slow for debugging
+    std::jthread acquisitionWorkerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
     // shutdown
     brokerThread.join();
