@@ -37,7 +37,7 @@ int main() {
                                                                                                      });
 
     // acquisition worker (mock) todo: implement
-    AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker, 2000ms); // todo: change to 25Hz, just slow for debugging
+    AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">> acquisitionWorker(broker); // todo: change to 25Hz, just slow for debugging
     std::jthread                                                                       acquisitionWorkerThread([&acquisitionWorker] {
         acquisitionWorker.run();
                                                                           });

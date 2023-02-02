@@ -42,12 +42,12 @@ ENABLE_REFLECTION_FOR(Acquisition, refTriggerName, refTriggerStamp, channelTimeS
  */
 // clang-format: OFF
 struct AcquisitionSpectra {
-    Annotated<std::string       , opencmw::NoUnit,      "trigger name"                                                 > refTriggerName  = { "NO_REF_TRIGGER" };
-    Annotated<int64_t           , si::time<nanosecond>, "UTC trigger time-stamp"                                       > refTriggerStamp = 0;
-    Annotated<std::string       , opencmw::NoUnit,      "name of digitizer input or post-processed signals"            > channelName;
+    Annotated<std::string,        opencmw::NoUnit,      "trigger name"                                                 > refTriggerName  = { "NO_REF_TRIGGER" };
+    Annotated<int64_t,            si::time<nanosecond>, "UTC trigger time-stamp"                                       > refTriggerStamp = 0;
+    Annotated<std::string,        opencmw::NoUnit,      "name of digitizer input or post-processed signals"            > channelName;
     Annotated<std::vector<float>, opencmw::NoUnit,      "magnitude specta of digitizer input or post-processed signals"> channelMagnitudeValues;
     Annotated<std::vector<float>, si::frequency<hertz>, "frequency scale"                                              > channelFrequencyValues;
-    Annotated<std::string       , opencmw::NoUnit,      "S.I. unit of post-processed signal"                           > channelUnit;
+    Annotated<std::string,        opencmw::NoUnit,      "S.I. unit of post-processed signal"                           > channelUnit;
 };
 ENABLE_REFLECTION_FOR(AcquisitionSpectra, refTriggerName, refTriggerStamp, channelName, channelMagnitudeValues, channelFrequencyValues, channelUnit)
 // clang-format: ON

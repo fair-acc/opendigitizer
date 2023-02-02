@@ -2,6 +2,7 @@
 #include <disruptor/RingBuffer.hpp>
 #include <majordomo/Worker.hpp>
 #include "daq_api.hpp"
+#include <gnuradio/circular_buffer.hpp>
 
 #include <chrono>
 #include <unordered_map>
@@ -25,8 +26,7 @@ using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
-class TimeDomainWorker
-        : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
+class AcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
 private:
     static const size_t RING_BUFFER_SIZE = 256;
     std::atomic<bool>   _shutdownRequested;
@@ -142,8 +142,7 @@ public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
 
     template<typename BrokerType>
-    explicit TimeDomainWorker(const BrokerType &broker)
-            : super_t(broker, {}) {
+    explicit AcquisitionWorker(const BrokerType &broker) : super_t(broker, {}) {
         // polling thread
         _pollingThread = std::jthread([this] {
             std::chrono::duration<double, std::milli> pollingDuration{};
@@ -187,7 +186,7 @@ public:
         });
     }
 
-    ~TimeDomainWorker() {
+    ~AcquisitionWorker() {
         _shutdownRequested = true;
         _pollingThread.join();
     }

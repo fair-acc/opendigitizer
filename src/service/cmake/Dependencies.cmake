@@ -7,3 +7,6 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(opencmw-cpp)
+
+find_package(gnuradio-runtime REQUIRED 4.0.0)
+
