@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "acquisition/acqWorker.hpp"
+#include "acquisition/mock_source.hpp"
 #include "flowgraph/flowgraphWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
@@ -39,12 +40,16 @@ int main() {
 
     // acquisition worker (mock) todo: implement
     using AcqWorker = AcquisitionWorker<"acquisition", description<"Provides data acquisition updates">>;
-    std::vector<AcqWorker::sink_buffer> sinks = {};
+    std::vector<AcqWorker::sink_buffer> sinks = {{"sample-sine", "V", AcqWorker::streambuffer{AcqWorker::RING_BUFFER_SIZE}, AcqWorker::tagbuffer{AcqWorker::RING_BUFFER_SIZE}}};
     AcqWorker    acquisitionWorker(broker, sinks); // todo: change to 25Hz, just slow for debugging
     std::jthread acquisitionWorkerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
+    // mock publisher, which publishes sine waves to the available sinks // todo: put into separate class
+    std::jthread source{mock_source<AcqWorker>{sinks}};
+
     // shutdown
     brokerThread.join();
+    source.join();
     // workers terminate when broker shuts down
     flowgraphWorkerThread.join();
     acquisitionWorkerThread.join();

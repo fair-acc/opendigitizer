@@ -1,4 +1,6 @@
-#pragma once
+#ifndef OPENDIGITIZER_SERVICE_ACQWORKER_H
+#define OPENDIGITIZER_SERVICE_ACQWORKER_H
+
 #include <majordomo/Worker.hpp>
 #include "daq_api.hpp"
 #include <gnuradio/circular_buffer.hpp>
@@ -45,150 +47,51 @@ constexpr T nextPowerOfTwo(T value, size_t pow = 0) { // NOLINT(misc-no-recursio
     return (value >> pow) ? nextPowerOfTwo(value, pow + 1) : T(1) << pow;
 }
 
+/**
+ * todo: how to handle possible race condition between stream and tag buffer? always wait for corresponding tag and enforce that every chunk sends at least one tag?
+ *       or: tags are always committed first
+ * todo: how to handle multiple sources?
+ *       vector of shared pointers to buffers?
+ *       move buffers into worker and destroy by sending special tag?
+ *       for now only pass references at construction time
+ **/
 template<units::basic_fixed_string serviceName, typename... Meta>
 class AcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
-private:
-    static const size_t RING_BUFFER_SIZE = 256;
-    std::atomic<bool>   _shutdownRequested;
-    std::jthread        _pollingThread;
-
-    //class GRSink {
-    //    struct RingBufferData {
-    //        std::vector<std::vector<float>> chunk;
-    //        int64_t                         timestamp = 0;
-    //    };
-    //    using ringbuffer_t = std::shared_ptr<RingBuffer<RingBufferData, RING_BUFFER_SIZE, BusySpinWaitStrategy, SingleThreadedStrategy>>;
-    //    using sequence_t   = std::shared_ptr<Sequence>;
-
-    //    std::vector<std::string> _channelNames;      // { signalName1, signalName2, ... }
-    //    std::vector<std::string> _channelUnits;      // { signalUnit1, signalUnit2, ... }
-    //    std::string              _channelNameFilter; // signalName1@sampleRate,signalName2@sampleRate...
-    //    float                    _sampleRate = 0;
-    //    ringbuffer_t             _ringBuffer;
-    //    sequence_t               _tail;
-
-    //public:
-    //    GRSink() {
-    //        _ringBuffer->addGatingSequences({ _tail });
-
-    //        for (size_t i = 0; i < _channelNames.size(); i++) {
-    //            _channelNameFilter.append(fmt::format("{}@{}Hz", _channelNames[i], _sampleRate));
-    //            if (i != (_channelNames.size() - 1)) {
-    //                _channelNameFilter.append(",");
-    //            }
-    //        }
-    //    };
-
-    //    [[nodiscard]] std::string getChannelNameFilter() const {
-    //        return _channelNameFilter;
-    //    };
-
-    //    ringbuffer_t getRingBuffer() const {
-    //        return _ringBuffer;
-    //    };
-
-    //    void fetchData(const int64_t lastRefTrigger, Acquisition &out) {
-    //        std::vector<float> stridedValues;
-    //        int64_t            tail       = _tail->value();
-    //        int64_t            head       = _ringBuffer->cursor();
-
-    //        bool               firstChunk = true;
-    //        for (size_t i = 0; i < _channelNames.size(); i++) {
-    //            for (int64_t sequence = tail; sequence <= head; sequence++) {
-    //                const RingBufferData &bufData = (*_ringBuffer)[sequence];
-
-    //                if (bufData.timestamp > lastRefTrigger) {
-    //                    if (firstChunk) {
-    //                        for (const auto &channelName : _channelNames) {
-    //                            out.channelNames.push_back(fmt::format("{}@{}Hz", channelName, _sampleRate));
-    //                        }
-    //                        out.channelUnits    = _channelUnits;
-    //                        out.refTriggerStamp = bufData.timestamp;
-    //                        firstChunk          = false;
-    //                    }
-
-    //                    stridedValues.insert(stridedValues.end(), bufData.chunk[i].begin(), bufData.chunk[i].end());
-    //                }
-    //            }
-    //        }
-
-    //        if (!stridedValues.empty()) {
-    //            //  generate multiarray values from strided array
-    //            size_t channelValuesSize = stridedValues.size() / _channelNames.size();
-    //            out.channelValues        = opencmw::MultiArray<float, 2>(std::move(stridedValues), { static_cast<uint32_t>(_channelNames.size()), static_cast<uint32_t>(channelValuesSize) });
-    //            //  generate relative timestamps
-    //            out.channelTimeSinceRefTrigger.reserve(channelValuesSize);
-    //            for (size_t i = 0; i < channelValuesSize; ++i) {
-    //                float relativeTimestamp = static_cast<float>(i) / _sampleRate;
-    //                out.channelTimeSinceRefTrigger.push_back(relativeTimestamp);
-    //            }
-    //        } else {
-    //            // throw std::invalid_argument(fmt::format("No new data available for signals: '{}'", _channelNames));
-    //        }
-    //    };
-
-    //    void copySinkData(std::vector<const void *> &input_items, int &noutput_items, const std::vector<std::string> &signal_names, float /* sample_rate */, int64_t timestamp_ns) {
-    //        if (signal_names == _channelNames) {
-    //            bool result = _ringBuffer->tryPublishEvent([&input_items, noutput_items, timestamp_ns](RingBufferData &&bufferData, std::int64_t /*sequence*/) noexcept {
-    //                bufferData.timestamp = timestamp_ns;
-    //                bufferData.chunk.clear();
-    //                for (auto & input_item : input_items) {
-    //                    const auto *in = static_cast<const float *>(input_item);
-    //                    bufferData.chunk.emplace_back(std::vector<float>(in, in + noutput_items));
-    //                }
-    //            });
-
-    //            if (result) {
-    //                auto       headValue       = _ringBuffer->cursor();
-    //                auto       tailValue       = _tail->value();
-
-    //                const auto tailOffsetValue = static_cast<int64_t>(RING_BUFFER_SIZE) * 50 / 100; // 50 %
-
-    //                if (headValue > (tailValue + tailOffsetValue)) {
-    //                    _tail->setValue(headValue - tailOffsetValue);
-    //                }
-
-    //            } else {
-    //                // error writing into RingBuffer
-    //                noutput_items = 0;
-    //            }
-    //        }
-    //    }
-    //};
-
 public:
+    static const size_t RING_BUFFER_SIZE = 256;
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
-    using streambuffer = gr::circular_buffer<double, RING_BUFFER_SIZE>;
-    using padded_tag_map = struct {alignas(nextPowerOfTwo(sizeof(gr::tag_map))) gr::tag_map map;}; // ringbuffer needs sizeof(T) to be pow of 2
+    using streambuffer = gr::circular_buffer<float, RING_BUFFER_SIZE>;
+    struct padded_tag_map { // ringbuffer needs sizeof(T) to be pow of 2
+        alignas(nextPowerOfTwo(sizeof(gr::tag_map) + sizeof(std::int64_t))) gr::tag_map map;
+        std::int64_t seq{0};
+    };
     using tagbuffer = gr::circular_buffer<padded_tag_map, RING_BUFFER_SIZE>;
     struct sink_buffer{
         std::string name;
         std::string unit;
         float sample_rate = 0.0f;
-        streambuffer &stream;
-        tagbuffer &tag;
-        streambuffer::template buffer_reader<double> stream_reader;
-        tagbuffer::template buffer_reader<padded_tag_map> tag_reader;
+        streambuffer stream;
+        tagbuffer tag;
 
-        sink_buffer(std::string n, std::string u, streambuffer &s, tagbuffer &t) : name(std::move(n)), unit(std::move(u)), stream(s), tag(t), tag_reader(t.new_reader()),
-                                                                                   stream_reader(s.new_reader()) { }
+        sink_buffer(std::string n, std::string u, streambuffer &&s, tagbuffer &&t) : name(std::move(n)), unit(std::move(u)), stream(std::move(s)), tag(std::move(t)) { }
     };
-
 private:
-        // subscriptions
-        std::map<std::string, std::reference_wrapper<sink_buffer>> sinks;
-        // todo: how to handle possible race condition between stream and tag buffer? always wait for corresponding tag and enforce that every chunk sends at least one tag?
-        //       or: tags are always committed first
-        // todo: how to handle multiple sources?
-        //       vector of shared pointers to buffers?
-        //       move buffers into worker and destroy by sending special tag?
-        //       for now only pass references at construction time
-public:
+    struct sinks_with_readers{
+        sink_buffer &sink;
+        tagbuffer::template buffer_reader<padded_tag_map> tag_reader;
+        streambuffer::template buffer_reader<float> stream_reader;
 
+        explicit sinks_with_readers(sink_buffer &s) : sink{s}, tag_reader{s.tag.new_reader()}, stream_reader{s.stream.new_reader()} { }
+    };
+    std::atomic<bool>   _shutdownRequested;
+    std::jthread        _pollingThread;
+
+    std::map<std::string, sinks_with_readers> sinks; // subscriptions
+public:
     template<typename BrokerType>
     explicit AcquisitionWorker(const BrokerType &broker, std::vector<sink_buffer> s) : super_t(broker, {}) {
-        for (auto sink : s) {
-            sinks.insert({sink.name, sink});
+        for (sink_buffer &sink : s) {
+            sinks.insert({sink.name, sinks_with_readers{sink}});
         }
 
         _pollingThread = std::jthread([this] {
@@ -245,21 +148,21 @@ private:
             bool first = true;
             auto t0 = std::chrono::system_clock::now() - std::chrono::milliseconds(300); // todo: this should be set by the request or be a default value
             if (sinks.contains(chan)) {
-                sink_buffer sink = sinks.at(chan);
+                sinks_with_readers &sink = sinks.at(chan);
                 if (first) {
                     first = false;
-                    sample_rate = sink.sample_rate;
+                    sample_rate = sink.sink.sample_rate;
                     n_samples = get_samples_since(sink, t0);
                 } else { // not first channel
-                    if (sample_rate != sink.sample_rate) {
+                    if (sample_rate != sink.sink.sample_rate) {
                         continue;
                     }
                     // for now, we assume that all streams are continuous
                     // later there could also be checks for continuity and alignment
                     n_samples = get_samples_since(sink, t0);
                 }
-                out.channelNames.emplace_back(sink.name);
-                out.channelUnits.emplace_back(sink.unit);
+                out.channelNames.emplace_back(sink.sink.name);
+                out.channelUnits.emplace_back(sink.sink.unit);
             }
             if (out.channelNames.empty()) {
                 throw std::invalid_argument(fmt::format("Requested subscription for '{}' not found", requestContext.channelNameFilter));
@@ -278,9 +181,10 @@ private:
         }
         unsigned int channel_index = 0;
         for (auto chan : out.channelNames) {
-            sink_buffer sink = sinks.at(chan);
+            sinks_with_readers &sink = sinks.at(chan);
+            auto samples = get_samples(sink);
             for (std::size_t i = 0; i < n_samples; i++) {
-                out.channelValues.get({channel_index, static_cast<unsigned int>(i)}) = get_sample(sink, i);
+                out.channelValues.get({channel_index, static_cast<unsigned int>(i)}) = samples[i];
                 out.channelErrors.get({channel_index, static_cast<unsigned int>(i)}) = 0; // todo: implement errors
             }
             out.channelRangeMin[channel_index] = -std::numeric_limits<float>::infinity(); // todo: set meaningful limits / make configurable
@@ -298,205 +202,36 @@ private:
     }
 
     private:
-        std::size_t get_samples_since(sink_buffer sink, auto since) {
-            return 0; // todo: implement
+        std::size_t get_samples_since(sinks_with_readers sink, auto /*since*/) {
+            // move reader to 50% to allow for publishers to get new data
+            auto avail = sink.stream_reader.available();
+            if (avail > sink.sink.stream.size() / 2) {
+                auto consume_success = sink.stream_reader.consume(avail - sink.sink.stream.size() / 2);
+                if (!consume_success) { fmt::print("Error consumeing stream samples"); }
+            }
+            return sink.stream_reader.available();
         }
-        float get_sample(sink_buffer, std::size_t index) {
-            return 0.0f;
+        std::span<const float> get_samples(sinks_with_readers sink) {
+            auto stream = sink.stream_reader.get(sink.stream_reader.available());
+            //auto pos = sink.stream_reader.position();
+            auto tags = sink.tag_reader.get(sink.tag_reader.available());
+            std::size_t i;
+            for (i = 0; tags[i].seq < sink.stream_reader.position(); i++) {
+            }
+            std::ignore = sink.tag_reader.consume(i-1);
+            // process tags
+            for (; tags[i].seq < (sink.stream_reader.position() + static_cast<long>(sink.stream_reader.available())) && i < tags.size(); i++) {
+                const auto& [tag, seq] = tags[i];
+                for (auto& [key, value] : tag) {
+                    if (key == "timestamp") {
+                        fmt::print("published timestamp: t = {}", pmtv::cast<double>(value));
+                        // set/check against sample time/rate etc
+                    }
+                    // handle other tags
+                }
+            }
+            return stream;
         }
-
 };
-
-// using namespace opencmw::majordomo;
-// template<units::basic_fixed_string serviceName, typename... Meta>
-// class FrequencyDomainWorker
-//         : public Worker<serviceName, FreqDomainContext, Empty, AcquisitionSpectra, Meta...> {
-// private:
-//     static const size_t RING_BUFFER_SIZE = 4096;
-//     const std::string   _deviceName;
-//     std::atomic<bool>   _shutdownRequested;
-//     std::jthread        _pollingThread;
-//     AcquisitionSpectra  _reply;
-//
-//     struct RingBufferData {
-//         std::vector<float> chunk;
-//         int64_t            timestamp = 0;
-//     };
-//     using ringbuffer_t  = std::shared_ptr<RingBuffer<RingBufferData, RING_BUFFER_SIZE, BusySpinWaitStrategy, SingleThreadedStrategy>>;
-//     using eventpoller_t = std::shared_ptr<EventPoller<RingBufferData, RING_BUFFER_SIZE, BusySpinWaitStrategy, SingleThreadedStrategy>>;
-//     struct SignalData {
-//         ringbuffer_t                         ringBuffer;
-//         eventpoller_t                        eventPoller;
-//     };
-//
-//     std::unordered_map<std::string, SignalData> _signalsMap; // <completeSignalName, signalData>
-//
-// public:
-//     using super_t = Worker<serviceName, FreqDomainContext, Empty, AcquisitionSpectra, Meta...>;
-//
-//     template<typename BrokerType>
-//     explicit FrequencyDomainWorker(const BrokerType &broker)
-//             : super_t(broker, {}) {
-//         // polling thread
-//         _pollingThread = std::jthread([this] {
-//             std::chrono::duration<double, std::milli> pollingDuration{};
-//             while (!_shutdownRequested) {
-//                 std::chrono::time_point time_start = std::chrono::system_clock::now();
-//
-//                 for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
-//                     if (subTopic.path() != "/AcquisitionSpectra") {
-//                         break;
-//                     }
-//                     const auto                         queryMap = subTopic.queryParamMap();
-//                     const FreqDomainContext            filterIn = opencmw::query::deserialise<FreqDomainContext>(queryMap);
-//                     std::set<std::string, std::less<>> requestedSignals;
-//                     if (!checkRequestedSignals(filterIn, requestedSignals)) {
-//                         break;
-//                     }
-//
-//                     int64_t maxChunksToPoll = chunksToPoll(requestedSignals);
-//
-//                     if (maxChunksToPoll == 0) {
-//                         break;
-//                     }
-//
-//                     pollMultipleSignals(*(requestedSignals.begin()), maxChunksToPoll, _reply);
-//                     FreqDomainContext filterOut = filterIn;
-//                     filterOut.contentType       = opencmw::MIME::JSON;
-//                     super_t::notify("/AcquisitionSpectra", filterOut, _reply);
-//                 }
-//                 pollingDuration   = std::chrono::system_clock::now() - time_start;
-//
-//                 auto willSleepFor = std::chrono::milliseconds(40) - pollingDuration;
-//                 std::this_thread::sleep_for(willSleepFor);
-//             }
-//         });
-//
-//         super_t::setCallback([this](RequestContext &rawCtx, const FreqDomainContext &requestContext, const Empty &, FreqDomainContext& /*replyContext*/, AcquisitionSpectra &out) {
-//             if (rawCtx.request.command() == Command::Get) {
-//                 handleGetRequest(requestContext, out);
-//             }
-//         });
-//     }
-//
-//     ~FrequencyDomainWorker() {
-//         _shutdownRequested = true;
-//         _pollingThread.join();
-//     }
-//
-//     void callbackCopySinkData(std::vector<const void *> &input_items, int &nitems, size_t vector_size, const std::vector<std::string> &signal_name, float sample_rate, int64_t timestamp) {
-//         const auto *in                = static_cast<const float *>(input_items[0]);
-//         const auto completeSignalName = fmt::format("{}@{}Hz", signal_name[0], sample_rate);
-//         if (_signalsMap.contains(completeSignalName)) {
-//             const SignalData &signalData = _signalsMap.at(completeSignalName);
-//
-//             for (int i = 0; i < nitems; i++) {
-//                 // publish data
-//                 bool result = signalData.ringBuffer->tryPublishEvent([i, in, vector_size, timestamp](RingBufferData &&bufferData, std::int64_t /*sequence*/) noexcept {
-//                     bufferData.timestamp = timestamp;
-//                     size_t offset        = static_cast<size_t>(i) * vector_size;
-//                     bufferData.chunk.assign(in + offset + vector_size / 2, in + offset + vector_size);
-//                 });
-//
-//                 if (!result) {
-//                     // fmt::print("freqDomainWorker: error writing into RingBuffer, signal_name: {}\n", signal_name[0]);
-//                     nitems = 0;
-//                 }
-//             }
-//         }
-//     }
-//
-// private:
-//     bool handleGetRequest(const FreqDomainContext &requestContext, AcquisitionSpectra &out) {
-//         std::set<std::string, std::less<>> requestedSignals;
-//         if (!checkRequestedSignals(requestContext, requestedSignals)) {
-//             return false;
-//         }
-//
-//         int64_t maxChunksToPoll = chunksToPoll(requestedSignals);
-//
-//         if (maxChunksToPoll == 0) {
-//             return false;
-//         }
-//
-//         pollMultipleSignals(*(requestedSignals.begin()), maxChunksToPoll, out);
-//         return true;
-//     }
-//
-//     // find how many chunks should be parallely polled
-//     int64_t chunksToPoll(std::set<std::string, std::less<>> &requestedSignals) {
-//         std::vector<int64_t> chunksAvailable;
-//         for (const auto &requestedSignal : requestedSignals) {
-//             auto    signalData = _signalsMap.at(requestedSignal);
-//             int64_t diff       = signalData.ringBuffer->cursor() - signalData.eventPoller->sequence()->value();
-//             chunksAvailable.push_back(diff);
-//         }
-//         assert(!chunksAvailable.empty());
-//         auto maxChunksToPollIterator = std::min_element(chunksAvailable.begin(), chunksAvailable.end());
-//         if (maxChunksToPollIterator == chunksAvailable.end()) {
-//             return 0;
-//         }
-//
-//         return *maxChunksToPollIterator;
-//     }
-//
-//     void pollMultipleSignals(const std::string &requestedSignal, int64_t chunksToPoll, AcquisitionSpectra &out) {
-//         assert(chunksToPoll > 0);
-//         auto signalData     = _signalsMap.at(requestedSignal);
-//
-//         out.refTriggerStamp = 0;
-//         out.channelName     = requestedSignal;
-//
-//         PollState result    = PollState::Idle;
-//         for (int64_t i = 0; i < chunksToPoll; i++) {
-//             result = signalData.eventPoller->poll([&out](RingBufferData &event, std::int64_t /*sequence*/, bool /*nomoreEvts*/) noexcept {
-//                 out.refTriggerStamp = event.timestamp;
-//                 out.channelMagnitudeValues.assign(event.chunk.begin(), event.chunk.end());
-//                 return false;
-//             });
-//         }
-//         assert(result == PollState::Processing);
-//
-//         //  generate frequency values
-//         size_t vectorSize = out.channelMagnitudeValues.size();
-//         float  bandwidth  = signalData.sink->get_bandwidth();
-//         out.channelFrequencyValues.clear();
-//         out.channelFrequencyValues.reserve(vectorSize);
-//         float freqStartValue = 0; //-(bandwidth / 2);
-//         float freqStepValue  = 0.5f * bandwidth / static_cast<float>(vectorSize);
-//         for (size_t i = 0; i < vectorSize; i++) {
-//             out.channelFrequencyValues.push_back(freqStartValue + static_cast<float>(i) * freqStepValue);
-//         }
-//     }
-//
-//     bool checkRequestedSignals(const FreqDomainContext &filterIn, std::set<std::string, std::less<>> &requestedSignals) {
-//         auto signals = std::string_view(filterIn.channelNameFilter) | std::ranges::views::split(',');
-//         for (const auto &signal : signals) {
-//             requestedSignals.emplace(std::string_view(signal.begin(), signal.end()));
-//         }
-//         if (requestedSignals.empty()) {
-//             respondWithEmptyResponse(filterIn, "no signals requested, sending empty response\n");
-//             return false;
-//         }
-//
-//         // check if signals exist
-//         std::vector<std::string> unknownSignals;
-//         for (const auto &requestedSignal : requestedSignals) {
-//             if (!_signalsMap.contains(requestedSignal)) {
-//                 unknownSignals.push_back(requestedSignal);
-//             }
-//         }
-//         if (!unknownSignals.empty()) {
-//             respondWithEmptyResponse(filterIn, fmt::format("requested unknown signals: {}\n", unknownSignals));
-//             return false;
-//         }
-//
-//         return true;
-//     }
-//
-//     void respondWithEmptyResponse(const FreqDomainContext &filter, const std::string_view errorText) {
-//         fmt::print("{}\n", errorText);
-//         super_t::notify("/AcquisitionSpectra", filter, AcquisitionSpectra());
-//     }
-// };
 } // namespace opendigitizer::acq
+#endif //OPENDIGITIZER_SERVICE_ACQWORKER_H
