@@ -202,7 +202,7 @@ private:
     }
 
     private:
-        std::size_t get_samples_since(sinks_with_readers sink, auto /*since*/) {
+        std::size_t get_samples_since(sinks_with_readers &sink, auto /*since*/) {
             // move reader to 50% to allow for publishers to get new data
             auto avail = sink.stream_reader.available();
             if (avail > sink.sink.stream.size() / 2) {
@@ -211,7 +211,7 @@ private:
             }
             return sink.stream_reader.available();
         }
-        std::span<const float> get_samples(sinks_with_readers sink) {
+        std::span<const float> get_samples(sinks_with_readers &sink) {
             auto stream = sink.stream_reader.get(sink.stream_reader.available());
             //auto pos = sink.stream_reader.position();
             auto tags = sink.tag_reader.get(sink.tag_reader.available());

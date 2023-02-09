@@ -225,6 +225,25 @@ class circular_buffer
         }
     };
 
+    [[nodiscard]] constexpr static Allocator DefaultAllocator() {
+        if constexpr (has_posix_mmap_interface) {
+            return double_mapped_memory_resource::allocator<T>();
+        } else {
+            return Allocator();
+        }
+    }
+
+    std::shared_ptr<buffer_impl> _shared_buffer_ptr;
+    circular_buffer(std::shared_ptr<buffer_impl> shared_buffer_ptr) : _shared_buffer_ptr(shared_buffer_ptr) {}
+
+public:
+    circular_buffer() = delete;
+    circular_buffer(std::size_t min_size, Allocator allocator = DefaultAllocator())
+        : _shared_buffer_ptr(std::make_shared<buffer_impl>(min_size, allocator)) { }
+    ~circular_buffer() = default;
+
+    [[nodiscard]] std::size_t       size() const noexcept { return _shared_buffer_ptr->_size; }
+
     template <typename U = T>
     class buffer_writer {
         using BufferTypeLocal = std::shared_ptr<buffer_impl>;
@@ -238,14 +257,14 @@ class circular_buffer
     public:
         buffer_writer() = delete;
         buffer_writer(std::shared_ptr<buffer_impl> buffer) :
-            _buffer(std::move(buffer)), _is_mmap_allocated(_buffer->_is_mmap_allocated),
-            _size(_buffer->_size), _data(std::addressof(_buffer->_data)), _claim_strategy(std::addressof(_buffer->_claim_strategy)) { };
+                _buffer(std::move(buffer)), _is_mmap_allocated(_buffer->_is_mmap_allocated),
+                _size(_buffer->_size), _data(std::addressof(_buffer->_data)), _claim_strategy(std::addressof(_buffer->_claim_strategy)) { };
         buffer_writer(buffer_writer&& other)
-            : _buffer(std::move(other._buffer))
-            , _is_mmap_allocated(_buffer->_is_mmap_allocated)
-            , _size(_buffer->_size)
-            , _data(std::addressof(_buffer->_data))
-            , _claim_strategy(std::addressof(_buffer->_claim_strategy)) { };
+                : _buffer(std::move(other._buffer))
+                , _is_mmap_allocated(_buffer->_is_mmap_allocated)
+                , _size(_buffer->_size)
+                , _data(std::addressof(_buffer->_data))
+                , _claim_strategy(std::addressof(_buffer->_claim_strategy)) { };
         buffer_writer& operator=(buffer_writer tmp) {
             std::swap(_buffer, tmp._buffer);
             _is_mmap_allocated = _buffer->_is_mmap_allocated;
@@ -309,7 +328,7 @@ class circular_buffer
             return _claim_strategy->getRemainingCapacity(*_buffer->_read_indices);
         }
 
-        private:
+    private:
         template <typename... Args, WriterCallback<U, Args...> Translator>
         constexpr void translate_and_publish(Translator&& translator, const std::size_t n_slots_to_claim, const std::int64_t publishSequence, const Args&... args) {
             try {
@@ -353,16 +372,16 @@ class circular_buffer
     public:
         buffer_reader() = delete;
         buffer_reader(std::shared_ptr<buffer_impl> buffer) :
-            _buffer(buffer), _size(buffer->_size), _data(std::addressof(buffer->_data)) {
+                _buffer(buffer), _size(buffer->_size), _data(std::addressof(buffer->_data)) {
             gr::detail::addSequences(_buffer->_read_indices, _buffer->_cursor, {_read_index});
             _read_index_cached = _read_index->value();
         }
         buffer_reader(buffer_reader&& other)
-            : _read_index(std::move(other._read_index))
-            , _read_index_cached(std::exchange(other._read_index_cached, _read_index->value()))
-            , _buffer(other._buffer)
-            , _size(_buffer->_size)
-            , _data(std::addressof(_buffer->_data)) {
+                : _read_index(std::move(other._read_index))
+                , _read_index_cached(std::exchange(other._read_index_cached, _read_index->value()))
+                , _buffer(other._buffer)
+                , _size(_buffer->_size)
+                , _data(std::addressof(_buffer->_data)) {
         }
         buffer_reader& operator=(buffer_reader tmp) noexcept {
             std::swap(_read_index, tmp._read_index);
@@ -408,24 +427,6 @@ class circular_buffer
         }
     };
 
-    [[nodiscard]] constexpr static Allocator DefaultAllocator() {
-        if constexpr (has_posix_mmap_interface) {
-            return double_mapped_memory_resource::allocator<T>();
-        } else {
-            return Allocator();
-        }
-    }
-
-    std::shared_ptr<buffer_impl> _shared_buffer_ptr;
-    circular_buffer(std::shared_ptr<buffer_impl> shared_buffer_ptr) : _shared_buffer_ptr(shared_buffer_ptr) {}
-
-public:
-    circular_buffer() = delete;
-    circular_buffer(std::size_t min_size, Allocator allocator = DefaultAllocator())
-        : _shared_buffer_ptr(std::make_shared<buffer_impl>(min_size, allocator)) { }
-    ~circular_buffer() = default;
-
-    [[nodiscard]] std::size_t       size() const noexcept { return _shared_buffer_ptr->_size; }
     [[nodiscard]] BufferWriter auto new_writer() { return buffer_writer<T>(_shared_buffer_ptr); }
     [[nodiscard]] BufferReader auto new_reader() { return buffer_reader<T>(_shared_buffer_ptr); }
 

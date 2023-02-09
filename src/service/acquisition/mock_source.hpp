@@ -25,7 +25,7 @@ class mock_source {
         T::tagbuffer::template buffer_writer<typename T::padded_tag_map> tag_writer;
         T::streambuffer::template buffer_writer<float> stream_writer;
 
-        explicit sinks_with_writers(T::sink_buffer &s) : sink(s), tag_writer(s.tag),  stream_writer(s.stream) { }
+        explicit sinks_with_writers(T::sink_buffer &s) : sink{s}, tag_writer{s.tag.new_writer()},  stream_writer{s.stream.new_writer()} { }
     };
     std::vector<sinks_with_writers> sinks{};
 public:
@@ -37,9 +37,8 @@ public:
         }
     }
 
-    void operator()() {
-        const std::stop_token stop_token;
-        fmt::print("Starting mock stream signals with sinks: {}\n", sinks | std::ranges::views::transform([](auto s){return s.sink.name;}));
+    void operator()(std::stop_token stop_token) {
+        fmt::print("Starting mock stream signals with sinks: {}\n", sinks | std::ranges::views::transform([](auto &s){return s.sink.name;}));
         while (!stop_token.stop_requested()) {
             for (sinks_with_writers &sink : sinks) {
                 std::size_t n_samples = 64;
