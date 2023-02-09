@@ -3,8 +3,8 @@
 
 #include <majordomo/Worker.hpp>
 #include "daq_api.hpp"
-#include <gnuradio/circular_buffer.hpp>
-#include <gnuradio/tag.h>
+#include "buffer/circular_buffer.hpp"
+#include "buffer/tag.h"
 #include <ranges>
 #include <string_view>
 
