@@ -1,22 +1,9 @@
 #ifndef OPENDIGITIZER_SERVICE_MOCK_SOURCE_H
 #define OPENDIGITIZER_SERVICE_MOCK_SOURCE_H
 
-// initialize containers from views: https://stackoverflow.com/a/60971856
-namespace detail {
-    // Type acts as a tag to find the correct operator| overload
-    template <typename C>
-    struct to_helper {
-    };
-    // This actually does the work
-    template <typename Container, std::ranges::range R> requires std::convertible_to<std::ranges::range_value_t<R>, typename Container::value_type>
-    Container operator|(R&& r, to_helper<Container>) {
-        return Container{r.begin(), r.end()};
-    }
-}
-template <std::ranges::range Container> requires (!std::ranges::view<Container>)
-auto to() {
-    return detail::to_helper<Container>{};
-}
+namespace opendigitizer::acq {
+
+using namespace std::chrono_literals;
 
 template<typename T>
 class mock_source {
@@ -50,18 +37,21 @@ public:
                     }
                 }, n_samples);
                 if (!write_success){
-                    fmt::print("Error writing into the stream buffer");
+                    fmt::print("Error writing into the stream buffer\n");
                     break;
                 }
                 bool tag_write_success = sink.tag_writer.try_publish([&write_pos](std::span<typename T::padded_tag_map> &writable_data, std::int64_t /*writePos*/){
                     writable_data[0] = typename T::padded_tag_map{.map = {{"time", static_cast<double>(write_pos) * 0.05}, {"random_fact", 4.2f}}, .seq = write_pos};
                 }, 1);
                 if (!tag_write_success){
-                    fmt::print("Error writing into the tag buffer");
+                    fmt::print("Error writing into the tag buffer\n");
                     break;
                 }
             }
+            std::this_thread::sleep_for(1s);
         }
     }
 };
+
+}
 #endif //OPENDIGITIZER_SERVICE_MOCK_SOURCE_H

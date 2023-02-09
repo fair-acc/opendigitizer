@@ -45,7 +45,7 @@ int main() {
     std::jthread acquisitionWorkerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
     // mock publisher, which publishes sine waves to the available sinks // todo: put into separate class
-    auto src = mock_source<AcqWorker>{sinks};
+    auto src = opendigitizer::acq::mock_source<AcqWorker>{sinks};
     std::jthread source{[&src](std::stop_token stoken) {return src(stoken);}};
 
     // shutdown
