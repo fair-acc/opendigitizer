@@ -61,8 +61,8 @@ public:
     static const size_t RING_BUFFER_SIZE = 256;
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
     using streambuffer = gr::circular_buffer<float, RING_BUFFER_SIZE>;
-    struct padded_tag_map { // ringbuffer needs sizeof(T) to be pow of 2
-        alignas(nextPowerOfTwo(sizeof(gr::tag_map) + sizeof(std::int64_t))) gr::tag_map map;
+    struct alignas(nextPowerOfTwo(sizeof(gr::tag_map) + sizeof(std::int64_t))) padded_tag_map { // ringbuffer needs sizeof(T) to be pow of 2
+        gr::tag_map map;
         std::int64_t seq{0};
     };
     using tagbuffer = gr::circular_buffer<padded_tag_map, RING_BUFFER_SIZE>;
@@ -89,7 +89,7 @@ private:
     std::map<std::string, sinks_with_readers> sinks; // subscriptions
 public:
     template<typename BrokerType>
-    explicit AcquisitionWorker(const BrokerType &broker, std::vector<sink_buffer> s) : super_t(broker, {}) {
+    explicit AcquisitionWorker(const BrokerType &broker, std::vector<sink_buffer> &s) : super_t(broker, {}) {
         for (sink_buffer &sink : s) {
             sinks.insert({sink.name, sinks_with_readers{sink}});
         }
@@ -163,14 +163,18 @@ private:
                 }
                 out.channelNames.emplace_back(sink.sink.name);
                 out.channelUnits.emplace_back(sink.sink.unit);
+            } else {
+                throw std::invalid_argument(fmt::format("Requested subscription for '{}' not found", chan));
             }
-            if (out.channelNames.empty()) {
-                throw std::invalid_argument(fmt::format("Requested subscription for '{}' not found", requestContext.channelNameFilter));
-            }
+        }
+        if (out.channelNames.empty()) {
+            throw std::invalid_argument(fmt::format("No data for requested channels: {}", requestContext.channelNameFilter));
         }
         // populate values
         out.channelValues.dimensions() = { static_cast<unsigned int>(out.channelNames.size()), static_cast<unsigned int>(n_samples) };
+        out.channelValues.elements().resize( static_cast<unsigned int>(out.channelNames.size()) * static_cast<unsigned int>(n_samples) );
         out.channelErrors.dimensions() = { static_cast<unsigned int>(out.channelNames.size()), static_cast<unsigned int>(n_samples) };
+        out.channelErrors.elements().resize( static_cast<unsigned int>(out.channelNames.size()) * static_cast<unsigned int>(n_samples) );
         out.channelTimeSinceRefTrigger.resize(static_cast<unsigned int>(n_samples));
         out.channelRangeMin.resize(static_cast<unsigned int>(out.channelNames.size()));
         out.channelRangeMax.resize(static_cast<unsigned int>(out.channelNames.size()));
@@ -221,10 +225,10 @@ private:
             std::ignore = sink.tag_reader.consume(i-1);
             // process tags
             for (; tags[i].seq < (sink.stream_reader.position() + static_cast<long>(sink.stream_reader.available())) && i < tags.size(); i++) {
-                const auto& [tag, seq] = tags[i];
+                const auto [tag, seq] = tags[i];
                 for (auto& [key, value] : tag) {
-                    if (key == "timestamp") {
-                        fmt::print("published timestamp: t = {}", pmtv::cast<double>(value));
+                    if (key == "time") {
+                        fmt::print("published timestamp: t = {}\n", pmtv::cast<double>(value));
                         // set/check against sample time/rate etc
                     }
                     // handle other tags
