@@ -18,6 +18,8 @@
 #include "flowgraphitem.h"
 #endif
 
+#include "fair_header.h"
+
 // Emscripten requires to have full control over the main loop. We're going to
 // store our SDL book-keeping variables globally. Having a single function that
 // acts as a loop prevents us to store state in the stack of said function. So
@@ -134,6 +136,8 @@ int           main(int, char **) {
     app.font14 = addDefaultFont(14);
     app.font16 = addDefaultFont(16);
 
+    app_header::load_header_assets();
+
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(main_loop, &app, 0, true);
@@ -183,6 +187,8 @@ static void main_loop(void *arg) {
     SDL_GetWindowSize(g_Window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    app_header::draw_header_bar("OpenDigitizer", app->font16);
 
     ImGui::BeginTabBar("maintabbar");
     if (ImGui::BeginTabItem("Dashboard")) {

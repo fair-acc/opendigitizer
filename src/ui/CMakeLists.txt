@@ -16,6 +16,8 @@ set(sources
         flowgraphitem.cpp
 )
 
+add_subdirectory(app_header)
+
 if (EMSCRIPTEN)
     message(STATUS "Detected emscripten webassembly build")
 
@@ -27,7 +29,6 @@ if (EMSCRIPTEN)
             -g
             -Wall -Wformat -Os
             "SHELL:-s USE_SDL=2"
-            "SHELL:-s DISABLE_EXCEPTION_CATCHING=1"
     )
 
     add_link_options(
@@ -38,13 +39,15 @@ if (EMSCRIPTEN)
             "SHELL:-s NO_FILESYSTEM=1"
             --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
             "SHELL:-s USE_SDL=2"
-            "SHELL:-s DISABLE_EXCEPTION_CATCHING=1"
             -sFETCH
     )
+endif()
 
-    # dependencies
-    include(cmake/Dependencies.cmake)
+# dependencies
+include(cmake/Dependencies.cmake)
+cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png)
 
+if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory
     set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
 
@@ -61,6 +64,8 @@ if (EMSCRIPTEN)
             ${outputFileName}
             PRIVATE
             implot
+            app_header
+            ui_assets
     )
 
     add_custom_target(serve
@@ -69,8 +74,6 @@ if (EMSCRIPTEN)
             DEPENDS ${outputFileName}
     )
 else () # native build
-    # dependencies
-    include(cmake/Dependencies.cmake)
 
     add_executable(opendigitizer-ui)
 
@@ -87,6 +90,8 @@ else () # native build
             yaml-cpp::yaml-cpp
             core
             client
+            app_header
+            ui_assets
     )
     target_include_directories(opendigitizer-ui PRIVATE ${plf_colony_SOURCE_DIR})
     target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="/usr/share/gnuradio/grc/blocks")

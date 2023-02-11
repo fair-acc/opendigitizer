@@ -33,15 +33,27 @@ FetchContent_Declare(
     GIT_TAG         master
 )
 
+FetchContent_Declare( # needed to load images in ImGui
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG 8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55 # master from Sep 2022
+)
+
+FetchContent_Declare(
+        opencmw-cpp
+        GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
+        GIT_TAG main # todo: use proper release once available
+)
+
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp)
 else () # native build
     FetchContent_Declare(
             sdl2
             GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
             GIT_TAG        release-2.24.2
     )
-    FetchContent_MakeAvailable(sdl2 imgui implot imgui-node-editor yaml-cpp plf_colony)
+    FetchContent_MakeAvailable(sdl2 imgui implot imgui-node-editor yaml-cpp plf_colony stb opencmw-cpp)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
     target_link_libraries(SDL2 PUBLIC OpenGL::GL )
     target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
@@ -95,3 +107,6 @@ target_include_directories(
         ${imgui-node-editor_SOURCE_DIR}
 )
 target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
