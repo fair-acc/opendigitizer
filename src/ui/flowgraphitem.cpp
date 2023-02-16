@@ -95,8 +95,11 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
     ImGui::SetCursorPosY(y + rectSize.y + spacing);
 };
 
-static void addBlock(const Block &b)
-{
+static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
+    if (pos) {
+        ax::NodeEditor::SetNodePosition(b.id, pos.value());
+        ax::NodeEditor::SetNodeZPosition(b.id, 1000);
+    }
     ax::NodeEditor::BeginNode(b.id);
 
     const auto padding = ax::NodeEditor::GetStyle().NodePadding;
@@ -135,6 +138,10 @@ static void addBlock(const Block &b)
             addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight }, rectsSpacing);
         }
 
+        // make sure the node ends up being tall enough to fit all the pins
+        ImGui::SetCursorPos(curPos);
+        ImGui::Dummy(ImVec2(10, pos.y - curPos.y));
+
         // ImGui::SetCursorPosY(y);
         const auto &outputs = b.outputs();
         auto *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
@@ -144,6 +151,10 @@ static void addBlock(const Block &b)
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
             addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight }, rectsSpacing);
         }
+
+        // likewise for the output pins
+        ImGui::SetCursorPos(curPos);
+        ImGui::Dummy(ImVec2(10, pos.y - curPos.y));
 
         ax::NodeEditor::EndNode();
 
@@ -172,69 +183,32 @@ static void addBlock(const Block &b)
     }
 }
 
-void FlowGraphItem::draw(const ImVec2 &size, std::span<const Block::Port> sources, std::span<const Block::Port> sinks) {
+void FlowGraphItem::draw(const ImVec2 &size) {
     const float left = ImGui::GetCursorPosX() + 10;
     ax::NodeEditor::Begin("My Editor", size);
 
     int sourceId = 2000;
     int y        = 0;
-    for (int i = 0; i < sources.size(); ++i) {
-        auto nodeId = sourceId++;
-        ax::NodeEditor::BeginNode(nodeId);
-        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
+
+    for (auto &s : m_flowGraph->sourceBlocks()) {
         auto p = ax::NodeEditor::ScreenToCanvas({ left, 0 });
-        p.y = y;
-        y += 40;
+        p.y    = y;
 
-        ax::NodeEditor::SetNodePosition(nodeId, p);
-        ImGui::Dummy({ 100, 10 });
-
-        const auto nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
-
-        const ImVec2 size(20, 14);
-        ImVec2 pos = p + ImVec2(nodeSize.x, (nodeSize.y - size.y) / 2);
-        addPin(ax::NodeEditor::PinId(&sources[i]), ax::NodeEditor::PinKind::Output, pos, size, 0);
-
-        ax::NodeEditor::EndNode();
-
-        ImGui::SetCursorPos(p + ImVec2(nodeSize.x, (nodeSize.y - size.y) / 2));
-        drawPin(ax::NodeEditor::GetNodeBackgroundDrawList(nodeId), size, 0, 0, "out", DataType::Wildcard);
-
-        ImGui::SetCursorPos(p + ImVec2(10, 10));
-        ImGui::Text("source %d\n", i);
+        addBlock(*s, p);
+        y += ax::NodeEditor::GetNodeSize(s->id).y + 10;
     }
 
-    int sinkId = 4000;
-    y          = 0;
-    for (int i = 0; i < sinks.size(); ++i) {
-        auto nodeId = sinkId++;
-        ax::NodeEditor::BeginNode(nodeId);
-        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
-        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x, 0 });
-        p.x -= 140;
-        p.y = y;
-        y += 40;
+    y = 0;
+    for (auto &s : m_flowGraph->sinkBlocks()) {
+        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x - 200, 0 });
+        p.y    = y;
 
-        ax::NodeEditor::SetNodePosition(nodeId, p);
-        ImGui::Dummy({ 100, 10 });
-
-        const auto nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
-
-        const ImVec2 size(20, 14);
-        ImVec2 pos = p + ImVec2(0, (nodeSize.y - size.y) / 2);
-        addPin(ax::NodeEditor::PinId(&sinks[i]), ax::NodeEditor::PinKind::Input, pos, size, 0);
-
-        ax::NodeEditor::EndNode();
-
-        ImGui::SetCursorPos(p + ImVec2(-size.x, (nodeSize.y - size.y) / 2));
-        drawPin(ax::NodeEditor::GetNodeBackgroundDrawList(nodeId), size, 0, 0, "in", DataType::Wildcard);
-
-        ImGui::SetCursorPos(p + ImVec2(10, 10));
-        ImGui::Text("sink %d\n", i);
+        addBlock(*s, p);
+        y += ax::NodeEditor::GetNodeSize(s->id).y + 10;
     }
 
     if (m_createNewBlock) {
-        auto b = std::make_unique<Block>("new block", m_selectedBlockType);
+        auto b = m_selectedBlockType->createBlock(m_selectedBlockType->name);
         ax::NodeEditor::SetNodePosition(b->id, m_contextMenuPosition);
         m_flowGraph->addBlock(std::move(b));
         m_createNewBlock = false;

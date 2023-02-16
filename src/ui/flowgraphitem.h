@@ -17,7 +17,7 @@ class FlowGraphItem
 public:
     FlowGraphItem(FlowGraph *fg);
 
-    void draw(const ImVec2 &size, std::span<const Block::Port> sources, std::span<const Block::Port> sinks);
+    void draw(const ImVec2 &size);
 
 private:
     FlowGraph *m_flowGraph;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string_view>
 #include <unordered_map>
 #include <variant>
@@ -14,6 +15,7 @@ namespace DigitizerUi {
 
 class FlowGraph;
 class Connection;
+class Block;
 
 class BlockType {
 public:
@@ -51,6 +53,8 @@ public:
     std::vector<Parameter>      parameters;
     std::vector<PortDefinition> inputs;
     std::vector<PortDefinition> outputs;
+
+    std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 };
 
 struct DataType
@@ -86,6 +90,15 @@ private:
     Id m_id = Id::Untyped;
 };
 
+class DataSet : public std::variant<std::span<const float>, std::span<const double>> {
+public:
+    using Super = std::variant<std::span<const float>, std::span<const double>>;
+    using Super::Super;
+
+    inline auto asFloat32() const { return std::get<std::span<const float>>(*this); }
+    inline auto asFloat64() const { return std::get<std::span<const double>>(*this); }
+};
+
 class Block {
 public:
     class Port {
@@ -95,11 +108,17 @@ public:
             Output,
         };
 
+        Block                    *block;
         const std::string       m_rawType;
         const Kind              kind;
 
         DataType                type;
         std::vector<Connection *> connections;
+    };
+
+    class OutputPort : public Port {
+    public:
+        DataSet dataSet;
     };
 
     struct EnumParameter {
@@ -131,6 +150,7 @@ public:
     using ParameterValue = std::variant<std::string, int>;
 
     Block(std::string_view name, BlockType *type);
+    virtual ~Block() {}
 
     const auto       &inputs() const { return m_inputs; }
     const auto       &outputs() const { return m_outputs; }
@@ -141,14 +161,24 @@ public:
     const std::vector<Parameter> &parameters() const { return m_parameters; }
 
     void                          update();
+    void                          updateInputs();
+
+    virtual void                  processData() {}
 
     const uint32_t    id;
     const BlockType  *type;
     const std::string name;
 
+protected:
+    auto &outputs() { return m_outputs; }
+
+private:
     std::vector<Port> m_inputs;
-    std::vector<Port> m_outputs;
+    std::vector<OutputPort> m_outputs;
     std::vector<Parameter> m_parameters;
+    bool                    m_updated       = false;
+
+    friend FlowGraph;
 };
 
 class Connection {
@@ -173,17 +203,28 @@ public:
     Block             *findBlock(uint32_t id) const;
 
     inline const auto &blocks() const { return m_blocks; }
+    inline const auto &sourceBlocks() const { return m_sourceBlocks; }
+    inline const auto &sinkBlocks() const { return m_sinkBlocks; }
     inline const auto &blockTypes() const { return m_types; }
     inline const auto &connections() const { return m_connections; }
 
+    void               addBlockType(std::unique_ptr<BlockType> &&t);
+
     void               addBlock(std::unique_ptr<Block> &&block);
     void               deleteBlock(Block *block);
+
+    void               addSourceBlock(std::unique_ptr<Block> &&block);
+    void               addSinkBlock(std::unique_ptr<Block> &&block);
 
     void               connect(Block::Port *a, Block::Port *b);
 
     void               disconnect(Connection *c);
 
+    void               update();
+
 private:
+    std::vector<std::unique_ptr<Block>>                         m_sourceBlocks;
+    std::vector<std::unique_ptr<Block>>                         m_sinkBlocks;
     std::vector<std::unique_ptr<Block>>                         m_blocks;
     std::unordered_map<std::string, std::unique_ptr<BlockType>> m_types;
     plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability

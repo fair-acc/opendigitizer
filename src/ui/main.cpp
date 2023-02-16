@@ -11,6 +11,7 @@
 #else
 #include <SDL_opengl.h>
 #endif
+#include <complex>
 #include <cstdio>
 
 #ifndef EMSCRIPTEN
@@ -42,11 +43,217 @@ ImFont *addDefaultFont(float pixel_size)
     return font;
 }
 
+#ifndef EMSCRIPTEN
+class DataSource : public DigitizerUi::Block {
+public:
+    static DigitizerUi::BlockType *btype() {
+        static auto *t = []() {
+            static DigitizerUi::BlockType t("nn");
+            t.outputs.resize(1);
+            t.outputs[0].name = "out";
+            t.outputs[0].type = "float";
+            return &t;
+        }();
+        return t;
+    }
+
+    explicit DataSource(const char *name, float freq)
+        : DigitizerUi::Block(name, btype())
+        , m_freq(freq) {
+        m_data.resize(8192);
+
+        processData();
+    }
+
+    void processData() override {
+        for (int i = 0; i < m_data.size(); ++i) {
+            m_data[i] = std::sin((m_offset + i) * m_freq);
+        }
+        outputs()[0].dataSet = m_data;
+        m_offset += 1;
+    }
+
+private:
+    std::vector<float> m_data;
+    float              m_freq;
+    float              m_offset = 0;
+};
+
+class DataSink : public DigitizerUi::Block {
+public:
+    static DigitizerUi::BlockType *btype() {
+        static auto *t = []() {
+            static DigitizerUi::BlockType t("nn");
+            t.inputs.resize(5);
+            for (int i = 0; i < 5; ++i) {
+                auto &in = t.inputs[i];
+                in.name  = fmt::format("in{}\n", i);
+                in.type  = "";
+            }
+            return &t;
+        }();
+        return t;
+    }
+
+    explicit DataSink(const char *name)
+        : DigitizerUi::Block(name, btype()) {
+    }
+
+    void processData() override {
+        for (int i = 0; i < 5; ++i) {
+            const auto &in = inputs()[i];
+            if (!in.connections.empty()) {
+                pins[i].hasData  = true;
+                auto *c          = in.connections[0];
+                pins[i].name     = type->inputs[i].name;
+                pins[i].dataType = c->ports[0]->type;
+                pins[i].data     = static_cast<DigitizerUi::Block::OutputPort *>(c->ports[0])->dataSet;
+            } else {
+                pins[i].hasData = false;
+            }
+        }
+    }
+
+    struct Pin {
+        bool                  hasData = false;
+        std::string           name;
+        DigitizerUi::DataType dataType;
+        DigitizerUi::DataSet  data;
+    };
+    std::array<Pin, 5> pins;
+
+private:
+};
+
+class SumBlock : public DigitizerUi::Block {
+public:
+    explicit SumBlock(std::string_view name, DigitizerUi::BlockType *type)
+        : DigitizerUi::Block(name, type) {
+    }
+
+    void processData() override {
+        auto &in = inputs();
+        if (in[0].connections.empty() || in[1].connections.empty()) {
+            return;
+        }
+
+        auto *p0   = static_cast<DigitizerUi::Block::OutputPort *>(in[0].connections[0]->ports[0]);
+        auto *p1   = static_cast<DigitizerUi::Block::OutputPort *>(in[1].connections[0]->ports[0]);
+        auto  val0 = p0->dataSet.asFloat32();
+        auto  val1 = p1->dataSet.asFloat32();
+
+        if (val0.size() != val1.size()) {
+            return;
+        }
+
+        m_data.resize(val0.size());
+        memcpy(m_data.data(), val0.data(), m_data.size() * 4);
+        for (int i = 0; i < m_data.size(); ++i) {
+            m_data[i] += val1[i];
+        }
+        outputs()[0].dataSet = m_data;
+    }
+
+    std::vector<float> m_data;
+};
+
+template<typename T>
+class FFT {
+    std::size_t                  _N;
+    std::vector<std::complex<T>> _w;
+
+public:
+    FFT() = delete;
+    explicit FFT(std::size_t N)
+        : _N(N), _w(N) {
+        assert(N > 1 && "N should be > 0");
+        for (std::size_t s = 2; s <= N; s *= 2) {
+            const std::size_t m = s / 2;
+            _w[m]               = exp(std::complex<T>(0, -2 * M_PI / s));
+        }
+    }
+
+    void compute(std::vector<std::complex<T>> &X) const noexcept {
+        std::size_t rev = 0;
+        for (std::size_t i = 0; i < _N; i++) {
+            if (rev > i && rev < _N) {
+                std::swap(X[i], X[rev]);
+            }
+            std::size_t mask = _N / 2;
+            while (rev & mask) {
+                rev -= mask;
+                mask /= 2;
+            }
+            rev += mask;
+        }
+
+        for (std::size_t s = 2; s <= _N; s *= 2) {
+            const std::size_t m = s / 2;
+            // std::complex<T> w = exp(std::complex<T>(0, -2 * M_PI / s));
+            for (std::size_t k = 0; k < _N; k += s) {
+                std::complex<T> wk = 1;
+                for (std::size_t j = 0; j < m; j++) {
+                    const std::complex<T> t = wk * X[k + j + m];
+                    const std::complex<T> u = X[k + j];
+                    X[k + j]                = u + t;
+                    X[k + j + m]            = u - t;
+                    // wk *= w;
+                    wk *= _w[m];
+                }
+            }
+        }
+    }
+
+    template<typename C>
+    std::vector<T> compute_magnitude_spectrum(C signal) {
+        static_assert(std::is_same_v<T, typename C::value_type>, "input type T mismatch");
+        std::vector<T>               magnitude_spectrum(_N / 2 + 1);
+        std::vector<std::complex<T>> fft_signal(signal.size());
+        for (std::size_t i = 0; i < signal.size(); i++) {
+            fft_signal[i] = { signal[i], 0.0 };
+        }
+
+        compute(fft_signal);
+
+        for (std::size_t n = 0; n < _N / 2 + 1; n++) {
+            magnitude_spectrum[n] = std::abs(fft_signal[n]) * 2.0 / _N;
+        }
+
+        return magnitude_spectrum;
+    }
+};
+
+class FFTBlock : public DigitizerUi::Block {
+public:
+    explicit FFTBlock(std::string_view name, DigitizerUi::BlockType *type)
+        : DigitizerUi::Block(name, type) {
+    }
+
+    void processData() override {
+        auto &in = inputs()[0];
+        if (in.connections.empty()) {
+            return;
+        }
+
+        auto *p   = static_cast<DigitizerUi::Block::OutputPort *>(in.connections[0]->ports[0]);
+        auto  val = p->dataSet.asFloat32();
+
+        m_data.resize(val.size());
+        FFT<float> fft(val.size());
+        m_data               = fft.compute_magnitude_spectrum(val);
+        outputs()[0].dataSet = m_data;
+    }
+
+    std::vector<float> m_data;
+};
+#endif
+
 struct App
 {
 #ifndef EMSCRIPTEN
     DigitizerUi::FlowGraph flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
+
 #endif
 
     ImFont *font12 = nullptr;
@@ -125,8 +332,47 @@ int           main(int, char **) {
         .fgItem = { &app.flowGraph }
     };
 
-    app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+    // app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
     app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
+
+    app.flowGraph.addSourceBlock(std::make_unique<DataSource>("source1", 0.1));
+    app.flowGraph.addSourceBlock(std::make_unique<DataSource>("source2", 0.02));
+
+    app.flowGraph.addSinkBlock(std::make_unique<DataSink>("sink1"));
+    app.flowGraph.addSinkBlock(std::make_unique<DataSink>("sink2"));
+
+    app.flowGraph.addBlockType([]() {
+        auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
+        t->createBlock = [t = t.get()](std::string_view name) {
+            return std::make_unique<SumBlock>(name, t);
+        };
+        t->inputs.resize(2);
+        t->inputs[0].name = "in1";
+        t->inputs[0].type = "float";
+
+        t->inputs[1].name = "in2";
+        t->inputs[1].type = "float";
+
+        t->outputs.resize(1);
+        t->outputs[0].name = "out";
+        t->outputs[0].type = "float";
+        return t;
+    }());
+
+    app.flowGraph.addBlockType([]() {
+        auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
+        t->createBlock = [t = t.get()](std::string_view name) {
+            return std::make_unique<FFTBlock>(name, t);
+        };
+        t->inputs.resize(1);
+        t->inputs[0].name = "in1";
+        t->inputs[0].type = "float";
+
+        t->outputs.resize(1);
+        t->outputs[0].name = "out";
+        t->outputs[0].type = "float";
+        return t;
+    }());
 
 #else
     };
@@ -192,6 +438,29 @@ static void main_loop(void *arg) {
 
     ImGui::BeginTabBar("maintabbar");
     if (ImGui::BeginTabItem("Dashboard")) {
+#ifndef EMSCRIPTEN
+        app->flowGraph.update();
+
+        for (auto &b : app->flowGraph.sinkBlocks()) {
+            auto *s = static_cast<DataSink *>(b.get());
+            ImPlot::BeginPlot(b->name.c_str());
+            for (const auto &p : s->pins) {
+                if (!p.hasData) {
+                    continue;
+                }
+
+                switch (p.dataType) {
+                case DigitizerUi::DataType::Float32: {
+                    auto values = p.data.asFloat32();
+                    ImPlot::PlotLine(p.name.c_str(), values.data(), values.size());
+                    break;
+                }
+                default: break;
+                }
+            }
+            ImPlot::EndPlot();
+        }
+#endif
 
         ImGui::EndTabItem();
     }
@@ -199,22 +468,7 @@ static void main_loop(void *arg) {
     if (ImGui::BeginTabItem("Flowgraph")) {
         auto contentRegion = ImGui::GetContentRegionAvail();
 
-        static std::vector<DigitizerUi::Block::Port> sources;
-        if (sources.empty()) {
-            for (int i = 0; i < 100; ++i) {
-                sources.push_back({ {}, DigitizerUi::Block::Port::Kind::Output, DigitizerUi::DataType::Wildcard });
-            }
-            // ImGui:: Button("Add new data source");
-        }
-
-        static std::vector<DigitizerUi::Block::Port> sinks;
-        if (sinks.empty()) {
-            for (int i = 0; i < 100; ++i) {
-                sinks.push_back({ {}, DigitizerUi::Block::Port::Kind::Input, DigitizerUi::DataType::Wildcard });
-            }
-        }
-
-        app->fgItem.draw(contentRegion, sources, sinks);
+        app->fgItem.draw(contentRegion);
 
         ImGui::EndTabItem();
     }

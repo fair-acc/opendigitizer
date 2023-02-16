@@ -74,10 +74,10 @@ Block::Block(std::string_view name, BlockType *type)
     m_outputs.reserve(type->outputs.size());
     m_inputs.reserve(type->inputs.size());
     for (auto &o : type->outputs) {
-        m_outputs.push_back({ o.type, Port::Kind::Output });
+        m_outputs.push_back({ this, o.type, Port::Kind::Output });
     }
     for (auto &o : type->inputs) {
-        m_inputs.push_back({ o.type, Port::Kind::Input });
+        m_inputs.push_back({ this, o.type, Port::Kind::Input });
     }
 }
 
@@ -195,6 +195,19 @@ void Block::update() {
     }
 }
 
+void Block::updateInputs() {
+    for (auto &i : m_inputs) {
+        for (auto *c : i.connections) {
+            auto *b = c->ports[0]->block;
+            if (!b->m_updated) {
+                b->updateInputs();
+                b->processData();
+                b->m_updated = true;
+            }
+        }
+    }
+}
+
 std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }
@@ -239,6 +252,7 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
         auto       id     = config["id"].as<std::string>();
 
         auto def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
+        def->createBlock      = [def](std::string_view name) { return std::make_unique<Block>(name, def); };
 
         auto parameters = config["parameters"];
         for (const auto &p : parameters) {
@@ -474,9 +488,23 @@ Block *FlowGraph::findBlock(uint32_t id) const {
     return nullptr;
 }
 
+void FlowGraph::addBlockType(std::unique_ptr<BlockType> &&t) {
+    m_types.insert({ t->name, std::move(t) });
+}
+
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->update();
     m_blocks.push_back(std::move(block));
+}
+
+void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
+    block->update();
+    m_sourceBlocks.push_back(std::move(block));
+}
+
+void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
+    block->update();
+    m_sinkBlocks.push_back(std::move(block));
 }
 
 void FlowGraph::deleteBlock(Block *block) {
@@ -500,6 +528,11 @@ void FlowGraph::deleteBlock(Block *block) {
 }
 
 void FlowGraph::connect(Block::Port *a, Block::Port *b) {
+    assert(a->kind != b->kind);
+    // make sure a is the output and b the input
+    if (a->kind == Block::Port::Kind::Input) {
+        std::swap(a, b);
+    }
     auto it = m_connections.insert(Connection(a, b));
     a->connections.push_back(&(*it));
     b->connections.push_back(&(*it));
@@ -514,6 +547,20 @@ void FlowGraph::disconnect(Connection *c) {
     }
 
     m_connections.erase(it);
+}
+
+void FlowGraph::update() {
+    for (auto &b : m_blocks) {
+        b->m_updated = false;
+    }
+    for (auto &b : m_sourceBlocks) {
+        b->m_updated = false;
+    }
+
+    for (auto &b : m_sinkBlocks) {
+        b->updateInputs();
+        b->processData();
+    }
 }
 
 } // namespace ImChart
