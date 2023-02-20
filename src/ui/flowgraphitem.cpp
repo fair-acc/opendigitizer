@@ -227,7 +227,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
     // Handle creation action, returns true if editor want to create new object (node or link)
     if (ax::NodeEditor::BeginCreate({  0, 0, 0, 1 })) {
         ax::NodeEditor::PinId inputPinId, outputPinId;
-        if (ax::NodeEditor::QueryNewLink(&inputPinId, &outputPinId)) {
+        if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
             // QueryNewLink returns true if editor want to create new link between pins.
             //
             // Link can be created only for two valid pins, it is up to you to
@@ -251,7 +251,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
                     bool compatibleTypes = inputPort->type == outputPort->type || inputPort->type == DataType::Wildcard || outputPort->type == DataType::Wildcard;
                     if (!compatibleTypes) {
                         ax::NodeEditor::RejectNewItem();
-                    } else if (ax::NodeEditor::AcceptNewItem()) {
+                    } else if (inputPort->connections.empty() && ax::NodeEditor::AcceptNewItem()) {
                         // AcceptNewItem() return true when user release mouse button.
                         m_flowGraph->connect(inputPort, outputPort);
                     }
