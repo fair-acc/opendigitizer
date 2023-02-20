@@ -22,15 +22,6 @@ ENABLE_REFLECTION_FOR(Reply, flowgraph)
 
 namespace DigitizerUi {
 
-namespace {
-
-uint32_t nextId() {
-    static uint32_t id = 0;
-    return ++id;
-}
-
-} // namespace
-
 const std::string &DataType::toString() const
 {
     const static std::string names[] = {
@@ -53,8 +44,7 @@ std::string Block::Parameter::toString() const
 }
 
 Block::Block(std::string_view name, BlockType *type)
-    : id(nextId())
-    , type(type)
+    : type(type)
     , name(name) {
     if (!type) {
         return;
@@ -479,15 +469,6 @@ Block *FlowGraph::findBlock(std::string_view name) const {
     return nullptr;
 }
 
-Block *FlowGraph::findBlock(uint32_t id) const {
-    for (auto &b : m_blocks) {
-        if (b->id == id) {
-            return b.get();
-        }
-    }
-    return nullptr;
-}
-
 void FlowGraph::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
@@ -508,9 +489,18 @@ void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
 }
 
 void FlowGraph::deleteBlock(Block *block) {
-    auto it = std::find_if(m_blocks.begin(), m_blocks.end(), [&](const auto &b) {
+    auto select = [&](const auto &b) {
         return block == b.get();
-    });
+    };
+
+    if (auto it = std::find_if(m_sourceBlocks.begin(), m_sourceBlocks.end(), select); it != m_sourceBlocks.end()) {
+        m_sourceBlocks.erase(it);
+    }
+    if (auto it = std::find_if(m_sinkBlocks.begin(), m_sinkBlocks.end(), select); it != m_sinkBlocks.end()) {
+        m_sinkBlocks.erase(it);
+    }
+
+    auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select);
     assert(it != m_blocks.end());
 
     for (auto &p : block->inputs()) {

@@ -165,7 +165,6 @@ public:
 
     virtual void                  processData() {}
 
-    const uint32_t    id;
     const BlockType  *type;
     const std::string name;
 
@@ -200,7 +199,6 @@ public:
     void parse(const opencmw::URI<opencmw::STRICT> &uri);
 
     Block             *findBlock(std::string_view name) const;
-    Block             *findBlock(uint32_t id) const;
 
     inline const auto &blocks() const { return m_blocks; }
     inline const auto &sourceBlocks() const { return m_sourceBlocks; }

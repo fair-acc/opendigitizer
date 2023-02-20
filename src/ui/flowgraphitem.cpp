@@ -96,11 +96,12 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
 };
 
 static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
+    auto nodeId = ax::NodeEditor::NodeId(&b);
     if (pos) {
-        ax::NodeEditor::SetNodePosition(b.id, pos.value());
-        ax::NodeEditor::SetNodeZPosition(b.id, 1000);
+        ax::NodeEditor::SetNodePosition(nodeId, pos.value());
+        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
     }
-    ax::NodeEditor::BeginNode(b.id);
+    ax::NodeEditor::BeginNode(nodeId);
 
     const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -145,7 +146,7 @@ static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
         // ImGui::SetCursorPosY(y);
         const auto &outputs = b.outputs();
         auto *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
-        auto s = ax::NodeEditor::GetNodeSize(b.id);
+        auto s = ax::NodeEditor::GetNodeSize(nodeId);
         pos = { leftPos + s.x, curPos.y };
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
@@ -163,7 +164,7 @@ static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
         // output pins, and that would cause the nodes to continuously grow in width
 
         ImGui::SetCursorPos(curPos);
-        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(b.id);
+        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
 
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             const auto &in = inputs[i];
@@ -176,7 +177,7 @@ static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             const auto &out = outputs[i];
 
-            auto s = ax::NodeEditor::GetNodeSize(b.id);
+            auto s = ax::NodeEditor::GetNodeSize(nodeId);
             ImGui::SetCursorPosX(leftPos + s.x);
             drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->outputs[i].name, out.type);
         }
@@ -195,7 +196,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         p.y    = y;
 
         addBlock(*s, p);
-        y += ax::NodeEditor::GetNodeSize(s->id).y + 10;
+        y += ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(s.get())).y + 10;
     }
 
     y = 0;
@@ -204,12 +205,12 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         p.y    = y;
 
         addBlock(*s, p);
-        y += ax::NodeEditor::GetNodeSize(s->id).y + 10;
+        y += ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(s.get())).y + 10;
     }
 
     if (m_createNewBlock) {
         auto b = m_selectedBlockType->createBlock(m_selectedBlockType->name);
-        ax::NodeEditor::SetNodePosition(b->id, m_contextMenuPosition);
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
         m_flowGraph->addBlock(std::move(b));
         m_createNewBlock = false;
     }
@@ -260,12 +261,28 @@ void FlowGraphItem::draw(const ImVec2 &size) {
     }
     ax::NodeEditor::EndCreate(); // Wraps up object creation action handling.
 
+    if (ax::NodeEditor::BeginDelete()) {
+        ax::NodeEditor::NodeId nodeId;
+        ax::NodeEditor::LinkId linkId;
+        ax::NodeEditor::PinId pinId1, pinId2;
+        if (ax::NodeEditor::QueryDeletedNode(&nodeId)) {
+            ax::NodeEditor::AcceptDeletedItem(true);
+            auto *b = nodeId.AsPointer<Block>();
+            m_flowGraph->deleteBlock(b);
+        } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
+            ax::NodeEditor::AcceptDeletedItem(true);
+            auto *c = linkId.AsPointer<Connection>();
+            m_flowGraph->disconnect(c);
+        }
+    }
+    ax::NodeEditor::EndDelete();
+
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
     ax::NodeEditor::End();
 
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
-        auto block = m_flowGraph->findBlock(n.Get());
+        auto block = n.AsPointer<Block>();
         if (block && block->type) {
             ImGui::OpenPopup("Block parameters");
             m_selectedBlock = block;
@@ -276,7 +293,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
-        auto block = m_flowGraph->findBlock(n.Get());
+        auto block = n.AsPointer<Block>();
         if (block) {
             ImGui::OpenPopup("block_ctx_menu");
             m_selectedBlock = block;
