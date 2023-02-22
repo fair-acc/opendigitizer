@@ -7,6 +7,9 @@
 #include <variant>
 #include <vector>
 
+#ifdef EMSCRIPTEN
+#include "emscripten_compat.h"
+#endif
 #include <plf_colony.h>
 
 #include <URI.hpp>

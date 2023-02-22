@@ -14,10 +14,8 @@
 #include <complex>
 #include <cstdio>
 
-#ifndef EMSCRIPTEN
 #include "flowgraph.h"
 #include "flowgraphitem.h"
-#endif
 
 #include "fair_header.h"
 
@@ -43,7 +41,6 @@ ImFont *addDefaultFont(float pixel_size)
     return font;
 }
 
-#ifndef EMSCRIPTEN
 class DataSource : public DigitizerUi::Block {
 public:
     static DigitizerUi::BlockType *btype() {
@@ -246,15 +243,10 @@ public:
 
     std::vector<float> m_data;
 };
-#endif
 
-struct App
-{
-#ifndef EMSCRIPTEN
+struct App {
     DigitizerUi::FlowGraph flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
-
-#endif
 
     ImFont *font12 = nullptr;
     ImFont *font14 = nullptr;
@@ -292,7 +284,6 @@ int           main(int, char **) {
         fprintf(stderr, "Failed to initialize WebGL context!\n");
         return 1;
     }
-    SDL_GL_SetSwapInterval(1); // Enable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -327,9 +318,8 @@ int           main(int, char **) {
 #endif
 
     App app = {
-#ifndef EMSCRIPTEN
         .flowGraph = {},
-        .fgItem = { &app.flowGraph }
+        .fgItem    = { &app.flowGraph }
     };
 
     // app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
@@ -374,10 +364,6 @@ int           main(int, char **) {
         return t;
     }());
 
-#else
-    };
-#endif
-
     app.font12 = addDefaultFont(12);
     app.font14 = addDefaultFont(14);
     app.font16 = addDefaultFont(16);
@@ -388,6 +374,8 @@ int           main(int, char **) {
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(main_loop, &app, 0, true);
 #else
+    SDL_GL_SetSwapInterval(1); // Enable vsync
+
     while (running) {
         main_loop(&app);
     }
@@ -438,7 +426,6 @@ static void main_loop(void *arg) {
 
     ImGui::BeginTabBar("maintabbar");
     if (ImGui::BeginTabItem("Dashboard")) {
-#ifndef EMSCRIPTEN
         app->flowGraph.update();
 
         for (auto &b : app->flowGraph.sinkBlocks()) {
@@ -460,11 +447,10 @@ static void main_loop(void *arg) {
             }
             ImPlot::EndPlot();
         }
-#endif
 
         ImGui::EndTabItem();
     }
-#ifndef EMSCRIPTEN
+
     if (ImGui::BeginTabItem("Flowgraph")) {
         auto contentRegion = ImGui::GetContentRegionAvail();
 
@@ -472,7 +458,7 @@ static void main_loop(void *arg) {
 
         ImGui::EndTabItem();
     }
-#endif
+
     ImGui::EndTabBar();
 
     ImGui::End();

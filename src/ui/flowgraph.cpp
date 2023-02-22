@@ -8,10 +8,12 @@
 #include <iostream>
 
 #include <opencmw.hpp>
+#ifndef EMSCRIPTEN
 #include <RestClient.hpp>
 #include <majordomo/Message.hpp>
 #include <MdpMessage.hpp>
 #include <IoSerialiserJson.hpp>
+#endif
 
 #include <yaml-cpp/yaml.h>
 
@@ -336,6 +338,7 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
 
 void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri)
 {
+#ifndef EMSCRIPTEN
     opencmw::client::RestClient client;
 
     std::atomic<bool> done(false);
@@ -362,6 +365,7 @@ void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri)
     done.wait(false);
 
     parse(result);
+#endif
 }
 
 void FlowGraph::parse(const std::filesystem::path &file) {

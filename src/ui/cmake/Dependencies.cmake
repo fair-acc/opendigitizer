@@ -46,7 +46,7 @@ FetchContent_Declare(
 )
 
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony)
 else () # native build
     FetchContent_Declare(
             sdl2

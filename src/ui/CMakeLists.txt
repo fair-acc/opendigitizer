@@ -57,8 +57,9 @@ if (EMSCRIPTEN)
     set(outputFileName "index")
     add_executable(${outputFileName})
 
-    target_sources(index PRIVATE main.cpp)
+    target_sources(index PRIVATE ${sources})
 
+    target_include_directories(${outputFileName} PRIVATE ${plf_colony_SOURCE_DIR})
     # link the executable
     target_link_libraries(
             ${outputFileName}
@@ -66,6 +67,9 @@ if (EMSCRIPTEN)
             implot
             app_header
             ui_assets
+            core
+            imgui-node-editor
+            yaml-cpp::yaml-cpp
     )
 
     add_custom_target(serve

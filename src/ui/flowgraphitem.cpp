@@ -12,7 +12,12 @@ namespace DigitizerUi
 FlowGraphItem::FlowGraphItem(FlowGraph *fg)
              : m_flowGraph(fg)
 {
-    auto ed = ax::NodeEditor::CreateEditor();
+#ifdef EMSCRIPTEN
+    // In emscripten we don't have access to the filesystem so we can't read the settings file
+    m_config.SettingsFile = nullptr;
+#endif
+
+    auto ed = ax::NodeEditor::CreateEditor(&m_config);
     ax::NodeEditor::SetCurrentEditor(ed);
 
     auto &style = ax::NodeEditor::GetStyle();
