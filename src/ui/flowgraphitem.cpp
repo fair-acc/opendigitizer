@@ -100,20 +100,40 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
     ImGui::SetCursorPosY(y + rectSize.y + spacing);
 };
 
-static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
+enum class Alignment
+{
+    Left,
+    Right,
+};
+
+static void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left) {
     auto nodeId = ax::NodeEditor::NodeId(&b);
-    if (pos) {
-        ax::NodeEditor::SetNodePosition(nodeId, pos.value());
+    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
+
+    if (nodePos) {
         ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
+
+        auto p = nodePos.value();
+        if (alignment == Alignment::Right) {
+            float width = 80;
+            if (b.type) {
+                for (int i = 0; i < b.parameters().size(); ++i) {
+                    float w = ImGui::CalcTextSize("%s: %s", b.type->parameters[i].label.c_str(), b.parameters()[i].toString().c_str()).x;
+                    width = std::max(width, w);
+                }
+                width += padding.x + padding.z;
+            }
+            p.x -= width;
+        }
+
+        ax::NodeEditor::SetNodePosition(nodeId, p);
     }
     ax::NodeEditor::BeginNode(nodeId);
 
-    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
-
     ImGui::TextUnformatted(b.name.c_str());
 
-    const auto curPos = ImGui::GetCursorPos();
-    const auto leftPos = curPos.x - padding.x;
+    auto curPos = ImGui::GetCursorPos();
+    auto leftPos = curPos.x - padding.x;
     const int rectHeight = 14;
     const int rectsSpacing = 5;
     const int textMargin = 2;
@@ -127,9 +147,7 @@ static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
         ImGui::SetCursorPos(curPos);
 
         for (int i = 0; i < b.parameters().size(); ++i) {
-            ImGui::Text("%s:", b.type->parameters[i].label.c_str());
-            ImGui::SameLine();
-            ImGui::TextUnformatted(b.parameters()[i].toString().c_str());
+            ImGui::Text("%s: %s", b.type->parameters[i].label.c_str(), b.parameters()[i].toString().c_str());
         }
 
         ImGui::SetCursorPos(curPos);
@@ -190,14 +208,14 @@ static void addBlock(const Block &b, std::optional<ImVec2> pos = {}) {
 }
 
 void FlowGraphItem::draw(const ImVec2 &size) {
-    const float left = ImGui::GetCursorPosX() + 10;
+    const float left = ImGui::GetCursorPosX();
     ax::NodeEditor::Begin("My Editor", size);
 
     int sourceId = 2000;
     int y        = 0;
 
     for (auto &s : m_flowGraph->sourceBlocks()) {
-        auto p = ax::NodeEditor::ScreenToCanvas({ left, 0 });
+        auto p = ax::NodeEditor::ScreenToCanvas({ left + 10, 0 });
         p.y    = y;
 
         addBlock(*s, p);
@@ -206,10 +224,10 @@ void FlowGraphItem::draw(const ImVec2 &size) {
 
     y = 0;
     for (auto &s : m_flowGraph->sinkBlocks()) {
-        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x - 200, 0 });
+        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x - 10, 0 });
         p.y    = y;
 
-        addBlock(*s, p);
+        addBlock(*s, p, Alignment::Right);
         y += ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(s.get())).y + 10;
     }
 
