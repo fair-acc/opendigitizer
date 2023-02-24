@@ -37,6 +37,12 @@ if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
     endif ()
 endif ()
 
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
+    option(ENABLE_COVERAGE "Enable Coverage" ON)
+else ()
+    option(ENABLE_COVERAGE "Enable Coverage" OFF)
+endif ()
+
 # enable cache system
 include(cmake/Cache.cmake)
 
@@ -46,7 +52,20 @@ add_library(project_warnings INTERFACE)
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
-# add_subdirectory(acquisition) # worker providing mock data
+if (ENABLE_COVERAGE)
+    if (UNIX AND NOT APPLE) # Linux
+        message("Coverage reporting enabled")
+        include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
+        # (License: BSL-1.0)
+        target_compile_options(project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
+        target_link_libraries(project_options INTERFACE --coverage)
+        append_coverage_compiler_flags()
+    else ()
+        message(WARNING "Coverage is only supported on linux")
+    endif ()
+endif()
+
+add_subdirectory(acquisition)
 add_subdirectory(flowgraph) # worker providing access to the mock flowgraph and allows editing it
 add_subdirectory(rest) # worker providing access to static assets
 
@@ -55,4 +74,4 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATIO
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 add_executable(opendigitizer main.cpp)
-target_link_libraries(opendigitizer PRIVATE od_flowgraph od_rest majordomo project_options project_warnings assets::rest)
+target_link_libraries(opendigitizer PRIVATE od_flowgraph od_acquisition od_rest majordomo client project_options project_warnings assets::rest)
