@@ -1,7 +1,7 @@
+#include <Client.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
-#include <Client.hpp>
 
 #include <fmt/format.h>
 #define __cpp_lib_source_location
@@ -30,9 +30,9 @@ const boost::ut::suite basic_acq_worker_tests = [] {
         using namespace boost::ut::operators::terse;
 
         // broker
-        Broker broker("PrimaryBroker");
+        Broker     broker("PrimaryBroker");
 
-        const auto  brokerRouterAddress = broker.bind(URI<>("mds://127.0.0.1:12345"));
+        const auto brokerRouterAddress = broker.bind(URI<>("mds://127.0.0.1:12345"));
         expect((brokerRouterAddress.has_value() == "bound successful"_b));
         std::jthread brokerThread([&broker] {
             broker.run();
@@ -54,8 +54,8 @@ const boost::ut::suite basic_acq_worker_tests = [] {
 
         std::this_thread::sleep_for(100ms);
 
-        std::atomic<int>               receivedA{ 0 };
-        std::atomic<int>               receivedAB{ 0 };
+        std::atomic<int> receivedA{ 0 };
+        std::atomic<int> receivedAB{ 0 };
         client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"), [&receivedA](const opencmw::mdp::Message &update) {
             fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName.str(), update.endpoint.str());
             receivedA++;
@@ -65,7 +65,7 @@ const boost::ut::suite basic_acq_worker_tests = [] {
             receivedAB++;
         });
 
-        while (receivedA < 2  && receivedAB < 2) {
+        while (receivedA < 2 && receivedAB < 2) {
             std::this_thread::sleep_for(200ms);
         }
 
@@ -81,7 +81,7 @@ const boost::ut::suite basic_acq_worker_tests = [] {
         brokerThread.join();
         acquisitionWorkerThread.join();
     };
-
 };
 
-int main() { /* not needed for ut */ }
+int main() { /* not needed for ut */
+}

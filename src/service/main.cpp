@@ -1,6 +1,6 @@
+#include <Client.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Worker.hpp>
-#include <Client.hpp>
 
 #include <fstream>
 #include <thread>
@@ -55,8 +55,8 @@ int main() {
 
     std::this_thread::sleep_for(100ms);
 
-    std::atomic<int>               receivedA{ 0 };
-    std::atomic<int>               receivedAB{ 0 };
+    std::atomic<int> receivedA{ 0 };
+    std::atomic<int> receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"), [&receivedA](const opencmw::mdp::Message &update) {
         fmt::print("Client('saw') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName.str(), update.endpoint.str(), update.data.asString());
         receivedA++;
@@ -66,7 +66,7 @@ int main() {
         receivedAB++;
     });
 
-    while (receivedA < 2  || receivedAB < 4) {
+    while (receivedA < 2 || receivedAB < 4) {
         std::this_thread::sleep_for(200ms);
     }
 

@@ -1,13 +1,13 @@
 #ifndef OPENDIGITIZER_SERVICE_ACQWORKER_H
 #define OPENDIGITIZER_SERVICE_ACQWORKER_H
 
-#include <majordomo/Worker.hpp>
 #include "daq_api.hpp"
+#include <majordomo/Worker.hpp>
 #include <ranges>
 #include <string_view>
 
-#include <cmath>
 #include <chrono>
+#include <cmath>
 #include <unordered_map>
 #include <utility>
 
@@ -20,17 +20,19 @@ using namespace std::chrono_literals;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class AcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
-    std::jthread _notifyThread;
+    std::jthread              _notifyThread;
     std::chrono::milliseconds _rate;
+
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
     template<typename BrokerType>
-    explicit AcquisitionWorker(const BrokerType &broker, std::chrono::milliseconds rate) : super_t(broker, {}), _rate(rate) {
-        _notifyThread = std::jthread([this, &rate](const std::stop_token& stoken) {
+    explicit AcquisitionWorker(const BrokerType &broker, std::chrono::milliseconds rate)
+        : super_t(broker, {}), _rate(rate) {
+        _notifyThread = std::jthread([this, &rate](const std::stop_token &stoken) {
             fmt::print("acqWorker: starting notify thread\n");
             std::chrono::time_point update = std::chrono::system_clock::now();
             while (!stoken.stop_requested()) {
-                fmt::print("acqWorker: active subscriptions: {}\n", super_t::activeSubscriptions() | std::ranges::views::transform([](auto &uri) {return uri.str();}));
+                fmt::print("acqWorker: active subscriptions: {}\n", super_t::activeSubscriptions() | std::ranges::views::transform([](auto &uri) { return uri.str(); }));
                 for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
                     if (subTopic.path() != serviceName.c_str()) {
                         continue;
@@ -39,20 +41,19 @@ public:
                     const auto              queryMap = subTopic.queryParamMap();
                     const TimeDomainContext filterIn = opencmw::query::deserialise<TimeDomainContext>(queryMap);
 
-
                     try {
-                        Acquisition reply;
-                        si::time<nanosecond, ::int64_t> triggerStamp{std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count()};
+                        Acquisition                     reply;
+                        si::time<nanosecond, ::int64_t> triggerStamp{ std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count() };
 
-                        std::string signals = filterIn.channelNameFilter.empty() ? "sine,saw" : filterIn.channelNameFilter;
-                        for (std::string_view signal : signals | std::ranges::views::split(',') | std::ranges::views::transform([](const auto &&r) {return std::string_view{&*r.begin(), std::ranges::distance(r)};})) {
-                            auto filterInLocal = filterIn;
-                            filterInLocal.channelNameFilter = std::string{signal};
+                        std::string                     signals = filterIn.channelNameFilter.empty() ? "sine,saw" : filterIn.channelNameFilter;
+                        for (std::string_view signal : signals | std::ranges::views::split(',') | std::ranges::views::transform([](const auto &&r) { return std::string_view{ &*r.begin(), std::ranges::distance(r) }; })) {
+                            auto filterInLocal              = filterIn;
+                            filterInLocal.channelNameFilter = std::string{ signal };
                             handleGetRequest(triggerStamp, filterInLocal, reply);
 
                             TimeDomainContext filterOut = filterIn;
-                            filterOut.contentType = opencmw::MIME::JSON;
-                            auto res = super_t::notify(std::string(serviceName.c_str()), filterOut, reply);
+                            filterOut.contentType       = opencmw::MIME::JSON;
+                            auto res                    = super_t::notify(std::string(serviceName.c_str()), filterOut, reply);
                             fmt::print("acqWorker: {} update sent {}\n", signal, res);
                         }
                     } catch (const std::exception &ex) {
@@ -60,8 +61,9 @@ public:
                     }
                 }
 
-                auto next_update = update + 2000ms;
-                auto willSleepFor = next_update - std::chrono::system_clock::now();;
+                auto next_update  = update + 2000ms;
+                auto willSleepFor = next_update - std::chrono::system_clock::now();
+                ;
                 if (willSleepFor > 0ms) {
                     std::this_thread::sleep_for(willSleepFor);
                 }
@@ -70,11 +72,11 @@ public:
             fmt::print("acqWorker: stopped notify thread\n");
         });
 
-        super_t::setCallback([this](RequestContext &rawCtx, const TimeDomainContext &requestContext, const Empty&, TimeDomainContext& /*replyContext*/, Acquisition &out) {
+        super_t::setCallback([this](RequestContext &rawCtx, const TimeDomainContext &requestContext, const Empty &, TimeDomainContext & /*replyContext*/, Acquisition &out) {
             if (rawCtx.request.command() == Command::Get) {
                 // for real data, where we cannot generate the data on the fly, the get has to implement some sort of caching
-                std::chrono::time_point update = std::chrono::system_clock::now();
-                si::time<nanosecond, ::int64_t> triggerStamp{std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count()};
+                std::chrono::time_point         update = std::chrono::system_clock::now();
+                si::time<nanosecond, ::int64_t> triggerStamp{ std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count() };
                 handleGetRequest(triggerStamp, requestContext, out);
             }
         });
@@ -85,15 +87,15 @@ public:
         _notifyThread.join();
     }
 
-    void handleGetRequest(const si::time<nanosecond, ::int64_t> updateStamp, const TimeDomainContext& ctx,  Acquisition &out) {
-        using std::ranges::views::split, std::ranges::views::transform;
+    void handleGetRequest(const si::time<nanosecond, ::int64_t> updateStamp, const TimeDomainContext &ctx, Acquisition &out) {
         using std::chrono::milliseconds, std::chrono::duration_cast, std::chrono::system_clock;
+        using std::ranges::views::split, std::ranges::views::transform;
         constexpr std::size_t N_SAMPLES = 32;
 
-        out.channelName = ctx.channelNameFilter;
+        out.channelName                 = ctx.channelNameFilter;
 
-        out.acqTriggerTimeStamp = updateStamp;
-        out.acqTriggerName = "STREAMING";
+        out.acqTriggerTimeStamp         = updateStamp;
+        out.acqTriggerName              = "STREAMING";
 
         // missing move constructor... out.channelValues = {{}};
         out.channelValue.resize(N_SAMPLES);
@@ -102,9 +104,9 @@ public:
 
         if (out.channelName.value() == "sine") {
             const double amplitude = 1.0;
-            const int n_period = 20;
+            const int    n_period  = 20;
             for (std::size_t i = 0; i < N_SAMPLES; i++) {
-                const float t = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
+                const float t       = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
                 out.channelValue[i] = static_cast<float>(amplitude * std::sin(static_cast<double>(t) / n_period * std::numbers::pi));
                 out.channelError[i] = 0.0f;
                 // out.channelTimeBase[i] = static_cast<float>(i) * _rate.count() * 1e-3f / N_SAMPLES; // time in float seconds
@@ -113,9 +115,9 @@ public:
             out.channelUnit = "V";
         } else if (out.channelName.value() == "saw") {
             const double amplitude = 9.0;
-            const int n_period = 13;
+            const int    n_period  = 13;
             for (std::size_t i = 0; i < N_SAMPLES; i++) {
-                const float t = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
+                const float t       = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
                 out.channelValue[i] = static_cast<float>(amplitude * static_cast<double>(t) / n_period);
                 out.channelError[i] = 0.01f;
                 // out.channelTimeBase[i] = static_cast<float>(i) * _rate.count() * 1e-3f / N_SAMPLES; // time in float seconds
@@ -127,4 +129,4 @@ public:
     }
 };
 } // namespace opendigitizer::acq
-#endif //OPENDIGITIZER_SERVICE_ACQWORKER_H
+#endif // OPENDIGITIZER_SERVICE_ACQWORKER_H
