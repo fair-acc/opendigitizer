@@ -1,155 +1,130 @@
-#include <majordomo/base64pp.hpp>
-#include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
-#include <majordomo/Worker.hpp>
+#ifndef OPENDIGITIZER_SERVICE_ACQWORKER_H
+#define OPENDIGITIZER_SERVICE_ACQWORKER_H
 
-#include <atomic>
-#include <cmath>
-#include <fstream>
-#include <iomanip>
-#include <numeric>
+#include <majordomo/Worker.hpp>
+#include "daq_api.hpp"
 #include <ranges>
 #include <string_view>
-#include <thread>
 
-#include "daq_api.hpp"
+#include <cmath>
+#include <chrono>
+#include <unordered_map>
+#include <utility>
+
+namespace opendigitizer::acq {
+using opencmw::Annotated;
+using opencmw::NoUnit;
 
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
-struct AcqFilterContext {
-    std::string             signalFilter;
-    opencmw::MIME::MimeType contentType = opencmw::MIME::BINARY;
-};
-ENABLE_REFLECTION_FOR(AcqFilterContext, signalFilter, contentType)
-
-using namespace opencmw::majordomo;
-
 template<units::basic_fixed_string serviceName, typename... Meta>
-class AcquisitionWorker : public Worker<serviceName, AcqFilterContext, Empty, Acquisition, Meta...> {
-    static constexpr size_t                                                     N_ELEMS = 100;
-    std::mutex                                                                  mockSignalsLock;
-    std::unordered_map<std::string, std::pair<int, std::array<float, N_ELEMS>>> mockSignals = { { "A", { 0, { 0.0f } } }, { "B", { 0, { 1.0f } } } }; // <signal name, <update inc, value>>
-    std::jthread                                                                notifyThread;
-    bool                                                                        shutdownRequested = false;
-
+class AcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
+    std::jthread _notifyThread;
+    std::chrono::milliseconds _rate;
 public:
-    using super_t = Worker<serviceName, AcqFilterContext, Empty, Acquisition, Meta...>;
+    using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
+    template<typename BrokerType>
+    explicit AcquisitionWorker(const BrokerType &broker, std::chrono::milliseconds rate) : super_t(broker, {}), _rate(rate) {
+        _notifyThread = std::jthread([this, &rate](const std::stop_token& stoken) {
+            fmt::print("acqWorker: starting notify thread\n");
+            std::chrono::time_point update = std::chrono::system_clock::now();
+            while (!stoken.stop_requested()) {
+                fmt::print("acqWorker: active subscriptions: {}\n", super_t::activeSubscriptions() | std::ranges::views::transform([](auto &uri) {return uri.str();}));
+                for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
+                    if (subTopic.path() != serviceName.c_str()) {
+                        continue;
+                    }
 
-    template<typename BrokerType, typename Interval>
-    explicit AcquisitionWorker(const BrokerType &broker, Interval updateInterval)
-        : super_t(broker, {}) {
-        notifyThread = std::jthread([this, updateInterval] {
-            while (!shutdownRequested) {
-                std::this_thread::sleep_for(updateInterval);
-                updateData();
+                    const auto              queryMap = subTopic.queryParamMap();
+                    const TimeDomainContext filterIn = opencmw::query::deserialise<TimeDomainContext>(queryMap);
+
+
+                    try {
+                        Acquisition reply;
+                        si::time<nanosecond, ::int64_t> triggerStamp{std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count()};
+
+                        std::string signals = filterIn.channelNameFilter.empty() ? "sine,saw" : filterIn.channelNameFilter;
+                        for (std::string_view signal : signals | std::ranges::views::split(',') | std::ranges::views::transform([](const auto &&r) {return std::string_view{&*r.begin(), std::ranges::distance(r)};})) {
+                            auto filterInLocal = filterIn;
+                            filterInLocal.channelNameFilter = std::string{signal};
+                            handleGetRequest(triggerStamp, filterInLocal, reply);
+
+                            TimeDomainContext filterOut = filterIn;
+                            filterOut.contentType = opencmw::MIME::JSON;
+                            auto res = super_t::notify(std::string(serviceName.c_str()), filterOut, reply);
+                            fmt::print("acqWorker: {} update sent {}\n", signal, res);
+                        }
+                    } catch (const std::exception &ex) {
+                        fmt::print("caught exception '{}'\n", ex.what());
+                    }
+                }
+
+                auto next_update = update + 2000ms;
+                auto willSleepFor = next_update - std::chrono::system_clock::now();;
+                if (willSleepFor > 0ms) {
+                    std::this_thread::sleep_for(willSleepFor);
+                }
+                update = next_update;
             }
+            fmt::print("acqWorker: stopped notify thread\n");
         });
 
-        super_t::setCallback([this](const RequestContext &rawCtx, const AcqFilterContext &filterIn, const Empty & /*in - unused*/, AcqFilterContext &filterOut, Acquisition &out) {
+        super_t::setCallback([this](RequestContext &rawCtx, const TimeDomainContext &requestContext, const Empty&, TimeDomainContext& /*replyContext*/, Acquisition &out) {
             if (rawCtx.request.command() == Command::Get) {
-                fmt::print("worker received 'get' request\n");
-                handleGetRequest(filterIn, filterOut, out);
-            } else if (rawCtx.request.command() == Command::Set) {
-                fmt::print("worker received 'set' request - ignoring for read-only property\n");
+                // for real data, where we cannot generate the data on the fly, the get has to implement some sort of caching
+                std::chrono::time_point update = std::chrono::system_clock::now();
+                si::time<nanosecond, ::int64_t> triggerStamp{std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count()};
+                handleGetRequest(triggerStamp, requestContext, out);
             }
         });
     }
 
-    void updateData() { // some silly updating data
-        static int  counter      = 0;
-        const auto  notifySignal = counter % 2 == false ? "A" : "B";
-        const float t0           = M_2_PIf * static_cast<float>(counter) / 10.0f;
-        if (mockSignals.contains(notifySignal)) {
-            fmt::print("updateData({}) - update signal '{}'\n", counter, notifySignal);
-            std::lock_guard lockGuard(mockSignalsLock);
-            mockSignals[notifySignal].first++;
-            std::array<float, N_ELEMS> value{};
-            for (std::size_t i = 0; i < N_ELEMS; i++) {
-                const float t = t0 + static_cast<float>(i) * 2.0f / N_ELEMS;
-                value[i]      = { counter % 2 == false ? sinf(t) : cosf(t) };
-            }
-            mockSignals[notifySignal].second = value;
-        } else {
-            fmt::print("updateData({}) - updated nothing\n", counter);
-        }
-        counter++;
-        notifyUpdate();
+    ~AcquisitionWorker() {
+        _notifyThread.request_stop();
+        _notifyThread.join();
     }
 
-private:
-    void handleGetRequest(const AcqFilterContext &filterIn, AcqFilterContext & /*filterOut*/, Acquisition &out) {
-        // auto signals = std::string_view(filterIn.signalFilter) | std::ranges::views::split(',');
-        // for (const auto &signal : signals) {
-        //     out.channelNames.emplace_back(std::string_view(signal.begin(), signal.end()));
-        // }
-        for (const auto &[signal, data] : mockSignals) {
-            out.channelNames.emplace_back(std::string_view(signal.begin(), signal.end()));
-        }
-        out.channelUnits.value() = { "V", "A" };
-        fmt::print("handleGetRequest for '{}'\n", out.channelNames.value());
-        std::lock_guard lockGuard(mockSignalsLock);
-        out.channelTimeSinceRefTrigger.value().resize(N_ELEMS);
-        std::iota(out.channelTimeSinceRefTrigger.value().begin(), out.channelTimeSinceRefTrigger.value().end(), 2.0f / N_ELEMS);
-        out.channelValues.value() = opencmw::MultiArray<float, 2>({ out.channelNames.size(), N_ELEMS });
-        out.channelErrors.value() = opencmw::MultiArray<float, 2>({ out.channelNames.size(), N_ELEMS });
-        for (std::size_t i = 0; i < out.channelNames.size(); i++) {
-            const auto mock = mockSignals.at(out.channelNames.value()[i]);
-            const auto sig  = mock.second;
-            for (std::size_t j = 0; j < N_ELEMS; j++) {
-                out.channelValues.value()[{ i, j }] = sig[j];
-            }
-            if (i == 0) {
-                out.refTriggerStamp = mock.first;
-            }
-        }
-    }
+    void handleGetRequest(const si::time<nanosecond, ::int64_t> updateStamp, const TimeDomainContext& ctx,  Acquisition &out) {
+        using std::ranges::views::split, std::ranges::views::transform;
+        using std::chrono::milliseconds, std::chrono::duration_cast, std::chrono::system_clock;
+        constexpr std::size_t N_SAMPLES = 32;
 
-    bool shallUpdateForTopic(const auto &filterIn) const noexcept {
-        // auto                               signals = std::string_view(filterIn.signalFilter) | std::ranges::views::split(',');
-        // std::set<std::string, std::less<>> requestedSignals;
-        // for (const auto &signal : signals) {
-        //     requestedSignals.emplace(std::string_view(signal.begin(), signal.end()));
-        // }
-        // if (requestedSignals.empty()) {
-        //     return false;
-        // }
-        // int updateCount = -1;
-        // for (const auto &signal : requestedSignals) {
-        //     if (!mockSignals.contains(signal)) {
-        //         fmt::print("requested unknown signal '{}'\n", signal);
-        //         return false;
-        //     }
-        //     if (updateCount < 0) {
-        //         updateCount = mockSignals.at(signal).first;
-        //     }
-        //     if (mockSignals.at(signal).first != updateCount || updateCount == 0) {
-        //         // here: don't update if the update count is not identical for all signals
-        //         return false;
-        //     }
-        // }
-        return true;
-    }
+        out.channelName = ctx.channelNameFilter;
 
-    void notifyUpdate() {
-        for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
+        out.acqTriggerTimeStamp = updateStamp;
+        out.acqTriggerName = "STREAMING";
 
-            const auto             queryMap = subTopic.queryParamMap();
-            const AcqFilterContext filterIn = opencmw::query::deserialise<AcqFilterContext>(queryMap);
-            if (!shallUpdateForTopic(filterIn)) {
-                fmt::print("active user subscription: '{}' is NOT being notified\n", subTopic.str());
-                break;
+        // missing move constructor... out.channelValues = {{}};
+        out.channelValue.resize(N_SAMPLES);
+        out.channelError.resize(N_SAMPLES);
+        out.channelTimeBase.resize(N_SAMPLES);
+
+        if (out.channelName.value() == "sine") {
+            const double amplitude = 1.0;
+            const int n_period = 20;
+            for (std::size_t i = 0; i < N_SAMPLES; i++) {
+                const float t = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
+                out.channelValue[i] = static_cast<float>(amplitude * std::sin(static_cast<double>(t) / n_period * std::numbers::pi));
+                out.channelError[i] = 0.0f;
+                // out.channelTimeBase[i] = static_cast<float>(i) * _rate.count() * 1e-3f / N_SAMPLES; // time in float seconds
+                out.channelTimeBase[i] = i * _rate.count() / N_SAMPLES; // time in integer nanoseconds
             }
-            AcqFilterContext filterOut = filterIn;
-            Acquisition      subscriptionReply;
-            try {
-                handleGetRequest(filterIn, filterOut, subscriptionReply);
-                super_t::notify(std::string(serviceName.c_str()), filterOut, subscriptionReply);
-            } catch (const std::exception &ex) {
-                fmt::print("caught specific exception '{}'\n", ex.what());
-            } catch (...) {
-                fmt::print("caught unknown generic exception\n");
+            out.channelUnit = "V";
+        } else if (out.channelName.value() == "saw") {
+            const double amplitude = 9.0;
+            const int n_period = 13;
+            for (std::size_t i = 0; i < N_SAMPLES; i++) {
+                const float t = (static_cast<float>((updateStamp.number() * N_SAMPLES / _rate.count() / 1000000 + i) % n_period)) * _rate.count() * 1e-3f / N_SAMPLES;
+                out.channelValue[i] = static_cast<float>(amplitude * static_cast<double>(t) / n_period);
+                out.channelError[i] = 0.01f;
+                // out.channelTimeBase[i] = static_cast<float>(i) * _rate.count() * 1e-3f / N_SAMPLES; // time in float seconds
+                out.channelTimeBase[i] = i * _rate.count() / N_SAMPLES; // time in integer nanoseconds
             }
+            out.channelUnit = "A";
         }
+        out.temperature.value() = 20.0f;
     }
 };
+} // namespace opendigitizer::acq
+#endif //OPENDIGITIZER_SERVICE_ACQWORKER_H
