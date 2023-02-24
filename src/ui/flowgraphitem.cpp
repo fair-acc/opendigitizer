@@ -63,7 +63,7 @@ static uint32_t darken(uint32_t c)
     return r;
 }
 
-static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, ImVec2 &p, ImVec2 size, float spacing) {
+static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2 &p, ImVec2 size) {
     const bool input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2   min  = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2   max  = input ? p + ImVec2(0, size.y) : p + size;
@@ -83,8 +83,6 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, ImVec
     if (input) {
         ax::NodeEditor::PopStyleVar(2);
     }
-
-    p.y += size.y + spacing;
 };
 
 static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float textMargin,
@@ -100,15 +98,42 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
     ImGui::SetCursorPosY(y + rectSize.y + spacing);
 };
 
-enum class Alignment
-{
-    Left,
-    Right,
-};
+template<auto GetPorts, int ConnectionEnd>
+static bool blockInTreeHelper(const Block *block, const Block *start) {
+    if (block == start) {
+        return true;
+    }
 
-static void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left) {
+    for (const auto &port : GetPorts(start)) {
+        for (auto *c : port.connections) {
+            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, c->ports[ConnectionEnd]->block)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool blockInTree(const Block *block, const Block *start) {
+    constexpr auto inputs  = [](const Block *b) { return b->inputs(); };
+    constexpr auto outputs = [](const Block *b) { return b->outputs(); };
+    return blockInTreeHelper<inputs, 0>(block, start) || blockInTreeHelper<outputs, 1>(block, start);
+}
+
+void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alignment alignment) {
     auto nodeId = ax::NodeEditor::NodeId(&b);
     const auto padding = ax::NodeEditor::GetStyle().NodePadding;
+
+    const bool filteredOut = [&]() {
+        if (m_filterBlock && !blockInTree(&b, m_filterBlock)) {
+            return true;
+        }
+        return false;
+    }();
+
+    if (filteredOut) {
+        ImGui::BeginDisabled();
+    }
 
     if (nodePos) {
         ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
@@ -159,7 +184,10 @@ static void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignme
         ImVec2 pos = { leftPos, curPos.y };
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
-            addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight }, rectsSpacing);
+            if (!filteredOut) {
+                addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight });
+            }
+            pos.y += rectHeight + rectsSpacing;
         }
 
         // make sure the node ends up being tall enough to fit all the pins
@@ -173,7 +201,10 @@ static void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignme
         pos = { leftPos + s.x, curPos.y };
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
-            addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight }, rectsSpacing);
+            if (!filteredOut) {
+                addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight });
+            }
+            pos.y += rectHeight + rectsSpacing;
         }
 
         // likewise for the output pins
@@ -205,6 +236,24 @@ static void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignme
             drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->outputs[i].name, out.type);
         }
     }
+
+    if (filteredOut) {
+        ImGui::EndDisabled();
+    }
+
+    ImGui::SetCursorPos(curPos);
+    const auto size = ax::NodeEditor::GetNodeSize(nodeId);
+    ImGui::SetCursorPosY(ax::NodeEditor::GetNodePosition(nodeId).y + size.y - padding.w - 20);
+
+    ImGui::PushID(b.name.c_str());
+    if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
+        if (m_filterBlock == &b) {
+            m_filterBlock = nullptr;
+        } else {
+            m_filterBlock = &b;
+        }
+    }
+    ImGui::PopID();
 }
 
 void FlowGraphItem::draw(const ImVec2 &size) {

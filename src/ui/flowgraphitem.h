@@ -20,6 +20,13 @@ public:
     void draw(const ImVec2 &size);
 
 private:
+    enum class Alignment {
+        Left,
+        Right,
+    };
+
+    void                          addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
+
     FlowGraph *m_flowGraph;
     Block                        *m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
@@ -28,6 +35,7 @@ private:
     bool m_createNewBlock = false;
     ImVec2 m_contextMenuPosition;
     ax::NodeEditor::Config        m_config;
+    const Block                  *m_filterBlock = nullptr;
 };
 
 }
