@@ -63,6 +63,7 @@ explicit AcquisitionWorker(const BrokerType &broker, std::chrono::milliseconds r
 
             auto next_update  = update + 2000ms;
             auto willSleepFor = next_update - std::chrono::system_clock::now();
+            ;
             if (willSleepFor > 0ms) {
                 std::this_thread::sleep_for(willSleepFor);
             }
@@ -91,7 +92,6 @@ void handleGetRequest(const si::time<nanosecond, ::int64_t> updateStamp, const A
     using std::ranges::views::split, std::ranges::views::transform;
     constexpr std::size_t N_SAMPLES = 32;
 
-    out.acqMode = ctx.acqMode;
     out.signalNames = std::vector<std::string>{ctx.signalNames};
 
     out.timestamp = updateStamp;
