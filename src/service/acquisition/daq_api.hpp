@@ -1,28 +1,81 @@
 #pragma once
 
-#include <iostream>
+#include <MultiArray.hpp>
 #include <opencmw.hpp>
+#include <string>
+#include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
 #include <vector>
 
+using opencmw::Annotated;
+using namespace units::isq;
+using namespace units::isq::si;
+using namespace std::literals;
+
 /**
- * @brief Time-domain FEC acquisition user-interface
- * specified here: https://git.gsi.de/acc/specs/generic-daq#time-domain-fec-acquisition-properties-user-interface.
+ * Generic time domain data object.
+ * Specified in: https://edms.cern.ch/document/1823376/1 EDMS: 1823376 v.1 Section 4.3.1
  */
+// clang-format: OFF
 struct Acquisition {
-    opencmw::Annotated<std::string, opencmw::NoUnit, "Name of timing event used to align the data">                                                     refTriggerName = "NO_REF_TRIGGER";
-    opencmw::Annotated<int64_t, units::isq::si::time<units::isq::si::nanosecond>, "UTC timestamp on which the timing event occured">                    refTriggerStamp;
-    opencmw::Annotated<std::vector<float>, units::isq::si::time<units::isq::si::second>, "Relative time between the reference trigger and each sample"> channelTimeSinceRefTrigger;
-    opencmw::Annotated<float, units::isq::si::time<units::isq::si::second>, "User-defined delay">                                                       channelUserDelay;
-    opencmw::Annotated<float, units::isq::si::time<units::isq::si::second>, "Actual trigger delay">                                                     channelActualDelay;
-    opencmw::Annotated<std::vector<std::string>, opencmw::NoUnit, "Name(s) of the channel/signal">                                                      channelNames{};
-    opencmw::Annotated<opencmw::MultiArray<float, 2>, opencmw::NoUnit, "Values of the channel/signal">                                                  channelValues{};
-    opencmw::Annotated<opencmw::MultiArray<float, 2>, opencmw::NoUnit, "R.m.s. error of of the channel/signal">                                         channelErrors{};
-    opencmw::Annotated<std::vector<std::string>, opencmw::NoUnit, "S.I. unit of post-processed signal">                                                 channelUnits{};
-    opencmw::Annotated<std::vector<int64_t>, opencmw::NoUnit, "Status bit-mask bits for this channel/signal">                                           status{};
-    opencmw::Annotated<std::vector<float>, opencmw::NoUnit, "Minimum expected value for channel/signal">                                                channelRangeMin{};
-    opencmw::Annotated<std::vector<float>, opencmw::NoUnit, "Maximum expected value for channel/signal">                                                channelRangeMax{};
-    // Celsius is currently not supported: https://github.com/mpusz/units/pull/232
-    opencmw::Annotated<std::vector<float>, opencmw::NoUnit, "Temperature of the measurement device"> temperature{}; // [°C]
+    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                        // specified as Enum + String
+    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = { "STREAMING" }; // specified as ENUM
+    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;               // specified as type WR timestamp
+    Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
+    Annotated<std::vector<::int32_t>, si::time<second>, "time scale">                            channelTimeBase; // todo either nanosecond or float
+    Annotated<float, si::time<second>, "user-defined delay">                                     channelUserDelay   = 0.0f;
+    Annotated<float, si::time<second>, "actual trigger delay">                                   channelActualDelay = 0.0f;
+    Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
+    Annotated<std::vector<float>, opencmw::NoUnit, "value of the channel/signal">                channelValue;
+    Annotated<std::vector<float>, opencmw::NoUnit, "r.m.s. error of of the channel/signal">      channelError;
+    Annotated<std::string, opencmw::NoUnit, "S.I. unit of post-processed signal">                channelUnit;
+    Annotated<int64_t, opencmw::NoUnit, "status bit-mask bits for this channel/signal">          status;
+    Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMin;
+    Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMax;
+    Annotated<float, opencmw::NoUnit, "temperature of the measurement device">                   temperature;
 };
-ENABLE_REFLECTION_FOR(Acquisition, refTriggerName, refTriggerStamp, channelTimeSinceRefTrigger, channelUserDelay, channelActualDelay, channelNames, channelValues, channelErrors, channelUnits, status, channelRangeMin, channelRangeMax)
+ENABLE_REFLECTION_FOR(Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelUnit, status, channelRangeMin, channelRangeMax, temperature)
+
+/**
+ * Generic frequency domain data object.
+ * Specified in: https://edms.cern.ch/document/1823376/1 EDMS: 1823376 v.1 Section 4.3.2
+ */
+// clang-format: OFF
+struct AcquisitionSpectra {
+    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                        // specified as Enum + String
+    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = { "STREAMING" }; // specified as ENUM
+    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;               // specified as type WR timestamp
+    Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
+    Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
+    Annotated<std::vector<float>, opencmw::NoUnit, "magnitude spectra of signals">               channelMagnitude;
+    Annotated<std::vector<::int32_t>, opencmw::NoUnit, "{N_meas, N_binning}">                    channelMagnitude_dimensions;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "{'time', 'frequency'}">                channelMagnitude_labels;
+    Annotated<std::vector<long>, si::time<si::second>, "timestamps of samples">                  channelMagnitude_dim1_labels; // todo: either nanosecond or float
+    Annotated<std::vector<float>, opencmw::NoUnit, "freqency scale">                             channelMagnitude_dim2_labels; // unit: Hz or f_rev
+    Annotated<std::vector<float>, opencmw::NoUnit, "phase spectra of signals">                   channelPhase;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "{'time', 'frequency'}">                channelPhase_labels;
+    Annotated<std::vector<long>, si::time<si::second>, "timestamps of samples">                  channelPhase_dim1_labels; // todo: either nanosecond or float
+    Annotated<std::vector<float>, opencmw::NoUnit, "freqency scale">                             channelPhase_dim2_labels; // unit: Hz or f_rev
+};
+ENABLE_REFLECTION_FOR(AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
+// clang-format: ON
+
+struct TimeDomainContext {
+    std::string             channelNameFilter;
+    int32_t                 acquisitionModeFilter = 0; // STREAMING
+    std::string             triggerNameFilter;
+    int32_t                 maxClientUpdateFrequencyFilter = 25;
+    opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
+};
+
+ENABLE_REFLECTION_FOR(TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
+
+struct FreqDomainContext {
+    std::string             channelNameFilter;
+    int32_t                 acquisitionModeFilter = 0; // STREAMING
+    std::string             triggerNameFilter;
+    int32_t                 maxClientUpdateFrequencyFilter = 25;
+    opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
+};
+
+ENABLE_REFLECTION_FOR(FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
