@@ -26,6 +26,7 @@ private:
     };
 
     void                          addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
+    void                          drawNewBlockDialog();
 
     FlowGraph *m_flowGraph;
     Block                        *m_selectedBlock = nullptr;
@@ -35,7 +36,12 @@ private:
     bool m_createNewBlock = false;
     ImVec2 m_contextMenuPosition;
     ax::NodeEditor::Config        m_config;
+
+    // new block dialog data
     const Block                  *m_filterBlock = nullptr;
+    std::string                   m_typesListFilter;
+    std::vector<BlockType *>      m_filteredBlockTypes;
+    bool                          m_filterInputReclaimFocus = false;
 };
 
 }

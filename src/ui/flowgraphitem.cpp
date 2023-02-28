@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 #include <imgui_node_editor.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include "flowgraph.h"
 #include "imguiutils.h"
@@ -448,21 +449,146 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         ImGui::OpenPopup("New block");
     }
 
+    drawNewBlockDialog();
+}
+
+static void ensureItemVisible() {
+    auto scroll = ImGui::GetScrollY();
+    auto min    = ImGui::GetWindowContentRegionMin().y + scroll;
+    auto max    = ImGui::GetWindowContentRegionMax().y + scroll;
+
+    auto h      = ImGui::GetItemRectSize().y;
+    auto y      = ImGui::GetCursorPosY() - scroll;
+    if (y > max) {
+        ImGui::SetScrollHereY(1);
+    } else if (y - h < min) {
+        ImGui::SetScrollHereY(0);
+    }
+}
+
+void FlowGraphItem::drawNewBlockDialog() {
+    auto completeBlockName = [](ImGuiInputTextCallbackData *d) -> int {
+        auto *this_ = static_cast<FlowGraphItem *>(d->UserData);
+        if (d->EventKey == ImGuiKey_Tab) {
+            std::vector<std::string> candidates;
+            std::size_t              shortest = -1;
+            for (auto &t : this_->m_flowGraph->blockTypes()) {
+                if (t.first.starts_with(std::string_view(d->Buf, d->BufTextLen))) {
+                    candidates.push_back(t.first);
+                    shortest = std::min(shortest, t.first.size());
+                }
+            }
+
+            if (candidates.empty()) {
+                return 0;
+            }
+
+            for (auto &c : candidates) {
+                c.resize(shortest);
+            }
+
+            while (candidates.size() > 1) {
+                auto s = candidates.size();
+                if (candidates[s - 2] == candidates[s - 1]) {
+                    candidates.pop_back();
+                    continue;
+                }
+
+                shortest--;
+                assert(shortest > 0);
+                for (auto &c : candidates) {
+                    c.resize(shortest);
+                }
+            }
+            auto *str = candidates.front().c_str();
+            d->InsertChars(d->BufTextLen, &str[d->BufTextLen], &str[candidates.front().size()]);
+        }
+        return 0;
+    };
+
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("New block")) {
+        auto y = ImGui::GetCursorPosY();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Filter:");
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(y);
+
+        if (ImGui::IsWindowAppearing() || m_filterInputReclaimFocus) {
+            ImGui::SetKeyboardFocusHere();
+            m_filterInputReclaimFocus = false;
+        }
+        bool scrollToSelected = ImGui::InputText("##filterBlockType", &m_typesListFilter, ImGuiInputTextFlags_CallbackCompletion, completeBlockName, this);
+
         if (ImGui::BeginListBox("##Available Block types", { 200, 200 })) {
+            auto filter = [this](const std::string &name) {
+                if (!m_typesListFilter.empty()) {
+                    auto it = std::search(name.begin(), name.end(), m_typesListFilter.begin(), m_typesListFilter.end(),
+                            [](int a, int b) { return std::tolower(a) == std::tolower(b); });
+                    if (it == name.end()) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            if (m_selectedBlockType && !filter(m_selectedBlockType->name)) {
+                m_selectedBlockType = nullptr;
+            }
+
+            int selectOffset = 0;
+            if (m_selectedBlockType) {
+                if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+                    ++selectOffset;
+                    scrollToSelected = true;
+                }
+                if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+                    --selectOffset;
+                    scrollToSelected = true;
+                }
+            }
+
+            m_filteredBlockTypes.clear();
             for (auto &t : m_flowGraph->blockTypes()) {
-                if (ImGui::Selectable(t.first.c_str(), t.second.get() == m_selectedBlockType)) {
-                    m_selectedBlockType = t.second.get();
+                if (filter(t.first)) {
+                    m_filteredBlockTypes.push_back(t.second.get());
+                }
+            }
+
+            for (auto it = m_filteredBlockTypes.begin(); it != m_filteredBlockTypes.end(); ++it) {
+                if (!m_selectedBlockType) {
+                    m_selectedBlockType = *it;
+                }
+
+                if (selectOffset == -1 && *(it + 1) == m_selectedBlockType) {
+                    m_selectedBlockType = *it;
+                    selectOffset        = 0;
+                } else if (selectOffset == 1 && *it == m_selectedBlockType && (it + 1) != m_filteredBlockTypes.end()) {
+                    m_selectedBlockType = nullptr;
+                    selectOffset        = 0;
+                }
+
+                if (ImGui::Selectable((*it)->name.c_str(), *it == m_selectedBlockType)) {
+                    m_selectedBlockType       = *it;
+                    m_filterInputReclaimFocus = true;
+                }
+                if (m_selectedBlockType == *it && scrollToSelected) {
+                    ensureItemVisible();
                 }
             }
             ImGui::EndListBox();
         }
 
-        if (ImGui::Button("Ok")) {
+        ImGui::Separator();
+
+        if (ImGui::Button("Ok") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
             if (m_selectedBlockType) {
                 m_createNewBlock = true;
             }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

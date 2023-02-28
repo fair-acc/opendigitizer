@@ -322,7 +322,9 @@ int           main(int, char **) {
         .fgItem    = { &app.flowGraph }
     };
 
-    // app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+#ifndef EMSCRIPTEN
+    app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+#endif
     app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
 
     app.flowGraph.addSourceBlock(std::make_unique<DataSource>("source1", 0.1));
