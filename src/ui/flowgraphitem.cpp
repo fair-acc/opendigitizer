@@ -259,9 +259,9 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
 
 void FlowGraphItem::draw(const ImVec2 &size) {
     const float left = ImGui::GetCursorPosX();
+    const float top  = ImGui::GetCursorPosY();
     ax::NodeEditor::Begin("My Editor", size);
 
-    int sourceId = 2000;
     int y        = 0;
 
     for (auto &s : m_flowGraph->sourceBlocks()) {
@@ -342,6 +342,9 @@ void FlowGraphItem::draw(const ImVec2 &size) {
             ax::NodeEditor::AcceptDeletedItem(true);
             auto *b = nodeId.AsPointer<Block>();
             m_flowGraph->deleteBlock(b);
+            if (m_filterBlock == b) {
+                m_filterBlock = nullptr;
+            }
         } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
             ax::NodeEditor::AcceptDeletedItem(true);
             auto *c = linkId.AsPointer<Connection>();
@@ -447,6 +450,12 @@ void FlowGraphItem::draw(const ImVec2 &size) {
 
     if (openNewBlockDialog) {
         ImGui::OpenPopup("New block");
+    }
+
+    ImGui::SetCursorPosX(left + size.x - 80);
+    ImGui::SetCursorPosY(top + size.y - 20);
+    if (ImGui::Button("New sink") && newSinkCallback) {
+        newSinkCallback();
     }
 
     drawNewBlockDialog();

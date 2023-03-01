@@ -223,6 +223,8 @@ public:
 
     void               update();
 
+    std::function<void(Block *)> blockDeletedCallback;
+
 private:
     std::vector<std::unique_ptr<Block>>                         m_sourceBlocks;
     std::vector<std::unique_ptr<Block>>                         m_sinkBlocks;

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <vector>
+#include <functional>
 #include <span>
+#include <vector>
 
 #include <imgui_node_editor.h>
 
@@ -18,6 +19,8 @@ public:
     FlowGraphItem(FlowGraph *fg);
 
     void draw(const ImVec2 &size);
+
+    std::function<void()> newSinkCallback;
 
 private:
     enum class Alignment {

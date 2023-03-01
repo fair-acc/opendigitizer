@@ -10,7 +10,7 @@ namespace DigitizerUi {
 
 class DataSink : public Block {
 public:
-    explicit DataSink(const char *name);
+    explicit DataSink(std::string_view name);
 
     void     processData() override;
 

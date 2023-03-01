@@ -246,6 +246,11 @@ int           main(int, char **) {
         .dashboard = DigitizerUi::Dashboard(&app.flowGraph)
     };
 
+    app.fgItem.newSinkCallback = [&, n = 1]() mutable {
+        auto name = fmt::format("sink {}", n++);
+        app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>(name));
+    };
+
 #ifndef EMSCRIPTEN
     app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
 #endif
@@ -253,9 +258,6 @@ int           main(int, char **) {
 
     app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source1", 0.1));
     app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source2", 0.02));
-
-    app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>("sink1"));
-    app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>("sink2"));
 
     app.flowGraph.addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");

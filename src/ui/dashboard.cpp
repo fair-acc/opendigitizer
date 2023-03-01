@@ -23,6 +23,15 @@ struct Dashboard::Plot {
 Dashboard::Dashboard(DigitizerUi::FlowGraph *fg)
     : m_flowGraph(fg) {
     m_plots.resize(2);
+
+    fg->blockDeletedCallback = [this](Block *b) {
+        for (auto &p : m_plots) {
+            auto it = std::find(p.sinks.begin(), p.sinks.end(), b);
+            if (it != p.sinks.end()) {
+                p.sinks.erase(it);
+            }
+        }
+    };
 }
 
 Dashboard::~Dashboard() {

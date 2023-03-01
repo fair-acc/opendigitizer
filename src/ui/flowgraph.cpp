@@ -493,20 +493,6 @@ void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
 }
 
 void FlowGraph::deleteBlock(Block *block) {
-    auto select = [&](const auto &b) {
-        return block == b.get();
-    };
-
-    if (auto it = std::find_if(m_sourceBlocks.begin(), m_sourceBlocks.end(), select); it != m_sourceBlocks.end()) {
-        m_sourceBlocks.erase(it);
-    }
-    if (auto it = std::find_if(m_sinkBlocks.begin(), m_sinkBlocks.end(), select); it != m_sinkBlocks.end()) {
-        m_sinkBlocks.erase(it);
-    }
-
-    auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select);
-    assert(it != m_blocks.end());
-
     for (auto &p : block->inputs()) {
         for (auto *c : p.connections) {
             disconnect(c);
@@ -518,7 +504,23 @@ void FlowGraph::deleteBlock(Block *block) {
         }
     }
 
-    m_blocks.erase(it);
+    if (blockDeletedCallback) {
+        blockDeletedCallback(block);
+    }
+
+    auto select = [&](const auto &b) {
+        return block == b.get();
+    };
+
+    if (auto it = std::find_if(m_sourceBlocks.begin(), m_sourceBlocks.end(), select); it != m_sourceBlocks.end()) {
+        m_sourceBlocks.erase(it);
+    }
+    if (auto it = std::find_if(m_sinkBlocks.begin(), m_sinkBlocks.end(), select); it != m_sinkBlocks.end()) {
+        m_sinkBlocks.erase(it);
+    }
+    if (auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select); it != m_blocks.end()) {
+        m_blocks.erase(it);
+    }
 }
 
 void FlowGraph::connect(Block::Port *a, Block::Port *b) {

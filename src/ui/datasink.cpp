@@ -33,7 +33,7 @@ static BlockType *btype() {
 
 } // namespace
 
-DataSink::DataSink(const char *name)
+DataSink::DataSink(std::string_view name)
     : Block(name, btype())
     , color(randomColor()) {
 }
