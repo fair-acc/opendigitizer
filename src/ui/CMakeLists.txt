@@ -14,6 +14,8 @@ set(sources
         main.cpp
         flowgraph.cpp
         flowgraphitem.cpp
+        dashboard.cpp
+        datasink.cpp
 )
 
 add_subdirectory(app_header)

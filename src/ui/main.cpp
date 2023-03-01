@@ -14,6 +14,9 @@
 #include <complex>
 #include <cstdio>
 
+#include "dashboard.h"
+#include "datasink.h"
+#include "datasource.h"
 #include "flowgraph.h"
 #include "flowgraphitem.h"
 
@@ -40,87 +43,6 @@ ImFont *addDefaultFont(float pixel_size)
     ImFont *font = io.Fonts->AddFontDefault(&config);
     return font;
 }
-
-class DataSource : public DigitizerUi::Block {
-public:
-    static DigitizerUi::BlockType *btype() {
-        static auto *t = []() {
-            static DigitizerUi::BlockType t("nn");
-            t.outputs.resize(1);
-            t.outputs[0].name = "out";
-            t.outputs[0].type = "float";
-            return &t;
-        }();
-        return t;
-    }
-
-    explicit DataSource(const char *name, float freq)
-        : DigitizerUi::Block(name, btype())
-        , m_freq(freq) {
-        m_data.resize(8192);
-
-        processData();
-    }
-
-    void processData() override {
-        for (int i = 0; i < m_data.size(); ++i) {
-            m_data[i] = std::sin((m_offset + i) * m_freq);
-        }
-        outputs()[0].dataSet = m_data;
-        m_offset += 1;
-    }
-
-private:
-    std::vector<float> m_data;
-    float              m_freq;
-    float              m_offset = 0;
-};
-
-class DataSink : public DigitizerUi::Block {
-public:
-    static DigitizerUi::BlockType *btype() {
-        static auto *t = []() {
-            static DigitizerUi::BlockType t("nn");
-            t.inputs.resize(5);
-            for (int i = 0; i < 5; ++i) {
-                auto &in = t.inputs[i];
-                in.name  = fmt::format("in{}\n", i);
-                in.type  = "";
-            }
-            return &t;
-        }();
-        return t;
-    }
-
-    explicit DataSink(const char *name)
-        : DigitizerUi::Block(name, btype()) {
-    }
-
-    void processData() override {
-        for (int i = 0; i < 5; ++i) {
-            const auto &in = inputs()[i];
-            if (!in.connections.empty()) {
-                pins[i].hasData  = true;
-                auto *c          = in.connections[0];
-                pins[i].name     = type->inputs[i].name;
-                pins[i].dataType = c->ports[0]->type;
-                pins[i].data     = static_cast<DigitizerUi::Block::OutputPort *>(c->ports[0])->dataSet;
-            } else {
-                pins[i].hasData = false;
-            }
-        }
-    }
-
-    struct Pin {
-        bool                  hasData = false;
-        std::string           name;
-        DigitizerUi::DataType dataType;
-        DigitizerUi::DataSet  data;
-    };
-    std::array<Pin, 5> pins;
-
-private:
-};
 
 class SumBlock : public DigitizerUi::Block {
 public:
@@ -247,6 +169,7 @@ public:
 struct App {
     DigitizerUi::FlowGraph flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
+    DigitizerUi::Dashboard     dashboard;
 
     ImFont *font12 = nullptr;
     ImFont *font14 = nullptr;
@@ -319,7 +242,8 @@ int           main(int, char **) {
 
     App app = {
         .flowGraph = {},
-        .fgItem    = { &app.flowGraph }
+        .fgItem    = { &app.flowGraph },
+        .dashboard = DigitizerUi::Dashboard(&app.flowGraph)
     };
 
 #ifndef EMSCRIPTEN
@@ -327,11 +251,11 @@ int           main(int, char **) {
 #endif
     app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
 
-    app.flowGraph.addSourceBlock(std::make_unique<DataSource>("source1", 0.1));
-    app.flowGraph.addSourceBlock(std::make_unique<DataSource>("source2", 0.02));
+    app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source1", 0.1));
+    app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source2", 0.02));
 
-    app.flowGraph.addSinkBlock(std::make_unique<DataSink>("sink1"));
-    app.flowGraph.addSinkBlock(std::make_unique<DataSink>("sink2"));
+    app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>("sink1"));
+    app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>("sink2"));
 
     app.flowGraph.addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
@@ -428,27 +352,7 @@ static void main_loop(void *arg) {
 
     ImGui::BeginTabBar("maintabbar");
     if (ImGui::BeginTabItem("Dashboard")) {
-        app->flowGraph.update();
-
-        for (auto &b : app->flowGraph.sinkBlocks()) {
-            auto *s = static_cast<DataSink *>(b.get());
-            ImPlot::BeginPlot(b->name.c_str());
-            for (const auto &p : s->pins) {
-                if (!p.hasData) {
-                    continue;
-                }
-
-                switch (p.dataType) {
-                case DigitizerUi::DataType::Float32: {
-                    auto values = p.data.asFloat32();
-                    ImPlot::PlotLine(p.name.c_str(), values.data(), values.size());
-                    break;
-                }
-                default: break;
-                }
-            }
-            ImPlot::EndPlot();
-        }
+        app->dashboard.draw();
 
         ImGui::EndTabItem();
     }
