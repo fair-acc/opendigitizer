@@ -46,6 +46,9 @@ endif ()
 # enable cache system
 include(cmake/Cache.cmake)
 
+set(BUILD_TESTING ON)
+enable_testing()
+
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 # standard compiler warnings
