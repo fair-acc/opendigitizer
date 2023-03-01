@@ -325,9 +325,6 @@ static void main_loop(void *arg) {
     ImGuiIO &io = ImGui::GetIO();
     IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
-    // Our state (make them static = more or less global) as a convenience to keep the example terse.
-    static ImVec4 clear_color      = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -348,7 +345,7 @@ static void main_loop(void *arg) {
     int width, height;
     SDL_GetWindowSize(g_Window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
-    ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     app_header::draw_header_bar("OpenDigitizer", app->font16);
 
@@ -375,7 +372,7 @@ static void main_loop(void *arg) {
     ImGui::Render();
     SDL_GL_MakeCurrent(g_Window, g_GLContext);
     glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
-    glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+    glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(g_Window);
