@@ -78,3 +78,5 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION
 
 add_executable(opendigitizer main.cpp)
 target_link_libraries(opendigitizer PRIVATE od_flowgraph od_acquisition od_rest majordomo client project_options project_warnings assets::rest)
+target_compile_options(opendigitizer PRIVATE -fsanitize=address -Wall)
+target_link_options(opendigitizer PRIVATE -fsanitize=address -Wall)

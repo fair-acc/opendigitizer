@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "acquisition/acqWorker.hpp"
+#include "acquisition/acqExtendedWorker.hpp"
 #include "flowgraph/flowgraphWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
@@ -44,6 +45,10 @@ int main() {
     AcqWorker    acquisitionWorker(broker, 3000ms);
     std::jthread acquisitionWorkerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
+    using AcqExtWorker = AcquisitionExtendedWorker<"/DeviceName/AcquisitionExtended", description<"Provides data acquisition updates">>;
+    AcqExtWorker acquisitionWorkerExtended(broker, 3000ms);
+    std::jthread acquisitionWorkerExtendedThread([&acquisitionWorkerExtended] { acquisitionWorkerExtended.run(); });
+
     std::this_thread::sleep_for(100ms);
 
     // start some simple subscription client
@@ -56,14 +61,19 @@ int main() {
     std::this_thread::sleep_for(100ms);
 
     std::atomic<int> receivedA{ 0 };
-    std::atomic<int> receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"), [&receivedA](const opencmw::mdp::Message &update) {
         fmt::print("Client('saw') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName.str(), update.endpoint.str(), update.data.asString());
         receivedA++;
     });
+    std::atomic<int> receivedAB{ 0 };
     client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition"), [&receivedAB](const opencmw::mdp::Message &update) {
         fmt::print("Client('all') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName.str(), update.endpoint.str(), update.data.asString());
         receivedAB++;
+    });
+    std::atomic<int> receivedExt{ 0 };
+    client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/AcquisitionExtended"), [&receivedExt](const opencmw::mdp::Message &update) {
+        fmt::print("Client('AcquisitionExtended') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName.str(), update.endpoint.str(), update.data.asString());
+        receivedExt++;
     });
 
     while (receivedA < 2 || receivedAB < 4) {
@@ -72,7 +82,7 @@ int main() {
 
     client.unsubscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"));
     client.unsubscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition"));
-    fmt::print("received client updates: {} for 'sine' and {} for 'sine,saw'\n", receivedA, receivedAB);
+    fmt::print("received client updates: {} for 'sine', {} for 'sine,saw' and {} for AcquisitionExtended\n", receivedA, receivedAB, receivedExt);
     client.stop();
 
     // shutdown
