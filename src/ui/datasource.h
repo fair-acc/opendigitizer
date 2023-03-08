@@ -10,7 +10,7 @@ class DataSource : public Block {
 public:
     static BlockType *btype() {
         static auto *t = []() {
-            static BlockType t("nn");
+            static BlockType t("sinsource");
             t.outputs.resize(1);
             t.outputs[0].name = "out";
             t.outputs[0].type = "float";
@@ -20,7 +20,7 @@ public:
     }
 
     explicit DataSource(const char *name, float freq)
-        : Block(name, btype())
+        : Block(name, "sinsource", btype())
         , m_freq(freq) {
         m_data.resize(8192);
 

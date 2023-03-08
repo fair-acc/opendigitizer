@@ -152,7 +152,7 @@ public:
 
     using ParameterValue = std::variant<std::string, int>;
 
-    Block(std::string_view name, BlockType *type);
+    Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
     const auto       &inputs() const { return m_inputs; }
@@ -170,6 +170,7 @@ public:
 
     const BlockType  *type;
     const std::string name;
+    const std::string             id;
 
 protected:
     auto &outputs() { return m_outputs; }
@@ -222,6 +223,8 @@ public:
     void               disconnect(Connection *c);
 
     void               update();
+
+    void                         save();
 
     std::function<void(Block *)> blockDeletedCallback;
 

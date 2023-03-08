@@ -15,6 +15,7 @@
 #include <IoSerialiserJson.hpp>
 #endif
 
+#include "yamlutils.h"
 #include <yaml-cpp/yaml.h>
 
 struct Reply {
@@ -45,9 +46,10 @@ std::string Block::Parameter::toString() const
     return {};
 }
 
-Block::Block(std::string_view name, BlockType *type)
+Block::Block(std::string_view name, std::string_view id, BlockType *type)
     : type(type)
-    , name(name) {
+    , name(name)
+    , id(id) {
     if (!type) {
         return;
     }
@@ -244,7 +246,7 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
         auto       id     = config["id"].as<std::string>();
 
         auto def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock      = [def](std::string_view name) { return std::make_unique<Block>(name, def); };
+        def->createBlock      = [def](std::string_view name) { return std::make_unique<Block>(name, def->name, def); };
 
         auto parameters = config["parameters"];
         for (const auto &p : parameters) {
@@ -393,7 +395,7 @@ void FlowGraph::parse(const std::string &str) {
         if (!type) {
             std::cerr << "Block type '" << id << "' is unkown.\n";
         }
-        m_blocks.push_back(std::make_unique<Block>(n, type));
+        m_blocks.push_back(std::make_unique<Block>(n, id, type));
         auto *block = m_blocks.back().get();
 
         if (!type) {
@@ -462,6 +464,66 @@ void FlowGraph::parse(const std::string &str) {
 
         connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
     }
+}
+
+void FlowGraph::save() {
+    YAML::Emitter out;
+    {
+        YamlMap root(out);
+        root.write("blocks", [&]() {
+            YamlSeq blocks(out);
+
+            auto    emitBlock = [&](auto &&b) {
+                YamlMap map(out);
+                map.write("name", b->name);
+                map.write("id", b->id);
+
+                const auto &parameters = b->parameters();
+                if (!parameters.empty()) {
+                    map.write("parameters", [&]() {
+                        YamlMap pars(out);
+                        for (int i = 0; i < parameters.size(); ++i) {
+                            pars.write(b->type->parameters[i].id, parameters[i].toString());
+                        }
+                    });
+                }
+            };
+
+            for (auto &b : m_blocks) {
+                emitBlock(b);
+            }
+            for (auto &b : m_sourceBlocks) {
+                emitBlock(b);
+            }
+            for (auto &b : m_sinkBlocks) {
+                emitBlock(b);
+            }
+        });
+
+        root.write("connections", [&]() {
+            YamlSeq connections(out);
+            for (const auto &c : m_connections) {
+                out << YAML::Flow;
+                YamlSeq seq(out);
+                auto   *src          = c.ports[0];
+                auto   *dst          = c.ports[1];
+
+                auto    getPortIndex = [](Block::Port *port, const auto &ports) {
+                    return port - static_cast<const Block::Port *>(ports.data());
+                };
+
+                out << src->block->name << getPortIndex(src, src->block->outputs());
+                out << dst->block->name << getPortIndex(dst, dst->block->inputs());
+            }
+        });
+    }
+
+    std::ofstream stream("flowgraph.grc", std::ios::trunc);
+    if (!stream.is_open()) {
+        return;
+    }
+
+    stream << out.c_str();
 }
 
 Block *FlowGraph::findBlock(std::string_view name) const {
@@ -557,6 +619,8 @@ void FlowGraph::update() {
         b->updateInputs();
         b->processData();
     }
+
+    save();
 }
 
 } // namespace ImChart

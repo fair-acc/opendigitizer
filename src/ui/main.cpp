@@ -47,7 +47,7 @@ ImFont *addDefaultFont(float pixel_size)
 class SumBlock : public DigitizerUi::Block {
 public:
     explicit SumBlock(std::string_view name, DigitizerUi::BlockType *type)
-        : DigitizerUi::Block(name, type) {
+        : DigitizerUi::Block(name, type->name, type) {
     }
 
     void processData() override {
@@ -145,7 +145,7 @@ public:
 class FFTBlock : public DigitizerUi::Block {
 public:
     explicit FFTBlock(std::string_view name, DigitizerUi::BlockType *type)
-        : DigitizerUi::Block(name, type) {
+        : DigitizerUi::Block(name, type->name, type) {
     }
 
     void processData() override {

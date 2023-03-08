@@ -21,7 +21,7 @@ ImVec4 randomColor() {
 
 static BlockType *btype() {
     static auto *t = []() {
-        static BlockType t("nn");
+        static BlockType t("sink");
         t.inputs.resize(1);
         auto &in = t.inputs[0];
         in.name  = "in";
@@ -34,7 +34,7 @@ static BlockType *btype() {
 } // namespace
 
 DataSink::DataSink(std::string_view name)
-    : Block(name, btype())
+    : Block(name, "sink", btype())
     , color(randomColor()) {
 }
 
