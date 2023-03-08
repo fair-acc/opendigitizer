@@ -4,15 +4,15 @@
 
 #include <charconv>
 #include <fstream>
-#include <string_view>
 #include <iostream>
+#include <string_view>
 
 #include <opencmw.hpp>
 #ifndef EMSCRIPTEN
-#include <RestClient.hpp>
+#include <IoSerialiserJson.hpp>
 #include <majordomo/Message.hpp>
 #include <MdpMessage.hpp>
-#include <IoSerialiserJson.hpp>
+#include <RestClient.hpp>
 #endif
 
 #include "yamlutils.h"
@@ -25,16 +25,14 @@ ENABLE_REFLECTION_FOR(Reply, flowgraph)
 
 namespace DigitizerUi {
 
-const std::string &DataType::toString() const
-{
+const std::string &DataType::toString() const {
     const static std::string names[] = {
         "int32", "float32", "complex float 32"
     };
     return names[m_id];
 }
 
-std::string Block::Parameter::toString() const
-{
+std::string Block::Parameter::toString() const {
     if (auto *e = std::get_if<Block::EnumParameter>(this)) {
         return e->toString();
     } else if (auto *r = std::get_if<Block::RawParameter>(this)) {
@@ -245,10 +243,10 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
 
         auto       id     = config["id"].as<std::string>();
 
-        auto def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock      = [def](std::string_view name) { return std::make_unique<Block>(name, def->name, def); };
+        auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
+        def->createBlock  = [def](std::string_view name) { return std::make_unique<Block>(name, def->name, def); };
 
-        auto parameters = config["parameters"];
+        auto parameters   = config["parameters"];
         for (const auto &p : parameters) {
             const auto &idNode = p["id"];
             if (!idNode || !idNode.IsScalar()) {
@@ -260,11 +258,11 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
                 continue;
             }
 
-            auto dtype = dtypeNode.as<std::string>();
-            auto id        = idNode.as<std::string>();
-            auto labelNode = p["label"];
+            auto dtype       = dtypeNode.as<std::string>();
+            auto id          = idNode.as<std::string>();
+            auto labelNode   = p["label"];
             auto defaultNode = p["default"];
-            auto label     = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(id) : id;
+            auto label       = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(id) : id;
 
             if (dtype == "enum") {
                 const auto              &opts = p["options"];
@@ -338,13 +336,12 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
     }
 }
 
-void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri)
-{
+void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri) {
 #ifndef EMSCRIPTEN
     opencmw::client::RestClient client;
 
-    std::atomic<bool> done(false);
-    opencmw::client::Command command;
+    std::atomic<bool>           done(false);
+    opencmw::client::Command    command;
     command.command  = opencmw::mdp::Command::Get;
     command.endpoint = uri;
 
@@ -352,7 +349,7 @@ void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri)
 
     // command.data     = std::move(data);
     command.callback = [&](const opencmw::mdp::Message &rep) {
-        auto buf = rep.data;
+        auto  buf = rep.data;
 
         Reply reply;
         opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
@@ -386,10 +383,10 @@ void FlowGraph::parse(const std::string &str) {
 
     auto       blocks = tree["blocks"];
     for (const auto &b : blocks) {
-        auto n    = b["name"].as<std::string>();
-        auto id   = b["id"].as<std::string>();
+        auto n  = b["name"].as<std::string>();
+        auto id = b["id"].as<std::string>();
 
-        std::cout<<"b"<<n<<id<<"\n";
+        std::cout << "b" << n << id << "\n";
 
         auto type = m_types[id].get();
         if (!type) {
@@ -485,7 +482,7 @@ void FlowGraph::save() {
                         for (int i = 0; i < parameters.size(); ++i) {
                             pars.write(b->type->parameters[i].id, parameters[i].toString());
                         }
-                    });
+                       });
                 }
             };
 
@@ -623,4 +620,4 @@ void FlowGraph::update() {
     save();
 }
 
-} // namespace ImChart
+} // namespace DigitizerUi

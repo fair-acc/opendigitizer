@@ -32,7 +32,7 @@ int    img_fair_h   = 0;
 GLuint img_fair_tex = 0;
 
 bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_width, int *out_height) {
-      // Load from file
+    // Load from file
     int            image_width  = 0;
     int            image_height = 0;
 

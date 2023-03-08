@@ -44,24 +44,23 @@ public:
         std::string defaultValue;
     };
     struct Parameter {
-        const std::string                         id;
-        const std::string                         label;
+        const std::string                                       id;
+        const std::string                                       label;
         std::variant<EnumParameter, IntParameter, RawParameter> impl;
     };
 
-    inline BlockType(const std::string &n) : name(n) {}
+    inline BlockType(const std::string &n)
+        : name(n) {}
 
-
-    const std::string name;
-    std::vector<Parameter>      parameters;
-    std::vector<PortDefinition> inputs;
-    std::vector<PortDefinition> outputs;
+    const std::string                                       name;
+    std::vector<Parameter>                                  parameters;
+    std::vector<PortDefinition>                             inputs;
+    std::vector<PortDefinition>                             outputs;
 
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 };
 
-struct DataType
-{
+struct DataType {
     enum Id {
         ComplexFloat64,
         ComplexFloat32,
@@ -83,11 +82,12 @@ struct DataType
     };
 
     inline DataType() {}
-    inline DataType(Id id) : m_id(id) {}
+    inline DataType(Id id)
+        : m_id(id) {}
 
     const std::string &toString() const;
 
-    inline operator Id() const { return m_id; }
+    inline             operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;
@@ -112,10 +112,10 @@ public:
         };
 
         Block                    *block;
-        const std::string       m_rawType;
-        const Kind              kind;
+        const std::string         m_rawType;
+        const Kind                kind;
 
-        DataType                type;
+        DataType                  type;
         std::vector<Connection *> connections;
     };
 
@@ -131,8 +131,8 @@ public:
         std::string                     toString() const;
 
         inline EnumParameter           &operator=(const EnumParameter &p) {
-                      optionIndex = p.optionIndex;
-                      return *this;
+            optionIndex = p.optionIndex;
+            return *this;
         }
     };
     struct IntParameter {
@@ -142,8 +142,7 @@ public:
         std::string value;
     };
 
-    struct Parameter : std::variant<EnumParameter, IntParameter, RawParameter>
-    {
+    struct Parameter : std::variant<EnumParameter, IntParameter, RawParameter> {
         using Super = std::variant<EnumParameter, IntParameter, RawParameter>;
 
         using Super::Super;
@@ -155,10 +154,10 @@ public:
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
-    const auto       &inputs() const { return m_inputs; }
-    const auto       &outputs() const { return m_outputs; }
+    const auto                   &inputs() const { return m_inputs; }
+    const auto                   &outputs() const { return m_outputs; }
 
-    ParameterValue    getParameterValue(const std::string &par) const;
+    ParameterValue                getParameterValue(const std::string &par) const;
 
     void                          setParameter(int index, const Parameter &par);
     const std::vector<Parameter> &parameters() const { return m_parameters; }
@@ -168,18 +167,18 @@ public:
 
     virtual void                  processData() {}
 
-    const BlockType  *type;
-    const std::string name;
+    const BlockType              *type;
+    const std::string             name;
     const std::string             id;
 
 protected:
     auto &outputs() { return m_outputs; }
 
 private:
-    std::vector<Port> m_inputs;
+    std::vector<Port>       m_inputs;
     std::vector<OutputPort> m_outputs;
-    std::vector<Parameter> m_parameters;
-    bool                    m_updated       = false;
+    std::vector<Parameter>  m_parameters;
+    bool                    m_updated = false;
 
     friend FlowGraph;
 };
@@ -197,32 +196,32 @@ private:
 
 class FlowGraph {
 public:
-    void               loadBlockDefinitions(const std::filesystem::path &dir);
-    void               parse(const std::filesystem::path &file);
-    void               parse(const std::string &str);
-    void parse(const opencmw::URI<opencmw::STRICT> &uri);
+    void                         loadBlockDefinitions(const std::filesystem::path &dir);
+    void                         parse(const std::filesystem::path &file);
+    void                         parse(const std::string &str);
+    void                         parse(const opencmw::URI<opencmw::STRICT> &uri);
 
-    Block             *findBlock(std::string_view name) const;
+    Block                       *findBlock(std::string_view name) const;
 
-    inline const auto &blocks() const { return m_blocks; }
-    inline const auto &sourceBlocks() const { return m_sourceBlocks; }
-    inline const auto &sinkBlocks() const { return m_sinkBlocks; }
-    inline const auto &blockTypes() const { return m_types; }
-    inline const auto &connections() const { return m_connections; }
+    inline const auto           &blocks() const { return m_blocks; }
+    inline const auto           &sourceBlocks() const { return m_sourceBlocks; }
+    inline const auto           &sinkBlocks() const { return m_sinkBlocks; }
+    inline const auto           &blockTypes() const { return m_types; }
+    inline const auto           &connections() const { return m_connections; }
 
-    void               addBlockType(std::unique_ptr<BlockType> &&t);
+    void                         addBlockType(std::unique_ptr<BlockType> &&t);
 
-    void               addBlock(std::unique_ptr<Block> &&block);
-    void               deleteBlock(Block *block);
+    void                         addBlock(std::unique_ptr<Block> &&block);
+    void                         deleteBlock(Block *block);
 
-    void               addSourceBlock(std::unique_ptr<Block> &&block);
-    void               addSinkBlock(std::unique_ptr<Block> &&block);
+    void                         addSourceBlock(std::unique_ptr<Block> &&block);
+    void                         addSinkBlock(std::unique_ptr<Block> &&block);
 
-    void               connect(Block::Port *a, Block::Port *b);
+    void                         connect(Block::Port *a, Block::Port *b);
 
-    void               disconnect(Connection *c);
+    void                         disconnect(Connection *c);
 
-    void               update();
+    void                         update();
 
     void                         save();
 
@@ -236,4 +235,4 @@ private:
     plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
 };
 
-} // namespace ImChart
+} // namespace DigitizerUi

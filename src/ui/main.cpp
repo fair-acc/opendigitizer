@@ -32,15 +32,14 @@ bool          running     = true;
 
 static void   main_loop(void *);
 
-ImFont *addDefaultFont(float pixel_size)
-{
-    ImGuiIO &io = ImGui::GetIO();
+ImFont       *addDefaultFont(float pixel_size) {
+    ImGuiIO     &io = ImGui::GetIO();
     ImFontConfig config;
     config.SizePixels = pixel_size;
     // high oversample to have better looking text when zooming in on the flowgraph
     config.OversampleH = config.OversampleV = 4;
-    config.PixelSnapH = true;
-    ImFont *font = io.Fonts->AddFontDefault(&config);
+    config.PixelSnapH                       = true;
+    ImFont *font                            = io.Fonts->AddFontDefault(&config);
     return font;
 }
 
@@ -167,16 +166,16 @@ public:
 };
 
 struct App {
-    DigitizerUi::FlowGraph flowGraph;
+    DigitizerUi::FlowGraph     flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
     DigitizerUi::Dashboard     dashboard;
 
-    ImFont *font12 = nullptr;
-    ImFont *font14 = nullptr;
-    ImFont *font16 = nullptr;
+    ImFont                    *font12 = nullptr;
+    ImFont                    *font14 = nullptr;
+    ImFont                    *font16 = nullptr;
 };
 
-int           main(int, char **) {
+int main(int, char **) {
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
         printf("Error: %s\n", SDL_GetError());
@@ -320,9 +319,9 @@ int           main(int, char **) {
 }
 
 static void main_loop(void *arg) {
-    App *app = static_cast<App *>(arg);
+    App     *app = static_cast<App *>(arg);
 
-    ImGuiIO &io = ImGui::GetIO();
+    ImGuiIO &io  = ImGui::GetIO();
     IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
     // Poll and handle events (inputs, window resize, etc.)

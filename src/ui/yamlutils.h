@@ -14,14 +14,13 @@ struct YamlMap {
     }
 
     template<typename T>
-        requires(!std::is_invocable_v<T>)
-    void write(const char *key, T &&value) {
+    requires(!std::is_invocable_v<T>) void write(const char *key, T &&value) {
         out << YAML::Key << key;
         out << YAML::Value << value;
     }
 
     template<typename F>
-        requires std::is_invocable_v<F>
+    requires std::is_invocable_v<F>
     void write(const char *key, F &&fun) {
         out << YAML::Key << key;
         out << YAML::Value;
@@ -44,7 +43,7 @@ struct YamlSeq {
     }
 
     template<typename F>
-        requires std::is_invocable_v<F>
+    requires std::is_invocable_v<F>
     void write(const char *key, F &&fun) {
         fun();
     }
