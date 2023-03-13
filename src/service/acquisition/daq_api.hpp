@@ -174,46 +174,58 @@ struct AcquisitionSpectra {
 /**
  * n-dimensional tensor
  * corresponds to DataSet layout
+ * uses signed integers for size type for Java interoperability
  * dense data on mesh
+ * - concatenation of datasets -> list of datasets or copy into single dataset
+ * to be discussed:
+ * - general layout
+ * - axis values: min/max -> equidistant or grid, flattened or vec<vec>
+ * - signal dimension? mesh vs point cloud
+ * - vector of map? other representations
+ * - layout policy: mdspan, strides, other solutions?
  */
-template<std::floating_point T>
-class AcquisitionExtended {
+template<typename T, class Allocator = std::allocator<T>>
+class DataSet {
 public:
-    static constexpr std::size_t MAX_RANK = 8;
-    using mdtype                          = stdx::mdspan<T, stdx::dextents<int, MAX_RANK>, stdx::layout_right, owning_accessor<T>>;
-    Annotated<std::string, opencmw::NoUnit, "copy of AcquisitionFilter.acqMode">                         acqMode;
-    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred">         timestamp       = 0;
-    Annotated<double, si::time<second>, "relative time w.r.t. last beam-in trigger">                     beamInTimeStamp = 0;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "base si-unit for axis">                        axisUnits;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "e.g. time, frequency, voltage, current">       axisNames;
-    Annotated<std::vector<T>, opencmw::NoUnit, "explicit axis values, not necessarily equidistant">      axisValues; // and min/max acq. range (ADC clamping, THD, ...) // flattened because of serialiser limitations
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "name of the signal">                           signalNames;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "base si-units">                                signalUnits;
-    Annotated<std::vector<T>, opencmw::NoUnit, "min/max value of signal">                                signalRanges;  // flattened because of serialiser limitations
-    Annotated<std::vector<std::int32_t>, opencmw::NoUnit, "extents of the different dimensions">         signalExtents; // flattened because of serialiser limitations
-    Annotated<std::vector<T>, opencmw::NoUnit, "values">                                                 signalValues;
-    Annotated<std::vector<T>, opencmw::NoUnit, "rms errors">                                             signalErrors;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "status messages for signal">                   signalStatus; // todo type of map to be discussed, japc compatibility, opencmwlight serialiser does not support vec<map<>>
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "raw timing events occurred in the acq window"> timingEvents; // now only maps timestamp to event id, because more complex containers trip up the serialisers
+    template<typename R>
+    using vector = std::vector<R>;//, Allocator<R>>;
+
+    Annotated<int64_t,              si::time<nanosecond>, "UTC timestamp on which the timing event occurred">  timestamp = 0;
+    Annotated<vector<std::int32_t>, opencmw::NoUnit,      "extents of the different dimensions">               extents; // size equal to rank+1, entries are size of individual dimensions
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "e.g. time, frequency, voltage, current">            axisNames; // size equals rank
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "base si-unit for axis">                             axisUnits; // size equals rank
+    Annotated<vector<T>,            opencmw::NoUnit,      "explicit axis values, not necessarily equidistant"> axisValues; // TODO: nested(outer size = rank, inner size = extents[i] or 2) or flattended? min/max acq. range (ADC clamping, THD, ...) // flattened because of serialiser limitations
+    //                                                                                                         signalDimension; // size = extents[0], 0->xAxis, 1-> yAxis, ... // needs further investigation how to implement
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "name of the signal">                                signalNames; // size = extents[0]
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "base si-units">                                     signalUnits; // size = extents[0]
+    Annotated<vector<T>,            opencmw::NoUnit,      "values">                                            signalValues; // actual signal data, size = \PI_i extents[i]
+    Annotated<vector<T>,            opencmw::NoUnit,      "rms errors">                                        signalErrors; // actual signal errors, size = \PI_i extents[i] or 0 TODO: model errors as extra dimension instead of separate field?
+    Annotated<vector<T>,            opencmw::NoUnit,      "min/max value of signal">                           signalRanges; // size = extents[0] * 2 [min_0, max_0, min_1, ...]
+    // vec<map<string, pmtv>> ? other possible representation?
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "status messages for signal">                        signalStatus; // todo type of map to be discussed, japc compatibility, opencmwlight serialiser does not support vec<map<>>
+    Annotated<double,               si::time<second>,     "relative time w.r.t. last beam-in trigger">         beamInTimeStamp = 0; // TODO: move into map
+    Annotated<std::string,          opencmw::NoUnit,      "copy of AcquisitionFilter.acqMode">                 acqMode; // TODO: move into map
+    // vec<map<int64_t, pmtv>> ? other possible representation?
+    Annotated<vector<std::string>,  opencmw::NoUnit,      "raw timing events occurred in the acq window">      timingEvents; // now only maps timestamp to event id, because more complex containers trip up the serialisers
 
     template<std::size_t rank>
     stdx::mdspan<T, stdx::dextents<int, rank>> signalValuesMDspan() {
-        return { signalValues.data(), detail::to_array<rank>(signalExtents.cbegin()) };
+        return { signalValues.data(), detail::to_array<rank>(extents.cbegin()) };
     }
     template<std::size_t rank>
     stdx::mdspan<T, stdx::dextents<int, rank>> signalErrorsMDspan() {
-        return { signalErrors.data(), detail::to_array<rank>(signalExtents.cbegin()) };
+        return { signalErrors.data(), detail::to_array<rank>(extents.cbegin()) };
     }
 };
 // public type definitions to allow simple reflection
-using AcquisitionExtended_double = AcquisitionExtended<double>;
-using AcquisitionExtended_float  = AcquisitionExtended<float>;
+using AcquisitionExtended_double = DataSet<double>;
+using AcquisitionExtended_float  = DataSet<float>;
 } // namespace opendigitizer::acq
 
 ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionFilter, signalNames, acqMode, contextSelector, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, acqMode, timestamp, beamInTimeStamp, signalTimeBase, signalNames, signalUnits, signalRangeMin, signalRangeMax, signalValues, signalErrors, signalStatus, timingEvents)
-ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionExtended_double, acqMode, timestamp, beamInTimeStamp, signalNames, axisUnits, axisNames, axisValues, signalExtents, signalValues, signalErrors, signalStatus, timingEvents)
-ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionExtended_float, acqMode, timestamp, beamInTimeStamp, signalNames, axisUnits, axisNames, axisValues, signalExtents, signalValues, signalErrors, signalStatus, timingEvents)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionExtended_double, acqMode, timestamp, beamInTimeStamp, signalNames, axisUnits, axisNames, axisValues, extents, signalValues, signalErrors, signalStatus, timingEvents)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionExtended_float, acqMode, timestamp, beamInTimeStamp, signalNames, axisUnits, axisNames, axisValues, extents, signalValues, signalErrors, signalStatus, timingEvents)
 // clang-format: ON
 
 #endif // DAQ_API_HPP
