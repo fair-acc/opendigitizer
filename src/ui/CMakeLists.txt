@@ -18,6 +18,8 @@ set(sources
         datasink.cpp
 )
 
+set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")
+
 add_subdirectory(app_header)
 
 if (EMSCRIPTEN)
@@ -100,5 +102,5 @@ else () # native build
             ui_assets
     )
     target_include_directories(opendigitizer-ui PRIVATE ${plf_colony_SOURCE_DIR})
-    target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="/usr/share/gnuradio/grc/blocks")
+    target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
