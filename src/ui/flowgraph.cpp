@@ -1,9 +1,8 @@
 #include "flowgraph.h"
 
-#include <assert.h>
+#include <cassert>
 
 #include <charconv>
-#include <fstream>
 #include <iostream>
 #include <string_view>
 
@@ -55,11 +54,11 @@ Block::Block(std::string_view name, std::string_view id, BlockType *type)
     m_parameters.reserve(type->parameters.size());
     for (auto &p : type->parameters) {
         if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
-            m_parameters.push_back(Block::EnumParameter{ *e, 0 });
+            m_parameters.emplace_back(Block::EnumParameter{ *e, 0 });
         } else if (auto *i = std::get_if<BlockType::IntParameter>(&p.impl)) {
-            m_parameters.push_back(Block::IntParameter{ 0 });
+            m_parameters.emplace_back(Block::IntParameter{ 0 });
         } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
-            m_parameters.push_back(Block::RawParameter{ r->defaultValue });
+            m_parameters.emplace_back(Block::RawParameter{ r->defaultValue });
         }
     }
 
@@ -77,8 +76,8 @@ Block::ParameterValue Block::getParameterValue(const std::string &str) const {
     std::string words[2];
     int         numWords = 0;
 
-    int         start    = 0;
-    int         last     = str.size() - 1;
+    std::size_t start    = 0;
+    auto        last     = str.size() - 1;
     while (str[start] == ' ') {
         ++start;
     }
@@ -87,12 +86,12 @@ Block::ParameterValue Block::getParameterValue(const std::string &str) const {
     }
 
     while (start < last && numWords <= 2) {
-        int i = str.find('.', start);
+        auto i = str.find('.', start);
         if (i == std::string::npos) {
             i = last + 1;
         }
 
-        int end = i - 1;
+        auto end = i - 1;
 
         while (str[start] == ' ' && start < end) {
             ++start;
@@ -163,7 +162,7 @@ void Block::update() {
         if (t == "bit" || t == "bits") return DataType::Bits;
         if (t == "message") return DataType::AsyncMessage;
         if (t == "bus") return DataType::BusConnection;
-        if (t == "") return DataType::Wildcard;
+        if (t.empty()) return DataType::Wildcard;
         if (t == "untyped") return DataType::Untyped;
 
         fmt::print("unhandled type {}\n", t);
@@ -173,8 +172,8 @@ void Block::update() {
     auto getType = [&](const std::string &t) {
         if (t.starts_with("${") && t.ends_with("}")) {
             auto val = getParameterValue(t.substr(2, t.size() - 3));
-            if (auto type = std::get_if<std::string>(&val)) {
-                return parseType(*type);
+            if (auto parameter_type = std::get_if<std::string>(&val)) {
+                return parseType(*parameter_type);
             }
         }
         return parseType(t);
@@ -204,10 +203,10 @@ std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }
 
+#ifndef __EMSCRIPTEN__
 static std::string_view strview(auto &&s) {
     return { s.data(), s.size() };
 }
-
 static bool readFile(const std::filesystem::path &file, std::string &str) {
     std::ifstream stream(file);
     if (!stream.is_open()) {
@@ -222,7 +221,6 @@ static bool readFile(const std::filesystem::path &file, std::string &str) {
     stream.read(str.data(), size);
     return true;
 }
-
 void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
     if (!std::filesystem::exists(dir)) {
         std::cerr << "Cannot open directory '" << dir << "'\n";
@@ -248,7 +246,7 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
 
         auto parameters   = config["parameters"];
         for (const auto &p : parameters) {
-            const auto &idNode = p["id"];
+            const auto &idNode = p["parameter_id"];
             if (!idNode || !idNode.IsScalar()) {
                 continue;
             }
@@ -258,11 +256,11 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
                 continue;
             }
 
-            auto dtype       = dtypeNode.as<std::string>();
-            auto id          = idNode.as<std::string>();
-            auto labelNode   = p["label"];
-            auto defaultNode = p["default"];
-            auto label       = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(id) : id;
+            auto dtype        = dtypeNode.as<std::string>();
+            auto parameter_id = idNode.as<std::string>();
+            auto labelNode    = p["label"];
+            auto defaultNode  = p["default"];
+            auto label        = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(parameter_id) : parameter_id;
 
             if (dtype == "enum") {
                 const auto              &opts = p["options"];
@@ -296,26 +294,26 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
                     }
                 }
 
-                def->parameters.push_back(BlockType::Parameter{ id, label, std::move(par) });
+                def->parameters.push_back(BlockType::Parameter{parameter_id, label, std::move(par) });
             } else if (dtype == "int") {
                 auto defaultValue = defaultNode ? defaultNode.as<int>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::IntParameter{ defaultValue } });
+                def->parameters.push_back(BlockType::Parameter{parameter_id, label, BlockType::IntParameter{defaultValue } });
             } else if (dtype == "raw") {
                 auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::RawParameter{ defaultValue } });
+                def->parameters.push_back(BlockType::Parameter{parameter_id, label, BlockType::RawParameter{defaultValue } });
             }
         }
 
         auto outputs = config["outputs"];
         for (const auto &o : outputs) {
             auto        n    = o["dtype"];
-            std::string type = "";
+            std::string type;
             if (n) {
                 type = n.as<std::string>();
             }
             std::string name = "out";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
+            if (auto output_id = o["output_id"]) {
+                name = output_id.as<std::string>(name);
             }
             def->outputs.push_back({ type, name });
         }
@@ -323,21 +321,20 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
         auto inputs = config["inputs"];
         for (const auto &o : inputs) {
             auto        n    = o["dtype"];
-            std::string type = "";
+            std::string input_type;
             if (n) {
-                type = n.as<std::string>();
+                input_type = n.as<std::string>();
             }
             std::string name = "in";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
+            if (auto input_id = o["input_id"]) {
+                name = input_id.as<std::string>(name);
             }
-            def->inputs.push_back({ type, name });
+            def->inputs.push_back({input_type, name });
         }
     }
 }
 
 void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri) {
-#ifndef EMSCRIPTEN
     opencmw::client::RestClient client;
 
     std::atomic<bool>           done(false);
@@ -364,9 +361,7 @@ void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri) {
     done.wait(false);
 
     parse(result);
-#endif
 }
-
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
     if (!readFile(file, str)) {
@@ -462,6 +457,9 @@ void FlowGraph::parse(const std::string &str) {
         connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
     }
 }
+#else
+void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri) {}
+#endif
 
 void FlowGraph::save() {
     YAML::Emitter out;
@@ -482,7 +480,7 @@ void FlowGraph::save() {
                         for (int i = 0; i < parameters.size(); ++i) {
                             pars.write(b->type->parameters[i].id, parameters[i].toString());
                         }
-                       });
+                    });
                 }
             };
 
@@ -515,12 +513,14 @@ void FlowGraph::save() {
         });
     }
 
+#ifndef __EMSCRIPTEN__
     std::ofstream stream("flowgraph.grc", std::ios::trunc);
     if (!stream.is_open()) {
         return;
     }
 
     stream << out.c_str();
+#endif
 }
 
 Block *FlowGraph::findBlock(std::string_view name) const {
@@ -598,7 +598,7 @@ void FlowGraph::disconnect(Connection *c) {
     assert(it != m_connections.end());
 
     for (auto *p : c->ports) {
-        p->connections.erase(std::remove(p->connections.begin(), p->connections.end(), c));
+        p->connections.erase(std::remove(p->connections.begin(), p->connections.end(), c), p->connections.end());
     }
 
     m_connections.erase(it);
