@@ -2,8 +2,8 @@
 #include <emscripten.h>
 #endif
 #include <imgui.h>
+#include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
-#include <imgui_impl_sdl.h>
 #include <implot.h>
 #include <SDL.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -182,30 +182,50 @@ int main(int, char **) {
         return -1;
     }
 
-    // For the browser using Emscripten, we are going to use WebGL1 with GL ES2.
-    // It is very likely the generated file won't work in many browsers.
-    // Firefox is the only sure bet, but I have successfully run this code on
-    // Chrome for Android for example.
-    const char *glsl_version = "#version 100";
-    // const char* glsl_version = "#version 300 es";
+    // Decide GL+GLSL versions
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+    // GL ES 2.0 + GLSL 100
+    const char* glsl_version = "#version 100";
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#elif defined(__APPLE__)
+    // GL 3.2 Core + GLSL 150
+    const char* glsl_version = "#version 150";
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG); // Always required on Mac
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+#else
+    // GL 3.0 + GLSL 130
+    const char* glsl_version = "#version 130";
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#endif
+
+    // From 2.0.18: Enable native IME.
+#ifdef SDL_HINT_IME_SHOW_UI
+    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
+#endif
 
     // Create window with graphics context
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_DisplayMode current;
-    SDL_GetCurrentDisplayMode(0, &current);
     SDL_WindowFlags window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     g_Window                     = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     g_GLContext                  = SDL_GL_CreateContext(g_Window);
     if (!g_GLContext) {
-        fprintf(stderr, "Failed to initialize WebGL context!\n");
+        fprintf(stderr, "Failed to initialize GL context!\n");
         return 1;
     }
+    SDL_GL_MakeCurrent(g_Window, g_GLContext);
+#ifndef __EMSCIPTEN__
+    SDL_GL_SetSwapInterval(1); // Enable vsync
+#endif
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -218,6 +238,9 @@ int main(int, char **) {
     // attempt to do a fopen() of the imgui.ini file. You may manually call
     // LoadIniSettingsFromMemory() to load settings from your own storage.
     io.IniFilename = NULL;
+
+    // allow keyboard navigation
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // Setup Dear ImGui style
     // ImGui::StyleColorsDark();
@@ -301,7 +324,6 @@ int main(int, char **) {
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(main_loop, &app, 0, true);
 #else
-    SDL_GL_SetSwapInterval(1); // Enable vsync
 
     while (running) {
         main_loop(&app);
@@ -322,7 +344,6 @@ static void main_loop(void *arg) {
     App     *app = static_cast<App *>(arg);
 
     ImGuiIO &io  = ImGui::GetIO();
-    IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
@@ -348,28 +369,29 @@ static void main_loop(void *arg) {
 
     app_header::draw_header_bar("OpenDigitizer", app->font16);
 
-    ImGui::BeginTabBar("maintabbar");
-    if (ImGui::BeginTabItem("Dashboard")) {
-        app->dashboard.draw();
+    if (ImGui::BeginTabBar("maintabbar")) {
+        if (ImGui::BeginTabItem("Dashboard")) {
+            app->dashboard.draw();
 
-        ImGui::EndTabItem();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Flowgraph")) {
+            auto contentRegion = ImGui::GetContentRegionAvail();
+
+            app->fgItem.draw(contentRegion);
+
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
     }
-
-    if (ImGui::BeginTabItem("Flowgraph")) {
-        auto contentRegion = ImGui::GetContentRegionAvail();
-
-        app->fgItem.draw(contentRegion);
-
-        ImGui::EndTabItem();
-    }
-
-    ImGui::EndTabBar();
 
     ImGui::End();
 
+    static bool showDemoWindow = true;
+    ImGui::ShowDemoWindow(&showDemoWindow);
+
     // Rendering
     ImGui::Render();
-    SDL_GL_MakeCurrent(g_Window, g_GLContext);
     glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);

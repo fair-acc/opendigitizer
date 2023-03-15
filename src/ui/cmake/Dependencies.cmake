@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY  https://github.com/ocornut/imgui.git
-    GIT_TAG         v1.88
+    GIT_TAG         v1.89.3 # v1.89.4 is not supported by node-editor yet
 )
 
 # Enables 32 bit vertex indices for ImGui
@@ -12,13 +12,13 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
-    GIT_TAG         master #v0.13
+    GIT_TAG         master # v0.14 # support for latest imgui on master but not yet released
 )
 
 FetchContent_Declare(
     imgui-node-editor
     GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
-    GIT_TAG         master
+    GIT_TAG         develop # master does not support imgui > 1.83, see https://github.com/thedmd/imgui-node-editor/issues/183
 )
 
 FetchContent_Declare(
@@ -66,14 +66,15 @@ add_library(
         ${imgui_SOURCE_DIR}/imgui_demo.cpp
         ${imgui_SOURCE_DIR}/imgui_draw.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl2.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
         ${imgui_SOURCE_DIR}/imgui_tables.cpp
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/imgui.cpp
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
-    target_link_libraries(imgui PUBLIC SDL2main SDL2)
+    target_link_libraries(imgui PUBLIC SDL2)
 endif()
 
 target_include_directories(
