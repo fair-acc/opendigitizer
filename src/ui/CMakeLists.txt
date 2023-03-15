@@ -63,12 +63,12 @@ if (EMSCRIPTEN)
 
     target_sources(index PRIVATE ${sources})
 
-    target_include_directories(${outputFileName} PRIVATE ${plf_colony_SOURCE_DIR})
     # link the executable
     target_link_libraries(
             ${outputFileName}
             PRIVATE
             implot
+            plf_colony
             app_header
             ui_assets
             core
@@ -91,16 +91,15 @@ else () # native build
     target_link_libraries(
             opendigitizer-ui
             PRIVATE
-            SDL2main
             SDL2
             implot
             imgui-node-editor
+            plf_colony
             yaml-cpp::yaml-cpp
             core
             client
             app_header
             ui_assets
     )
-    target_include_directories(opendigitizer-ui PRIVATE ${plf_colony_SOURCE_DIR})
     target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
