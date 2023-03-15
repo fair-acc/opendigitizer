@@ -111,3 +111,6 @@ target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+
+add_library(plf_colony INTERFACE)
+target_include_directories(plf_colony INTERFACE ${plf_colony_SOURCE_DIR})
