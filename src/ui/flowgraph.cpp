@@ -464,6 +464,7 @@ void FlowGraph::parse(const std::string &str) {
 }
 
 void FlowGraph::save() {
+#ifndef EMSCRIPTEN
     YAML::Emitter out;
     {
         YamlMap root(out);
@@ -521,6 +522,7 @@ void FlowGraph::save() {
     }
 
     stream << out.c_str();
+#endif
 }
 
 Block *FlowGraph::findBlock(std::string_view name) const {
