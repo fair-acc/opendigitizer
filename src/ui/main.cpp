@@ -22,14 +22,6 @@
 
 #include "fair_header.h"
 
-// Emscripten requires to have full control over the main loop. We're going to
-// store our SDL book-keeping variables globally. Having a single function that
-// acts as a loop prevents us to store state in the stack of said function. So
-// we need some location for this.
-SDL_Window   *g_Window    = NULL;
-SDL_GLContext g_GLContext = NULL;
-bool          running     = true;
-
 static void   main_loop(void *);
 
 ImFont       *addDefaultFont(float pixel_size) {
@@ -169,6 +161,9 @@ struct App {
     DigitizerUi::FlowGraph     flowGraph;
     DigitizerUi::FlowGraphItem fgItem;
     DigitizerUi::Dashboard     dashboard;
+    SDL_Window                *window    = NULL;
+    SDL_GLContext              glContext = NULL;
+    bool                       running   = true;
 
     ImFont                    *font12 = nullptr;
     ImFont                    *font14 = nullptr;
@@ -200,9 +195,9 @@ int main(int, char **) {
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
     SDL_WindowFlags window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    g_Window                     = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
-    g_GLContext                  = SDL_GL_CreateContext(g_Window);
-    if (!g_GLContext) {
+    auto            window       = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    auto            glContext    = SDL_GL_CreateContext(window);
+    if (!glContext) {
         fprintf(stderr, "Failed to initialize WebGL context!\n");
         return 1;
     }
@@ -212,7 +207,6 @@ int main(int, char **) {
     ImGui::CreateContext();
     ImPlot::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    (void) io;
 
     // For an Emscripten build we are disabling file-system access, so let's not
     // attempt to do a fopen() of the imgui.ini file. You may manually call
@@ -225,7 +219,7 @@ int main(int, char **) {
     ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
-    ImGui_ImplSDL2_InitForOpenGL(g_Window, g_GLContext);
+    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load Fonts
@@ -242,7 +236,9 @@ int main(int, char **) {
     App app = {
         .flowGraph = {},
         .fgItem    = { &app.flowGraph },
-        .dashboard = DigitizerUi::Dashboard(&app.flowGraph)
+        .dashboard = DigitizerUi::Dashboard(&app.flowGraph),
+        .window    = window,
+        .glContext = glContext
     };
 
     app.fgItem.newSinkCallback = [&, n = 1]() mutable {
@@ -303,7 +299,7 @@ int main(int, char **) {
 #else
     SDL_GL_SetSwapInterval(1); // Enable vsync
 
-    while (running) {
+    while (app.running) {
         main_loop(&app);
     }
     // Cleanup
@@ -311,8 +307,8 @@ int main(int, char **) {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
 
-    SDL_GL_DeleteContext(g_GLContext);
-    SDL_DestroyWindow(g_Window);
+    SDL_GL_DeleteContext(app.glContext);
+    SDL_DestroyWindow(app.window);
     SDL_Quit();
 #endif
     // emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 10);
@@ -322,16 +318,15 @@ static void main_loop(void *arg) {
     App     *app = static_cast<App *>(arg);
 
     ImGuiIO &io  = ImGui::GetIO();
-    IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         if (event.type == SDL_QUIT)
-            running = false;
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(g_Window))
-            running = false;
+            app->running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(app->window))
+            app->running = false;
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
 
@@ -342,7 +337,7 @@ static void main_loop(void *arg) {
 
     ImGui::SetNextWindowPos({ 0, 0 });
     int width, height;
-    SDL_GetWindowSize(g_Window, &width, &height);
+    SDL_GetWindowSize(app->window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
@@ -369,10 +364,10 @@ static void main_loop(void *arg) {
 
     // Rendering
     ImGui::Render();
-    SDL_GL_MakeCurrent(g_Window, g_GLContext);
+    SDL_GL_MakeCurrent(app->window, app->glContext);
     glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    SDL_GL_SwapWindow(g_Window);
+    SDL_GL_SwapWindow(app->window);
 }
