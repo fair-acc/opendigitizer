@@ -23,9 +23,9 @@
 
 #include "fair_header.h"
 
-static void   main_loop(void *);
+static void main_loop(void *);
 
-ImFont       *addDefaultFont(float pixel_size) {
+ImFont     *addDefaultFont(float pixel_size) {
     ImGuiIO     &io = ImGui::GetIO();
     ImFontConfig config;
     config.SizePixels = pixel_size;
@@ -44,9 +44,9 @@ struct App {
     SDL_GLContext              glContext = NULL;
     bool                       running   = true;
 
-    ImFont                    *font12 = nullptr;
-    ImFont                    *font14 = nullptr;
-    ImFont                    *font16 = nullptr;
+    ImFont                    *font12    = nullptr;
+    ImFont                    *font14    = nullptr;
+    ImFont                    *font16    = nullptr;
 };
 
 int main(int, char **) {
