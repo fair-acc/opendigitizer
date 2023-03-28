@@ -12,13 +12,13 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
-    GIT_TAG         master #v0.13
+    GIT_TAG         33c5a965f55f80057f197257d1d1cdb06523e963 #v0.13
 )
 
 FetchContent_Declare(
     imgui-node-editor
     GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
-    GIT_TAG         master
+    GIT_TAG         2f99b2d613a400f6579762bd7e7c343a0d844158
 )
 
 FetchContent_Declare(
@@ -30,7 +30,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     plf_colony
     GIT_REPOSITORY  https://github.com/mattreecebentley/plf_colony.git
-    GIT_TAG         master
+    GIT_TAG         41e387e281b8323ca5584e79f67d632964b24bbf #v7.11
 )
 
 FetchContent_Declare( # needed to load images in ImGui
