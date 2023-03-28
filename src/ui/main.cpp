@@ -11,13 +11,14 @@
 #else
 #include <SDL_opengl.h>
 #endif
-#include <complex>
 #include <cstdio>
 
 #include "dashboard.h"
-#include "datasink.h"
-#include "datasource.h"
 #include "flowgraph.h"
+#include "flowgraph/datasink.h"
+#include "flowgraph/datasource.h"
+#include "flowgraph/fftblock.h"
+#include "flowgraph/sumblock.h"
 #include "flowgraphitem.h"
 
 #include "fair_header.h"
@@ -34,128 +35,6 @@ ImFont       *addDefaultFont(float pixel_size) {
     ImFont *font                            = io.Fonts->AddFontDefault(&config);
     return font;
 }
-
-class SumBlock : public DigitizerUi::Block {
-public:
-    explicit SumBlock(std::string_view name, DigitizerUi::BlockType *type)
-        : DigitizerUi::Block(name, type->name, type) {
-    }
-
-    void processData() override {
-        auto &in = inputs();
-        if (in[0].connections.empty() || in[1].connections.empty()) {
-            return;
-        }
-
-        auto *p0   = static_cast<DigitizerUi::Block::OutputPort *>(in[0].connections[0]->ports[0]);
-        auto *p1   = static_cast<DigitizerUi::Block::OutputPort *>(in[1].connections[0]->ports[0]);
-        auto  val0 = p0->dataSet.asFloat32();
-        auto  val1 = p1->dataSet.asFloat32();
-
-        if (val0.size() != val1.size()) {
-            return;
-        }
-
-        m_data.resize(val0.size());
-        memcpy(m_data.data(), val0.data(), m_data.size() * 4);
-        for (int i = 0; i < m_data.size(); ++i) {
-            m_data[i] += val1[i];
-        }
-        outputs()[0].dataSet = m_data;
-    }
-
-    std::vector<float> m_data;
-};
-
-template<typename T>
-class FFT {
-    std::size_t                  _N;
-    std::vector<std::complex<T>> _w;
-
-public:
-    FFT() = delete;
-    explicit FFT(std::size_t N)
-        : _N(N), _w(N) {
-        assert(N > 1 && "N should be > 0");
-        for (std::size_t s = 2; s <= N; s *= 2) {
-            const std::size_t m = s / 2;
-            _w[m]               = exp(std::complex<T>(0, -2 * M_PI / s));
-        }
-    }
-
-    void compute(std::vector<std::complex<T>> &X) const noexcept {
-        std::size_t rev = 0;
-        for (std::size_t i = 0; i < _N; i++) {
-            if (rev > i && rev < _N) {
-                std::swap(X[i], X[rev]);
-            }
-            std::size_t mask = _N / 2;
-            while (rev & mask) {
-                rev -= mask;
-                mask /= 2;
-            }
-            rev += mask;
-        }
-
-        for (std::size_t s = 2; s <= _N; s *= 2) {
-            const std::size_t m = s / 2;
-            // std::complex<T> w = exp(std::complex<T>(0, -2 * M_PI / s));
-            for (std::size_t k = 0; k < _N; k += s) {
-                std::complex<T> wk = 1;
-                for (std::size_t j = 0; j < m; j++) {
-                    const std::complex<T> t = wk * X[k + j + m];
-                    const std::complex<T> u = X[k + j];
-                    X[k + j]                = u + t;
-                    X[k + j + m]            = u - t;
-                    // wk *= w;
-                    wk *= _w[m];
-                }
-            }
-        }
-    }
-
-    template<typename C>
-    std::vector<T> compute_magnitude_spectrum(C signal) {
-        static_assert(std::is_same_v<T, typename C::value_type>, "input type T mismatch");
-        std::vector<T>               magnitude_spectrum(_N / 2 + 1);
-        std::vector<std::complex<T>> fft_signal(signal.size());
-        for (std::size_t i = 0; i < signal.size(); i++) {
-            fft_signal[i] = { signal[i], 0.0 };
-        }
-
-        compute(fft_signal);
-
-        for (std::size_t n = 0; n < _N / 2 + 1; n++) {
-            magnitude_spectrum[n] = std::abs(fft_signal[n]) * 2.0 / _N;
-        }
-
-        return magnitude_spectrum;
-    }
-};
-
-class FFTBlock : public DigitizerUi::Block {
-public:
-    explicit FFTBlock(std::string_view name, DigitizerUi::BlockType *type)
-        : DigitizerUi::Block(name, type->name, type) {
-    }
-
-    void processData() override {
-        auto &in = inputs()[0];
-        if (in.connections.empty()) {
-            return;
-        }
-
-        auto *p   = static_cast<DigitizerUi::Block::OutputPort *>(in.connections[0]->ports[0]);
-        auto  val = p->dataSet.asFloat32();
-
-        m_data.resize(val.size());
-        FFT<float> fft(val.size());
-        m_data               = fft.compute_magnitude_spectrum(val);
-        outputs()[0].dataSet = m_data;
-    }
-
-    std::vector<float> m_data;
-};
 
 struct App {
     DigitizerUi::FlowGraph     flowGraph;
@@ -257,7 +136,7 @@ int main(int, char **) {
     app.flowGraph.addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
         t->createBlock = [t = t.get()](std::string_view name) {
-            return std::make_unique<SumBlock>(name, t);
+            return std::make_unique<DigitizerUi::SumBlock>(name, t);
         };
         t->inputs.resize(2);
         t->inputs[0].name = "in1";
@@ -275,7 +154,7 @@ int main(int, char **) {
     app.flowGraph.addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
         t->createBlock = [t = t.get()](std::string_view name) {
-            return std::make_unique<FFTBlock>(name, t);
+            return std::make_unique<DigitizerUi::FFTBlock>(name, t);
         };
         t->inputs.resize(1);
         t->inputs[0].name = "in1";

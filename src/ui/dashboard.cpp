@@ -5,8 +5,8 @@
 #include <imgui.h>
 #include <implot.h>
 
-#include "datasink.h"
 #include "flowgraph.h"
+#include "flowgraph/datasink.h"
 
 namespace DigitizerUi {
 

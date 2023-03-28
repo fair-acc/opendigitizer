@@ -15,7 +15,9 @@ set(sources
         flowgraph.cpp
         flowgraphitem.cpp
         dashboard.cpp
-        datasink.cpp
+        flowgraph/datasink.cpp
+        flowgraph/fftblock.cpp
+        flowgraph/sumblock.cpp
 )
 
 set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")

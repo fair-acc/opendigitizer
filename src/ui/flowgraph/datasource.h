@@ -2,7 +2,7 @@
 #ifndef DATASOURCE_H
 #define DATASOURCE_H
 
-#include "flowgraph.h"
+#include "../flowgraph.h"
 
 namespace DigitizerUi {
 

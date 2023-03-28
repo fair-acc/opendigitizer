@@ -4,7 +4,7 @@
 
 #include <imgui.h>
 
-#include "flowgraph.h"
+#include "../flowgraph.h"
 
 namespace DigitizerUi {
 
