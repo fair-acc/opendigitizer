@@ -12,20 +12,52 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
-    GIT_TAG         master #v0.13
+    GIT_TAG         33c5a965f55f80057f197257d1d1cdb06523e963 #v0.13
 )
+
+FetchContent_Declare(
+    imgui-node-editor
+    GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
+    GIT_TAG         2f99b2d613a400f6579762bd7e7c343a0d844158
+)
+
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY  https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG         yaml-cpp-0.7.0
+)
+
+FetchContent_Declare(
+    plf_colony
+    GIT_REPOSITORY  https://github.com/mattreecebentley/plf_colony.git
+    GIT_TAG         41e387e281b8323ca5584e79f67d632964b24bbf #v7.11
+)
+
+FetchContent_Declare( # needed to load images in ImGui
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG 8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55 # master from Sep 2022
+)
+
+FetchContent_Declare(
+        opencmw-cpp
+        GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
+        GIT_TAG main # todo: use proper release once available
+)
+
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony)
 else () # native build
-    FetchContent_Declare(
-            sdl2
-            GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
-            GIT_TAG        release-2.24.2
-    )
-    FetchContent_MakeAvailable(sdl2 imgui implot)
+    # FetchContent_Declare(
+    #         sdl2
+    #         GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
+    #         GIT_TAG        release-2.24.2
+    # )
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp plf_colony stb opencmw-cpp)
+    find_package(SDL2 REQUIRED)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-    target_link_libraries(SDL2 PUBLIC OpenGL::GL )
-    target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
+    # target_link_libraries(SDL2 PUBLIC OpenGL::GL )
+    # target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
 endif()
 
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
@@ -39,9 +71,10 @@ add_library(
         ${imgui_SOURCE_DIR}/imgui_tables.cpp
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
-    target_link_libraries(imgui PUBLIC SDL2main SDL2)
+    target_link_libraries(imgui PUBLIC SDL2::SDL2 OpenGL::GL)
 endif()
 
 target_include_directories(
@@ -61,3 +94,24 @@ target_include_directories(
         ${implot_SOURCE_DIR}
 )
 target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(
+    imgui-node-editor
+    OBJECT
+        ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor.cpp
+        ${imgui-node-editor_SOURCE_DIR}/imgui_canvas.cpp
+        ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor_api.cpp
+        ${imgui-node-editor_SOURCE_DIR}/crude_json.cpp
+)
+target_include_directories(
+    imgui-node-editor BEFORE
+    PUBLIC
+        ${imgui-node-editor_SOURCE_DIR}
+)
+target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+
+add_library(plf_colony INTERFACE)
+target_include_directories(plf_colony INTERFACE ${plf_colony_SOURCE_DIR})

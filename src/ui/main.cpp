@@ -13,19 +13,45 @@
 #endif
 #include <cstdio>
 
-// Emscripten requires to have full control over the main loop. We're going to
-// store our SDL book-keeping variables globally. Having a single function that
-// acts as a loop prevents us to store state in the stack of said function. So
-// we need some location for this.
-SDL_Window   *g_Window    = NULL;
-SDL_GLContext g_GLContext = NULL;
-bool          running     = true;
+#include "dashboard.h"
+#include "flowgraph.h"
+#include "flowgraph/datasink.h"
+#include "flowgraph/datasource.h"
+#include "flowgraph/fftblock.h"
+#include "flowgraph/sumblock.h"
+#include "flowgraphitem.h"
 
-static void   main_loop(void *);
+#include "fair_header.h"
 
-int           main(int, char **) {
+static void main_loop(void *);
+
+ImFont     *addDefaultFont(float pixel_size) {
+    ImGuiIO     &io = ImGui::GetIO();
+    ImFontConfig config;
+    config.SizePixels = pixel_size;
+    // high oversample to have better looking text when zooming in on the flowgraph
+    config.OversampleH = config.OversampleV = 4;
+    config.PixelSnapH                       = true;
+    ImFont *font                            = io.Fonts->AddFontDefault(&config);
+    return font;
+}
+
+struct App {
+    DigitizerUi::FlowGraph     flowGraph;
+    DigitizerUi::FlowGraphItem fgItem;
+    DigitizerUi::Dashboard     dashboard;
+    SDL_Window                *window    = NULL;
+    SDL_GLContext              glContext = NULL;
+    bool                       running   = true;
+
+    ImFont                    *font12    = nullptr;
+    ImFont                    *font14    = nullptr;
+    ImFont                    *font16    = nullptr;
+};
+
+int main(int, char **) {
     // Setup SDL
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         printf("Error: %s\n", SDL_GetError());
         return -1;
     }
@@ -48,20 +74,18 @@ int           main(int, char **) {
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
     SDL_WindowFlags window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    g_Window                     = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
-    g_GLContext                  = SDL_GL_CreateContext(g_Window);
-    if (!g_GLContext) {
+    auto            window       = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    auto            glContext    = SDL_GL_CreateContext(window);
+    if (!glContext) {
         fprintf(stderr, "Failed to initialize WebGL context!\n");
         return 1;
     }
-    SDL_GL_SetSwapInterval(1); // Enable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImPlot::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    (void) io;
 
     // For an Emscripten build we are disabling file-system access, so let's not
     // attempt to do a fopen() of the imgui.ini file. You may manually call
@@ -74,13 +98,13 @@ int           main(int, char **) {
     ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
-    ImGui_ImplSDL2_InitForOpenGL(g_Window, g_GLContext);
+    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load Fonts
     // io.Fonts->AddFontDefault();
 #ifndef IMGUI_DISABLE_FILE_FUNCTIONS
-    io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f);
+    // io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/Cousine-Regular.ttf", 15.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/DroidSans.ttf", 16.0f);
     // io.Fonts->AddFontFromFileTTF("fonts/ProggyTiny.ttf", 10.0f);
@@ -88,41 +112,100 @@ int           main(int, char **) {
     // IM_ASSERT(font != NULL);
 #endif
 
+    App app = {
+        .flowGraph = {},
+        .fgItem    = { &app.flowGraph },
+        .dashboard = DigitizerUi::Dashboard(&app.flowGraph),
+        .window    = window,
+        .glContext = glContext
+    };
+
+    app.fgItem.newSinkCallback = [&, n = 1]() mutable {
+        auto name = fmt::format("sink {}", n++);
+        app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>(name));
+    };
+
+#ifndef EMSCRIPTEN
+    app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+#endif
+    app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
+
+    app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source1", 0.1));
+    app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSource>("source2", 0.02));
+
+    app.flowGraph.addBlockType([]() {
+        auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
+        t->createBlock = [t = t.get()](std::string_view name) {
+            return std::make_unique<DigitizerUi::SumBlock>(name, t);
+        };
+        t->inputs.resize(2);
+        t->inputs[0].name = "in1";
+        t->inputs[0].type = "float";
+
+        t->inputs[1].name = "in2";
+        t->inputs[1].type = "float";
+
+        t->outputs.resize(1);
+        t->outputs[0].name = "out";
+        t->outputs[0].type = "float";
+        return t;
+    }());
+
+    app.flowGraph.addBlockType([]() {
+        auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
+        t->createBlock = [t = t.get()](std::string_view name) {
+            return std::make_unique<DigitizerUi::FFTBlock>(name, t);
+        };
+        t->inputs.resize(1);
+        t->inputs[0].name = "in1";
+        t->inputs[0].type = "float";
+
+        t->outputs.resize(1);
+        t->outputs[0].name = "out";
+        t->outputs[0].type = "float";
+        return t;
+    }());
+
+    app.font12 = addDefaultFont(12);
+    app.font14 = addDefaultFont(14);
+    app.font16 = addDefaultFont(16);
+
+    app_header::load_header_assets();
+
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(main_loop, NULL, 0, true);
+    emscripten_set_main_loop_arg(main_loop, &app, 0, true);
 #else
-    while (running) {
-        main_loop(NULL);
+    SDL_GL_SetSwapInterval(1); // Enable vsync
+
+    while (app.running) {
+        main_loop(&app);
     }
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
 
-    SDL_GL_DeleteContext(g_GLContext);
-    SDL_DestroyWindow(g_Window);
+    SDL_GL_DeleteContext(app.glContext);
+    SDL_DestroyWindow(app.window);
     SDL_Quit();
 #endif
     // emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 10);
 }
 
 static void main_loop(void *arg) {
-    ImGuiIO &io = ImGui::GetIO();
-    IM_UNUSED(arg); // We can pass this argument as the second parameter of emscripten_set_main_loop_arg(), but we don't use that.
+    App     *app = static_cast<App *>(arg);
 
-    // Our state (make them static = more or less global) as a convenience to keep the example terse.
-    static ImVec4 clear_color      = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    static bool   show_demo_window = true;
+    ImGuiIO &io  = ImGui::GetIO();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         if (event.type == SDL_QUIT)
-            running = false;
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(g_Window))
-            running = false;
+            app->running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(app->window))
+            app->running = false;
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
 
@@ -131,16 +214,39 @@ static void main_loop(void *arg) {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    // Show ImGui and ImPlot demo windows - TODO: replace with flowgraph editor and charting implementation
-    ImGui::ShowDemoWindow(&show_demo_window);
-    ImPlot::ShowDemoWindow();
+    ImGui::SetNextWindowPos({ 0, 0 });
+    int width, height;
+    SDL_GetWindowSize(app->window, &width, &height);
+    ImGui::SetNextWindowSize({ float(width), float(height) });
+    ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    app_header::draw_header_bar("OpenDigitizer", app->font16);
+
+    ImGui::BeginTabBar("maintabbar");
+    if (ImGui::BeginTabItem("Dashboard")) {
+        app->dashboard.draw();
+
+        ImGui::EndTabItem();
+    }
+
+    if (ImGui::BeginTabItem("Flowgraph")) {
+        auto contentRegion = ImGui::GetContentRegionAvail();
+
+        app->fgItem.draw(contentRegion);
+
+        ImGui::EndTabItem();
+    }
+
+    ImGui::EndTabBar();
+
+    ImGui::End();
 
     // Rendering
     ImGui::Render();
-    SDL_GL_MakeCurrent(g_Window, g_GLContext);
+    SDL_GL_MakeCurrent(app->window, app->glContext);
     glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
-    glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+    glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    SDL_GL_SwapWindow(g_Window);
+    SDL_GL_SwapWindow(app->window);
 }

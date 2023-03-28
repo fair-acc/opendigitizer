@@ -10,6 +10,19 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+set(sources
+        main.cpp
+        flowgraph.cpp
+        flowgraphitem.cpp
+        dashboard.cpp
+        flowgraph/datasink.cpp
+        flowgraph/fftblock.cpp
+        flowgraph/sumblock.cpp
+)
+
+set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")
+
+add_subdirectory(app_header)
 
 if (EMSCRIPTEN)
     message(STATUS "Detected emscripten webassembly build")
@@ -22,7 +35,6 @@ if (EMSCRIPTEN)
             -g
             -Wall -Wformat -Os
             "SHELL:-s USE_SDL=2"
-            "SHELL:-s DISABLE_EXCEPTION_CATCHING=1"
     )
 
     add_link_options(
@@ -33,13 +45,15 @@ if (EMSCRIPTEN)
             "SHELL:-s NO_FILESYSTEM=1"
             --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
             "SHELL:-s USE_SDL=2"
-            "SHELL:-s DISABLE_EXCEPTION_CATCHING=1"
             -sFETCH
     )
+endif()
 
-    # dependencies
-    include(cmake/Dependencies.cmake)
+# dependencies
+include(cmake/Dependencies.cmake)
+cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png)
 
+if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory
     set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
 
@@ -49,13 +63,19 @@ if (EMSCRIPTEN)
     set(outputFileName "index")
     add_executable(${outputFileName})
 
-    target_sources(index PRIVATE main.cpp)
+    target_sources(index PRIVATE ${sources})
 
     # link the executable
     target_link_libraries(
             ${outputFileName}
             PRIVATE
             implot
+            plf_colony
+            app_header
+            ui_assets
+            core
+            imgui-node-editor
+            yaml-cpp::yaml-cpp
     )
 
     add_custom_target(serve
@@ -64,19 +84,24 @@ if (EMSCRIPTEN)
             DEPENDS ${outputFileName}
     )
 else () # native build
-    # dependencies
-    include(cmake/Dependencies.cmake)
 
     add_executable(opendigitizer-ui)
 
-    target_sources(opendigitizer-ui PRIVATE main.cpp)
+    target_sources(opendigitizer-ui PRIVATE ${sources})
 
     # link the executable
     target_link_libraries(
             opendigitizer-ui
             PRIVATE
-            SDL2main
             SDL2
             implot
+            imgui-node-editor
+            plf_colony
+            yaml-cpp::yaml-cpp
+            core
+            client
+            app_header
+            ui_assets
     )
+    target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
