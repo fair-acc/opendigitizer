@@ -50,16 +50,30 @@ public:
         inline bool operator==(const Source &s) const { return s.block == block && s.port == port; };
     };
     struct Plot {
+        enum class Axis {
+            X,
+            Y
+        };
+
         Plot();
 
         std::string           name;
         std::vector<Source *> sources;
+        struct AxisData {
+            Axis   axis;
+            double min;
+            double max;
+        };
+        std::vector<AxisData> axes;
     };
 
     explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg);
     ~Dashboard();
 
+    void                         load();
     void               save();
+
+    void                         newPlot();
 
     inline const auto &sources() const { return m_sources; }
     inline auto       &sources() { return m_sources; }

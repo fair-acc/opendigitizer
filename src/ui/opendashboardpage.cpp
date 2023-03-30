@@ -17,7 +17,9 @@ constexpr const char *addSourcePopupId = "addSourcePopup";
 OpenDashboardPage::OpenDashboardPage()
     : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()))
     , m_filterDate(FilterDate::Before) {
+#ifndef EMSCRIPTEN
     addSource(".");
+#endif
 }
 
 void OpenDashboardPage::addSource(std::string_view path) {
@@ -91,7 +93,7 @@ void OpenDashboardPage::draw(App *app) {
         static DashboardSource *source;
         if (ImGui::IsWindowAppearing()) {
             name   = desc->name;
-            source = desc->source->isValid ? desc->source : &(*m_sources.begin());
+            source = desc->source->isValid || m_sources.empty() ? desc->source : &(*m_sources.begin());
         }
         ImGui::InputText("##name", &name);
 
@@ -353,7 +355,12 @@ void OpenDashboardPage::drawAddSourcePopup() {
         }
         ImGui::InputText("##sourcePath", &path);
 
+#ifdef EMSCRIPTEN
+        // on emscripten we cannot use local sources, nor we have the support for remote ones yet
+        const bool okEnabled = false;
+#else
         const bool okEnabled = !path.empty();
+#endif
         if (ImGuiUtils::drawDialogButtons(okEnabled) == ImGuiUtils::DialogButton::Ok) {
             addSource(path);
         }
