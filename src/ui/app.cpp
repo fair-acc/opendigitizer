@@ -18,6 +18,10 @@ void App::openNewWindow() {
 #endif
 }
 
+void App::loadEmptyDashboard() {
+    loadDashboard(DashboardDescription::createEmpty("New dashboard"));
+}
+
 void App::loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
     dashboard = std::make_unique<Dashboard>(desc, &flowGraph);
 }

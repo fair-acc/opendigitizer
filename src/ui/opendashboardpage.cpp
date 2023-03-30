@@ -11,6 +11,7 @@ enum FilterDate {
     After
 };
 
+constexpr const char *addSourcePopupId = "addSourcePopup";
 }
 
 OpenDashboardPage::OpenDashboardPage()
@@ -28,7 +29,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
     }
 
     for (auto &file : fs::directory_iterator(path)) {
-        if (file.is_regular_file() && file.path().extension() == ".ddd") { // ddd for "Digitizer Dashboard Description"
+        if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
             auto dd = source.load(file.path().filename().native());
             if (dd) {
                 m_dashboards.push_back(dd);
@@ -41,22 +42,36 @@ void OpenDashboardPage::draw(App *app) {
     ImGui::Spacing();
     ImGui::PushFont(app->font16);
     if (app->dashboard) {
-        ImGui::Text("%s (%s)", app->dashboard->name().c_str(), app->dashboard->path().c_str());
+        auto desc = app->dashboard->description();
+        ImGui::Text("%s (%s)", desc->name.c_str(), desc->source->path.c_str());
     } else {
         ImGui::Text("-");
     }
+
+    static const float indent = 20;
+
     ImGui::PopFont();
-    ImGui::Dummy({ 20, 20 });
+    ImGui::Dummy({ indent, 20 });
     ImGui::SameLine();
     const bool dashboardLoaded = app->dashboard != nullptr;
     if (!dashboardLoaded) {
         ImGui::BeginDisabled();
     }
+
+    // Only enable the save button if the dashboard has a valid source, that is it has been saved somewhere before
+    if (dashboardLoaded && !app->dashboard->description()->source->isValid) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button("Save")) {
         app->dashboard->save();
     }
+    if (dashboardLoaded && !app->dashboard->description()->source->isValid) {
+        ImGui::EndDisabled();
+    }
+
     ImGui::SameLine();
     if (ImGui::Button("Save as...")) {
+        ImGui::OpenPopup("saveAsDialog");
     }
     ImGui::SameLine();
     if (ImGui::Button("Close")) {
@@ -66,11 +81,56 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::EndDisabled();
     }
 
+    ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
+    if (ImGui::BeginPopupModal("saveAsDialog")) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Name:");
+        ImGui::SameLine();
+        auto                    desc = app->dashboard->description();
+        static std::string      name;
+        static DashboardSource *source;
+        if (ImGui::IsWindowAppearing()) {
+            name   = desc->name;
+            source = desc->source->isValid ? desc->source : &(*m_sources.begin());
+        }
+        ImGui::InputText("##name", &name);
+
+        ImGui::TextUnformatted("Source:");
+        ImGui::SameLine();
+
+        ImGui::BeginGroup();
+        for (auto &s : m_sources) {
+            bool enabled = &s == source;
+            if (ImGui::Checkbox(s.path.c_str(), &enabled)) {
+                source = &s;
+            }
+        }
+        if (ImGui::Button("Add new")) {
+            ImGui::OpenPopup(addSourcePopupId);
+        }
+        ImGui::EndGroup();
+
+        drawAddSourcePopup();
+
+        bool okEnabled = !name.empty() && source->isValid;
+        if (ImGuiUtils::drawDialogButtons(okEnabled) == ImGuiUtils::DialogButton::Ok) {
+            auto newDesc    = std::make_shared<DashboardDescription>(*desc);
+            newDesc->name   = name;
+            newDesc->source = source;
+            m_dashboards.push_back(newDesc);
+
+            app->dashboard->setNewDescription(newDesc);
+            app->dashboard->save();
+        }
+
+        ImGui::EndPopup();
+    }
+
     ImGui::Dummy({ 0, 30 });
     ImGui::PushFont(app->font16);
     ImGui::TextUnformatted("New Digitizer Window");
     ImGui::PopFont();
-    ImGui::Dummy({ 20, 00 });
+    ImGui::Dummy({ indent, 00 });
     ImGui::SameLine();
     if (ImGui::Button("Open a new Digitizer Window")) {
         app->openNewWindow();
@@ -80,6 +140,13 @@ void OpenDashboardPage::draw(App *app) {
     ImGui::PushFont(app->font16);
     ImGui::TextUnformatted("Load a new Dashboard");
     ImGui::PopFont();
+    ImGui::Spacing();
+
+    ImGui::Dummy({ indent, 0 });
+    ImGui::SameLine();
+    if (ImGui::Button("Open empty dashboard")) {
+        app->loadEmptyDashboard();
+    }
     ImGui::Spacing();
 
     auto getDashboard = [this](auto &it) -> std::pair<std::shared_ptr<DashboardDescription>, std::string> {
@@ -146,8 +213,8 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::PopFont();
 
         const auto &name              = item.first->name;
-        const auto &path              = item.first->source->path;
-        bool        isDashboardActive = app->dashboard && name == app->dashboard->name() && path == app->dashboard->path();
+        const auto &source            = item.first->source;
+        bool        isDashboardActive = app->dashboard && name == app->dashboard->description()->name && source == app->dashboard->description()->source;
         ImGui::PushFont(isDashboardActive ? app->fontIconsSolid : app->fontIcons);
         if (ImGui::Button("\uf144")) { // , play icon
             app->loadDashboard(item.first);
@@ -204,7 +271,7 @@ void OpenDashboardPage::draw(App *app) {
     ImGui::SameLine();
     ImGui::SetCursorPosX(x);
     if (ImGui::Button("Add new")) {
-        ImGui::OpenPopup("addSourcePopup");
+        ImGui::OpenPopup(addSourcePopupId);
     }
     ImGui::EndGroup();
 
@@ -269,17 +336,25 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::EndPopup();
     }
 
-    ImGui::EndGroup();
+    drawAddSourcePopup();
 
+    ImGui::EndGroup();
+}
+
+void OpenDashboardPage::drawAddSourcePopup() {
     ImGui::SetNextWindowSize({ 600, 80 }, ImGuiCond_Once);
-    if (ImGui::BeginPopupModal("addSourcePopup")) {
+    if (ImGui::BeginPopupModal(addSourcePopupId)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");
         ImGui::SameLine();
-        std::string path;
+        static std::string path;
+        if (ImGui::IsWindowAppearing()) {
+            path = {};
+        }
         ImGui::InputText("##sourcePath", &path);
 
-        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
+        const bool okEnabled = !path.empty();
+        if (ImGuiUtils::drawDialogButtons(okEnabled) == ImGuiUtils::DialogButton::Ok) {
             addSource(path);
         }
         ImGui::EndPopup();

@@ -390,9 +390,7 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 }
 
 void FlowGraph::parse(const std::string &str) {
-    m_blocks.clear();
-    m_sourceBlocks.clear();
-    m_sinkBlocks.clear();
+    clear();
 
     YAML::Node tree   = YAML::Load(str);
 
@@ -488,7 +486,13 @@ void FlowGraph::parse(const std::string &str) {
     }
 }
 
-void FlowGraph::save() {
+void FlowGraph::clear() {
+    m_blocks.clear();
+    m_sourceBlocks.clear();
+    m_sinkBlocks.clear();
+}
+
+void FlowGraph::save(const std::filesystem::path &path) {
 #ifndef EMSCRIPTEN
     YAML::Emitter out;
     {
@@ -541,7 +545,7 @@ void FlowGraph::save() {
         });
     }
 
-    std::ofstream stream("flowgraph.grc", std::ios::trunc);
+    std::ofstream stream(path, std::ios::trunc);
     if (!stream.is_open()) {
         return;
     }

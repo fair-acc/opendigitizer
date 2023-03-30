@@ -205,6 +205,7 @@ public:
     void                         parse(const std::filesystem::path &file);
     void                         parse(const std::string &str);
     void                         parse(const opencmw::URI<opencmw::STRICT> &uri);
+    void                         clear();
 
     Block                       *findBlock(std::string_view name) const;
     Block                       *findSourceBlock(std::string_view name) const;
@@ -230,7 +231,7 @@ public:
 
     void                         update();
 
-    void                         save();
+    void                         save(const std::filesystem::path &path);
 
     std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
