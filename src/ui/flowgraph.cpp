@@ -37,11 +37,18 @@ std::string Block::Parameter::toString() const {
         return e->toString();
     } else if (auto *r = std::get_if<Block::RawParameter>(this)) {
         return r->value;
-    } else if (auto *i = std::get_if<Block::IntParameter>(this)) {
+    } else if (auto *i = std::get_if<Block::NumberParameter<int>>(this)) {
+        return std::to_string(i->value);
+    } else if (auto *i = std::get_if<Block::NumberParameter<float>>(this)) {
         return std::to_string(i->value);
     }
     assert(0);
     return {};
+}
+
+BlockType::BlockType(const std::string &n)
+    : name(n)
+    , createBlock([this](std::string_view name) { return std::make_unique<Block>(name, this->name, this); }) {
 }
 
 Block::Block(std::string_view name, std::string_view id, BlockType *type)
@@ -56,8 +63,10 @@ Block::Block(std::string_view name, std::string_view id, BlockType *type)
     for (auto &p : type->parameters) {
         if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
             m_parameters.push_back(Block::EnumParameter{ *e, 0 });
-        } else if (auto *i = std::get_if<BlockType::IntParameter>(&p.impl)) {
-            m_parameters.push_back(Block::IntParameter{ 0 });
+        } else if (auto *i = std::get_if<BlockType::NumberParameter<int>>(&p.impl)) {
+            m_parameters.push_back(Block::NumberParameter<int>{ i->defaultValue });
+        } else if (auto *i = std::get_if<BlockType::NumberParameter<float>>(&p.impl)) {
+            m_parameters.push_back(Block::NumberParameter<float>{ i->defaultValue });
         } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
             m_parameters.push_back(Block::RawParameter{ r->defaultValue });
         }
@@ -116,7 +125,8 @@ Block::ParameterValue Block::getParameterValue(const std::string &str) const {
             if (numWords == 1) {
                 switch (p.impl.index()) {
                 case 0: return std::get<BlockType::EnumParameter>(p.impl).options[std::get<Block::EnumParameter>(bp).optionIndex];
-                case 1: return std::get<Block::IntParameter>(bp).value;
+                case 1: return std::get<Block::NumberParameter<int>>(bp).value;
+                case 2: return std::get<Block::NumberParameter<float>>(bp).value;
                 default:
                     assert(0);
                     break;
@@ -299,7 +309,10 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
                 def->parameters.push_back(BlockType::Parameter{ id, label, std::move(par) });
             } else if (dtype == "int") {
                 auto defaultValue = defaultNode ? defaultNode.as<int>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::IntParameter{ defaultValue } });
+                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<int>{ defaultValue } });
+            } else if (dtype == "float") {
+                auto defaultValue = defaultNode ? defaultNode.as<float>(0) : 0;
+                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<float>{ defaultValue } });
             } else if (dtype == "raw") {
                 auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
                 def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::RawParameter{ defaultValue } });
@@ -378,6 +391,8 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 
 void FlowGraph::parse(const std::string &str) {
     m_blocks.clear();
+    m_sourceBlocks.clear();
+    m_sinkBlocks.clear();
 
     YAML::Node tree   = YAML::Load(str);
 
@@ -391,13 +406,13 @@ void FlowGraph::parse(const std::string &str) {
         auto type = m_types[id].get();
         if (!type) {
             std::cerr << "Block type '" << id << "' is unkown.\n";
-        }
-        m_blocks.push_back(std::make_unique<Block>(n, id, type));
-        auto *block = m_blocks.back().get();
 
-        if (!type) {
+            auto block = std::make_unique<Block>(n, id, type);
+            m_blocks.push_back(std::move(block));
             continue;
         }
+
+        auto block = type->createBlock(n);
 
         auto pars = b["parameters"];
         if (pars && pars.IsMap()) {
@@ -426,10 +441,14 @@ void FlowGraph::parse(const std::string &str) {
                         break;
                     }
                     case 1: {
-                        std::get<Block::IntParameter>(blockParameter).value = it->second.as<int>();
+                        std::get<Block::NumberParameter<int>>(blockParameter).value = it->second.as<int>();
                         break;
                     }
-                    case 2:
+                    case 2: {
+                        std::get<Block::NumberParameter<float>>(blockParameter).value = it->second.as<float>();
+                        break;
+                    }
+                    case 3:
                         std::get<Block::RawParameter>(blockParameter).value = it->second.as<std::string>();
                         break;
                     }
@@ -437,7 +456,13 @@ void FlowGraph::parse(const std::string &str) {
             }
         }
 
-        block->update();
+        if (type->inputs.size() == 0 && type->outputs.size() > 0) {
+            addSourceBlock(std::move(block));
+        } else if (type->outputs.size() == 0 && type->inputs.size() > 0) {
+            addSinkBlock(std::move(block));
+        } else {
+            addBlock(std::move(block));
+        }
     }
 
     auto connections = tree["connections"];
@@ -525,8 +550,8 @@ void FlowGraph::save() {
 #endif
 }
 
-Block *FlowGraph::findBlock(std::string_view name) const {
-    for (auto &b : m_blocks) {
+static Block *findBlockImpl(std::string_view name, auto &list) {
+    for (auto &b : list) {
         if (b->name == name) {
             return b.get();
         }
@@ -534,21 +559,45 @@ Block *FlowGraph::findBlock(std::string_view name) const {
     return nullptr;
 }
 
+Block *FlowGraph::findBlock(std::string_view name) const {
+    if (auto *b = findSourceBlock(name)) {
+        return b;
+    }
+    if (auto *b = findSinkBlock(name)) {
+        return b;
+    }
+    return findBlockImpl(name, m_blocks);
+}
+
+Block *FlowGraph::findSinkBlock(std::string_view name) const {
+    return findBlockImpl(name, m_sinkBlocks);
+}
+
+Block *FlowGraph::findSourceBlock(std::string_view name) const {
+    return findBlockImpl(name, m_sourceBlocks);
+}
+
 void FlowGraph::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
+    block->m_flowGraph = this;
     block->update();
     m_blocks.push_back(std::move(block));
 }
 
 void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
+    block->m_flowGraph = this;
     block->update();
+    if (sourceBlockAddedCallback) {
+        sourceBlockAddedCallback(block.get());
+    }
     m_sourceBlocks.push_back(std::move(block));
 }
 
 void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
+    block->m_flowGraph = this;
     block->update();
     m_sinkBlocks.push_back(std::move(block));
 }
@@ -611,15 +660,13 @@ void FlowGraph::update() {
         b->m_updated = false;
     }
     for (auto &b : m_sourceBlocks) {
-        b->m_updated = false;
+        b->processData();
     }
 
     for (auto &b : m_sinkBlocks) {
         b->updateInputs();
         b->processData();
     }
-
-    save();
 }
 
 } // namespace DigitizerUi

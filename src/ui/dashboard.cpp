@@ -5,134 +5,102 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include <fstream>
+
+#include <yaml-cpp/yaml.h>
+
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
+#include "yamlutils.h"
 
 namespace DigitizerUi {
 
-struct Dashboard::Plot {
-    Plot() {
-        static int n = 1;
-        name         = fmt::format("Plot {}", n++);
-    }
+namespace {
+template<typename T>
+inline T randomRange(T min, T max) {
+    T scale = rand() / (T) RAND_MAX;
+    return min + scale * (max - min);
+}
 
-    std::string             name;
-    std::vector<DataSink *> sinks;
-};
+uint32_t randomColor() {
+    uint8_t x = randomRange(0.0f, 255.0f);
+    uint8_t y = randomRange(0.0f, 255.0f);
+    uint8_t z = randomRange(0.0f, 255.0f);
+    return x << 24 | y << 16 | z << 8 | 0xff;
+}
+} // namespace
 
-Dashboard::Dashboard(DigitizerUi::FlowGraph *fg)
-    : m_flowGraph(fg) {
+Dashboard::Plot::Plot() {
+    static int n = 1;
+    name         = fmt::format("Plot {}", n++);
+}
+
+Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg)
+    : m_desc(desc)
+    , m_name(desc->name)
+    , m_path(desc->source->path)
+    , m_flowGraph(fg) {
     m_plots.resize(2);
 
-    fg->blockDeletedCallback = [this](Block *b) {
-        for (auto &p : m_plots) {
-            auto it = std::find(p.sinks.begin(), p.sinks.end(), b);
-            if (it != p.sinks.end()) {
-                p.sinks.erase(it);
-            }
+    fg->sourceBlockAddedCallback = [this](Block *b) {
+        for (int i = 0; i < b->type->outputs.size(); ++i) {
+            auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
+            m_sources.insert({ b, i, name, randomColor() });
         }
     };
+    fg->blockDeletedCallback = [this](Block *b) {
+        for (auto &p : m_plots) {
+            p.sources.erase(std::remove_if(p.sources.begin(), p.sources.end(), [=](auto *s) { return s->block == b; }),
+                    p.sources.end());
+        }
+        m_sources.erase(std::remove_if(m_sources.begin(), m_sources.end(), [=](const auto &s) { return s.block == b; }),
+                m_sources.end());
+    };
+
+    fg->parse(std::filesystem::path(desc->source->path) / desc->flowgraphFile);
 }
 
 Dashboard::~Dashboard() {
 }
 
-void Dashboard::draw() {
-    // ImPlot::ShowDemoWindow();
+void Dashboard::save() {
+    m_flowGraph->save();
+}
 
-    m_flowGraph->update();
+std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &filename) {
+#ifndef EMSCRIPTEN
+    auto          path = std::filesystem::path(this->path) / filename;
+    std::ifstream stream(path, std::ios::in);
+    if (!stream.is_open()) {
+        return {};
+    }
+    YAML::Node tree      = YAML::Load(stream);
 
-    // child window to serve as initial source for our DND items
-    ImGui::BeginChild("DND_LEFT", ImVec2(100, 400));
+    auto       flowgraph = tree["flowgraph"];
+    if (!flowgraph.IsScalar()) return {};
 
-    struct DndItem {
-        Plot     *plotSource;
-        DataSink *sink;
+    auto favorite = tree["favorite"];
+    auto lastUsed = tree["lastUsed"];
+
+    auto getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
+        if (str.size() < 10) {
+            return {};
+        }
+        int                         year  = std::atoi(str.data());
+        unsigned                    month = std::atoi(str.c_str() + 5);
+        unsigned                    day   = std::atoi(str.c_str() + 8);
+
+        std::chrono::year_month_day date{ std::chrono::year{ year }, std::chrono::month{ month }, std::chrono::day{ day } };
+        return std::chrono::sys_days(date);
     };
 
-    static constexpr auto dndType = "DND_SINK";
-
-    for (auto &b : m_flowGraph->sinkBlocks()) {
-        auto *s = static_cast<DataSink *>(b.get());
-
-        ImPlot::ItemIcon(s->color);
-        ImGui::SameLine();
-        ImGui::Selectable(s->name.c_str(), false, 0, ImVec2(100, 0));
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            DndItem dnd = { nullptr, s };
-            ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
-            ImPlot::ItemIcon(s->color);
-            ImGui::SameLine();
-            ImGui::TextUnformatted(s->name.c_str());
-            ImGui::EndDragDropSource();
-        }
-    }
-    ImGui::EndChild();
-
-    if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
-            auto *dnd = static_cast<DndItem *>(payload->Data);
-            if (auto plot = dnd->plotSource) {
-                plot->sinks.erase(std::find(plot->sinks.begin(), plot->sinks.end(), dnd->sink));
-            }
-        }
-        ImGui::EndDragDropTarget();
-    }
-
-    ImGui::SameLine();
-    ImGui::BeginChild("DND_RIGHT");
-
-    for (auto &plot : m_plots) {
-        if (ImPlot::BeginPlot(plot.name.c_str())) {
-            for (auto *sink : plot.sinks) {
-                ImPlot::SetNextLineStyle(sink->color);
-
-                if (!sink->hasData) {
-                    // Plot one single dummy value so that the sink shows up in the plot legend
-                    float v = 0;
-                    ImPlot::PlotLine(sink->name.c_str(), &v, 1);
-                } else {
-                    switch (sink->dataType) {
-                    case DigitizerUi::DataType::Float32: {
-                        auto values = sink->data.asFloat32();
-                        ImPlot::PlotLine(sink->name.c_str(), values.data(), values.size());
-                        break;
-                    }
-                    default: break;
-                    }
-                }
-
-                // allow legend item labels to be DND sources
-                if (ImPlot::BeginDragDropSourceItem(sink->name.c_str())) {
-                    DndItem dnd = { &plot, sink };
-                    ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
-                    ImPlot::ItemIcon(sink->color);
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(sink->name.c_str());
-                    ImPlot::EndDragDropSource();
-                }
-            }
-
-            auto acceptSink = [&]() {
-                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
-                    auto *dnd = static_cast<DndItem *>(payload->Data);
-                    plot.sinks.push_back(dnd->sink);
-                    if (auto plot = dnd->plotSource) {
-                        plot->sinks.erase(std::find(plot->sinks.begin(), plot->sinks.end(), dnd->sink));
-                    }
-                }
-            };
-
-            // allow the main plot area to be a DND target
-            if (ImPlot::BeginDragDropTargetPlot()) {
-                acceptSink();
-                ImPlot::EndDragDropTarget();
-            }
-
-            ImPlot::EndPlot();
-        }
-    }
-    ImGui::EndChild();
+    return std::make_shared<DashboardDescription>(DashboardDescription{ .name = path.stem(),
+            .source                                                           = this,
+            .flowgraphFile                                                    = flowgraph.as<std::string>(),
+            .isFavorite                                                       = favorite.IsScalar() ? favorite.as<bool>() : false,
+            .lastUsed                                                         = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt });
+#endif
+    return {};
 }
 
 } // namespace DigitizerUi

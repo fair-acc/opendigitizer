@@ -8,17 +8,28 @@
 
 namespace DigitizerUi {
 
-class DataSink : public Block {
+class DataSink final : public Block {
 public:
     explicit DataSink(std::string_view name);
 
     void     processData() override;
+    static void registerBlockType(FlowGraph *fg);
 
     bool     hasData = false;
     DataType dataType;
     DataSet  data;
 
     ImVec4   color;
+
+private:
+};
+
+class DataSinkSource final : public Block {
+public:
+    explicit DataSinkSource(std::string_view name);
+
+    void        processData() override;
+    static void registerBlockType(FlowGraph *fg);
 
 private:
 };
