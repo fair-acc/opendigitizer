@@ -5,11 +5,6 @@
 #include <string>
 #include <vector>
 
-#ifdef EMSCRIPTEN
-#include "emscripten_compat.h"
-#endif
-#include <plf_colony.h>
-
 #include "dashboard.h"
 
 namespace DigitizerUi {
@@ -28,7 +23,7 @@ private:
     void                                               drawAddSourcePopup();
 
     std::vector<std::shared_ptr<DashboardDescription>> m_dashboards;
-    plf::colony<DashboardSource>                       m_sources;
+    std::vector<std::shared_ptr<DashboardSource>>      m_sources;
     bool                                               m_favoritesEnabled    = true;
     bool                                               m_notFavoritesEnabled = true;
     std::chrono::time_point<std::chrono::system_clock> m_date;

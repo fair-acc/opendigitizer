@@ -29,15 +29,38 @@ uint32_t randomColor() {
     return x << 24 | y << 16 | z << 8 | 0xff;
 }
 
-DashboardSource *unsavedSource() {
-    static DashboardSource source = {
-        .path    = "Unsaved",
-        .isValid = false,
-    };
-    return &source;
+std::shared_ptr<DashboardSource> unsavedSource() {
+    static auto source = std::make_shared<DashboardSource>(DashboardSource{
+            .path    = "Unsaved",
+            .isValid = false,
+    });
+    return source;
+}
+
+auto &sources() {
+    static std::vector<std::weak_ptr<DashboardSource>> sources;
+    return sources;
 }
 
 } // namespace
+
+DashboardSource::~DashboardSource() noexcept {
+    auto it = std::find_if(sources().begin(), sources().end(), [this](const auto &s) { return s.lock().get() == this; });
+    if (it != sources().end()) {
+        sources().erase(it);
+    }
+}
+
+std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {
+    auto it = std::find_if(sources().begin(), sources().end(), [=](const auto &s) { return s.lock()->path == path; });
+    if (it != sources().end()) {
+        return it->lock();
+    }
+
+    auto s = std::make_shared<DashboardSource>(DashboardSource{ std::string(path), true });
+    sources().push_back(s);
+    return s;
+}
 
 Dashboard::Plot::Plot() {
     static int n = 1;
@@ -264,9 +287,9 @@ void Dashboard::newPlot() {
     m_plots.back().axes.push_back({ Plot::Axis::Y });
 }
 
-std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &filename) {
+std::shared_ptr<DashboardDescription> DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &filename) {
 #ifndef EMSCRIPTEN
-    auto          path = std::filesystem::path(this->path) / filename;
+    auto          path = std::filesystem::path(source->path) / filename;
     std::ifstream stream(path, std::ios::in);
     if (!stream.is_open()) {
         return {};
@@ -290,7 +313,7 @@ std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &f
 
     return std::make_shared<DashboardDescription>(DashboardDescription{
             .name       = path.stem(),
-            .source     = this,
+            .source     = source,
             .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
             .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt });
 #endif
