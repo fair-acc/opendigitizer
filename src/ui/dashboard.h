@@ -19,23 +19,26 @@ class FlowGraph;
 struct DashboardDescription;
 
 struct DashboardSource {
+    ~DashboardSource() noexcept;
+
     std::string                           path;
     bool                                  enabled;
     const bool                            isValid = true;
 
-    std::shared_ptr<DashboardDescription> load(const std::string &filename);
+    static std::shared_ptr<DashboardSource> get(std::string_view path);
 };
 
 struct DashboardDescription {
     static constexpr const char                                      *fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
 
     std::string                                                       name;
-    DashboardSource                                                  *source;
+    std::shared_ptr<DashboardSource>                                  source;
     bool                                                              isFavorite;
     std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
 
     void                                                              save();
 
+    static std::shared_ptr<DashboardDescription>                      load(const std::shared_ptr<DashboardSource> &source, const std::string &filename);
     static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
 };
 

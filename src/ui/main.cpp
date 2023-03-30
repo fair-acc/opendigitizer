@@ -49,7 +49,7 @@ ImFont     *addDefaultFont(float pixel_size) {
     return font;
 }
 
-int main(int, char **argv) {
+int main(int argc, char **argv) {
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         printf("Error: %s\n", SDL_GetError());
@@ -136,7 +136,7 @@ int main(int, char **argv) {
 #ifndef EMSCRIPTEN
     app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
 #endif
-    app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
+    // app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
 
     DigitizerUi::DataSource::registerBlockType(&app.flowGraph);
     DigitizerUi::DataSink::registerBlockType(&app.flowGraph);
@@ -193,6 +193,11 @@ int main(int, char **argv) {
     app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.ttf");
 
     app_header::load_header_assets();
+
+    if (argc > 1) {
+        const char *url = argv[1];
+        app.loadDashboard(url);
+    }
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__

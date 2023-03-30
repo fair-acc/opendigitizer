@@ -23,7 +23,8 @@ OpenDashboardPage::OpenDashboardPage()
 }
 
 void OpenDashboardPage::addSource(std::string_view path) {
-    auto &source = *m_sources.insert(DashboardSource{ std::string(path), true });
+    m_sources.push_back(DashboardSource::get(path));
+    auto &source = m_sources.back();
 
     namespace fs = std::filesystem;
     if (!fs::is_directory(path)) {
@@ -32,7 +33,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
     for (auto &file : fs::directory_iterator(path)) {
         if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
-            auto dd = source.load(file.path().filename().native());
+            auto dd = DashboardDescription::load(source, file.path().filename().native());
             if (dd) {
                 m_dashboards.push_back(dd);
             }
@@ -90,10 +91,10 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::SameLine();
         auto                    desc = app->dashboard->description();
         static std::string      name;
-        static DashboardSource *source;
+        static std::shared_ptr<DashboardSource> source;
         if (ImGui::IsWindowAppearing()) {
             name   = desc->name;
-            source = desc->source->isValid || m_sources.empty() ? desc->source : &(*m_sources.begin());
+            source = desc->source->isValid || m_sources.empty() ? desc->source : m_sources.front();
         }
         ImGui::InputText("##name", &name);
 
@@ -101,10 +102,10 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::SameLine();
 
         ImGui::BeginGroup();
-        for (auto &s : m_sources) {
-            bool enabled = &s == source;
-            if (ImGui::Checkbox(s.path.c_str(), &enabled)) {
-                source = &s;
+        for (const auto &s : m_sources) {
+            bool enabled = s == source;
+            if (ImGui::Checkbox(s->path.c_str(), &enabled)) {
+                source = s;
             }
         }
         if (ImGui::Button("Add new")) {
@@ -245,15 +246,15 @@ void OpenDashboardPage::draw(App *app) {
     for (auto it = m_sources.begin(); it != m_sources.end();) {
         auto &s = *it;
         // push a ID beacuse the button has a constant label
-        ImGui::PushID(s.path.c_str());
+        ImGui::PushID(s->path.c_str());
         ImGui::BeginGroup();
-        ImGui::Checkbox(s.path.c_str(), &s.enabled);
+        ImGui::Checkbox(s->path.c_str(), &s->enabled);
         ImGui::SameLine();
         x = std::max(x, ImGui::GetCursorPosX() + 40);
         ImGui::PushFont(app->fontIcons);
-        if (m_sourceHovered == &s && ImGui::Button("\uf2ed")) { // trash can
+        if (m_sourceHovered == s.get() && ImGui::Button("\uf2ed")) { // trash can
             m_dashboards.erase(std::remove_if(m_dashboards.begin(), m_dashboards.end(), [&](auto &d) {
-                return d->source == &s;
+                return d->source == s;
             }),
                     m_dashboards.end());
             it = m_sources.erase(it);
@@ -262,7 +263,7 @@ void OpenDashboardPage::draw(App *app) {
         }
         ImGui::EndGroup();
         if (ImGui::IsItemHovered()) {
-            newHovered = &s;
+            newHovered = s.get();
         }
         ImGui::PopFont();
         ImGui::PopID();

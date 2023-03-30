@@ -18,6 +18,7 @@ public:
     void                       openNewWindow();
     void                       loadEmptyDashboard();
     void                       loadDashboard(const std::shared_ptr<DashboardDescription> &desc);
+    void                       loadDashboard(std::string_view url);
     void                       closeDashboard();
 
     std::string                executable;

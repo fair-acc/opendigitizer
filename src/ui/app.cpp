@@ -26,6 +26,18 @@ void App::loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
     dashboard = std::make_unique<Dashboard>(desc, &flowGraph);
 }
 
+void App::loadDashboard(std::string_view url) {
+    namespace fs = std::filesystem;
+    fs::path path(url);
+    if (!fs::exists(path)) {
+        return;
+    }
+
+    auto source = DashboardSource::get(path.parent_path().native());
+    auto desc   = DashboardDescription::load(source, path.filename());
+    loadDashboard(desc);
+}
+
 void App::closeDashboard() {
     dashboard = {};
 }
