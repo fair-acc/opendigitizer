@@ -28,6 +28,15 @@ uint32_t randomColor() {
     uint8_t z = randomRange(0.0f, 255.0f);
     return x << 24 | y << 16 | z << 8 | 0xff;
 }
+
+DashboardSource *unsavedSource() {
+    static DashboardSource source = {
+        .path    = "Unsaved",
+        .isValid = false,
+    };
+    return &source;
+}
+
 } // namespace
 
 Dashboard::Plot::Plot() {
@@ -37,10 +46,10 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg)
     : m_desc(desc)
-    , m_name(desc->name)
-    , m_path(desc->source->path)
     , m_flowGraph(fg) {
     m_plots.resize(2);
+
+    m_desc->lastUsed             = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     fg->sourceBlockAddedCallback = [this](Block *b) {
         for (int i = 0; i < b->type->outputs.size(); ++i) {
@@ -57,14 +66,44 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGrap
                 m_sources.end());
     };
 
-    fg->parse(std::filesystem::path(desc->source->path) / desc->flowgraphFile);
+    if (desc->source == unsavedSource()) {
+        fg->clear();
+    } else {
+        fg->parse(std::filesystem::path(desc->source->path) / (desc->name + ".grc"));
+    }
 }
 
 Dashboard::~Dashboard() {
 }
 
+void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
+    m_desc = desc;
+}
+
 void Dashboard::save() {
-    m_flowGraph->save();
+    if (!m_desc->source->isValid) {
+        return;
+    }
+
+    auto path = std::filesystem::path(m_desc->source->path);
+    m_flowGraph->save(path / (m_desc->name + ".grc"));
+
+    YAML::Emitter out;
+    {
+        YamlMap root(out);
+
+        root.write("favorite", m_desc->isFavorite);
+        std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
+        char                        lastUsed[11];
+        fmt::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+        root.write("lastUsed", lastUsed);
+    }
+
+    std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
+    if (!stream.is_open()) {
+        return;
+    }
+    stream << out.c_str();
 }
 
 std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &filename) {
@@ -75,9 +114,6 @@ std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &f
         return {};
     }
     YAML::Node tree      = YAML::Load(stream);
-
-    auto       flowgraph = tree["flowgraph"];
-    if (!flowgraph.IsScalar()) return {};
 
     auto favorite = tree["favorite"];
     auto lastUsed = tree["lastUsed"];
@@ -94,13 +130,21 @@ std::shared_ptr<DashboardDescription> DashboardSource::load(const std::string &f
         return std::chrono::sys_days(date);
     };
 
-    return std::make_shared<DashboardDescription>(DashboardDescription{ .name = path.stem(),
-            .source                                                           = this,
-            .flowgraphFile                                                    = flowgraph.as<std::string>(),
-            .isFavorite                                                       = favorite.IsScalar() ? favorite.as<bool>() : false,
-            .lastUsed                                                         = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt });
+    return std::make_shared<DashboardDescription>(DashboardDescription{
+            .name       = path.stem(),
+            .source     = this,
+            .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
+            .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt });
 #endif
     return {};
+}
+
+std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string &name) {
+    return std::make_shared<DashboardDescription>(DashboardDescription{
+            .name       = name,
+            .source     = unsavedSource(),
+            .isFavorite = false,
+            .lastUsed   = std::nullopt });
 }
 
 } // namespace DigitizerUi

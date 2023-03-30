@@ -25,6 +25,8 @@ public:
     void addSource(std::string_view path);
 
 private:
+    void                                               drawAddSourcePopup();
+
     std::vector<std::shared_ptr<DashboardDescription>> m_dashboards;
     plf::colony<DashboardSource>                       m_sources;
     bool                                               m_favoritesEnabled    = true;

@@ -216,7 +216,7 @@ enum class DialogButton {
     Cancel
 };
 
-DialogButton drawDialogButton();
+DialogButton drawDialogButtons(bool okEnabled = true);
 
 } // namespace ImGuiUtils
 

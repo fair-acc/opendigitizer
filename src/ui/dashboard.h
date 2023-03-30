@@ -21,18 +21,22 @@ struct DashboardDescription;
 struct DashboardSource {
     std::string                           path;
     bool                                  enabled;
+    const bool                            isValid = true;
 
     std::shared_ptr<DashboardDescription> load(const std::string &filename);
 };
 
 struct DashboardDescription {
+    static constexpr const char                                      *fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
+
     std::string                                                       name;
     DashboardSource                                                  *source;
-    std::string                                                       flowgraphFile;
     bool                                                              isFavorite;
     std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
 
     void                                                              save();
+
+    static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
 };
 
 class Dashboard {
@@ -57,18 +61,16 @@ public:
 
     void               save();
 
-    const std::string &name() const { return m_name; }
-    const std::string &path() const { return m_path; }
-
     inline const auto &sources() const { return m_sources; }
     inline auto       &sources() { return m_sources; }
 
     inline auto       &plots() { return m_plots; }
 
+    void                         setNewDescription(const std::shared_ptr<DashboardDescription> &desc);
+    inline DashboardDescription *description() const { return m_desc.get(); }
+
 private:
     std::shared_ptr<DashboardDescription> m_desc;
-    std::string                           m_name;
-    std::string                           m_path;
     FlowGraph        *m_flowGraph;
     std::vector<Plot> m_plots;
     plf::colony<Source>                   m_sources;

@@ -416,7 +416,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
             }
         }
 
-        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
+        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
             for (int i = 0; i < m_parameters.size(); ++i) {
                 m_selectedBlock->setParameter(i, m_parameters[i]);
             }
@@ -473,7 +473,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
             ImGui::TreePop();
         }
 
-        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
+        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
             if (sel) {
                 m_flowGraph->addSourceBlock(m_flowGraph->blockTypes().find("sine_source")->second->createBlock({}));
             }
@@ -490,7 +490,7 @@ void FlowGraphItem::drawNewBlockDialog() {
         auto ret            = ImGuiUtils::filteredListBox("blocks", m_flowGraph->blockTypes(), [](auto &it) { return std::pair{ it.second.get(), it.first }; });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
-        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
+        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
             if (m_selectedBlockType) {
                 m_createNewBlock = true;
             }

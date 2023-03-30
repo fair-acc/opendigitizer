@@ -16,6 +16,7 @@ struct SDLState;
 class App {
 public:
     void                       openNewWindow();
+    void                       loadEmptyDashboard();
     void                       loadDashboard(const std::shared_ptr<DashboardDescription> &desc);
     void                       closeDashboard();
 

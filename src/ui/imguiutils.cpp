@@ -2,14 +2,22 @@
 
 namespace ImGuiUtils {
 
-DialogButton drawDialogButton() {
+DialogButton drawDialogButtons(bool okEnabled) {
     int y = ImGui::GetContentRegionAvail().y;
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + y - 20);
     ImGui::Separator();
-    if (ImGui::Button("Ok") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+
+    if (!okEnabled) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Ok") || (okEnabled && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
         ImGui::CloseCurrentPopup();
         return DialogButton::Ok;
     }
+    if (!okEnabled) {
+        ImGui::EndDisabled();
+    }
+
     ImGui::SameLine();
     if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
