@@ -81,7 +81,7 @@ public:
     void                         load();
     void               save();
 
-    void                         newPlot();
+    void                         newPlot(int x, int y, int w, int h);
 
     inline const auto &sources() const { return m_sources; }
     inline auto       &sources() { return m_sources; }
