@@ -62,8 +62,21 @@ void DashboardPage::draw(Dashboard *dashboard) {
     ImGui::SameLine();
     ImGui::BeginChild("DND_RIGHT");
 
+    if (ImGui::Button("New plot")) {
+        dashboard->newPlot();
+    }
+
     for (auto &plot : dashboard->plots()) {
         if (ImPlot::BeginPlot(plot.name.c_str())) {
+            for (const auto &a : plot.axes) {
+                auto axis = a.axis == Dashboard::Plot::Axis::X ? ImAxis_X1 : ImAxis_Y1;
+                ImPlot::SetupAxis(axis);
+                if (a.min < a.max) {
+                    ImPlot::SetupAxisLimits(axis, a.min, a.max);
+                }
+            }
+            ImPlot::SetupFinish();
+
             for (auto *source : plot.sources) {
                 auto color = ImGui::ColorConvertU32ToFloat4(source->color);
                 ImPlot::SetNextLineStyle(color);
@@ -103,6 +116,17 @@ void DashboardPage::draw(Dashboard *dashboard) {
             if (ImPlot::BeginDragDropTargetPlot()) {
                 acceptSource();
                 ImPlot::EndDragDropTarget();
+            }
+
+            auto rect = ImPlot::GetPlotLimits();
+            for (auto &a : plot.axes) {
+                if (a.axis == Dashboard::Plot::Axis::X) {
+                    a.min = rect.X.Min;
+                    a.max = rect.X.Max;
+                } else {
+                    a.min = rect.Y.Min;
+                    a.max = rect.Y.Max;
+                }
             }
 
             ImPlot::EndPlot();
