@@ -19,22 +19,13 @@ ImVec4 randomColor() {
     return col;
 }
 
-static BlockType *btype() {
-    static auto *t = []() {
-        static BlockType t("sink");
-        t.inputs.resize(1);
-        auto &in = t.inputs[0];
-        in.name  = "in";
-        in.type  = "";
-        return &t;
-    }();
-    return t;
-}
+BlockType *g_btype       = nullptr;
+BlockType *g_btypeSource = nullptr;
 
 } // namespace
 
 DataSink::DataSink(std::string_view name)
-    : Block(name, "sink", btype())
+    : Block(name, "sink", g_btype)
     , color(randomColor()) {
 }
 
@@ -48,6 +39,46 @@ void DataSink::processData() {
     } else {
         hasData = false;
     }
+}
+
+void DataSink::registerBlockType(FlowGraph *fg) {
+    auto t = std::make_unique<BlockType>("sink");
+    t->inputs.resize(1);
+    auto &in       = t->inputs[0];
+    in.name        = "in";
+    in.type        = "";
+    t->createBlock = [](std::string_view name) {
+        return std::make_unique<DataSink>(name);
+    };
+    g_btype = t.get();
+
+    fg->addBlockType(std::move(t));
+}
+
+DataSinkSource::DataSinkSource(std::string_view name)
+    : Block(name, "sink_source", g_btypeSource) {
+}
+
+void DataSinkSource::processData() {
+    auto &out      = outputs()[0];
+    auto  sinkName = std::string_view(&name[11], &name[name.size()]);
+    auto *sink     = static_cast<DataSink *>(flowGraph()->findSinkBlock(sinkName));
+    out.dataSet    = sink->data;
+    out.type       = sink->dataType;
+}
+
+void DataSinkSource::registerBlockType(FlowGraph *fg) {
+    auto t = std::make_unique<BlockType>("sink_source");
+    t->outputs.resize(1);
+    auto &out      = t->outputs[0];
+    out.name       = "out";
+    out.type       = "";
+    t->createBlock = [](std::string_view name) {
+        return std::make_unique<DataSinkSource>(name);
+    };
+    g_btypeSource = t.get();
+
+    fg->addBlockType(std::move(t));
 }
 
 } // namespace DigitizerUi

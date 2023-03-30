@@ -7,6 +7,8 @@
 #include "flowgraph.h"
 #include "imguiutils.h"
 
+#include "flowgraph/datasource.h"
+
 namespace DigitizerUi {
 
 FlowGraphItem::FlowGraphItem(FlowGraph *fg)
@@ -26,6 +28,8 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.94, 0.92, 1, 1 };
     style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
 }
+
+FlowGraphItem::~FlowGraphItem() = default;
 
 static uint32_t colorForDataType(DataType t) {
     switch (t) {
@@ -402,17 +406,17 @@ void FlowGraphItem::draw(const ImVec2 &size) {
                     }
                     ImGui::EndCombo();
                 }
-            } else if (auto *ip = std::get_if<Block::IntParameter>(&m_parameters[i])) {
+            } else if (auto *ip = std::get_if<Block::NumberParameter<int>>(&m_parameters[i])) {
                 ImGui::InputInt(label, &ip->value);
+            } else if (auto *fp = std::get_if<Block::NumberParameter<float>>(&m_parameters[i])) {
+                ImGui::InputFloat(label, &fp->value);
             } else if (auto *rp = std::get_if<Block::RawParameter>(&m_parameters[i])) {
                 rp->value.reserve(256);
                 ImGui::InputText(label, rp->value.data(), rp->value.capacity());
             }
         }
 
-        ImGui::SetCursorPosY(contentRegion.y);
-        if (ImGui::Button("Ok")) {
-            ImGui::CloseCurrentPopup();
+        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
             for (int i = 0; i < m_parameters.size(); ++i) {
                 m_selectedBlock->setParameter(i, m_parameters[i]);
             }
@@ -448,153 +452,48 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         ImGui::OpenPopup("New block");
     }
 
-    ImGui::SetCursorPosX(left + size.x - 80);
+    ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top + size.y - 20);
+    if (ImGui::Button("Add signal")) {
+        ImGui::OpenPopup("addSignalPopup");
+    }
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(left + size.x - 80);
     if (ImGui::Button("New sink") && newSinkCallback) {
         newSinkCallback();
+    }
+
+    ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
+    if (ImGui::BeginPopupModal("addSignalPopup")) {
+        static bool sel = false;
+        if (ImGui::TreeNode("Local signals")) {
+            if (ImGui::Selectable("Sine wave", sel, ImGuiSelectableFlags_DontClosePopups)) {
+                sel = true;
+            }
+            ImGui::TreePop();
+        }
+
+        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
+            if (sel) {
+                m_flowGraph->addSourceBlock(m_flowGraph->blockTypes().find("sine_source")->second->createBlock({}));
+            }
+        }
+        ImGui::EndPopup();
     }
 
     drawNewBlockDialog();
 }
 
-static void ensureItemVisible() {
-    auto scroll = ImGui::GetScrollY();
-    auto min    = ImGui::GetWindowContentRegionMin().y + scroll;
-    auto max    = ImGui::GetWindowContentRegionMax().y + scroll;
-
-    auto h      = ImGui::GetItemRectSize().y;
-    auto y      = ImGui::GetCursorPosY() - scroll;
-    if (y > max) {
-        ImGui::SetScrollHereY(1);
-    } else if (y - h < min) {
-        ImGui::SetScrollHereY(0);
-    }
-}
-
 void FlowGraphItem::drawNewBlockDialog() {
-    auto completeBlockName = [](ImGuiInputTextCallbackData *d) -> int {
-        auto *this_ = static_cast<FlowGraphItem *>(d->UserData);
-        if (d->EventKey == ImGuiKey_Tab) {
-            std::vector<std::string> candidates;
-            std::size_t              shortest = -1;
-            for (auto &t : this_->m_flowGraph->blockTypes()) {
-                if (t.first.starts_with(std::string_view(d->Buf, d->BufTextLen))) {
-                    candidates.push_back(t.first);
-                    shortest = std::min(shortest, t.first.size());
-                }
-            }
-
-            if (candidates.empty()) {
-                return 0;
-            }
-
-            for (auto &c : candidates) {
-                c.resize(shortest);
-            }
-
-            while (candidates.size() > 1) {
-                auto s = candidates.size();
-                if (candidates[s - 2] == candidates[s - 1]) {
-                    candidates.pop_back();
-                    continue;
-                }
-
-                shortest--;
-                assert(shortest > 0);
-                for (auto &c : candidates) {
-                    c.resize(shortest);
-                }
-            }
-            auto *str = candidates.front().c_str();
-            d->InsertChars(d->BufTextLen, &str[d->BufTextLen], &str[candidates.front().size()]);
-        }
-        return 0;
-    };
-
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("New block")) {
-        auto y = ImGui::GetCursorPosY();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Filter:");
-        ImGui::SameLine();
-        ImGui::SetCursorPosY(y);
+        auto ret            = ImGuiUtils::filteredListBox("blocks", m_flowGraph->blockTypes(), [](auto &it) { return std::pair{ it.second.get(), it.first }; });
+        m_selectedBlockType = ret ? ret.value().first : nullptr;
 
-        if (ImGui::IsWindowAppearing() || m_filterInputReclaimFocus) {
-            ImGui::SetKeyboardFocusHere();
-            m_filterInputReclaimFocus = false;
-        }
-        bool scrollToSelected = ImGui::InputText("##filterBlockType", &m_typesListFilter, ImGuiInputTextFlags_CallbackCompletion, completeBlockName, this);
-
-        if (ImGui::BeginListBox("##Available Block types", { 200, 200 })) {
-            auto filter = [this](const std::string &name) {
-                if (!m_typesListFilter.empty()) {
-                    auto it = std::search(name.begin(), name.end(), m_typesListFilter.begin(), m_typesListFilter.end(),
-                            [](int a, int b) { return std::tolower(a) == std::tolower(b); });
-                    if (it == name.end()) {
-                        return false;
-                    }
-                }
-                return true;
-            };
-
-            if (m_selectedBlockType && !filter(m_selectedBlockType->name)) {
-                m_selectedBlockType = nullptr;
-            }
-
-            int selectOffset = 0;
-            if (m_selectedBlockType) {
-                if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-                    ++selectOffset;
-                    scrollToSelected = true;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
-                    --selectOffset;
-                    scrollToSelected = true;
-                }
-            }
-
-            m_filteredBlockTypes.clear();
-            for (auto &t : m_flowGraph->blockTypes()) {
-                if (filter(t.first)) {
-                    m_filteredBlockTypes.push_back(t.second.get());
-                }
-            }
-
-            for (auto it = m_filteredBlockTypes.begin(); it != m_filteredBlockTypes.end(); ++it) {
-                if (!m_selectedBlockType) {
-                    m_selectedBlockType = *it;
-                }
-
-                if (selectOffset == -1 && *(it + 1) == m_selectedBlockType) {
-                    m_selectedBlockType = *it;
-                    selectOffset        = 0;
-                } else if (selectOffset == 1 && *it == m_selectedBlockType && (it + 1) != m_filteredBlockTypes.end()) {
-                    m_selectedBlockType = nullptr;
-                    selectOffset        = 0;
-                }
-
-                if (ImGui::Selectable((*it)->name.c_str(), *it == m_selectedBlockType)) {
-                    m_selectedBlockType       = *it;
-                    m_filterInputReclaimFocus = true;
-                }
-                if (m_selectedBlockType == *it && scrollToSelected) {
-                    ensureItemVisible();
-                }
-            }
-            ImGui::EndListBox();
-        }
-
-        ImGui::Separator();
-
-        if (ImGui::Button("Ok") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+        if (ImGuiUtils::drawDialogButton() == ImGuiUtils::DialogButton::Ok) {
             if (m_selectedBlockType) {
                 m_createNewBlock = true;
             }
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }

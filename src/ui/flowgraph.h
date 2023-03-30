@@ -37,8 +37,11 @@ public:
 
         std::string                              defaultValue;
     };
-    struct IntParameter {
-        int defaultValue;
+    template<typename T>
+    struct NumberParameter {
+        inline explicit NumberParameter(T v)
+            : defaultValue(v) {}
+        T defaultValue;
     };
     struct RawParameter {
         std::string defaultValue;
@@ -46,11 +49,10 @@ public:
     struct Parameter {
         const std::string                                       id;
         const std::string                                       label;
-        std::variant<EnumParameter, IntParameter, RawParameter> impl;
+        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> impl;
     };
 
-    inline BlockType(const std::string &n)
-        : name(n) {}
+    BlockType(const std::string &n);
 
     const std::string                                       name;
     std::vector<Parameter>                                  parameters;
@@ -135,21 +137,22 @@ public:
             return *this;
         }
     };
-    struct IntParameter {
-        int value;
+    template<typename T>
+    struct NumberParameter {
+        T value;
     };
     struct RawParameter {
         std::string value;
     };
 
-    struct Parameter : std::variant<EnumParameter, IntParameter, RawParameter> {
-        using Super = std::variant<EnumParameter, IntParameter, RawParameter>;
+    struct Parameter : std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> {
+        using Super = std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter>;
 
         using Super::Super;
         std::string toString() const;
     };
 
-    using ParameterValue = std::variant<std::string, int>;
+    using ParameterValue = std::variant<std::string, int, float>;
 
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
@@ -167,6 +170,7 @@ public:
 
     virtual void                  processData() {}
 
+    inline FlowGraph             *flowGraph() const { return m_flowGraph; }
     const BlockType              *type;
     const std::string             name;
     const std::string             id;
@@ -179,6 +183,7 @@ private:
     std::vector<OutputPort> m_outputs;
     std::vector<Parameter>  m_parameters;
     bool                    m_updated = false;
+    FlowGraph              *m_flowGraph;
 
     friend FlowGraph;
 };
@@ -202,6 +207,8 @@ public:
     void                         parse(const opencmw::URI<opencmw::STRICT> &uri);
 
     Block                       *findBlock(std::string_view name) const;
+    Block                       *findSourceBlock(std::string_view name) const;
+    Block                       *findSinkBlock(std::string_view name) const;
 
     inline const auto           &blocks() const { return m_blocks; }
     inline const auto           &sourceBlocks() const { return m_sourceBlocks; }
@@ -225,6 +232,7 @@ public:
 
     void                         save();
 
+    std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
 
 private:

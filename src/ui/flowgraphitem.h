@@ -7,6 +7,7 @@
 #include <imgui_node_editor.h>
 
 #include "flowgraph.h"
+#include "imguiutils.h"
 
 namespace DigitizerUi {
 
@@ -15,6 +16,7 @@ class FlowGraph;
 class FlowGraphItem {
 public:
     FlowGraphItem(FlowGraph *fg);
+    ~FlowGraphItem();
 
     void                  draw(const ImVec2 &size);
 
@@ -39,10 +41,7 @@ private:
     ax::NodeEditor::Config        m_config;
 
     // new block dialog data
-    const Block             *m_filterBlock = nullptr;
-    std::string              m_typesListFilter;
-    std::vector<BlockType *> m_filteredBlockTypes;
-    bool                     m_filterInputReclaimFocus = false;
+    const Block *m_filterBlock = nullptr;
 };
 
 } // namespace DigitizerUi

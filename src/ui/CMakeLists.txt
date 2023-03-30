@@ -12,12 +12,17 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 set(sources
         main.cpp
+        app.cpp
         flowgraph.cpp
         flowgraphitem.cpp
         dashboard.cpp
+        flowgraph/datasource.cpp
         flowgraph/datasink.cpp
         flowgraph/fftblock.cpp
         flowgraph/sumblock.cpp
+        dashboardpage.cpp
+        opendashboardpage.cpp
+        imguiutils.cpp
 )
 
 set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")
@@ -51,7 +56,9 @@ endif()
 
 # dependencies
 include(cmake/Dependencies.cmake)
-cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png)
+cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png
+                                                        assets/fontawesome/fa-regular-400.ttf
+                                                        assets/fontawesome/fa-solid-900.ttf)
 
 if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory
