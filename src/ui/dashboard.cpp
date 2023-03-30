@@ -294,10 +294,12 @@ void Dashboard::save() {
     stream << out.c_str();
 }
 
-void Dashboard::newPlot() {
+void Dashboard::newPlot(int x, int y, int w, int h) {
     m_plots.push_back({});
-    m_plots.back().axes.push_back({ Plot::Axis::X });
-    m_plots.back().axes.push_back({ Plot::Axis::Y });
+    auto &p = m_plots.back();
+    p.axes.push_back({ Plot::Axis::X });
+    p.axes.push_back({ Plot::Axis::Y });
+    p.rect = { x, y, w, h };
 }
 
 std::shared_ptr<DashboardDescription> DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &filename) {

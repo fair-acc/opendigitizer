@@ -215,6 +215,9 @@ Action getAction(bool hoveredInTitleArea, const ImVec2 &origin, const ImVec2 &sc
     return finalAction;
 }
 
+constexpr int gridSizeW = 16;
+constexpr int gridSizeH = 16;
+
 } // namespace
 
 DashboardPage::DashboardPage(DigitizerUi::FlowGraph *fg)
@@ -239,6 +242,10 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
     if (mode == Mode::Layout) {
         // child window to serve as initial source for our DND items
         ImGui::BeginChild("DND_LEFT", ImVec2(150, 400));
+
+        if (ImGui::Button("New plot")) {
+            newPlot(dashboard);
+        }
 
         for (auto &s : dashboard->sources()) {
             auto color = ImGui::ColorConvertU32ToFloat4(s.color);
@@ -271,18 +278,11 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
 
     ImGui::BeginChild("DND_RIGHT");
 
-    static constexpr int gridSizeW = 16;
-    static constexpr int gridSizeH = 16;
-
     auto                 size      = ImGui::GetContentRegionAvail();
     float                w         = size.x / float(gridSizeW);
     float                h         = size.y / float(gridSizeH);
 
     if (mode == Mode::Layout) {
-        if (ImGui::Button("New plot")) {
-            dashboard->newPlot();
-        }
-
         auto pos = ImGui::GetCursorScreenPos();
         for (float x = pos.x; x < pos.x + size.x; x += w) {
             ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + size.y }, 0x40000000);
@@ -394,6 +394,66 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
         }
     }
     ImGui::EndChild();
+}
+
+void DashboardPage::newPlot(Dashboard *dashboard) {
+    bool grid[gridSizeW][gridSizeH];
+    memset(grid, 0, sizeof(grid));
+
+    for (auto &p : dashboard->plots()) {
+        for (int x = p.rect.x; x < p.rect.x + p.rect.w; ++x) {
+            for (int y = p.rect.y; y < p.rect.y + p.rect.h; ++y) {
+                grid[x][y] = true;
+            }
+        }
+    }
+
+    // This algorithm to find a free spot in the grid is really dumb and not optimized,
+    // however the grid is so small and it runs so unfrequently that it doesn't really matter.
+    auto rectangleFree = [&](int x, int y, int w, int h) {
+        for (int y2 = y; y2 < y + h; ++y2) {
+            for (int x2 = x; x2 < x + w; ++x2) {
+                if (x2 == gridSizeW || y2 == gridSizeH || grid[x2][y2]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    auto findRectangle = [&](int &rx, int &ry, int &rw, int &rh) {
+        int i = 0;
+        while (true) {
+            for (int y = 0; y < gridSizeH; ++y) {
+                for (int x = 0; x < gridSizeW; ++x) {
+                    if (rectangleFree(x, y, rw, rh)) {
+                        rx = x;
+                        ry = y;
+                        return true;
+                    }
+                }
+            }
+            if (rw == 1 || rh == 1) {
+                break;
+            }
+
+            if (i % 2 == 0) {
+                rw -= 1;
+            } else {
+                rh -= 1;
+            }
+            ++i;
+        }
+        return false;
+    };
+
+    int w = gridSizeW / 2;
+    int h = w * 6. / 8.;
+
+    int x, y;
+    if (findRectangle(x, y, w, h)) {
+        dashboard->newPlot(x, y, w, h);
+    }
 }
 
 } // namespace DigitizerUi

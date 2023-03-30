@@ -22,6 +22,8 @@ public:
     void draw(Dashboard *Dashboard, Mode mode = Mode::View);
 
 private:
+    void       newPlot(Dashboard *dashboard);
+
     FlowGraph *m_flowGraph;
 };
 
