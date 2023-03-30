@@ -168,7 +168,8 @@ void Dashboard::load() {
         auto name    = p["name"];
         auto axes    = p["axes"];
         auto sources = p["sources"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !sources || !sources.IsSequence()) ERROR_RETURN;
+        auto rect    = p["rect"];
+        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !sources || !sources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) ERROR_RETURN;
 
         m_plots.push_back({});
         auto &plot = m_plots.back();
@@ -211,6 +212,11 @@ void Dashboard::load() {
             }
             plot.sources.push_back(&*source);
         }
+
+        plot.rect.x = rect[0].as<int>();
+        plot.rect.y = rect[1].as<int>();
+        plot.rect.w = rect[2].as<int>();
+        plot.rect.h = rect[3].as<int>();
     }
 
 #undef ERROR_RETURN
@@ -269,6 +275,13 @@ void Dashboard::save() {
                     for (auto &s : p.sources) {
                         out << s->name;
                     }
+                });
+                plot.write("rect", [&]() {
+                    YamlSeq rect(out);
+                    out << p.rect.x;
+                    out << p.rect.y;
+                    out << p.rect.w;
+                    out << p.rect.h;
                 });
             }
         });

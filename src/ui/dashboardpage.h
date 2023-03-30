@@ -15,7 +15,11 @@ public:
     explicit DashboardPage(FlowGraph *fg);
     ~DashboardPage();
 
-    void draw(Dashboard *Dashboard);
+    enum class Mode {
+        View,
+        Layout
+    };
+    void draw(Dashboard *Dashboard, Mode mode = Mode::View);
 
 private:
     FlowGraph *m_flowGraph;

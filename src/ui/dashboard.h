@@ -68,6 +68,11 @@ public:
             double max;
         };
         std::vector<AxisData> axes;
+
+        struct GridRect {
+            int x = 0, y = 0, w = 5, h = 5;
+        };
+        GridRect rect;
     };
 
     explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg);

@@ -262,6 +262,13 @@ static void main_loop(void *arg) {
         ImGui::EndTabItem();
     }
 
+    if (ImGui::BeginTabItem("Layout")) {
+        if (dashboardLoaded) {
+            app->dashboardPage.draw(app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
+        }
+        ImGui::EndTabItem();
+    }
+
     if (ImGui::BeginTabItem("Flowgraph")) {
         if (dashboardLoaded) {
             auto contentRegion = ImGui::GetContentRegionAvail();
