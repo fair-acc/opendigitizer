@@ -350,13 +350,20 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
                 ImPlot::SetNextLineStyle(color);
 
                 const auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
-                switch (port.type) {
-                case DigitizerUi::DataType::Float32: {
-                    auto values = port.dataSet.asFloat32();
-                    ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
-                    break;
-                }
-                default: break;
+
+                if (port.dataSet.empty()) {
+                    // Plot one single dummy value so that the sink shows up in the plot legend
+                    float v = 0;
+                    ImPlot::PlotLine(source->name.c_str(), &v, 1);
+                } else {
+                    switch (port.type) {
+                    case DigitizerUi::DataType::Float32: {
+                        auto values = port.dataSet.asFloat32();
+                        ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                        break;
+                    }
+                    default: break;
+                    }
                 }
 
                 // allow legend item labels to be DND sources
