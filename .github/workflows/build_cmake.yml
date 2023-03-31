@@ -17,7 +17,7 @@ jobs:
       matrix:
         configurations:
           - name: Ubuntu Latest gcc
-            os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
+            os: ubuntu-22.04
             compiler: gcc
           # - name: Ubuntu Latest clang
           #   os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
@@ -47,12 +47,14 @@ jobs:
     - name: Install gcc-12
       if: matrix.configurations.compiler == 'gcc'
       run: |
-        sudo apt-get install -y gcc-12 g++-12
+        sudo apt update
+        sudo apt install -y gcc-12 g++-12
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
 
     - name: Install openGL
       run: |
-        sudo apt-get install -y libx11-dev libgl1-mesa-dev libsdl2-dev
+        sudo apt update
+        sudo apt install -y libx11-dev libgl1-mesa-dev libsdl2-dev
 
     - name: Configure CMake
       shell: bash
