@@ -7,6 +7,7 @@
 
 namespace DigitizerUi {
 
+class App;
 class Dashboard;
 class FlowGraph;
 
@@ -19,7 +20,7 @@ public:
         View,
         Layout
     };
-    void draw(Dashboard *Dashboard, Mode mode = Mode::View);
+    void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View);
 
 private:
     void       newPlot(Dashboard *dashboard);

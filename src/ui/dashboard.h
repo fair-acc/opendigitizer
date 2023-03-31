@@ -82,6 +82,7 @@ public:
     void               save();
 
     void                         newPlot(int x, int y, int w, int h);
+    void                         deletePlot(Plot *plot);
 
     inline const auto &sources() const { return m_sources; }
     inline auto       &sources() { return m_sources; }
