@@ -5,11 +5,10 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
-
-#include "function_ref.hpp"
 
 inline ImVec2 operator+(const ImVec2 a, const ImVec2 b) {
     ImVec2 r = a;
