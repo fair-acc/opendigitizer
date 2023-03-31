@@ -121,8 +121,8 @@ void updatePlotSize(Action action, ImVec2 &plotPos, ImVec2 &plotSize) {
     }
 }
 
-Action getAction(bool frameHovered, bool hoveredInTitleArea, const ImVec2 &origin, const ImVec2 &screenOrigin,
-        const ImVec2 &plotPos, const ImVec2 &plotSize, float offset) {
+Action getAction(bool frameHovered, bool hoveredInTitleArea, const ImVec2 &screenOrigin,
+        const ImVec2 &plotPos, const ImVec2 &plotSize) {
     Action finalAction = Action::None;
     if (ImGui::IsItemHovered() && hoveredInTitleArea) {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -404,15 +404,27 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
                 }
             }
 
-            bool plotHovered = ImPlot::IsPlotHovered();
-            bool axisHovered = ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
+            bool plotItemHovered = false;
+            if (mode == Mode::Layout) {
+                plotItemHovered = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
+                if (!plotItemHovered) {
+                    // Unfortunaetly there is no function that returns whether the entire legend is hovered,
+                    // we need to check one entry at a time
+                    for (const auto &s : plot.sources) {
+                        if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
+                            plotItemHovered = true;
+                            break;
+                        }
+                    }
+                }
+            }
 
             ImPlot::EndPlot();
 
             if (mode == Mode::Layout) {
                 if (frameHovered) {
                     ImGui::PushFont(app->fontIcons);
-                    ImGui::SetCursorPos(pos + plotPos + ImVec2(5, 5));
+                    ImGui::SetCursorPos(pos + plotPos + ImVec2(8, 8));
                     ImGui::PushID(plot.name.c_str());
                     if (ImGui::Button("\uf2ed")) {
                         toDelete = &plot;
@@ -421,7 +433,7 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
                     ImGui::PopFont();
                 }
 
-                auto action = getAction(frameHovered, !plotHovered && !axisHovered, pos, screenPos, plotPos, plotSize, offset);
+                auto action = getAction(frameHovered, !plotItemHovered, screenPos, plotPos, plotSize);
                 if (action != Action::None) {
                     clickedAction = action;
                     clickedPlot   = &plot;
