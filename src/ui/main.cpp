@@ -2,6 +2,7 @@
 #include <emscripten.h>
 #endif
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl.h>
 #include <implot.h>
@@ -254,7 +255,9 @@ static void main_loop(void *arg) {
         ImGui::BeginDisabled();
     }
     ImGui::BeginTabBar("maintabbar");
+    ImGuiID viewId;
     if (ImGui::BeginTabItem("View")) {
+        viewId = ImGui::GetID("");
         if (dashboardLoaded) {
             app->dashboardPage.draw(app, app->dashboard.get());
         }
@@ -263,9 +266,16 @@ static void main_loop(void *arg) {
     }
 
     if (ImGui::BeginTabItem("Layout")) {
+        // The ID of this tab is different than the ID of the view tab. That means that the plots in the two tabs
+        // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
+        // not reflect in the layout tab.
+        // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
+        // of the view tab.
+        ImGui::PushOverrideID(viewId);
         if (dashboardLoaded) {
             app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
+        ImGui::PopID();
         ImGui::EndTabItem();
     }
 
