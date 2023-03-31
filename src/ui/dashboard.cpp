@@ -302,6 +302,11 @@ void Dashboard::newPlot(int x, int y, int w, int h) {
     p.rect = { x, y, w, h };
 }
 
+void Dashboard::deletePlot(Plot *plot) {
+    auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot &p) { return plot == &p; });
+    m_plots.erase(it);
+}
+
 std::shared_ptr<DashboardDescription> DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &filename) {
 #ifndef EMSCRIPTEN
     auto          path = std::filesystem::path(source->path) / filename;

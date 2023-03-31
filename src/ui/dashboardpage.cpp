@@ -5,6 +5,7 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include "app.h"
 #include "dashboard.h"
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
@@ -120,7 +121,7 @@ void updatePlotSize(Action action, ImVec2 &plotPos, ImVec2 &plotSize) {
     }
 }
 
-Action getAction(bool hoveredInTitleArea, const ImVec2 &origin, const ImVec2 &screenOrigin,
+Action getAction(bool frameHovered, bool hoveredInTitleArea, const ImVec2 &origin, const ImVec2 &screenOrigin,
         const ImVec2 &plotPos, const ImVec2 &plotSize, float offset) {
     Action finalAction = Action::None;
     if (ImGui::IsItemHovered() && hoveredInTitleArea) {
@@ -130,10 +131,7 @@ Action getAction(bool hoveredInTitleArea, const ImVec2 &origin, const ImVec2 &sc
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
 
-    ImGui::SetCursorPos(origin + plotPos - ImVec2(offset, offset));
-    ImGui::Button("##ss", plotSize + ImVec2(offset * 2, offset * 2));
-
-    if (ImGui::IsItemHovered() && hoveredInTitleArea) {
+    if (frameHovered && hoveredInTitleArea) {
         auto pos   = ImGui::GetMousePos() - screenOrigin;
         int  edges = 0;
         enum Edges { Left = 1,
@@ -227,7 +225,7 @@ DashboardPage::DashboardPage(DigitizerUi::FlowGraph *fg)
 DashboardPage::~DashboardPage() {
 }
 
-void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
+void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
     // ImPlot::ShowDemoWindow();
 
     m_flowGraph->update();
@@ -304,20 +302,40 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
         clickedAction = Action::None;
     }
 
+    Dashboard::Plot *toDelete = nullptr;
+
     for (auto &plot : dashboard->plots()) {
         const int offset   = mode == Mode::Layout ? 5 : 0;
         const int offset2  = offset * 2;
 
-        auto      plotPos  = ImVec2(w * plot.rect.x + offset, h * plot.rect.y + offset);
-        auto      plotSize = ImVec2{ plot.rect.w * w - offset2, plot.rect.h * h - offset2 };
+        auto      plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
+        auto      plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };
 
-        if (mode == Mode::Layout && clickedPlot == &plot && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            updatePlotSize(clickedAction, plotPos, plotSize);
-        }
+        bool      frameHovered = [&]() {
+            if (mode != Mode::Layout) {
+                return false;
+            }
 
-        ImGui::SetCursorPos(pos + plotPos);
+            if (clickedPlot == &plot && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                updatePlotSize(clickedAction, plotPos, plotSize);
+            }
 
-        if (ImPlot::BeginPlot(plot.name.c_str(), plotSize)) {
+            ImGui::SetCursorPos(pos + plotPos);
+            ImGui::InvisibleButton("##ss", plotSize);
+            ImGui::SetItemAllowOverlap(); // this is needed to make the remove button work
+
+            bool           frameHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+            ImVec2         p1           = screenPos + plotPos;
+            ImVec2         p2           = p1 + plotSize;
+            const uint32_t color        = ImGui::GetColorU32(frameHovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
+            ImGui::GetWindowDrawList()->AddRectFilled(p1, p2, color);
+
+            return frameHovered;
+        }();
+
+        ImGui::SetCursorPos(pos + plotPos + ImVec2(offset, offset));
+        if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(offset2, offset2), ImPlotFlags_NoChild)) {
             for (const auto &a : plot.axes) {
                 auto axis = a.axis == Dashboard::Plot::Axis::X ? ImAxis_X1 : ImAxis_Y1;
                 ImPlot::SetupAxis(axis);
@@ -385,7 +403,18 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
             ImPlot::EndPlot();
 
             if (mode == Mode::Layout) {
-                auto action = getAction(!plotHovered && !axisHovered, pos, screenPos, plotPos, plotSize, offset);
+                if (frameHovered) {
+                    ImGui::PushFont(app->fontIcons);
+                    ImGui::SetCursorPos(pos + plotPos + ImVec2(5, 5));
+                    ImGui::PushID(plot.name.c_str());
+                    if (ImGui::Button("\uf2ed")) {
+                        toDelete = &plot;
+                    }
+                    ImGui::PopID();
+                    ImGui::PopFont();
+                }
+
+                auto action = getAction(frameHovered, !plotHovered && !axisHovered, pos, screenPos, plotPos, plotSize, offset);
                 if (action != Action::None) {
                     clickedAction = action;
                     clickedPlot   = &plot;
@@ -394,6 +423,10 @@ void DashboardPage::draw(Dashboard *dashboard, Mode mode) {
         }
     }
     ImGui::EndChild();
+
+    if (toDelete) {
+        dashboard->deletePlot(toDelete);
+    }
 }
 
 void DashboardPage::newPlot(Dashboard *dashboard) {

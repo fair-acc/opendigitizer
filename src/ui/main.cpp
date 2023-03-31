@@ -256,7 +256,7 @@ static void main_loop(void *arg) {
     ImGui::BeginTabBar("maintabbar");
     if (ImGui::BeginTabItem("View")) {
         if (dashboardLoaded) {
-            app->dashboardPage.draw(app->dashboard.get());
+            app->dashboardPage.draw(app, app->dashboard.get());
         }
 
         ImGui::EndTabItem();
@@ -264,7 +264,7 @@ static void main_loop(void *arg) {
 
     if (ImGui::BeginTabItem("Layout")) {
         if (dashboardLoaded) {
-            app->dashboardPage.draw(app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
+            app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
         ImGui::EndTabItem();
     }
