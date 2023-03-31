@@ -26,7 +26,7 @@ uint32_t randomColor() {
     uint8_t x = randomRange(0.0f, 255.0f);
     uint8_t y = randomRange(0.0f, 255.0f);
     uint8_t z = randomRange(0.0f, 255.0f);
-    return x << 24 | y << 16 | z << 8 | 0xff;
+    return 0xff000000u | x << 16 | y << 8 | z;
 }
 
 std::shared_ptr<DashboardSource> unsavedSource() {
