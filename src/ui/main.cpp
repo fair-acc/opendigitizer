@@ -2,9 +2,9 @@
 #include <emscripten.h>
 #endif
 #include <imgui.h>
-#include <imgui_internal.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl.h>
+#include <imgui_internal.h>
 #include <implot.h>
 #include <SDL.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    SDL_WindowFlags window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDL_WindowFlags       window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     DigitizerUi::SDLState sdlState;
     sdlState.window    = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     sdlState.glContext = SDL_GL_CreateContext(sdlState.window);
@@ -176,9 +176,9 @@ int main(int argc, char **argv) {
         return t;
     }());
 
-    app.font12 = addDefaultFont(12);
-    app.font14 = addDefaultFont(14);
-    app.font16 = addDefaultFont(16);
+    app.font12         = addDefaultFont(12);
+    app.font14         = addDefaultFont(14);
+    app.font16         = addDefaultFont(16);
 
     auto loadIconsFont = [&](auto name) {
         static const ImWchar glyphRanges[] = {
@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
 static void main_loop(void *arg) {
     DigitizerUi::App *app = static_cast<DigitizerUi::App *>(arg);
 
-    ImGuiIO &io  = ImGui::GetIO();
+    ImGuiIO          &io  = ImGui::GetIO();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;

@@ -12,7 +12,7 @@ enum FilterDate {
 };
 
 constexpr const char *addSourcePopupId = "addSourcePopup";
-}
+} // namespace
 
 OpenDashboardPage::OpenDashboardPage()
     : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()))
@@ -89,8 +89,8 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
         ImGui::SameLine();
-        auto                    desc = app->dashboard->description();
-        static std::string      name;
+        auto                                    desc = app->dashboard->description();
+        static std::string                      name;
         static std::shared_ptr<DashboardSource> source;
         if (ImGui::IsWindowAppearing()) {
             name   = desc->name;

@@ -12,14 +12,14 @@ class DataSink final : public Block {
 public:
     explicit DataSink(std::string_view name);
 
-    void     processData() override;
+    void        processData() override;
     static void registerBlockType(FlowGraph *fg);
 
-    bool     hasData = false;
-    DataType dataType;
-    DataSet  data;
+    bool        hasData = false;
+    DataType    dataType;
+    DataSet     data;
 
-    ImVec4   color;
+    ImVec4      color;
 
 private:
 };

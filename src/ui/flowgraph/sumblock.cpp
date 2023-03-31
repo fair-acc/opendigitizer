@@ -12,14 +12,14 @@ void SumBlock::processData() {
         return;
     }
 
-    auto *p0   = static_cast<DigitizerUi::Block::OutputPort *>(in[0].connections[0]->ports[0]);
-    auto *p1   = static_cast<DigitizerUi::Block::OutputPort *>(in[1].connections[0]->ports[0]);
-    auto  val0 = p0->dataSet.asFloat32();
-    auto  val1 = p1->dataSet.asFloat32();
+    auto *p0          = static_cast<DigitizerUi::Block::OutputPort *>(in[0].connections[0]->ports[0]);
+    auto *p1          = static_cast<DigitizerUi::Block::OutputPort *>(in[1].connections[0]->ports[0]);
+    auto  val0        = p0->dataSet.asFloat32();
+    auto  val1        = p1->dataSet.asFloat32();
 
-    bool val0biggest = val0.size() > val1.size();
-    auto &biggest = val0biggest ? val0 : val1;
-    auto &other = val0biggest ? val1 : val0;
+    bool  val0biggest = val0.size() > val1.size();
+    auto &biggest     = val0biggest ? val0 : val1;
+    auto &other       = val0biggest ? val1 : val0;
 
     m_data.resize(std::max(val0.size(), val1.size()));
 

@@ -47,8 +47,8 @@ public:
         std::string defaultValue;
     };
     struct Parameter {
-        const std::string                                       id;
-        const std::string                                       label;
+        const std::string                                                                       id;
+        const std::string                                                                       label;
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> impl;
     };
 
