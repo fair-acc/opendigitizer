@@ -149,7 +149,7 @@ void Dashboard::load() {
 
         auto source   = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) {
             return s.block->name == blockStr && s.port == portNum;
-        });
+          });
         if (source == m_sources.end()) {
             fmt::print("Unable to find the source '{}.{}'\n", blockStr, portNum);
             return;
@@ -314,12 +314,12 @@ std::shared_ptr<DashboardDescription> DashboardDescription::load(const std::shar
     if (!stream.is_open()) {
         return {};
     }
-    YAML::Node tree      = YAML::Load(stream);
+    YAML::Node tree     = YAML::Load(stream);
 
-    auto favorite = tree["favorite"];
-    auto lastUsed = tree["lastUsed"];
+    auto       favorite = tree["favorite"];
+    auto       lastUsed = tree["lastUsed"];
 
-    auto getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
+    auto       getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
         if (str.size() < 10) {
             return {};
         }

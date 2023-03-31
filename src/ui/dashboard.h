@@ -21,9 +21,9 @@ struct DashboardDescription;
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
-    std::string                           path;
-    bool                                  enabled;
-    const bool                            isValid = true;
+    std::string                             path;
+    bool                                    enabled;
+    const bool                              isValid = true;
 
     static std::shared_ptr<DashboardSource> get(std::string_view path);
 };
@@ -79,23 +79,23 @@ public:
     ~Dashboard();
 
     void                         load();
-    void               save();
+    void                         save();
 
     void                         newPlot(int x, int y, int w, int h);
     void                         deletePlot(Plot *plot);
 
-    inline const auto &sources() const { return m_sources; }
-    inline auto       &sources() { return m_sources; }
+    inline const auto           &sources() const { return m_sources; }
+    inline auto                 &sources() { return m_sources; }
 
-    inline auto       &plots() { return m_plots; }
+    inline auto                 &plots() { return m_plots; }
 
     void                         setNewDescription(const std::shared_ptr<DashboardDescription> &desc);
     inline DashboardDescription *description() const { return m_desc.get(); }
 
 private:
     std::shared_ptr<DashboardDescription> m_desc;
-    FlowGraph        *m_flowGraph;
-    std::vector<Plot> m_plots;
+    FlowGraph                            *m_flowGraph;
+    std::vector<Plot>                     m_plots;
     plf::colony<Source>                   m_sources;
 };
 

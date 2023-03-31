@@ -191,9 +191,7 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
 }
 
 template<typename Items, typename ItemGetter>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 })
-    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
-{
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
         return ImGui::Selectable(item.second.data(), selected);
@@ -202,9 +200,7 @@ auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const Im
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 })
-    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
-{
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, drawItem);
 }

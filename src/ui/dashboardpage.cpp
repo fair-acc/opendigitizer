@@ -276,9 +276,9 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
 
     ImGui::BeginChild("DND_RIGHT");
 
-    auto                 size      = ImGui::GetContentRegionAvail();
-    float                w         = size.x / float(gridSizeW);
-    float                h         = size.y / float(gridSizeH);
+    auto  size = ImGui::GetContentRegionAvail();
+    float w    = size.x / float(gridSizeW);
+    float h    = size.y / float(gridSizeH);
 
     if (mode == Mode::Layout) {
         auto pos = ImGui::GetCursorScreenPos();
@@ -305,8 +305,8 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
     Dashboard::Plot *toDelete = nullptr;
 
     for (auto &plot : dashboard->plots()) {
-        const int offset   = mode == Mode::Layout ? 5 : 0;
-        const int offset2  = offset * 2;
+        const int offset       = mode == Mode::Layout ? 5 : 0;
+        const int offset2      = offset * 2;
 
         auto      plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
         auto      plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };

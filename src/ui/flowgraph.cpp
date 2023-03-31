@@ -412,7 +412,7 @@ void FlowGraph::parse(const std::string &str) {
 
         auto block = type->createBlock(n);
 
-        auto pars = b["parameters"];
+        auto pars  = b["parameters"];
         if (pars && pars.IsMap()) {
             for (auto it = pars.begin(); it != pars.end(); ++it) {
                 auto key            = it->first.as<std::string>();
