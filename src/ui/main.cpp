@@ -27,6 +27,7 @@
 #include "opendashboardpage.h"
 
 CMRC_DECLARE(ui_assets);
+CMRC_DECLARE(fonts);
 
 namespace DigitizerUi {
 
@@ -39,15 +40,33 @@ struct SDLState {
 
 static void main_loop(void *);
 
-ImFont     *addDefaultFont(float pixel_size) {
-    ImGuiIO     &io = ImGui::GetIO();
+static void loadFonts(DigitizerUi::App &app) {
+    auto         fs   = cmrc::fonts::get_filesystem();
+    auto         file = fs.open("Roboto-Medium.ttf");
+
     ImFontConfig config;
-    config.SizePixels = pixel_size;
     // high oversample to have better looking text when zooming in on the flowgraph
     config.OversampleH = config.OversampleV = 4;
     config.PixelSnapH                       = true;
-    ImFont *font                            = io.Fonts->AddFontDefault(&config);
-    return font;
+
+    ImGuiIO &io                             = ImGui::GetIO();
+    app.fontNormal                          = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 16, &config);
+    app.fontBig                             = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 18, &config);
+    app.fontBigger                          = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 20, &config);
+
+    auto loadIconsFont                      = [&](auto name) {
+        static const ImWchar glyphRanges[] = {
+            0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
+            0
+        };
+
+        auto fs   = cmrc::ui_assets::get_filesystem();
+        auto file = fs.open(name);
+        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, nullptr, glyphRanges);
+    };
+
+    app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.ttf");
+    app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.ttf");
 }
 
 int main(int argc, char **argv) {
@@ -102,17 +121,6 @@ int main(int argc, char **argv) {
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
-
-    // Load Fonts
-    // io.Fonts->AddFontDefault();
-#ifndef IMGUI_DISABLE_FILE_FUNCTIONS
-    // io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f);
-    // io.Fonts->AddFontFromFileTTF("fonts/Cousine-Regular.ttf", 15.0f);
-    // io.Fonts->AddFontFromFileTTF("fonts/DroidSans.ttf", 16.0f);
-    // io.Fonts->AddFontFromFileTTF("fonts/ProggyTiny.ttf", 10.0f);
-    // ImFont* font = io.Fonts->AddFontFromFileTTF("fonts/ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-    // IM_ASSERT(font != NULL);
-#endif
 
     DigitizerUi::App app = {
 #ifdef EMSCRIPTEN
@@ -176,22 +184,7 @@ int main(int argc, char **argv) {
         return t;
     }());
 
-    app.font12         = addDefaultFont(12);
-    app.font14         = addDefaultFont(14);
-    app.font16         = addDefaultFont(16);
-
-    auto loadIconsFont = [&](auto name) {
-        static const ImWchar glyphRanges[] = {
-            0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
-            0
-        };
-
-        auto fs   = cmrc::ui_assets::get_filesystem();
-        auto file = fs.open(name);
-        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, nullptr, glyphRanges);
-    };
-    app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.ttf");
-    app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.ttf");
+    loadFonts(app);
 
     app_header::load_header_assets();
 
@@ -248,7 +241,7 @@ static void main_loop(void *arg) {
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    app_header::draw_header_bar("OpenDigitizer", app->font16);
+    app_header::draw_header_bar("OpenDigitizer", app->fontBigger);
 
     const bool dashboardLoaded = app->dashboard != nullptr;
     if (!dashboardLoaded) {
