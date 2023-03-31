@@ -95,10 +95,13 @@ private:
     Id m_id = Id::Untyped;
 };
 
-class DataSet : public std::variant<std::span<const float>, std::span<const double>> {
+struct EmptyDataSet {};
+class DataSet : public std::variant<EmptyDataSet, std::span<const float>, std::span<const double>> {
 public:
-    using Super = std::variant<std::span<const float>, std::span<const double>>;
+    using Super = std::variant<EmptyDataSet, std::span<const float>, std::span<const double>>;
     using Super::Super;
+
+    inline bool empty() const { return std::holds_alternative<EmptyDataSet>(*this); }
 
     inline auto asFloat32() const { return std::get<std::span<const float>>(*this); }
     inline auto asFloat64() const { return std::get<std::span<const double>>(*this); }
