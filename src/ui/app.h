@@ -28,11 +28,11 @@ public:
     std::unique_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
-    bool                       running = true;
+    bool                       running    = true;
 
-    ImFont                    *font12  = nullptr;
-    ImFont                    *font14  = nullptr;
-    ImFont                    *font16  = nullptr;
+    ImFont                    *fontNormal = nullptr;
+    ImFont                    *fontBig    = nullptr;
+    ImFont                    *fontBigger = nullptr;
     ImFont                    *fontIcons;
     ImFont                    *fontIconsSolid;
 };

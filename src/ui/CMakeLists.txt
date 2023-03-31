@@ -59,6 +59,8 @@ include(cmake/Dependencies.cmake)
 cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png
                                                         assets/fontawesome/fa-regular-400.ttf
                                                         assets/fontawesome/fa-solid-900.ttf)
+cmrc_add_resource_library(fonts NAMESPACE fonts WHENCE ${imgui_SOURCE_DIR}/misc/fonts
+                        ${imgui_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf)
 
 if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory
@@ -80,6 +82,7 @@ if (EMSCRIPTEN)
             plf_colony
             app_header
             ui_assets
+            fonts
             core
             imgui-node-editor
             yaml-cpp::yaml-cpp
@@ -109,6 +112,7 @@ else () # native build
             client
             app_header
             ui_assets
+            fonts
     )
     target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
