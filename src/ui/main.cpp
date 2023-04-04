@@ -48,6 +48,7 @@ static void loadFonts(DigitizerUi::App &app) {
     // high oversample to have better looking text when zooming in on the flowgraph
     config.OversampleH = config.OversampleV = 4;
     config.PixelSnapH                       = true;
+    config.FontDataOwnedByAtlas = false;
 
     ImGuiIO &io                             = ImGui::GetIO();
     app.fontNormal                          = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 16, &config);
@@ -62,7 +63,9 @@ static void loadFonts(DigitizerUi::App &app) {
 
         auto fs   = cmrc::ui_assets::get_filesystem();
         auto file = fs.open(name);
-        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, nullptr, glyphRanges);
+        ImFontConfig cfg;
+        cfg.FontDataOwnedByAtlas = false;
+        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, &cfg, glyphRanges);
     };
 
     app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.ttf");
