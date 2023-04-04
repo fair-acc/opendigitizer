@@ -490,6 +490,7 @@ void FlowGraph::clear() {
     m_blocks.clear();
     m_sourceBlocks.clear();
     m_sinkBlocks.clear();
+    m_connections.clear();
 }
 
 void FlowGraph::save(const std::filesystem::path &path) {

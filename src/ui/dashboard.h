@@ -75,7 +75,7 @@ public:
         GridRect rect;
     };
 
-    explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg);
+    explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc);
     ~Dashboard();
 
     void                         load();
@@ -94,7 +94,6 @@ public:
 
 private:
     std::shared_ptr<DashboardDescription> m_desc;
-    FlowGraph                            *m_flowGraph;
     std::vector<Plot>                     m_plots;
     plf::colony<Source>                   m_sources;
 };

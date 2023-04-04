@@ -122,17 +122,13 @@ int main(int argc, char **argv) {
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    DigitizerUi::App app = {
+    auto &app = DigitizerUi::App::instance();
 #ifdef EMSCRIPTEN
-        .executable = "index.html",
+    app.executable = "index.html";
 #else
-        .executable = argv[0],
+    app.executable = argv[0];
 #endif
-        .flowGraph     = {},
-        .fgItem        = { &app.flowGraph },
-        .dashboardPage = DigitizerUi::DashboardPage(&app.flowGraph),
-        .sdlState      = &sdlState
-    };
+    app.sdlState               = &sdlState;
 
     app.fgItem.newSinkCallback = [&]() mutable {
         int  n    = app.flowGraph.sinkBlocks().size() + 1;

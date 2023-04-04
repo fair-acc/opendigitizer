@@ -9,6 +9,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include "app.h"
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "yamlutils.h"
@@ -67,11 +68,11 @@ Dashboard::Plot::Plot() {
     name         = fmt::format("Plot {}", n++);
 }
 
-Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc, FlowGraph *fg)
-    : m_desc(desc)
-    , m_flowGraph(fg) {
+Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
+    : m_desc(desc) {
     m_desc->lastUsed             = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
+    auto *fg                     = &App::instance().flowGraph;
     fg->sourceBlockAddedCallback = [this](Block *b) {
         for (int i = 0; i < b->type->outputs.size(); ++i) {
             auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
@@ -219,6 +220,9 @@ void Dashboard::load() {
         plot.rect.h = rect[3].as<int>();
     }
 
+    auto fgLayout = tree["flowgraphLayout"];
+    App::instance().fgItem.setSettings(fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+
 #undef ERROR_RETURN
 }
 
@@ -228,7 +232,7 @@ void Dashboard::save() {
     }
 
     auto path = std::filesystem::path(m_desc->source->path);
-    m_flowGraph->save(path / (m_desc->name + ".grc"));
+    App::instance().flowGraph.save(path / (m_desc->name + ".grc"));
 
     YAML::Emitter out;
     {
@@ -285,6 +289,8 @@ void Dashboard::save() {
                 });
             }
         });
+
+        root.write("flowgraphLayout", App::instance().fgItem.settings());
     }
 
     std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
