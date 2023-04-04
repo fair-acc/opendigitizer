@@ -1,7 +1,9 @@
 #include "flowgraphitem.h"
 
+#include <crude_json.h>
 #include <imgui.h>
 #include <imgui_node_editor.h>
+
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "flowgraph.h"
@@ -13,12 +15,70 @@ namespace DigitizerUi {
 
 FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     : m_flowGraph(fg) {
-#ifdef EMSCRIPTEN
-    // In emscripten we don't have access to the filesystem so we can't read the settings file
     m_config.SettingsFile = nullptr;
-#endif
+    m_config.UserPointer  = this;
+    m_config.SaveSettings = [](const char *data, size_t size, ax::NodeEditor::SaveReasonFlags reason, void *userPointer) {
+        auto *fg       = static_cast<FlowGraphItem *>(userPointer);
+        fg->m_settings = std::string(data, size);
+        return true;
+    };
+    m_config.LoadSettings = [](char *data, void *userPointer) {
+        auto *fg = static_cast<FlowGraphItem *>(userPointer);
+        if (data) {
+            memcpy(data, fg->m_settings.data(), fg->m_settings.size());
+        }
+        return fg->m_settings.size();
+    };
+}
 
-    auto ed = ax::NodeEditor::CreateEditor(&m_config);
+FlowGraphItem::~FlowGraphItem() = default;
+
+std::string FlowGraphItem::settings() const {
+    // The nodes in the settings are saved with their NodeId, which is just a pointer
+    // to the Blocks. Since that will change between runs save also the name of the blocks.
+    auto  json  = crude_json::value::parse(m_settings);
+    auto &nodes = json["nodes"];
+    if (nodes.type() == crude_json::type_t::object) {
+        for (auto &n : nodes.get<crude_json::object>()) {
+            if (n.first.starts_with("node:")) {
+                auto  id         = std::atoll(n.first.data() + 5);
+                auto *block      = reinterpret_cast<Block *>(id);
+                n.second["name"] = block->name;
+            }
+        }
+    }
+    return json.dump();
+}
+
+void FlowGraphItem::setSettings(const std::string &settings) {
+    auto ed = ax::NodeEditor::GetCurrentEditor();
+    if (ed) {
+        ax::NodeEditor::DestroyEditor(ed);
+    }
+
+    auto json = crude_json::value::parse(settings);
+    if (json.type() == crude_json::type_t::object) {
+        // recover the correct NodeIds using the block names;
+        auto &nodes = json["nodes"];
+        if (nodes.type() == crude_json::type_t::object) {
+            crude_json::value newnodes;
+            for (auto &n : nodes.get<crude_json::object>()) {
+                auto  name  = n.second["name"].get<std::string>();
+                auto *block = m_flowGraph->findBlock(name);
+
+                if (block) {
+                    auto newname      = fmt::format("node:{}", reinterpret_cast<uintptr_t>(block));
+                    newnodes[newname] = n.second;
+                }
+            }
+            json["nodes"] = newnodes;
+        }
+        m_settings = json.dump();
+    } else {
+        m_settings = {};
+    }
+
+    ed = ax::NodeEditor::CreateEditor(&m_config);
     ax::NodeEditor::SetCurrentEditor(ed);
 
     auto &style                                         = ax::NodeEditor::GetStyle();
@@ -28,8 +88,6 @@ FlowGraphItem::FlowGraphItem(FlowGraph *fg)
     style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.94, 0.92, 1, 1 };
     style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
 }
-
-FlowGraphItem::~FlowGraphItem() = default;
 
 static uint32_t colorForDataType(DataType t) {
     switch (t) {

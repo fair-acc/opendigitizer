@@ -6,6 +6,14 @@
 
 namespace DigitizerUi {
 
+App &App::instance() {
+    static App app{
+        .fgItem        = { &app.flowGraph },
+        .dashboardPage = DashboardPage{ &app.flowGraph },
+    };
+    return app;
+}
+
 void App::openNewWindow() {
 #ifdef EMSCRIPTEN
     std::string script = fmt::format("window.open('{}').focus()", executable);
@@ -23,7 +31,7 @@ void App::loadEmptyDashboard() {
 }
 
 void App::loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
-    dashboard = std::make_unique<Dashboard>(desc, &flowGraph);
+    dashboard = std::make_unique<Dashboard>(desc);
 }
 
 void App::loadDashboard(std::string_view url) {

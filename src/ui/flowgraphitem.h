@@ -19,8 +19,15 @@ public:
     ~FlowGraphItem();
 
     void                  draw(const ImVec2 &size);
+    void                  resetBlocksPosition();
 
     std::function<void()> newSinkCallback;
+
+    std::string           settings() const;
+    void                  setSettings(const std::string &settings);
+
+    // const std::string &blockSettings() const;
+    // void setBlockSettings(const std::string &settings);
 
 private:
     enum class Alignment {
@@ -39,6 +46,7 @@ private:
     bool                          m_createNewBlock    = false;
     ImVec2                        m_contextMenuPosition;
     ax::NodeEditor::Config        m_config;
+    std::string                   m_settings;
 
     // new block dialog data
     const Block *m_filterBlock = nullptr;
