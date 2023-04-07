@@ -189,7 +189,10 @@ int main(int argc, char **argv) {
 
     if (argc > 1) {
         const char *url = argv[1];
-        app.loadDashboard(url);
+        if (strlen(url) > 0) {
+            fmt::print("Loading dashboard from '{}'\n", url);
+            app.loadDashboard(url);
+        }
     }
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
@@ -217,6 +220,8 @@ static void main_loop(void *arg) {
     DigitizerUi::App *app = static_cast<DigitizerUi::App *>(arg);
 
     ImGuiIO          &io  = ImGui::GetIO();
+
+    app->fireCallbacks();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;

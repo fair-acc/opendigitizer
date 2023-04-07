@@ -26,6 +26,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
     m_sources.push_back(DashboardSource::get(path));
     auto &source = m_sources.back();
 
+#ifndef EMSCRIPTEN
     namespace fs = std::filesystem;
     if (!fs::is_directory(path)) {
         return;
@@ -33,12 +34,14 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
     for (auto &file : fs::directory_iterator(path)) {
         if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
-            auto dd = DashboardDescription::load(source, file.path().filename().native());
-            if (dd) {
-                m_dashboards.push_back(dd);
-            }
+            DashboardDescription::load(source, file.path().stem().native(), [this](std::shared_ptr<DashboardDescription> &&dd) {
+                if (dd) {
+                    m_dashboards.push_back(dd);
+                }
+            });
         }
     }
+#endif
 }
 
 void OpenDashboardPage::draw(App *app) {

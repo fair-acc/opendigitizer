@@ -22,6 +22,11 @@ public:
     void                       loadDashboard(std::string_view url);
     void                       closeDashboard();
 
+    // schedule a function to be called at the next opportunity on the main thread
+    void                               schedule(std::function<void()> &&callback);
+
+    void                               fireCallbacks();
+
     std::string                executable;
     FlowGraph                  flowGraph;
     FlowGraphItem              fgItem;
@@ -36,6 +41,9 @@ public:
     ImFont                    *fontBigger = nullptr;
     ImFont                    *fontIcons;
     ImFont                    *fontIconsSolid;
+
+    std::vector<std::function<void()>> m_callbacks[2];
+    std::mutex                         m_callbacksMutex;
 };
 
 } // namespace DigitizerUi

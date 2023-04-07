@@ -7,6 +7,10 @@
 
 #include <fstream>
 
+#include <MdpMessage.hpp>
+#include <opencmw.hpp>
+#include <RestClient.hpp>
+
 #include <yaml-cpp/yaml.h>
 
 #include "app.h"
@@ -41,6 +45,72 @@ std::shared_ptr<DashboardSource> unsavedSource() {
 auto &sources() {
     static std::vector<std::weak_ptr<DashboardSource>> sources;
     return sources;
+}
+
+enum class What {
+    Header,
+    Dashboard,
+    Flowgraph
+};
+
+void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &name, What what,
+        std::function<void(std::string &&)> &&cb, std::function<void()> &&errCb) {
+    if (source->path.starts_with("http://")) {
+        std::atomic<bool>           done(false);
+        opencmw::client::Command    command;
+        command.command     = opencmw::mdp::Command::Get;
+        auto        path    = std::filesystem::path(source->path) / name;
+        std::string whatStr = [&]() {
+            switch (what) {
+            case What::Header: return "header";
+            case What::Dashboard: return "dashboard";
+            case What::Flowgraph: return "flowgraph";
+            }
+            return "header";
+        }();
+
+        command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
+
+        command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message &rep) mutable {
+            auto        buf = rep.data;
+            std::string reply;
+            reply.resize(buf.size());
+            memcpy(reply.data(), buf.data(), buf.size());
+
+            if (reply.empty()) {
+                App::instance().schedule(std::move(errCallback));
+            } else {
+                // schedule the callback so it runs on the main thread
+                App::instance().schedule([callback, reply]() mutable {
+                    callback(std::move(reply));
+                });
+            }
+        };
+
+        // static because ~RestClient() waits for the request to finish, and we don't want that
+        static opencmw::client::RestClient client;
+        client.request(command);
+        return;
+    } else {
+#ifndef EMSCRIPTEN
+        std::string   ext  = what == What::Flowgraph ? ".grc" : DashboardDescription::fileExtension;
+        auto          path = std::filesystem::path(source->path) / (name + ext);
+        std::ifstream stream(path, std::ios::in);
+        if (stream.is_open()) {
+            stream.seekg(0, std::ios::end);
+            size_t      size = stream.tellg();
+
+            std::string desc;
+            desc.resize(size);
+            stream.seekg(0);
+            stream.read(desc.data(), size);
+            cb(std::move(desc));
+            return;
+        }
+#endif
+    }
+
+    errCb();
 }
 
 } // namespace
@@ -91,7 +161,11 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
     if (desc->source == unsavedSource()) {
         fg->clear();
     } else {
-        fg->parse(std::filesystem::path(desc->source->path) / (desc->name + ".grc"));
+        fetch(
+                desc->source, desc->name, What::Flowgraph,
+                [this](std::string &&data) { App::instance().flowGraph.parse(data); }, [desc]() {
+            fmt::print("Invalid flowgraph for dashboard {}/{}\n", desc->source->path, desc->name);
+            App::instance().closeDashboard(); });
     }
 
     // Load is called after parsing the flowgraph so that we already have the list of sources
@@ -110,12 +184,17 @@ void Dashboard::load() {
         return;
     }
 
-    auto          path = std::filesystem::path(m_desc->source->path);
-    std::ifstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::in);
-    if (!stream.is_open()) {
-        return;
-    }
-    YAML::Node tree = YAML::Load(stream);
+    fetch(
+            m_desc->source, m_desc->name, What::Dashboard,
+            [this](std::string &&desc) { doLoad(desc); }, [this]() {
+        fmt::print("Invalid dashboard description for dashboard {}/{}\n", m_desc->source->path, m_desc->name);
+        App::instance().closeDashboard(); });
+}
+
+void Dashboard::doLoad(const std::string &desc) {
+    YAML::Node tree = YAML::Load(desc);
+
+    auto       path = std::filesystem::path(m_desc->source->path) / m_desc->name;
 
 #ifdef NDEBUG
 #define ERROR_RETURN \
@@ -313,37 +392,36 @@ void Dashboard::deletePlot(Plot *plot) {
     m_plots.erase(it);
 }
 
-std::shared_ptr<DashboardDescription> DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &filename) {
-#ifndef EMSCRIPTEN
-    auto          path = std::filesystem::path(source->path) / filename;
-    std::ifstream stream(path, std::ios::in);
-    if (!stream.is_open()) {
-        return {};
-    }
-    YAML::Node tree     = YAML::Load(stream);
+void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,
+        const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb) {
+    fetch(
+            source, name, What::Header,
+            [cb, name, source](std::string &&desc) {
+                YAML::Node tree     = YAML::Load(desc);
 
-    auto       favorite = tree["favorite"];
-    auto       lastUsed = tree["lastUsed"];
+                auto       favorite = tree["favorite"];
+                auto       lastUsed = tree["lastUsed"];
 
-    auto       getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
-        if (str.size() < 10) {
-            return {};
-        }
-        int                         year  = std::atoi(str.data());
-        unsigned                    month = std::atoi(str.c_str() + 5);
-        unsigned                    day   = std::atoi(str.c_str() + 8);
+                auto       getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
+                    if (str.size() < 10) {
+                        return {};
+                    }
+                    int                         year  = std::atoi(str.data());
+                    unsigned                    month = std::atoi(str.c_str() + 5);
+                    unsigned                    day   = std::atoi(str.c_str() + 8);
 
-        std::chrono::year_month_day date{ std::chrono::year{ year }, std::chrono::month{ month }, std::chrono::day{ day } };
-        return std::chrono::sys_days(date);
-    };
+                    std::chrono::year_month_day date{ std::chrono::year{ year }, std::chrono::month{ month }, std::chrono::day{ day } };
+                    return std::chrono::sys_days(date);
+                };
 
-    return std::make_shared<DashboardDescription>(DashboardDescription{
-            .name       = path.stem(),
-            .source     = source,
-            .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
-            .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt });
-#endif
-    return {};
+                // fmt::print("aa {} {}\n",(bool)callback,(void*)callback.target());
+                cb(std::make_shared<DashboardDescription>(DashboardDescription{
+                        .name       = name,
+                        .source     = source,
+                        .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
+                        .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt }));
+            },
+            [cb]() { cb({}); });
 }
 
 std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string &name) {

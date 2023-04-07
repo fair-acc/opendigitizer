@@ -84,6 +84,7 @@ if (EMSCRIPTEN)
             ui_assets
             fonts
             core
+            client
             imgui-node-editor
             yaml-cpp::yaml-cpp
     )

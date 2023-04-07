@@ -25,9 +25,7 @@ public:
 
     std::string           settings() const;
     void                  setSettings(const std::string &settings);
-
-    // const std::string &blockSettings() const;
-    // void setBlockSettings(const std::string &settings);
+    void                  clear();
 
 private:
     enum class Alignment {

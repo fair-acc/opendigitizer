@@ -33,6 +33,7 @@
       var Module = {
         preRun: [],
         postRun: [],
+        arguments: [ window.location.search.slice(1) ],
         print: (function() {
             return function(text) {
                 text = Array.prototype.slice.call(arguments).join(' ');
