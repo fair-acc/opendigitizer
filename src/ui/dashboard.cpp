@@ -93,16 +93,19 @@ void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
         return;
     } else {
 #ifndef EMSCRIPTEN
-        std::string   ext  = what == What::Flowgraph ? ".grc" : DashboardDescription::fileExtension;
-        auto          path = std::filesystem::path(source->path) / (name + ext);
+        auto          path = std::filesystem::path(source->path) / (name + DashboardDescription::fileExtension);
         std::ifstream stream(path, std::ios::in);
         if (stream.is_open()) {
-            stream.seekg(0, std::ios::end);
-            size_t      size = stream.tellg();
+            stream.seekg(what == What::Header ? 0 : (what == What::Dashboard ? 8 : 16));
+
+            uint32_t start, size;
+            stream.read(reinterpret_cast<char *>(&start), 4);
+            stream.read(reinterpret_cast<char *>(&size), 4);
+
+            stream.seekg(start);
 
             std::string desc;
             desc.resize(size);
-            stream.seekg(0);
             stream.read(desc.data(), size);
             cb(std::move(desc));
             return;
@@ -311,23 +314,33 @@ void Dashboard::save() {
     }
 
     auto path = std::filesystem::path(m_desc->source->path);
-    App::instance().flowGraph.save(path / (m_desc->name + ".grc"));
 
-    YAML::Emitter out;
+    std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
+    if (!stream.is_open()) {
+        fmt::print("can't open file for writing\n");
+        return;
+    }
+
+    YAML::Emitter headerOut;
     {
-        YamlMap root(out);
+        YamlMap root(headerOut);
 
         root.write("favorite", m_desc->isFavorite);
         std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
         char                        lastUsed[11];
         fmt::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
         root.write("lastUsed", lastUsed);
+    }
+
+    YAML::Emitter dashboardOut;
+    {
+        YamlMap root(dashboardOut);
 
         root.write("sources", [&]() {
-            YamlSeq sources(out);
+            YamlSeq sources(dashboardOut);
 
             for (auto &s : m_sources) {
-                YamlMap source(out);
+                YamlMap source(dashboardOut);
                 source.write("name", s.name);
 
                 source.write("block", s.block->name);
@@ -337,34 +350,34 @@ void Dashboard::save() {
         });
 
         root.write("plots", [&]() {
-            YamlSeq plots(out);
+            YamlSeq plots(dashboardOut);
 
             for (auto &p : m_plots) {
-                YamlMap plot(out);
+                YamlMap plot(dashboardOut);
                 plot.write("name", p.name);
                 plot.write("axes", [&]() {
-                    YamlSeq axes(out);
+                    YamlSeq axes(dashboardOut);
 
                     for (const auto &axis : p.axes) {
-                        YamlMap a(out);
+                        YamlMap a(dashboardOut);
                         a.write("axis", axis.axis == Plot::Axis::X ? "X" : "Y");
                         a.write("min", axis.min);
                         a.write("max", axis.max);
                     }
                 });
                 plot.write("sources", [&]() {
-                    YamlSeq sources(out);
+                    YamlSeq sources(dashboardOut);
 
                     for (auto &s : p.sources) {
-                        out << s->name;
+                        dashboardOut << s->name;
                     }
                 });
                 plot.write("rect", [&]() {
-                    YamlSeq rect(out);
-                    out << p.rect.x;
-                    out << p.rect.y;
-                    out << p.rect.w;
-                    out << p.rect.h;
+                    YamlSeq rect(dashboardOut);
+                    dashboardOut << p.rect.x;
+                    dashboardOut << p.rect.y;
+                    dashboardOut << p.rect.w;
+                    dashboardOut << p.rect.h;
                 });
             }
         });
@@ -372,11 +385,24 @@ void Dashboard::save() {
         root.write("flowgraphLayout", App::instance().fgItem.settings());
     }
 
-    std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
-    if (!stream.is_open()) {
-        return;
-    }
-    stream << out.c_str();
+    uint32_t headerStart = 32;
+    uint32_t headerSize = headerOut.size();
+    uint32_t dashboardStart = headerStart + headerSize + 1;
+    uint32_t dashboardSize = dashboardOut.size();
+    stream.write(reinterpret_cast<char *>(&headerStart), 4);
+    stream.write(reinterpret_cast<char *>(&headerSize), 4);
+    stream.write(reinterpret_cast<char *>(&dashboardStart), 4);
+    stream.write(reinterpret_cast<char *>(&dashboardSize), 4);
+
+    stream.seekp(headerStart);
+    stream << headerOut.c_str() << '\n';
+    stream << dashboardOut.c_str() << '\n';
+    uint32_t flowgraphStart = stream.tellp();
+    uint32_t flowgraphSize = App::instance().flowGraph.save(stream);
+    stream.seekp(16);
+    stream.write(reinterpret_cast<char *>(&flowgraphStart), 4);
+    stream.write(reinterpret_cast<char *>(&flowgraphSize), 4);
+    stream << '\n';
 }
 
 void Dashboard::newPlot(int x, int y, int w, int h) {

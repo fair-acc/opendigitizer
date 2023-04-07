@@ -63,17 +63,29 @@ public:
             }
         });
         auto fs         = cmrc::dashboardFilesystem::get_filesystem();
-        auto headerFile = fs.open("header.yaml");
-        header.resize(headerFile.size());
-        std::copy(headerFile.begin(), headerFile.end(), header.begin());
+        auto file = fs.open("dashboard.ddd");
 
-        auto dashboardFile = fs.open("dashboard.yaml");
-        dashboard.resize(dashboardFile.size());
-        std::copy(dashboardFile.begin(), dashboardFile.end(), dashboard.begin());
+        uint32_t hstart, hsize;
+        uint32_t dstart, dsize;
+        uint32_t fstart, fsize;
 
-        auto flowgraphFile = fs.open("dashboard.grc");
-        flowgraph.resize(flowgraphFile.size());
-        std::copy(flowgraphFile.begin(), flowgraphFile.end(), flowgraph.begin());
+        memcpy(&hstart, file.begin(), 4);
+        memcpy(&hsize, file.begin() + 4, 4);
+
+        memcpy(&dstart, file.begin() + 8, 4);
+        memcpy(&dsize, file.begin() + 12, 4);
+
+        memcpy(&fstart, file.begin() + 16, 4);
+        memcpy(&fsize, file.begin() + 20, 4);
+
+        header.resize(hsize);
+        memcpy(header.data(), file.begin() + hstart, hsize);
+
+        dashboard.resize(dsize);
+        memcpy(dashboard.data(), file.begin() + dstart, dsize);
+
+        flowgraph.resize(fsize);
+        memcpy(flowgraph.data(), file.begin() + fstart, fsize);
     }
 
 private:

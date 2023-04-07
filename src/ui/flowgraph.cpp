@@ -493,8 +493,7 @@ void FlowGraph::clear() {
     m_connections.clear();
 }
 
-void FlowGraph::save(const std::filesystem::path &path) {
-#ifndef EMSCRIPTEN
+int FlowGraph::save(std::ostream &stream) {
     YAML::Emitter out;
     {
         YamlMap root(out);
@@ -546,13 +545,8 @@ void FlowGraph::save(const std::filesystem::path &path) {
         });
     }
 
-    std::ofstream stream(path, std::ios::trunc);
-    if (!stream.is_open()) {
-        return;
-    }
-
     stream << out.c_str();
-#endif
+    return out.size();
 }
 
 static Block *findBlockImpl(std::string_view name, auto &list) {
