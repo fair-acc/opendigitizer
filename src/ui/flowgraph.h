@@ -234,7 +234,7 @@ public:
 
     void                         update();
 
-    void                         save(const std::filesystem::path &path);
+    int                          save(std::ostream &stream);
 
     std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
