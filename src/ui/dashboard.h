@@ -2,6 +2,7 @@
 #define DASHBOARD_H
 
 #include <chrono>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,7 +39,8 @@ struct DashboardDescription {
 
     void                                                              save();
 
-    static std::shared_ptr<DashboardDescription>                      load(const std::shared_ptr<DashboardSource> &source, const std::string &filename);
+    static void                                                       load(const std::shared_ptr<DashboardSource> &source, const std::string &filename,
+                                                                  const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb);
     static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
 };
 
@@ -93,6 +95,8 @@ public:
     inline DashboardDescription *description() const { return m_desc.get(); }
 
 private:
+    void                                  doLoad(const std::string &desc);
+
     std::shared_ptr<DashboardDescription> m_desc;
     std::vector<Plot>                     m_plots;
     plf::colony<Source>                   m_sources;

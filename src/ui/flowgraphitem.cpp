@@ -89,6 +89,10 @@ void FlowGraphItem::setSettings(const std::string &settings) {
     style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
 }
 
+void FlowGraphItem::clear() {
+    setSettings({});
+}
+
 static uint32_t colorForDataType(DataType t) {
     switch (t) {
     case DataType::ComplexFloat64: return 0xff795548;

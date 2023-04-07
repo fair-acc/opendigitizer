@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "acquisition/acqWorker.hpp"
+#include "dashboard/dashboardWorker.hpp"
 #include "flowgraph/flowgraphWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
@@ -38,6 +39,11 @@ int main() {
     using FgWorker = FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">>;
     FgWorker     flowgraphWorker(broker);
     std::jthread flowgraphWorkerThread([&flowgraphWorker] { flowgraphWorker.run(); });
+
+    // dashboard worker (mock)
+    using DsWorker = DashboardWorker<"dashboard", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
+    DsWorker     dashboardWorker(broker);
+    std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
 
     // acquisition worker (mock)
     using AcqWorker = AcquisitionWorker<"/DeviceName/Acquisition", description<"Provides data acquisition updates">>;
