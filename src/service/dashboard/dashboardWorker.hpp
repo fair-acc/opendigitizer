@@ -46,12 +46,15 @@ public:
     explicit DashboardWorker(const BrokerType &broker)
         : super_t(broker, {}) {
         super_t::setHandler([this](RequestContext &ctx) {
-            if (ctx.request.command() == Command::Get) {
-                fmt::print("worker received 'get' request\n");
+            auto whatParam = [&]() {
                 auto        uri    = opencmw::URI<opencmw::RELAXED>(std::string(ctx.request.topic()));
                 const auto &params = uri.queryParamMap();
                 auto        it     = params.find("what");
-                std::string what   = it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
+                return it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
+            };
+            if (ctx.request.command() == Command::Get) {
+                fmt::print("worker received 'get' request\n");
+                std::string what   = whatParam();
                 if (what == "dashboard") {
                     ctx.reply.setBody(dashboard, MessageFrame::dynamic_bytes_tag{});
                 } else if (what == "flowgraph") {
@@ -60,10 +63,27 @@ public:
                     ctx.reply.setBody(header, MessageFrame::dynamic_bytes_tag{});
                 }
             } else if (ctx.request.command() == Command::Set) {
+                std::string what   = whatParam();
+                auto body = ctx.request.body();
+                // The first 4 bytes contain the size of the string, including the terminating null byte
+                int32_t size;
+                memcpy(&size, body.data(), 4);
+                std::string data = std::string(body.data() + 4, std::size_t(size));
+
+                if (what == "dashboard") {
+                    dashboard = std::move(data);
+                    ctx.reply.setBody(dashboard, MessageFrame::dynamic_bytes_tag{});
+                } else if (what == "flowgraph") {
+                    flowgraph = std::move(data);
+                    ctx.reply.setBody(flowgraph, MessageFrame::dynamic_bytes_tag{});
+                } else {
+                    header = std::move(data);
+                    ctx.reply.setBody(header, MessageFrame::dynamic_bytes_tag{});
+                }
             }
         });
         auto fs         = cmrc::dashboardFilesystem::get_filesystem();
-        auto file = fs.open("dashboard.ddd");
+        auto     file       = fs.open("dashboard.ddd");
 
         uint32_t hstart, hsize;
         uint32_t dstart, dsize;

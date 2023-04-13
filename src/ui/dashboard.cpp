@@ -313,14 +313,6 @@ void Dashboard::save() {
         return;
     }
 
-    auto path = std::filesystem::path(m_desc->source->path);
-
-    std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
-    if (!stream.is_open()) {
-        fmt::print("can't open file for writing\n");
-        return;
-    }
-
     YAML::Emitter headerOut;
     {
         YamlMap root(headerOut);
@@ -385,24 +377,62 @@ void Dashboard::save() {
         root.write("flowgraphLayout", App::instance().fgItem.settings());
     }
 
-    uint32_t headerStart = 32;
-    uint32_t headerSize = headerOut.size();
-    uint32_t dashboardStart = headerStart + headerSize + 1;
-    uint32_t dashboardSize = dashboardOut.size();
-    stream.write(reinterpret_cast<char *>(&headerStart), 4);
-    stream.write(reinterpret_cast<char *>(&headerSize), 4);
-    stream.write(reinterpret_cast<char *>(&dashboardStart), 4);
-    stream.write(reinterpret_cast<char *>(&dashboardSize), 4);
+    if (m_desc->source->path.starts_with("http://")) {
 
-    stream.seekp(headerStart);
-    stream << headerOut.c_str() << '\n';
-    stream << dashboardOut.c_str() << '\n';
-    uint32_t flowgraphStart = stream.tellp();
-    uint32_t flowgraphSize = App::instance().flowGraph.save(stream);
-    stream.seekp(16);
-    stream.write(reinterpret_cast<char *>(&flowgraphStart), 4);
-    stream.write(reinterpret_cast<char *>(&flowgraphSize), 4);
-    stream << '\n';
+        opencmw::client::RestClient client;
+        auto        path    = std::filesystem::path(m_desc->source->path) / m_desc->name;
+
+        opencmw::client::Command    hcommand;
+        hcommand.command     = opencmw::mdp::Command::Set;
+        hcommand.data.put(std::string_view(headerOut.c_str(), headerOut.size()));
+        hcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        client.request(hcommand);
+
+        opencmw::client::Command    dcommand;
+        dcommand.command     = opencmw::mdp::Command::Set;
+        dcommand.data.put(std::string_view(dashboardOut.c_str(), dashboardOut.size()));
+        dcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        client.request(dcommand);
+
+        opencmw::client::Command    fcommand;
+        fcommand.command     = opencmw::mdp::Command::Set;
+        std::stringstream stream;
+        App::instance().flowGraph.save(stream);
+        fcommand.data.put(stream.str());
+        fcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        client.request(fcommand);
+
+
+    } else {
+#ifndef EMSCRIPTEN
+        auto          path = std::filesystem::path(m_desc->source->path);
+
+        std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
+        if (!stream.is_open()) {
+            fmt::print("can't open file for writing\n");
+            return;
+        }
+
+        uint32_t headerStart    = 32;
+        uint32_t headerSize     = headerOut.size();
+        uint32_t dashboardStart = headerStart + headerSize + 1;
+        uint32_t dashboardSize  = dashboardOut.size();
+        stream.write(reinterpret_cast<char *>(&headerStart), 4);
+        stream.write(reinterpret_cast<char *>(&headerSize), 4);
+        stream.write(reinterpret_cast<char *>(&dashboardStart), 4);
+        stream.write(reinterpret_cast<char *>(&dashboardSize), 4);
+
+        stream.seekp(headerStart);
+        stream << headerOut.c_str() << '\n';
+        stream << dashboardOut.c_str() << '\n';
+        uint32_t flowgraphStart = stream.tellp();
+        uint32_t flowgraphSize  = App::instance().flowGraph.save(stream);
+        stream.seekp(16);
+        stream.write(reinterpret_cast<char *>(&flowgraphStart), 4);
+        stream.write(reinterpret_cast<char *>(&flowgraphSize), 4);
+        stream << '\n';
+#endif
+    }
 }
 
 void Dashboard::newPlot(int x, int y, int w, int h) {
