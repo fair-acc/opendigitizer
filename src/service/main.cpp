@@ -41,7 +41,7 @@ int main() {
     std::jthread flowgraphWorkerThread([&flowgraphWorker] { flowgraphWorker.run(); });
 
     // dashboard worker (mock)
-    using DsWorker = DashboardWorker<"dashboard", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
+    using DsWorker = DashboardWorker<"dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
     DsWorker     dashboardWorker(broker);
     std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
 
