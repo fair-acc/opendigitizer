@@ -17,26 +17,18 @@ CMRC_DECLARE(dashboardFilesystem);
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
-struct DashboardFilterContext {
-    opencmw::MIME::MimeType contentType = opencmw::MIME::YAML;
-};
-
-ENABLE_REFLECTION_FOR(DashboardFilterContext, contentType)
-
 struct Dashboard {
+    std::string header;
     std::string dashboard;
     std::string flowgraph;
 };
-
-ENABLE_REFLECTION_FOR(Dashboard, dashboard, flowgraph)
 
 using namespace opencmw::majordomo;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class DashboardWorker : public BasicWorker<serviceName, Meta...> {
-    std::string header;
-    std::string dashboard;
-    std::string flowgraph;
+    std::vector<std::string> names;
+    std::vector<Dashboard>   dashboards;
     std::mutex  lock;
 
 public:
@@ -52,33 +44,82 @@ public:
                 auto        it     = params.find("what");
                 return it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
             };
+
+            auto getDashboard = [&](std::string_view name) -> Dashboard * {
+                auto it = std::find(names.begin(), names.end(), name);
+                if (it != names.end()) {
+                    std::string what = whatParam();
+                    auto        i    = std::size_t(it - names.begin());
+                    return &dashboards[i];
+                }
+                return nullptr;
+            };
+
+            auto topic = ctx.request.topic();
+            auto uri   = opencmw::URI<>(std::string("/") + std::string(topic));
+            std::filesystem::path         path(uri.path().value());
+            std::vector<std::string_view> parts;
+
+            for (auto &p : path) {
+                parts.push_back(p.native());
+            }
+            assert(parts.size() > 1);
+            assert(parts[0] == "/");
+            assert(parts[1] == serviceName.data());
+
             if (ctx.request.command() == Command::Get) {
                 fmt::print("worker received 'get' request\n");
-                std::string what   = whatParam();
-                if (what == "dashboard") {
-                    ctx.reply.setBody(dashboard, MessageFrame::dynamic_bytes_tag{});
-                } else if (what == "flowgraph") {
-                    ctx.reply.setBody(flowgraph, MessageFrame::dynamic_bytes_tag{});
+
+                if (parts.size() == 2) {
+                    opencmw::IoBuffer buffer;
+                    opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
+                    ctx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
+                } else if (parts.size() == 3) {
+                    if (auto *ds = getDashboard(parts[2])) {
+                        std::string what = whatParam();
+                        if (what == "dashboard") {
+                            ctx.reply.setBody(ds->dashboard, MessageFrame::dynamic_bytes_tag{});
+                        } else if (what == "flowgraph") {
+                            ctx.reply.setBody(ds->flowgraph, MessageFrame::dynamic_bytes_tag{});
+                        } else {
+                            ctx.reply.setBody(ds->header, MessageFrame::dynamic_bytes_tag{});
+                        }
+                    } else {
+                        ctx.reply.setError("invalid request: unknown dashboard", MessageFrame::dynamic_bytes_tag{});
+                    }
                 } else {
-                    ctx.reply.setBody(header, MessageFrame::dynamic_bytes_tag{});
+                    ctx.reply.setError("invalid request: invalid path", MessageFrame::dynamic_bytes_tag{});
                 }
             } else if (ctx.request.command() == Command::Set) {
-                std::string what   = whatParam();
-                auto body = ctx.request.body();
-                // The first 4 bytes contain the size of the string, including the terminating null byte
-                int32_t size;
-                memcpy(&size, body.data(), 4);
-                std::string data = std::string(body.data() + 4, std::size_t(size));
+                if (parts.size() == 2) {
+                    ctx.reply.setError("invalid request: dashboard not specified", MessageFrame::dynamic_bytes_tag{});
+                } else if (parts.size() == 3) {
+                    auto *ds = getDashboard(parts[2]);
+                    if (!ds) { // if we couldn't find a dashboard make a new one
+                        names.push_back(std::string(parts[2]));
+                        dashboards.push_back({});
+                        ds = &dashboards.back();
+                    }
 
-                if (what == "dashboard") {
-                    dashboard = std::move(data);
-                    ctx.reply.setBody(dashboard, MessageFrame::dynamic_bytes_tag{});
-                } else if (what == "flowgraph") {
-                    flowgraph = std::move(data);
-                    ctx.reply.setBody(flowgraph, MessageFrame::dynamic_bytes_tag{});
+                    std::string what = whatParam();
+                    auto        body = ctx.request.body();
+                    // The first 4 bytes contain the size of the string, including the terminating null byte
+                    int32_t size;
+                    memcpy(&size, body.data(), 4);
+                    std::string data = std::string(body.data() + 4, std::size_t(size));
+
+                    if (what == "dashboard") {
+                        ds->dashboard = std::move(data);
+                        ctx.reply.setBody(ds->dashboard, MessageFrame::dynamic_bytes_tag{});
+                    } else if (what == "flowgraph") {
+                        ds->flowgraph = std::move(data);
+                        ctx.reply.setBody(ds->flowgraph, MessageFrame::dynamic_bytes_tag{});
+                    } else {
+                        ds->header = std::move(data);
+                        ctx.reply.setBody(ds->header, MessageFrame::dynamic_bytes_tag{});
+                    }
                 } else {
-                    header = std::move(data);
-                    ctx.reply.setBody(header, MessageFrame::dynamic_bytes_tag{});
+                    ctx.reply.setError("invalid request: invalid path", MessageFrame::dynamic_bytes_tag{});
                 }
             }
         });
@@ -98,14 +139,22 @@ public:
         memcpy(&fstart, file.begin() + 16, 4);
         memcpy(&fsize, file.begin() + 20, 4);
 
-        header.resize(hsize);
-        memcpy(header.data(), file.begin() + hstart, hsize);
+        Dashboard ds;
+        ds.header.resize(hsize);
+        memcpy(ds.header.data(), file.begin() + hstart, hsize);
 
-        dashboard.resize(dsize);
-        memcpy(dashboard.data(), file.begin() + dstart, dsize);
+        ds.dashboard.resize(dsize);
+        memcpy(ds.dashboard.data(), file.begin() + dstart, dsize);
 
-        flowgraph.resize(fsize);
-        memcpy(flowgraph.data(), file.begin() + fstart, fsize);
+        ds.flowgraph.resize(fsize);
+        memcpy(ds.flowgraph.data(), file.begin() + fstart, fsize);
+
+        names.push_back("dashboard1");
+        dashboards.push_back(ds);
+        names.push_back("dashboard2");
+        dashboards.push_back(ds);
+        names.push_back("dashboard3");
+        dashboards.push_back(ds);
     }
 
 private:

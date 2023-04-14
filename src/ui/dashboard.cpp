@@ -119,10 +119,8 @@ void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
 } // namespace
 
 DashboardSource::~DashboardSource() noexcept {
-    auto it = std::find_if(sources().begin(), sources().end(), [this](const auto &s) { return s.lock().get() == this; });
-    if (it != sources().end()) {
-        sources().erase(it);
-    }
+    sources().erase(std::remove_if(sources().begin(), sources().end(), [](const auto &s) { return s.expired(); }),
+            sources().end());
 }
 
 std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {

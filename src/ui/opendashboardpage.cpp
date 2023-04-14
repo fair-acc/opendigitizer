@@ -2,6 +2,11 @@
 #include "app.h"
 #include "imguiutils.h"
 
+#include <IoSerialiserJson.hpp>
+#include <MdpMessage.hpp>
+#include <opencmw.hpp>
+#include <RestClient.hpp>
+
 namespace DigitizerUi {
 
 namespace {
@@ -26,22 +31,46 @@ void OpenDashboardPage::addSource(std::string_view path) {
     m_sources.push_back(DashboardSource::get(path));
     auto &source = m_sources.back();
 
-#ifndef EMSCRIPTEN
-    namespace fs = std::filesystem;
-    if (!fs::is_directory(path)) {
-        return;
-    }
+    if (path.starts_with("http://")) {
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Get;
+        command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();
 
-    for (auto &file : fs::directory_iterator(path)) {
-        if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
-            DashboardDescription::load(source, file.path().stem().native(), [this](std::shared_ptr<DashboardDescription> &&dd) {
-                if (dd) {
-                    m_dashboards.push_back(dd);
+        command.callback = [this, source](const opencmw::mdp::Message &rep) {
+            auto                     buf = rep.data;
+            std::vector<std::string> names;
+            opencmw::IoSerialiser<opencmw::Json, decltype(names)>::deserialise(buf, opencmw::FieldDescriptionShort{}, names);
+
+            App::instance().schedule([this, source, names = std::move(names)]() {
+                for (const auto &n : names) {
+                    DashboardDescription::load(source, n, [this](std::shared_ptr<DashboardDescription> &&dd) {
+                        if (dd) {
+                            m_dashboards.push_back(dd);
+                        }
+                    });
                 }
             });
+        };
+        opencmw::client::RestClient client;
+        client.request(command);
+    } else {
+#ifndef EMSCRIPTEN
+        namespace fs = std::filesystem;
+        if (!fs::is_directory(path)) {
+            return;
         }
-    }
+
+        for (auto &file : fs::directory_iterator(path)) {
+            if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
+                DashboardDescription::load(source, file.path().stem().native(), [this](std::shared_ptr<DashboardDescription> &&dd) {
+                    if (dd) {
+                        m_dashboards.push_back(dd);
+                    }
+                });
+            }
+        }
 #endif
+    }
 }
 
 void OpenDashboardPage::draw(App *app) {
@@ -361,7 +390,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
 
 #ifdef EMSCRIPTEN
         // on emscripten we cannot use local sources, nor we have the support for remote ones yet
-        const bool okEnabled = false;
+        const bool okEnabled = path.starts_with("http://");
 #else
         const bool okEnabled = !path.empty();
 #endif
