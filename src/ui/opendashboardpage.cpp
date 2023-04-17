@@ -21,11 +21,14 @@ constexpr const char *addSourcePopupId = "addSourcePopup";
 
 OpenDashboardPage::OpenDashboardPage()
     : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()))
-    , m_filterDate(FilterDate::Before) {
+    , m_filterDate(FilterDate::Before)
+    , m_restClient(std::make_unique<opencmw::client::RestClient>()) {
 #ifndef EMSCRIPTEN
     addSource(".");
 #endif
 }
+
+OpenDashboardPage::~OpenDashboardPage() = default;
 
 void OpenDashboardPage::addSource(std::string_view path) {
     m_sources.push_back(DashboardSource::get(path));
@@ -33,16 +36,27 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
     if (path.starts_with("http://")) {
         opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Get;
+        command.command  = opencmw::mdp::Command::Subscribe;
         command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();
 
         command.callback = [this, source](const opencmw::mdp::Message &rep) {
+            if (rep.data.size() == 0) {
+                return;
+            }
+
             auto                     buf = rep.data;
             std::vector<std::string> names;
             opencmw::IoSerialiser<opencmw::Json, decltype(names)>::deserialise(buf, opencmw::FieldDescriptionShort{}, names);
 
             App::instance().schedule([this, source, names = std::move(names)]() {
                 for (const auto &n : names) {
+                    auto it = std::find_if(m_dashboards.begin(), m_dashboards.end(), [&](const auto &d) {
+                        return d->source.get() == source.get() && d->name == n;
+                    });
+                    if (it != m_dashboards.end()) {
+                        continue;
+                    }
+
                     DashboardDescription::load(source, n, [this](std::shared_ptr<DashboardDescription> &&dd) {
                         if (dd) {
                             m_dashboards.push_back(dd);
@@ -51,8 +65,12 @@ void OpenDashboardPage::addSource(std::string_view path) {
                 }
             });
         };
-        opencmw::client::RestClient client;
-        client.request(command);
+        // subscribe to get notified when the dashboards list is modified
+        m_restClient->request(command);
+
+        // also request the list to be sent immediately
+        command.command = opencmw::mdp::Command::Get;
+        m_restClient->request(command);
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;

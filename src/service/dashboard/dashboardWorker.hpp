@@ -95,10 +95,12 @@ public:
                     ctx.reply.setError("invalid request: dashboard not specified", MessageFrame::dynamic_bytes_tag{});
                 } else if (parts.size() == 3) {
                     auto *ds = getDashboard(parts[2]);
+                    bool  newDashboard = false;
                     if (!ds) { // if we couldn't find a dashboard make a new one
                         names.push_back(std::string(parts[2]));
                         dashboards.push_back({});
                         ds = &dashboards.back();
+                        newDashboard = true;
                     }
 
                     std::string what = whatParam();
@@ -118,6 +120,20 @@ public:
                         ds->header = std::move(data);
                         ctx.reply.setBody(ds->header, MessageFrame::dynamic_bytes_tag{});
                     }
+
+                    if (newDashboard) {
+                        auto           uri = opencmw::URI<opencmw::RELAXED>("/dashboards"s);
+
+                        RequestContext rawCtx;
+                        rawCtx.reply.setTopic(uri.str(), MessageFrame::dynamic_bytes_tag{});
+
+                        opencmw::IoBuffer buffer;
+                        opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
+                        rawCtx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
+
+                        super_t::notify(std::move(rawCtx.reply));
+                    }
+
                 } else {
                     ctx.reply.setError("invalid request: invalid path", MessageFrame::dynamic_bytes_tag{});
                 }
