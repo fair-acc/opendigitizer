@@ -7,6 +7,10 @@
 
 #include "dashboard.h"
 
+namespace opencmw::client {
+class RestClient;
+}
+
 namespace DigitizerUi {
 
 class App;
@@ -14,6 +18,7 @@ class App;
 class OpenDashboardPage {
 public:
     OpenDashboardPage();
+    ~OpenDashboardPage();
 
     void draw(App *app);
 
@@ -30,6 +35,7 @@ private:
     int                                                m_filterDate;
     bool                                               m_filterDateEnabled = false;
     DashboardSource                                   *m_sourceHovered     = nullptr;
+    std::unique_ptr<opencmw::client::RestClient>       m_restClient;
 };
 
 } // namespace DigitizerUi
