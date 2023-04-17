@@ -28,7 +28,7 @@ public:
     std::unique_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
-    bool                       running = true;
+    bool                       running    = true;
 
     ImFont                    *fontNormal = nullptr;
     ImFont                    *fontBig    = nullptr;
