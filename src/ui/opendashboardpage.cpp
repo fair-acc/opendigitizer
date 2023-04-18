@@ -91,6 +91,15 @@ void OpenDashboardPage::addSource(std::string_view path) {
     }
 }
 
+void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource> &source) {
+    if (source->path.starts_with("http://")) {
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Unsubscribe;
+        command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(source->path).build();
+        m_restClient->request(command);
+    }
+}
+
 void OpenDashboardPage::draw(App *app) {
     ImGui::Spacing();
     ImGui::PushFont(app->fontBigger);
@@ -307,6 +316,7 @@ void OpenDashboardPage::draw(App *app) {
                 return d->source == s;
             }),
                     m_dashboards.end());
+            unsubscribeSource(*it);
             it = m_sources.erase(it);
         } else {
             ++it;
