@@ -26,6 +26,7 @@ public:
 
 private:
     void                                               drawAddSourcePopup();
+    void                                               unsubscribeSource(const std::shared_ptr<DashboardSource> &source);
 
     std::vector<std::shared_ptr<DashboardDescription>> m_dashboards;
     std::vector<std::shared_ptr<DashboardSource>>      m_sources;
