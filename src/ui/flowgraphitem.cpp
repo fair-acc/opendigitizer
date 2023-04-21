@@ -525,24 +525,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         newSinkCallback();
     }
 
-    ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
-    if (ImGui::BeginPopupModal("addSignalPopup")) {
-        static bool sel = false;
-        if (ImGui::TreeNode("Local signals")) {
-            if (ImGui::Selectable("Sine wave", sel, ImGuiSelectableFlags_DontClosePopups)) {
-                sel = true;
-            }
-            ImGui::TreePop();
-        }
-
-        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
-            if (sel) {
-                m_flowGraph->addSourceBlock(m_flowGraph->blockTypes().find("sine_source")->second->createBlock({}));
-            }
-        }
-        ImGui::EndPopup();
-    }
-
+    drawAddSourceDialog();
     drawNewBlockDialog();
 }
 
@@ -560,4 +543,82 @@ void FlowGraphItem::drawNewBlockDialog() {
         ImGui::EndPopup();
     }
 }
+
+void FlowGraphItem::drawAddSourceDialog() {
+    ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
+    if (ImGui::BeginPopupModal("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        static BlockType *sel = nullptr;
+        if (ImGui::BeginChild(1, { 0, ImGui::GetContentRegionAvail().y - 50 })) {
+            struct Cat {
+                std::string              name;
+                std::vector<BlockType *> types;
+            };
+            static std::vector<Cat> cats;
+            cats.clear();
+            cats.push_back({ "Remote signals", {} });
+            for (const auto &t : m_flowGraph->blockTypes()) {
+                if (t.second->isSource && !t.second->category.empty()) {
+                    auto it = std::find_if(cats.begin(), cats.end(), [&](const auto &c) {
+                        return c.name == t.second->category;
+                    });
+                    if (it == cats.end()) {
+                        cats.push_back({ t.second->category, { t.second.get() } });
+                    } else {
+                        it->types.push_back(t.second.get());
+                    }
+                }
+            }
+
+            for (const auto &c : cats) {
+                const bool isRemote = c.name == "Remote signals";
+                if (ImGui::TreeNode(c.name.c_str())) {
+                    for (auto *t : c.types) {
+                        if (ImGui::Selectable(t->label.c_str(), sel == t, ImGuiSelectableFlags_DontClosePopups)) {
+                            sel = t;
+                        }
+                    }
+
+                    if (isRemote) {
+                        if (!m_addRemoteSignal) {
+                            if (ImGui::Button("Add remote signal")) {
+                                m_addRemoteSignal             = true;
+                                m_addRemoteSignalDialogOpened = true;
+                                m_addRemoteSignalUri          = {};
+                            }
+                        } else {
+                            ImGui::AlignTextToFramePadding();
+                            ImGui::Text("URI:");
+                            ImGui::SameLine();
+                            if (m_addRemoteSignalDialogOpened) {
+                                ImGui::SetKeyboardFocusHere();
+                                m_addRemoteSignalDialogOpened = false;
+                            }
+                            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                            ImGui::InputText("##uri", &m_addRemoteSignalUri);
+
+                            if (ImGui::Button("Ok")) {
+                                m_addRemoteSignal = false;
+                                m_flowGraph->addRemoteSource(m_addRemoteSignalUri);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("Cancel")) {
+                                m_addRemoteSignal = false;
+                            }
+                        }
+                    }
+                    ImGui::TreePop();
+                } else if (isRemote) {
+                    m_addRemoteSignal = false;
+                }
+            }
+            ImGui::EndChild();
+        }
+
+        if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
+            m_flowGraph->addSourceBlock(sel->createBlock({}));
+        }
+        ImGui::EndPopup();
+    }
+}
+
 } // namespace DigitizerUi

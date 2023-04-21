@@ -52,7 +52,7 @@ void App::closeDashboard() {
     dashboard = {};
 }
 
-void App::schedule(std::function<void()> &&cb) {
+void App::schedule(fu2::unique_function<void()> &&cb) {
     std::lock_guard lock(m_callbacksMutex);
     m_callbacks[0].push_back(std::move(cb));
 }
