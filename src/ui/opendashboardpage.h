@@ -23,6 +23,7 @@ public:
     void draw(App *app);
 
     void addSource(std::string_view path);
+    void addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n);
 
 private:
     void                                               drawAddSourcePopup();

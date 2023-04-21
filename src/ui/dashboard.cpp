@@ -93,7 +93,7 @@ void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
         return;
     } else {
 #ifndef EMSCRIPTEN
-        auto          path = std::filesystem::path(source->path) / (name + DashboardDescription::fileExtension);
+        auto          path = std::filesystem::path(source->path) / name;
         std::ifstream stream(path, std::ios::in);
         if (stream.is_open()) {
             stream.seekg(what == What::Header ? 0 : (what == What::Dashboard ? 8 : 16));
@@ -163,9 +163,9 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
         fg->clear();
     } else {
         fetch(
-                desc->source, desc->name, What::Flowgraph,
+                desc->source, desc->filename, What::Flowgraph,
                 [this](std::string &&data) { App::instance().flowGraph.parse(data); }, [desc]() {
-            fmt::print("Invalid flowgraph for dashboard {}/{}\n", desc->source->path, desc->name);
+            fmt::print("Invalid flowgraph for dashboard {}/{}\n", desc->source->path, desc->filename);
             App::instance().closeDashboard(); });
     }
 
@@ -186,16 +186,16 @@ void Dashboard::load() {
     }
 
     fetch(
-            m_desc->source, m_desc->name, What::Dashboard,
+            m_desc->source, m_desc->filename, What::Dashboard,
             [this](std::string &&desc) { doLoad(desc); }, [this]() {
-        fmt::print("Invalid dashboard description for dashboard {}/{}\n", m_desc->source->path, m_desc->name);
+        fmt::print("Invalid dashboard description for dashboard {}/{}\n", m_desc->source->path, m_desc->filename);
         App::instance().closeDashboard(); });
 }
 
 void Dashboard::doLoad(const std::string &desc) {
     YAML::Node tree = YAML::Load(desc);
 
-    auto       path = std::filesystem::path(m_desc->source->path) / m_desc->name;
+    auto       path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
 #ifdef NDEBUG
 #define ERROR_RETURN \
@@ -376,30 +376,28 @@ void Dashboard::save() {
     }
 
     if (m_desc->source->path.starts_with("http://")) {
-
         opencmw::client::RestClient client;
-        auto        path    = std::filesystem::path(m_desc->source->path) / m_desc->name;
+        auto                        path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
         opencmw::client::Command    hcommand;
-        hcommand.command     = opencmw::mdp::Command::Set;
+        hcommand.command = opencmw::mdp::Command::Set;
         hcommand.data.put(std::string_view(headerOut.c_str(), headerOut.size()));
         hcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
         client.request(hcommand);
 
-        opencmw::client::Command    dcommand;
-        dcommand.command     = opencmw::mdp::Command::Set;
+        opencmw::client::Command dcommand;
+        dcommand.command = opencmw::mdp::Command::Set;
         dcommand.data.put(std::string_view(dashboardOut.c_str(), dashboardOut.size()));
         dcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
         client.request(dcommand);
 
-        opencmw::client::Command    fcommand;
-        fcommand.command     = opencmw::mdp::Command::Set;
+        opencmw::client::Command fcommand;
+        fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
         App::instance().flowGraph.save(stream);
         fcommand.data.put(stream.str());
         fcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         client.request(fcommand);
-
 
     } else {
 #ifndef EMSCRIPTEN
@@ -470,8 +468,9 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, 
 
                 // fmt::print("aa {} {}\n",(bool)callback,(void*)callback.target());
                 cb(std::make_shared<DashboardDescription>(DashboardDescription{
-                        .name       = name,
+                        .name       = std::filesystem::path(name).stem().native(),
                         .source     = source,
+                        .filename   = name,
                         .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
                         .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt }));
             },
