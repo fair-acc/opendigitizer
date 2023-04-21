@@ -52,12 +52,15 @@ public:
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> impl;
     };
 
-    BlockType(const std::string &n);
+    explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
 
     const std::string                                       name;
+    const std::string                                       label;
     std::vector<Parameter>                                  parameters;
     std::vector<PortDefinition>                             inputs;
     std::vector<PortDefinition>                             outputs;
+    const std::string                                       category;
+    const bool                                              isSource;
 
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 };
@@ -235,6 +238,8 @@ public:
     void                         update();
 
     int                          save(std::ostream &stream);
+    void                         addRemoteSource(std::string_view uri);
+    void                         registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri);
 
     std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
@@ -245,6 +250,11 @@ private:
     std::vector<std::unique_ptr<Block>>                         m_blocks;
     std::unordered_map<std::string, std::unique_ptr<BlockType>> m_types;
     plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
+    struct RemoteSource {
+        BlockType  *type;
+        std::string uri;
+    };
+    std::vector<RemoteSource> m_remoteSources;
 };
 
 } // namespace DigitizerUi

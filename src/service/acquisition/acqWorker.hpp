@@ -26,8 +26,11 @@ class AcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, A
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
     template<typename BrokerType>
-    explicit AcquisitionWorker(const BrokerType &broker, std::chrono::milliseconds rate)
+    explicit AcquisitionWorker(BrokerType &broker, std::chrono::milliseconds rate)
         : super_t(broker, {}), _rate(rate) {
+        // this makes sure the subscriptions are filtered correctly
+        opencmw::query::registerTypes(TimeDomainContext(), broker);
+
         _notifyThread = std::jthread([this, &rate](const std::stop_token &stoken) {
             fmt::print("acqWorker: starting notify thread\n");
             std::chrono::time_point update = std::chrono::system_clock::now();

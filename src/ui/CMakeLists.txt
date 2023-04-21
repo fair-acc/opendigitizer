@@ -20,6 +20,7 @@ set(sources
         flowgraph/datasink.cpp
         flowgraph/fftblock.cpp
         flowgraph/sumblock.cpp
+        flowgraph/remotedatasource.cpp
         dashboardpage.cpp
         opendashboardpage.cpp
         imguiutils.cpp
@@ -77,6 +78,7 @@ if (EMSCRIPTEN)
     add_executable(${outputFileName})
 
     target_sources(index PRIVATE ${sources})
+    set(target_name "index")
 
     # link the executable
     target_link_libraries(
@@ -101,13 +103,14 @@ if (EMSCRIPTEN)
     )
 else () # native build
 
-    add_executable(opendigitizer-ui)
+    set(target_name "opendigitizer-ui")
+    add_executable(${target_name})
 
-    target_sources(opendigitizer-ui PRIVATE ${sources})
+    target_sources(${target_name} PRIVATE ${sources})
 
     # link the executable
     target_link_libraries(
-            opendigitizer-ui
+            ${target_name}
             PRIVATE
             SDL2
             implot
@@ -121,5 +124,8 @@ else () # native build
             sample_dashboards
             fonts
     )
-    target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
+    target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
+
+target_link_libraries(${target_name} PRIVATE function2::function2)
+target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) #for daq_api.hpp
