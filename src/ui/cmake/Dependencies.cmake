@@ -45,15 +45,21 @@ FetchContent_Declare(
         GIT_TAG main # todo: use proper release once available
 )
 
+FetchContent_Declare(
+    function2
+    GIT_REPOSITORY https://github.com/Naios/function2.git
+    GIT_TAG 4.2.2
+)
+
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2)
 else () # native build
     # FetchContent_Declare(
     #         sdl2
     #         GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
     #         GIT_TAG        release-2.24.2
     # )
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp plf_colony stb opencmw-cpp)
+    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp plf_colony stb opencmw-cpp function2)
     find_package(SDL2 REQUIRED)
     find_package(OpenGL REQUIRED COMPONENTS OpenGL)
     # target_link_libraries(SDL2 PUBLIC OpenGL::GL )

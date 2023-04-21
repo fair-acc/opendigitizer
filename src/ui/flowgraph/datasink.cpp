@@ -68,7 +68,7 @@ void DataSinkSource::processData() {
 }
 
 void DataSinkSource::registerBlockType(FlowGraph *fg) {
-    auto t = std::make_unique<BlockType>("sink_source");
+    auto t = std::make_unique<BlockType>("sink_source", "Sink Source", "", true);
     t->outputs.resize(1);
     auto &out      = t->outputs[0];
     out.name       = "out";

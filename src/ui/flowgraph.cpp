@@ -7,14 +7,12 @@
 #include <iostream>
 #include <string_view>
 
-#include <opencmw.hpp>
-#ifndef EMSCRIPTEN
 #include <IoSerialiserJson.hpp>
-#include <majordomo/Message.hpp>
 #include <MdpMessage.hpp>
+#include <opencmw.hpp>
 #include <RestClient.hpp>
-#endif
 
+#include "flowgraph/remotedatasource.h"
 #include "yamlutils.h"
 #include <yaml-cpp/yaml.h>
 
@@ -46,8 +44,11 @@ std::string Block::Parameter::toString() const {
     return {};
 }
 
-BlockType::BlockType(const std::string &n)
+BlockType::BlockType(std::string_view n, std::string_view label, std::string_view cat, bool source)
     : name(n)
+    , label(label.empty() ? n : label)
+    , category(cat)
+    , isSource(source)
     , createBlock([this](std::string_view name) { return std::make_unique<Block>(name, this->name, this); }) {
 }
 
@@ -394,6 +395,16 @@ void FlowGraph::parse(const std::string &str) {
 
     YAML::Node tree   = YAML::Load(str);
 
+    auto       rsources = tree["remote_sources"];
+    if (rsources && rsources.IsSequence()) {
+        for (const auto &s : rsources) {
+            auto uri        = s["uri"].as<std::string>();
+            auto signalName = s["signal_name"].as<std::string>();
+
+            RemoteDataSource::registerBlockType(this, uri, signalName);
+        }
+    }
+
     auto       blocks = tree["blocks"];
     for (const auto &b : blocks) {
         auto n  = b["name"].as<std::string>();
@@ -454,7 +465,7 @@ void FlowGraph::parse(const std::string &str) {
             }
         }
 
-        if (type->inputs.size() == 0 && type->outputs.size() > 0) {
+        if (type->isSource) {
             addSourceBlock(std::move(block));
         } else if (type->outputs.size() == 0 && type->inputs.size() > 0) {
             addSinkBlock(std::move(block));
@@ -541,6 +552,19 @@ int FlowGraph::save(std::ostream &stream) {
 
                 out << src->block->name << getPortIndex(src, src->block->outputs());
                 out << dst->block->name << getPortIndex(dst, dst->block->inputs());
+            }
+        });
+
+        root.write("remote_sources", [&]() {
+            YamlSeq sources(out);
+            for (const auto &s : m_remoteSources) {
+                YamlMap map(out);
+                map.write("uri", s.uri);
+                // we need to save down the name of the signal (and in the future probably other stuff) because when we load
+                // having to wait for information from the servers about all the remote signals used by the flowgraph would
+                // not be ideal. Moreover, this way a flowgraph can be loaded even when some signal isn't available at the
+                // moment. There will be no data but the flowgraph will load correctly anyway.
+                map.write("signal_name", s.type->outputs[0].name);
             }
         });
     }
@@ -666,6 +690,15 @@ void FlowGraph::update() {
         b->updateInputs();
         b->processData();
     }
+}
+
+void FlowGraph::addRemoteSource(std::string_view uri) {
+    RemoteDataSource::registerBlockType(this, uri);
+}
+
+void FlowGraph::registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri) {
+    m_remoteSources.push_back({ type.get(), std::string(uri) });
+    addBlockType(std::move(type));
 }
 
 } // namespace DigitizerUi

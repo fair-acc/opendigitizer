@@ -35,6 +35,7 @@ private:
 
     void                          addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
     void                          drawNewBlockDialog();
+    void                          drawAddSourceDialog();
 
     FlowGraph                    *m_flowGraph;
     Block                        *m_selectedBlock = nullptr;
@@ -45,6 +46,9 @@ private:
     ImVec2                        m_contextMenuPosition;
     ax::NodeEditor::Config        m_config;
     std::string                   m_settings;
+    bool                          m_addRemoteSignal             = false;
+    bool                          m_addRemoteSignalDialogOpened = false;
+    std::string                   m_addRemoteSignalUri;
 
     // new block dialog data
     const Block *m_filterBlock = nullptr;

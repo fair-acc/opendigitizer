@@ -23,7 +23,7 @@ void DataSource::processData() {
 }
 
 void DataSource::registerBlockType(FlowGraph *fg) {
-    auto t = std::make_unique<BlockType>("sine_source");
+    auto t = std::make_unique<BlockType>("sine_source", "Sine wave", "Local signals", true);
     t->outputs.resize(1);
     t->outputs[0].name = "out";
     t->outputs[0].type = "float";
