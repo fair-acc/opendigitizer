@@ -34,6 +34,7 @@ struct DashboardDescription {
 
     std::string                                                       name;
     std::shared_ptr<DashboardSource>                                  source;
+    std::string                                                       filename;
     bool                                                              isFavorite;
     std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
 

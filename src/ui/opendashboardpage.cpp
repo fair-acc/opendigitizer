@@ -30,6 +30,19 @@ OpenDashboardPage::OpenDashboardPage()
 
 OpenDashboardPage::~OpenDashboardPage() = default;
 
+void OpenDashboardPage::addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n) {
+    DashboardDescription::load(source, n, [&](std::shared_ptr<DashboardDescription> &&dd) {
+        if (dd) {
+            auto it = std::find_if(m_dashboards.begin(), m_dashboards.end(), [&](const auto &d) {
+                return d->source.get() == source.get() && d->name == dd->name;
+            });
+            if (it == m_dashboards.end()) {
+                m_dashboards.push_back(dd);
+            }
+        }
+    });
+}
+
 void OpenDashboardPage::addSource(std::string_view path) {
     m_sources.push_back(DashboardSource::get(path));
     auto &source = m_sources.back();
@@ -50,18 +63,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
             App::instance().schedule([this, source, names = std::move(names)]() {
                 for (const auto &n : names) {
-                    auto it = std::find_if(m_dashboards.begin(), m_dashboards.end(), [&](const auto &d) {
-                        return d->source.get() == source.get() && d->name == n;
-                    });
-                    if (it != m_dashboards.end()) {
-                        continue;
-                    }
-
-                    DashboardDescription::load(source, n, [this](std::shared_ptr<DashboardDescription> &&dd) {
-                        if (dd) {
-                            m_dashboards.push_back(dd);
-                        }
-                    });
+                    addDashboard(source, n);
                 }
             });
         };
@@ -80,11 +82,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
         for (auto &file : fs::directory_iterator(path)) {
             if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
-                DashboardDescription::load(source, file.path().stem().native(), [this](std::shared_ptr<DashboardDescription> &&dd) {
-                    if (dd) {
-                        m_dashboards.push_back(dd);
-                    }
-                });
+                addDashboard(source, file.path().filename().native());
             }
         }
 #endif
