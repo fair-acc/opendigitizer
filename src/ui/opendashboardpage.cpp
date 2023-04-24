@@ -233,7 +233,9 @@ void OpenDashboardPage::draw(App *app) {
     };
     int  dashboardCount = 0;
     auto drawDashboard  = [&](auto &&item, bool selected) {
+        ImGui::PushID(item.first->source->path.c_str());
         ImGui::PushID(item.second.data());
+
         auto  pos  = ImGui::GetCursorPos();
         auto  size = ImGui::GetContentRegionAvail();
         float h    = ImGui::GetTextLineHeightWithSpacing() * 2;
@@ -283,6 +285,7 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::EndGroup();
 
         ImGui::SetCursorPos(p2);
+        ImGui::PopID();
         ImGui::PopID();
         return false;
     };

@@ -81,7 +81,6 @@ public:
     explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc);
     ~Dashboard();
 
-    void                         load();
     void                         save();
 
     void                         newPlot(int x, int y, int w, int h);

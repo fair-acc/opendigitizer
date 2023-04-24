@@ -53,31 +53,59 @@ enum class What {
     Flowgraph
 };
 
-void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &name, What what,
-        std::function<void(std::string &&)> &&cb, std::function<void()> &&errCb) {
+template<typename T>
+struct arrsize;
+
+template<typename T, int N>
+struct arrsize<T const (&)[N]> {
+    static constexpr auto size = N;
+};
+
+template<int N>
+auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &name, What const (&what)[N],
+        std::function<void(std::array<std::string, arrsize<decltype(what)>::size> &&)> &&cb, std::function<void()> &&errCb) {
     if (source->path.starts_with("http://")) {
-        std::atomic<bool>           done(false);
-        opencmw::client::Command    command;
-        command.command     = opencmw::mdp::Command::Get;
-        auto        path    = std::filesystem::path(source->path) / name;
-        std::string whatStr = [&]() {
-            switch (what) {
-            case What::Header: return "header";
-            case What::Dashboard: return "dashboard";
-            case What::Flowgraph: return "flowgraph";
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Get;
+        auto        path = std::filesystem::path(source->path) / name;
+        std::string whatStr;
+        for (int i = 0; i < N; ++i) {
+            if (i > 0) {
+                whatStr += ",";
             }
-            return "header";
-        }();
+            whatStr += [&]() {
+                switch (what[i]) {
+                case What::Header: return "header";
+                case What::Dashboard: return "dashboard";
+                case What::Flowgraph: return "flowgraph";
+                }
+                return "header";
+            }();
+        }
 
         command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
 
         command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message &rep) mutable {
-            auto        buf = rep.data;
-            std::string reply;
-            reply.resize(buf.size());
-            memcpy(reply.data(), buf.data(), buf.size());
+            std::array<std::string, N> reply;
 
-            if (reply.empty()) {
+            const char                *s = reinterpret_cast<const char *>(rep.data.data());
+            const char                *e = reinterpret_cast<const char *>(s + rep.data.size());
+            if (rep.data.data()) {
+                for (int i = 0; i < N; ++i) {
+                    // the format is: <size>;<content>
+                    std::string_view sv(s, e);
+                    auto             p = sv.find(';');
+                    assert(p != sv.npos);
+                    int size = std::atoi(s);
+                    s += p + 1; // the +1 is for the ';'
+
+                    reply[i].resize(size);
+                    memcpy(reply[i].data(), s, size);
+                    s += size;
+                }
+            }
+
+            if (reply[0].empty()) {
                 App::instance().schedule(std::move(errCallback));
             } else {
                 // schedule the callback so it runs on the main thread
@@ -96,17 +124,37 @@ void fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
         auto          path = std::filesystem::path(source->path) / name;
         std::ifstream stream(path, std::ios::in);
         if (stream.is_open()) {
-            stream.seekg(what == What::Header ? 0 : (what == What::Dashboard ? 8 : 16));
+            stream.seekg(0, std::ios::end);
+            const auto filesize = stream.tellg();
+            stream.seekg(0);
 
-            uint32_t start, size;
-            stream.read(reinterpret_cast<char *>(&start), 4);
-            stream.read(reinterpret_cast<char *>(&size), 4);
+#define ERR \
+    fmt::print("Cannot load dashboard from '{}'. File is corrupted.\n", path.native()); \
+    errCb(); \
+    return;
 
-            stream.seekg(start);
+            if (filesize < 32) {
+                ERR
+            }
 
-            std::string desc;
-            desc.resize(size);
-            stream.read(desc.data(), size);
+            std::array<std::string, N> desc;
+            for (int i = 0; i < N; ++i) {
+                auto w = what[i];
+                stream.seekg(w == What::Header ? 0 : (w == What::Dashboard ? 8 : 16));
+
+                uint32_t start, size;
+                stream.read(reinterpret_cast<char *>(&start), 4);
+                stream.read(reinterpret_cast<char *>(&size), 4);
+
+                stream.seekg(start);
+
+                if (filesize < start + size) {
+                    ERR
+                }
+                desc[i].resize(size);
+                stream.read(desc[i].data(), size);
+            }
+#undef ERR
             cb(std::move(desc));
             return;
         }
@@ -163,14 +211,16 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
         fg->clear();
     } else {
         fetch(
-                desc->source, desc->filename, What::Flowgraph,
-                [this](std::string &&data) { App::instance().flowGraph.parse(data); }, [desc]() {
+                desc->source, desc->filename, { What::Flowgraph, What::Dashboard },
+                [this](std::array<std::string, 2> &&data) {
+                    App::instance().flowGraph.parse(std::move(data[0]));
+                    // Load is called after parsing the flowgraph so that we already have the list of sources
+                    doLoad(data[1]);
+                },
+                [desc]() {
             fmt::print("Invalid flowgraph for dashboard {}/{}\n", desc->source->path, desc->filename);
             App::instance().closeDashboard(); });
     }
-
-    // Load is called after parsing the flowgraph so that we already have the list of sources
-    load();
 }
 
 Dashboard::~Dashboard() {
@@ -178,18 +228,6 @@ Dashboard::~Dashboard() {
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
     m_desc = desc;
-}
-
-void Dashboard::load() {
-    if (!m_desc->source->isValid) {
-        return;
-    }
-
-    fetch(
-            m_desc->source, m_desc->filename, What::Dashboard,
-            [this](std::string &&desc) { doLoad(desc); }, [this]() {
-        fmt::print("Invalid dashboard description for dashboard {}/{}\n", m_desc->source->path, m_desc->filename);
-        App::instance().closeDashboard(); });
 }
 
 void Dashboard::doLoad(const std::string &desc) {
@@ -447,9 +485,9 @@ void Dashboard::deletePlot(Plot *plot) {
 void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,
         const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb) {
     fetch(
-            source, name, What::Header,
-            [cb, name, source](std::string &&desc) {
-                YAML::Node tree     = YAML::Load(desc);
+            source, name, { What::Header },
+            [cb, name, source](std::array<std::string, 1> &&desc) {
+                YAML::Node tree     = YAML::Load(desc[0]);
 
                 auto       favorite = tree["favorite"];
                 auto       lastUsed = tree["lastUsed"];
