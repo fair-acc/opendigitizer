@@ -76,14 +76,34 @@ public:
                     ctx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
                 } else if (parts.size() == 3) {
                     if (auto *ds = getDashboard(parts[2])) {
-                        std::string what = whatParam();
-                        if (what == "dashboard") {
-                            ctx.reply.setBody(ds->dashboard, MessageFrame::dynamic_bytes_tag{});
-                        } else if (what == "flowgraph") {
-                            ctx.reply.setBody(ds->flowgraph, MessageFrame::dynamic_bytes_tag{});
-                        } else {
-                            ctx.reply.setBody(ds->header, MessageFrame::dynamic_bytes_tag{});
+                        std::string      what = whatParam();
+                        std::string_view view(what);
+                        std::string      body;
+
+                        // If more than one 'what' was requested we reply with all of them in the requested order.
+                        // the reply format of a 'what' is <size>;<content> and they are all immediately following
+                        // the previous one.
+                        auto append = [&](std::string_view s) {
+                            body += std::to_string(s.size());
+                            body += ";";
+                            body += s;
+                        };
+                        while (true) {
+                            auto             split = view.find(',');
+                            std::string_view w(view.data(), split != view.npos ? split : view.size());
+                            if (w == "dashboard") {
+                                append(ds->dashboard);
+                            } else if (w == "flowgraph") {
+                                append(ds->flowgraph);
+                            } else {
+                                append(ds->header);
+                            }
+                            if (split == view.npos) {
+                                break;
+                            }
+                            view = std::string_view(view.data() + split + 1, view.size() - split - 1);
                         }
+                        ctx.reply.setBody(body, MessageFrame::dynamic_bytes_tag{});
                     } else {
                         ctx.reply.setError("invalid request: unknown dashboard", MessageFrame::dynamic_bytes_tag{});
                     }
