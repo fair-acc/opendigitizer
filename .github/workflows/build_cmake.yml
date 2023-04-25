@@ -78,7 +78,7 @@ jobs:
         
   deploy_pages:
     name: Deploy to GitHub Pages
-    if: ${{ github.ref == 'main' && github.event_name == 'push' }}
+    if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
     environment: github-pages
     runs-on: ubuntu-22.04
     needs: build
