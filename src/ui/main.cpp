@@ -19,10 +19,10 @@
 #include "dashboardpage.h"
 #include "fair_header.h"
 #include "flowgraph.h"
+#include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
 #include "flowgraph/datasource.h"
 #include "flowgraph/fftblock.h"
-#include "flowgraph/sumblock.h"
 #include "flowgraphitem.h"
 #include "opendashboardpage.h"
 
@@ -145,24 +145,7 @@ int main(int argc, char **argv) {
     DigitizerUi::DataSource::registerBlockType();
     DigitizerUi::DataSink::registerBlockType();
     DigitizerUi::DataSinkSource::registerBlockType();
-
-    DigitizerUi::BlockType::registry().addBlockType([]() {
-        auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
-        t->createBlock = [t = t.get()](std::string_view name) {
-            return std::make_unique<DigitizerUi::SumBlock>(name, t);
-        };
-        t->inputs.resize(2);
-        t->inputs[0].name = "in1";
-        t->inputs[0].type = "float";
-
-        t->inputs[1].name = "in2";
-        t->inputs[1].type = "float";
-
-        t->outputs.resize(1);
-        t->outputs[0].name = "out";
-        t->outputs[0].type = "float";
-        return t;
-    }());
+    DigitizerUi::ArithmeticBlock::registerBlockType();
 
     DigitizerUi::BlockType::registry().addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");

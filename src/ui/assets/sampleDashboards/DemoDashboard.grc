@@ -1,6 +1,6 @@
 blocks:
   - name: sum sigs
-    id: sum sigs
+    id: Arithmetic
   - name: FFT
     id: FFT
   - name: sine source 1
