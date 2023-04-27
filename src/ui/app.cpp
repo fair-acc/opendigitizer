@@ -39,7 +39,7 @@ void App::loadDashboard(std::string_view url) {
     namespace fs = std::filesystem;
     fs::path path(url);
 
-    auto source = DashboardSource::get(path.parent_path().native());
+    auto     source = DashboardSource::get(path.parent_path().native());
     DashboardDescription::load(source, path.filename(), [this, source](std::shared_ptr<DashboardDescription> &&desc) {
         if (desc) {
             loadDashboard(desc);
