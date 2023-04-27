@@ -49,3 +49,4 @@ CMakeLists.txt.user
 
 # python venv files
 virtualenv/
+/CMakeSettings.json
