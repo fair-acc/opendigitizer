@@ -29,7 +29,7 @@ template<units::basic_fixed_string serviceName, typename... Meta>
 class DashboardWorker : public BasicWorker<serviceName, Meta...> {
     std::vector<std::string> names;
     std::vector<Dashboard>   dashboards;
-    std::mutex  lock;
+    std::mutex               lock;
 
 public:
     using super_t = BasicWorker<serviceName, Meta...>;
@@ -55,8 +55,8 @@ public:
                 return nullptr;
             };
 
-            auto topic = ctx.request.topic();
-            auto uri   = opencmw::URI<>(std::string("/") + std::string(topic));
+            auto                          topic = ctx.request.topic();
+            auto                          uri   = opencmw::URI<>(std::string("/") + std::string(topic));
             std::filesystem::path         path(uri.path().value());
             std::vector<std::string_view> parts;
 
@@ -114,12 +114,12 @@ public:
                 if (parts.size() == 2) {
                     ctx.reply.setError("invalid request: dashboard not specified", MessageFrame::dynamic_bytes_tag{});
                 } else if (parts.size() == 3) {
-                    auto *ds = getDashboard(parts[2]);
+                    auto *ds           = getDashboard(parts[2]);
                     bool  newDashboard = false;
                     if (!ds) { // if we couldn't find a dashboard make a new one
                         names.push_back(std::string(parts[2]));
                         dashboards.push_back({});
-                        ds = &dashboards.back();
+                        ds           = &dashboards.back();
                         newDashboard = true;
                     }
 
@@ -159,8 +159,8 @@ public:
                 }
             }
         });
-        auto fs         = cmrc::dashboardFilesystem::get_filesystem();
-        auto     file       = fs.open("dashboard.ddd");
+        auto     fs   = cmrc::dashboardFilesystem::get_filesystem();
+        auto     file = fs.open("dashboard.ddd");
 
         uint32_t hstart, hsize;
         uint32_t dstart, dsize;
