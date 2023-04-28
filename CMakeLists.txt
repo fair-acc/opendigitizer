@@ -16,7 +16,8 @@ add_subdirectory(src/ui)
 ExternalProject_Add( ui-wasm
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
   PREFIX ${PREFIX_DIR}/ui-wasm
-  CONFIGURE_COMMAND ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
+  CONFIGURE_COMMAND ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G ${CMAKE_GENERATOR} -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
+  BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
   BINARY_DIR ${BUILD_DIR}/ui-wasm
   BUILD_ALWAYS 1
   INSTALL_COMMAND "" # skip install
@@ -24,9 +25,9 @@ ExternalProject_Add( ui-wasm
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
   BUILD_BYPRODUCTS
-    ${BUILD_DIR}/web/index.html
-    ${BUILD_DIR}/web/index.js
-    ${BUILD_DIR}/web/index.wasm
+    ${BUILD_DIR}/ui-wasm/web/index.html
+    ${BUILD_DIR}/ui-wasm/web/index.js
+    ${BUILD_DIR}/ui-wasm/web/index.wasm
 )
 set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
 
