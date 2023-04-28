@@ -35,6 +35,8 @@ int main() {
         broker.run();
     });
 
+    std::jthread restThread([&rest] { rest.run(); });
+
     // flowgraph worker (mock)
     using FgWorker = FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">>;
     FgWorker     flowgraphWorker(broker);
@@ -83,6 +85,7 @@ int main() {
 
     // shutdown
     brokerThread.join();
+    restThread.join();
     // workers terminate when broker shuts down
     flowgraphWorkerThread.join();
     acquisitionWorkerThread.join();
