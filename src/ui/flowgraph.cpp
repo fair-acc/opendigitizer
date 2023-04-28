@@ -393,7 +393,7 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 void FlowGraph::parse(const std::string &str) {
     clear();
 
-    YAML::Node tree   = YAML::Load(str);
+    YAML::Node tree     = YAML::Load(str);
 
     auto       rsources = tree["remote_sources"];
     if (rsources && rsources.IsSequence()) {
@@ -405,7 +405,7 @@ void FlowGraph::parse(const std::string &str) {
         }
     }
 
-    auto       blocks = tree["blocks"];
+    auto blocks = tree["blocks"];
     for (const auto &b : blocks) {
         auto n  = b["name"].as<std::string>();
         auto id = b["id"].as<std::string>();
