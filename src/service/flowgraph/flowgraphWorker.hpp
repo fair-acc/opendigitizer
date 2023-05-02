@@ -72,7 +72,7 @@ private:
 
     void notifyUpdate() {
         for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
-            const auto          queryMap  = subTopic.queryParamMap();
+            const auto          queryMap  = subTopic.params();
             const FilterContext filterIn  = opencmw::query::deserialise<FilterContext>(queryMap);
             FilterContext       filterOut = filterIn;
             Flowgraph           subscriptionReply;

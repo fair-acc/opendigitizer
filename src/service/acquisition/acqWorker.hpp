@@ -32,13 +32,13 @@ public:
             fmt::print("acqWorker: starting notify thread\n");
             std::chrono::time_point update = std::chrono::system_clock::now();
             while (!stoken.stop_requested()) {
-                fmt::print("acqWorker: active subscriptions: {}\n", super_t::activeSubscriptions() | std::ranges::views::transform([](auto &uri) { return uri.str(); }));
+                fmt::print("acqWorker: active subscriptions: {}\n", super_t::activeSubscriptions() | std::ranges::views::transform([](auto &uri) { return uri.path(); }));
                 for (auto subTopic : super_t::activeSubscriptions()) { // loop over active subscriptions
                     if (subTopic.path() != serviceName.c_str()) {
                         continue;
                     }
 
-                    const auto              queryMap = subTopic.queryParamMap();
+                    const auto              queryMap = subTopic.params();
                     const TimeDomainContext filterIn = opencmw::query::deserialise<TimeDomainContext>(queryMap);
 
                     try {
