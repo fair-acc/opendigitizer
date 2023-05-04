@@ -64,9 +64,11 @@ private:
 
     void handleSetRequest(const FilterContext & /*filterIn*/, FilterContext & /*filterOut*/, const Flowgraph &in, Flowgraph &out) {
         fmt::print("handleSetRequest for flowgraph\n");
-        std::lock_guard lockGuard(flowgraphLock);
-        flowgraph     = in.flowgraph;
-        out.flowgraph = flowgraph;
+        {
+            std::lock_guard lockGuard(flowgraphLock);
+            flowgraph     = in.flowgraph;
+            out.flowgraph = flowgraph;
+        }
         notifyUpdate();
     }
 
