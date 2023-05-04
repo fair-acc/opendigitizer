@@ -127,6 +127,7 @@ void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
                 return;
             }
             fg->registerRemoteSource(std::move(t), uri);
+            dashboard->addRemoteService(uri);
         });
     };
     static opencmw::client::RestClient client;
@@ -137,5 +138,6 @@ void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri, st
     auto t             = std::make_unique<RemoteBlockType>(uri);
     t->outputs[0].name = std::move(signalName);
     fg->registerRemoteSource(std::move(t), uri);
+    App::instance().dashboard->addRemoteService(uri);
 }
 } // namespace DigitizerUi

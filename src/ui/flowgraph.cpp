@@ -7,19 +7,11 @@
 #include <iostream>
 #include <string_view>
 
-#include <IoSerialiserJson.hpp>
-#include <MdpMessage.hpp>
-#include <opencmw.hpp>
-#include <RestClient.hpp>
+#include <fmt/format.h>
 
 #include "flowgraph/remotedatasource.h"
 #include "yamlutils.h"
 #include <yaml-cpp/yaml.h>
-
-struct Reply {
-    std::string flowgraph;
-};
-ENABLE_REFLECTION_FOR(Reply, flowgraph)
 
 namespace DigitizerUi {
 
@@ -50,6 +42,20 @@ BlockType::BlockType(std::string_view n, std::string_view label, std::string_vie
     , category(cat)
     , isSource(source)
     , createBlock([this](std::string_view name) { return std::make_unique<Block>(name, this->name, this); }) {
+}
+
+BlockType::Registry &BlockType::registry() {
+    static Registry r;
+    return r;
+}
+
+BlockType *BlockType::Registry::get(std::string_view id) const {
+    auto it = m_types.find(id);
+    return it == m_types.end() ? nullptr : it->second.get();
+}
+
+void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
+    m_types.insert({ t->name, std::move(t) });
 }
 
 Block::Block(std::string_view name, std::string_view id, BlockType *type)
@@ -234,7 +240,7 @@ static bool readFile(const std::filesystem::path &file, std::string &str) {
     return true;
 }
 
-void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
+void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir) {
     if (!std::filesystem::exists(dir)) {
         std::cerr << "Cannot open directory '" << dir << "'\n";
         return;
@@ -350,37 +356,6 @@ void FlowGraph::loadBlockDefinitions(const std::filesystem::path &dir) {
     }
 }
 
-void FlowGraph::parse(const opencmw::URI<opencmw::STRICT> &uri) {
-#ifndef EMSCRIPTEN
-    opencmw::client::RestClient client;
-
-    std::atomic<bool>           done(false);
-    opencmw::client::Command    command;
-    command.command  = opencmw::mdp::Command::Get;
-    command.endpoint = uri;
-
-    std::string result;
-
-    // command.data     = std::move(data);
-    command.callback = [&](const opencmw::mdp::Message &rep) {
-        auto  buf = rep.data;
-
-        Reply reply;
-        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
-        // result = opencmw::json::readString(buf);
-        result = std::move(reply.flowgraph);
-
-        done.store(true, std::memory_order_release);
-        done.notify_all();
-    };
-    client.request(command);
-
-    done.wait(false);
-
-    parse(result);
-#endif
-}
-
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
     if (!readFile(file, str)) {
@@ -412,7 +387,7 @@ void FlowGraph::parse(const std::string &str) {
 
         std::cout << "b" << n << id << "\n";
 
-        auto type = m_types[id].get();
+        auto type = BlockType::registry().get(id);
         if (!type) {
             std::cerr << "Block type '" << id << "' is unkown.\n";
 
@@ -502,6 +477,7 @@ void FlowGraph::clear() {
     m_sourceBlocks.clear();
     m_sinkBlocks.clear();
     m_connections.clear();
+    m_remoteSources.clear();
 }
 
 int FlowGraph::save(std::ostream &stream) {
@@ -538,35 +514,39 @@ int FlowGraph::save(std::ostream &stream) {
             }
         });
 
-        root.write("connections", [&]() {
-            YamlSeq connections(out);
-            for (const auto &c : m_connections) {
-                out << YAML::Flow;
-                YamlSeq seq(out);
-                auto   *src          = c.ports[0];
-                auto   *dst          = c.ports[1];
+        if (!m_connections.empty()) {
+            root.write("connections", [&]() {
+                YamlSeq connections(out);
+                for (const auto &c : m_connections) {
+                    out << YAML::Flow;
+                    YamlSeq seq(out);
+                    auto   *src          = c.ports[0];
+                    auto   *dst          = c.ports[1];
 
-                auto    getPortIndex = [](Block::Port *port, const auto &ports) {
-                    return port - static_cast<const Block::Port *>(ports.data());
-                };
+                    auto    getPortIndex = [](Block::Port *port, const auto &ports) {
+                        return port - static_cast<const Block::Port *>(ports.data());
+                    };
 
-                out << src->block->name << getPortIndex(src, src->block->outputs());
-                out << dst->block->name << getPortIndex(dst, dst->block->inputs());
-            }
-        });
+                    out << src->block->name << getPortIndex(src, src->block->outputs());
+                    out << dst->block->name << getPortIndex(dst, dst->block->inputs());
+                }
+            });
+        }
 
-        root.write("remote_sources", [&]() {
-            YamlSeq sources(out);
-            for (const auto &s : m_remoteSources) {
-                YamlMap map(out);
-                map.write("uri", s.uri);
-                // we need to save down the name of the signal (and in the future probably other stuff) because when we load
-                // having to wait for information from the servers about all the remote signals used by the flowgraph would
-                // not be ideal. Moreover, this way a flowgraph can be loaded even when some signal isn't available at the
-                // moment. There will be no data but the flowgraph will load correctly anyway.
-                map.write("signal_name", s.type->outputs[0].name);
-            }
-        });
+        if (!m_remoteSources.empty()) {
+            root.write("remote_sources", [&]() {
+                YamlSeq sources(out);
+                for (const auto &s : m_remoteSources) {
+                    YamlMap map(out);
+                    map.write("uri", s.uri);
+                    // we need to save down the name of the signal (and in the future probably other stuff) because when we load
+                    // having to wait for information from the servers about all the remote signals used by the flowgraph would
+                    // not be ideal. Moreover, this way a flowgraph can be loaded even when some signal isn't available at the
+                    // moment. There will be no data but the flowgraph will load correctly anyway.
+                    map.write("signal_name", s.type->outputs[0].name);
+                }
+            });
+        }
     }
 
     stream << out.c_str();
@@ -598,10 +578,6 @@ Block *FlowGraph::findSinkBlock(std::string_view name) const {
 
 Block *FlowGraph::findSourceBlock(std::string_view name) const {
     return findBlockImpl(name, m_sourceBlocks);
-}
-
-void FlowGraph::addBlockType(std::unique_ptr<BlockType> &&t) {
-    m_types.insert({ t->name, std::move(t) });
 }
 
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
@@ -698,7 +674,7 @@ void FlowGraph::addRemoteSource(std::string_view uri) {
 
 void FlowGraph::registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri) {
     m_remoteSources.push_back({ type.get(), std::string(uri) });
-    addBlockType(std::move(type));
+    BlockType::registry().addBlockType(std::move(type));
 }
 
 } // namespace DigitizerUi
