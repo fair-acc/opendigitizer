@@ -23,16 +23,17 @@ ENABLE_REFLECTION_FOR(FilterContext, contentType)
 
 struct Flowgraph {
     std::string flowgraph;
+    std::string layout;
 };
 
-ENABLE_REFLECTION_FOR(Flowgraph, flowgraph)
+ENABLE_REFLECTION_FOR(Flowgraph, flowgraph, layout)
 
 using namespace opencmw::majordomo;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class FlowgraphWorker : public Worker<serviceName, FilterContext, Flowgraph, Flowgraph, Meta...> {
-    std::string flowgraph;
-    std::mutex  flowgraphLock;
+    Flowgraph  flowgraph;
+    std::mutex flowgraphLock;
 
 public:
     using super_t = Worker<serviceName, FilterContext, Flowgraph, Flowgraph, Meta...>;
@@ -51,23 +52,23 @@ public:
         });
         auto fs                   = cmrc::flowgraphFilesystem::get_filesystem();
         auto defaultFlowgraphFile = fs.open("flowgraph.grc");
-        flowgraph.resize(defaultFlowgraphFile.size());
-        std::copy(defaultFlowgraphFile.begin(), defaultFlowgraphFile.end(), flowgraph.begin());
+        flowgraph.flowgraph.resize(defaultFlowgraphFile.size());
+        std::copy(defaultFlowgraphFile.begin(), defaultFlowgraphFile.end(), flowgraph.flowgraph.begin());
     }
 
 private:
     void handleGetRequest(const FilterContext & /*filterIn*/, FilterContext & /*filterOut*/, Flowgraph &out) {
         fmt::print("handleGetRequest for flowgraph\n");
         std::lock_guard lockGuard(flowgraphLock);
-        out.flowgraph = flowgraph;
+        out = flowgraph;
     }
 
     void handleSetRequest(const FilterContext & /*filterIn*/, FilterContext & /*filterOut*/, const Flowgraph &in, Flowgraph &out) {
         fmt::print("handleSetRequest for flowgraph\n");
         {
             std::lock_guard lockGuard(flowgraphLock);
-            flowgraph     = in.flowgraph;
-            out.flowgraph = flowgraph;
+            flowgraph = in;
+            out       = flowgraph;
         }
         notifyUpdate();
     }

@@ -7,10 +7,7 @@
 namespace DigitizerUi {
 
 App &App::instance() {
-    static App app{
-        .fgItem        = { &app.flowGraph },
-        .dashboardPage = DashboardPage{ &app.flowGraph },
-    };
+    static App app;
     return app;
 }
 
@@ -33,6 +30,7 @@ void App::loadEmptyDashboard() {
 void App::loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
     fgItem.clear();
     dashboard = std::make_unique<Dashboard>(desc);
+    dashboard->load();
 }
 
 void App::loadDashboard(std::string_view url) {

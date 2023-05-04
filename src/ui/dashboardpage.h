@@ -9,11 +9,10 @@ namespace DigitizerUi {
 
 class App;
 class Dashboard;
-class FlowGraph;
 
 class DashboardPage {
 public:
-    explicit DashboardPage(FlowGraph *fg);
+    explicit DashboardPage();
     ~DashboardPage();
 
     enum class Mode {
@@ -23,9 +22,7 @@ public:
     void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View);
 
 private:
-    void       newPlot(Dashboard *dashboard);
-
-    FlowGraph *m_flowGraph;
+    void newPlot(Dashboard *dashboard);
 };
 
 } // namespace DigitizerUi

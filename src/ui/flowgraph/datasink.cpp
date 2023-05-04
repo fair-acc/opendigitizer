@@ -41,7 +41,7 @@ void DataSink::processData() {
     }
 }
 
-void DataSink::registerBlockType(FlowGraph *fg) {
+void DataSink::registerBlockType() {
     auto t = std::make_unique<BlockType>("sink");
     t->inputs.resize(1);
     auto &in       = t->inputs[0];
@@ -52,7 +52,7 @@ void DataSink::registerBlockType(FlowGraph *fg) {
     };
     g_btype = t.get();
 
-    fg->addBlockType(std::move(t));
+    BlockType::registry().addBlockType(std::move(t));
 }
 
 DataSinkSource::DataSinkSource(std::string_view name)
@@ -67,7 +67,7 @@ void DataSinkSource::processData() {
     out.type       = sink->dataType;
 }
 
-void DataSinkSource::registerBlockType(FlowGraph *fg) {
+void DataSinkSource::registerBlockType() {
     auto t = std::make_unique<BlockType>("sink_source", "Sink Source", "", true);
     t->outputs.resize(1);
     auto &out      = t->outputs[0];
@@ -78,7 +78,7 @@ void DataSinkSource::registerBlockType(FlowGraph *fg) {
     };
     g_btypeSource = t.get();
 
-    fg->addBlockType(std::move(t));
+    BlockType::registry().addBlockType(std::move(t));
 }
 
 } // namespace DigitizerUi

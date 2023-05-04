@@ -11,10 +11,14 @@
 #include <cmrc/cmrc.hpp>
 CMRC_DECLARE(sample_dashboards);
 
+#include <RestClient.hpp>
+
 #ifdef EMSCRIPTEN
 #include "emscripten_compat.h"
 #endif
 #include <plf_colony.h>
+
+#include "flowgraph.h"
 
 namespace DigitizerUi {
 
@@ -84,6 +88,7 @@ public:
     explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc);
     ~Dashboard();
 
+    void                         load();
     void                         save();
 
     void                         newPlot(int x, int y, int w, int h);
@@ -97,12 +102,28 @@ public:
     void                         setNewDescription(const std::shared_ptr<DashboardDescription> &desc);
     inline DashboardDescription *description() const { return m_desc.get(); }
 
+    struct Service {
+        Service(std::string n, std::string u)
+            : name(std::move(n)), uri(std::move(u)) {}
+        std::string                 name;
+        std::string                 uri;
+        FlowGraph                   flowGraph;
+        opencmw::client::RestClient client;
+    };
+    void         addRemoteService(std::string_view uri);
+    void         saveRemoteServiceFlowgraph(Service *s);
+
+    inline auto &remoteServices() { return m_services; }
+
+    FlowGraph    localFlowGraph;
+
 private:
     void                                  doLoad(const std::string &desc);
 
     std::shared_ptr<DashboardDescription> m_desc;
     std::vector<Plot>                     m_plots;
     plf::colony<Source>                   m_sources;
+    plf::colony<Service>                  m_services;
 };
 
 } // namespace DigitizerUi

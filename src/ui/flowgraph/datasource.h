@@ -11,7 +11,7 @@ public:
     explicit DataSource(std::string_view name);
 
     void        processData() final;
-    static void registerBlockType(FlowGraph *fg);
+    static void registerBlockType();
 
 private:
     std::vector<float> m_data;
