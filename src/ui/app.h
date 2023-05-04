@@ -30,7 +30,6 @@ public:
     void                                      fireCallbacks();
 
     std::string                               executable;
-    FlowGraph                                 flowGraph;
     FlowGraphItem                             fgItem;
     DashboardPage                             dashboardPage;
     std::unique_ptr<Dashboard>                dashboard;

@@ -12,8 +12,6 @@
 #endif
 #include <plf_colony.h>
 
-#include <URI.hpp>
-
 namespace DigitizerUi {
 
 class FlowGraph;
@@ -63,6 +61,28 @@ public:
     const bool                                              isSource;
 
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
+
+    struct Registry {
+        void               loadBlockDefinitions(const std::filesystem::path &dir);
+        void               addBlockType(std::unique_ptr<BlockType> &&t);
+        BlockType         *get(std::string_view id) const;
+
+        inline const auto &types() const { return m_types; }
+
+    private:
+        // This stuff is to enable looking up in the m_types map with string_view
+        template<typename... Keys>
+        struct transparent_hash : std::hash<Keys>... {
+            using is_transparent = void;
+            using std::hash<Keys>::operator()...;
+        };
+
+        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
+
+        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
+    };
+
+    static Registry &registry();
 };
 
 struct DataType {
@@ -207,10 +227,8 @@ private:
 
 class FlowGraph {
 public:
-    void                         loadBlockDefinitions(const std::filesystem::path &dir);
     void                         parse(const std::filesystem::path &file);
     void                         parse(const std::string &str);
-    void                         parse(const opencmw::URI<opencmw::STRICT> &uri);
     void                         clear();
 
     Block                       *findBlock(std::string_view name) const;
@@ -220,10 +238,7 @@ public:
     inline const auto           &blocks() const { return m_blocks; }
     inline const auto           &sourceBlocks() const { return m_sourceBlocks; }
     inline const auto           &sinkBlocks() const { return m_sinkBlocks; }
-    inline const auto           &blockTypes() const { return m_types; }
     inline const auto           &connections() const { return m_connections; }
-
-    void                         addBlockType(std::unique_ptr<BlockType> &&t);
 
     void                         addBlock(std::unique_ptr<Block> &&block);
     void                         deleteBlock(Block *block);
@@ -245,11 +260,10 @@ public:
     std::function<void(Block *)> blockDeletedCallback;
 
 private:
-    std::vector<std::unique_ptr<Block>>                         m_sourceBlocks;
-    std::vector<std::unique_ptr<Block>>                         m_sinkBlocks;
-    std::vector<std::unique_ptr<Block>>                         m_blocks;
-    std::unordered_map<std::string, std::unique_ptr<BlockType>> m_types;
-    plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
+    std::vector<std::unique_ptr<Block>> m_sourceBlocks;
+    std::vector<std::unique_ptr<Block>> m_sinkBlocks;
+    std::vector<std::unique_ptr<Block>> m_blocks;
+    plf::colony<Connection>             m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
     struct RemoteSource {
         BlockType  *type;
         std::string uri;

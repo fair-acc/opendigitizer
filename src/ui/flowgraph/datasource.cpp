@@ -1,5 +1,8 @@
 #include "datasource.h"
 
+#include <fmt/format.h>
+#include <math.h>
+
 namespace DigitizerUi {
 
 namespace {
@@ -22,7 +25,7 @@ void DataSource::processData() {
     m_offset += 1;
 }
 
-void DataSource::registerBlockType(FlowGraph *fg) {
+void DataSource::registerBlockType() {
     auto t = std::make_unique<BlockType>("sine_source", "Sine wave", "Local signals", true);
     t->outputs.resize(1);
     t->outputs[0].name = "out";
@@ -39,7 +42,7 @@ void DataSource::registerBlockType(FlowGraph *fg) {
     };
     g_blockType = t.get();
 
-    fg->addBlockType(std::move(t));
+    BlockType::registry().addBlockType(std::move(t));
 }
 
 } // namespace DigitizerUi

@@ -7,6 +7,7 @@
 
 #include <fstream>
 
+#include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <RestClient.hpp>
@@ -17,6 +18,13 @@
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "yamlutils.h"
+
+struct FlowgraphMessage {
+    std::string flowgraph;
+    std::string layout;
+};
+
+ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 
 namespace DigitizerUi {
 
@@ -211,16 +219,15 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed             = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    auto *fg                     = &App::instance().flowGraph;
-    fg->sourceBlockAddedCallback = [this](Block *b) {
+    localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
         for (int i = 0; i < b->type->outputs.size(); ++i) {
             auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
             m_sources.insert({ b, i, name, randomColor() });
         }
     };
-    fg->blockDeletedCallback = [this](Block *b) {
+    localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
             p.sources.erase(std::remove_if(p.sources.begin(), p.sources.end(), [=](auto *s) { return s->block == b; }),
                     p.sources.end());
@@ -228,21 +235,6 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
         m_sources.erase(std::remove_if(m_sources.begin(), m_sources.end(), [=](const auto &s) { return s.block == b; }),
                 m_sources.end());
     };
-
-    if (desc->source == unsavedSource()) {
-        fg->clear();
-    } else {
-        fetch(
-                desc->source, desc->filename, { What::Flowgraph, What::Dashboard },
-                [this](std::array<std::string, 2> &&data) {
-                    App::instance().flowGraph.parse(std::move(data[0]));
-                    // Load is called after parsing the flowgraph so that we already have the list of sources
-                    doLoad(data[1]);
-                },
-                [desc]() {
-            fmt::print("Invalid flowgraph for dashboard {}/{}\n", desc->source->path, desc->filename);
-            App::instance().closeDashboard(); });
-    }
 }
 
 Dashboard::~Dashboard() {
@@ -250,6 +242,24 @@ Dashboard::~Dashboard() {
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
     m_desc = desc;
+}
+
+void Dashboard::load() {
+    if (m_desc->source != unsavedSource()) {
+        fetch(
+                m_desc->source, m_desc->filename, { What::Flowgraph, What::Dashboard },
+                [this](std::array<std::string, 2> &&data) {
+                    localFlowGraph.parse(std::move(data[0]));
+                    // Load is called after parsing the flowgraph so that we already have the list of sources
+                    doLoad(data[1]);
+                },
+                [this]() {
+                    fmt::print("Invalid flowgraph for dashboard {}/{}\n", m_desc->source->path, m_desc->filename);
+                    App::instance().closeDashboard();
+                });
+    } else {
+        App::instance().fgItem.setSettings(&localFlowGraph, {});
+    }
 }
 
 void Dashboard::doLoad(const std::string &desc) {
@@ -361,7 +371,7 @@ void Dashboard::doLoad(const std::string &desc) {
     }
 
     auto fgLayout = tree["flowgraphLayout"];
-    App::instance().fgItem.setSettings(fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+    App::instance().fgItem.setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
 
 #undef ERROR_RETURN
 }
@@ -432,7 +442,7 @@ void Dashboard::save() {
             }
         });
 
-        root.write("flowgraphLayout", App::instance().fgItem.settings());
+        root.write("flowgraphLayout", App::instance().fgItem.settings(&localFlowGraph));
     }
 
     if (m_desc->source->path.starts_with("http://")) {
@@ -454,7 +464,7 @@ void Dashboard::save() {
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
-        App::instance().flowGraph.save(stream);
+        localFlowGraph.save(stream);
         fcommand.data.put(stream.str());
         fcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         client.request(fcommand);
@@ -482,7 +492,7 @@ void Dashboard::save() {
         stream << headerOut.c_str() << '\n';
         stream << dashboardOut.c_str() << '\n';
         uint32_t flowgraphStart = stream.tellp();
-        uint32_t flowgraphSize  = App::instance().flowGraph.save(stream);
+        uint32_t flowgraphSize  = localFlowGraph.save(stream);
         stream.seekp(16);
         stream.write(reinterpret_cast<char *>(&flowgraphStart), 4);
         stream.write(reinterpret_cast<char *>(&flowgraphSize), 4);
@@ -502,6 +512,46 @@ void Dashboard::newPlot(int x, int y, int w, int h) {
 void Dashboard::deletePlot(Plot *plot) {
     auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot &p) { return plot == &p; });
     m_plots.erase(it);
+}
+
+void Dashboard::addRemoteService(std::string_view uri) {
+    const auto u       = opencmw::URI<>(std::string(uri));
+    auto       f       = u.factory(u).path("").setQuery({});
+    auto       service = f.toString();
+
+    auto       it      = std::find_if(m_services.begin(), m_services.end(), [&](const auto &s) { return s.name == service; });
+    if (it == m_services.end()) {
+        auto                     uri = std::move(f).path("/flowgraph").build();
+        auto                    &s   = *m_services.emplace(std::move(service), uri.str());
+
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Get;
+        command.endpoint = uri;
+        command.callback = [&](const opencmw::mdp::Message &rep) {
+            auto             buf = rep.data;
+
+            FlowgraphMessage reply;
+            opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
+            s.flowGraph.parse(reply.flowgraph);
+            App::instance().fgItem.setSettings(&s.flowGraph, reply.layout);
+        };
+        s.client.request(command);
+    }
+}
+
+void Dashboard::saveRemoteServiceFlowgraph(Service *s) {
+    std::stringstream stream;
+    s->flowGraph.save(stream);
+
+    opencmw::client::Command command;
+    command.command  = opencmw::mdp::Command::Set;
+    command.endpoint = opencmw::URI<>(s->uri);
+
+    FlowgraphMessage msg;
+    msg.flowgraph = std::move(stream).str();
+    msg.layout    = App::instance().fgItem.settings(&s->flowGraph);
+    opencmw::serialise<opencmw::Json>(command.data, msg);
+    s->client.request(command);
 }
 
 void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,

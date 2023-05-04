@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <imgui_node_editor.h>
 
+#include <fmt/format.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "flowgraph.h"
@@ -13,30 +14,37 @@
 
 namespace DigitizerUi {
 
-FlowGraphItem::FlowGraphItem(FlowGraph *fg)
-    : m_flowGraph(fg) {
-    m_config.SettingsFile = nullptr;
-    m_config.UserPointer  = this;
-    m_config.SaveSettings = [](const char *data, size_t size, ax::NodeEditor::SaveReasonFlags reason, void *userPointer) {
-        auto *fg       = static_cast<FlowGraphItem *>(userPointer);
-        fg->m_settings = std::string(data, size);
-        return true;
-    };
-    m_config.LoadSettings = [](char *data, void *userPointer) {
-        auto *fg = static_cast<FlowGraphItem *>(userPointer);
-        if (data) {
-            memcpy(data, fg->m_settings.data(), fg->m_settings.size());
-        }
-        return fg->m_settings.size();
-    };
+FlowGraphItem::FlowGraphItem() {
 }
 
 FlowGraphItem::~FlowGraphItem() = default;
 
-std::string FlowGraphItem::settings() const {
+FlowGraphItem::Context::Context() {
+    config.SettingsFile = nullptr;
+    config.UserPointer  = this;
+    config.SaveSettings = [](const char *data, size_t size, ax::NodeEditor::SaveReasonFlags reason, void *userPointer) {
+        auto *c     = static_cast<Context *>(userPointer);
+        c->settings = std::string(data, size);
+        return true;
+    };
+    config.LoadSettings = [](char *data, void *userPointer) {
+        auto *c = static_cast<Context *>(userPointer);
+        if (data) {
+            memcpy(data, c->settings.data(), c->settings.size());
+        }
+        return c->settings.size();
+    };
+}
+
+std::string FlowGraphItem::settings(FlowGraph *fg) const {
     // The nodes in the settings are saved with their NodeId, which is just a pointer
     // to the Blocks. Since that will change between runs save also the name of the blocks.
-    auto  json  = crude_json::value::parse(m_settings);
+    auto it = m_editors.find(fg);
+    if (it == m_editors.end()) {
+        return {};
+    }
+
+    auto  json  = crude_json::value::parse(it->second.settings);
     auto &nodes = json["nodes"];
     if (nodes.type() == crude_json::type_t::object) {
         for (auto &n : nodes.get<crude_json::object>()) {
@@ -50,10 +58,11 @@ std::string FlowGraphItem::settings() const {
     return json.dump();
 }
 
-void FlowGraphItem::setSettings(const std::string &settings) {
-    auto ed = ax::NodeEditor::GetCurrentEditor();
-    if (ed) {
-        ax::NodeEditor::DestroyEditor(ed);
+void FlowGraphItem::setSettings(FlowGraph *fg, const std::string &settings) {
+    auto &c              = m_editors[fg];
+    c.config.UserPointer = &c;
+    if (c.editor) {
+        ax::NodeEditor::DestroyEditor(c.editor);
     }
 
     auto json = crude_json::value::parse(settings);
@@ -64,7 +73,7 @@ void FlowGraphItem::setSettings(const std::string &settings) {
             crude_json::value newnodes;
             for (auto &n : nodes.get<crude_json::object>()) {
                 auto  name  = n.second["name"].get<std::string>();
-                auto *block = m_flowGraph->findBlock(name);
+                auto *block = fg->findBlock(name);
 
                 if (block) {
                     auto newname      = fmt::format("node:{}", reinterpret_cast<uintptr_t>(block));
@@ -73,13 +82,13 @@ void FlowGraphItem::setSettings(const std::string &settings) {
             }
             json["nodes"] = newnodes;
         }
-        m_settings = json.dump();
+        c.settings = json.dump();
     } else {
-        m_settings = {};
+        c.settings = {};
     }
 
-    ed = ax::NodeEditor::CreateEditor(&m_config);
-    ax::NodeEditor::SetCurrentEditor(ed);
+    c.editor = ax::NodeEditor::CreateEditor(&c.config);
+    ax::NodeEditor::SetCurrentEditor(c.editor);
 
     auto &style                                         = ax::NodeEditor::GetStyle();
     style.NodeRounding                                  = 0;
@@ -90,7 +99,7 @@ void FlowGraphItem::setSettings(const std::string &settings) {
 }
 
 void FlowGraphItem::clear() {
-    setSettings({});
+    m_editors.clear();
 }
 
 static uint32_t colorForDataType(DataType t) {
@@ -319,14 +328,22 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
     ImGui::PopID();
 }
 
-void FlowGraphItem::draw(const ImVec2 &size) {
+void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
+    auto &c = m_editors[fg];
+    if (!c.editor) {
+        return;
+    }
+
+    c.config.UserPointer = &c;
+    ax::NodeEditor::SetCurrentEditor(c.editor);
+
     const float left = ImGui::GetCursorPosX();
     const float top  = ImGui::GetCursorPosY();
     ax::NodeEditor::Begin("My Editor", size);
 
     int y = 0;
 
-    for (auto &s : m_flowGraph->sourceBlocks()) {
+    for (auto &s : fg->sourceBlocks()) {
         auto p = ax::NodeEditor::ScreenToCanvas({ left + 10, 0 });
         p.y    = y;
 
@@ -335,7 +352,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
     }
 
     y = 0;
-    for (auto &s : m_flowGraph->sinkBlocks()) {
+    for (auto &s : fg->sinkBlocks()) {
         auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x - 10, 0 });
         p.y    = y;
 
@@ -346,15 +363,15 @@ void FlowGraphItem::draw(const ImVec2 &size) {
     if (m_createNewBlock) {
         auto b = m_selectedBlockType->createBlock(m_selectedBlockType->name);
         ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
-        m_flowGraph->addBlock(std::move(b));
+        fg->addBlock(std::move(b));
         m_createNewBlock = false;
     }
 
-    for (const auto &b : m_flowGraph->blocks()) {
+    for (const auto &b : fg->blocks()) {
         addBlock(*b);
     }
 
-    for (auto &c : m_flowGraph->connections()) {
+    for (auto &c : fg->connections()) {
         ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(c.ports[0]), ax::NodeEditor::PinId(c.ports[1]),
                 { 0, 0, 0, 1 });
     }
@@ -388,7 +405,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
                         ax::NodeEditor::RejectNewItem();
                     } else if (inputPort->connections.empty() && ax::NodeEditor::AcceptNewItem()) {
                         // AcceptNewItem() return true when user release mouse button.
-                        m_flowGraph->connect(inputPort, outputPort);
+                        fg->connect(inputPort, outputPort);
                     }
                 }
             }
@@ -403,14 +420,14 @@ void FlowGraphItem::draw(const ImVec2 &size) {
         if (ax::NodeEditor::QueryDeletedNode(&nodeId)) {
             ax::NodeEditor::AcceptDeletedItem(true);
             auto *b = nodeId.AsPointer<Block>();
-            m_flowGraph->deleteBlock(b);
+            fg->deleteBlock(b);
             if (m_filterBlock == b) {
                 m_filterBlock = nullptr;
             }
         } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
             ax::NodeEditor::AcceptDeletedItem(true);
             auto *c = linkId.AsPointer<Connection>();
-            m_flowGraph->disconnect(c);
+            fg->disconnect(c);
         }
     }
     ax::NodeEditor::EndDelete();
@@ -505,7 +522,7 @@ void FlowGraphItem::draw(const ImVec2 &size) {
 
     if (ImGui::BeginPopup("block_ctx_menu")) {
         if (ImGui::MenuItem("Delete")) {
-            m_flowGraph->deleteBlock(m_selectedBlock);
+            fg->deleteBlock(m_selectedBlock);
         }
         ImGui::EndPopup();
     }
@@ -522,17 +539,22 @@ void FlowGraphItem::draw(const ImVec2 &size) {
     ImGui::SameLine();
     ImGui::SetCursorPosX(left + size.x - 80);
     if (ImGui::Button("New sink") && newSinkCallback) {
-        newSinkCallback();
+        newSinkCallback(fg);
     }
 
-    drawAddSourceDialog();
-    drawNewBlockDialog();
+    drawAddSourceDialog(fg);
+    drawNewBlockDialog(fg);
 }
 
-void FlowGraphItem::drawNewBlockDialog() {
+void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("New block")) {
-        auto ret            = ImGuiUtils::filteredListBox("blocks", m_flowGraph->blockTypes(), [](auto &it) { return std::pair{ it.second.get(), it.first }; });
+        auto ret            = ImGuiUtils::filteredListBox("blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+            if (it.second->isSource) {
+                return {};
+            }
+            return std::pair{ it.second.get(), it.first };
+                   });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
         if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
@@ -544,7 +566,7 @@ void FlowGraphItem::drawNewBlockDialog() {
     }
 }
 
-void FlowGraphItem::drawAddSourceDialog() {
+void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
     ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         static BlockType *sel = nullptr;
@@ -556,7 +578,7 @@ void FlowGraphItem::drawAddSourceDialog() {
             static std::vector<Cat> cats;
             cats.clear();
             cats.push_back({ "Remote signals", {} });
-            for (const auto &t : m_flowGraph->blockTypes()) {
+            for (const auto &t : BlockType::registry().types()) {
                 if (t.second->isSource && !t.second->category.empty()) {
                     auto it = std::find_if(cats.begin(), cats.end(), [&](const auto &c) {
                         return c.name == t.second->category;
@@ -598,7 +620,7 @@ void FlowGraphItem::drawAddSourceDialog() {
 
                             if (ImGui::Button("Ok")) {
                                 m_addRemoteSignal = false;
-                                m_flowGraph->addRemoteSource(m_addRemoteSignalUri);
+                                fg->addRemoteSource(m_addRemoteSignalUri);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("Cancel")) {
@@ -615,7 +637,7 @@ void FlowGraphItem::drawAddSourceDialog() {
         }
 
         if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
-            m_flowGraph->addSourceBlock(sel->createBlock({}));
+            fg->addSourceBlock(sel->createBlock({}));
         }
         ImGui::EndPopup();
     }

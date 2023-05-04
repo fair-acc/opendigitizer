@@ -135,24 +135,23 @@ int main(int argc, char **argv) {
 #endif
     app.sdlState               = &sdlState;
 
-    app.fgItem.newSinkCallback = [&]() mutable {
-        int  n    = app.flowGraph.sinkBlocks().size() + 1;
+    app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *fg) mutable {
+        int  n    = fg->sinkBlocks().size() + 1;
         auto name = fmt::format("sink {}", n);
-        app.flowGraph.addSinkBlock(std::make_unique<DigitizerUi::DataSink>(name));
+        fg->addSinkBlock(std::make_unique<DigitizerUi::DataSink>(name));
         name = fmt::format("source for sink {}", n);
-        app.flowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
+        fg->addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
     };
 
 #ifndef EMSCRIPTEN
-    app.flowGraph.loadBlockDefinitions(BLOCKS_DIR);
+    DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
-    // app.flowGraph.parse(opencmw::URI<opencmw::STRICT>("http://localhost:8080/flowgraph"));
 
-    DigitizerUi::DataSource::registerBlockType(&app.flowGraph);
-    DigitizerUi::DataSink::registerBlockType(&app.flowGraph);
-    DigitizerUi::DataSinkSource::registerBlockType(&app.flowGraph);
+    DigitizerUi::DataSource::registerBlockType();
+    DigitizerUi::DataSink::registerBlockType();
+    DigitizerUi::DataSinkSource::registerBlockType();
 
-    app.flowGraph.addBlockType([]() {
+    DigitizerUi::BlockType::registry().addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("sum sigs");
         t->createBlock = [t = t.get()](std::string_view name) {
             return std::make_unique<DigitizerUi::SumBlock>(name, t);
@@ -170,7 +169,7 @@ int main(int argc, char **argv) {
         return t;
     }());
 
-    app.flowGraph.addBlockType([]() {
+    DigitizerUi::BlockType::registry().addBlockType([]() {
         auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
         t->createBlock = [t = t.get()](std::string_view name) {
             return std::make_unique<DigitizerUi::FFTBlock>(name, t);
@@ -261,6 +260,7 @@ static void main_loop(void *arg) {
     if (ImGui::BeginTabItem("View")) {
         viewId = ImGui::GetID("");
         if (dashboardLoaded) {
+            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get());
         }
 
@@ -275,6 +275,7 @@ static void main_loop(void *arg) {
         // of the view tab.
         ImGui::PushOverrideID(viewId);
         if (dashboardLoaded) {
+            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
         ImGui::PopID();
@@ -285,12 +286,24 @@ static void main_loop(void *arg) {
         if (dashboardLoaded) {
             auto contentRegion = ImGui::GetContentRegionAvail();
 
-            app->fgItem.draw(contentRegion);
+            app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
         }
 
         ImGui::EndTabItem();
     }
-    if (!dashboardLoaded) {
+
+    DigitizerUi::Dashboard::Service *service = nullptr;
+    if (dashboardLoaded) {
+        for (auto &s : app->dashboard->remoteServices()) {
+            auto name          = fmt::format("Flowgraph of {}", s.name);
+            auto contentRegion = ImGui::GetContentRegionAvail();
+            if (ImGui::BeginTabItem(name.c_str())) {
+                app->fgItem.draw(&s.flowGraph, contentRegion);
+                service = &s;
+                ImGui::EndTabItem();
+            }
+        }
+    } else {
         ImGui::EndDisabled();
     }
 
@@ -300,6 +313,14 @@ static void main_loop(void *arg) {
     }
 
     ImGui::EndTabBar();
+
+    if (service) {
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(width - 150);
+        if (ImGui::Button("Save flowgraph")) {
+            app->dashboard->saveRemoteServiceFlowgraph(service);
+        }
+    }
 
     ImGui::End();
 
