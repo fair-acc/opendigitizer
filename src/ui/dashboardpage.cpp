@@ -218,8 +218,7 @@ constexpr int gridSizeH = 16;
 
 } // namespace
 
-DashboardPage::DashboardPage(DigitizerUi::FlowGraph *fg)
-    : m_flowGraph(fg) {
+DashboardPage::DashboardPage() {
 }
 
 DashboardPage::~DashboardPage() {
@@ -227,8 +226,6 @@ DashboardPage::~DashboardPage() {
 
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
     // ImPlot::ShowDemoWindow();
-
-    m_flowGraph->update();
 
     struct DndItem {
         Dashboard::Plot   *plotSource;

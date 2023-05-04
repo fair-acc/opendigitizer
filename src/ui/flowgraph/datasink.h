@@ -13,7 +13,7 @@ public:
     explicit DataSink(std::string_view name);
 
     void        processData() override;
-    static void registerBlockType(FlowGraph *fg);
+    static void registerBlockType();
 
     bool        hasData = false;
     DataType    dataType;
@@ -29,7 +29,7 @@ public:
     explicit DataSinkSource(std::string_view name);
 
     void        processData() override;
-    static void registerBlockType(FlowGraph *fg);
+    static void registerBlockType();
 
 private:
 };
