@@ -1,37 +1,37 @@
 # OpenDigitizer
 
-Generic Digitizer Framework based on OpenCMW
+OpenDigitizer is an open-source project modernising FAIR’s time- and frequency-domain digitizer infrastructure embracing 
+modern C++20 standards and uses the [OpenCMW](https://github.com/fair-acc/opencmw-cpp), [GNU Radio](https://www.gnuradio.org/)
+([version 4.0](https://github.com/fair-acc/graph-prototype)), [ImGUI](https://github.com/ocornut/imgui) 
+and [WebAssembly](https://webassembly.org/) ecosystems.
 
-Integration of time-domain digitizers based upon and using the OpenCMW and GNU Radio frameworks, notably the
-operational full-vertical stack integration of the existing digitizer infrastructure and generic digitizer
-graphical user interface [1-5]. These and other systems based upon them shall provide generic
-monitoring and first-line diagnostics capabilities for accelerator-related devices in order to support
-equipment experts, operation, and FAIR users in their development of top-level measurement and control systems.
+While initially designed for the FAIR facility, the expressed intent is to be highly adaptable also for use by other
+research facilities, industry, academia, as well as private users.
 
 ![Digitizer System Layout](./doc/Digitizer_System_Layout.png)
 
-![Digitizer UI Layout](./doc/Digitizer_System_Layout_UI.png)
+The primary applications of OpenDigitizer include:
+  * First-line diagnostics and fault identification, serving as a distributed diagnostic tool for accelerator equipment 
+    with nanosecond-level synchronization, offering functionalities similar to oscilloscopes, software-defined-radios,
+    spectrum analyzers, VNAs, and other hardware.
+  * Providing building blocks for higher-level diagnostics and monitoring tools, assisting equipment experts, operators,
+    and scientist in developing basic to advanced top-level diagnostics and feedback control loops
+  * Supporting a rapid prototyping R&D environment for quick adaptation, testing, and integration of solutions developed
+    on lab test stands or during machine studies into the 24/7 operation of the facility.
 
-## Contents
 
-The project consists of two parts:
-
-- a UI part
-  - which can be compiled either as a native UI application or as a WebAssembly binary
-  - shows an imGUI/imPlot based view
-    - empty start frame
-    - imPlot wasm sample for testing
-- and a service part which provides different services
-  - flowgraph worker: provides access to a string property which provides the current flowgraph configuration and is
-    initialized with a static default flowgraph.
-    Later on, changes to the flowgraph will have to trigger updating the running flowgraph.
-  - acquisition worker: provides access to an Acquisition property, which provides the signals shown in the UI. For now
-    it will provide generated mock data.
-    Later this should provide the data from the running flowgraph.
-  - REST worker: provides access over HTTP to:
-    - the aforementioned MDP properties (flowgraph and acquisition) via REST/Json
-    - a simple web UI for the properties
-    - the WebAssembly binary and assets as static assets served at a specific URI.
+## Key Components
+The key components are: 
+  * [OpenCMW](https://github.com/fair-acc/opencmw-cpp), an open-source middleware solution developed at GSI and FAIR 
+    providing flexible data transport, efficient data serialisation, and intuitive domain objects based on compile-time reflection
+  * [GNU Radio](https://www.gnuradio.org/) ([version 4.0](https://github.com/fair-acc/graph-prototype)), a powerful 
+    software toolkit designed for signal processing and software-defined radios. GNU Radio uses directed signal flow graphs
+    for efficient expression of post-processing and feedback control loop logic. This feature makes it easy for domain 
+    experts with minimal programming experience to inspect and reconfigure existing systems, while at the same time keeping
+    the internal C++ components clean, lean, and maintainable by RSE experts.
+  * [ImGUI](https://github.com/ocornut/imgui) and [WebAssembly](https://webassembly.org/) (WASM, through Emscripten) are 
+    used for the user interfaces, enabling cross-platform compatibility, and native deployment on the desktop, mobile,
+    as well as other browser-based platforms supporting flexible use during commissioning and troubleshooting.
 
 ## Building
 
@@ -54,6 +54,40 @@ xdg-open http://localhost:8080/web/index.html # launches the webassembly UI
 xdg-open http://localhost:8080/flowchart      # launches the html based web ui for the flowgraph property
 xdg-open http://localhost:8080/acquisition    # launches the html based web ui for the acquisition property
 ```
+
+## Sustainable, FAIR, Clean- and Lean- Principles
+We are committed to:
+1. **Clean & Lean Code** (Muda 無駄 & Kaizen 改善 )
+   
+   Boost maintainability and adaptability through concise, modular code, eliminating waste and fostering continuous improvement
+2. **Test-Driven & Extreme Programming**
+
+   Ensure software reliability, accelerate, and keep developing applications fit-for-purpose
+3. **Bus Factor & Knowledge Distribution**
+
+   Foster collaborative environments and respect for people to enhance team resilience by sharing knowledge and responsibilities
+4. **FAIR Principles**
+   (see [here](https://en.wikipedia.org/wiki/FAIR_data) and [here](https://www.gsi.de/en/work/forschung/open-science) for details) 
+   
+   Improve the discoverability, accessibility, interoperability, and reusability of digital assets, benefiting the
+   research community and wider public through standardisation
+5. **Automation & Efficiency**
+
+   Streamline processes and improve productivity with continuous integration/deployment, optimising resource usage and 
+   promoting continuous improvement
+6. **Scalability & Resource Optimisation**
+   
+   Ensure software longevity and efficient resource usage by designing with future growth in mind, eliminating waste, and
+   optimizing delivery
+7. **Security & Long-Term Planning**
+   
+   Safeguard data and software by prioritizing security, while fostering sustainable development through long-term planning
+   and continuous improvement
+8. **Develop People & Teams**
+
+   Capitalise on the inverse of 'Conway's Law' by nurturing skilled engineers, create opportunities for experimentation,
+   inspiring and guiding them towards sound solutions, allowing them to continuously adapt organisational structures that
+   support producing better technical outcomes
 
 ## References
 
