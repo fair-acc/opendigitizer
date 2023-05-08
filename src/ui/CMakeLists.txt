@@ -61,6 +61,10 @@ cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Lo
                                                         assets/fontawesome/fa-solid-900.ttf)
 cmrc_add_resource_library(fonts NAMESPACE fonts WHENCE ${imgui_SOURCE_DIR}/misc/fonts
                         ${imgui_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf)
+cmrc_add_resource_library(sample_dashboards NAMESPACE sample_dashboards assets/sampleDashboards/example.grc
+                                                                        assets/sampleDashboards/example.yml
+                                                                        assets/sampleDashboards/complex.grc
+                                                                        assets/sampleDashboards/complex.yml)
 
 if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory
@@ -82,6 +86,7 @@ if (EMSCRIPTEN)
             plf_colony
             app_header
             ui_assets
+            sample_dashboards
             fonts
             core
             client
@@ -113,6 +118,7 @@ else () # native build
             client
             app_header
             ui_assets
+            sample_dashboards
             fonts
     )
     target_compile_definitions(opendigitizer-ui PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")

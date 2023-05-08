@@ -11,12 +11,15 @@
 #include <opencmw.hpp>
 #include <RestClient.hpp>
 
+#include <cmrc/cmrc.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include "app.h"
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "yamlutils.h"
+
+CMRC_DECLARE(sample_dashboards);
 
 namespace DigitizerUi {
 
@@ -121,18 +124,27 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
         return;
     } else if (source->path.starts_with("example://")) {
         std::array<std::string, N> reply;
+        auto                       fs = cmrc::sample_dashboards::get_filesystem();
         for (int i = 0; i < N; ++i) {
-            reply[i] = [&]() {
+            reply[i] = [&]() -> std::string {
                 switch (what[i]) {
-                    case What::Header: return EXAMPLE_HEADER;
-                    case What::Dashboard: return EXAMPLE_DASHBOARD;
-                    case What::Flowgraph: return EXAMPLE_FLOWGRAPH;
+                case What::Dashboard: {
+                    auto file = fs.open(fmt::format("assets/sampleDashboards/{}.yml", name));
+                    return { file.begin(), file.end() };
                 }
-                return EXAMPLE_HEADER; //shut up the warning
+                case What::Flowgraph: {
+                    auto file = fs.open(fmt::format("assets/sampleDashboards/{}.grc", name));
+                    return { file.begin(), file.end() };
+                }
+                default:
+                case What::Header:
+                    return { "favorite: false\nlastUsed: 07/04/2023" };
+                }
             }();
         }
         cb(std::move(reply));
-    } else{
+        return;
+    } else {
 #ifndef EMSCRIPTEN
         auto          path = std::filesystem::path(source->path) / name;
         std::ifstream stream(path, std::ios::in);
@@ -498,22 +510,22 @@ void Dashboard::deletePlot(Plot *plot) {
 void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,
         const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb) {
     fetch(
-            source, name, {What::Header},
+            source, name, { What::Header },
             [cb, name, source](std::array<std::string, 1> &&desc) {
-                YAML::Node tree = YAML::Load(desc[0]);
+                YAML::Node tree     = YAML::Load(desc[0]);
 
-                auto favorite = tree["favorite"];
-                auto lastUsed = tree["lastUsed"];
+                auto       favorite = tree["favorite"];
+                auto       lastUsed = tree["lastUsed"];
 
-                auto getDate = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
+                auto       getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
                     if (str.size() < 10) {
                         return {};
                     }
-                    int year = std::atoi(str.data());
-                    unsigned month = std::atoi(str.c_str() + 5);
-                    unsigned day = std::atoi(str.c_str() + 8);
+                    int                         year  = std::atoi(str.data());
+                    unsigned                    month = std::atoi(str.c_str() + 5);
+                    unsigned                    day   = std::atoi(str.c_str() + 8);
 
-                    std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
+                    std::chrono::year_month_day date{ std::chrono::year{ year }, std::chrono::month{ month }, std::chrono::day{ day } };
                     return std::chrono::sys_days(date);
                 };
 
@@ -523,7 +535,7 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, 
                         .source     = source,
                         .filename   = name,
                         .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
-                        .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt}));
+                        .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt }));
             },
             [cb]() { cb({}); });
 }

@@ -73,9 +73,9 @@ void OpenDashboardPage::addSource(std::string_view path) {
         // also request the list to be sent immediately
         command.command = opencmw::mdp::Command::Get;
         m_restClient->request(command);
-    } else if (path.starts_with("example://")){
-        addDashboard(source, "DemoDashboard");
-        addDashboard(source, "ComplexDashboard");
+    } else if (path.starts_with("example://")) {
+        addDashboard(source, "example");
+        addDashboard(source, "complex");
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;
