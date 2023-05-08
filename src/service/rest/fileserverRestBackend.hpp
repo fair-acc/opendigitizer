@@ -50,8 +50,13 @@ public:
 
         auto cmrcHandler = [this](const httplib::Request &request, httplib::Response &response) {
             if (super_t::_vfs.is_file(request.path)) {
-                auto file = super_t::_vfs.open(request.path);
-                response.set_content(std::string(file.begin(), file.end()), "");
+                // if there is no dashboard specified in the url just load an example one
+                if (request.path == "/web/index.html" && request.params.empty()) {
+                    response.set_redirect("/web/index.html?http://localhost:8080/dashboards/dashboard1");
+                } else {
+                    auto file = super_t::_vfs.open(request.path);
+                    response.set_content(std::string(file.begin(), file.end()), "");
+                }
             } else {
             }
         };
