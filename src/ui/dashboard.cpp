@@ -11,15 +11,12 @@
 #include <opencmw.hpp>
 #include <RestClient.hpp>
 
-#include <cmrc/cmrc.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include "app.h"
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "yamlutils.h"
-
-CMRC_DECLARE(sample_dashboards);
 
 namespace DigitizerUi {
 
@@ -261,30 +258,30 @@ void Dashboard::doLoad(const std::string &desc) {
     auto       path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
 #ifdef NDEBUG
-#define ERROR_RETURN \
+#define ERROR_RETURN(msg) \
     { \
-        fmt::print("Error parsing YAML {}\n", path.native()); \
+        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
         abort(); \
     }
 #else
-#define ERROR_RETURN \
+#define ERROR_RETURN(msg) \
     { \
-        fmt::print("Error parsing YAML {}\n", path.native()); \
+        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
         return; \
     }
 #endif
 
     auto sources = tree["sources"];
-    if (!sources || !sources.IsSequence()) ERROR_RETURN;
+    if (!sources || !sources.IsSequence()) ERROR_RETURN("sources entry invalid");
 
     for (const auto &s : sources) {
-        if (!s.IsMap()) ERROR_RETURN;
+        if (!s.IsMap()) ERROR_RETURN("source is no map");
 
         auto block = s["block"];
         auto port  = s["port"];
         auto name  = s["name"];
         auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) ERROR_RETURN;
+        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) ERROR_RETURN("invalid source color definition");
 
         auto blockStr = block.as<std::string>();
         auto portNum  = port.as<int>();
@@ -304,29 +301,29 @@ void Dashboard::doLoad(const std::string &desc) {
     }
 
     auto plots = tree["plots"];
-    if (!plots || !plots.IsSequence()) ERROR_RETURN;
+    if (!plots || !plots.IsSequence()) ERROR_RETURN("plots invalid");
 
     for (const auto &p : plots) {
-        if (!p.IsMap()) ERROR_RETURN;
+        if (!p.IsMap()) ERROR_RETURN("plots is not map");
 
-        auto name    = p["name"];
-        auto axes    = p["axes"];
-        auto sources = p["sources"];
-        auto rect    = p["rect"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !sources || !sources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) ERROR_RETURN;
+        auto name        = p["name"];
+        auto axes        = p["axes"];
+        auto plotSources = p["sources"];
+        auto rect        = p["rect"];
+        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) ERROR_RETURN("invalid plot definition");
 
-        m_plots.push_back({});
+        m_plots.emplace_back();
         auto &plot = m_plots.back();
         plot.name  = name.as<std::string>();
 
         for (const auto &a : axes) {
-            if (!a.IsMap()) ERROR_RETURN;
+            if (!a.IsMap()) ERROR_RETURN("axes is no map");
 
             auto axis = a["axis"];
             auto min  = a["min"];
             auto max  = a["max"];
 
-            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) ERROR_RETURN;
+            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) ERROR_RETURN("invalid axis definition");
 
             plot.axes.push_back({});
             auto &ax      = plot.axes.back();
@@ -346,8 +343,8 @@ void Dashboard::doLoad(const std::string &desc) {
             ax.max = max.as<double>();
         }
 
-        for (const auto &s : sources) {
-            if (!s.IsScalar()) ERROR_RETURN;
+        for (const auto &s : plotSources) {
+            if (!s.IsScalar()) ERROR_RETURN("plot source is no scalar");
 
             auto str    = s.as<std::string>();
             auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == str; });

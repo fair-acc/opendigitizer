@@ -61,10 +61,10 @@ cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Lo
                                                         assets/fontawesome/fa-solid-900.ttf)
 cmrc_add_resource_library(fonts NAMESPACE fonts WHENCE ${imgui_SOURCE_DIR}/misc/fonts
                         ${imgui_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf)
-cmrc_add_resource_library(sample_dashboards NAMESPACE sample_dashboards assets/sampleDashboards/example.grc
-                                                                        assets/sampleDashboards/example.yml
-                                                                        assets/sampleDashboards/complex.grc
-                                                                        assets/sampleDashboards/complex.yml)
+cmrc_add_resource_library(sample_dashboards NAMESPACE sample_dashboards assets/sampleDashboards/ExtendedDemoDashboard.grc
+        assets/sampleDashboards/ExtendedDemoDashboard.yml
+        assets/sampleDashboards/DemoDashboard.grc
+        assets/sampleDashboards/DemoDashboard.yml)
 
 if (EMSCRIPTEN)
     # locate the "executable" output in the build/web directory

@@ -74,8 +74,13 @@ void OpenDashboardPage::addSource(std::string_view path) {
         command.command = opencmw::mdp::Command::Get;
         m_restClient->request(command);
     } else if (path.starts_with("example://")) {
-        addDashboard(source, "example");
-        addDashboard(source, "complex");
+        auto fs  = cmrc::sample_dashboards::get_filesystem();
+        auto dir = fs.iterate_directory("assets/sampleDashboards/");
+        for (auto d : dir) {
+            if (d.is_file() && d.filename().ends_with(".yml")) {
+                addDashboard(source, d.filename().substr(0, d.filename().size() - 4));
+            }
+        }
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;
