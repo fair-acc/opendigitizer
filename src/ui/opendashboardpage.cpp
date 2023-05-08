@@ -23,10 +23,6 @@ OpenDashboardPage::OpenDashboardPage()
     : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()))
     , m_filterDate(FilterDate::Before)
     , m_restClient(std::make_unique<opencmw::client::RestClient>()) {
-    App::instance().schedule([this]() {
-        addSource("http://localhost:8080/dashboards");
-        addSource("example://builtin-samples");
-    });
 #ifndef EMSCRIPTEN
     addSource(".");
 #endif
@@ -78,10 +74,8 @@ void OpenDashboardPage::addSource(std::string_view path) {
         command.command = opencmw::mdp::Command::Get;
         m_restClient->request(command);
     } else if (path.starts_with("example://")){
-        App::instance().schedule([this, source]() {
-            addDashboard(source, "DemoDashboard");
-            addDashboard(source, "ComplexDashboard");
-        });
+        addDashboard(source, "DemoDashboard");
+        addDashboard(source, "ComplexDashboard");
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;

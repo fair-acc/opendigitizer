@@ -121,8 +121,16 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
         return;
     } else if (source->path.starts_with("example://")) {
         std::array<std::string, N> reply;
-        reply[0] = EXAMPLE_DASHBOARD;
-        reply[1] = EXAMPLE_FLOWGRAPH;
+        for (int i = 0; i < N; ++i) {
+            reply[i] = [&]() {
+                switch (what[i]) {
+                    case What::Header: return EXAMPLE_HEADER;
+                    case What::Dashboard: return EXAMPLE_DASHBOARD;
+                    case What::Flowgraph: return EXAMPLE_FLOWGRAPH;
+                }
+                return EXAMPLE_HEADER; //shut up the warning
+            }();
+        }
         cb(std::move(reply));
     } else{
 #ifndef EMSCRIPTEN
@@ -489,48 +497,35 @@ void Dashboard::deletePlot(Plot *plot) {
 
 void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,
         const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb) {
-    if (source->path.starts_with("http")) {
-        fetch(
-                source, name, {What::Header},
-                [cb, name, source](std::array<std::string, 1> &&desc) {
-                    YAML::Node tree = YAML::Load(desc[0]);
+    fetch(
+            source, name, {What::Header},
+            [cb, name, source](std::array<std::string, 1> &&desc) {
+                YAML::Node tree = YAML::Load(desc[0]);
 
-                    auto favorite = tree["favorite"];
-                    auto lastUsed = tree["lastUsed"];
+                auto favorite = tree["favorite"];
+                auto lastUsed = tree["lastUsed"];
 
-                    auto getDate = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
-                        if (str.size() < 10) {
-                            return {};
-                        }
-                        int year = std::atoi(str.data());
-                        unsigned month = std::atoi(str.c_str() + 5);
-                        unsigned day = std::atoi(str.c_str() + 8);
+                auto getDate = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
+                    if (str.size() < 10) {
+                        return {};
+                    }
+                    int year = std::atoi(str.data());
+                    unsigned month = std::atoi(str.c_str() + 5);
+                    unsigned day = std::atoi(str.c_str() + 8);
 
-                        std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
-                        return std::chrono::sys_days(date);
-                    };
+                    std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
+                    return std::chrono::sys_days(date);
+                };
 
-                    // fmt::print("aa {} {}\n",(bool)callback,(void*)callback.target());
-                    cb(std::make_shared<DashboardDescription>(DashboardDescription{
-                            .name       = std::filesystem::path(name).stem().native(),
-                            .source     = source,
-                            .filename   = name,
-                            .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
-                            .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt}));
-                },
-                [cb]() { cb({}); });
-    } else if (source->path.starts_with("example://")) {
-        App::instance().schedule([&cb, &source, name]() {
-            cb(std::make_shared<DashboardDescription>(DashboardDescription{
-                    .name       = std::filesystem::path(name).stem().native(),
-                    .source     = source,
-                    .filename   = name,
-                    .isFavorite = false,
-                    .lastUsed   = std::nullopt}));
-        });
-    } else {
-        // load from file?
-    }
+                // fmt::print("aa {} {}\n",(bool)callback,(void*)callback.target());
+                cb(std::make_shared<DashboardDescription>(DashboardDescription{
+                        .name       = std::filesystem::path(name).stem().native(),
+                        .source     = source,
+                        .filename   = name,
+                        .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
+                        .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt}));
+            },
+            [cb]() { cb({}); });
 }
 
 std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string &name) {

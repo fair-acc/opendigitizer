@@ -126,6 +126,10 @@ int main(int argc, char **argv) {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     auto &app = DigitizerUi::App::instance();
+    app.schedule([&]() {
+        app.openDashboardPage.addSource("http://localhost:8080/dashboards");
+        app.openDashboardPage.addSource("example://builtin-samples");
+    });
 #ifdef EMSCRIPTEN
     app.executable = "index.html";
 #else
