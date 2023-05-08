@@ -1,0 +1,43 @@
+blocks:
+  - name: sum sigs1
+    id: sum sigs
+  - name: sum sigs2
+    id: sum sigs
+  - name: sum sigs3
+    id: sum sigs
+  - name: FFT
+    id: FFT
+  - name: sine source 3
+    id: sine_source
+    parameters:
+      frequency: 0.100000
+  - name: sine source 4
+    id: sine_source
+    parameters:
+      frequency: 0.200000
+  - name: sine source 5
+    id: sine_source
+    parameters:
+      frequency: 0.300000
+  - name: sine source 6
+    id: sine_source
+    parameters:
+      frequency: 0.400000
+  - name: source for sink 1
+    id: sink_source
+  - name: source for sink 2
+    id: sink_source
+  - name: sink 1
+    id: sink
+  - name: sink 2
+    id: sink
+connections:
+  - [sine source 3, 0, sum sigs1, 0]
+  - [sine source 4, 0, sum sigs1, 1]
+  - [sine source 5, 0, sum sigs2, 0]
+  - [sine source 6, 0, sum sigs2, 1]
+  - [sum sigs1, 0, sum sigs3, 0]
+  - [sum sigs2, 0, sum sigs3, 1]
+  - [sum sigs3, 0, FFT, 0]
+  - [FFT, 0, sink 2, 0]
+  - [sum sigs3, 0, sink 1, 0]

@@ -73,6 +73,14 @@ void OpenDashboardPage::addSource(std::string_view path) {
         // also request the list to be sent immediately
         command.command = opencmw::mdp::Command::Get;
         m_restClient->request(command);
+    } else if (path.starts_with("example://")) {
+        auto fs  = cmrc::sample_dashboards::get_filesystem();
+        auto dir = fs.iterate_directory("assets/sampleDashboards/");
+        for (auto d : dir) {
+            if (d.is_file() && d.filename().ends_with(".yml")) {
+                addDashboard(source, d.filename().substr(0, d.filename().size() - 4));
+            }
+        }
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;
@@ -418,7 +426,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
         ImGui::InputText("##sourcePath", &path);
 
 #ifdef EMSCRIPTEN
-        // on emscripten we cannot use local sources, nor we have the support for remote ones yet
+        // on emscripten we cannot use local sources
         const bool okEnabled = path.starts_with("http://");
 #else
         const bool okEnabled = !path.empty();
@@ -428,6 +436,13 @@ void OpenDashboardPage::drawAddSourcePopup() {
         }
         ImGui::EndPopup();
     }
+}
+
+std::shared_ptr<DashboardDescription> OpenDashboardPage::get(const size_t index) {
+    if (m_dashboards.size() > index) {
+        return { m_dashboards.at(index) };
+    }
+    return {};
 }
 
 } // namespace DigitizerUi

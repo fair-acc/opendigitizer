@@ -20,10 +20,11 @@ public:
     OpenDashboardPage();
     ~OpenDashboardPage();
 
-    void draw(App *app);
+    void                                  draw(App *app);
 
-    void addSource(std::string_view path);
-    void addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n);
+    void                                  addSource(std::string_view path);
+    void                                  addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n);
+    std::shared_ptr<DashboardDescription> get(const size_t index);
 
 private:
     void                                               drawAddSourcePopup();

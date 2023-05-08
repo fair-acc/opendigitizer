@@ -8,6 +8,9 @@
 #include <string_view>
 #include <vector>
 
+#include <cmrc/cmrc.hpp>
+CMRC_DECLARE(sample_dashboards);
+
 #ifdef EMSCRIPTEN
 #include "emscripten_compat.h"
 #endif

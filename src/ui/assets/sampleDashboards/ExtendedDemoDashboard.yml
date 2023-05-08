@@ -1,0 +1,117 @@
+sources:
+  - name: sine source 3.out
+    block: sine source 3
+    port: 0
+    color: 4279072064
+  - name: sine source 4.out
+    block: sine source 4
+    port: 0
+    color: 4285507928
+  - name: sine source 5.out
+    block: sine source 5
+    port: 0
+    color: 4291210500
+  - name: sine source 6.out
+    block: sine source 6
+    port: 0
+    color: 4285336815
+  - name: source for sink 1.out
+    block: source for sink 1
+    port: 0
+    color: 4285977777
+  - name: source for sink 2.out
+    block: source for sink 2
+    port: 0
+    color: 4286162635
+plots:
+  - name: Plot 4
+    axes:
+      - axis: X
+        min: 0
+        max: 100
+      - axis: Y
+        min: -0.99999994039535522
+        max: 0.99999994039535522
+    sources:
+      - sine source 3.out
+    rect:
+      - 0
+      - 0
+      - 8
+      - 4
+  - name: Plot 5
+    axes:
+      - axis: X
+        min: 0
+        max: 100
+      - axis: Y
+        min: -3.2323789596557617
+        max: 3.2323942184448242
+    sources:
+      - source for sink 1.out
+    rect:
+      - 8
+      - 0
+      - 8
+      - 8
+  - name: Plot 6
+    axes:
+      - axis: X
+        min: 0
+        max: 100
+      - axis: Y
+        min: -1
+        max: 1
+    sources:
+      - sine source 4.out
+    rect:
+      - 0
+      - 4
+      - 8
+      - 4
+  - name: Plot 7
+    axes:
+      - axis: X
+        min: 0
+        max: 700
+      - axis: Y
+        min: 0
+        max: 1
+    sources:
+      - source for sink 2.out
+    rect:
+      - 8
+      - 8
+      - 8
+      - 8
+  - name: Plot 8
+    axes:
+      - axis: X
+        min: 0
+        max: 100
+      - axis: Y
+        min: -0.99999994039535522
+        max: 0.99999994039535522
+    sources:
+      - sine source 5.out
+    rect:
+      - 0
+      - 8
+      - 8
+      - 4
+  - name: Plot 9
+    axes:
+      - axis: X
+        min: 0
+        max: 100
+      - axis: Y
+        min: -1
+        max: 0.99999940395355225
+    sources:
+      - sine source 6.out
+    rect:
+      - 0
+      - 12
+      - 8
+      - 4
+flowgraphLayout: "{\"nodes\":{\"node:19042384\":{\"location\":{\"x\":406,\"y\":41},\"name\":\"sum sigs1\"},\"node:19117400\":{\"location\":{\"x\":1200,\"y\":0},\"name\":\"sink 1\"},\"node:19117536\":{\"location\":{\"x\":133,\"y\":0},\"name\":\"sine source 3\"},\"node:19117912\":{\"location\":{\"x\":133,\"y\":91},\"name\":\"sine source 4\"},\"node:19118296\":{\"location\":{\"x\":662,\"y\":92},\"name\":\"sum sigs3\"},\"node:19120168\":{\"location\":{\"x\":934,\"y\":204},\"name\":\"FFT\"},\"node:19122448\":{\"location\":{\"x\":406,\"y\":188},\"name\":\"sum sigs2\"},\"node:19132400\":{\"location\":{\"x\":133,\"y\":455},\"name\":\"source for sink 2\"},\"node:19198112\":{\"location\":{\"x\":133,\"y\":273},\"name\":\"sine source 6\"},\"node:19560360\":{\"location\":{\"x\":133,\"y\":182},\"name\":\"sine source 5\"},\"node:19561112\":{\"location\":{\"x\":1200,\"y\":91},\"name\":\"sink 2\"},\"node:7371568\":{\"location\":{\"x\":133,\"y\":364},\"name\":\"source for sink 1\"}},\"selection\":null,\"view\":{\"scroll\":{\"x\":190.050186157226562,\"y\":-0.800183236598968506},\"visible_rect\":{\"max\":{\"x\":1303.366943359375,\"y\":884.79998779296875},\"min\":{\"x\":126.700141906738281,\"y\":-0.533455550670623779}},\"zoom\":1.49999988079071045}}"
