@@ -126,10 +126,8 @@ int main(int argc, char **argv) {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     auto &app = DigitizerUi::App::instance();
-    app.schedule([&]() {
-        app.openDashboardPage.addSource("http://localhost:8080/dashboards");
-        app.openDashboardPage.addSource("example://builtin-samples");
-    });
+    app.openDashboardPage.addSource("http://localhost:8080/dashboards");
+    app.openDashboardPage.addSource("example://builtin-samples");
 #ifdef EMSCRIPTEN
     app.executable = "index.html";
 #else
@@ -191,12 +189,15 @@ int main(int argc, char **argv) {
 
     app_header::load_header_assets();
 
-    if (argc > 1) {
+    if (argc > 1) { // load dashboard if specified on the command line/query parameter
         const char *url = argv[1];
         if (strlen(url) > 0) {
             fmt::print("Loading dashboard from '{}'\n", url);
             app.loadDashboard(url);
         }
+    }
+    if (auto first_dashboard = app.openDashboardPage.get(0); app.dashboard == nullptr && first_dashboard != nullptr) { // load first dashboard if there is a dashboard available
+        app.loadDashboard(first_dashboard);
     }
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.

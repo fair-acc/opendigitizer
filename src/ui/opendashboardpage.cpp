@@ -433,4 +433,11 @@ void OpenDashboardPage::drawAddSourcePopup() {
     }
 }
 
+std::shared_ptr<DashboardDescription> OpenDashboardPage::get(const size_t index) {
+    if (m_dashboards.size() > index) {
+        return { m_dashboards.at(index) };
+    }
+    return {};
+}
+
 } // namespace DigitizerUi
