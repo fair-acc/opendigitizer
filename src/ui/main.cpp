@@ -19,10 +19,10 @@
 #include "dashboardpage.h"
 #include "fair_header.h"
 #include "flowgraph.h"
+#include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
 #include "flowgraph/datasource.h"
 #include "flowgraph/fftblock.h"
-#include "flowgraph/arithmetic_block.h"
 #include "flowgraphitem.h"
 #include "opendashboardpage.h"
 
