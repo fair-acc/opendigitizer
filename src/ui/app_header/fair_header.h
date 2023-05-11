@@ -30,6 +30,7 @@ void TextRight(const std::string_view text) {
 int    img_fair_w   = 0;
 int    img_fair_h   = 0;
 GLuint img_fair_tex = 0;
+GLuint img_fair_tex_dark = 0;
 
 bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_width, int *out_height) {
     // Load from file
@@ -69,13 +70,23 @@ bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_w
 }
 } // namespace detail
 
+enum class Style
+{
+    Light,
+    Dark
+};
+
 void load_header_assets() {
     [[maybe_unused]] bool ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png",
             &detail::img_fair_tex, &detail::img_fair_w, &detail::img_fair_h);
     IM_ASSERT(ret);
+
+    ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png",
+            &detail::img_fair_tex_dark, &detail::img_fair_w, &detail::img_fair_h);
+    IM_ASSERT(ret);
 }
 
-void draw_header_bar(std::string_view title, ImFont *title_font) {
+void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     using namespace detail;
     // draw fair logo
     auto p = ImGui::GetCursorPos();
@@ -99,7 +110,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font) {
     TextRight(std::string_view(utctime.data(), len));
 
     ImGui::SetCursorPos(p);
-    ImGui::Image((void *) (intptr_t) img_fair_tex, ImVec2(img_fair_w / 2, img_fair_h / 2));
+    ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(img_fair_w / 2, img_fair_h / 2));
 }
 
 } // namespace app_header
