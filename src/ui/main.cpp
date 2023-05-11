@@ -116,11 +116,6 @@ int main(int argc, char **argv) {
     // LoadIniSettingsFromMemory() to load settings from your own storage.
     io.IniFilename = NULL;
 
-    // Setup Dear ImGui style
-    // ImGui::StyleColorsDark();
-    // ImGui::StyleColorsClassic();
-    ImGui::StyleColorsLight();
-
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
@@ -249,12 +244,15 @@ static void main_loop(void *arg) {
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    app_header::draw_header_bar("OpenDigitizer", app->fontBigger);
+    app_header::draw_header_bar("OpenDigitizer", app->fontBigger,
+            app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
 
     const bool dashboardLoaded = app->dashboard != nullptr;
     if (!dashboardLoaded) {
         ImGui::BeginDisabled();
     }
+
+    auto pos = ImGui::GetCursorPos();
     ImGui::BeginTabBar("maintabbar");
     ImGuiID viewId;
     if (ImGui::BeginTabItem("View")) {
@@ -321,6 +319,19 @@ static void main_loop(void *arg) {
             app->dashboard->saveRemoteServiceFlowgraph(service);
         }
     }
+
+    ImGui::SetCursorPos(pos + ImVec2(width - 50, 0));
+    ImGui::PushFont(app->fontIcons);
+    if (app->style() == DigitizerUi::Style::Light) {
+        if (ImGui::Button("")) {
+            app->setStyle(DigitizerUi::Style::Dark);
+        }
+    } else if (app->style() == DigitizerUi::Style::Dark) {
+        if (ImGui::Button("")) {
+            app->setStyle(DigitizerUi::Style::Light);
+        }
+    }
+    ImGui::PopFont();
 
     ImGui::End();
 

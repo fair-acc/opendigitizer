@@ -6,6 +6,7 @@
 
 #include <imgui_node_editor.h>
 
+#include "common.h"
 #include "flowgraph.h"
 #include "imguiutils.h"
 
@@ -25,6 +26,7 @@ public:
     std::string                      settings(FlowGraph *fg) const;
     void                             setSettings(FlowGraph *fg, const std::string &settings);
     void                             clear();
+    void                             setStyle(Style style);
 
 private:
     enum class Alignment {
