@@ -6,6 +6,10 @@
 
 namespace DigitizerUi {
 
+App::App() {
+    setStyle(Style::Light);
+}
+
 App &App::instance() {
     static App app;
     return app;
@@ -48,6 +52,19 @@ void App::loadDashboard(std::string_view url) {
 
 void App::closeDashboard() {
     dashboard = {};
+}
+
+void App::setStyle(Style style) {
+    switch (style) {
+    case Style::Dark:
+        ImGui::StyleColorsDark();
+        break;
+    case Style::Light:
+        ImGui::StyleColorsLight();
+        break;
+    }
+    m_style = style;
+    fgItem.setStyle(style);
 }
 
 void App::schedule(fu2::unique_function<void()> &&cb) {

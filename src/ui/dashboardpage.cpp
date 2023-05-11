@@ -273,17 +273,19 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
 
     ImGui::BeginChild("DND_RIGHT");
 
-    auto  size = ImGui::GetContentRegionAvail();
-    float w    = size.x / float(gridSizeW);
-    float h    = size.y / float(gridSizeH);
+    auto           size          = ImGui::GetContentRegionAvail();
+    float          w             = size.x / float(gridSizeW);
+    float          h             = size.y / float(gridSizeH);
+
+    const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
 
     if (mode == Mode::Layout) {
         auto pos = ImGui::GetCursorScreenPos();
         for (float x = pos.x; x < pos.x + size.x; x += w) {
-            ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + size.y }, 0x40000000);
+            ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + size.y }, gridLineColor);
         }
         for (float y = pos.y; y < pos.y + size.y; y += h) {
-            ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + size.x, y }, 0x40000000);
+            ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + size.x, y }, gridLineColor);
         }
     }
 
@@ -300,6 +302,10 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
     }
 
     Dashboard::Plot *toDelete = nullptr;
+
+    // with the dark style the plot frame would have the same color as a button. make it have the
+    // same color as the window background instead.
+    ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
     for (auto &plot : dashboard->plots()) {
         const int offset       = mode == Mode::Layout ? 5 : 0;

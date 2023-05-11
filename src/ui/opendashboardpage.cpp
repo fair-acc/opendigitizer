@@ -1,5 +1,6 @@
 #include "opendashboardpage.h"
 #include "app.h"
+#include "imgui.h"
 #include "imguiutils.h"
 
 #include <IoSerialiserJson.hpp>
@@ -250,10 +251,10 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::PushFont(app->fontBig);
         h += ImGui::GetTextLineHeightWithSpacing();
 
-        auto     pp       = ImGui::GetCursorScreenPos();
-        auto    &style    = ImGui::GetStyle();
-        auto     colorVec = style.Colors[dashboardCount++ % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt];
-        uint32_t color    = 0xff | uint32_t(colorVec.x * 0xff) << 24 | uint32_t(colorVec.y * 0xff) << 16 | uint32_t(colorVec.z * 0xff) << 8;
+        auto  pp       = ImGui::GetCursorScreenPos();
+        auto &style    = ImGui::GetStyle();
+        auto  colorVec = style.Colors[dashboardCount++ % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt];
+        auto  color    = ImGui::ColorConvertFloat4ToU32(colorVec);
         ImGui::GetWindowDrawList()->AddRectFilled(pp, pp + ImVec2(size.x, h), color);
 
         // selected = ImGui::Selectable("", selected, 0, { size.x, h });
