@@ -3,6 +3,7 @@
 
 #include <function2/function2.hpp>
 
+#include "common.h"
 #include "dashboard.h"
 #include "dashboardpage.h"
 #include "flowgraph.h"
@@ -24,6 +25,9 @@ public:
     void        loadDashboard(std::string_view url);
     void        closeDashboard();
 
+    void         setStyle(Style style);
+    inline Style style() const { return m_style; }
+
     // schedule a function to be called at the next opportunity on the main thread
     void                                      schedule(fu2::unique_function<void()> &&callback);
 
@@ -43,6 +47,10 @@ public:
     ImFont                                   *fontIcons;
     ImFont                                   *fontIconsSolid;
 
+private:
+    App();
+
+    Style                                     m_style = Style::Light;
     std::vector<fu2::unique_function<void()>> m_callbacks[2];
     std::mutex                                m_callbacksMutex;
 };

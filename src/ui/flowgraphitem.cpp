@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "app.h"
 #include "flowgraph.h"
 #include "imguiutils.h"
 
@@ -58,6 +59,26 @@ std::string FlowGraphItem::settings(FlowGraph *fg) const {
     return json.dump();
 }
 
+static void setEditorStyle(ax::NodeEditor::EditorContext *ed, Style s) {
+    ax::NodeEditor::SetCurrentEditor(ed);
+    auto &style        = ax::NodeEditor::GetStyle();
+    style.NodeRounding = 0;
+    style.PinRounding  = 0;
+
+    switch (s) {
+    case Style::Dark:
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = { 0.1, 0.1, 0.1, 1 };
+        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.2, 0.2, 0.2, 1 };
+        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.7, 0.7, 0.7, 1 };
+        break;
+    case Style::Light:
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = { 1, 1, 1, 1 };
+        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.94, 0.92, 1, 1 };
+        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
+        break;
+    }
+}
+
 void FlowGraphItem::setSettings(FlowGraph *fg, const std::string &settings) {
     auto &c              = m_editors[fg];
     c.config.UserPointer = &c;
@@ -89,13 +110,13 @@ void FlowGraphItem::setSettings(FlowGraph *fg, const std::string &settings) {
 
     c.editor = ax::NodeEditor::CreateEditor(&c.config);
     ax::NodeEditor::SetCurrentEditor(c.editor);
+    setEditorStyle(c.editor, App::instance().style());
+}
 
-    auto &style                                         = ax::NodeEditor::GetStyle();
-    style.NodeRounding                                  = 0;
-    style.PinRounding                                   = 0;
-    style.Colors[ax::NodeEditor::StyleColor_Bg]         = { 1, 1, 1, 1 };
-    style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.94, 0.92, 1, 1 };
-    style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
+void FlowGraphItem::setStyle(Style s) {
+    for (auto &e : m_editors) {
+        setEditorStyle(e.second.editor, s);
+    }
 }
 
 void FlowGraphItem::clear() {
@@ -103,36 +124,69 @@ void FlowGraphItem::clear() {
 }
 
 static uint32_t colorForDataType(DataType t) {
-    switch (t) {
-    case DataType::ComplexFloat64: return 0xff795548;
-    case DataType::ComplexFloat32: return 0xff2196F3;
-    case DataType::ComplexInt64: return 0xff8BC34A;
-    case DataType::ComplexInt32: return 0xff4CAF50;
-    case DataType::ComplexInt16: return 0xffFFC107;
-    case DataType::ComplexInt8: return 0xff9C27B0;
-    case DataType::Float64: return 0xff00BCD4;
-    case DataType::Float32: return 0xffF57C00;
-    case DataType::Int64: return 0xffCDDC39;
-    case DataType::Int32: return 0xff009688;
-    case DataType::Int16: return 0xffFFEB3B;
-    case DataType::Int8: return 0xffD500F9;
-    case DataType::Bits: return 0xffEA80FC;
-    case DataType::AsyncMessage: return 0xffDBDBD;
-    case DataType::BusConnection: return 0xffffffff;
-    case DataType::Wildcard: return 0xffffffff;
-    case DataType::Untyped: return 0xffffffff;
+    if (App::instance().style() == Style::Light) {
+        switch (t) {
+        case DataType::ComplexFloat64: return 0xff795548;
+        case DataType::ComplexFloat32: return 0xff2196F3;
+        case DataType::ComplexInt64: return 0xff8BC34A;
+        case DataType::ComplexInt32: return 0xff4CAF50;
+        case DataType::ComplexInt16: return 0xffFFC107;
+        case DataType::ComplexInt8: return 0xff9C27B0;
+        case DataType::Float64: return 0xff00BCD4;
+        case DataType::Float32: return 0xffF57C00;
+        case DataType::Int64: return 0xffCDDC39;
+        case DataType::Int32: return 0xff009688;
+        case DataType::Int16: return 0xffFFEB3B;
+        case DataType::Int8: return 0xffD500F9;
+        case DataType::Bits: return 0xffEA80FC;
+        case DataType::AsyncMessage: return 0xffDBDBDB;
+        case DataType::BusConnection: return 0xffffffff;
+        case DataType::Wildcard: return 0xffffffff;
+        case DataType::Untyped: return 0xffffffff;
+        }
+    } else {
+        switch (t) {
+        case DataType::ComplexFloat64: return 0xff86aab8;
+        case DataType::ComplexFloat32: return 0xffde690c;
+        case DataType::ComplexInt64: return 0xff743cb5;
+        case DataType::ComplexInt32: return 0xffb350af;
+        case DataType::ComplexInt16: return 0xff003ef8;
+        case DataType::ComplexInt8: return 0xff63d84f;
+        case DataType::Float64: return 0xffff432b;
+        case DataType::Float32: return 0xff0a83ff;
+        case DataType::Int64: return 0xff3223c6;
+        case DataType::Int32: return 0xffff6977;
+        case DataType::Int16: return 0xff0014c4;
+        case DataType::Int8: return 0xff2aff06;
+        case DataType::Bits: return 0xff158003;
+        case DataType::AsyncMessage: return 0xff242424;
+        case DataType::BusConnection: return 0xff000000;
+        case DataType::Wildcard: return 0xff000000;
+        case DataType::Untyped: return 0xff000000;
+        }
     }
     assert(0);
     return 0;
 }
 
-static uint32_t darken(uint32_t c) {
-    uint32_t r = c & 0xff000000;
-    for (int i = 0; i < 3; ++i) {
-        int shift = 8 * i;
-        r |= uint32_t(((c >> shift) & 0xff) * 0.5) << shift;
+static uint32_t darkenOrLighten(uint32_t color) {
+    if (App::instance().style() == Style::Light) {
+        uint32_t r = color & 0xff000000;
+        for (int i = 0; i < 3; ++i) {
+            int shift = 8 * i;
+            r |= uint32_t(((color >> shift) & 0xff) * 0.5) << shift;
+        }
+        return r;
+    } else {
+        uint32_t r = color & 0xff000000;
+        for (int i = 0; i < 3; ++i) {
+            int      shift   = 8 * i;
+            uint32_t channel = (color >> shift) & 0xff;
+            channel          = 0xff - ((0xff - channel) / 2);
+            r |= channel << shift;
+        }
+        return r;
     }
-    return r;
 }
 
 static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2 &p, ImVec2 size) {
@@ -161,7 +215,7 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
         const std::string &name, DataType type) {
     auto p = ImGui::GetCursorScreenPos();
     drawList->AddRectFilled(p, p + rectSize, colorForDataType(type));
-    drawList->AddRect(p, p + rectSize, darken(colorForDataType(type)));
+    drawList->AddRect(p, p + rectSize, darkenOrLighten(colorForDataType(type)));
 
     auto y = ImGui::GetCursorPosY();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textMargin);
@@ -371,13 +425,14 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         addBlock(*b);
     }
 
+    const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
     for (auto &c : fg->connections()) {
         ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(c.ports[0]), ax::NodeEditor::PinId(c.ports[1]),
-                { 0, 0, 0, 1 });
+                linkColor);
     }
 
     // Handle creation action, returns true if editor want to create new object (node or link)
-    if (ax::NodeEditor::BeginCreate({ 0, 0, 0, 1 })) {
+    if (ax::NodeEditor::BeginCreate(linkColor)) {
         ax::NodeEditor::PinId inputPinId, outputPinId;
         if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
             // QueryNewLink returns true if editor want to create new link between pins.
