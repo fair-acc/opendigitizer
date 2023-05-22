@@ -260,10 +260,10 @@ public:
     std::function<void(Block *)> blockDeletedCallback;
 
 private:
-    std::vector<std::unique_ptr<Block>>                         m_sourceBlocks;
-    std::vector<std::unique_ptr<Block>>                         m_sinkBlocks;
-    std::vector<std::unique_ptr<Block>>                         m_blocks;
-    plf::colony<Connection>                                     m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
+    std::vector<std::unique_ptr<Block>> m_sourceBlocks;
+    std::vector<std::unique_ptr<Block>> m_sinkBlocks;
+    std::vector<std::unique_ptr<Block>> m_blocks;
+    plf::colony<Connection>             m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
     struct RemoteSource {
         BlockType  *type;
         std::string uri;

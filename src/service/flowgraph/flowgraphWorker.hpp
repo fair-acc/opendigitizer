@@ -32,8 +32,8 @@ using namespace opencmw::majordomo;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class FlowgraphWorker : public Worker<serviceName, FilterContext, Flowgraph, Flowgraph, Meta...> {
-    Flowgraph   flowgraph;
-    std::mutex  flowgraphLock;
+    Flowgraph  flowgraph;
+    std::mutex flowgraphLock;
 
 public:
     using super_t = Worker<serviceName, FilterContext, Flowgraph, Flowgraph, Meta...>;
