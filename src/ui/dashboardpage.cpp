@@ -273,9 +273,9 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
 
     ImGui::BeginChild("DND_RIGHT");
 
-    auto  size = ImGui::GetContentRegionAvail();
-    float w    = size.x / float(gridSizeW);
-    float h    = size.y / float(gridSizeH);
+    auto           size          = ImGui::GetContentRegionAvail();
+    float          w             = size.x / float(gridSizeW);
+    float          h             = size.y / float(gridSizeH);
 
     const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
 
