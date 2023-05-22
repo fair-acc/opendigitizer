@@ -24,7 +24,7 @@ public:
 
     std::string                      settings(FlowGraph *fg) const;
     void                             setSettings(FlowGraph *fg, const std::string &settings);
-    void                  clear();
+    void                             clear();
 
 private:
     enum class Alignment {

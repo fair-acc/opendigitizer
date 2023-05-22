@@ -219,7 +219,7 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed             = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
         for (int i = 0; i < b->type->outputs.size(); ++i) {

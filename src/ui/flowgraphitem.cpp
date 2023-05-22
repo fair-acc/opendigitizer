@@ -554,7 +554,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
                 return {};
             }
             return std::pair{ it.second.get(), it.first };
-        });
+                   });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
         if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
