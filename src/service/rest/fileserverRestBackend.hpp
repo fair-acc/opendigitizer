@@ -21,7 +21,7 @@ public:
     void registerHandlers() override {
         _svr.set_mount_point("/", _serverRoot.string());
 
-        _svr.Post("/stdio.html", [](const httplib::Request &/*request*/, httplib::Response &response) {
+        _svr.Post("/stdio.html", [](const httplib::Request & /*request*/, httplib::Response &response) {
             response.set_content("", "text/plain");
         });
 

@@ -57,7 +57,7 @@ int main() {
 
     // start some simple subscription client
     fmt::print("starting some client subscriptions\n");
-    const opencmw::zmq::Context                                             zctx{};
+    const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
     opencmw::client::ClientContext client{ std::move(clients) };

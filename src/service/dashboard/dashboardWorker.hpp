@@ -55,8 +55,8 @@ public:
                 return nullptr;
             };
 
-            fmt::print("E {}\n",ctx.request.endpoint);
-            auto                          uri   = ctx.request.endpoint;
+            fmt::print("E {}\n", ctx.request.endpoint);
+            auto                          uri = ctx.request.endpoint;
             std::filesystem::path         path(uri.path().value_or("/"));
             std::vector<std::string_view> parts;
 
@@ -142,7 +142,8 @@ public:
 
                     if (newDashboard) {
                         RequestContext rawCtx;
-                        rawCtx.reply.endpoint = opencmw::URI<>("/dashboards"s);;
+                        rawCtx.reply.endpoint = opencmw::URI<>("/dashboards"s);
+                        ;
 
                         opencmw::IoBuffer buffer;
                         opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);

@@ -12,10 +12,10 @@
 
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
-using opencmw::mdp::Command;
-using opencmw::mdp::Message;
 using opencmw::majordomo::Settings;
 using opencmw::majordomo::Worker;
+using opencmw::mdp::Command;
+using opencmw::mdp::Message;
 using opencmw::zmq::Context;
 
 const boost::ut::suite basic_acq_worker_tests = [] {
