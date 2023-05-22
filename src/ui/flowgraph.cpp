@@ -10,7 +10,6 @@
 #include <opencmw.hpp>
 #ifndef EMSCRIPTEN
 #include <IoSerialiserJson.hpp>
-#include <majordomo/Message.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
 #endif

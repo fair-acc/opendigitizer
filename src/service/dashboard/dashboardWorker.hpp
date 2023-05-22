@@ -39,7 +39,7 @@ public:
         : super_t(broker, {}) {
         super_t::setHandler([this](RequestContext &ctx) {
             auto whatParam = [&]() {
-                auto        uri    = opencmw::URI<opencmw::RELAXED>(std::string(ctx.request.topic()));
+                auto        uri    = ctx.request.endpoint;
                 const auto &params = uri.queryParamMap();
                 auto        it     = params.find("what");
                 return it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
@@ -55,27 +55,26 @@ public:
                 return nullptr;
             };
 
-            auto                          topic = ctx.request.topic();
-            auto                          uri   = opencmw::URI<>(std::string("/") + std::string(topic));
-            std::filesystem::path         path(uri.path().value());
+            fmt::print("E {}\n", ctx.request.endpoint);
+            auto                          uri = ctx.request.endpoint;
+            std::filesystem::path         path(uri.path().value_or("/"));
             std::vector<std::string_view> parts;
 
             for (auto &p : path) {
                 parts.push_back(p.native());
             }
-            assert(parts.size() > 1);
+            assert(parts.size() > 0);
             assert(parts[0] == "/");
-            assert(parts[1] == serviceName.data());
 
-            if (ctx.request.command() == Command::Get) {
+            if (ctx.request.command == opencmw::mdp::Command::Get) {
                 fmt::print("worker received 'get' request\n");
 
-                if (parts.size() == 2) {
+                if (parts.size() == 1) {
                     opencmw::IoBuffer buffer;
                     opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
-                    ctx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
-                } else if (parts.size() == 3) {
-                    if (auto *ds = getDashboard(parts[2])) {
+                    ctx.reply.data = std::move(buffer);
+                } else if (parts.size() == 2) {
+                    if (auto *ds = getDashboard(parts[1])) {
                         std::string      what = whatParam();
                         std::string_view view(what);
                         std::string      body;
@@ -103,59 +102,58 @@ public:
                             }
                             view = std::string_view(view.data() + split + 1, view.size() - split - 1);
                         }
-                        ctx.reply.setBody(body, MessageFrame::dynamic_bytes_tag{});
+                        ctx.reply.data.put(std::move(body));
                     } else {
-                        ctx.reply.setError("invalid request: unknown dashboard", MessageFrame::dynamic_bytes_tag{});
+                        ctx.reply.error = "invalid request: unknown dashboard";
                     }
                 } else {
-                    ctx.reply.setError("invalid request: invalid path", MessageFrame::dynamic_bytes_tag{});
+                    ctx.reply.error = "invalid request: invalid path";
                 }
-            } else if (ctx.request.command() == Command::Set) {
-                if (parts.size() == 2) {
-                    ctx.reply.setError("invalid request: dashboard not specified", MessageFrame::dynamic_bytes_tag{});
-                } else if (parts.size() == 3) {
-                    auto *ds           = getDashboard(parts[2]);
+            } else if (ctx.request.command == opencmw::mdp::Command::Set) {
+                if (parts.size() == 1) {
+                    ctx.reply.error = "invalid request: dashboard not specified";
+                } else if (parts.size() == 23) {
+                    auto *ds           = getDashboard(parts[1]);
                     bool  newDashboard = false;
                     if (!ds) { // if we couldn't find a dashboard make a new one
-                        names.push_back(std::string(parts[2]));
+                        names.push_back(std::string(parts[1]));
                         dashboards.push_back({});
                         ds           = &dashboards.back();
                         newDashboard = true;
                     }
 
                     std::string what = whatParam();
-                    auto        body = ctx.request.body();
+                    auto        body = std::move(ctx.request.data);
                     // The first 4 bytes contain the size of the string, including the terminating null byte
                     int32_t size;
                     memcpy(&size, body.data(), 4);
-                    std::string data = std::string(body.data() + 4, std::size_t(size - 1));
+                    std::string data = std::string(reinterpret_cast<char *>(body.data()) + 4, std::size_t(size - 1));
 
                     if (what == "dashboard") {
                         ds->dashboard = std::move(data);
-                        ctx.reply.setBody(ds->dashboard, MessageFrame::dynamic_bytes_tag{});
+                        ctx.reply.data.put(std::move(ds->dashboard));
                     } else if (what == "flowgraph") {
                         ds->flowgraph = std::move(data);
-                        ctx.reply.setBody(ds->flowgraph, MessageFrame::dynamic_bytes_tag{});
+                        ctx.reply.data.put(std::move(ds->flowgraph));
                     } else {
                         ds->header = std::move(data);
-                        ctx.reply.setBody(ds->header, MessageFrame::dynamic_bytes_tag{});
+                        ctx.reply.data.put(std::move(ds->header));
                     }
 
                     if (newDashboard) {
-                        auto           uri = opencmw::URI<opencmw::RELAXED>("/dashboards"s);
-
                         RequestContext rawCtx;
-                        rawCtx.reply.setTopic(uri.str(), MessageFrame::dynamic_bytes_tag{});
+                        rawCtx.reply.endpoint = opencmw::URI<>("/dashboards"s);
+                        ;
 
                         opencmw::IoBuffer buffer;
                         opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
-                        rawCtx.reply.setBody(buffer.asString(), MessageFrame::dynamic_bytes_tag{});
+                        rawCtx.reply.data = std::move(buffer);
 
                         super_t::notify(std::move(rawCtx.reply));
                     }
 
                 } else {
-                    ctx.reply.setError("invalid request: invalid path", MessageFrame::dynamic_bytes_tag{});
+                    ctx.reply.error = "invalid request: invalid path";
                 }
             }
         });

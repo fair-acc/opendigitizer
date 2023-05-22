@@ -73,7 +73,7 @@ public:
         });
 
         super_t::setCallback([this](RequestContext &rawCtx, const TimeDomainContext &requestContext, const Empty &, TimeDomainContext & /*replyContext*/, Acquisition &out) {
-            if (rawCtx.request.command() == Command::Get) {
+            if (rawCtx.request.command == opencmw::mdp::Command::Get) {
                 // for real data, where we cannot generate the data on the fly, the get has to implement some sort of caching
                 std::chrono::time_point         update = std::chrono::system_clock::now();
                 si::time<nanosecond, ::int64_t> triggerStamp{ std::chrono::duration_cast<std::chrono::nanoseconds>(update.time_since_epoch()).count() };
