@@ -2,6 +2,7 @@
 #include <majordomo/Broker.hpp>
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
+#include <zmq/ZmqUtils.hpp>
 
 #include <fmt/format.h>
 #define __cpp_lib_source_location
@@ -11,11 +12,11 @@
 
 using opencmw::majordomo::Broker;
 using opencmw::majordomo::BrokerMessage;
-using opencmw::majordomo::Command;
-using opencmw::majordomo::MdpMessage;
-using opencmw::majordomo::MessageFrame;
+using opencmw::mdp::Command;
+using opencmw::mdp::Message;
 using opencmw::majordomo::Settings;
 using opencmw::majordomo::Worker;
+using opencmw::zmq::Context;
 
 const boost::ut::suite basic_acq_worker_tests = [] {
     using namespace boost::ut;
@@ -57,11 +58,11 @@ const boost::ut::suite basic_acq_worker_tests = [] {
         std::atomic<int> receivedA{ 0 };
         std::atomic<int> receivedAB{ 0 };
         client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"), [&receivedA](const opencmw::mdp::Message &update) {
-            fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName.str(), update.endpoint.str());
+            fmt::print("Client('A') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
             receivedA++;
         });
         client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition"), [&receivedAB](const opencmw::mdp::Message &update) {
-            fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName.str(), update.endpoint.str());
+            fmt::print("Client('A,B') received message from service '{}' for endpoint '{}'\n", update.serviceName, update.endpoint.str());
             receivedAB++;
         });
 

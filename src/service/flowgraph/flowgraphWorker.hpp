@@ -41,10 +41,10 @@ public:
     explicit FlowgraphWorker(const BrokerType &broker)
         : super_t(broker, {}) {
         super_t::setCallback([this](const RequestContext &rawCtx, const FilterContext &filterIn, const Flowgraph &in, FilterContext &filterOut, Flowgraph &out) {
-            if (rawCtx.request.command() == Command::Get) {
+            if (rawCtx.request.command == opencmw::mdp::Command::Get) {
                 fmt::print("worker received 'get' request\n");
                 handleGetRequest(filterIn, filterOut, out);
-            } else if (rawCtx.request.command() == Command::Set) {
+            } else if (rawCtx.request.command == opencmw::mdp::Command::Set) {
                 fmt::print("worker received 'set' request\n");
                 handleSetRequest(filterIn, filterOut, in, out);
             }
