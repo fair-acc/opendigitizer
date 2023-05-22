@@ -55,7 +55,6 @@ public:
                 return nullptr;
             };
 
-            fmt::print("E {}\n", ctx.request.endpoint);
             auto                          uri = ctx.request.endpoint;
             std::filesystem::path         path(uri.path().value_or("/"));
             std::vector<std::string_view> parts;
@@ -102,7 +101,7 @@ public:
                             }
                             view = std::string_view(view.data() + split + 1, view.size() - split - 1);
                         }
-                        ctx.reply.data.put(std::move(body));
+                        ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(body));
                     } else {
                         ctx.reply.error = "invalid request: unknown dashboard";
                     }
@@ -112,7 +111,7 @@ public:
             } else if (ctx.request.command == opencmw::mdp::Command::Set) {
                 if (parts.size() == 1) {
                     ctx.reply.error = "invalid request: dashboard not specified";
-                } else if (parts.size() == 23) {
+                } else if (parts.size() == 2) {
                     auto *ds           = getDashboard(parts[1]);
                     bool  newDashboard = false;
                     if (!ds) { // if we couldn't find a dashboard make a new one
@@ -131,13 +130,13 @@ public:
 
                     if (what == "dashboard") {
                         ds->dashboard = std::move(data);
-                        ctx.reply.data.put(std::move(ds->dashboard));
+                        ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(ds->dashboard));
                     } else if (what == "flowgraph") {
                         ds->flowgraph = std::move(data);
-                        ctx.reply.data.put(std::move(ds->flowgraph));
+                        ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(ds->flowgraph));
                     } else {
                         ds->header = std::move(data);
-                        ctx.reply.data.put(std::move(ds->header));
+                        ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(ds->header));
                     }
 
                     if (newDashboard) {
