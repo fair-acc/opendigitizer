@@ -251,10 +251,10 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::PushFont(app->fontBig);
         h += ImGui::GetTextLineHeightWithSpacing();
 
-        auto     pp       = ImGui::GetCursorScreenPos();
-        auto    &style    = ImGui::GetStyle();
-        auto     colorVec = style.Colors[dashboardCount++ % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt];
-        auto color = ImGui::ColorConvertFloat4ToU32(colorVec);
+        auto  pp       = ImGui::GetCursorScreenPos();
+        auto &style    = ImGui::GetStyle();
+        auto  colorVec = style.Colors[dashboardCount++ % 2 == 0 ? ImGuiCol_TableRowBg : ImGuiCol_TableRowBgAlt];
+        auto  color    = ImGui::ColorConvertFloat4ToU32(colorVec);
         ImGui::GetWindowDrawList()->AddRectFilled(pp, pp + ImVec2(size.x, h), color);
 
         // selected = ImGui::Selectable("", selected, 0, { size.x, h });

@@ -27,9 +27,9 @@ void TextRight(const std::string_view text) {
     ImGui::Text("%s", text.data());
 }
 
-int    img_fair_w   = 0;
-int    img_fair_h   = 0;
-GLuint img_fair_tex = 0;
+int    img_fair_w        = 0;
+int    img_fair_h        = 0;
+GLuint img_fair_tex      = 0;
 GLuint img_fair_tex_dark = 0;
 
 bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_width, int *out_height) {
@@ -70,8 +70,7 @@ bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_w
 }
 } // namespace detail
 
-enum class Style
-{
+enum class Style {
     Light,
     Dark
 };
