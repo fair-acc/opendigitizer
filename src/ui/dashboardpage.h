@@ -25,8 +25,6 @@ class DashboardPage {
     };
 
 public:
-
-
     enum class Mode {
         View,
         Layout

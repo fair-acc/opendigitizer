@@ -88,11 +88,11 @@ void load_header_assets() {
 void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     using namespace detail;
     // localtime
-    const auto clock = std::chrono::system_clock::now();
-    const auto utcClock = fmt::format("{:%Y-%m-%d %H:%M:%S (UTC%z)}", clock);
+    const auto clock         = std::chrono::system_clock::now();
+    const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (UTC%z)}", clock);
     const auto utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
-    const auto topLeft = ImGui::GetCursorPos();
+    const auto topLeft       = ImGui::GetCursorPos();
     // draw title
     ImGui::PushFont(title_font);
     const auto titleSize = ImGui::CalcTextSize(title.data());
