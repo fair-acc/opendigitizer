@@ -59,6 +59,7 @@ public:
         int         port;
         std::string name;
         uint32_t    color;
+        bool        visible{true};
 
         inline bool operator==(const Source &s) const { return s.block == block && s.port == port; };
     };
