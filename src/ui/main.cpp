@@ -41,23 +41,26 @@ struct SDLState {
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
-    auto         fs   = cmrc::fonts::get_filesystem();
-    auto         file = fs.open("Roboto-Medium.ttf");
+    auto         fs   = cmrc::ui_assets::get_filesystem();
+    auto         file = fs.open("assets/xkcd/xkcd-script.ttf");
 
     ImFontConfig config;
     // high oversample to have better looking text when zooming in on the flowgraph
-    config.OversampleH = config.OversampleV = 4;
-    config.PixelSnapH                       = true;
-    config.FontDataOwnedByAtlas             = false;
+    config.OversampleH          = 4;
+    config.OversampleV          = 4;
+    config.PixelSnapH           = true;
+    config.FontDataOwnedByAtlas = false;
 
-    ImGuiIO &io                             = ImGui::GetIO();
-    app.fontNormal                          = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 16, &config);
-    app.fontBig                             = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 18, &config);
-    app.fontBigger                          = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 20, &config);
+    ImGuiIO &io                 = ImGui::GetIO();
+    app.fontNormal              = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 20, &config);
+    app.fontBig                 = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 22, &config);
+    app.fontBigger              = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 46, &config);
 
-    auto loadIconsFont                      = [&](auto name) {
+    auto loadIconsFont          = [&](auto name) {
         static const ImWchar glyphRanges[] = {
             0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
+            0xf055, 0x2b,   // circle-plus, plus
+            0xf201, 0xf83e, // fa-chart-line, fa-wave-square
             0
         };
 
@@ -68,8 +71,8 @@ static void loadFonts(DigitizerUi::App &app) {
         return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, &cfg, glyphRanges);
     };
 
-    app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.ttf");
-    app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.ttf");
+    app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.otf");
+    app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.otf");
 }
 
 int main(int argc, char **argv) {

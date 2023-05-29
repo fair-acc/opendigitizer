@@ -59,8 +59,10 @@ endif()
 include(cmake/Dependencies.cmake)
 cmrc_add_resource_library(ui_assets NAMESPACE ui_assets assets/fair-logo/FAIR_Logo_rgb_72dpi.png
                                                         assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png
-                                                        assets/fontawesome/fa-regular-400.ttf
-                                                        assets/fontawesome/fa-solid-900.ttf)
+                                                        assets/fontawesome/fa-regular-400.otf
+                                                        assets/fontawesome/fa-solid-900.otf
+                                                        assets/xkcd/xkcd.otf
+                                                        assets/xkcd/xkcd-script.ttf)
 cmrc_add_resource_library(fonts NAMESPACE fonts WHENCE ${imgui_SOURCE_DIR}/misc/fonts
                         ${imgui_SOURCE_DIR}/misc/fonts/Roboto-Medium.ttf)
 cmrc_add_resource_library(sample_dashboards NAMESPACE sample_dashboards assets/sampleDashboards/ExtendedDemoDashboard.grc

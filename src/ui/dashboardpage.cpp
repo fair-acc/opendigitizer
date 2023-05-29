@@ -218,74 +218,30 @@ constexpr int gridSizeH = 16;
 
 } // namespace
 
-DashboardPage::DashboardPage() {
+void alignForWidth(float width, float alignment = 0.5f) noexcept {
+    ImGuiStyle &style = ImGui::GetStyle();
+    float       avail = ImGui::GetContentRegionAvail().x;
+    float       off   = (avail - width) * alignment;
+    if (off > 0.0f)
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
 }
 
-DashboardPage::~DashboardPage() {
-}
-
-void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
-    // ImPlot::ShowDemoWindow();
-
-    struct DndItem {
-        Dashboard::Plot   *plotSource;
-        Dashboard::Source *source;
-    };
-
-    static constexpr auto dndType = "DND_SOURCE";
-
-    if (mode == Mode::Layout) {
-        // child window to serve as initial source for our DND items
-        ImGui::BeginChild("DND_LEFT", ImVec2(150, 400));
-
-        if (ImGui::Button("New plot")) {
-            newPlot(dashboard);
-        }
-
-        for (auto &s : dashboard->sources()) {
-            auto color = ImGui::ColorConvertU32ToFloat4(s.color);
-            ImPlot::ItemIcon(color);
-            ImGui::SameLine();
-            ImGui::Selectable(s.name.c_str(), false, 0, ImVec2(150, 0));
-            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-                DndItem dnd = { nullptr, &s };
-                ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
-                ImPlot::ItemIcon(color);
-                ImGui::SameLine();
-                ImGui::TextUnformatted(s.name.c_str());
-                ImGui::EndDragDropSource();
-            }
-        }
-        ImGui::EndChild();
-
-        if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
-                auto *dnd = static_cast<DndItem *>(payload->Data);
-                if (auto plot = dnd->plotSource) {
-                    plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
-                }
-            }
-            ImGui::EndDragDropTarget();
-        }
-
-        ImGui::SameLine();
-    }
-
-    ImGui::BeginChild("DND_RIGHT");
-
-    auto           size          = ImGui::GetContentRegionAvail();
-    float          w             = size.x / float(gridSizeW);
-    float          h             = size.y / float(gridSizeH);
+void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
+    ImGui::BeginGroup();
+    _paneSize = ImGui::GetContentRegionAvail();
+    _paneSize.y -= _legendBox.y;
+    float          w             = _paneSize.x / float(gridSizeW);
+    float          h             = _paneSize.y / float(gridSizeH);
 
     const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
 
     if (mode == Mode::Layout) {
         auto pos = ImGui::GetCursorScreenPos();
-        for (float x = pos.x; x < pos.x + size.x; x += w) {
-            ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + size.y }, gridLineColor);
+        for (float x = pos.x; x < pos.x + _paneSize.x; x += w) {
+            ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + _paneSize.y }, gridLineColor);
         }
-        for (float y = pos.y; y < pos.y + size.y; y += h) {
-            ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + size.x, y }, gridLineColor);
+        for (float y = pos.y; y < pos.y + _paneSize.y; y += h) {
+            ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + _paneSize.x, y }, gridLineColor);
         }
     }
 
@@ -308,13 +264,12 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
     for (auto &plot : dashboard->plots()) {
-        const int offset       = mode == Mode::Layout ? 5 : 0;
-        const int offset2      = offset * 2;
+        const float offset       = mode == Mode::Layout ? 5 : 0;
 
-        auto      plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
-        auto      plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };
+        auto        plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
+        auto        plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };
 
-        bool      frameHovered = [&]() {
+        bool        frameHovered = [&]() {
             if (mode != Mode::Layout) {
                 return false;
             }
@@ -338,11 +293,24 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
         }();
 
         ImGui::SetCursorPos(pos + plotPos + ImVec2(offset, offset));
-        if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(offset2, offset2), ImPlotFlags_NoChild)) {
+        const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
+        ImPlotFlags plotFlags = ImPlotFlags_NoChild;
+        plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
+        plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
+
+        if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
             for (const auto &a : plot.axes) {
-                auto axis = a.axis == Dashboard::Plot::Axis::X ? ImAxis_X1 : ImAxis_Y1;
-                ImPlot::SetupAxis(axis);
-                if (a.min < a.max) {
+                const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
+                const auto axis          = is_horizontal ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multiple axis support (-> see ImPlot demo)
+                // TODO: setup system where the label (essentially units) are derived from the signal units,
+                // e.g. right-aligned '[utc]', 'time since first injection [ms]', `[Hz]`, '[A]', '[A]', '[V]', '[ppp]', '[GeV]', ...
+                const auto      axisLabel = is_horizontal ? fmt::format("x-axis [a.u.]") : fmt::format("y-axis [a.u.]");
+
+                ImPlotAxisFlags axisFlags = ImPlotAxisFlags_None;
+                axisFlags |= is_horizontal ? (ImPlotAxisFlags_LockMin) : (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
+
+                ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
+                if (is_horizontal && a.min < a.max) {
                     ImPlot::SetupAxisLimits(axis, a.min, a.max);
                 }
             }
@@ -357,12 +325,16 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
                 if (port.dataSet.empty()) {
                     // Plot one single dummy value so that the sink shows up in the plot legend
                     float v = 0;
-                    ImPlot::PlotLine(source->name.c_str(), &v, 1);
+                    if (source->visible) {
+                        ImPlot::PlotLine(source->name.c_str(), &v, 1);
+                    }
                 } else {
                     switch (port.type) {
                     case DigitizerUi::DataType::Float32: {
-                        auto values = port.dataSet.asFloat32();
-                        ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                        if (source->visible) {
+                            auto values = port.dataSet.asFloat32();
+                            ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                        }
                         break;
                     }
                     default: break;
@@ -442,13 +414,114 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) {
                     clickedPlot   = &plot;
                 }
             }
-        }
+        } // if (ImPlot::BeginPlot() {...} TODO: method/branch is too long
     }
-    ImGui::EndChild();
+    ImGui::EndGroup();
+
+    auto plot_icon_button = [&app](std::string_view glyph, std::string_view tooltip = {}) noexcept -> bool {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
+        ImGui::PushFont(app->fontIconsSolid);
+        const bool ret = ImGui::Button(glyph.data());
+        ImGui::PopFont();
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tooltip.data());
+        }
+        ImGui::SameLine();
+        return ret;
+    };
+
+    if (mode == Mode::Layout && plot_icon_button("\uF201", "create new chart")) { // chart-line
+        newPlot(dashboard);
+    }
+
+    drawLegend(app, dashboard, mode);
+
+    ImGui::SameLine();
+    if (mode == Mode::Layout && plot_icon_button("\uf067", "add signal")) { // plus
+        // add new signal
+    }
+
+    if (true /* TODO debug flag*/) {
+        // Retrieve FPS and milliseconds per iteration
+        const float fps       = ImGui::GetIO().Framerate;
+        const float deltaTime = 1000.0f * ImGui::GetIO().DeltaTime;
+        const auto  str       = fmt::format("FPS:{:5.0f}({:4.1f}ms)", fps, deltaTime);
+        const auto  estSize   = ImGui::CalcTextSize(str.c_str());
+        alignForWidth(estSize.x, 1.0);
+        ImGui::Text("%s", str.c_str());
+    }
 
     if (toDelete) {
         dashboard->deletePlot(toDelete);
     }
+}
+void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPage::Mode &mode) noexcept {
+    alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
+    _legendBox.x = 0.f;
+    ImGui::BeginGroup();
+
+    const auto legend_item = [](const ImVec4 &color, std::string_view text, bool enabled = true) -> bool {
+        const ImVec2 cursorPos = ImGui::GetCursorPos();
+
+        // Draw colored rectangle
+        const ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+        const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
+        ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), ImGui::ColorConvertFloat4ToU32(modifiedColor));
+        bool pressed = ImGui::InvisibleButton("##Button", rectSize);
+        ImGui::SameLine();
+
+        // Draw button text with transparent background
+        ImVec2 buttonSize(rectSize.x + ImGui::CalcTextSize(text.data()).x - 4, ImGui::GetTextLineHeight());
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.1f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
+        ImGui::PushStyleColor(ImGuiCol_Text, enabled ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        pressed |= ImGui::Button(text.data(), buttonSize);
+        ImGui::PopStyleColor(4);
+        return pressed;
+    };
+
+    for (plf::colony<Dashboard::Source>::iterator iter = dashboard->sources().begin(); iter != dashboard->sources().end(); ++iter) { // N.B. colony doesn't have a bracket operator TODO: evaluate dependency
+        Dashboard::Source &signal = *iter;
+        auto               color  = ImGui::ColorConvertU32ToFloat4(signal.color);
+        if (legend_item(color, signal.name, signal.visible)) {
+            signal.visible = !signal.visible;
+        }
+        _legendBox.x += ImGui::GetItemRectSize().x;
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            DndItem dnd = { nullptr, &signal };
+            ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
+            legend_item(color, signal.name, signal.visible);
+            ImGui::EndDragDropSource();
+        }
+
+        if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
+            const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
+            if ((_legendBox.x + widthEstimate) < 0.9f * _paneSize.x) {
+                ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
+            } else {
+                _legendBox.x = 0.f; // start a new line
+            }
+        }
+    }
+    ImGui::EndGroup();
+    _legendBox.x = ImGui::GetItemRectSize().x;
+    _legendBox.y = std::max(5.f, ImGui::GetItemRectSize().y);
+
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
+            auto *dnd = static_cast<DndItem *>(payload->Data);
+            if (auto plot = dnd->plotSource) {
+                plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    // end draw legend
 }
 
 void DashboardPage::newPlot(Dashboard *dashboard) {

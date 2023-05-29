@@ -12,7 +12,7 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
-    GIT_TAG         33c5a965f55f80057f197257d1d1cdb06523e963 #v0.13
+    GIT_TAG         18758e237e8906a97ddf42de1e75793526f30ce9 #latest 2023-04-19
 )
 
 FetchContent_Declare(

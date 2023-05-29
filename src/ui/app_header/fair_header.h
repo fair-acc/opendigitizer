@@ -87,16 +87,24 @@ void load_header_assets() {
 
 void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     using namespace detail;
-    // draw fair logo
-    auto p = ImGui::GetCursorPos();
+    // localtime
+    const auto clock         = std::chrono::system_clock::now();
+    const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (UTC%z)}", clock);
+    const auto utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
+
+    const auto topLeft       = ImGui::GetCursorPos();
     // draw title
     ImGui::PushFont(title_font);
-    TextCentered(title);
+    const auto titleSize = ImGui::CalcTextSize(title.data());
+    // suppress title if it doesn't fit or is likely to overlap
+    if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
+        TextCentered(title);
+    }
     ImGui::PopFont();
-    // localtime
-    const auto clock = std::chrono::system_clock::now();
+
     ImGui::SameLine();
-    TextRight(fmt::format("{:%Y-%m-%d %H:%M:%S (UTC%z)}", clock)); // %Z should print abbreviated timezone but doesnt
+    auto pos = ImGui::GetCursorPos();
+    TextRight(utcClock); // %Z should print abbreviated timezone but doesnt
     // utc (using c-style timedate functions because of missing stdlib support)
     // const auto utc_clock = std::chrono::utc_clock::now(); // c++20 timezone is not implemented in gcc or clang yet
     // date + tz library unfortunately doesn't play too well with emscripten/fetchcontent
@@ -104,11 +112,14 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     std::time_t utc = std::chrono::time_point_cast<std::chrono::seconds>(clock).time_since_epoch().count();
     std::string utctime; // assume maximum of 32 characters for datetime length
     utctime.resize(32);
+    pos.y += ImGui::GetTextLineHeightWithSpacing();
+    ImGui::SetCursorPos(pos);
     const auto len = strftime(utctime.data(), utctime.size(), "%H:%M:%S (UTC%z)", gmtime(&utc));
     // ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetTextLineHeight() - ImGui::GetStyle().ItemSpacing.y);
     TextRight(std::string_view(utctime.data(), len));
 
-    ImGui::SetCursorPos(p);
+    // draw fair logo
+    ImGui::SetCursorPos(topLeft);
     ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(img_fair_w / 2, img_fair_h / 2));
 }
 
