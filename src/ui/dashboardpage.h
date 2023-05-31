@@ -1,8 +1,6 @@
-#ifndef DASHBOARDPAGE_H
-#define DASHBOARDPAGE_H
+#pragma once
 
-#include "dashboard.h"
-#include "imgui.h"
+#include "grid_layout.h"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,9 +28,12 @@ public:
         Layout
     };
     void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View) noexcept;
+    void drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard);
+    void drawGrid(float w, float h);
     void drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
+
+private:
+    GridLayout plot_layout;
 };
 
 } // namespace DigitizerUi
-
-#endif

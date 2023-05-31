@@ -1,12 +1,9 @@
-
 #include "dashboardpage.h"
 
 #include <fmt/format.h>
-#include <imgui.h>
 #include <implot.h>
 
 #include "app.h"
-#include "dashboard.h"
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "imguiutils.h"
@@ -226,45 +223,108 @@ void alignForWidth(float width, float alignment = 0.5f) noexcept {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
 }
 
+
+
+
+
+
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
-    ImGui::BeginGroup();
+    drawPlots(app, mode, dashboard);
+
+    auto plot_icon_button = [&app](std::string_view glyph, std::string_view tooltip = {}) noexcept -> bool {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
+        ImGui::PushFont(app->fontIconsSolid);
+        const bool ret = ImGui::Button(glyph.data());
+        ImGui::PopFont();
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", tooltip.data());
+        }
+        ImGui::SameLine();
+        return ret;
+    };
+
+    if (mode == Mode::Layout && plot_icon_button("\uF201", "create new chart")) { // chart-line
+        newPlot(dashboard);
+    }
+
+    drawLegend(app, dashboard, mode);
+
+    ImGui::SameLine();
+    if (mode == Mode::Layout && plot_icon_button("\uf067", "add signal")) { // plus
+        // add new signal
+    }
+
+    if (true /* TODO debug flag*/) {
+        // Retrieve FPS and milliseconds per iteration
+        const float fps       = ImGui::GetIO().Framerate;
+        const float deltaTime = 1000.0f * ImGui::GetIO().DeltaTime;
+        const auto  str       = fmt::format("FPS:{:5.0f}({:4.1f}ms)", fps, deltaTime);
+        const auto  estSize   = ImGui::CalcTextSize(str.c_str());
+        alignForWidth(estSize.x, 1.0);
+        ImGui::Text("%s", str.c_str());
+    }
+}
+
+static void SetupAxes(const Dashboard::Plot& plot) {
+    for (const auto &a : plot.axes) {
+        const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
+        const auto axis          = is_horizontal ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multiple axis support (-> see ImPlot demo)
+        // TODO: setup system where the label (essentially units) are derived from the signal units,
+        // e.g. right-aligned '[utc]', 'time since first injection [ms]', `[Hz]`, '[A]', '[A]', '[V]', '[ppp]', '[GeV]', ...
+        const auto      axisLabel = is_horizontal ? fmt::format("x-axis [a.u.]") : fmt::format("y-axis [a.u.]");
+
+        ImPlotAxisFlags axisFlags = ImPlotAxisFlags_None;
+        axisFlags |= is_horizontal ? (ImPlotAxisFlags_LockMin) : (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
+
+        ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
+        if (is_horizontal && a.min < a.max) {
+            ImPlot::SetupAxisLimits(axis, a.min, a.max);
+        }
+    }
+    ImPlot::SetupFinish();
+}
+
+void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard) {
+    struct Guard {
+        Guard() noexcept { ImGui::BeginGroup(); }
+        ~Guard() noexcept { ImGui::EndGroup(); }
+    } g;
+
     _paneSize = ImGui::GetContentRegionAvail();
     _paneSize.y -= _legendBox.y;
-    float          w             = _paneSize.x / float(gridSizeW);
-    float          h             = _paneSize.y / float(gridSizeH);
 
-    const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
+    float w = _paneSize.x / float(gridSizeW); // Grid width
+    float h = _paneSize.y / float(gridSizeH); // Grid height
 
-    if (mode == Mode::Layout) {
-        auto pos = ImGui::GetCursorScreenPos();
-        for (float x = pos.x; x < pos.x + _paneSize.x; x += w) {
-            ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + _paneSize.y }, gridLineColor);
-        }
-        for (float y = pos.y; y < pos.y + _paneSize.y; y += h) {
-            ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + _paneSize.x, y }, gridLineColor);
-        }
-    }
+    if (mode == Mode::Layout)
+        drawGrid(w, h);
 
-    auto                    pos           = ImGui::GetCursorPos();
-    auto                    screenPos     = ImGui::GetCursorScreenPos();
+     auto                    pos           = ImGui::GetCursorPos();
+     auto                    screenPos     = ImGui::GetCursorScreenPos();
 
-    static Dashboard::Plot *clickedPlot   = nullptr;
-    static Action           clickedAction = Action::None;
+     static Dashboard::Plot *clickedPlot   = nullptr;
+     static Action           clickedAction = Action::None;
 
-    if (mode == Mode::Layout && clickedPlot && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        updateFinalPlotSize(clickedPlot, clickedAction, w, h);
-        clickedPlot   = nullptr;
-        clickedAction = Action::None;
-    }
+     if (mode == Mode::Layout && clickedPlot && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+         updateFinalPlotSize(clickedPlot, clickedAction, w, h);
+         clickedPlot   = nullptr;
+         clickedAction = Action::None;
+     }
 
-    Dashboard::Plot *toDelete = nullptr;
+     Dashboard::Plot *toDelete = nullptr;
 
     // with the dark style the plot frame would have the same color as a button. make it have the
     // same color as the window background instead.
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
+
+    plot_layout.ArrangePlots(dashboard->plots(), GridArrangement::Horizontal);
+
     for (auto &plot : dashboard->plots()) {
-        const float offset       = mode == Mode::Layout ? 5 : 0;
+         const float offset       = mode == Mode::Layout ? 5 : 0;
 
         auto        plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
         auto        plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };
@@ -298,23 +358,9 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
         plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
+
         if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
-            for (const auto &a : plot.axes) {
-                const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
-                const auto axis          = is_horizontal ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multiple axis support (-> see ImPlot demo)
-                // TODO: setup system where the label (essentially units) are derived from the signal units,
-                // e.g. right-aligned '[utc]', 'time since first injection [ms]', `[Hz]`, '[A]', '[A]', '[V]', '[ppp]', '[GeV]', ...
-                const auto      axisLabel = is_horizontal ? fmt::format("x-axis [a.u.]") : fmt::format("y-axis [a.u.]");
-
-                ImPlotAxisFlags axisFlags = ImPlotAxisFlags_None;
-                axisFlags |= is_horizontal ? (ImPlotAxisFlags_LockMin) : (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
-
-                ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
-                if (is_horizontal && a.min < a.max) {
-                    ImPlot::SetupAxisLimits(axis, a.min, a.max);
-                }
-            }
-            ImPlot::SetupFinish();
+            SetupAxes(plot);
 
             for (auto *source : plot.sources) {
                 auto color = ImGui::ColorConvertU32ToFloat4(source->color);
@@ -416,46 +462,20 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
             }
         } // if (ImPlot::BeginPlot() {...} TODO: method/branch is too long
     }
-    ImGui::EndGroup();
-
-    auto plot_icon_button = [&app](std::string_view glyph, std::string_view tooltip = {}) noexcept -> bool {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
-        ImGui::PushFont(app->fontIconsSolid);
-        const bool ret = ImGui::Button(glyph.data());
-        ImGui::PopFont();
-        ImGui::PopStyleColor(3);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", tooltip.data());
-        }
-        ImGui::SameLine();
-        return ret;
-    };
-
-    if (mode == Mode::Layout && plot_icon_button("\uF201", "create new chart")) { // chart-line
-        newPlot(dashboard);
-    }
-
-    drawLegend(app, dashboard, mode);
-
-    ImGui::SameLine();
-    if (mode == Mode::Layout && plot_icon_button("\uf067", "add signal")) { // plus
-        // add new signal
-    }
-
-    if (true /* TODO debug flag*/) {
-        // Retrieve FPS and milliseconds per iteration
-        const float fps       = ImGui::GetIO().Framerate;
-        const float deltaTime = 1000.0f * ImGui::GetIO().DeltaTime;
-        const auto  str       = fmt::format("FPS:{:5.0f}({:4.1f}ms)", fps, deltaTime);
-        const auto  estSize   = ImGui::CalcTextSize(str.c_str());
-        alignForWidth(estSize.x, 1.0);
-        ImGui::Text("%s", str.c_str());
-    }
-
     if (toDelete) {
         dashboard->deletePlot(toDelete);
+    }
+}
+
+void DashboardPage::drawGrid(float w, float h) {
+    const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
+
+    auto           pos           = ImGui::GetCursorScreenPos();
+    for (float x = pos.x; x < pos.x + _paneSize.x; x += w) {
+        ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + _paneSize.y }, gridLineColor);
+    }
+    for (float y = pos.y; y < pos.y + _paneSize.y; y += h) {
+        ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + _paneSize.x, y }, gridLineColor);
     }
 }
 void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPage::Mode &mode) noexcept {
@@ -502,7 +522,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
             const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
             if ((_legendBox.x + widthEstimate) < 0.9f * _paneSize.x) {
-                ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
+                ImGui::SameLine();  // keep item on the same line if compatible with overall pane width
             } else {
                 _legendBox.x = 0.f; // start a new line
             }
