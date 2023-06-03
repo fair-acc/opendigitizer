@@ -119,7 +119,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
 
     // draw fair logo
     ImGui::SetCursorPos(topLeft);
-    const auto scale = titleSize.y/img_fair_h;
+    const auto scale = titleSize.y / img_fair_h;
     ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(scale * img_fair_w, scale * img_fair_h));
 }
 
