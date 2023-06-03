@@ -298,6 +298,8 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
         plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{ 0, 0 }); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
+        ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{ 3, 1 });
         if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
             for (const auto &a : plot.axes) {
                 const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
@@ -309,12 +311,31 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
                 ImPlotAxisFlags axisFlags = ImPlotAxisFlags_None;
                 axisFlags |= is_horizontal ? (ImPlotAxisFlags_LockMin) : (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 
-                ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
+                const auto estTextSize = ImGui::CalcTextSize(axisLabel.c_str()).x;
+                if (estTextSize >= a.width) {
+                    static const auto estDotSize = ImGui::CalcTextSize("...").x;
+                    const std::size_t newSize    = a.width / std::max(1.f, estTextSize) * axisLabel.length();
+                    ImPlot::SetupAxis(axis, fmt::format("...{}", axisLabel.substr(axisLabel.length() - newSize, axisLabel.length())).c_str(), axisFlags);
+                } else {
+                    ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
+                }
                 if (is_horizontal && a.min < a.max) {
                     ImPlot::SetupAxisLimits(axis, a.min, a.max);
                 }
             }
             ImPlot::SetupFinish();
+
+            const auto axisSize = ImPlot::GetPlotSize();
+
+            // compute axis pixel width for H and height for V
+            [&plot] {
+                const ImPlotRect axisLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
+                const auto       p0         = ImPlot::PlotToPixels(axisLimits.X.Min, axisLimits.Y.Min);
+                const auto       p1         = ImPlot::PlotToPixels(axisLimits.X.Max, axisLimits.Y.Max);
+                const int        xWidth     = static_cast<int>(std::abs(p1.x - p0.x));
+                const int        yHeight    = static_cast<int>(std::abs(p1.y - p0.y));
+                std::for_each(plot.axes.begin(), plot.axes.end(), [xWidth, yHeight](auto &a) { a.width = (a.axis == Dashboard::Plot::Axis::X) ? xWidth : yHeight; });
+            }();
 
             for (auto *source : plot.sources) {
                 auto color = ImGui::ColorConvertU32ToFloat4(source->color);
@@ -395,6 +416,7 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
             }
 
             ImPlot::EndPlot();
+            ImPlot::PopStyleVar(2);
 
             if (mode == Mode::Layout) {
                 if (frameHovered) {
@@ -502,7 +524,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
             const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
             if ((_legendBox.x + widthEstimate) < 0.9f * _paneSize.x) {
-                ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
+                ImGui::SameLine();  // keep item on the same line if compatible with overall pane width
             } else {
                 _legendBox.x = 0.f; // start a new line
             }
