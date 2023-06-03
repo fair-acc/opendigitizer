@@ -41,9 +41,12 @@ public:
     SDLState                  *sdlState;
     bool                       running    = true;
 
+    float                      defaultDPI= 76.2f;
+    float                      verticalDPI= defaultDPI;
     ImFont                    *fontNormal = nullptr;
     ImFont                    *fontBig    = nullptr;
     ImFont                    *fontBigger = nullptr;
+    ImFont                    *fontLarge  = nullptr;
     ImFont                    *fontIcons;
     ImFont                    *fontIconsSolid;
 
