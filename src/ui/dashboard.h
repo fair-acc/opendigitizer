@@ -75,8 +75,9 @@ public:
         std::vector<Source *> sources;
         struct AxisData {
             Axis   axis;
-            double min;
-            double max;
+            float min;
+            float max;
+            float width = 1e99;
         };
         std::vector<AxisData> axes;
 
