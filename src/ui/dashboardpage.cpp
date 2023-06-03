@@ -466,11 +466,10 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         // add new signal
     }
 
-    if (true /* TODO debug flag*/) {
+    if (app->prototypeMode) {
         // Retrieve FPS and milliseconds per iteration
         const float fps       = ImGui::GetIO().Framerate;
-        const float deltaTime = 1000.0f * ImGui::GetIO().DeltaTime;
-        const auto  str       = fmt::format("FPS:{:5.0f}({:4.1f}ms)", fps, deltaTime);
+        const auto  str       = fmt::format("FPS:{:5.0f}({:2}ms)", fps, app->execTime.count());
         const auto  estSize   = ImGui::CalcTextSize(str.c_str());
         alignForWidth(estSize.x, 1.0);
         ImGui::Text("%s", str.c_str());
