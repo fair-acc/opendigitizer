@@ -89,7 +89,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     using namespace detail;
     // localtime
     const auto clock         = std::chrono::system_clock::now();
-    const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (UTC%z)}", clock);
+    const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (LOC)}", clock);
     const auto utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
     const auto topLeft       = ImGui::GetCursorPos();
@@ -114,8 +114,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     utctime.resize(32);
     pos.y += ImGui::GetTextLineHeightWithSpacing();
     ImGui::SetCursorPos(pos);
-    const auto len = strftime(utctime.data(), utctime.size(), "%H:%M:%S (UTC%z)", gmtime(&utc));
-    // ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetTextLineHeight() - ImGui::GetStyle().ItemSpacing.y);
+    const auto len = strftime(utctime.data(), utctime.size(), "%H:%M:%S (UTC)", gmtime(&utc));
     TextRight(std::string_view(utctime.data(), len));
 
     // draw fair logo
