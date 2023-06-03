@@ -109,7 +109,7 @@ void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource>
 
 void OpenDashboardPage::draw(App *app) {
     ImGui::Spacing();
-    ImGui::PushFont(app->fontBigger);
+    ImGui::PushFont(app->fontBigger[app->prototypeMode]);
     if (app->dashboard) {
         auto desc = app->dashboard->description();
         ImGui::Text("%s (%s)", desc->name.c_str(), desc->source->path.c_str());
@@ -196,7 +196,7 @@ void OpenDashboardPage::draw(App *app) {
     }
 
     ImGui::Dummy({ 0, 30 });
-    ImGui::PushFont(app->fontBigger);
+    ImGui::PushFont(app->fontBigger[app->prototypeMode]);
     ImGui::TextUnformatted("New Digitizer Window");
     ImGui::PopFont();
     ImGui::Dummy({ indent, 00 });
@@ -206,7 +206,7 @@ void OpenDashboardPage::draw(App *app) {
     }
 
     ImGui::Dummy({ 0, 30 });
-    ImGui::PushFont(app->fontBigger);
+    ImGui::PushFont(app->fontBigger[app->prototypeMode]);
     ImGui::TextUnformatted("Load a new Dashboard");
     ImGui::PopFont();
     ImGui::Spacing();
@@ -248,7 +248,7 @@ void OpenDashboardPage::draw(App *app) {
         auto  pos  = ImGui::GetCursorPos();
         auto  size = ImGui::GetContentRegionAvail();
         float h    = ImGui::GetTextLineHeightWithSpacing() * 2;
-        ImGui::PushFont(app->fontBig);
+        ImGui::PushFont(app->fontBig[app->prototypeMode]);
         h += ImGui::GetTextLineHeightWithSpacing();
 
         auto  pp       = ImGui::GetCursorScreenPos();

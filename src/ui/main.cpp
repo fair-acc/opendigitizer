@@ -41,35 +41,39 @@ struct SDLState {
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
-    auto         fs   = cmrc::ui_assets::get_filesystem();
-    auto         file = fs.open("assets/xkcd/xkcd-script.ttf");
+    auto loadDefaultFont = [&app](auto file, std::size_t index) {
+        ImFontConfig config;
+        // high oversample to have better looking text when zooming in on the flowgraph
+        config.OversampleH          = 4;
+        config.OversampleV          = 4;
+        config.PixelSnapH           = true;
+        config.FontDataOwnedByAtlas = false;
 
-    ImFontConfig config;
-    // high oversample to have better looking text when zooming in on the flowgraph
-    config.OversampleH          = 4;
-    config.OversampleV          = 4;
-    config.PixelSnapH           = true;
-    config.FontDataOwnedByAtlas = false;
+        ImGuiIO   &io               = ImGui::GetIO();
+        const auto fontSize         = [&app]() -> std::array<float, 4> {
+            const float scalingFactor = app.verticalDPI - app.defaultDPI;
+            if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
+                return { 20, 24, 28, 46 }; // 28" monitor
+            } else if (app.verticalDPI > 200) {
+                return { 16, 22, 23, 38 }; // likely mobile monitor
+            } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
+                return { 22, 26, 30, 46 }; // likely large fixed display monitor
+            }
+            return { 18, 24, 26, 46 }; // default
+        }();
 
-    ImGuiIO   &io               = ImGui::GetIO();
-    const auto fontSize         = [&app]() -> std::array<float, 4> {
-        const float scalingFactor = app.verticalDPI - app.defaultDPI;
-        if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
-            return { 20, 24, 28, 46 }; // 28" monitor
-        } else if (app.verticalDPI > 200) {
-            return { 16, 22, 23, 38 }; // likely mobile monitor
-        } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
-            return { 22, 26, 30, 46 }; // likely large fixed display monitor
-        }
-        return { 18, 24, 26, 46 };     // default
-    }();
+        app.fontNormal[index] = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[0], &config);
+        app.fontBig[index]    = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[1], &config);
+        app.fontBigger[index] = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[2], &config);
+        app.fontLarge[index]  = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[3], &config);
+    };
 
-    app.fontNormal     = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[0], &config);
-    app.fontBig        = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[1], &config);
-    app.fontBigger     = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[2], &config);
-    app.fontLarge      = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[3], &config);
+    loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);
+    loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), 1);
+    ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
 
-    auto loadIconsFont = [&](auto name) {
+    auto loadIconsFont         = [](auto name) {
+        ImGuiIO             &io            = ImGui::GetIO();
         static const ImWchar glyphRanges[] = {
             0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
             0xf055, 0x2b,   // circle-plus, plus
@@ -226,9 +230,9 @@ int main(int argc, char **argv) {
 }
 
 static void main_loop(void *arg) {
-    DigitizerUi::App *app = static_cast<DigitizerUi::App *>(arg);
-
-    ImGuiIO          &io  = ImGui::GetIO();
+    const auto        startLoop = std::chrono::high_resolution_clock::now();
+    DigitizerUi::App *app       = static_cast<DigitizerUi::App *>(arg);
+    ImGuiIO          &io        = ImGui::GetIO();
 
     app->fireCallbacks();
 
@@ -254,7 +258,7 @@ static void main_loop(void *arg) {
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    app_header::draw_header_bar("OpenDigitizer", app->fontLarge,
+    app_header::draw_header_bar("OpenDigitizer", app->fontLarge[app->prototypeMode],
             app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
 
     const bool dashboardLoaded = app->dashboard != nullptr;
@@ -330,18 +334,48 @@ static void main_loop(void *arg) {
         }
     }
 
-    ImGui::SetCursorPos(pos + ImVec2(width - 50, 0));
+    ImGui::SetCursorPos(pos + ImVec2(width - 75, 0));
+    ImGui::PushFont(app->fontIcons);
+    if (app->prototypeMode) {
+        if (ImGui::Button("")) {
+            app->prototypeMode         = false;
+            ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
+        }
+        ImGui::PopFont();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("switch to production mode");
+        }
+    } else {
+        if (ImGui::Button("")) {
+            app->prototypeMode         = true;
+            ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
+        }
+        ImGui::PopFont();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("switch to prototype mode");
+        }
+    }
+    ImGui::SameLine();
     ImGui::PushFont(app->fontIcons);
     if (app->style() == DigitizerUi::Style::Light) {
         if (ImGui::Button("")) {
             app->setStyle(DigitizerUi::Style::Dark);
         }
+        ImGui::PopFont();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("switch to dark mode");
+        }
     } else if (app->style() == DigitizerUi::Style::Dark) {
         if (ImGui::Button("")) {
             app->setStyle(DigitizerUi::Style::Light);
         }
+        ImGui::PopFont();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("switch to light mode");
+        }
+    } else {
+        ImGui::PopFont();
     }
-    ImGui::PopFont();
 
     ImGui::End();
 
@@ -352,5 +386,8 @@ static void main_loop(void *arg) {
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    const auto stopLoop = std::chrono::high_resolution_clock::now();
+    app->execTime       = std::chrono::duration_cast<std::chrono::milliseconds>(stopLoop - startLoop);
     SDL_GL_SwapWindow(app->sdlState->window);
 }

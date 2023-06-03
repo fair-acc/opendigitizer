@@ -39,14 +39,16 @@ public:
     std::unique_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
-    bool                       running    = true;
+    bool                       running       = true;
 
-    float                      defaultDPI= 76.2f;
-    float                      verticalDPI= defaultDPI;
-    ImFont                    *fontNormal = nullptr;
-    ImFont                    *fontBig    = nullptr;
-    ImFont                    *fontBigger = nullptr;
-    ImFont                    *fontLarge  = nullptr;
+    bool                       prototypeMode = true;
+    std::chrono::milliseconds  execTime; /// time it took to handle events and draw one frame
+    float                      defaultDPI  = 76.2f;
+    float                      verticalDPI = defaultDPI;
+    std::array<ImFont *, 2>    fontNormal  = { nullptr, nullptr }; /// default font [0] production [1] prototype use
+    std::array<ImFont *, 2>    fontBig     = { nullptr, nullptr }; /// 0: production 1: prototype use
+    std::array<ImFont *, 2>    fontBigger  = { nullptr, nullptr }; /// 0: production 1: prototype use
+    std::array<ImFont *, 2>    fontLarge   = { nullptr, nullptr }; /// 0: production 1: prototype use
     ImFont                    *fontIcons;
     ImFont                    *fontIconsSolid;
 
