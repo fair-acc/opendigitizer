@@ -119,7 +119,8 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
 
     // draw fair logo
     ImGui::SetCursorPos(topLeft);
-    ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(img_fair_w / 2, img_fair_h / 2));
+    const auto scale = titleSize.y/img_fair_h;
+    ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(scale * img_fair_w, scale * img_fair_h));
 }
 
 } // namespace app_header

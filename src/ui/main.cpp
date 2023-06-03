@@ -51,12 +51,25 @@ static void loadFonts(DigitizerUi::App &app) {
     config.PixelSnapH           = true;
     config.FontDataOwnedByAtlas = false;
 
-    ImGuiIO &io                 = ImGui::GetIO();
-    app.fontNormal              = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 20, &config);
-    app.fontBig                 = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 22, &config);
-    app.fontBigger              = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 46, &config);
+    ImGuiIO   &io               = ImGui::GetIO();
+    const auto fontSize         = [&app]() -> std::array<float, 4> {
+        const float scalingFactor = app.verticalDPI - app.defaultDPI;
+        if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
+            return { 20, 24, 28, 46 }; // 28" monitor
+        } else if (app.verticalDPI > 200) {
+            return { 16, 22, 23, 38 }; // likely mobile monitor
+        } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
+            return { 22, 26, 30, 46 }; // likely large fixed display monitor
+        }
+        return { 18, 24, 26, 46 };     // default
+    }();
 
-    auto loadIconsFont          = [&](auto name) {
+    app.fontNormal     = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[0], &config);
+    app.fontBig        = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[1], &config);
+    app.fontBigger     = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[2], &config);
+    app.fontLarge      = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[3], &config);
+
+    auto loadIconsFont = [&](auto name) {
         static const ImWchar glyphRanges[] = {
             0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
             0xf055, 0x2b,   // circle-plus, plus
@@ -140,6 +153,17 @@ int main(int argc, char **argv) {
         name = fmt::format("source for sink {}", n);
         fg->addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
     };
+
+    app.verticalDPI = [&app]() -> float {
+        float diagonalDPI   = app.defaultDPI;
+        float horizontalDPI = diagonalDPI;
+        float verticalDPI   = diagonalDPI;
+        if (SDL_GetDisplayDPI(0, &diagonalDPI, &horizontalDPI, &verticalDPI) != 0) {
+            fmt::print("Failed to obtain DPI information for display 0: {}\n", SDL_GetError());
+            return app.defaultDPI;
+        }
+        return verticalDPI;
+    }();
 
 #ifndef EMSCRIPTEN
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
@@ -230,7 +254,7 @@ static void main_loop(void *arg) {
     ImGui::SetNextWindowSize({ float(width), float(height) });
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    app_header::draw_header_bar("OpenDigitizer", app->fontBigger,
+    app_header::draw_header_bar("OpenDigitizer", app->fontLarge,
             app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
 
     const bool dashboardLoaded = app->dashboard != nullptr;
