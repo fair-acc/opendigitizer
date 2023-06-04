@@ -41,7 +41,6 @@ struct SDLState {
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
-
     auto loadDefaultFont = [&app](auto file, std::size_t index) {
         ImFontConfig config;
         // high oversample to have better looking text when zooming in on the flowgraph
@@ -60,7 +59,7 @@ static void loadFonts(DigitizerUi::App &app) {
             } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
                 return { 22, 26, 30, 46 }; // likely large fixed display monitor
             }
-            return { 18, 24, 26, 46 };     // default
+            return { 18, 24, 26, 46 }; // default
         }();
 
         app.fontNormal[index] = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[0], &config);
@@ -73,8 +72,8 @@ static void loadFonts(DigitizerUi::App &app) {
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), 1);
     ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
 
-    auto loadIconsFont = [](auto name) {
-        ImGuiIO   &io               = ImGui::GetIO();
+    auto loadIconsFont         = [](auto name) {
+        ImGuiIO             &io            = ImGui::GetIO();
         static const ImWchar glyphRanges[] = {
             0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
             0xf055, 0x2b,   // circle-plus, plus
@@ -339,7 +338,7 @@ static void main_loop(void *arg) {
     ImGui::PushFont(app->fontIcons);
     if (app->prototypeMode) {
         if (ImGui::Button("")) {
-            app->prototypeMode = false;
+            app->prototypeMode         = false;
             ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
         }
         ImGui::PopFont();
@@ -348,7 +347,7 @@ static void main_loop(void *arg) {
         }
     } else {
         if (ImGui::Button("")) {
-            app->prototypeMode = true;
+            app->prototypeMode         = true;
             ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
         }
         ImGui::PopFont();
