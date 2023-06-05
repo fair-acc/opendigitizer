@@ -1,6 +1,8 @@
 #pragma once
+#pragma once
 
 #include "grid_layout.h"
+#include <imgui.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -33,7 +35,11 @@ public:
     void drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
 
 private:
+    static bool plotButton(App *app, std::string_view glyph, std::string_view tooltip = {});
+
+private:
     GridLayout plot_layout;
+
 };
 
 } // namespace DigitizerUi

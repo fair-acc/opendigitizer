@@ -223,37 +223,30 @@ void alignForWidth(float width, float alignment = 0.5f) noexcept {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
 }
 
-
-
-
-
-
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     drawPlots(app, mode, dashboard);
 
-    auto plot_icon_button = [&app](std::string_view glyph, std::string_view tooltip = {}) noexcept -> bool {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
-        ImGui::PushFont(app->fontIconsSolid);
-        const bool ret = ImGui::Button(glyph.data());
-        ImGui::PopFont();
-        ImGui::PopStyleColor(3);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", tooltip.data());
-        }
+    if (mode == Mode::Layout) {
+        if (plotButton(app, "\uF201", "create new chart")) // chart-line
+            newPlot(dashboard);
         ImGui::SameLine();
-        return ret;
-    };
-
-    if (mode == Mode::Layout && plot_icon_button("\uF201", "create new chart")) { // chart-line
-        newPlot(dashboard);
+        if (plotButton(app, "\xE2\x97\xAB", "change to the horizontal layout"))
+            plot_layout.SetArrangement(GridArrangement::Horizontal);
+        ImGui::SameLine();
+        if (plotButton(app, "\xE2\x8A\x9F", "change to the vertical layout"))
+            plot_layout.SetArrangement(GridArrangement::Vertical);
+        ImGui::SameLine();
+        if (plotButton(app, "\u229E", "change to the grid layout"))
+			plot_layout.SetArrangement(GridArrangement::Tiles);
+        ImGui::SameLine();
+        if (plotButton(app, "\u25F3", "change to the free layout"))
+			plot_layout.SetArrangement(GridArrangement::Free);
     }
 
     drawLegend(app, dashboard, mode);
 
     ImGui::SameLine();
-    if (mode == Mode::Layout && plot_icon_button("\uf067", "add signal")) { // plus
+    if (mode == Mode::Layout && plotButton(app, "\uf067", "add signal")) { // plus
         // add new signal
     }
 
@@ -268,7 +261,7 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     }
 }
 
-static void SetupAxes(const Dashboard::Plot& plot) {
+static void SetupAxes(const Dashboard::Plot &plot) {
     for (const auto &a : plot.axes) {
         const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
         const auto axis          = is_horizontal ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multiple axis support (-> see ImPlot demo)
@@ -302,37 +295,35 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
     if (mode == Mode::Layout)
         drawGrid(w, h);
 
-     auto                    pos           = ImGui::GetCursorPos();
-     auto                    screenPos     = ImGui::GetCursorScreenPos();
+    auto                    pos           = ImGui::GetCursorPos();
+    auto                    screenPos     = ImGui::GetCursorScreenPos();
 
-     static Dashboard::Plot *clickedPlot   = nullptr;
-     static Action           clickedAction = Action::None;
+    static Dashboard::Plot *clickedPlot   = nullptr;
+    static Action           clickedAction = Action::None;
 
-     if (mode == Mode::Layout && clickedPlot && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-         updateFinalPlotSize(clickedPlot, clickedAction, w, h);
-         clickedPlot   = nullptr;
-         clickedAction = Action::None;
-     }
+    if (mode == Mode::Layout && clickedPlot && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        updateFinalPlotSize(clickedPlot, clickedAction, w, h);
+        clickedPlot   = nullptr;
+        clickedAction = Action::None;
+    }
 
-     Dashboard::Plot *toDelete = nullptr;
+    Dashboard::Plot *toDelete = nullptr;
 
     // with the dark style the plot frame would have the same color as a button. make it have the
     // same color as the window background instead.
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
-
-    plot_layout.ArrangePlots(dashboard->plots(), GridArrangement::Horizontal);
+    plot_layout.ArrangePlots(dashboard->plots());
 
     for (auto &plot : dashboard->plots()) {
-         const float offset       = mode == Mode::Layout ? 5 : 0;
+        const float offset       = mode == Mode::Layout ? 5 : 0;
 
         auto        plotPos      = ImVec2(w * plot.rect.x, h * plot.rect.y);
         auto        plotSize     = ImVec2{ plot.rect.w * w, plot.rect.h * h };
 
         bool        frameHovered = [&]() {
-            if (mode != Mode::Layout) {
+            if (mode != Mode::Layout)
                 return false;
-            }
 
             if (clickedPlot == &plot && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                 updatePlotSize(clickedAction, plotPos, plotSize);
@@ -358,10 +349,8 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
         plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
         plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
-
         if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
             SetupAxes(plot);
-
             for (auto *source : plot.sources) {
                 auto color = ImGui::ColorConvertU32ToFloat4(source->color);
                 ImPlot::SetNextLineStyle(color);
@@ -544,7 +533,28 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
     // end draw legend
 }
 
+bool DashboardPage::plotButton(App *app, std::string_view glyph, std::string_view tooltip) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
+    ImGui::PushFont(app->fontIconsSolid);
+    const bool ret = ImGui::Button(glyph.data());
+    ImGui::PopFont();
+    ImGui::PopStyleColor(3);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip.data());
+    }
+    ImGui::SameLine();
+    return ret;
+}
+
 void DashboardPage::newPlot(Dashboard *dashboard) {
+    if (plot_layout.Arrangement() != GridArrangement::Free
+            && dashboard->plots().size() < GridLayout::max_plots) {
+        plot_layout.Invalidate();
+        return dashboard->newPlot(0, 0, 1, 1); // Plot will get adjusted by the layout automatically
+    }
+
     bool grid[gridSizeW][gridSizeH];
     memset(grid, 0, sizeof(grid));
 
