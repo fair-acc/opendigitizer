@@ -349,6 +349,8 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
         plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
         plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{ 0, 0 }); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
+        ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{ 3, 1 });
         if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
             // TODO: refactor this into a function
             [](decltype(plot) &plot) {
@@ -432,6 +434,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
             }
 
             ImPlot::EndPlot();
+            ImPlot::PopStyleVar(2);
 
             if (mode == Mode::Layout) {
                 if (frameHovered) {
