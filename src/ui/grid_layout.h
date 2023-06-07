@@ -56,7 +56,8 @@ private:
         switch (m_arrangement) {
         case DigitizerUi::GridArrangement::Horizontal: {
             uint32_t snap = grid_width;
-            for (auto &i : plots | std::views::reverse) {
+            for (auto it = plots.rbegin(); it != plots.rend(); it++) {
+                auto& i = *it;
                 i.rect.h = grid_height;
                 i.rect.y = 0;
                 i.rect.w = snap - i.rect.x;
@@ -66,7 +67,8 @@ private:
         }
         case DigitizerUi::GridArrangement::Vertical: {
             uint32_t snap = grid_width;
-            for (auto &i : plots | std::views::reverse) {
+            for (auto it = plots.rbegin(); it != plots.rend(); it++) {
+                auto& i = *it;
                 i.rect.w = grid_height;
                 i.rect.x = 0;
                 i.rect.h = snap - i.rect.y;
