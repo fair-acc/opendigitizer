@@ -237,10 +237,10 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
             plot_layout.SetArrangement(GridArrangement::Vertical);
         ImGui::SameLine();
         if (plotButton(app, "\u229E", "change to the grid layout"))
-			plot_layout.SetArrangement(GridArrangement::Tiles);
+            plot_layout.SetArrangement(GridArrangement::Tiles);
         ImGui::SameLine();
         if (plotButton(app, "\u25F3", "change to the free layout"))
-			plot_layout.SetArrangement(GridArrangement::Free);
+            plot_layout.SetArrangement(GridArrangement::Free);
     }
 
     drawLegend(app, dashboard, mode);
@@ -350,43 +350,45 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
         plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
         if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
-            SetupAxes(plot);
-            for (auto *source : plot.sources) {
-                auto color = ImGui::ColorConvertU32ToFloat4(source->color);
-                ImPlot::SetNextLineStyle(color);
+            // TODO: refactor this into a function
+            [](decltype(plot) &plot) {
+                SetupAxes(plot);
+                for (auto *source : plot.sources) {
+                    auto color = ImGui::ColorConvertU32ToFloat4(source->color);
+                    ImPlot::SetNextLineStyle(color);
 
-                const auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
+                    const auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
 
-                if (port.dataSet.empty()) {
-                    // Plot one single dummy value so that the sink shows up in the plot legend
-                    float v = 0;
-                    if (source->visible) {
-                        ImPlot::PlotLine(source->name.c_str(), &v, 1);
-                    }
-                } else {
-                    switch (port.type) {
-                    case DigitizerUi::DataType::Float32: {
+                    if (port.dataSet.empty()) {
+                        // Plot one single dummy value so that the sink shows up in the plot legend
+                        float v = 0;
                         if (source->visible) {
-                            auto values = port.dataSet.asFloat32();
-                            ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                            ImPlot::PlotLine(source->name.c_str(), &v, 1);
                         }
-                        break;
+                    } else {
+                        switch (port.type) {
+                        case DigitizerUi::DataType::Float32: {
+                            if (source->visible) {
+                                auto values = port.dataSet.asFloat32();
+                                ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                            }
+                            break;
+                        }
+                        default: break;
+                        }
                     }
-                    default: break;
+
+                    // allow legend item labels to be DND sources
+                    if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
+                        DndItem dnd = { &plot, source };
+                        ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
+                        ImPlot::ItemIcon(color);
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted(source->name.c_str());
+                        ImPlot::EndDragDropSource();
                     }
                 }
-
-                // allow legend item labels to be DND sources
-                if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
-                    DndItem dnd = { &plot, source };
-                    ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
-                    ImPlot::ItemIcon(color);
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(source->name.c_str());
-                    ImPlot::EndDragDropSource();
-                }
-            }
-
+            }(plot);
             auto acceptSource = [&]() {
                 if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
                     auto *dnd = static_cast<DndItem *>(payload->Data);
