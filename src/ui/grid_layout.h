@@ -1,6 +1,5 @@
 #pragma once
 #include "dashboard.h"
-#include <ranges>
 
 namespace DigitizerUi {
 
@@ -52,27 +51,27 @@ public:
     void Invalidate() noexcept { dirty = true; }
 
 private:
-    void MaintainLayout(std::span<Dashboard::Plot> plots) {
+    void MaintainLayout(std::span<Dashboard::Plot> plots) noexcept {
         switch (m_arrangement) {
         case DigitizerUi::GridArrangement::Horizontal: {
             uint32_t snap = grid_width;
             for (auto it = plots.rbegin(); it != plots.rend(); it++) {
-                auto& i = *it;
-                i.rect.h = grid_height;
-                i.rect.y = 0;
-                i.rect.w = snap - i.rect.x;
-                snap     = i.rect.x;
+                auto &plot  = *it;
+                plot.rect.h = grid_height;
+                plot.rect.y = 0;
+                plot.rect.w = snap - plot.rect.x;
+                snap        = plot.rect.x;
             }
             break;
         }
         case DigitizerUi::GridArrangement::Vertical: {
             uint32_t snap = grid_width;
             for (auto it = plots.rbegin(); it != plots.rend(); it++) {
-                auto& i = *it;
-                i.rect.w = grid_height;
-                i.rect.x = 0;
-                i.rect.h = snap - i.rect.y;
-                snap     = i.rect.y;
+                auto &plot  = *it;
+                plot.rect.w = grid_height;
+                plot.rect.x = 0;
+                plot.rect.h = snap - plot.rect.y;
+                snap        = plot.rect.y;
             }
             break;
         }
@@ -152,9 +151,9 @@ private:
                 auto &plot = plots[i * columns + j];
                 plot.rect  = {
                      .x = int(curr_w),
-                     .y = int(curr_h), 
+                     .y = int(curr_h),
                      .w = int(curr_n == nplots - 1 || j == columns - 1 ? grid_width - curr_w : deltax), // if last plot in row, fill the rest of the width
-                     .h = int(i == rows - 1 ? grid_height - curr_h : deltay),// if last row, fill the rest of the height
+                     .h = int(i == rows - 1 ? grid_height - curr_h : deltay),                           // if last row, fill the rest of the height
                 };
                 curr_w += deltax;
             }
@@ -164,8 +163,7 @@ private:
     }
 
 private:
-    GridArrangement m_arrangement = GridArrangement::Free;
+    GridArrangement m_arrangement = GridArrangement::Tiles;
     bool            dirty         = true;
 };
-
 } // namespace DigitizerUi

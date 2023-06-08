@@ -38,6 +38,12 @@ struct SDLState {
 
 } // namespace DigitizerUi
 
+
+
+
+
+
+
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
@@ -75,9 +81,11 @@ static void loadFonts(DigitizerUi::App &app) {
     auto loadIconsFont         = [](auto name) {
         ImGuiIO             &io            = ImGui::GetIO();
         static const ImWchar glyphRanges[] = {
-            0xf005, 0xf2ed, // 0xf005 is "", 0xf2ed is "trash can"
-            0xf055, 0x2b,   // circle-plus, plus
-            0xf201, 0xf83e, // fa-chart-line, fa-wave-square
+            0XF005, 0XF2ED, // 0xf005 is "", 0xf2ed is "trash can"
+            0XF055, 0X2B,   // circle-plus, plus
+            0XF201, 0XF83E, // fa-chart-line, fa-wave-square
+            0x25EB, 0x229E, // horizontal layout, grid layout
+            0x25F3, 0x229F, // free layout, vertical layout
             0
         };
 

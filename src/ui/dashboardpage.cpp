@@ -209,55 +209,31 @@ Action getAction(bool frameHovered, bool hoveredInTitleArea, const ImVec2 &scree
     }
     return finalAction;
 }
-
-constexpr int gridSizeW = 16;
-constexpr int gridSizeH = 16;
-
 } // namespace
 
-void alignForWidth(float width, float alignment = 0.5f) noexcept {
+
+
+static bool plotButton(App *app, std::string_view glyph, std::string_view tooltip) noexcept {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
+    ImGui::PushFont(app->fontIconsSolid);
+    const bool ret = ImGui::Button(glyph.data());
+    ImGui::PopFont();
+    ImGui::PopStyleColor(3);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip.data());
+    }
+    ImGui::SameLine();
+    return ret;
+}
+
+static void alignForWidth(float width, float alignment = 0.5f) noexcept {
     ImGuiStyle &style = ImGui::GetStyle();
     float       avail = ImGui::GetContentRegionAvail().x;
     float       off   = (avail - width) * alignment;
     if (off > 0.0f)
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
-}
-
-void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
-    drawPlots(app, mode, dashboard);
-
-    if (mode == Mode::Layout) {
-        if (plotButton(app, "\uF201", "create new chart")) // chart-line
-            newPlot(dashboard);
-        ImGui::SameLine();
-        if (plotButton(app, "\xE2\x97\xAB", "change to the horizontal layout"))
-            plot_layout.SetArrangement(GridArrangement::Horizontal);
-        ImGui::SameLine();
-        if (plotButton(app, "\xE2\x8A\x9F", "change to the vertical layout"))
-            plot_layout.SetArrangement(GridArrangement::Vertical);
-        ImGui::SameLine();
-        if (plotButton(app, "\u229E", "change to the grid layout"))
-            plot_layout.SetArrangement(GridArrangement::Tiles);
-        ImGui::SameLine();
-        if (plotButton(app, "\u25F3", "change to the free layout"))
-            plot_layout.SetArrangement(GridArrangement::Free);
-    }
-
-    drawLegend(app, dashboard, mode);
-
-    ImGui::SameLine();
-    if (mode == Mode::Layout && plotButton(app, "\uf067", "add signal")) { // plus
-        // add new signal
-    }
-
-    if (app->prototypeMode) {
-        // Retrieve FPS and milliseconds per iteration
-        const float fps     = ImGui::GetIO().Framerate;
-        const auto  str     = fmt::format("FPS:{:5.0f}({:2}ms)", fps, app->execTime.count());
-        const auto  estSize = ImGui::CalcTextSize(str.c_str());
-        alignForWidth(estSize.x, 1.0);
-        ImGui::Text("%s", str.c_str());
-    }
 }
 
 static void SetupAxes(const Dashboard::Plot &plot) {
@@ -285,17 +261,58 @@ static void SetupAxes(const Dashboard::Plot &plot) {
     }
 }
 
+
+
+void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
+    drawPlots(app, mode, dashboard);
+
+    if (mode == Mode::Layout) {
+        if (plotButton(app, "\uF201", "create new chart")) // chart-line
+            newPlot(dashboard);
+        ImGui::SameLine();
+        if (plotButton(app, "\u25EB", "change to the horizontal layout"))
+            plot_layout.SetArrangement(GridArrangement::Horizontal);
+        ImGui::SameLine();
+        if (plotButton(app, "\u229F", "change to the vertical layout"))
+            plot_layout.SetArrangement(GridArrangement::Vertical);
+        ImGui::SameLine();
+        if (plotButton(app, "\u229E", "change to the grid layout"))
+            plot_layout.SetArrangement(GridArrangement::Tiles);
+        ImGui::SameLine();
+        if (plotButton(app, "\u25F3", "change to the free layout"))
+            plot_layout.SetArrangement(GridArrangement::Free);
+    }
+
+    drawLegend(app, dashboard, mode);
+
+    ImGui::SameLine();
+    if (mode == Mode::Layout && plotButton(app, "\uf067", "add signal")) { // plus
+        // add new signal
+    }
+
+    if (app->prototypeMode) {
+        // Retrieve FPS and milliseconds per iteration
+        const float fps     = ImGui::GetIO().Framerate;
+        const auto  str     = fmt::format("FPS:{:5.0f}({:2}ms)", fps, app->execTime.count());
+        const auto  estSize = ImGui::CalcTextSize(str.c_str());
+        alignForWidth(estSize.x, 1.0);
+        ImGui::Text("%s", str.c_str());
+    }
+}
+
+
+
 void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard) {
     struct Guard {
         Guard() noexcept { ImGui::BeginGroup(); }
         ~Guard() noexcept { ImGui::EndGroup(); }
     } g;
 
-    _paneSize = ImGui::GetContentRegionAvail();
-    _paneSize.y -= _legendBox.y;
+    pane_size = ImGui::GetContentRegionAvail();
+    pane_size.y -= legend_box.y;
 
-    float w = _paneSize.x / float(gridSizeW); // Grid width
-    float h = _paneSize.y / float(gridSizeH); // Grid height
+    float w = pane_size.x / float(GridLayout::grid_width); // Grid width
+    float h = pane_size.y / float(GridLayout::grid_height); // Grid height
 
     if (mode == Mode::Layout)
         drawGrid(w, h);
@@ -403,7 +420,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                     // allow legend item labels to be DND sources
                     if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
                         DndItem dnd = { &plot, source };
-                        ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
+                        ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
                         ImPlot::ItemIcon(color);
                         ImGui::SameLine();
                         ImGui::TextUnformatted(source->name.c_str());
@@ -412,7 +429,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                 }
             }(plot);
             auto acceptSource = [&]() {
-                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dnd_type)) {
                     auto *dnd = static_cast<DndItem *>(payload->Data);
                     plot.sources.push_back(dnd->source);
                     if (auto *plot = dnd->plotSource) {
@@ -485,16 +502,16 @@ void DashboardPage::drawGrid(float w, float h) {
     const uint32_t gridLineColor = App::instance().style() == Style::Light ? 0x40000000 : 0x40ffffff;
 
     auto           pos           = ImGui::GetCursorScreenPos();
-    for (float x = pos.x; x < pos.x + _paneSize.x; x += w) {
-        ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + _paneSize.y }, gridLineColor);
+    for (float x = pos.x; x < pos.x + pane_size.x; x += w) {
+        ImGui::GetWindowDrawList()->AddLine({ x, pos.y }, { x, pos.y + pane_size.y }, gridLineColor);
     }
-    for (float y = pos.y; y < pos.y + _paneSize.y; y += h) {
-        ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + _paneSize.x, y }, gridLineColor);
+    for (float y = pos.y; y < pos.y + pane_size.y; y += h) {
+        ImGui::GetWindowDrawList()->AddLine({ pos.x, y }, { pos.x + pane_size.x, y }, gridLineColor);
     }
 }
 void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPage::Mode &mode) noexcept {
-    alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
-    _legendBox.x = 0.f;
+    alignForWidth(std::max(10.f, legend_box.x), 0.5f);
+    legend_box.x = 0.f;
     ImGui::BeginGroup();
 
     const auto legend_item = [](const ImVec4 &color, std::string_view text, bool enabled = true) -> bool {
@@ -524,30 +541,30 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         if (legend_item(color, signal.name, signal.visible)) {
             signal.visible = !signal.visible;
         }
-        _legendBox.x += ImGui::GetItemRectSize().x;
+        legend_box.x += ImGui::GetItemRectSize().x;
 
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             DndItem dnd = { nullptr, &signal };
-            ImGui::SetDragDropPayload(dndType, &dnd, sizeof(dnd));
+            ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
             legend_item(color, signal.name, signal.visible);
             ImGui::EndDragDropSource();
         }
 
         if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
             const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
-            if ((_legendBox.x + widthEstimate) < 0.9f * _paneSize.x) {
+            if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
                 ImGui::SameLine();  // keep item on the same line if compatible with overall pane width
             } else {
-                _legendBox.x = 0.f; // start a new line
+                legend_box.x = 0.f; // start a new line
             }
         }
     }
     ImGui::EndGroup();
-    _legendBox.x = ImGui::GetItemRectSize().x;
-    _legendBox.y = std::max(5.f, ImGui::GetItemRectSize().y);
+    legend_box.x = ImGui::GetItemRectSize().x;
+    legend_box.y = std::max(5.f, ImGui::GetItemRectSize().y);
 
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dndType)) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(dnd_type)) {
             auto *dnd = static_cast<DndItem *>(payload->Data);
             if (auto plot = dnd->plotSource) {
                 plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
@@ -558,20 +575,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
     // end draw legend
 }
 
-bool DashboardPage::plotButton(App *app, std::string_view glyph, std::string_view tooltip) {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
-    ImGui::PushFont(app->fontIconsSolid);
-    const bool ret = ImGui::Button(glyph.data());
-    ImGui::PopFont();
-    ImGui::PopStyleColor(3);
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tooltip.data());
-    }
-    ImGui::SameLine();
-    return ret;
-}
+
 
 void DashboardPage::newPlot(Dashboard *dashboard) {
     if (plot_layout.Arrangement() != GridArrangement::Free
@@ -580,7 +584,7 @@ void DashboardPage::newPlot(Dashboard *dashboard) {
         return dashboard->newPlot(0, 0, 1, 1); // Plot will get adjusted by the layout automatically
     }
 
-    bool grid[gridSizeW][gridSizeH];
+    bool grid[GridLayout::grid_width][GridLayout::grid_height];
     memset(grid, 0, sizeof(grid));
 
     for (auto &p : dashboard->plots()) {
@@ -596,7 +600,7 @@ void DashboardPage::newPlot(Dashboard *dashboard) {
     auto rectangleFree = [&](int x, int y, int w, int h) {
         for (int y2 = y; y2 < y + h; ++y2) {
             for (int x2 = x; x2 < x + w; ++x2) {
-                if (x2 == gridSizeW || y2 == gridSizeH || grid[x2][y2]) {
+                if (x2 == GridLayout::grid_width || y2 == GridLayout::grid_height || grid[x2][y2]) {
                     return false;
                 }
             }
@@ -607,8 +611,8 @@ void DashboardPage::newPlot(Dashboard *dashboard) {
     auto findRectangle = [&](int &rx, int &ry, int &rw, int &rh) {
         int i = 0;
         while (true) {
-            for (int y = 0; y < gridSizeH; ++y) {
-                for (int x = 0; x < gridSizeW; ++x) {
+            for (int y = 0; y < GridLayout::grid_height; ++y) {
+                for (int x = 0; x < GridLayout::grid_width; ++x) {
                     if (rectangleFree(x, y, rw, rh)) {
                         rx = x;
                         ry = y;
@@ -630,7 +634,7 @@ void DashboardPage::newPlot(Dashboard *dashboard) {
         return false;
     };
 
-    int w = gridSizeW / 2;
+    int w = GridLayout::grid_width / 2;
     int h = w * 6. / 8.;
 
     int x, y;
