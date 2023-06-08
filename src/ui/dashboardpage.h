@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DASHBOARDPAGE_H
+#define DASHBOARDPAGE_H
 
 #include "grid_layout.h"
 #include <imgui.h>
@@ -38,3 +39,5 @@ private:
 };
 
 } // namespace DigitizerUi
+
+#endif // DASHBOARDPAGE_H

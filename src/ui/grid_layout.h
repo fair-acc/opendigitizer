@@ -1,4 +1,5 @@
-#pragma once
+#ifndef  GRID_LAYOUT_H
+#define  GRID_LAYOUT_H
 #include "dashboard.h"
 
 namespace DigitizerUi {
@@ -93,16 +94,14 @@ private:
         uint32_t curr_col = 0;
 
         for (size_t i = 0; i < nplots - 1; i++, curr_col += col_size) {
-            auto &plot = plots[i];
-            plot.rect  = {
+            plots[i].rect  = {
                  .x = int(curr_col),
                  .y = 0,
                  .w = int(col_size),
                  .h = int(grid_height),
             };
         }
-        auto &plot = plots[nplots - 1];
-        plot.rect  = {
+        plots[nplots - 1].rect  = {
              .x = int(curr_col),
              .y = 0,
              .w = int(grid_width - curr_col),
@@ -117,16 +116,14 @@ private:
         uint32_t curr_col = 0;
 
         for (size_t i = 0; i < nplots - 1; i++, curr_col += col_size) {
-            auto &plot = plots[i];
-            plot.rect  = {
+            plots[i].rect = {
                  .x = 0,
                  .y = int(curr_col),
                  .w = int(grid_width),
                  .h = int(col_size),
             };
         }
-        auto &plot = plots[nplots - 1];
-        plot.rect  = {
+        plots[nplots - 1].rect  = {
              .x = 0,
              .y = int(curr_col),
              .w = int(grid_width),
@@ -148,8 +145,7 @@ private:
 
         for (size_t i = 0; i < rows; i++) {
             for (size_t j = 0; j < columns && curr_n < nplots; j++, curr_n++) {
-                auto &plot = plots[i * columns + j];
-                plot.rect  = {
+                plots[i * columns + j].rect = {
                      .x = int(curr_w),
                      .y = int(curr_h),
                      .w = int(curr_n == nplots - 1 || j == columns - 1 ? grid_width - curr_w : deltax), // if last plot in row, fill the rest of the width
@@ -167,3 +163,5 @@ private:
     bool            dirty         = true;
 };
 } // namespace DigitizerUi
+
+#endif // !GRID_LAYOUT_H

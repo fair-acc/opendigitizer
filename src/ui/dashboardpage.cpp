@@ -213,18 +213,17 @@ Action getAction(bool frameHovered, bool hoveredInTitleArea, const ImVec2 &scree
 
 
 
-static bool plotButton(App *app, std::string_view glyph, std::string_view tooltip) noexcept {
+static bool plotButton(App *app, const char *glyph, const char *tooltip) noexcept {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
     ImGui::PushFont(app->fontIconsSolid);
-    const bool ret = ImGui::Button(glyph.data());
+    const bool ret = ImGui::Button(glyph);
     ImGui::PopFont();
     ImGui::PopStyleColor(3);
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", tooltip.data());
+        ImGui::SetTooltip("%s", tooltip);
     }
-    ImGui::SameLine();
     return ret;
 }
 
@@ -266,6 +265,7 @@ static void SetupAxes(const Dashboard::Plot &plot) {
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     drawPlots(app, mode, dashboard);
 
+    // Button strip
     if (mode == Mode::Layout) {
         if (plotButton(app, "\uF201", "create new chart")) // chart-line
             newPlot(dashboard);
