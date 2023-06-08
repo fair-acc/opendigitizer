@@ -476,7 +476,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
             if (mode == Mode::Layout) {
                 if (frameHovered) {
                     ImGui::PushFont(app->fontIcons);
-                    ImGui::SetCursorPos(pos + plotPos + ImVec2(8, 8));
+                    ImGui::SetCursorPos(pos + plotPos + ImVec2(plotSize.x, 0) - ImVec2(30, -15));
                     ImGui::PushID(plot.name.c_str());
                     if (ImGui::Button("\uf2ed")) {
                         toDelete = &plot;
