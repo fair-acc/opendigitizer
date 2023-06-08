@@ -68,13 +68,15 @@ private:
             break;
         }
         case DigitizerUi::GridArrangement::Vertical: {
-            uint32_t snap = grid_width;
-            for (auto it = plots.rbegin(); it != plots.rend(); it++) {
-                auto &plot  = *it;
-                plot.rect.w = grid_height;
-                plot.rect.x = 0;
-                plot.rect.h = snap - plot.rect.y;
-                snap        = (plot.rect.y >= 0) * plot.rect.y;
+            int32_t snap = grid_width;
+            for (auto plot_it = plots.rbegin(); plot_it != plots.rend(); plot_it++) {
+                plot_it->rect = {
+                    .x = 0,
+                    .y = (plot_it->rect.y >= 0) * plot_it->rect.y,
+                    .w = grid_height,
+                    .h = std::max(snap - plot_it->rect.y, 1),
+                };
+                snap = plot_it->rect.y;
             }
             break;
         }

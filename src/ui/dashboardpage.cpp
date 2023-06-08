@@ -157,22 +157,18 @@ DashboardPage::Action getAction(const ActionParameters &parameters) {
         DashboardPage::Action action = DashboardPage::Action::Move;
         switch (edges) {
         case Left:
-            if (parameters.arrangement == GridArrangement::Vertical) break;
             cursor = ImGuiMouseCursor_ResizeEW;
             action = DashboardPage::Action::ResizeLeft;
             break;
         case Right:
-            if (parameters.arrangement == GridArrangement::Vertical) break;
             cursor = ImGuiMouseCursor_ResizeEW;
             action = DashboardPage::Action::ResizeRight;
             break;
         case Top:
-            if (parameters.arrangement == GridArrangement::Horizontal) break;
             cursor = ImGuiMouseCursor_ResizeNS;
             action = DashboardPage::Action::ResizeTop;
             break;
         case Bottom:
-            if (parameters.arrangement == GridArrangement::Horizontal) break;
             cursor = ImGuiMouseCursor_ResizeNS;
             action = DashboardPage::Action::ResizeBottom;
             break;
@@ -374,6 +370,7 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         ImGui::Text("%s", str.c_str());
     }
     ImGui::EndGroup(); // Legend
+    legend_box.y = std::floor(ImGui::GetItemRectSize().y * 1.5f);
 }
 
 void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard) {
