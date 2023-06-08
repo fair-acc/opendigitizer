@@ -1,5 +1,5 @@
-#ifndef  GRID_LAYOUT_H
-#define  GRID_LAYOUT_H
+#ifndef GRID_LAYOUT_H
+#define GRID_LAYOUT_H
 #include "dashboard.h"
 
 namespace DigitizerUi {
@@ -55,13 +55,15 @@ private:
     void MaintainLayout(std::span<Dashboard::Plot> plots) noexcept {
         switch (m_arrangement) {
         case DigitizerUi::GridArrangement::Horizontal: {
-            uint32_t snap = grid_width;
-            for (auto it = plots.rbegin(); it != plots.rend(); it++) {
-                auto &plot  = *it;
-                plot.rect.h = grid_height;
-                plot.rect.y = 0;
-                plot.rect.w = snap - plot.rect.x;
-                snap        = plot.rect.x;
+            int32_t snap = grid_width;
+            for (auto plot_it = plots.rbegin(); plot_it != plots.rend(); plot_it++) {
+                plot_it->rect = {
+                    .x = (plot_it->rect.x >= 0) * plot_it->rect.x,
+                    .y = 0,
+                    .w = std::max(snap - plot_it->rect.x, 1),
+                    .h = grid_height,
+                };
+                snap = plot_it->rect.x;
             }
             break;
         }
@@ -72,7 +74,7 @@ private:
                 plot.rect.w = grid_height;
                 plot.rect.x = 0;
                 plot.rect.h = snap - plot.rect.y;
-                snap        = plot.rect.y;
+                snap        = (plot.rect.y >= 0) * plot.rect.y;
             }
             break;
         }
@@ -94,18 +96,18 @@ private:
         uint32_t curr_col = 0;
 
         for (size_t i = 0; i < nplots - 1; i++, curr_col += col_size) {
-            plots[i].rect  = {
-                 .x = int(curr_col),
-                 .y = 0,
-                 .w = int(col_size),
-                 .h = int(grid_height),
+            plots[i].rect = {
+                .x = int(curr_col),
+                .y = 0,
+                .w = int(col_size),
+                .h = int(grid_height),
             };
         }
-        plots[nplots - 1].rect  = {
-             .x = int(curr_col),
-             .y = 0,
-             .w = int(grid_width - curr_col),
-             .h = int(grid_height),
+        plots[nplots - 1].rect = {
+            .x = int(curr_col),
+            .y = 0,
+            .w = int(grid_width - curr_col),
+            .h = int(grid_height),
         };
     }
     static void RearrangePlotsVertical(std::span<Dashboard::Plot> plots) noexcept {
@@ -117,17 +119,17 @@ private:
 
         for (size_t i = 0; i < nplots - 1; i++, curr_col += col_size) {
             plots[i].rect = {
-                 .x = 0,
-                 .y = int(curr_col),
-                 .w = int(grid_width),
-                 .h = int(col_size),
+                .x = 0,
+                .y = int(curr_col),
+                .w = int(grid_width),
+                .h = int(col_size),
             };
         }
-        plots[nplots - 1].rect  = {
-             .x = 0,
-             .y = int(curr_col),
-             .w = int(grid_width),
-             .h = int(grid_height - curr_col),
+        plots[nplots - 1].rect = {
+            .x = 0,
+            .y = int(curr_col),
+            .w = int(grid_width),
+            .h = int(grid_height - curr_col),
         };
     }
     static void RearrangePlotsTiles(std::span<Dashboard::Plot> plots) noexcept {
@@ -146,10 +148,10 @@ private:
         for (size_t i = 0; i < rows; i++) {
             for (size_t j = 0; j < columns && curr_n < nplots; j++, curr_n++) {
                 plots[i * columns + j].rect = {
-                     .x = int(curr_w),
-                     .y = int(curr_h),
-                     .w = int(curr_n == nplots - 1 || j == columns - 1 ? grid_width - curr_w : deltax), // if last plot in row, fill the rest of the width
-                     .h = int(i == rows - 1 ? grid_height - curr_h : deltay),                           // if last row, fill the rest of the height
+                    .x = int(curr_w),
+                    .y = int(curr_h),
+                    .w = int(curr_n == nplots - 1 || j == columns - 1 ? grid_width - curr_w : deltax), // if last plot in row, fill the rest of the width
+                    .h = int(i == rows - 1 ? grid_height - curr_h : deltay),                           // if last row, fill the rest of the height
                 };
                 curr_w += deltax;
             }
