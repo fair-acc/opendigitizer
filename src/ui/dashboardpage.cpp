@@ -334,16 +334,16 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         if (plotButton(app, "\uF201", "create new chart")) // chart-line
             newPlot(dashboard);
         ImGui::SameLine();
-        if (plotButton(app, "\u25EB", "change to the horizontal layout"))
+        if (plotButton(app, "\uF7A5", "change to the horizontal layout"))
             plot_layout.SetArrangement(GridArrangement::Horizontal);
         ImGui::SameLine();
-        if (plotButton(app, "\u229F", "change to the vertical layout"))
+        if (plotButton(app, "\uF7A4", "change to the vertical layout"))
             plot_layout.SetArrangement(GridArrangement::Vertical);
         ImGui::SameLine();
-        if (plotButton(app, "\u229E", "change to the grid layout"))
+        if (plotButton(app, "\uF58D", "change to the grid layout"))
             plot_layout.SetArrangement(GridArrangement::Tiles);
         ImGui::SameLine();
-        if (plotButton(app, "\u25F3", "change to the free layout"))
+        if (plotButton(app, "\uF248", "change to the free layout"))
             plot_layout.SetArrangement(GridArrangement::Free);
         ImGui::SameLine();
     }
