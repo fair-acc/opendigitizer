@@ -350,10 +350,8 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
 
     drawLegend(app, dashboard, mode);
 
-
     // Post button strip
-    if (mode == Mode::Layout)
-    {
+    if (mode == Mode::Layout) {
         ImGui::SameLine();
         if (plotButton(app, "\uf067", "add signal")) { // plus
             // add new signal
@@ -561,7 +559,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
             const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
             if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
-                ImGui::SameLine();  // keep item on the same line if compatible with overall pane width
+                ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
             } else {
                 legend_box.x = 0.f; // start a new line
             }
