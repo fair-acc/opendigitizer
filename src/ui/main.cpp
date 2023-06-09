@@ -38,12 +38,6 @@ struct SDLState {
 
 } // namespace DigitizerUi
 
-
-
-
-
-
-
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
@@ -84,7 +78,7 @@ static void loadFonts(DigitizerUi::App &app) {
             0XF005, 0XF2ED, // 0xf005 is "", 0xf2ed is "trash can"
             0XF055, 0X2B,   // circle-plus, plus
             0XF201, 0XF83E, // fa-chart-line, fa-wave-square
-            0XF7A5, 0xF58D,  // horizontal layout, grid layout
+            0XF7A5, 0xF58D, // horizontal layout, grid layout
             0xF248, 0XF7A4, // free layout, vertical layout
             0
         };
