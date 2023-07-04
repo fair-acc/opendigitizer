@@ -25,6 +25,7 @@ namespace DigitizerUi {
 class Block;
 class FlowGraph;
 struct DashboardDescription;
+class DataSink;
 
 struct DashboardSource {
     ~DashboardSource() noexcept;
@@ -116,6 +117,8 @@ public:
     void         saveRemoteServiceFlowgraph(Service *s);
 
     inline auto &remoteServices() { return m_services; }
+
+    DataSink    *createSink();
 
     FlowGraph    localFlowGraph;
 

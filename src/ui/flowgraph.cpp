@@ -598,6 +598,9 @@ void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
 void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
+    if (sinkBlockAddedCallback) {
+        sinkBlockAddedCallback(block.get());
+    }
     m_sinkBlocks.push_back(std::move(block));
 }
 
@@ -632,7 +635,7 @@ void FlowGraph::deleteBlock(Block *block) {
     }
 }
 
-void FlowGraph::connect(Block::Port *a, Block::Port *b) {
+Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
     assert(a->kind != b->kind);
     // make sure a is the output and b the input
     if (a->kind == Block::Port::Kind::Input) {
@@ -641,6 +644,7 @@ void FlowGraph::connect(Block::Port *a, Block::Port *b) {
     auto it = m_connections.insert(Connection(a, b));
     a->connections.push_back(&(*it));
     b->connections.push_back(&(*it));
+    return &(*it);
 }
 
 void FlowGraph::disconnect(Connection *c) {

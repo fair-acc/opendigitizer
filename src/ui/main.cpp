@@ -153,11 +153,7 @@ int main(int argc, char **argv) {
     app.sdlState               = &sdlState;
 
     app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *fg) mutable {
-        int  n    = fg->sinkBlocks().size() + 1;
-        auto name = fmt::format("sink {}", n);
-        fg->addSinkBlock(std::make_unique<DigitizerUi::DataSink>(name));
-        name = fmt::format("source for sink {}", n);
-        fg->addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
+        app.dashboard->createSink();
     };
 
     app.verticalDPI = [&app]() -> float {
