@@ -201,7 +201,8 @@ public:
     const std::string             name;
     const std::string             id;
 
-protected:
+    // protected:
+    auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }
 
 private:
@@ -246,7 +247,7 @@ public:
     void                         addSourceBlock(std::unique_ptr<Block> &&block);
     void                         addSinkBlock(std::unique_ptr<Block> &&block);
 
-    void                         connect(Block::Port *a, Block::Port *b);
+    Connection                  *connect(Block::Port *a, Block::Port *b);
 
     void                         disconnect(Connection *c);
 
@@ -257,6 +258,7 @@ public:
     void                         registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri);
 
     std::function<void(Block *)> sourceBlockAddedCallback;
+    std::function<void(Block *)> sinkBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
 
 private:

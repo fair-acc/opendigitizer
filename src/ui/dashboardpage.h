@@ -3,8 +3,10 @@
 
 #include "grid_layout.h"
 #include <imgui.h>
+#include <stack>
 #include <string>
 #include <vector>
+#include "imguiutils.h"
 
 namespace DigitizerUi {
 
@@ -26,7 +28,7 @@ public:
     };
 
 private:
-    ImVec2           pane_size{ 0, 0 };     // updated by draw(...)
+    ImVec2           pane_size{ 0, 0 };     // updated by drawPlots(...)
     ImVec2           legend_box{ 500, 40 }; // updated by drawLegend(...)
     GridLayout       plot_layout;
 
@@ -48,13 +50,15 @@ public:
 
 public:
     void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View) noexcept;
+    void        newPlot(Dashboard *dashboard);
 
 private:
     void        drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard);
     void        drawGrid(float w, float h);
     void        drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
-    void        newPlot(Dashboard *dashboard);
     static void drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept;
+
+    ImGuiUtils::BlockControlsPanel m_editPane;
 };
 
 } // namespace DigitizerUi

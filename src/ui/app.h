@@ -51,6 +51,7 @@ public:
     std::array<ImFont *, 2>    fontLarge   = { nullptr, nullptr }; /// 0: production 1: prototype use
     ImFont                    *fontIcons;
     ImFont                    *fontIconsSolid;
+    std::chrono::seconds       editPaneCloseDelay{ 15 };
 
 private:
     App();

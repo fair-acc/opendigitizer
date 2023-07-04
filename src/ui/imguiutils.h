@@ -10,6 +10,8 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "flowgraph.h"
+
 inline ImVec2 operator+(const ImVec2 a, const ImVec2 b) {
     ImVec2 r = a;
     r.x += b.x;
@@ -22,6 +24,11 @@ inline ImVec2 operator-(const ImVec2 a, const ImVec2 b) {
     r.x -= b.x;
     r.y -= b.y;
     return r;
+}
+
+namespace DigitizerUi {
+class Block;
+class Dashboard;
 }
 
 namespace ImGuiUtils {
@@ -125,7 +132,7 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
     ImGui::PushItemWidth(size.x - (ImGui::GetCursorPosX() - x));
     bool scrollToSelected = ImGui::InputText("##filterBlockType", &ctx->filterString, ImGuiInputTextFlags_CallbackCompletion, completeItemName, &cbdata);
 
-    if (ImGui::BeginListBox("##Available Block types", size)) {
+    if (ImGui::BeginListBox("##Available Block types", { size.x, size.y - (ImGui::GetCursorPosY() - y) })) {
         auto filter = [&](std::string_view name) {
             if (!ctx->filterString.empty()) {
                 auto it = std::search(name.begin(), name.end(), ctx->filterString.begin(), ctx->filterString.end(),
@@ -212,6 +219,50 @@ enum class DialogButton {
 };
 
 DialogButton drawDialogButtons(bool okEnabled = true);
+float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5);
+
+struct BlockControlsPanel {
+    DigitizerUi::Block                   *block = {};
+    enum class Mode {
+        None,
+        Insert,
+        AddAndBranch
+    };
+    Mode                                               mode = Mode::None;
+    DigitizerUi::Block::Port *insertBefore = nullptr;
+    DigitizerUi::Block::Port *insertFrom = nullptr;
+    DigitizerUi::Connection *breakConnection = nullptr;
+    std::chrono::time_point<std::chrono::system_clock> closeTime;
+};
+void drawBlockControlsPanel(BlockControlsPanel &context, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout);
+
+void         blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size = { 0.f, 0.f });
+void         setItemTooltip(const char *fmt, auto &&...args) {
+    if (ImGui::IsItemHovered()) {
+        if constexpr (sizeof...(args) == 0) {
+            ImGui::SetTooltip(fmt);
+        } else {
+            ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
+        }
+    }
+}
+
+struct DisabledGuard {
+    explicit inline DisabledGuard(bool disable = true)
+        : m_disabled(disable) {
+        if (m_disabled) {
+            ImGui::BeginDisabled();
+        }
+    }
+    inline ~DisabledGuard() {
+        if (m_disabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+private:
+    const bool m_disabled;
+};
 
 } // namespace ImGuiUtils
 
