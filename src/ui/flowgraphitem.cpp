@@ -382,6 +382,59 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
     ImGui::PopID();
 }
 
+void FlowGraphItem::drawControlsPanel(const ImVec2 &areaPos, const ImVec2 &areaSize) {
+    Block *nextEditingBlock = m_editingBlock;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        auto n     = ax::NodeEditor::GetHoveredNode();
+        auto block = n.AsPointer<Block>();
+
+        if (!block) {
+            nextEditingBlock = nullptr;
+        } else {
+            nextEditingBlock    = block;
+            m_editPaneCloseTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+        }
+    }
+    if (m_editingBlock) {
+        if (m_editPaneCloseTime < std::chrono::system_clock::now()) {
+            nextEditingBlock = nullptr;
+        }
+
+        ImGui::SetCursorPosX(areaPos.x);
+        ImGui::SetCursorPosY(areaPos.y);
+        const bool vertical = areaSize.x > areaSize.y;
+        float      ratio    = ImGuiUtils::splitter(areaSize, vertical, 4, 0.2f);
+
+        ImVec2     paneSize = areaSize;
+        if (vertical) {
+            paneSize.x = areaSize.x * ratio;
+            ImGui::SetCursorPosX(areaPos.x + areaSize.x - paneSize.x + 2);
+            ImGui::SetCursorPosY(areaPos.y);
+        } else {
+            paneSize.y = areaSize.y * ratio;
+            ImGui::SetCursorPosX(areaPos.x);
+            ImGui::SetCursorPosY(areaPos.y + areaSize.y - paneSize.y + 2);
+        }
+
+        if (ImGui::BeginChildFrame(1, paneSize)) {
+            auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(m_editPaneCloseTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(App::instance().editPaneCloseDelay).count());
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
+            ImGui::ProgressBar(1.f - duration, { paneSize.x, 3 });
+            ImGui::PopStyleColor();
+
+            ImGui::TextUnformatted(m_editingBlock->name.c_str());
+            ImGuiUtils::blockParametersControls(m_editingBlock, vertical);
+        }
+
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+            m_editPaneCloseTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+            nextEditingBlock    = m_editingBlock;
+        }
+        ImGui::EndChild();
+    }
+    m_editingBlock = nextEditingBlock;
+}
+
 void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     auto &c = m_editors[fg];
     if (!c.editor) {
@@ -509,6 +562,8 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
             m_selectedBlock = block;
         }
     }
+
+    drawControlsPanel({ left, top }, size);
 
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("Block parameters")) {

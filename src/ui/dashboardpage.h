@@ -3,6 +3,7 @@
 
 #include "grid_layout.h"
 #include <imgui.h>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,20 @@ private:
     void        drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
     void        newPlot(Dashboard *dashboard);
     static void drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept;
+    void        drawControlsPanel(Dashboard *dashboard, const ImVec2 &pos, const ImVec2 &size, bool verticalLayout);
+
+    struct EditPane {
+        Dashboard::Plot         *plot  = {};
+        Block                   *block = {};
+        std::stack<Connection *> history;
+        enum class Mode {
+            None,
+            Insert,
+            AddAndBranch
+        };
+        Mode                                               mode = Mode::None;
+        std::chrono::time_point<std::chrono::system_clock> closeTime;
+    } m_editPane;
 };
 
 } // namespace DigitizerUi

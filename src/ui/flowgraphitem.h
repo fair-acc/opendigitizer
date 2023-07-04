@@ -37,6 +37,7 @@ private:
     void                          addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
     void                          drawNewBlockDialog(FlowGraph *fg);
     void                          drawAddSourceDialog(FlowGraph *fg);
+    void                          drawControlsPanel(const ImVec2 &areaPos, const ImVec2 &areaSize);
 
     Block                        *m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
@@ -58,6 +59,9 @@ private:
         std::string                    settings;
     };
     std::unordered_map<FlowGraph *, Context> m_editors;
+
+    Block                                             *m_editingBlock = nullptr;
+    std::chrono::time_point<std::chrono::system_clock> m_editPaneCloseTime;
 };
 
 } // namespace DigitizerUi

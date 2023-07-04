@@ -286,19 +286,26 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         auto color = ImGui::ColorConvertU32ToFloat4(source->color);
         ImPlot::SetNextLineStyle(color);
 
-        const auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
+        const auto [dataType, dataSet] = [&]() -> std::tuple<DataType, DataSet> {
+            if (auto *sink = dynamic_cast<DataSink *>(source->block)) {
+                return { sink->dataType, sink->data };
+            }
+            auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
+            return { port.type, port.dataSet };
+        }();
 
-        if (port.dataSet.empty()) {
+        ImPlot::HideNextItem(false, ImPlotCond_Always);
+        if (dataSet.empty()) {
             // Plot one single dummy value so that the sink shows up in the plot legend
             float v = 0;
             if (source->visible) {
                 ImPlot::PlotLine(source->name.c_str(), &v, 1);
             }
         } else {
-            switch (port.type) {
+            switch (dataType) {
             case DigitizerUi::DataType::Float32: {
                 if (source->visible) {
-                    auto values = port.dataSet.asFloat32();
+                    auto values = dataSet.asFloat32();
                     ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
                 }
                 break;
@@ -320,10 +327,29 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
 }
 
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
+    const float  left            = ImGui::GetCursorPosX();
+    const float  top             = ImGui::GetCursorPosY();
+    const ImVec2 size            = ImGui::GetContentRegionAvail();
+
+    const bool   horizontalSplit = size.x > size.y;
+    const float  ratio           = m_editPane.plot ? ImGuiUtils::splitter(size, horizontalSplit, 4, 0.2f) : 0.f;
+
+    ImGui::SetCursorPosX(left);
+    ImGui::SetCursorPosY(top);
+    pane_size = size;
+
+    ImGui::BeginChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio), size.y) : ImVec2(size.x, size.y * (1.f - ratio)),
+            false, ImGuiWindowFlags_NoScrollbar);
+
     // Plots
     ImGui::BeginGroup();
     drawPlots(app, mode, dashboard);
     ImGui::EndGroup(); // Plots
+
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_editPane.plot  = nullptr;
+        m_editPane.block = nullptr;
+    }
 
     ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - legend_box.y));
 
@@ -369,10 +395,240 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     }
     ImGui::EndGroup(); // Legend
     legend_box.y = std::floor(ImGui::GetItemRectSize().y * 1.5f);
+
+    ImGui::EndChild();
+
+    if (mode == Mode::Layout) {
+        if (horizontalSplit) {
+            const float w = size.x * ratio;
+            drawControlsPanel(dashboard, { left + size.x - w + 2, top }, { w - 2, size.y }, true);
+        } else {
+            const float h = size.y * ratio;
+            drawControlsPanel(dashboard, { left, top + size.y - h + 2 }, { size.x, h - 2 }, false);
+        }
+    }
+}
+
+void DashboardPage::drawControlsPanel(Dashboard *dashboard, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout) {
+    auto size = frameSize;
+    if (m_editPane.block) {
+        if (m_editPane.closeTime < std::chrono::system_clock::now()) {
+            m_editPane = {};
+            return;
+        }
+
+        ImGui::PushFont(App::instance().fontIconsSolid);
+        const float lineHeight = ImGui::GetTextLineHeightWithSpacing() * 1.5f;
+        ImGui::PopFont();
+
+        const auto itemSpacing    = ImGui::GetStyle().ItemSpacing;
+
+        auto       calcButtonSize = [&](int numButtons) -> ImVec2 {
+            if (verticalLayout) {
+                return { (size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight };
+            }
+            return { lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons) };
+        };
+
+        ImGui::SetCursorPos(pos);
+
+        if (ImGui::BeginChildFrame(1, size, ImGuiWindowFlags_NoScrollbar)) {
+            size          = ImGui::GetContentRegionAvail();
+
+            auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(m_editPane.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(App::instance().editPaneCloseDelay).count());
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
+            ImGui::ProgressBar(1.f - duration, { size.x, 3 });
+            ImGui::PopStyleColor();
+
+            ImGui::PushFont(App::instance().fontIconsSolid);
+            {
+                // button to go up to the next block
+                ImGuiUtils::DisabledGuard dg(m_editPane.history.size() <= 1);
+                if (ImGui::Button(verticalLayout ? "\uf062" : "\uf060", calcButtonSize(1))) {
+                    m_editPane.block = m_editPane.history.top()->ports[1]->block;
+                    m_editPane.history.pop();
+                }
+            }
+
+            if (!verticalLayout) {
+                ImGui::SameLine();
+            }
+
+            {
+                // Draw the two add block buttons
+                ImGui::BeginGroup();
+                const auto                buttonSize = calcButtonSize(2);
+                ImGuiUtils::DisabledGuard dg(m_editPane.mode != EditPane::Mode::None);
+                if (ImGui::Button("\uf055", buttonSize)) {
+                    m_editPane.mode = EditPane::Mode::Insert;
+                }
+                ImGui::PopFont();
+                ImGuiUtils::setItemTooltip("Insert new block");
+                if (verticalLayout) {
+                    ImGui::SameLine();
+                }
+
+                ImGui::PushFont(App::instance().fontIconsSolid);
+                if (ImGui::Button("\uf0fe", buttonSize)) {
+                    m_editPane.mode = EditPane::Mode::AddAndBranch;
+                }
+                ImGui::PopFont();
+                ImGuiUtils::setItemTooltip("Add new block");
+                ImGui::EndGroup();
+
+                if (!verticalLayout) {
+                    ImGui::SameLine();
+                }
+            }
+
+            if (m_editPane.mode != EditPane::Mode::None) {
+                ImGui::BeginGroup();
+
+                auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
+                auto ret      = ImGuiUtils::filteredListBox(
+                        "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+                            if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
+                                return {};
+                            }
+                            return std::pair{ it.second.get(), it.first };
+                        },
+                        listSize);
+
+                {
+                    ImGuiUtils::DisabledGuard dg(!ret.has_value());
+                    if (ImGui::Button("Ok")) {
+                        BlockType  *selected = ret->first;
+                        auto        name     = fmt::format("{}({})", selected->name, m_editPane.block->name);
+                        auto        block    = selected->createBlock(name);
+
+                        Connection *c1;
+                        if (m_editPane.mode == EditPane::Mode::Insert) {
+                            // mode Insert means that the new block should be added in between this block and the next one.
+                            if (m_editPane.history.empty()) {
+                                // if the history is empty it means we're looking at the topmost block, whose data gets plotted.
+                                // this happens if the block is a raw source. so even though the mode is Insert we need to create
+                                // a sink and plot that one now instead of the raw source.
+                                auto *newsink = dashboard->createSink();
+
+                                c1            = dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
+                                dashboard->localFlowGraph.connect(&m_editPane.block->outputs()[0], &block->inputs()[0]);
+
+                                auto oldSource = std::find_if(m_editPane.plot->sources.begin(), m_editPane.plot->sources.end(), [&](const auto &s) {
+                                    return s->block == m_editPane.block;
+                                });
+                                m_editPane.plot->sources.erase(oldSource);
+
+                                auto source = std::find_if(dashboard->sources().begin(), dashboard->sources().end(), [&](const auto &s) {
+                                    return s.block == newsink;
+                                });
+                                m_editPane.plot->sources.push_back(&(*source));
+                            } else {
+                                // put the new block in between this block and the following one
+                                c1 = dashboard->localFlowGraph.connect(&block->outputs()[0], m_editPane.history.top()->ports[1]);
+                                dashboard->localFlowGraph.connect(m_editPane.history.top()->ports[0], &block->inputs()[0]);
+                                dashboard->localFlowGraph.disconnect(m_editPane.history.top());
+                            }
+                        } else {
+                            // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
+                            auto *newsink = dashboard->createSink();
+                            c1            = dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
+                            if (m_editPane.history.empty()) {
+                                dashboard->localFlowGraph.connect(&m_editPane.block->outputs()[0], &block->inputs()[0]);
+                            } else {
+                                dashboard->localFlowGraph.connect(m_editPane.history.top()->ports[0], &block->inputs()[0]);
+                            }
+
+                            auto source = std::find_if(dashboard->sources().begin(), dashboard->sources().end(), [&](const auto &s) {
+                                return s.block == newsink;
+                            });
+                            m_editPane.plot->sources.push_back(&(*source));
+                        }
+                        if (!m_editPane.history.empty()) {
+                            m_editPane.history.pop();
+                        }
+
+                        m_editPane.history.push(c1);
+                        m_editPane.block = block.get();
+
+                        dashboard->localFlowGraph.addBlock(std::move(block));
+                        m_editPane.mode = EditPane::Mode::None;
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel")) {
+                    m_editPane.mode = EditPane::Mode::None;
+                }
+
+                ImGui::EndGroup();
+
+                if (!verticalLayout) {
+                    ImGui::SameLine();
+                }
+            }
+
+            ImGui::BeginChild("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
+                    ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(m_editPane.block->name.c_str());
+            ImGuiUtils::blockParametersControls(m_editPane.block, verticalLayout);
+            ImGui::EndChild();
+
+            ImGui::SetCursorPos(ImGui::GetWindowContentRegionMin());
+
+            // draw the button(s) that go to the previous block(s).
+            const char *nextString = verticalLayout ? "\uf063" : "\uf061";
+            ImGui::PushFont(App::instance().fontIconsSolid);
+            if (m_editPane.block->inputs().empty()) {
+                auto buttonSize = calcButtonSize(1);
+                if (verticalLayout) {
+                    ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
+                } else {
+                    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
+                }
+                ImGuiUtils::DisabledGuard dg;
+                ImGui::Button(nextString, buttonSize);
+            } else {
+                auto buttonSize = calcButtonSize(m_editPane.block->inputs().size());
+                if (verticalLayout) {
+                    ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
+                } else {
+                    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
+                }
+
+                ImGui::BeginGroup();
+                int id = 1;
+                for (auto &in : m_editPane.block->inputs()) {
+                    ImGui::PushID(id++);
+                    ImGuiUtils::DisabledGuard dg(in.connections.empty());
+
+                    if (ImGui::Button(nextString, buttonSize)) {
+                        m_editPane.history.push(in.connections.front());
+                        m_editPane.block = in.connections.front()->ports[0]->block;
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::PopFont();
+                        ImGui::SetTooltip("%s", in.connections.front()->ports[0]->block->name.c_str());
+                        ImGui::PushFont(App::instance().fontIconsSolid);
+                    }
+                    ImGui::PopID();
+                    if (verticalLayout) {
+                        ImGui::SameLine();
+                    }
+                }
+                ImGui::EndGroup();
+            }
+            ImGui::PopFont();
+        }
+
+        // don't close the panel while the mouse is hovering it.
+        if (ImGui::IsWindowHovered()) {
+            m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+        }
+
+        ImGui::EndChild();
+    }
 }
 
 void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard) {
-    pane_size = ImGui::GetContentRegionAvail();
     pane_size.y -= legend_box.y;
 
     float w = pane_size.x / float(GridLayout::grid_width);  // Grid width
@@ -469,6 +725,21 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                     for (const auto &s : plot.sources) {
                         if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
                             plotItemHovered = true;
+
+                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                                m_editPane.plot      = &plot;
+                                m_editPane.block     = s->block;
+                                m_editPane.history   = {};
+                                m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+
+                                // If the block is a sink go back to the last block that feeds data to the sink
+                                // If the block is not a sink it means it is a source, and it's fine to look at it
+                                if (auto *sink = dynamic_cast<DataSink *>(s->block)) {
+                                    m_editPane.history.push(sink->inputs()[0].connections[0]);
+                                    m_editPane.block = sink->inputs()[0].connections[0]->ports[0]->block;
+                                }
+                            }
+
                             break;
                         }
                     }
@@ -521,7 +792,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
     ImGui::BeginGroup();
 
     const auto legend_item = [](const ImVec4 &color, std::string_view text, bool enabled = true) -> bool {
-        const ImVec2 cursorPos = ImGui::GetCursorPos();
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
         // Draw colored rectangle
         const ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);

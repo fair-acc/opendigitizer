@@ -222,10 +222,16 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
     m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
+        if (dynamic_cast<DataSinkSource *>(b)) {
+            return;
+        }
         for (int i = 0; i < b->type->outputs.size(); ++i) {
             auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
             m_sources.insert({ b, i, name, randomColor() });
         }
+    };
+    localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
+        m_sources.insert({ b, -1, b->name, randomColor() });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
@@ -238,6 +244,17 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
 }
 
 Dashboard::~Dashboard() {
+}
+
+DataSink *Dashboard::createSink() {
+    int  n       = localFlowGraph.sinkBlocks().size() + 1;
+    auto name    = fmt::format("sink {}", n);
+    auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
+    auto sinkptr = sink.get();
+    localFlowGraph.addSinkBlock(std::move(sink));
+    name = fmt::format("source for sink {}", n);
+    localFlowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
+    return sinkptr;
 }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
@@ -299,11 +316,11 @@ void Dashboard::doLoad(const std::string &desc) {
         auto colorNum = color.as<uint32_t>();
 
         auto source   = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) {
-            return s.block->name == blockStr && s.port == portNum;
-          });
+            return s.name == nameStr;
+        });
         if (source == m_sources.end()) {
             fmt::print("Unable to find the source '{}.{}'\n", blockStr, portNum);
-            return;
+            continue;
         }
 
         source->name  = nameStr;
@@ -360,6 +377,7 @@ void Dashboard::doLoad(const std::string &desc) {
             auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == str; });
             if (source == m_sources.end()) {
                 fmt::print("Unable to find source {}\n", str);
+                continue;
             }
             plot.sources.push_back(&*source);
         }

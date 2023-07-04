@@ -24,6 +24,10 @@ inline ImVec2 operator-(const ImVec2 a, const ImVec2 b) {
     return r;
 }
 
+namespace DigitizerUi {
+class Block;
+}
+
 namespace ImGuiUtils {
 
 namespace {
@@ -125,7 +129,7 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
     ImGui::PushItemWidth(size.x - (ImGui::GetCursorPosX() - x));
     bool scrollToSelected = ImGui::InputText("##filterBlockType", &ctx->filterString, ImGuiInputTextFlags_CallbackCompletion, completeItemName, &cbdata);
 
-    if (ImGui::BeginListBox("##Available Block types", size)) {
+    if (ImGui::BeginListBox("##Available Block types", { size.x, size.y - (ImGui::GetCursorPosY() - y) })) {
         auto filter = [&](std::string_view name) {
             if (!ctx->filterString.empty()) {
                 auto it = std::search(name.begin(), name.end(), ctx->filterString.begin(), ctx->filterString.end(),
@@ -212,6 +216,34 @@ enum class DialogButton {
 };
 
 DialogButton drawDialogButtons(bool okEnabled = true);
+float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5);
+void         blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size = { 0.f, 0.f });
+void         setItemTooltip(const char *fmt, auto &&...args) {
+    if (ImGui::IsItemHovered()) {
+        if constexpr (sizeof...(args) == 0) {
+            ImGui::SetTooltip(fmt);
+        } else {
+            ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
+        }
+    }
+}
+
+struct DisabledGuard {
+    explicit inline DisabledGuard(bool disable = true)
+        : m_disabled(disable) {
+        if (m_disabled) {
+            ImGui::BeginDisabled();
+        }
+    }
+    inline ~DisabledGuard() {
+        if (m_disabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+private:
+    const bool m_disabled;
+};
 
 } // namespace ImGuiUtils
 
