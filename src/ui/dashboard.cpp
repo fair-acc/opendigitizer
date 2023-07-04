@@ -317,7 +317,7 @@ void Dashboard::doLoad(const std::string &desc) {
 
         auto source   = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) {
             return s.name == nameStr;
-        });
+          });
         if (source == m_sources.end()) {
             fmt::print("Unable to find the source '{}.{}'\n", blockStr, portNum);
             continue;

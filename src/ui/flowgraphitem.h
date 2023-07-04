@@ -58,7 +58,7 @@ private:
         ax::NodeEditor::Config         config;
         std::string                    settings;
     };
-    std::unordered_map<FlowGraph *, Context> m_editors;
+    std::unordered_map<FlowGraph *, Context>           m_editors;
 
     Block                                             *m_editingBlock = nullptr;
     std::chrono::time_point<std::chrono::system_clock> m_editPaneCloseTime;

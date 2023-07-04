@@ -486,13 +486,13 @@ void DashboardPage::drawControlsPanel(Dashboard *dashboard, const ImVec2 &pos, c
 
                 auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
                 auto ret      = ImGuiUtils::filteredListBox(
-                        "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+                             "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
                             if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
                                 return {};
                             }
                             return std::pair{ it.second.get(), it.first };
-                        },
-                        listSize);
+                             },
+                             listSize);
 
                 {
                     ImGuiUtils::DisabledGuard dg(!ret.has_value());
