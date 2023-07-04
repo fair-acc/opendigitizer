@@ -304,10 +304,11 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         ImGui::SetCursorPos(curPos);
 
         // auto y = curPos.y;
-        const auto &inputs      = b.inputs();
-        auto       *inputWidths = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
+        const auto &inputs       = b.inputs();
+        auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
 
-        ImVec2      pos         = { leftPos, curPos.y };
+        auto        curScreenPos = ImGui::GetCursorScreenPos();
+        ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
@@ -318,13 +319,13 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
 
         // make sure the node ends up being tall enough to fit all the pins
         ImGui::SetCursorPos(curPos);
-        ImGui::Dummy(ImVec2(10, pos.y - curPos.y));
+        ImGui::Dummy(ImVec2(10, pos.y - curScreenPos.y));
 
         // ImGui::SetCursorPosY(y);
         const auto &outputs      = b.outputs();
         auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
         auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
-        pos                      = { leftPos + s.x, curPos.y };
+        pos                      = { curScreenPos.x - padding.x + s.x, curScreenPos.y };
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
@@ -335,7 +336,7 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
 
         // likewise for the output pins
         ImGui::SetCursorPos(curPos);
-        ImGui::Dummy(ImVec2(10, pos.y - curPos.y));
+        ImGui::Dummy(ImVec2(10, pos.y - curScreenPos.y));
 
         ax::NodeEditor::EndNode();
 
@@ -369,7 +370,7 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
 
     ImGui::SetCursorPos(curPos);
     const auto size = ax::NodeEditor::GetNodeSize(nodeId);
-    ImGui::SetCursorPosY(ax::NodeEditor::GetNodePosition(nodeId).y + size.y - padding.w - 20);
+    ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
 
     ImGui::PushID(b.name.c_str());
     if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
@@ -391,9 +392,21 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     c.config.UserPointer = &c;
     ax::NodeEditor::SetCurrentEditor(c.editor);
 
-    const float left = ImGui::GetCursorPosX();
-    const float top  = ImGui::GetCursorPosY();
-    ax::NodeEditor::Begin("My Editor", size);
+    const float     left              = ImGui::GetCursorPosX();
+    const float     top               = ImGui::GetCursorPosY();
+
+    const bool      horizontalSplit   = size.x > size.y;
+    constexpr float splitterWidth     = 6;
+    constexpr float halfSplitterWidth = splitterWidth / 2.f;
+    const float     ratio             = m_editPane.block ? ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f) : 0.f;
+
+    ImGui::SetCursorPosX(left);
+    ImGui::SetCursorPosY(top);
+
+    ImGui::BeginChild("##canvas", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
+            false, ImGuiWindowFlags_NoScrollbar);
+
+    ax::NodeEditor::Begin("My Editor", ImGui::GetContentRegionAvail());
 
     int y = 0;
 
@@ -407,7 +420,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     y = 0;
     for (auto &s : fg->sinkBlocks()) {
-        auto p = ax::NodeEditor::ScreenToCanvas({ left + size.x - 10, 0 });
+        auto p = ax::NodeEditor::ScreenToCanvas({ ImGui::GetContentRegionMax().x - 10, 0 });
         p.y    = y;
 
         addBlock(*s, p, Alignment::Right);
@@ -489,6 +502,20 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
     ax::NodeEditor::End();
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+        auto n     = ax::NodeEditor::GetHoveredNode();
+        auto block = n.AsPointer<Block>();
+
+        if (!block) {
+            m_editPane.block = nullptr;
+        } else {
+            m_editPane.block     = block;
+            m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+        }
+    }
+
+    ImGui::EndChild();
 
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
@@ -599,6 +626,14 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     drawAddSourceDialog(fg);
     drawNewBlockDialog(fg);
+
+    if (horizontalSplit) {
+        const float w = size.x * ratio;
+        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left + size.x - w + halfSplitterWidth, top }, { w - halfSplitterWidth, size.y }, true);
+    } else {
+        const float h = size.y * ratio;
+        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth }, false);
+    }
 }
 
 void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {

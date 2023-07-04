@@ -58,6 +58,7 @@ private:
         std::string                    settings;
     };
     std::unordered_map<FlowGraph *, Context> m_editors;
+    ImGuiUtils::BlockControlsPanel           m_editPane;
 };
 
 } // namespace DigitizerUi

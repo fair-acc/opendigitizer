@@ -286,19 +286,26 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         auto color = ImGui::ColorConvertU32ToFloat4(source->color);
         ImPlot::SetNextLineStyle(color);
 
-        const auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
+        const auto [dataType, dataSet] = [&]() -> std::tuple<DataType, DataSet> {
+            if (auto *sink = dynamic_cast<DataSink *>(source->block)) {
+                return { sink->dataType, sink->data };
+            }
+            auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
+            return { port.type, port.dataSet };
+        }();
 
-        if (port.dataSet.empty()) {
+        ImPlot::HideNextItem(false, ImPlotCond_Always);
+        if (dataSet.empty()) {
             // Plot one single dummy value so that the sink shows up in the plot legend
             float v = 0;
             if (source->visible) {
                 ImPlot::PlotLine(source->name.c_str(), &v, 1);
             }
         } else {
-            switch (port.type) {
+            switch (dataType) {
             case DigitizerUi::DataType::Float32: {
                 if (source->visible) {
-                    auto values = port.dataSet.asFloat32();
+                    auto values = dataSet.asFloat32();
                     ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
                 }
                 break;
@@ -320,6 +327,25 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
 }
 
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
+    const float     left              = ImGui::GetCursorPosX();
+    const float     top               = ImGui::GetCursorPosY();
+    const ImVec2    size              = ImGui::GetContentRegionAvail();
+
+    const bool      horizontalSplit   = size.x > size.y;
+    constexpr float splitterWidth     = 6;
+    constexpr float halfSplitterWidth = splitterWidth / 2.f;
+    const float     ratio             = m_editPane.block ? ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f) : 0.f;
+
+    ImGui::SetCursorPosX(left);
+    ImGui::SetCursorPosY(top);
+
+    ImGui::BeginChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
+            false, ImGuiWindowFlags_NoScrollbar);
+
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        m_editPane.block = nullptr;
+    }
+
     // Plots
     ImGui::BeginGroup();
     drawPlots(app, mode, dashboard);
@@ -369,6 +395,16 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     }
     ImGui::EndGroup(); // Legend
     legend_box.y = std::floor(ImGui::GetItemRectSize().y * 1.5f);
+
+    ImGui::EndChild();
+
+    if (horizontalSplit) {
+        const float w = size.x * ratio;
+        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left + size.x - w + halfSplitterWidth, top }, { w - halfSplitterWidth, size.y }, true);
+    } else {
+        const float h = size.y * ratio;
+        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth }, false);
+    }
 }
 
 void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard) {
@@ -469,6 +505,12 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                     for (const auto &s : plot.sources) {
                         if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
                             plotItemHovered = true;
+
+                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                                m_editPane.block     = s->block;
+                                m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+                            }
+
                             break;
                         }
                     }
@@ -521,7 +563,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
     ImGui::BeginGroup();
 
     const auto legend_item = [](const ImVec4 &color, std::string_view text, bool enabled = true) -> bool {
-        const ImVec2 cursorPos = ImGui::GetCursorPos();
+        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
         // Draw colored rectangle
         const ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
@@ -545,7 +587,9 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         Dashboard::Source &signal = *iter;
         auto               color  = ImGui::ColorConvertU32ToFloat4(signal.color);
         if (legend_item(color, signal.name, signal.visible)) {
-            signal.visible = !signal.visible;
+            fmt::print("click\n");
+            m_editPane.block     = signal.block;
+            m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
         }
         legend_box.x += ImGui::GetItemRectSize().x;
 
