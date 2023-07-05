@@ -81,7 +81,7 @@ int main() {
 
     client.unsubscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"));
     client.unsubscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition"));
-    fmt::print("received client updates: {} for 'sine' and {} for 'sine,saw'\n", receivedA, receivedAB);
+    fmt::print("received client updates: {} for 'sine' and {} for 'sine,saw'\n", receivedA.load(), receivedAB.load());
     client.stop();
 
     // shutdown
