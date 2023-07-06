@@ -101,7 +101,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
         ImGui::SetCursorPos(pos);
 
         if (ImGui::BeginChildFrame(1, size, ImGuiWindowFlags_NoScrollbar)) {
-            size          = ImGui::GetContentRegionAvail();
+            size = ImGui::GetContentRegionAvail();
 
             // don't close the panel while the mouse is hovering it.
             if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
@@ -113,13 +113,13 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
             ImGui::ProgressBar(1.f - duration, { size.x, 3 });
             ImGui::PopStyleColor();
 
-            auto minpos = ImGui::GetCursorPos();
-            size          = ImGui::GetContentRegionAvail();
+            auto minpos      = ImGui::GetCursorPos();
+            size             = ImGui::GetContentRegionAvail();
 
             int outputsCount = 0;
             {
                 const char *prevString = verticalLayout ? "\uf062" : "\uf060";
-                for (const auto &out: ctx.block->outputs()) {
+                for (const auto &out : ctx.block->outputs()) {
                     outputsCount += out.connections.size();
                 }
                 if (outputsCount == 0) {
@@ -133,7 +133,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     ImGui::BeginGroup();
                     int id = 1;
                     for (auto &out : ctx.block->outputs()) {
-                        for (const auto *conn: out.connections) {
+                        for (const auto *conn : out.connections) {
                             ImGui::PushID(id++);
 
                             ImGui::PushFont(app.fontIconsSolid);
@@ -152,7 +152,6 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     }
                     ImGui::EndGroup();
                 }
-
             }
 
             if (!verticalLayout) {
@@ -162,7 +161,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
             {
                 // Draw the two add block buttons
                 ImGui::BeginGroup();
-                const auto                buttonSize = calcButtonSize(2);
+                const auto buttonSize = calcButtonSize(2);
                 {
                     ImGuiUtils::DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || outputsCount == 0);
                     ImGui::PushFont(app.fontIconsSolid);
@@ -170,12 +169,12 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                         if (outputsCount > 1) {
                             ImGui::OpenPopup("insertBlockPopup");
                         } else {
-                            [&](){
+                            [&]() {
                                 int index = 0;
                                 for (auto &out : ctx.block->outputs()) {
-                                    for (auto *conn: out.connections) {
-                                        ctx.insertFrom = conn->ports[0];
-                                        ctx.insertBefore = conn->ports[1];
+                                    for (auto *conn : out.connections) {
+                                        ctx.insertFrom      = conn->ports[0];
+                                        ctx.insertBefore    = conn->ports[1];
                                         ctx.breakConnection = conn;
                                         return;
                                     }
@@ -191,12 +190,12 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     if (ImGui::BeginPopup("insertBlockPopup")) {
                         int index = 0;
                         for (auto &out : ctx.block->outputs()) {
-                            for (auto *conn: out.connections) {
+                            for (auto *conn : out.connections) {
                                 auto text = fmt::format("Before block '{}'", conn->ports[1]->block->name);
                                 if (ImGui::Selectable(text.c_str())) {
-                                    ctx.insertBefore = conn->ports[1];
-                                    ctx.mode = BlockControlsPanel::Mode::Insert;
-                                    ctx.insertFrom = conn->ports[0];
+                                    ctx.insertBefore    = conn->ports[1];
+                                    ctx.mode            = BlockControlsPanel::Mode::Insert;
+                                    ctx.insertFrom      = conn->ports[0];
                                     ctx.breakConnection = conn;
                                 }
                             }
@@ -216,7 +215,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     if (ctx.block->outputs().size() > 1) {
                         ImGui::OpenPopup("addBlockPopup");
                     } else {
-                        ctx.mode = BlockControlsPanel::Mode::AddAndBranch;
+                        ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
                         ctx.insertFrom = &ctx.block->outputs()[0];
                     }
                 }
@@ -225,10 +224,10 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                 if (ImGui::BeginPopup("addBlockPopup")) {
                     int index = 0;
-                    for (const auto &out: ctx.block->type->outputs) {
+                    for (const auto &out : ctx.block->type->outputs) {
                         if (ImGui::Selectable(out.name.c_str())) {
                             ctx.insertFrom = &ctx.block->outputs()[index];
-                            ctx.mode = BlockControlsPanel::Mode::AddAndBranch;
+                            ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
                         }
                         ++index;
                     }
@@ -281,7 +280,6 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                             app.dashboardPage.newPlot(app.dashboard.get());
                             app.dashboard->plots().back().sources.push_back(&*source);
-
                         }
                         ctx.block = block.get();
 

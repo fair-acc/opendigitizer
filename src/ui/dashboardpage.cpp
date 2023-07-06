@@ -327,20 +327,19 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
 }
 
 void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
-    const float  left            = ImGui::GetCursorPosX();
-    const float  top             = ImGui::GetCursorPosY();
-    const ImVec2 size            = ImGui::GetContentRegionAvail();
+    const float     left              = ImGui::GetCursorPosX();
+    const float     top               = ImGui::GetCursorPosY();
+    const ImVec2    size              = ImGui::GetContentRegionAvail();
 
-    const bool   horizontalSplit = size.x > size.y;
-    constexpr float splitterWidth = 6;
+    const bool      horizontalSplit   = size.x > size.y;
+    constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float  ratio           = m_editPane.block ? ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f) : 0.f;
+    const float     ratio             = m_editPane.block ? ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f) : 0.f;
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    ImGui::BeginChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) :
-                                                    ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
+    ImGui::BeginChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
             false, ImGuiWindowFlags_NoScrollbar);
 
     if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -404,7 +403,7 @@ void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
         ImGuiUtils::drawBlockControlsPanel(m_editPane, { left + size.x - w + halfSplitterWidth, top }, { w - halfSplitterWidth, size.y }, true);
     } else {
         const float h = size.y * ratio;
-        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth}, false);
+        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth }, false);
     }
 }
 

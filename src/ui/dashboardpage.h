@@ -2,11 +2,11 @@
 #define DASHBOARDPAGE_H
 
 #include "grid_layout.h"
+#include "imguiutils.h"
 #include <imgui.h>
 #include <stack>
 #include <string>
 #include <vector>
-#include "imguiutils.h"
 
 namespace DigitizerUi {
 
@@ -50,13 +50,13 @@ public:
 
 public:
     void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View) noexcept;
-    void        newPlot(Dashboard *dashboard);
+    void newPlot(Dashboard *dashboard);
 
 private:
-    void        drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard);
-    void        drawGrid(float w, float h);
-    void        drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
-    static void drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept;
+    void                           drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard);
+    void                           drawGrid(float w, float h);
+    void                           drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
+    static void                    drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept;
 
     ImGuiUtils::BlockControlsPanel m_editPane;
 };

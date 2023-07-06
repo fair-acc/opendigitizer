@@ -29,7 +29,7 @@ inline ImVec2 operator-(const ImVec2 a, const ImVec2 b) {
 namespace DigitizerUi {
 class Block;
 class Dashboard;
-}
+} // namespace DigitizerUi
 
 namespace ImGuiUtils {
 
@@ -222,22 +222,22 @@ DialogButton drawDialogButtons(bool okEnabled = true);
 float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5);
 
 struct BlockControlsPanel {
-    DigitizerUi::Block                   *block = {};
+    DigitizerUi::Block *block = {};
     enum class Mode {
         None,
         Insert,
         AddAndBranch
     };
-    Mode                                               mode = Mode::None;
-    DigitizerUi::Block::Port *insertBefore = nullptr;
-    DigitizerUi::Block::Port *insertFrom = nullptr;
-    DigitizerUi::Connection *breakConnection = nullptr;
+    Mode                                               mode            = Mode::None;
+    DigitizerUi::Block::Port                          *insertBefore    = nullptr;
+    DigitizerUi::Block::Port                          *insertFrom      = nullptr;
+    DigitizerUi::Connection                           *breakConnection = nullptr;
     std::chrono::time_point<std::chrono::system_clock> closeTime;
 };
 void drawBlockControlsPanel(BlockControlsPanel &context, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout);
 
-void         blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size = { 0.f, 0.f });
-void         setItemTooltip(const char *fmt, auto &&...args) {
+void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size = { 0.f, 0.f });
+void setItemTooltip(const char *fmt, auto &&...args) {
     if (ImGui::IsItemHovered()) {
         if constexpr (sizeof...(args) == 0) {
             ImGui::SetTooltip(fmt);
