@@ -264,6 +264,22 @@ private:
     const bool m_disabled;
 };
 
+
+
+// Draw a 4x5 button matrix entry keypad edits a *value std::string,
+// scaled to the current content region height with square buttons
+int InputKeypad(const char *label, bool *p_visible, std::string *value);
+
+// The widget takes a label, and a *std::string
+// returns 1 if the new value should accepted, enter pressed
+// returns 0 if nothing happened
+// return -1 if cancel pressed, previous value has been restored
+int KeypadEditString(const char *label, std::string *value);
+
+// Show the popup keypad box as required.
+void PopupKeypad(void);
+
+
 } // namespace ImGuiUtils
 
 #endif
