@@ -105,15 +105,15 @@ private:
             ~Guard() { ImGui::EndChild(); }
         };
         ImVec2      csize = ImGui::GetContentRegionAvail();
-        float         n     = floorf(csize.y / 5); // height / 5 button rows
+        float       n     = floorf(csize.y / 5); // height / 5 button rows
 
         ImGuiStyle &style = ImGui::GetStyle();
 
         if (ImGui::BeginChild(label, ImVec2(n * 4 + style.WindowPadding.x, n * 5), true)) {
             Guard g;
-            csize = ImGui::GetContentRegionAvail();      // now inside this child
+            csize = ImGui::GetContentRegionAvail();            // now inside this child
             n     = floorf(csize.y / 5 - style.ItemSpacing.y); // button size
-            ImVec2 bsize(n, n);                          // buttons are square
+            ImVec2 bsize(n, n);                                // buttons are square
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
 
             char k = 0;
@@ -303,7 +303,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
             size = ImGui::GetContentRegionAvail();
 
             // don't close the panel while the mouse is hovering it or edits are made.
-            if ( ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad::Visible() ) {
+            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad::Visible()) {
                 resetTime();
             }
 
@@ -419,7 +419,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     }
                 }
                 ImGui::PopFont();
-                setItemTooltip("%s","Add new block");
+                setItemTooltip("%s", "Add new block");
 
                 if (ImGui::BeginPopup("addBlockPopup")) {
                     int index = 0;
