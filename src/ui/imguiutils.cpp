@@ -23,7 +23,7 @@ private:
         None,
         Change,
         Accept,
-        Discard = -1 // TODO: save value
+        Discard = -1
     };
     InputKeypad() {
         edit_buffer.reserve(buffer_size);
@@ -58,10 +58,6 @@ private:
         ImGui::SetNextWindowSize(ImVec2(300, 400));
 
         if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize)) {
-            // TODO: REWORK
-            // if(ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-            //    visible = false;
-
             ImGui::Text("%s", label);
             r = Keypad("Keypad Input");
             ImGui::EndPopup();
