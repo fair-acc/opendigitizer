@@ -4,271 +4,214 @@
 
 #include <fmt/format.h>
 
-#include <imgui_internal.h>
-
-#include "app.h"
 #include "flowgraph/datasink.h"
+#include <any>
+#include <charconv>
+#include <imgui_internal.h>
 
 namespace ImGuiUtils {
 class InputKeypad {
-public:
+    static inline constexpr const char *keypad_name = "KeypadX";
+    static inline constexpr size_t      buffer_size = 64;
+
+    bool                                visible     = true;
+    std::string                         edit_buffer;
+    std::any                            prev_value;
+
+private:
+    enum class ReturnState {
+        None,
+        Change,
+        Accept,
+        Discard = -1
+    };
+    InputKeypad() {
+        edit_buffer.reserve(buffer_size);
+    };
     static auto &Get() {
         static InputKeypad instance;
         return instance;
     }
 
 public:
-    int        KeypadEditString(const char *label, std::string *value);
-    static int EditFloat(const char *label, float *value) {
-        if (!label || !value) return 0;
+    template<typename EdTy>
+        requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
+    static bool Edit(const char *label, EdTy *value) {
+        if (!label || !value) return false;
+        if constexpr (std::floating_point<EdTy>)
+            ImGui::DragFloat(label, static_cast<float *>(value), 0.1f);
+        else if constexpr (std::integral<EdTy>)
+            ImGui::DragInt(label, static_cast<int *>(value));
+        else
+            ImGui::InputText(label, value);
 
-        ImGui::DragFloat(label, value, 0.1f);
-        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            // if (value != g_KeypadEditStrPtr) {
-            //     g_KeypadEditStrRestore  = value->c_str();
-            //     g_KeypadEditStrPtr      = value;
-            //     g_KeypadApplyMap[label] = 0;
-            //     g_KeypadCurrentLabel    = (char *) label;
-            // }
-            ImGui::OpenPopup("KeypadX");
-        }
-
-        auto &instance = Get();
-        instance.DrawKeypad(label);
-        return 0;
+        return Get().EditImpl(label, value);
     }
+    static bool Visible() noexcept { return Get().visible; }
 
 private:
-    InputKeypad() = default;
-    void DrawKeypad(const char* label) noexcept {
+    ReturnState DrawKeypad(const char *label) noexcept {
+        ReturnState r = ReturnState::None;
         // Always center this window when appearing
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowSize(ImVec2(300, 400));
 
-        if (m_visible && ImGui::BeginPopupModal("KeypadX", &m_visible, ImGuiWindowFlags_AlwaysAutoResize)) {
-
-            ImGui::Text(label);
-            //int r = InputKeypad("Keypad Input", &gShowKeypad, g_KeypadEditStrPtr);
-            
-
-
-            //if (!gShowKeypad) ImGui::CloseCurrentPopup();
+        if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("%s", label);
+            r = Keypad("Keypad Input");
             ImGui::EndPopup();
         }
+        return r;
     }
-    
-private:
-    bool m_visible = false;
+
+    template<typename EdTy>
+    bool EditImpl(const char *label, EdTy *value) noexcept {
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            visible = true;
+            ImGui::OpenPopup(keypad_name);
+            prev_value.emplace<EdTy>(*value); // save for discard
+            fmt::format_to(std::back_inserter(edit_buffer), "{}\0", *value);
+        }
+
+        ReturnState r = DrawKeypad(edit_buffer.c_str());
+
+        if (r == ReturnState::Discard) {
+            *value  = any_cast<EdTy>(prev_value);
+            visible = false;
+            return true;
+        }
+
+        if (r != ReturnState::None) {
+            if constexpr (std::same_as<std::string, EdTy>) {
+                *value = edit_buffer;
+            } else {
+                EdTy             converted = 0;
+                std::string_view a{ edit_buffer };
+                auto [ptr, ec] = std::from_chars(a.begin(), a.end(), converted);
+                if (ec != std::errc())
+                    return false;
+                *value = converted;
+            }
+            if (r == ReturnState::Accept)
+                visible = false;
+        }
+
+        return r != ReturnState::None;
+    }
+
+    ReturnState Keypad(const char *label) noexcept {
+        struct Guard {
+            ~Guard() { ImGui::EndChild(); }
+        };
+        ImVec2      csize = ImGui::GetContentRegionAvail();
+        float       n     = floorf(csize.y / 5); // height / 5 button rows
+
+        ImGuiStyle &style = ImGui::GetStyle();
+
+        if (ImGui::BeginChild(label, ImVec2(n * 4 + style.WindowPadding.x, n * 5), true)) {
+            Guard g;
+            csize = ImGui::GetContentRegionAvail();            // now inside this child
+            n     = floorf(csize.y / 5 - style.ItemSpacing.y); // button size
+            ImVec2 bsize(n, n);                                // buttons are square
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
+
+            char k = 0;
+            if (ImGui::Button("ESC", bsize)) {
+                k = 'X';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("/", bsize)) {
+                k = '/';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("*", bsize)) {
+                k = '*';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("-", bsize)) {
+                k = '-';
+            }
+            if (ImGui::Button("7", bsize)) {
+                k = '7';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("8", bsize)) {
+                k = '8';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("9", bsize)) {
+                k = '9';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("+", bsize)) {
+                k = '+';
+            }
+            if (ImGui::Button("4", bsize)) {
+                k = '4';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("5", bsize)) {
+                k = '5';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("6", bsize)) {
+                k = '6';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("<-", bsize)) {
+                k = 'B';
+            }
+            if (ImGui::Button("1", bsize)) {
+                k = '1';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("2", bsize)) {
+                k = '2';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("3", bsize)) {
+                k = '3';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("CLR", bsize)) {
+                k = 'C';
+            }
+            if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })) {
+                k = '0';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(".", bsize)) {
+                k = '.';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("=", bsize)) {
+                k = 'E';
+            }
+            ImGui::PopStyleVar();
+
+            // logic
+            switch (k) {
+            case 0: return ReturnState::None;
+            case 'E': return ReturnState::Accept;
+            case 'X': return ReturnState::Discard;
+            case 'B':
+                edit_buffer.pop_back();
+                return ReturnState::Change;
+            case 'C':
+                edit_buffer.clear();
+                return ReturnState::Change;
+            default:
+                edit_buffer.push_back(k); // add k to the string
+                return ReturnState::Change;
+            }
+        }
+        return ReturnState::None;
+    }
 };
 
-// Draw a 4x5 button matrix entry keypad edits a *value std::string,
-// scaled to the current content region height with square buttons
-int InputKeypadX(const char *label, bool *p_visible, std::string *value) {
-    int ret = 0;
-
-    if (p_visible && !*p_visible)
-        return ret;
-    if (!value || !label)
-        return ret;
-
-    ImVec2      csize = ImGui::GetContentRegionAvail();
-    int         n     = (csize.y / 5); // height / 5 button rows
-
-    ImGuiStyle &style = ImGui::GetStyle();
-
-    if (ImGui::BeginChild(label, ImVec2((n * 4) + style.WindowPadding.x, n * 5), true)) {
-        csize = ImGui::GetContentRegionAvail();      // now inside this child
-        n     = (csize.y / 5) - style.ItemSpacing.y; // button size
-        ImVec2 bsize(n, n);                          // buttons are square
-
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
-        static std::string k = "";
-        if (ImGui::Button("ESC", bsize)) {
-            k = "X";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("/", bsize)) {
-            k = "/";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("*", bsize)) {
-            k = "*";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("-", bsize)) {
-            k = "-";
-        }
-        if (ImGui::Button("7", bsize)) {
-            k = "7";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("8", bsize)) {
-            k = "8";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("9", bsize)) {
-            k = "9";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("+", bsize)) {
-            k = "+";
-        }
-        if (ImGui::Button("4", bsize)) {
-            k = "4";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("5", bsize)) {
-            k = "5";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("6", bsize)) {
-            k = "6";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("<-", bsize)) {
-            k = "B";
-        }
-        if (ImGui::Button("1", bsize)) {
-            k = "1";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("2", bsize)) {
-            k = "2";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("3", bsize)) {
-            k = "3";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("CLR", bsize)) {
-            k = "C";
-        }
-        if (ImGui::Button("0", bsize)) {
-            k = "0";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("0", bsize)) {
-            k = "0";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button(".", bsize)) {
-            k = ".";
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("=", bsize)) {
-            k = "E";
-        }
-        ImGui::PopStyleVar();
-
-        // logic
-        if (k != "") {
-            if (k != "E" && k != "X" && k != "B" && k != "C") {
-                value->append(k);      // add k to the string
-            } else {
-                if (k == "E") {        // enter
-                    ret = 1;           // value has been accepted
-                } else if (k == "B") { // remove one char from the string
-                    std::string tvalue = value->substr(0, value->length() - 1);
-                    value->swap(tvalue);
-                } else if (k == "C") {
-                    value->clear();
-                } else if (k == "X") { // cancel
-                    ret = -1;          //  restore old value
-                }
-            }
-            if (ret) *p_visible = false;
-        }
-        k = "";
-        ImGui::EndChild();
-    }
-    //g_KeypadApplyMap[label] = ret; // store results in map
-    return ret;
-}
-
-int KeypadEditString(const char *label, std::string *value) {
-    //if (!label || !value) return 0;
-    //
-    //ImGui::Text(label);
-    //ImGui::SameLine();
-    //ImGui::InputText(label, value->data(), value->capacity());
-    //
-    //if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-    //    if (value != g_KeypadEditStrPtr) {
-    //        g_KeypadEditStrRestore  = value->c_str();
-    //        g_KeypadEditStrPtr      = value;
-    //        g_KeypadApplyMap[label] = 0;
-    //        g_KeypadCurrentLabel    = (char *) label;
-    //    }
-    //    ImGui::OpenPopup("KeypadX");
-    //}
-    //
-    //if (g_KeypadApplyMap[label] == 1) {
-    //    g_KeypadApplyMap[label] = 0;
-    //    return 1;
-    //} else if (g_KeypadApplyMap[label] == -1) {
-    //    g_KeypadApplyMap[label] = 0;
-    //    return -1;
-    //}
-    //return 0;
-}
-
-int KeypadEditFloat(const char *label, float *value) {
-    //if (!label || !value) return 0;
-    //
-    //ImGui::DragFloat(label, value, 0.1f);
-    //
-    //// ImGui::Text(label);
-    //// ImGui::SameLine();
-    //// ImGui::InputText(label, value->data(), value->capacity());
-    //
-    //if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-    //    // if (value != g_KeypadEditStrPtr) {
-    //    //     g_KeypadEditStrRestore  = value->c_str();
-    //    //     g_KeypadEditStrPtr      = value;
-    //    //     g_KeypadApplyMap[label] = 0;
-    //    //     g_KeypadCurrentLabel    = (char *) label;
-    //    // }
-    //    ImGui::OpenPopup("KeypadX");
-    //}
-    //
-    //if (g_KeypadApplyMap[label] == 1) {
-    //    g_KeypadApplyMap[label] = 0;
-    //    return 1;
-    //} else if (g_KeypadApplyMap[label] == -1) {
-    //    g_KeypadApplyMap[label] = 0;
-    //    return -1;
-    //}
-    //return 0;
-}
-
-void PopupKeypad(void) {
-    //// Always center this window when appearing
-    //ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    //ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    //ImGui::SetNextWindowSize(ImVec2(300, 400));
-    //
-    //if (ImGui::BeginPopupModal("KeypadX", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-    //    if (g_KeypadEditStrPtr != nullptr) {
-    //        bool gShowKeypad = true;
-    //        ImGui::Text(g_KeypadEditStrPtr->c_str());
-    //        int r = InputKeypad("Keypad Input", &gShowKeypad, g_KeypadEditStrPtr);
-    //        if (r == -1) {
-    //            // undo - restore previous value
-    //            g_KeypadEditStrPtr->swap(g_KeypadEditStrRestore);
-    //            g_KeypadApplyMap[g_KeypadCurrentLabel] = -1;
-    //        } else if (r == 1) {
-    //            // set - we should apply the new value
-    //            g_KeypadApplyMap[g_KeypadCurrentLabel] = 1;
-    //        }
-    //        if (!gShowKeypad) ImGui::CloseCurrentPopup();
-    //    }
-    //    ImGui::EndPopup();
-    //}
-}
-
 DialogButton drawDialogButtons(bool okEnabled) {
-    int y = ImGui::GetContentRegionAvail().y;
+    float y = ImGui::GetContentRegionAvail().y;
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + y - 20);
     ImGui::Separator();
 
@@ -359,8 +302,9 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
         if (ImGui::BeginChildFrame(1, size, ImGuiWindowFlags_NoScrollbar)) {
             size = ImGui::GetContentRegionAvail();
 
-            // don't close the panel while the mouse is hovering it.
-            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+            // don't close the panel while the mouse is hovering it or edits are made.
+            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
+                    || InputKeypad::Visible()) {
                 resetTime();
             }
 
@@ -441,7 +385,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                         }
                     }
                     ImGui::PopFont();
-                    setItemTooltip("Insert new block before the next");
+                    setItemTooltip("%s", "Insert new block before the next");
 
                     if (ImGui::BeginPopup("insertBlockPopup")) {
                         int index = 0;
@@ -476,7 +420,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     }
                 }
                 ImGui::PopFont();
-                setItemTooltip("Add new block");
+                setItemTooltip("%s", "Add new block");
 
                 if (ImGui::BeginPopup("addBlockPopup")) {
                     int index = 0;
@@ -629,7 +573,7 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
         const auto &p  = b->type->parameters[i];
 
         auto        id = ImGui::GetID(p.label.c_str());
-        ImGui::PushID(id);
+        ImGui::PushID(int(id));
         auto *enabled = storage->GetBoolRef(id, true);
 
         ImGui::BeginGroup();
@@ -657,33 +601,27 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
             } else if (auto *ip = std::get_if<DigitizerUi::Block::NumberParameter<int>>(&b->parameters()[i])) {
                 int val = ip->value;
                 ImGui::SetNextItemWidth(100);
-                ImGui::DragInt(label, &val);
-                b->setParameter(i, DigitizerUi::Block::NumberParameter<int>{ val });
-                b->update();
+                if (InputKeypad::Edit(label, &val)) {
+                    b->setParameter(i, DigitizerUi::Block::NumberParameter<int>{ val });
+                    b->update();
+                }
             } else if (auto *fp = std::get_if<DigitizerUi::Block::NumberParameter<float>>(&b->parameters()[i])) {
                 float val = fp->value;
                 ImGui::SetNextItemWidth(100);
-
-                // ImGui::DragFloat(label, &val, 0.1f);
-                if (InputKeypad::EditFloat(label, &val) == 1) {
+                if (InputKeypad::Edit(label, &val)) {
                     b->setParameter(i, DigitizerUi::Block::NumberParameter<float>{ val });
                     b->update();
                 }
-
-                // b->setParameter(i, DigitizerUi::Block::NumberParameter<float>{ val });
-                // b->update();
             } else if (auto *rp = std::get_if<DigitizerUi::Block::RawParameter>(&b->parameters()[i])) {
                 std::string val = rp->value;
                 ImGui::SetNextItemWidth(100);
 
-                if (KeypadEditString(label, &val) == 1) {
+                if (InputKeypad::Edit(label, &val)) {
                     b->setParameter(i, DigitizerUi::Block::RawParameter{ std::move(val) });
                     b->update();
                 }
-                // ImGui::InputText(label, &val);
             }
         }
-        //PopupKeypad();
 
         ImGui::EndGroup();
         ImGui::SameLine(0, 0);
@@ -706,7 +644,7 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
         }
         ImGui::PopStyleColor();
 
-        setItemTooltip(p.label.c_str());
+        setItemTooltip("%s", p.label.c_str());
 
         ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
         ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);

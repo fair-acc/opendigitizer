@@ -198,16 +198,19 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
 }
 
 template<typename Items, typename ItemGetter>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 })
+    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
+{
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
         return ImGui::Selectable(item.second.data(), selected);
     });
-    ;
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 })
+    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
+{
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, drawItem);
 }
@@ -263,22 +266,6 @@ struct DisabledGuard {
 private:
     const bool m_disabled;
 };
-
-
-
-// Draw a 4x5 button matrix entry keypad edits a *value std::string,
-// scaled to the current content region height with square buttons
-int InputKeypad(const char *label, bool *p_visible, std::string *value);
-
-// The widget takes a label, and a *std::string
-// returns 1 if the new value should accepted, enter pressed
-// returns 0 if nothing happened
-// return -1 if cancel pressed, previous value has been restored
-int KeypadEditString(const char *label, std::string *value);
-
-// Show the popup keypad box as required.
-void PopupKeypad(void);
-
 
 } // namespace ImGuiUtils
 
