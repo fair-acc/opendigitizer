@@ -398,7 +398,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = m_editPane.block ? ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f) : 0.f;
+    const float     ratio             = ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.block);
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);

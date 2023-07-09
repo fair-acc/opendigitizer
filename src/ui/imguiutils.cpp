@@ -234,14 +234,34 @@ DialogButton drawDialogButtons(bool okEnabled) {
     return DialogButton::None;
 }
 
-float splitter(ImVec2 space, bool vertical, float size, float defaultRatio) {
+float splitter(ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
+
     auto   storage    = ImGui::GetStateStorage();
 
     auto   ctxid      = ImGui::GetID("splitter_context");
-    float  startRatio = storage->GetFloat(ctxid, defaultRatio);
-    auto   ratioId    = ImGui::GetID("splitter_ratio");
+    float  startRatio = storage->GetFloat(ctxid, 0.0f);
 
+    auto   animid     = ImGui::GetID("splitter_anim");
+    bool   animated   = storage->GetBool(animid, true);
+
+    auto   ratioId    = ImGui::GetID("splitter_ratio");
     float *ratio      = storage->GetFloatRef(ratioId, startRatio);
+
+    if(reset)
+    {
+        storage->SetFloat(ctxid, 0.0f);
+        *ratio = 0.0f;
+        storage->SetBool(animid, true);
+        return 0.0f;
+    }
+
+    if(animated)
+    {
+        *ratio += 0.01f;
+        if(*ratio>=defaultRatio)
+            storage->SetBool(animid, false);
+    }
+
     float  s          = vertical ? space.x : space.y;
     auto   w          = s * *ratio;
     if (vertical) {

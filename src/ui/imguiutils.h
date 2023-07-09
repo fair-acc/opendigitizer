@@ -222,7 +222,7 @@ enum class DialogButton {
 };
 
 DialogButton drawDialogButtons(bool okEnabled = true);
-float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5);
+float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5, bool reset = false);
 
 struct BlockControlsPanel {
     DigitizerUi::Block *block = {};
