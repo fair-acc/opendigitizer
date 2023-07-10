@@ -117,75 +117,99 @@ private:
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
 
             char k = 0;
-            if (ImGui::Button("ESC", bsize)) {
+            if (ImGui::Button("ESC", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Escape)) {
                 k = 'X';
             }
             ImGui::SameLine();
-            if (ImGui::Button("/", bsize)) {
+            if (ImGui::Button("/", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Slash)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadDivide)) {
                 k = '/';
             }
             ImGui::SameLine();
-            if (ImGui::Button("*", bsize)) {
+            if (ImGui::Button("*", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
                 k = '*';
             }
             ImGui::SameLine();
-            if (ImGui::Button("-", bsize)) {
+            if (ImGui::Button("-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadSubtract)) {
                 k = '-';
             }
-            if (ImGui::Button("7", bsize)) {
+            if (ImGui::Button("7", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_7)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad7)) {
                 k = '7';
             }
             ImGui::SameLine();
-            if (ImGui::Button("8", bsize)) {
+            if (ImGui::Button("8", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_8)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad8)) {
                 k = '8';
             }
             ImGui::SameLine();
-            if (ImGui::Button("9", bsize)) {
+            if (ImGui::Button("9", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_9)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad9)) {
                 k = '9';
             }
             ImGui::SameLine();
-            if (ImGui::Button("+", bsize)) {
+            if (ImGui::Button("+", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadAdd)) {
                 k = '+';
             }
-            if (ImGui::Button("4", bsize)) {
+            if (ImGui::Button("4", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_4)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad4)) {
                 k = '4';
             }
             ImGui::SameLine();
-            if (ImGui::Button("5", bsize)) {
+            if (ImGui::Button("5", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_5)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad5)) {
                 k = '5';
             }
             ImGui::SameLine();
-            if (ImGui::Button("6", bsize)) {
+            if (ImGui::Button("6", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_6)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad6)) {
                 k = '6';
             }
             ImGui::SameLine();
-            if (ImGui::Button("<-", bsize)) {
+            if (ImGui::Button("<-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Backspace)) {
                 k = 'B';
             }
-            if (ImGui::Button("1", bsize)) {
+            if (ImGui::Button("1", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_1)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad1)) {
                 k = '1';
             }
             ImGui::SameLine();
-            if (ImGui::Button("2", bsize)) {
+            if (ImGui::Button("2", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_2)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad2)) {
                 k = '2';
             }
             ImGui::SameLine();
-            if (ImGui::Button("3", bsize)) {
+            if (ImGui::Button("3", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_3)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad3)) {
                 k = '3';
             }
             ImGui::SameLine();
             if (ImGui::Button("CLR", bsize)) {
                 k = 'C';
             }
-            if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })) {
+            if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })
+                    || ImGui::IsKeyPressedMap(ImGuiKey_0)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad0)) {
                 k = '0';
             }
             ImGui::SameLine();
-            if (ImGui::Button(".", bsize)) {
+            if (ImGui::Button(".", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Period)) {
                 k = '.';
             }
             ImGui::SameLine();
-            if (ImGui::Button("=", bsize)) {
+            if (ImGui::Button("=", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Enter)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadEnter)) {
                 k = 'E';
             }
             ImGui::PopStyleVar();
@@ -234,36 +258,68 @@ DialogButton drawDialogButtons(bool okEnabled) {
     return DialogButton::None;
 }
 
+struct Splitter {
+    enum class State {
+        Hidden,
+        AnimatedForward,
+        AnimatedBackward,
+        Shown
+    } anim_state;
+    float start_ratio = 0.0f;
+    float ratio       = 0.0f;
+    float speed       = 0.02f;
+
+    void  move(float max, bool forward = true) noexcept {
+        if (forward)
+            move_forward(max);
+        else
+            move_backward();
+    }
+
+    void move_forward(float max) noexcept {
+        if (anim_state == State::Shown)
+            return;
+
+        anim_state = State::AnimatedForward;
+        if (ratio / max >= 0.7f)
+            speed = 0.01f;
+
+        ratio += speed;
+        if (ratio >= max) {
+            ratio      = max;
+            anim_state = State::Shown;
+            speed      = 0.02f;
+        }
+    }
+    void move_backward() noexcept {
+        if (anim_state == State::Hidden)
+            return;
+
+        anim_state = State::AnimatedBackward;
+        ratio -= speed;
+        if (ratio <= 0.0f)
+            reset();
+    }
+
+    void reset() noexcept {
+        anim_state  = State::Hidden;
+        start_ratio = 0.0f;
+        ratio       = 0.0f;
+    }
+    bool is_hidden() const noexcept {
+        return anim_state == State::Hidden;
+    }
+} splitter_state;
+
 float splitter(ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
+    float startRatio = splitter_state.start_ratio;
 
-    auto   storage    = ImGui::GetStateStorage();
-
-    auto   ctxid      = ImGui::GetID("splitter_context");
-    float  startRatio = storage->GetFloat(ctxid, 0.0f);
-
-    auto   animid     = ImGui::GetID("splitter_anim");
-    bool   animated   = storage->GetBool(animid, true);
-
-    auto   ratioId    = ImGui::GetID("splitter_ratio");
-    float *ratio      = storage->GetFloatRef(ratioId, startRatio);
-
-    if(reset)
-    {
-        storage->SetFloat(ctxid, 0.0f);
-        *ratio = 0.0f;
-        storage->SetBool(animid, true);
+    splitter_state.move(defaultRatio, !reset);
+    if (splitter_state.is_hidden())
         return 0.0f;
-    }
 
-    if(animated)
-    {
-        *ratio += 0.01f;
-        if(*ratio>=defaultRatio)
-            storage->SetBool(animid, false);
-    }
-
-    float  s          = vertical ? space.x : space.y;
-    auto   w          = s * *ratio;
+    float s = vertical ? space.x : space.y;
+    auto  w = s * splitter_state.ratio;
     if (vertical) {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + s - w - size / 2.f);
     } else {
@@ -280,13 +336,13 @@ float splitter(ImVec2 space, bool vertical, float size, float defaultRatio, bool
 
     if (ImGui::IsItemActive()) {
         ImGui::SetMouseCursor(cursor);
-        const auto delta = ImGui::GetMouseDragDelta();
-        *ratio           = startRatio - (vertical ? delta.x : delta.y) / s;
+        const auto delta     = ImGui::GetMouseDragDelta();
+        splitter_state.ratio = startRatio - (vertical ? delta.x : delta.y) / s;
     } else {
-        storage->SetFloat(ctxid, *ratio);
+        splitter_state.start_ratio = splitter_state.ratio;
     }
     ImGui::EndChild();
-    return *ratio;
+    return splitter_state.ratio;
 }
 
 void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout) {
