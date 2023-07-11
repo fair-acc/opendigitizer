@@ -85,6 +85,9 @@ private:
         if (r != ReturnState::None) {
             if constexpr (std::same_as<std::string, EdTy>) {
                 *value = edit_buffer;
+            } else if constexpr (std::floating_point<EdTy>) {
+                EdTy             converted = 0;
+                *value         = strtof(edit_buffer.c_str(), nullptr);
             } else {
                 EdTy             converted = 0;
                 std::string_view a{ edit_buffer };
