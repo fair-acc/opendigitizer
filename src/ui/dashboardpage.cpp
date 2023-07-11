@@ -326,22 +326,21 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
     }
 }
 
-void            DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
+void DashboardPage::draw(App *app, Dashboard *dashboard, Mode mode) noexcept {
     const float     left              = ImGui::GetCursorPosX();
     const float     top               = ImGui::GetCursorPosY();
     const ImVec2    size              = ImGui::GetContentRegionAvail();
 
-
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             =  ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.block);
+    const float     ratio             = ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.block);
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
     ImGui::BeginChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
-                       false, ImGuiWindowFlags_NoScrollbar);
+            false, ImGuiWindowFlags_NoScrollbar);
 
     if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         m_editPane.block = nullptr;
@@ -604,7 +603,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard->sources().cend()) {
             const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
             if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
-                ImGui::SameLine();  // keep item on the same line if compatible with overall pane width
+                ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
             } else {
                 legend_box.x = 0.f; // start a new line
             }
