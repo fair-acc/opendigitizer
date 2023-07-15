@@ -35,7 +35,7 @@ private:
 
 public:
     template<typename EdTy>
-    requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
+        requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
     static bool Edit(const char *label, EdTy *value) {
         if (!label || !value) return false;
         if constexpr (std::floating_point<EdTy>)
@@ -55,7 +55,7 @@ private:
         // Always center this window when appearing
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(300, 400));
+        ImGui::SetNextWindowSize(ImVec2(360, 400));
 
         if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%s", label);
@@ -71,6 +71,7 @@ private:
             visible = true;
             ImGui::OpenPopup(keypad_name);
             prev_value.emplace<EdTy>(*value); // save for discard
+            edit_buffer.clear();
             fmt::format_to(std::back_inserter(edit_buffer), "{}\0", *value);
         }
 
@@ -82,7 +83,7 @@ private:
             return true;
         }
 
-        if (r != ReturnState::None) {
+        if (r == ReturnState::Accept) {
             if constexpr (std::same_as<std::string, EdTy>) {
                 *value = edit_buffer;
             } else if constexpr (std::floating_point<EdTy>) {
@@ -96,11 +97,10 @@ private:
                     return false;
                 *value = converted;
             }
-            if (r == ReturnState::Accept)
-                visible = false;
+            visible = false;
         }
 
-        return r != ReturnState::None;
+        return r == ReturnState::Accept;
     }
 
     ReturnState Keypad(const char *label) noexcept {
@@ -112,7 +112,7 @@ private:
 
         ImGuiStyle &style = ImGui::GetStyle();
 
-        if (ImGui::BeginChild(label, ImVec2(n * 4 + style.WindowPadding.x, n * 5), true)) {
+        if (ImGui::BeginChild(label, ImVec2(n * 5 + style.WindowPadding.x, n * 5), true)) {
             Guard g;
             csize = ImGui::GetContentRegionAvail();            // now inside this child
             n     = floorf(csize.y / 5 - style.ItemSpacing.y); // button size
@@ -124,19 +124,23 @@ private:
                 k = 'X';
             }
             ImGui::SameLine();
-            if (ImGui::Button("/", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Slash)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadDivide)) {
-                k = '/';
+            if (ImGui::Button("<-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Backspace)) {
+                k = 'B';
             }
             ImGui::SameLine();
-            if (ImGui::Button("*", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
-                k = '*';
+            if (ImGui::Button("AC", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Delete)) {
+                k = 'C';
             }
             ImGui::SameLine();
-            if (ImGui::Button("-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadSubtract)) {
-                k = '-';
+            if (ImGui::Button("±", bsize)) {
+                k = 'S';
             }
+            ImGui::SameLine();
+            if (ImGui::Button("√", bsize)) {
+                k = 'Q';
+            }
+
+            // Second row
             if (ImGui::Button("7", bsize)
                     || ImGui::IsKeyPressedMap(ImGuiKey_7)
                     || ImGui::IsKeyPressedMap(ImGuiKey_Keypad7)) {
@@ -155,9 +159,16 @@ private:
                 k = '9';
             }
             ImGui::SameLine();
-            if (ImGui::Button("+", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadAdd)) {
-                k = '+';
+            if (ImGui::Button("/", bsize)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Slash)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadDivide)) {
+                k = '/';
             }
+            ImGui::SameLine();
+            if (ImGui::Button("%", bsize)) {
+                k = '%';
+            }
+
             if (ImGui::Button("4", bsize)
                     || ImGui::IsKeyPressedMap(ImGuiKey_4)
                     || ImGui::IsKeyPressedMap(ImGuiKey_Keypad4)) {
@@ -176,9 +187,14 @@ private:
                 k = '6';
             }
             ImGui::SameLine();
-            if (ImGui::Button("<-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Backspace)) {
-                k = 'B';
+            if (ImGui::Button("*", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
+                k = '*';
             }
+            ImGui::SameLine();
+            if (ImGui::Button("1/x", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
+                k = 'R';
+            }
+
             if (ImGui::Button("1", bsize)
                     || ImGui::IsKeyPressedMap(ImGuiKey_1)
                     || ImGui::IsKeyPressedMap(ImGuiKey_Keypad1)) {
@@ -197,9 +213,17 @@ private:
                 k = '3';
             }
             ImGui::SameLine();
-            if (ImGui::Button("CLR", bsize)) {
-                k = 'C';
+            if (ImGui::Button("-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadSubtract)) {
+                k = '-';
             }
+            ImGui::SameLine();
+            if (ImGui::Button("=", { bsize.x, bsize.y * 2.0f + style.WindowPadding.y / 2 })
+                    || ImGui::IsKeyPressedMap(ImGuiKey_Enter)
+                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadEnter)) {
+                k = 'E';
+            }
+
+            ImGui::SetCursorPosY(4.0f * (bsize.y + style.WindowPadding.y) - style.WindowPadding.y);
             if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })
                     || ImGui::IsKeyPressedMap(ImGuiKey_0)
                     || ImGui::IsKeyPressedMap(ImGuiKey_Keypad0)) {
@@ -210,11 +234,10 @@ private:
                 k = '.';
             }
             ImGui::SameLine();
-            if (ImGui::Button("=", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Enter)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadEnter)) {
-                k = 'E';
+            if (ImGui::Button("+", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadAdd)) {
+                k = '+';
             }
+
             ImGui::PopStyleVar();
 
             // logic
@@ -524,13 +547,13 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                 auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
                 auto ret      = filteredListBox(
-                             "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+                        "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
                             if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
                                 return {};
                             }
                             return std::pair{ it.second.get(), it.first };
-                             },
-                             listSize);
+                        },
+                        listSize);
 
                 {
                     DisabledGuard dg(!ret.has_value());
