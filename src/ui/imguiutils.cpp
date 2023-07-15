@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include "calculator.h"
 #include "flowgraph/datasink.h"
 #include <any>
 #include <charconv>
@@ -15,8 +16,11 @@ class InputKeypad {
     static inline constexpr size_t      buffer_size = 64;
 
     bool                                visible     = true;
+    bool                                evaluated   = true;
     std::string                         edit_buffer;
     std::any                            prev_value;
+
+    Token                               last_token;
 
 private:
     enum class ReturnState {
@@ -60,6 +64,10 @@ private:
         if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%s", label);
             r = Keypad("Keypad Input");
+            if (r == ReturnState::Change) {
+                last_token = ::last_token(edit_buffer);
+                evaluated  = false;
+            }
             ImGui::EndPopup();
         }
         return r;
@@ -73,6 +81,7 @@ private:
             prev_value.emplace<EdTy>(*value); // save for discard
             edit_buffer.clear();
             fmt::format_to(std::back_inserter(edit_buffer), "{}\0", *value);
+            last_token = ::last_token(edit_buffer);
         }
 
         ReturnState r = DrawKeypad(edit_buffer.c_str());
@@ -136,7 +145,7 @@ private:
                 k = 'S';
             }
             ImGui::SameLine();
-            if (ImGui::Button("√", bsize)) {
+            if (ImGui::Button("SQRT", bsize)) {
                 k = 'Q';
             }
 
@@ -216,12 +225,16 @@ private:
             if (ImGui::Button("-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadSubtract)) {
                 k = '-';
             }
+
+            ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
+            ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
             ImGui::SameLine();
-            if (ImGui::Button("=", { bsize.x, bsize.y * 2.0f + style.WindowPadding.y / 2 })
+            if (ImGui::Button("Enter", { bsize.x, bsize.y * 2.0f + style.WindowPadding.y / 2 })
                     || ImGui::IsKeyPressedMap(ImGuiKey_Enter)
                     || ImGui::IsKeyPressedMap(ImGuiKey_KeypadEnter)) {
                 k = 'E';
             }
+            ImGui::PopStyleColor(2);
 
             ImGui::SetCursorPosY(4.0f * (bsize.y + style.WindowPadding.y) - style.WindowPadding.y);
             if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })
@@ -243,15 +256,91 @@ private:
             // logic
             switch (k) {
             case 0: return ReturnState::None;
-            case 'E': return ReturnState::Accept;
+            case 'E':
+                if (last_token.type != TType::tt_const)
+                    return ReturnState::None;
+                if (only_token(edit_buffer))
+                    return ReturnState::Accept;
+
+                edit_buffer = fmt::format("{}", evaluate(edit_buffer));
+                return ReturnState::Change;
             case 'X': return ReturnState::Discard;
             case 'B':
-                edit_buffer.pop_back();
+                if (last_token.type == TType::tt_const) {
+                    if (last_token.range[0] == '-' && last_token.range.size() == 2)
+                        edit_buffer.pop_back();
+                    edit_buffer.pop_back();
+                } else
+                    edit_buffer.erase(edit_buffer.end() - last_token.range.size(), edit_buffer.end());
                 return ReturnState::Change;
             case 'C':
                 edit_buffer.clear();
                 return ReturnState::Change;
+
+            case 'S':
+                if (last_token.type != TType::tt_const)
+                    return ReturnState::None;
+
+                if (last_token.range[0] == '-')
+                    edit_buffer.erase(edit_buffer.end() - last_token.range.size());
+                else
+                    edit_buffer.insert(edit_buffer.end() - last_token.range.size(), '-');
+                return ReturnState::Change;
+            case 'Q':
+                if (last_token.type != TType::tt_const)
+                    return ReturnState::None;
+                {
+                    std::string a{ last_token.range };
+                    float       f = stof(a);
+                    if (f < 0.0f) return ReturnState::None;
+                    edit_buffer.erase(edit_buffer.end() - last_token.range.size(), edit_buffer.end());
+                    edit_buffer.append(fmt::format("{}", sqrtf(f)));
+                }
+                return ReturnState::Change;
+            case 'R': // reciprocate
+                if (last_token.type != TType::tt_const)
+                    return ReturnState::None;
+                {
+                    std::string a{ last_token.range };
+                    float       f = stof(a);
+                    if (f == 0.0f) return ReturnState::None;
+                    edit_buffer.erase(edit_buffer.end() - last_token.range.size(), edit_buffer.end());
+                    edit_buffer.append(fmt::format("{}", 1.0f / f));
+                }
+                return ReturnState::Change;
+            case '%':
+                if (last_token.type != TType::tt_const)
+                    return ReturnState::None;
+                {
+                    std::string a{ last_token.range };
+                    float       f = stof(a);
+                    if (f == 0.0f) return ReturnState::None;
+                    edit_buffer.erase(edit_buffer.end() - last_token.range.size(), edit_buffer.end());
+                    edit_buffer.append(fmt::format("{}", f / 100.0f));
+                }
+                return ReturnState::Change;
+            case '.':
+                if (last_token.range.find('.') != std::string_view::npos)
+                    break;
+
+                edit_buffer.push_back(k); // add k to the string
+                return ReturnState::Change;
+            case '+':
+            case '-':
+            case '*':
+            case '/':
+                if (!last_token.is_valid()) return ReturnState::None;
+                if (last_token.is_operator()) {
+                    *(edit_buffer.end() - 2) = k;
+                    return ReturnState::Change;
+                }
+
+                edit_buffer.push_back(' ');
+                edit_buffer.push_back(k);
+                edit_buffer.push_back(' ');
+                return ReturnState::Change;
             default:
+                if (!isdigit(k)) return ReturnState::None;
                 edit_buffer.push_back(k); // add k to the string
                 return ReturnState::Change;
             }
@@ -290,7 +379,8 @@ struct Splitter {
         AnimatedForward,
         AnimatedBackward,
         Shown
-    } anim_state;
+    } anim_state
+            = State::Hidden;
     float start_ratio = 0.0f;
     float ratio       = 0.0f;
     float speed       = 0.02f;
