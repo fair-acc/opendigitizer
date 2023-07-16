@@ -88,7 +88,7 @@ private:
 
 public:
     template<typename EdTy>
-        requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
+    requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
     static bool Edit(const char *label, EdTy *value) {
         if (!label || !value) return false;
         if constexpr (std::floating_point<EdTy>)
@@ -281,19 +281,19 @@ private:
                 if (last_token.type != TType::tt_pclose)
                     return ReturnState::None;
 
-                const char *brace = nullptr;
+                const char *brace  = nullptr;
 
-                auto tokens = tokenize(edit_buffer);
+                auto        tokens = tokenize(edit_buffer);
                 for (auto token = tokens.rbegin(); token != tokens.rend(); ++token) {
-					if (token->type == TType::tt_pclose)
-						brace++;
+                    if (token->type == TType::tt_pclose)
+                        brace++;
                     if (token->is_popen()) {
                         if (!--brace) {
-							brace = token->range.data();
-							break;
-						}
-					}
-				}
+                            brace = token->range.data();
+                            break;
+                        }
+                    }
+                }
 
                 ptrdiff_t diff = abs(brace - edit_buffer.data());
                 auto      iter = edit_buffer.begin() + diff;
@@ -706,13 +706,13 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                 auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
                 auto ret      = filteredListBox(
-                        "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+                             "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
                             if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
                                 return {};
                             }
                             return std::pair{ it.second.get(), it.first };
-                        },
-                        listSize);
+                             },
+                             listSize);
 
                 {
                     DisabledGuard dg(!ret.has_value());
