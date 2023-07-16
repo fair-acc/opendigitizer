@@ -67,7 +67,7 @@ constexpr inline std::string_view parse_float(std::string_view stream) {
 }
 
 constexpr inline Token get_token(std::string_view stream) {
-    auto  begin = stream.begin();
+    auto begin = stream.begin();
     while (begin != stream.end()) {
         switch (*begin) {
         case '+': return {
@@ -247,11 +247,11 @@ inline std::optional<float> evaluate(std::string_view stream) {
         if (l_term->type == tt_pclose) {
             // remove braces
             context.pop_back();
-            auto  prev       = last_term();
+            auto prev = last_term();
             if (prev->type == tt_popen) {
                 context.erase(context.end() - 2);
                 prev = last_term();
-                if(prev->type != tt_uminus)
+                if (prev->type != tt_uminus)
                     return;
 
                 context.back().value = -context.back().value;
@@ -306,7 +306,7 @@ inline std::optional<float> evaluate(std::string_view stream) {
             context.back().value = b / a;
             break;
         case TType::tt_power:
-            context.back().value = powf(b,a);
+            context.back().value = powf(b, a);
             break;
         default:
             assert(false);
@@ -324,9 +324,9 @@ inline std::optional<float> evaluate(std::string_view stream) {
         case PTable::E:
         case PTable::S: // Shift
             if (in_tk.type == TType::tt_const)
-                context.emplace_back(ASTNode{TType::tt_expr, stof(std::string{ in_tk.range })});
+                context.emplace_back(ASTNode{ TType::tt_expr, stof(std::string{ in_tk.range }) });
             else
-                context.emplace_back(ASTNode{in_tk.type});
+                context.emplace_back(ASTNode{ in_tk.type });
 
             in_tk = get_token(stream);
             stream.remove_prefix(in_tk.range.size());
