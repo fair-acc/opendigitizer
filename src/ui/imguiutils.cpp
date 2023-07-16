@@ -9,7 +9,6 @@
 #include <any>
 #include <charconv>
 #include <imgui_internal.h>
-#include <ranges>
 
 namespace ImGuiUtils {
 class InputKeypad {
@@ -283,16 +282,19 @@ private:
                     return ReturnState::None;
 
                 const char *brace = nullptr;
-                for (auto t : tokenize(edit_buffer) | std::views::reverse) {
-                    if (t.type == TType::tt_pclose)
-                        brace++;
-                    if (t.is_popen()) {
+
+                auto tokens = tokenize(edit_buffer);
+                for (auto token = tokens.rbegin(); token != tokens.rend(); ++token) {
+					if (token->type == TType::tt_pclose)
+						brace++;
+                    if (token->is_popen()) {
                         if (!--brace) {
-                            brace = t.range.data();
-                            break;
-                        }
-                    }
-                }
+							brace = token->range.data();
+							break;
+						}
+					}
+				}
+
                 ptrdiff_t diff = abs(brace - edit_buffer.data());
                 auto      iter = edit_buffer.begin() + diff;
                 if (diff != 0 && *(iter - 1) == '-')
