@@ -9,6 +9,7 @@
 #include <any>
 #include <charconv>
 #include <imgui_internal.h>
+#include <ranges>
 
 namespace ImGuiUtils {
 class InputKeypad {
@@ -16,7 +17,7 @@ class InputKeypad {
     static inline constexpr size_t      buffer_size = 64;
 
     bool                                visible     = true;
-    bool                                evaluated   = true;
+    size_t                              parenthesi  = 0;
     std::string                         edit_buffer;
     std::any                            prev_value;
 
@@ -29,6 +30,55 @@ private:
         Accept,
         Discard = -1
     };
+
+    enum class Button {
+        NoButton,
+        Dot,
+        Sign,
+        AC,
+        Backspace,
+        Enter,
+        Escape,
+
+        POpen   = '(',
+        PClose  = ')',
+
+        Add     = '+',
+        Sub     = '-',
+        Mul     = '*',
+        Div     = '/',
+        Button0 = '0',
+        Button1 = '1',
+        Button2 = '2',
+        Button3 = '3',
+        Button4 = '4',
+        Button5 = '5',
+        Button6 = '6',
+        Button7 = '7',
+        Button8 = '8',
+        Button9 = '9',
+
+        Percent,
+        Rcp,
+        Sqrt,
+
+        Sin,
+        Cos,
+        Tan,
+        Sinh,
+        Cosh,
+        Tanh,
+        Pow = '^',
+    };
+
+    template<Button btn_ty, ImGuiKey_... subs_keys>
+    Button static UIButton(const char *label, ImVec2 size, Button old_value = Button::NoButton) {
+        return ImGui::Button(label, size) || (ImGui::IsKeyPressedMap(subs_keys) || ...) ? btn_ty : old_value;
+    }
+    constexpr static Button Select(Button vold, Button vnew) {
+        return vnew == Button::NoButton ? vold : vnew;
+    }
+
     InputKeypad() {
         edit_buffer.reserve(buffer_size);
     };
@@ -59,14 +109,13 @@ private:
         // Always center this window when appearing
         ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(360, 400));
+        ImGui::SetNextWindowSize(ImVec2(360, 480));
 
         if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%s", label);
             r = Keypad("Keypad Input");
             if (r == ReturnState::Change) {
                 last_token = ::last_token(edit_buffer);
-                evaluated  = false;
             }
             ImGui::EndPopup();
         }
@@ -117,176 +166,143 @@ private:
             ~Guard() { ImGui::EndChild(); }
         };
         ImVec2      csize = ImGui::GetContentRegionAvail();
-        float       n     = floorf(csize.y / 5); // height / 5 button rows
+        float       n     = floorf(csize.y / 6); // height / 5 button rows
 
         ImGuiStyle &style = ImGui::GetStyle();
 
-        if (ImGui::BeginChild(label, ImVec2(n * 5 + style.WindowPadding.x, n * 5), true)) {
+        if (ImGui::BeginChild(label, ImVec2(n * 5 + style.WindowPadding.x, n * 6), true)) {
             Guard g;
             csize = ImGui::GetContentRegionAvail();            // now inside this child
-            n     = floorf(csize.y / 5 - style.ItemSpacing.y); // button size
+            n     = floorf(csize.y / 6 - style.ItemSpacing.y); // button size
             ImVec2 bsize(n, n);                                // buttons are square
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
 
-            char k = 0;
-            if (ImGui::Button("ESC", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Escape)) {
-                k = 'X';
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("<-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Backspace)) {
-                k = 'B';
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("AC", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Delete)) {
-                k = 'C';
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("±", bsize)) {
-                k = 'S';
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("SQRT", bsize)) {
-                k = 'Q';
-            }
+            Button key = Button::NoButton;
+            using enum Button;
 
-            // Second row
-            if (ImGui::Button("7", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_7)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad7)) {
-                k = '7';
-            }
+            key = UIButton<Sin>("sin", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("8", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_8)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad8)) {
-                k = '8';
-            }
+            key = UIButton<Cos>("cos", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("9", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_9)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad9)) {
-                k = '9';
-            }
+            key = UIButton<Tan>("tan", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("/", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Slash)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadDivide)) {
-                k = '/';
-            }
+            key = UIButton<POpen>("(", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("%", bsize)) {
-                k = '%';
-            }
+            key = UIButton<PClose>(")", bsize, key);
 
-            if (ImGui::Button("4", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_4)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad4)) {
-                k = '4';
-            }
+            key = UIButton<Escape, ImGuiKey_Escape>("ESC", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("5", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_5)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad5)) {
-                k = '5';
-            }
+            key = UIButton<Backspace, ImGuiKey_Backspace>("<-", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("6", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_6)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad6)) {
-                k = '6';
-            }
+            key = UIButton<AC, ImGuiKey_Delete>("AC", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("*", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
-                k = '*';
-            }
+            key = UIButton<Sign>("±", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("1/x", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadMultiply)) {
-                k = 'R';
-            }
+            key = UIButton<Sqrt>("Sqrt", bsize, key);
 
-            if (ImGui::Button("1", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_1)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad1)) {
-                k = '1';
-            }
+            key = UIButton<Button7, ImGuiKey_7, ImGuiKey_Keypad7>("7", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("2", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_2)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad2)) {
-                k = '2';
-            }
+            key = UIButton<Button8, ImGuiKey_8, ImGuiKey_Keypad8>("8", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("3", bsize)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_3)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad3)) {
-                k = '3';
-            }
+            key = UIButton<Button9, ImGuiKey_9, ImGuiKey_Keypad9>("9", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("-", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadSubtract)) {
-                k = '-';
-            }
+            key = UIButton<Div, ImGuiKey_Slash, ImGuiKey_KeypadDivide>("/", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Pow>("^", bsize, key);
+
+            key = UIButton<Button4, ImGuiKey_4, ImGuiKey_Keypad4>("4", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Button5, ImGuiKey_5, ImGuiKey_Keypad5>("5", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Button6, ImGuiKey_6, ImGuiKey_Keypad6>("6", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Mul, ImGuiKey_KeypadMultiply>("*", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Rcp>("1/x", bsize, key);
+
+            key = UIButton<Button1, ImGuiKey_1, ImGuiKey_Keypad1>("1", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Button2, ImGuiKey_2, ImGuiKey_Keypad2>("2", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Button3, ImGuiKey_3, ImGuiKey_Keypad3>("3", bsize, key);
+            ImGui::SameLine();
+            key = UIButton<Sub, ImGuiKey_KeypadSubtract>("-", bsize, key);
+            ImGui::SameLine();
 
             ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
             ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
-            ImGui::SameLine();
-            if (ImGui::Button("Enter", { bsize.x, bsize.y * 2.0f + style.WindowPadding.y / 2 })
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Enter)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_KeypadEnter)) {
-                k = 'E';
-            }
+            key = UIButton<Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>("Enter", { bsize.x, bsize.y * 2.0f + style.WindowPadding.y / 2 }, key);
             ImGui::PopStyleColor(2);
 
-            ImGui::SetCursorPosY(4.0f * (bsize.y + style.WindowPadding.y) - style.WindowPadding.y);
-            if (ImGui::Button("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] })
-                    || ImGui::IsKeyPressedMap(ImGuiKey_0)
-                    || ImGui::IsKeyPressedMap(ImGuiKey_Keypad0)) {
-                k = '0';
-            }
+            ImGui::SetCursorPosY(5.0f * (bsize.y + style.WindowPadding.y) - style.WindowPadding.y);
+            key = UIButton<Button0, ImGuiKey_0, ImGuiKey_Keypad0>("0", { bsize[0] * 2.0f + style.WindowPadding.x, bsize[1] }, key);
             ImGui::SameLine();
-            if (ImGui::Button(".", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_Period)) {
-                k = '.';
-            }
+            key = UIButton<Dot, ImGuiKey_Period>(".", bsize, key);
             ImGui::SameLine();
-            if (ImGui::Button("+", bsize) || ImGui::IsKeyPressedMap(ImGuiKey_KeypadAdd)) {
-                k = '+';
-            }
+            key = UIButton<Add, ImGuiKey_KeypadAdd>("+", bsize, key);
 
             ImGui::PopStyleVar();
 
             // logic
-            switch (k) {
-            case 0: return ReturnState::None;
-            case 'E':
-                if (last_token.type != TType::tt_const)
+            switch (key) {
+            case Button::NoButton: return ReturnState::None;
+            case Button::Enter: {
+                if (last_token.type != TType::tt_const && last_token.type != TType::tt_pclose)
                     return ReturnState::None;
                 if (only_token(edit_buffer))
                     return ReturnState::Accept;
-
-                edit_buffer = fmt::format("{}", evaluate(edit_buffer));
+                auto result = evaluate(edit_buffer);
+                if (!result) return ReturnState::None;
+                edit_buffer = fmt::format("{}", result.value());
                 return ReturnState::Change;
-            case 'X': return ReturnState::Discard;
-            case 'B':
-                if (last_token.type == TType::tt_const) {
-                    if (last_token.range[0] == '-' && last_token.range.size() == 2)
-                        edit_buffer.pop_back();
+            }
+            case Button::Escape: return ReturnState::Discard;
+            case Button::Backspace:
+                if (last_token.type == TType::tt_const)
                     edit_buffer.pop_back();
-                } else
+                else
                     edit_buffer.erase(edit_buffer.end() - last_token.range.size(), edit_buffer.end());
+
+                if (last_token.range.data() != edit_buffer.data() && edit_buffer.back() == '-')
+                    edit_buffer.pop_back();
                 return ReturnState::Change;
-            case 'C':
+            case Button::AC:
                 edit_buffer.clear();
                 return ReturnState::Change;
 
-            case 'S':
-                if (last_token.type != TType::tt_const)
+            case Button::Sign: {
+                if (last_token.type == TType::tt_const) {
+                    if (last_token.range.data() != edit_buffer.data() && last_token.range.data()[-1] == '-')
+                        edit_buffer.erase(edit_buffer.end() - last_token.range.size() - 1);
+                    else
+                        edit_buffer.insert(edit_buffer.end() - last_token.range.size(), '-');
+                    return ReturnState::Change;
+                }
+
+                if (last_token.type != TType::tt_pclose)
                     return ReturnState::None;
 
-                if (last_token.range[0] == '-')
-                    edit_buffer.erase(edit_buffer.end() - last_token.range.size());
+                const char *brace = nullptr;
+                for (auto t : tokenize(edit_buffer) | std::views::reverse) {
+                    if (t.type == TType::tt_pclose)
+                        brace++;
+                    if (t.is_popen()) {
+                        if (!--brace) {
+                            brace = t.range.data();
+                            break;
+                        }
+                    }
+                }
+                ptrdiff_t diff = abs(brace - edit_buffer.data());
+                auto      iter = edit_buffer.begin() + diff;
+                if (diff != 0 && *(iter - 1) == '-')
+                    edit_buffer.erase(iter - 1);
                 else
-                    edit_buffer.insert(edit_buffer.end() - last_token.range.size(), '-');
+                    edit_buffer.insert(iter, '-');
+
                 return ReturnState::Change;
-            case 'Q':
+            }
+            case Button::Sqrt:
                 if (last_token.type != TType::tt_const)
                     return ReturnState::None;
                 {
@@ -297,7 +313,7 @@ private:
                     edit_buffer.append(fmt::format("{}", sqrtf(f)));
                 }
                 return ReturnState::Change;
-            case 'R': // reciprocate
+            case Button::Rcp: // reciprocate
                 if (last_token.type != TType::tt_const)
                     return ReturnState::None;
                 {
@@ -308,7 +324,7 @@ private:
                     edit_buffer.append(fmt::format("{}", 1.0f / f));
                 }
                 return ReturnState::Change;
-            case '%':
+            case Button::Percent:
                 if (last_token.type != TType::tt_const)
                     return ReturnState::None;
                 {
@@ -319,29 +335,80 @@ private:
                     edit_buffer.append(fmt::format("{}", f / 100.0f));
                 }
                 return ReturnState::Change;
-            case '.':
-                if (last_token.range.find('.') != std::string_view::npos)
+            case Button::Dot:
+                if (last_token.type != TType::tt_const || last_token.range.find('.') != std::string_view::npos)
                     break;
 
-                edit_buffer.push_back(k); // add k to the string
+                edit_buffer.push_back('.'); // add k to the string
                 return ReturnState::Change;
-            case '+':
-            case '-':
-            case '*':
-            case '/':
-                if (!last_token.is_valid()) return ReturnState::None;
+            case Button::Add:
+            case Button::Sub:
+            case Button::Mul:
+            case Button::Div:
+            case Button::Pow:
+                if (!last_token.is_valid() || last_token.is_popen()) return ReturnState::None;
                 if (last_token.is_operator()) {
-                    *(edit_buffer.end() - 2) = k;
+                    *(edit_buffer.end() - 2) = char(key);
                     return ReturnState::Change;
                 }
 
                 edit_buffer.push_back(' ');
-                edit_buffer.push_back(k);
+                edit_buffer.push_back(char(key));
                 edit_buffer.push_back(' ');
                 return ReturnState::Change;
+            case Button::POpen:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+
+                parenthesi++;
+                edit_buffer.push_back(char(key));
+                return ReturnState::Change;
+            case Button::PClose:
+                if (!last_token.is_valid() || last_token.is_popen() || last_token.is_operator() || !parenthesi)
+                    return ReturnState::None;
+
+                parenthesi--;
+                edit_buffer.push_back(char(key));
+                return ReturnState::Change;
+            case Button::Sin:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("sin(");
+                parenthesi++;
+                return ReturnState::Change;
+            case Button::Sinh:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("sinh(");
+                parenthesi++;
+                return ReturnState::Change;
+            case Button::Cos:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("cos(");
+                parenthesi++;
+                return ReturnState::Change;
+            case Button::Cosh:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("cosh(");
+                parenthesi++;
+                return ReturnState::Change;
+            case Button::Tan:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("tan(");
+                parenthesi++;
+                return ReturnState::Change;
+            case Button::Tanh:
+                if (last_token.is_valid() && (!last_token.is_popen() && !last_token.is_operator()))
+                    return ReturnState::None;
+                edit_buffer.append("tanh(");
+                parenthesi++;
+                return ReturnState::Change;
             default:
-                if (!isdigit(k)) return ReturnState::None;
-                edit_buffer.push_back(k); // add k to the string
+                if (!isdigit(char(key)) || last_token.type == TType::tt_pclose) return ReturnState::None;
+                edit_buffer.push_back(char(key)); // add k to the string
                 return ReturnState::Change;
             }
         }
@@ -422,7 +489,7 @@ struct Splitter {
         start_ratio = 0.0f;
         ratio       = 0.0f;
     }
-    bool is_hidden() const noexcept {
+    [[nodiscard]] bool is_hidden() const noexcept {
         return anim_state == State::Hidden;
     }
 } splitter_state;
