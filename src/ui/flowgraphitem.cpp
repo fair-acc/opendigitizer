@@ -694,6 +694,10 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
 
                     if (c.name == "Query signals") {
                         querySignalFilters.drawFilters();
+
+                        float windowWidth = ImGui::GetWindowWidth();
+                        float buttonPosX = windowWidth - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Add Filter").x;
+                        ImGui::SetCursorPosX(buttonPosX);
                         if (ImGui::Button("Add Filter")) {
                             querySignalFilters.emplace_back(QueryFilterElement{ querySignalFilters });
                         }

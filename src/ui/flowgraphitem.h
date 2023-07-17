@@ -194,7 +194,14 @@ private:
         }
 
         void drawElements() {
-            ImGui::BeginTable("Singals", refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1, ImGuiTableFlags_BordersInnerV);
+            ImGui::BeginTable("Signals", refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1, ImGuiTableFlags_BordersInnerV);
+
+            ImGui::TableHeader("SignalsHeader");
+            refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [](auto m) {
+                ImGui::TableSetupColumn(static_cast<const char *>(m.name));
+            });
+            ImGui::TableSetupColumn("Add Signal");
+            ImGui::TableHeadersRow();
             std::for_each(signals.begin(), signals.end(), [this, idx = 0](const auto &e) mutable { drawElement(e, idx++); });
             ImGui::EndTable();
         }
