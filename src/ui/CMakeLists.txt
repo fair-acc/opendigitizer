@@ -23,7 +23,8 @@ set(sources
     flowgraph/arithmetic_block.cpp
     dashboardpage.cpp
     opendashboardpage.cpp
-    imguiutils.cpp)
+    imguiutils.cpp
+    remotesignalsources.cpp)
 
 set(GNURADIO_PREFIX
     "/usr/"
@@ -44,7 +45,6 @@ if(EMSCRIPTEN)
     -Wall
     -Wformat
     -Os
-    "SHELL:-s USE_SDL=2"
     -fwasm-exceptions
     -pthread)
 
@@ -56,11 +56,10 @@ if(EMSCRIPTEN)
     "SHELL:-s NO_FILESYSTEM=1"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
-    "SHELL:-s USE_SDL=2"
-    -sFETCH
+    "SHELL:-s PTHREAD_POOL_SIZE=30"
     -fwasm-exceptions
     -pthread
-    "SHELL:-s PTHREAD_POOL_SIZE=30")
+    -sFETCH)
 endif()
 
 # dependencies
@@ -108,8 +107,8 @@ if(EMSCRIPTEN)
   # link the executable
   target_link_libraries(
     ${outputFileName}
-    PRIVATE function2::function2
-            implot
+    PRIVATE implot
+            SDL2::SDL2
             plf_colony
             app_header
             utils
@@ -118,6 +117,7 @@ if(EMSCRIPTEN)
             fonts
             core
             client
+            services
             imgui-node-editor
             yaml-cpp::yaml-cpp)
 
@@ -162,6 +162,7 @@ else() # native build
             yaml-cpp::yaml-cpp
             core
             client
+            services
             app_header
             utils
             ui_assets
@@ -169,3 +170,15 @@ else() # native build
             fonts)
   target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
+
+target_link_libraries(${target_name} PRIVATE function2::function2)
+target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
+
+add_executable(remotesignalsources_test remotesignalsources.cpp)
+target_compile_options(remotesignalsources_test PUBLIC -DCOMPILEWITHMAIN=1)
+target_link_libraries(
+  remotesignalsources_test
+  PRIVATE client
+          services
+          imgui
+          SDL2::SDL2)

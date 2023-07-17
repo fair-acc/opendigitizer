@@ -52,21 +52,23 @@ FetchContent_Declare(
     GIT_TAG 4.2.2
 )
 
+FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2)
+
+FetchContent_Declare(
+        sdl2
+        OVERRIDE_FIND_PACKAGE
+        GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
+        GIT_TAG        release-2.28.2
+)
+
 if (EMSCRIPTEN)
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2)
-else () # native build
-    FetchContent_Declare(
-             sdl2
-             GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
-             GIT_TAG        release-2.28.2
-    )
-    FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp plf_colony stb opencmw-cpp function2)
-    find_package(SDL2 REQUIRED)
-    find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-    # target_link_libraries(SDL2 PUBLIC OpenGL::GL )
-    # target_include_directories(SDL2 PUBLIC ${sdl2_SOURCE_DIR}/include)
+    set(sdl2_SDL_ATOMIC ON CACHE INTERNAL "ON")
 endif()
 
+FetchContent_MakeAvailable(sdl2)
+
+find_package(SDL2 REQUIRED)
+find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
 add_library(
     imgui
@@ -81,7 +83,9 @@ add_library(
         ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
-    target_link_libraries(imgui PUBLIC SDL2::SDL2 OpenGL::GL)
+    target_link_libraries(imgui PUBLIC SDL2::SDL2  OpenGL::GL)
+else()
+    target_link_libraries(imgui PUBLIC  SDL2::SDL2 )
 endif()
 
 target_include_directories(
