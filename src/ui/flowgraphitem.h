@@ -19,8 +19,6 @@
 #include <services/dns_client.hpp>
 #include <services/dns_types.hpp>
 
-#include "Client.hpp"
-#include "ClientContext.hpp"
 #include "common.h"
 #include "flowgraph.h"
 #include "imgui.h"
