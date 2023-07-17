@@ -645,7 +645,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
                 return {};
             }
             return std::pair{ it.second.get(), it.first };
-        });
+                   });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
         if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
@@ -696,7 +696,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         querySignalFilters.drawFilters();
 
                         float windowWidth = ImGui::GetWindowWidth();
-                        float buttonPosX = windowWidth - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Add Filter").x;
+                        float buttonPosX  = windowWidth - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Add Filter").x;
                         ImGui::SetCursorPosX(buttonPosX);
                         if (ImGui::Button("Add Filter")) {
                             querySignalFilters.emplace_back(QueryFilterElement{ querySignalFilters });
