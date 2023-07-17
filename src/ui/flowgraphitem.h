@@ -210,8 +210,7 @@ private:
             refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [&entry](auto m) {
                 auto value = m(entry);
                 ImGui::TableNextColumn();
-                if constexpr (std::is_integral_v<decltype(value)>
-                              || std::is_floating_point_v<decltype(value)>) {
+                if constexpr (std::is_integral_v<decltype(value)> || std::is_floating_point_v<decltype(value)>) {
                     ImGui::Text(std::to_string(m(entry)).c_str());
                 } else {
                     ImGui::Text(value.c_str());
