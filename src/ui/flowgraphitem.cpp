@@ -1,5 +1,6 @@
 #include "flowgraphitem.h"
 
+#include <algorithm>
 #include <crude_json.h>
 #include <imgui.h>
 #include <imgui_node_editor.h>
@@ -644,7 +645,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
                 return {};
             }
             return std::pair{ it.second.get(), it.first };
-                   });
+        });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
         if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
@@ -657,7 +658,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
 }
 
 void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
-    ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({ 800, 600 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         static BlockType *sel = nullptr;
         if (ImGui::BeginChild(1, { 0, ImGui::GetContentRegionAvail().y - 50 })) {
@@ -680,6 +681,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                     }
                 }
             }
+            cats.push_back({ "Query signals", {} });
 
             for (const auto &c : cats) {
                 const bool isRemote = c.name == "Remote signals";
@@ -688,6 +690,18 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         if (ImGui::Selectable(t->label.c_str(), sel == t, ImGuiSelectableFlags_DontClosePopups)) {
                             sel = t;
                         }
+                    }
+
+                    if (c.name == "Query signals") {
+                        querySignalFilters.drawFilters();
+                        if (ImGui::Button("Add Filter")) {
+                            querySignalFilters.emplace_back(QueryFilterElement{ querySignalFilters });
+                        }
+                        ImGui::Separator();
+                        ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
+                        ImGui::BeginChild("Signals");
+                        signalList.drawElements();
+                        ImGui::EndChild();
                     }
 
                     if (isRemote) {
@@ -731,6 +745,52 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
         }
         ImGui::EndPopup();
     }
+}
+
+void FlowGraphItem::QueryFilterElement::drawFilterLine() {
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
+    if (ImGui::BeginCombo(_keyIdentifier.c_str(), field_names[_selectedIndex])) {
+        for (int i = 0; i < field_names.size(); i++) {
+            bool isSelected = _selectedIndex == i;
+            if (ImGui::Selectable(field_names[i], isSelected)) {
+                if (std::any_of(list.begin(), list.end(), [&i, this](auto &e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
+                    if (ImGui::BeginPopupModal("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                        ImGui::Text("Key already selected. Please select a different one");
+                        if (ImGui::Button("Ok")) {
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
+                    }
+                } else {
+                    _selectedIndex = i;
+                    list.triggerChange();
+                }
+            }
+
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 2);
+    if (ImGui::InputText(_valueIdentifier.c_str(), &filterText)) {
+        list.triggerChange();
+    }
+
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFontSize() - ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button(_buttonIdentifier.data())) {
+        list.pop(*this);
+    }
+
+} /*
+ bool FlowGraphItem::QueryFilterElement::operator==(const FlowGraphItem::QueryFilterElement &rhs) const {
+     return std::tie(list, _selectedIndex, _keyIdentifier, _valueIdentifier, filterText) == std::tie(rhs.list, rhs._selectedIndex, rhs._keyIdentifier, rhs._valueIdentifier, rhs.filterText);
+ }*/
+
+void FlowGraphItem::QueryFilterElementList::triggerChange() {
+    std::for_each(onChange.begin(), onChange.end(), [](auto &f) { f(); });
 }
 
 } // namespace DigitizerUi

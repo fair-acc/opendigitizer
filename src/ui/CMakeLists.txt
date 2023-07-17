@@ -95,6 +95,7 @@ if (EMSCRIPTEN)
             fonts
             core
             client
+            services
             imgui-node-editor
             yaml-cpp::yaml-cpp
     )
@@ -122,6 +123,7 @@ else () # native build
             yaml-cpp::yaml-cpp
             core
             client
+            services
             app_header
             ui_assets
             sample_dashboards
