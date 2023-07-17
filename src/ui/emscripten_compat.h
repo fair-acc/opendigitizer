@@ -4,12 +4,15 @@
 // These functions are missing from emscripten's libcpp but are used by plf_colony.h
 // so implement them here for now
 
+#ifndef HAS_STD_RANGES_DISTANCE
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+#define HAS_STD_RANGES_DISTANCE 1
+#else
+#define HAS_STD_RANGES_DISTANCE 0
+#endif
+#endif
+
 namespace std {
-namespace ranges {
-auto distance(auto r) {
-    return std::distance(std::begin(r), std::end(r));
-}
-} // namespace ranges
 
 template<class I1, class I2, class Cmp>
 constexpr auto lexicographical_compare_three_way(I1 f1, I1 l1, I2 f2, I2 l2, Cmp comp)
