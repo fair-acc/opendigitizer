@@ -194,7 +194,7 @@ private:
         }
 
         void drawElements() {
-            ImGui::BeginTable("Singals", refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1);
+            ImGui::BeginTable("Singals", refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1, ImGuiTableFlags_BordersInnerV);
             std::for_each(signals.begin(), signals.end(), [this, idx = 0](const auto &e) mutable { drawElement(e, idx++); });
             ImGui::EndTable();
         }
