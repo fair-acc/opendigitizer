@@ -42,7 +42,7 @@ FetchContent_Declare( # needed to load images in ImGui
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG 8dcaa26 # todo: use proper release once available
+        GIT_TAG 272c5bf # 8dcaa26 # todo: use proper release once available
 )
 
 FetchContent_Declare(
