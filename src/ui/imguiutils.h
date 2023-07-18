@@ -203,7 +203,6 @@ auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const Im
     return filteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
         return ImGui::Selectable(item.second.data(), selected);
     });
-    ;
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
@@ -219,7 +218,7 @@ enum class DialogButton {
 };
 
 DialogButton drawDialogButtons(bool okEnabled = true);
-float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5);
+float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5, bool reset = false);
 
 struct BlockControlsPanel {
     DigitizerUi::Block *block = {};
