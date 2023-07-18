@@ -23,7 +23,6 @@
 #include "flowgraph.h"
 #include "imgui.h"
 #include "imguiutils.h"
-#include "RestClientNative.hpp"
 
 namespace DigitizerUi {
 
