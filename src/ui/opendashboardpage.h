@@ -13,7 +13,7 @@ class RestClient;
 
 namespace DigitizerUi {
 
-class App;
+struct App;
 
 class OpenDashboardPage {
 public:

@@ -8,6 +8,9 @@
 #include <stb_image.h>
 #include <string_view>
 
+#include "../app.h"
+#include <RadialCircularMenu.hpp>
+
 CMRC_DECLARE(ui_assets);
 
 namespace app_header {
@@ -23,16 +26,15 @@ void TextCentered(const std::string_view text) {
 void TextRight(const std::string_view text) {
     auto windowWidth = ImGui::GetWindowSize().x;
     auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-    ImGui::SetCursorPosX(windowWidth - textWidth - ImGui::GetStyle().ItemSpacing.x - 20.0f);
+    ImGui::SetCursorPosX(windowWidth - textWidth - ImGui::GetStyle().ItemSpacing.x);
     ImGui::Text("%s", text.data());
 }
 
-int    img_fair_w        = 0;
-int    img_fair_h        = 0;
-GLuint img_fair_tex      = 0;
-GLuint img_fair_tex_dark = 0;
+ImVec2 logoSize{ 0.f, 0.f };
+GLuint imgFairLogo     = 0;
+GLuint imgFairLogoDark = 0;
 
-bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_width, int *out_height) {
+bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, ImVec2 &textureSize) {
     // Load from file
     int            image_width  = 0;
     int            image_height = 0;
@@ -41,8 +43,9 @@ bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_w
     auto           file         = fs.open(filename);
 
     unsigned char *image_data   = stbi_load_from_memory(reinterpret_cast<const unsigned char *>(file.begin()), file.size(), &image_width, &image_height, nullptr, 4);
-    if (image_data == NULL)
+    if (image_data == nullptr) {
         return false;
+    }
 
     // Create a OpenGL texture identifier
     GLuint image_texture;
@@ -62,9 +65,9 @@ bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, int *out_w
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
     stbi_image_free(image_data);
 
-    *out_texture = image_texture;
-    *out_width   = image_width;
-    *out_height  = image_height;
+    *out_texture  = image_texture;
+    textureSize.x = static_cast<float>(image_width);
+    textureSize.y = static_cast<float>(image_height);
 
     return true;
 }
@@ -77,11 +80,11 @@ enum class Style {
 
 void load_header_assets() {
     [[maybe_unused]] bool ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png",
-            &detail::img_fair_tex, &detail::img_fair_w, &detail::img_fair_h);
+            &detail::imgFairLogo, detail::logoSize);
     IM_ASSERT(ret);
 
     ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png",
-            &detail::img_fair_tex_dark, &detail::img_fair_w, &detail::img_fair_h);
+            &detail::imgFairLogoDark, detail::logoSize);
     IM_ASSERT(ret);
 }
 
@@ -95,7 +98,9 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     const auto topLeft       = ImGui::GetCursorPos();
     // draw title
     ImGui::PushFont(title_font);
-    const auto titleSize = ImGui::CalcTextSize(title.data());
+    const auto titleSize     = ImGui::CalcTextSize(title.data());
+    const auto scale         = titleSize.y / logoSize.y;
+    const auto localLogoSize = ImVec2(scale * logoSize.x, scale * logoSize.y);
     // suppress title if it doesn't fit or is likely to overlap
     if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
         TextCentered(title);
@@ -109,18 +114,120 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     // const auto utc_clock = std::chrono::utc_clock::now(); // c++20 timezone is not implemented in gcc or clang yet
     // date + tz library unfortunately doesn't play too well with emscripten/fetchcontent
     // const auto localtime = fmt::format("{:%H:%M:%S (%Z)}", date::make_zoned("utc", clock).get_sys_time());
-    std::time_t utc = std::chrono::time_point_cast<std::chrono::seconds>(clock).time_since_epoch().count();
     std::string utctime; // assume maximum of 32 characters for datetime length
     utctime.resize(32);
     pos.y += ImGui::GetTextLineHeightWithSpacing();
     ImGui::SetCursorPos(pos);
+    const auto utc = std::chrono::system_clock::to_time_t(clock);
     const auto len = strftime(utctime.data(), utctime.size(), "%H:%M:%S (UTC)", gmtime(&utc));
     TextRight(std::string_view(utctime.data(), len));
+    auto posBeneathClock = ImGui::GetCursorPos();
 
     // draw fair logo
     ImGui::SetCursorPos(topLeft);
-    const auto scale = titleSize.y / img_fair_h;
-    ImGui::Image((void *) (intptr_t) (style == Style::Light ? img_fair_tex : img_fair_tex_dark), ImVec2(scale * img_fair_w, scale * img_fair_h));
+    fair::RadialCircularMenu<1> leftMenu(localLogoSize, -20.f, 120.f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.8f, .8f, .8f, 0.4f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, .5f * scale * logoSize.y);
+    const ImTextureID imgLogo = (void *) (intptr_t) (style == Style::Light ? imgFairLogo : imgFairLogoDark);
+    if (ImGui::ImageButton(imgLogo, localLogoSize) || ImGui::IsItemHovered()) {
+        using fair::RadialButton;
+        const bool wasAlreadyOpen = leftMenu.isOpen();
+        auto      &app            = DigitizerUi::App::instance();
+
+        ImGui::PushStyleColor(ImGuiCol_Button, { .3f, 1.0f, .3f, 1.f }); // green
+        leftMenu.addButton(
+                "\uF201", [&app](RadialButton &button) {
+                    app.mainViewMode = "View";
+                },
+                app.fontIconsSolidLarge, "switch to view mode");
+
+        leftMenu.addButton(
+                "\uF248", [&app](RadialButton &button) {
+                    app.mainViewMode = "Layout";
+                },
+                app.fontIconsSolidLarge, "switch to layout mode");
+        leftMenu.addButton(
+                "\uF542", [&app](RadialButton &button) {
+                    app.mainViewMode = "FlowGraph";
+                },
+                app.fontIconsSolidLarge, "click to edit flow-graph");
+        leftMenu.addButton(
+                "", [&app](RadialButton &button) {
+                    app.mainViewMode = "OpenSaveDashboard";
+                },
+                app.fontIconsSolidLarge, "click to open/save new dashboards");
+        ImGui::PopStyleColor();
+
+        if (wasAlreadyOpen && !ImGui::IsItemHovered()) {
+            fmt::print("was already open -> closing\n");
+            leftMenu.forceClose();
+        }
+    }
+
+    // right menu
+    auto                       &app = DigitizerUi::App::instance();
+    fair::RadialCircularMenu<2> rightMenu(localLogoSize, 75.f, 195.f);
+    ImGui::SetCursorPos(ImVec2(ImGui::GetIO().DisplaySize.x - localLogoSize.x, 0));
+    if (ImGui::Button("##rightMenuDummyButton", localLogoSize) || ImGui::IsItemHovered()) {
+        using fair::RadialButton;
+        using enum DigitizerUi::WindowMode;
+
+        ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
+        rightMenu.addButton(
+                app.windowMode == FULLSCREEN ? "\uF066" : "\uF065", [&app, &rightMenu](RadialButton &button) {
+                    app.windowMode = app.windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
+                    button.label   = app.windowMode == FULLSCREEN ? "\uF066" : "\uF065";
+                    rightMenu.forceClose();
+                },
+                app.fontIconsSolidLarge, "toggle between fullscreen and windowed mode");
+        ImGui::PopStyleColor();
+
+        ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
+        using enum DigitizerUi::Style;
+        rightMenu.addButton((app.style() == Light) ? "" : "", [&app](RadialButton &button) {
+            const bool isDarkMode = app.style() == Dark;
+            app.setStyle(isDarkMode ? Light : Dark);
+            button.label   = isDarkMode ? "" : "";
+            button.toolTip = isDarkMode ? "switch to dark mode" : "switch to light mode";
+        },
+                app.fontIconsSolidBig, app.style() == Dark ? "switch to light mode" : "switch to dark mode");
+
+        rightMenu.addButton(
+                app.prototypeMode ? "" : "", [&app](RadialButton &button) {
+                    app.prototypeMode          = !app.prototypeMode;
+                    button.label               = app.prototypeMode ? "" : "";
+                    ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
+                },
+                app.fontIconsSolidBig, "switch between prototype and production mode");
+        ImGui::PopStyleColor();
+
+        if (app.isDesktop) {
+            ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
+            rightMenu.addButton(
+                    "", [&app]() { app.windowMode = MINIMISED; }, app.fontIconsSolidBig, "minimise window");
+            rightMenu.addButton(
+                    app.windowMode == RESTORED ? "" : "", [&app, &rightMenu](RadialButton &button) {
+                        app.windowMode = app.windowMode == MAXIMISED ? RESTORED : MAXIMISED;
+                        button.label   = app.windowMode == RESTORED ? "" : "";
+                        button.toolTip = app.windowMode == MAXIMISED ? "restore window" : "maximise window";
+                        rightMenu.forceClose();
+                    },
+                    app.fontIconsSolidBig, app.windowMode == MAXIMISED ? "restore window" : "maximise window");
+            ImGui::PopStyleColor();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, { 1.f, .0f, 0.f, 1.f }); // red
+            rightMenu.addButton<false, true>(
+                    "", [&app, &rightMenu]() { fmt::print("request exit: {} \n", app.running); app.running = false; rightMenu.forceClose(); }, app.fontIconsBig, "close app");
+            ImGui::PopStyleColor();
+        }
+    }
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    posBeneathClock.x = 0.f;
+    ImGui::SetCursorPos(posBeneathClock); // set to end of image
 }
 
 } // namespace app_header

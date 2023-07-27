@@ -16,8 +16,14 @@ namespace DigitizerUi {
 
 struct SDLState;
 
-class App {
-public:
+enum class WindowMode {
+    FULLSCREEN,
+    MAXIMISED,
+    MINIMISED,
+    RESTORED
+};
+
+struct App {
     static App  &instance();
     void         openNewWindow();
     void         loadEmptyDashboard();
@@ -29,10 +35,15 @@ public:
     inline Style style() const { return m_style; }
 
     // schedule a function to be called at the next opportunity on the main thread
-    void                       schedule(fu2::unique_function<void()> &&callback);
+    void schedule(fu2::unique_function<void()> &&callback);
 
-    void                       fireCallbacks();
+    void fireCallbacks();
 
+#ifdef __EMSCRIPTEN__
+    const bool isDesktop = false;
+#else
+    const bool isDesktop = true;
+#endif
     std::string                executable;
     FlowGraphItem              fgItem;
     DashboardPage              dashboardPage;
@@ -40,6 +51,8 @@ public:
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
     bool                       running       = true;
+    WindowMode                 windowMode    = WindowMode::RESTORED;
+    std::string                mainViewMode  = "";
 
     bool                       prototypeMode = true;
     std::chrono::milliseconds  execTime; /// time it took to handle events and draw one frame
@@ -50,7 +63,11 @@ public:
     std::array<ImFont *, 2>    fontBigger  = { nullptr, nullptr }; /// 0: production 1: prototype use
     std::array<ImFont *, 2>    fontLarge   = { nullptr, nullptr }; /// 0: production 1: prototype use
     ImFont                    *fontIcons;
+    ImFont                    *fontIconsBig;
+    ImFont                    *fontIconsLarge;
     ImFont                    *fontIconsSolid;
+    ImFont                    *fontIconsSolidBig;
+    ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
 
 private:
