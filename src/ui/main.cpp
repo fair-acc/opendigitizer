@@ -12,6 +12,7 @@
 #else
 #include <SDL_opengl.h>
 #endif
+#include <array>
 #include <cstdio>
 
 #include "app.h"
@@ -24,7 +25,6 @@
 #include "flowgraph/datasource.h"
 #include "flowgraph/fftblock.h"
 #include "flowgraphitem.h"
-#include "opendashboardpage.h"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
@@ -32,8 +32,8 @@ CMRC_DECLARE(fonts);
 namespace DigitizerUi {
 
 struct SDLState {
-    SDL_Window   *window    = NULL;
-    SDL_GLContext glContext = NULL;
+    SDL_Window   *window    = nullptr;
+    SDL_GLContext glContext = nullptr;
 };
 
 } // namespace DigitizerUi
@@ -41,15 +41,25 @@ struct SDLState {
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
-    auto loadDefaultFont = [&app](auto file, std::size_t index) {
+    static const std::vector<ImWchar> rangeLatin = {
+        0x0020, 0x0080, // Basic Latin
+        0,              // '0' is the end marker (a bit unsafe but it's the ImGui way
+    };
+    static const std::vector<ImWchar> rangeLatinExtended     = { 0x80, 0xFFFF, 0 }; // Latin-1 Supplement
+    static const std::vector<ImWchar> rangeLatinPlusExtended = {
+        0x0020,
+        0x00FF, // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
+        0,
+    };
+
+    auto loadDefaultFont = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar> ranges = {}) {
         ImFontConfig config;
-        // high oversample to have better looking text when zooming in on the flowgraph
+        // high oversample to have better looking text when zooming in on the flow graph
         config.OversampleH          = 4;
         config.OversampleV          = 4;
         config.PixelSnapH           = true;
         config.FontDataOwnedByAtlas = false;
 
-        ImGuiIO   &io               = ImGui::GetIO();
         const auto fontSize         = [&app]() -> std::array<float, 4> {
             const float scalingFactor = app.verticalDPI - app.defaultDPI;
             if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
@@ -62,14 +72,25 @@ static void loadFonts(DigitizerUi::App &app) {
             return { 18, 24, 26, 46 }; // default
         }();
 
-        app.fontNormal[index] = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[0], &config);
-        app.fontBig[index]    = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[1], &config);
-        app.fontBigger[index] = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[2], &config);
-        app.fontLarge[index]  = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize[3], &config);
+        auto loadFont = [&primaryFont, &secondaryFont, &config, &ranges](float fontSize) {
+            ImGuiIO   &io       = ImGui::GetIO();
+            const auto loadFont = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(primaryFont.begin()), primaryFont.size(), fontSize, &config);
+            if (!ranges.empty()) {
+                config.MergeMode = true;
+                io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(secondaryFont.begin()), secondaryFont.size(), fontSize, &config, ranges.data());
+                config.MergeMode = false;
+            }
+            return loadFont;
+        };
+
+        app.fontNormal[index] = loadFont(fontSize[0]);
+        app.fontBig[index]    = loadFont(fontSize[1]);
+        app.fontBigger[index] = loadFont(fontSize[2]);
+        app.fontLarge[index]  = loadFont(fontSize[3]);
     };
 
-    loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);
-    loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), 1);
+    loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);
+    loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
     ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
 
     auto loadIconsFont         = [](auto name) {
@@ -118,7 +139,7 @@ int main(int argc, char **argv) {
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    SDL_WindowFlags       window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    const auto            window_flags = static_cast<SDL_WindowFlags>(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     DigitizerUi::SDLState sdlState;
     sdlState.window    = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     sdlState.glContext = SDL_GL_CreateContext(sdlState.window);
@@ -136,7 +157,7 @@ int main(int argc, char **argv) {
     // For an Emscripten build we are disabling file-system access, so let's not
     // attempt to do a fopen() of the imgui.ini file. You may manually call
     // LoadIniSettingsFromMemory() to load settings from your own storage.
-    io.IniFilename = NULL;
+    io.IniFilename = nullptr;
 
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
@@ -228,9 +249,9 @@ int main(int argc, char **argv) {
 }
 
 static void main_loop(void *arg) {
-    const auto        startLoop = std::chrono::high_resolution_clock::now();
-    DigitizerUi::App *app       = static_cast<DigitizerUi::App *>(arg);
-    ImGuiIO          &io        = ImGui::GetIO();
+    const auto startLoop = std::chrono::high_resolution_clock::now();
+    auto      *app       = static_cast<DigitizerUi::App *>(arg);
+    ImGuiIO   &io        = ImGui::GetIO();
 
     app->fireCallbacks();
 
@@ -326,13 +347,13 @@ static void main_loop(void *arg) {
 
     if (service) {
         ImGui::SameLine();
-        ImGui::SetCursorPosX(width - 150);
-        if (ImGui::Button("Save flowgraph")) {
+        ImGui::SetCursorPosX(static_cast<float>(width) - 150.f);
+        if (ImGui::Button("Save flow graph")) {
             app->dashboard->saveRemoteServiceFlowgraph(service);
         }
     }
 
-    ImGui::SetCursorPos(pos + ImVec2(width - 75, 0));
+    ImGui::SetCursorPos(pos + ImVec2(static_cast<float>(width) - 75.f, 0.f));
     ImGui::PushFont(app->fontIcons);
     if (app->prototypeMode) {
         if (ImGui::Button("")) {
