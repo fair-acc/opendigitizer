@@ -50,11 +50,12 @@ struct App {
     std::unique_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
-    bool                       running       = true;
-    WindowMode                 windowMode    = WindowMode::RESTORED;
-    std::string                mainViewMode  = "";
+    bool                       running          = true;
+    WindowMode                 windowMode       = WindowMode::RESTORED;
+    std::string                mainViewMode     = "";
 
-    bool                       prototypeMode = true;
+    bool                       prototypeMode    = true;
+    bool                       touchDiagnostics = false;
     std::chrono::milliseconds  execTime; /// time it took to handle events and draw one frame
     float                      defaultDPI  = 76.2f;
     float                      verticalDPI = defaultDPI;

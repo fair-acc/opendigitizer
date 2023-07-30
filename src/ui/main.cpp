@@ -287,7 +287,8 @@ static void main_loop(void *arg) {
     app->fireCallbacks();
 
     // Poll and handle events (inputs, window resize, etc.)
-    SDL_Event event;
+    SDL_Event          event;
+    static std::size_t nFingers = 0;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         switch (event.type) {
@@ -296,7 +297,15 @@ static void main_loop(void *arg) {
             break;
         case SDL_WINDOWEVENT:
             if (event.window.windowID != SDL_GetWindowID(app->sdlState->window)) {
-                break;
+                // break // TODO: why was this aborted here?
+            } else {
+                const int width            = event.window.data1;
+                const int height           = event.window.data2;
+
+                ImGui::GetIO().DisplaySize = ImVec2((float) width, (float) height);
+                glViewport(0, 0, width, height);
+                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowSize(ImVec2((float) width, (float) height));
             }
             switch (event.window.event) {
             case SDL_WINDOWEVENT_CLOSE:
@@ -311,7 +320,42 @@ static void main_loop(void *arg) {
             case SDL_WINDOWEVENT_MAXIMIZED:
                 app->windowMode = DigitizerUi::WindowMode::MAXIMISED;
                 break;
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+                break;
             }
+            break;
+        case SDL_FINGERDOWN:
+            ++nFingers;
+            if (!app->touchDiagnostics) {
+                break;
+            }
+            fmt::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", //
+                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
+            break;
+        case SDL_FINGERUP:
+            --nFingers;
+            if (!app->touchDiagnostics) {
+                break;
+            }
+            fmt::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", //
+                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
+            break;
+        case SDL_FINGERMOTION:
+            if (!app->touchDiagnostics) {
+                break;
+            }
+            fmt::print("touch: finger motion: {} fingerID: {} p:{} @({},{}) motion (dx,dy): ({}, {})\n", //
+                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y, event.tfinger.dx, event.tfinger.dy);
+            break;
+        case SDL_MULTIGESTURE:
+            switch (event.mgesture.type) {
+            case SDL_MULTIGESTURE:
+                const auto &gesture = event.mgesture;
+                fmt::print("detected multi-gesture event -- touchId:{} numFingers: {} @({},{}) dDist:{} dTheta:{}\n", //
+                        gesture.touchId, gesture.numFingers, gesture.x, gesture.y, gesture.dDist, gesture.dTheta);
+                break;
+            }
+            break;
         }
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
@@ -325,6 +369,15 @@ static void main_loop(void *arg) {
     int width, height;
     SDL_GetWindowSize(app->sdlState->window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
+    if (nFingers >= 2) {
+        fmt::print("touch -- pressed two fingers emulating mouse button two\n");
+        ImGui::GetIO().MouseDown[0] = false;
+        ImGui::GetIO().MouseDown[1] = true;
+    } else {
+        ImGui::GetIO().MouseDown[1] = false;
+    }
+    // TODO: add gesture pinch, stretch and rotate event mappings here
+
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     app_header::draw_header_bar("OpenDigitizer", app->fontLarge[app->prototypeMode],
