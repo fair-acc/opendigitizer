@@ -43,9 +43,8 @@ bool   LoadTextureFromFile(const char *filename, GLuint *out_texture, ImVec2 &te
     auto           file         = fs.open(filename);
 
     unsigned char *image_data   = stbi_load_from_memory(reinterpret_cast<const unsigned char *>(file.begin()), file.size(), &image_width, &image_height, nullptr, 4);
-    if (image_data == nullptr) {
+    if (image_data == NULL)
         return false;
-    }
 
     // Create a OpenGL texture identifier
     GLuint image_texture;
@@ -239,9 +238,26 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
                     },
                     app.fontIconsSolidBig, app.windowMode == MAXIMISED ? "restore window" : "maximise window");
             ImGui::PopStyleColor();
+        }
 
+        ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
+#ifdef __EMSCRIPTEN__
+        constexpr bool newLine = false;
+#else
+        constexpr bool newLine = true;
+#endif
+        rightMenu.addButton<false, newLine>(
+                "", [&app](MenuButton &button) {
+                    app.touchDiagnostics = !app.touchDiagnostics;
+                    button.font          = app.touchDiagnostics ? app.fontIconsBig : app.fontIconsSolidBig;
+                    button.toolTip       = app.touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
+                },
+                app.touchDiagnostics ? app.fontIconsBig : app.fontIconsSolidBig, app.touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
+        ImGui::PopStyleColor();
+
+        if (app.isDesktop) {
             ImGui::PushStyleColor(ImGuiCol_Button, { 1.f, .0f, 0.f, 1.f }); // red
-            rightMenu.addButton<false, true>(
+            rightMenu.addButton(
                     "", [&app, &rightMenu]() { fmt::print("request exit: {} \n", app.running); app.running = false; rightMenu.forceClose(); }, app.fontIconsBig, "close app");
             ImGui::PopStyleColor();
         }
