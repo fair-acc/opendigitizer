@@ -1,5 +1,5 @@
-#ifndef OPENDIGITIZER_RADIALCIRCULARMENU_HPP
-#define OPENDIGITIZER_RADIALCIRCULARMENU_HPP
+#ifndef OPENDIGITIZER_POPUPMENU_HPP
+#define OPENDIGITIZER_POPUPMENU_HPP
 
 #include <cmath>
 #include <functional>
@@ -11,27 +11,36 @@ namespace fair {
 
 namespace detail {
 ImVec4 lightenColor(const ImVec4 &color, float percent) {
-    float h, s, v;
+    float h;
+    float s;
+    float v;
     ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
     s = std::max(0.0f, s * percent);
-    float r, g, b;
+    float r;
+    float g;
+    float b;
     ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return ImVec4(r, g, b, color.w);
+    return {r, g, b, color.w};
 }
 
 ImVec4 darkenColor(const ImVec4 &color, float percent) {
-    float h, s, v;
+    float h;
+    float s;
+    float v;
     ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
     v = std::max(0.0f, v * percent);
-    float r, g, b;
+    float r;
+    float g;
+    float b;
     ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return ImVec4(r, g, b, color.w);
+    return {r, g, b, color.w};
 }
 } // namespace detail
 
-struct RadialButton {
-    using CallbackFun = std::variant<std::function<void()>, std::function<void(RadialButton &)>>;
+struct MenuButton {
+    using CallbackFun = std::variant<std::function<void()>, std::function<void(MenuButton &)>>;
     std::string        label;
+    std::string        optionalLabel;
     float              size;
     CallbackFun        onClick;
     ImFont            *font = nullptr;
@@ -77,20 +86,21 @@ struct RadialButton {
     }
 };
 
-template<std::size_t unique_id>
-class RadialCircularMenu {
-    static std::vector<RadialButton> _buttons;
-    static const std::string         _popupId;
-    static float                     _animationProgress;
-    static bool                      _isOpen;
-    const float                      _padding = ImGui::GetStyle().WindowPadding.x;
-    ImVec2                           _menuSize;
-    float                            _startAngle       = 0.f;
-    float                            _stopAngle        = 90.f;
-    float                            _extraRadius      = 0.f;
-    float                            _animationSpeed   = 0.25f;
-    float                            _timeOut          = 0.5f; // time in seconds to close the menu when the mouse is out of range
-    float                            _autoCloseTimeOut = 5.0f; // time in seconds to close the menu when the mouse is out of range
+template<std::size_t unique_id, bool isRadialMenu = true>
+class PopupMenu {
+    static std::vector<MenuButton> _buttons;
+    static const std::string       _popupId;
+    static ImRect                  _itemBoundaryBox;
+    static float                   _animationProgress;
+    static bool                    _isOpen;
+    const float                    _padding = ImGui::GetStyle().WindowPadding.x;
+    ImVec2                         _menuSize;
+    float                          _startAngle       = 0.f;
+    float                          _stopAngle        = 90.f;
+    float                          _extraRadius      = 0.f;
+    float                          _animationSpeed   = 0.25f;
+    float                          _timeOut          = 0.5f; // time in seconds to close the menu when the mouse is out of range
+    float                          _autoCloseTimeOut = 5.0f; // time in seconds to close the menu when the mouse is out of range
 
     //
     [[nodiscard]] float maxButtonSize(std::size_t firstButtonIndex = 0) const {
@@ -122,8 +132,14 @@ class RadialCircularMenu {
         return { buttonCount, maxButtonSize };
     }
 
+    void updateElementCoordinate() {
+        _itemBoundaryBox.Min = ImGui::GetItemRectMin();
+        _itemBoundaryBox.Max = ImGui::GetItemRectMax();
+        _menuSize = _itemBoundaryBox.GetSize();
+    }
+
 public:
-    explicit RadialCircularMenu(ImVec2 menuSize = { 100, 100 }, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = .25f, float timeOut = 0.5f)
+    explicit PopupMenu(ImVec2 menuSize = { 100, 100 }, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = .25f, float timeOut = 0.5f)
         : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) {
         updateAndDraw();
     }
@@ -133,7 +149,8 @@ public:
         if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
             return;
         }
-        _buttons.emplace_back(label, buttonSize, std::move(onClick), nullptr, std::move(toolTip), transparent, newRow);
+        updateElementCoordinate();
+        _buttons.emplace_back(label, "", buttonSize, std::move(onClick), nullptr, std::move(toolTip), transparent, newRow);
         _isOpen = true;
     }
 
@@ -142,13 +159,14 @@ public:
         if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
             return;
         }
+        updateElementCoordinate();
         float buttonSize = 0.f;
         if (font == nullptr) {
             buttonSize = ImGui::CalcTextSize(label.c_str()).y + 2.f * _padding;
         } else {
             buttonSize = font->FontSize + 2.f * _padding;
         }
-        _buttons.emplace_back(label, buttonSize, std::move(onClick), font, std::move(toolTip), transparent, newRow);
+        _buttons.emplace_back(label, "", buttonSize, std::move(onClick), font, std::move(toolTip), transparent, newRow);
         _isOpen = true;
     }
 
@@ -164,33 +182,37 @@ public:
     }
 
     void updateAndDraw() {
-        static float  timeOutOfRadius = 0.0f;
-        static ImVec2 centre{ -1.f, -1.f };
+        static float timeOutOfRadius = 0.0f;
 
-        const float   deltaTime = ImGui::GetIO().DeltaTime;
-        _animationProgress      = _isOpen ? std::min(1.0f, _animationProgress + deltaTime / _animationSpeed) : std::max(0.0f, _animationProgress - deltaTime / _animationSpeed);
+        const float  deltaTime       = ImGui::GetIO().DeltaTime;
+        _animationProgress           = _isOpen ? std::min(1.0f, _animationProgress + deltaTime / _animationSpeed) : std::max(0.0f, _animationProgress - deltaTime / _animationSpeed);
 
         if (!_isOpen && _animationProgress <= 0.f) {
-            centre = { -1.f, -1.f };
+            _itemBoundaryBox = {{ -1.f, -1.f }, { -1.f, -1.f }};
             if (!_buttons.empty()) {
                 _buttons.clear();
             }
             return;
-        } else if (_isOpen && (centre.x < 0.f || centre.y < 0.f)) {
-            centre = ImGui::GetMousePos();
+        } else if (_isOpen && (_itemBoundaryBox.Min.x <= 0.f || _itemBoundaryBox.Min.y <= 0.f || _itemBoundaryBox.Max.x <= 0.f || _itemBoundaryBox.Max.y <= 0.f)) {
+            _itemBoundaryBox = { ImGui::GetMousePos(), ImGui::GetMousePos()};
         }
+        const ImVec2 centre = _itemBoundaryBox.GetCenter();
 
         std::size_t nButtonRows = 1UL;
         const float buttonSize  = maxButtonSize();
         if (_animationProgress >= 0.0f) {
             const ImVec2 oldPos            = ImGui::GetCursorPos();
-            float        requiredPopupSize = 2.f * (_extraRadius + (buttonSize + 2.f * _padding) * _buttons.size());
+            float        requiredPopupSize = 2.f * (_extraRadius + (buttonSize + 2.f * _padding) * static_cast<float>(_buttons.size()));
             ImGui::SetNextWindowSize(ImVec2(requiredPopupSize, requiredPopupSize));
             ImGui::SetNextWindowPos(ImVec2(centre.x - .5f * requiredPopupSize / 2, centre.y - .5f * requiredPopupSize));
 
             ImGui::OpenPopup(_popupId.c_str());
             if (ImGui::BeginPopup(_popupId.c_str(), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration)) {
-                nButtonRows = drawButtonsOnArc(centre, _extraRadius + .5f * buttonSize + _padding);
+                if constexpr (isRadialMenu) {
+                    nButtonRows = drawButtonsOnArc(centre, _extraRadius + .5f * buttonSize + _padding);
+                } else {
+                    nButtonRows = drawButtonsVertically();
+                }
                 ImGui::EndPopup();
             }
             ImGui::SetCursorScreenPos(oldPos);
@@ -221,13 +243,13 @@ public:
     }
 
 private:
-    void drawButton(RadialButton &button) {
+    void drawButton(MenuButton &button) {
         if (button.create()) {
-            std::visit([&](auto &&onClick) {
+            std::visit([&]<typename Arg>(Arg &&onClick) {
                 using T = std::decay_t<decltype(onClick)>;
                 if constexpr (std::is_same_v<T, std::function<void()>>) {
                     onClick();
-                } else if constexpr (std::is_same_v<T, std::function<void(RadialButton &)>>) {
+                } else if constexpr (std::is_same_v<T, std::function<void(MenuButton &)>>) {
                     onClick(button);
                 }
             },
@@ -254,9 +276,27 @@ private:
                 ++buttonsInRow;
             }
             ++currentRow;
-            arcRadius += 0.5 * maxButtonSizeInRow + 0.5f * _padding + 0.5f * maxButtonNumberAndSizeForArc(arcRadius, buttonIndex).second; // update arc radius
+            arcRadius += 0.5f * maxButtonSizeInRow + 0.5f * _padding + 0.5f * maxButtonNumberAndSizeForArc(arcRadius, buttonIndex).second; // update arc radius
         }
         return currentRow;
+    }
+
+    [[nodiscard]] std::size_t drawButtonsVertically() {
+        if (_buttons.empty()) {
+            return 0;
+        }
+
+        //const float maxSize = _buttons.size() * maxButtonSize();
+        ImVec2 posBeneathMenu{_itemBoundaryBox.Min.x, _itemBoundaryBox.Max.y + _padding};
+
+        std::size_t nRows = 0UL;
+        for (MenuButton& button : _buttons) {
+            drawButton(button);
+            ++nRows;
+            posBeneathMenu.y += button.size + button.padding;
+            ImGui::SetCursorScreenPos(posBeneathMenu);
+        }
+        return nRows;
     }
 
     float mouseInactivity() {
@@ -269,15 +309,23 @@ private:
         return timeSinceLastIoActivity;
     }
 };
+template<std::size_t unique_id, bool isRadialMenu>
+bool PopupMenu<unique_id, isRadialMenu>::_isOpen = false;
+template<std::size_t unique_id, bool isRadialMenu>
+const std::string PopupMenu<unique_id, isRadialMenu>::_popupId = fmt::format("MenuPopup_{}", unique_id);
+template<std::size_t unique_id, bool isRadialMenu>
+ImRect PopupMenu<unique_id, isRadialMenu>::_itemBoundaryBox = {{ -1.f, -1.f }, { -1.f, -1.f }};
+template<std::size_t unique_id, bool isRadialMenu>
+float PopupMenu<unique_id, isRadialMenu>::_animationProgress = 0.f;
+template<std::size_t unique_id, bool isRadialMenu>
+std::vector<MenuButton> PopupMenu<unique_id, isRadialMenu>::_buttons;
+
 template<std::size_t unique_id>
-bool RadialCircularMenu<unique_id>::_isOpen = false;
+using RadialCircularMenu = PopupMenu<unique_id, true>;
+
 template<std::size_t unique_id>
-const std::string RadialCircularMenu<unique_id>::_popupId = fmt::format("RadialMenuPopup_{}", unique_id);
-template<std::size_t unique_id>
-float RadialCircularMenu<unique_id>::_animationProgress = 0.f;
-template<std::size_t unique_id>
-std::vector<RadialButton> RadialCircularMenu<unique_id>::_buttons;
+using VerticalPopupMenu = PopupMenu<unique_id, false>;
 
 } // namespace fair
 
-#endif // OPENDIGITIZER_RADIALCIRCULARMENU_HPP
+#endif // OPENDIGITIZER_POPUPMENU_HPP

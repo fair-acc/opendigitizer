@@ -9,7 +9,7 @@
 #include <string_view>
 
 #include "../app.h"
-#include <RadialCircularMenu.hpp>
+#include <PopupMenu.hpp>
 
 CMRC_DECLARE(ui_assets);
 
@@ -123,38 +123,41 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     TextRight(std::string_view(utctime.data(), len));
     auto posBeneathClock = ImGui::GetCursorPos();
 
-    // draw fair logo
+    // left menu
+    auto &app = DigitizerUi::App::instance();
     ImGui::SetCursorPos(topLeft);
-    fair::RadialCircularMenu<1> leftMenu(localLogoSize, -20.f, 120.f);
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.8f, .8f, .8f, 0.4f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, .5f * scale * logoSize.y);
-    const ImTextureID imgLogo = (void *) (intptr_t) (style == Style::Light ? imgFairLogo : imgFairLogoDark);
-    if (ImGui::ImageButton(imgLogo, localLogoSize) || ImGui::IsItemHovered()) {
-        using fair::RadialButton;
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+    fair::VerticalPopupMenu<1> leftMenu;
+    ImGui::PushFont(app.fontIconsSolidLarge);
+    bool menuButtonPushed = ImGui::Button(app.prototypeMode ? "" : "");
+    ImGui::PopFont();
+    if (menuButtonPushed || ImGui::IsItemHovered()) {
+        using fair::MenuButton;
         const bool wasAlreadyOpen = leftMenu.isOpen();
-        auto      &app            = DigitizerUi::App::instance();
 
-        ImGui::PushStyleColor(ImGuiCol_Button, { .3f, 1.0f, .3f, 1.f }); // green
+        leftMenu.addButton("\uF0D7", []() { /* dummy button */}, app.fontIconsSolid, "dummy button");
+        ImGui::PushStyleColor(ImGuiCol_Button, { 126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f }); // green
         leftMenu.addButton(
-                "\uF201", [&app](RadialButton &button) {
+                "\uF201", [&app]() {
                     app.mainViewMode = "View";
                 },
                 app.fontIconsSolidLarge, "switch to view mode");
 
         leftMenu.addButton(
-                "\uF248", [&app](RadialButton &button) {
+                "\uF248", [&app]() {
                     app.mainViewMode = "Layout";
                 },
                 app.fontIconsSolidLarge, "switch to layout mode");
         leftMenu.addButton(
-                "\uF542", [&app](RadialButton &button) {
+                "\uF542", [&app]() {
                     app.mainViewMode = "FlowGraph";
                 },
                 app.fontIconsSolidLarge, "click to edit flow-graph");
         leftMenu.addButton(
-                "", [&app](RadialButton &button) {
+                "", [&app]() {
                     app.mainViewMode = "OpenSaveDashboard";
                 },
                 app.fontIconsSolidLarge, "click to open/save new dashboards");
@@ -166,17 +169,23 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
         }
     }
 
+    // draw fair logo
+    ImGui::SameLine(0.f, 0.f);
+    const ImTextureID imgLogo = (void *) (intptr_t) (style == Style::Light ? imgFairLogo : imgFairLogoDark);
+    if (ImGui::ImageButton(imgLogo, localLogoSize)) {
+        // call url to project site
+    }
+
     // right menu
-    auto                       &app = DigitizerUi::App::instance();
     fair::RadialCircularMenu<2> rightMenu(localLogoSize, 75.f, 195.f);
     ImGui::SetCursorPos(ImVec2(ImGui::GetIO().DisplaySize.x - localLogoSize.x, 0));
     if (ImGui::Button("##rightMenuDummyButton", localLogoSize) || ImGui::IsItemHovered()) {
-        using fair::RadialButton;
+        using fair::MenuButton;
         using enum DigitizerUi::WindowMode;
 
         ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
         rightMenu.addButton(
-                app.windowMode == FULLSCREEN ? "\uF066" : "\uF065", [&app, &rightMenu](RadialButton &button) {
+                app.windowMode == FULLSCREEN ? "\uF066" : "\uF065", [&app, &rightMenu](MenuButton &button) {
                     app.windowMode = app.windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
                     button.label   = app.windowMode == FULLSCREEN ? "\uF066" : "\uF065";
                     rightMenu.forceClose();
@@ -186,7 +195,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
 
         ImGui::PushStyleColor(ImGuiCol_Button, { .3f, .3f, 1.0f, 1.f }); // blue
         using enum DigitizerUi::Style;
-        rightMenu.addButton((app.style() == Light) ? "" : "", [&app](RadialButton &button) {
+        rightMenu.addButton((app.style() == Light) ? "" : "", [&app](MenuButton &button) {
             const bool isDarkMode = app.style() == Dark;
             app.setStyle(isDarkMode ? Light : Dark);
             button.label   = isDarkMode ? "" : "";
@@ -195,7 +204,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
                 app.fontIconsSolidBig, app.style() == Dark ? "switch to light mode" : "switch to dark mode");
 
         rightMenu.addButton(
-                app.prototypeMode ? "" : "", [&app](RadialButton &button) {
+                app.prototypeMode ? "" : "", [&app](MenuButton &button) {
                     app.prototypeMode          = !app.prototypeMode;
                     button.label               = app.prototypeMode ? "" : "";
                     ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
@@ -208,7 +217,7 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
             rightMenu.addButton(
                     "", [&app]() { app.windowMode = MINIMISED; }, app.fontIconsSolidBig, "minimise window");
             rightMenu.addButton(
-                    app.windowMode == RESTORED ? "" : "", [&app, &rightMenu](RadialButton &button) {
+                    app.windowMode == RESTORED ? "" : "", [&app, &rightMenu](MenuButton &button) {
                         app.windowMode = app.windowMode == MAXIMISED ? RESTORED : MAXIMISED;
                         button.label   = app.windowMode == RESTORED ? "" : "";
                         button.toolTip = app.windowMode == MAXIMISED ? "restore window" : "maximise window";
