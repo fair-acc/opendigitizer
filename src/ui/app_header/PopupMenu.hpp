@@ -20,7 +20,7 @@ ImVec4 lightenColor(const ImVec4 &color, float percent) {
     float g;
     float b;
     ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
+    return { r, g, b, color.w };
 }
 
 ImVec4 darkenColor(const ImVec4 &color, float percent) {
@@ -33,31 +33,39 @@ ImVec4 darkenColor(const ImVec4 &color, float percent) {
     float g;
     float b;
     ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
+    return { r, g, b, color.w };
 }
 } // namespace detail
 
 struct MenuButton {
     using CallbackFun = std::variant<std::function<void()>, std::function<void(MenuButton &)>>;
-    std::string        label;
-    std::string        optionalLabel;
-    float              size;
-    CallbackFun        onClick;
-    ImFont            *font = nullptr;
-    std::string        toolTip;
-    bool               isTransparent = false;
-    bool               isNewRow      = false;
-    float              padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
-    ImVec4             buttonColor   = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+    std::string         label;
+    std::string         optionalLabel;
+    mutable float       _size;
+    CallbackFun         onClick;
+    ImFont             *font = nullptr;
+    std::string         toolTip;
+    bool                isTransparent = false;
+    bool                isNewRow      = false;
+    float               padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
+    ImVec4              buttonColor   = ImGui::GetStyleColorVec4(ImGuiCol_Button);
 
-    [[nodiscard]] bool create() {
-        const std::string buttonId = fmt::format("#{}", label);
+    [[nodiscard]] float size() const {
         ImGui::PushFont(font);
-        bool         isClicked        = false;
         const ImVec2 textSize         = ImGui::CalcTextSize(label.c_str());
         const float  maxSize          = std::max(textSize.x, textSize.y);
-        const float  actualButtonSize = std::max(size, 2.f * padding + maxSize);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
+        const float  actualButtonSize = std::max(_size, 2.f * padding + maxSize);
+        ImGui::PopFont();
+        _size = actualButtonSize;
+        return _size;
+    }
+
+    [[nodiscard]] bool create(float buttonRounding = -1.f) {
+        const std::string buttonId = fmt::format("#{}", label);
+        ImGui::PushFont(font);
+        bool        isClicked        = false;
+        const float actualButtonSize = size();
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? .5f * actualButtonSize : buttonRounding);
 
         if (!isTransparent) {
             ImVec4 buttonColorHover  = detail::lightenColor(buttonColor, 0.5f);
@@ -86,7 +94,13 @@ struct MenuButton {
     }
 };
 
-template<std::size_t unique_id, bool isRadialMenu = true>
+enum class MenuType {
+    Radial,
+    Vertical,
+    Horizontal
+};
+
+template<std::size_t unique_id, MenuType menuType>
 class PopupMenu {
     static std::vector<MenuButton> _buttons;
     static const std::string       _popupId;
@@ -109,7 +123,7 @@ class PopupMenu {
         }
         float max = 0.0;
         for (std::size_t index = firstButtonIndex; index < _buttons.size(); ++index) {
-            max = std::max(max, _buttons[index].size);
+            max = std::max(max, _buttons[index].size());
         }
         return max;
     }
@@ -121,13 +135,14 @@ class PopupMenu {
         float       maxButtonSize    = .0f;
         float       cumulativeLength = .0f;
         for (auto i = firstButtonIndex; i < _buttons.size(); ++i) {
-            const auto &button = _buttons[i];
-            if ((cumulativeLength + button.size + _padding) > arcLength || (button.isNewRow && i > firstButtonIndex)) {
+            const auto &button     = _buttons[i];
+            const float buttonSize = button.size();
+            if ((cumulativeLength + buttonSize + _padding) > arcLength || (button.isNewRow && i > firstButtonIndex)) {
                 break;
             }
             ++buttonCount;
-            maxButtonSize = std::max(button.size, maxButtonSize);
-            cumulativeLength += button.size + _padding;
+            maxButtonSize = std::max(buttonSize, maxButtonSize);
+            cumulativeLength += buttonSize + _padding;
         }
         return { buttonCount, maxButtonSize };
     }
@@ -135,10 +150,12 @@ class PopupMenu {
     void updateElementCoordinate() {
         _itemBoundaryBox.Min = ImGui::GetItemRectMin();
         _itemBoundaryBox.Max = ImGui::GetItemRectMax();
-        _menuSize = _itemBoundaryBox.GetSize();
+        _menuSize            = _itemBoundaryBox.GetSize();
     }
 
 public:
+    float frameRounding = 6.f;
+
     explicit PopupMenu(ImVec2 menuSize = { 100, 100 }, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = .25f, float timeOut = 0.5f)
         : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) {
         updateAndDraw();
@@ -188,18 +205,18 @@ public:
         _animationProgress           = _isOpen ? std::min(1.0f, _animationProgress + deltaTime / _animationSpeed) : std::max(0.0f, _animationProgress - deltaTime / _animationSpeed);
 
         if (!_isOpen && _animationProgress <= 0.f) {
-            _itemBoundaryBox = {{ -1.f, -1.f }, { -1.f, -1.f }};
+            _itemBoundaryBox = { { -1.f, -1.f }, { -1.f, -1.f } };
             if (!_buttons.empty()) {
                 _buttons.clear();
             }
             return;
         } else if (_isOpen && (_itemBoundaryBox.Min.x <= 0.f || _itemBoundaryBox.Min.y <= 0.f || _itemBoundaryBox.Max.x <= 0.f || _itemBoundaryBox.Max.y <= 0.f)) {
-            _itemBoundaryBox = { ImGui::GetMousePos(), ImGui::GetMousePos()};
+            _itemBoundaryBox = { ImGui::GetMousePos(), ImGui::GetMousePos() };
         }
-        const ImVec2 centre = _itemBoundaryBox.GetCenter();
+        const ImVec2 centre      = _itemBoundaryBox.GetCenter();
 
-        std::size_t nButtonRows = 1UL;
-        const float buttonSize  = maxButtonSize();
+        std::size_t  nButtonRows = 1UL;
+        const float  buttonSize  = maxButtonSize();
         if (_animationProgress >= 0.0f) {
             const ImVec2 oldPos            = ImGui::GetCursorPos();
             float        requiredPopupSize = 2.f * (_extraRadius + (buttonSize + 2.f * _padding) * static_cast<float>(_buttons.size()));
@@ -208,7 +225,7 @@ public:
 
             ImGui::OpenPopup(_popupId.c_str());
             if (ImGui::BeginPopup(_popupId.c_str(), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration)) {
-                if constexpr (isRadialMenu) {
+                if constexpr (menuType == MenuType::Radial) {
                     nButtonRows = drawButtonsOnArc(centre, _extraRadius + .5f * buttonSize + _padding);
                 } else {
                     nButtonRows = drawButtonsVertically();
@@ -244,7 +261,7 @@ public:
 
 private:
     void drawButton(MenuButton &button) {
-        if (button.create()) {
+        if (button.create(menuType == MenuType::Radial ? -1.f : frameRounding)) {
             std::visit([&]<typename Arg>(Arg &&onClick) {
                 using T = std::decay_t<decltype(onClick)>;
                 if constexpr (std::is_same_v<T, std::function<void()>>) {
@@ -265,14 +282,15 @@ private:
 
             float cumulativeAngle                            = _startAngle;
             for (std::size_t buttonsInRow = 0UL; buttonIndex < _buttons.size() && buttonsInRow < maxButtonsInRow; ++buttonIndex) {
-                auto &button = _buttons[buttonIndex];
+                auto       &button     = _buttons[buttonIndex];
+                const float buttonSize = button.size();
                 // centre button if there is only one in the arc segment
-                const float angle    = cumulativeAngle + ((maxButtonsInRow == 1) ? 0.5f * (_stopAngle - _startAngle) : 0.5f * ((button.size + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>) );
+                const float angle    = cumulativeAngle + ((maxButtonsInRow == 1) ? 0.5f * (_stopAngle - _startAngle) : 0.5f * ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>) );
 
                 const float angleRad = angle * _animationProgress * (std::numbers::pi_v<float> / 180.0f);
-                ImGui::SetCursorScreenPos(ImVec2(centre.x + arcRadius * std::cos(angleRad) - 0.5f * button.size, centre.y + arcRadius * std::sin(angleRad) - 0.5f * button.size));
+                ImGui::SetCursorScreenPos(ImVec2(centre.x + arcRadius * std::cos(angleRad) - 0.5f * buttonSize, centre.y + arcRadius * std::sin(angleRad) - 0.5f * buttonSize));
                 drawButton(button);
-                cumulativeAngle += ((button.size + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>); // Update the cumulative angle based on the button size
+                cumulativeAngle += ((buttonSize + _padding) / arcRadius) * (180.0f / std::numbers::pi_v<float>); // Update the cumulative angle based on the button size
                 ++buttonsInRow;
             }
             ++currentRow;
@@ -286,15 +304,18 @@ private:
             return 0;
         }
 
-        //const float maxSize = _buttons.size() * maxButtonSize();
-        ImVec2 posBeneathMenu{_itemBoundaryBox.Min.x, _itemBoundaryBox.Max.y + _padding};
+        const float maxSize = maxButtonSize();
+        ImVec2      posBeneathMenu{ _itemBoundaryBox.Min.x, _itemBoundaryBox.Max.y + _padding };
 
         std::size_t nRows = 0UL;
-        for (MenuButton& button : _buttons) {
+        for (MenuButton &button : _buttons) {
+            const float buttonSize = button.size();
+            posBeneathMenu.x       = _itemBoundaryBox.Min.x + .5f * maxSize - .5f * buttonSize;
+            ImGui::SetCursorScreenPos(posBeneathMenu);
             drawButton(button);
             ++nRows;
-            posBeneathMenu.y += button.size + button.padding;
-            ImGui::SetCursorScreenPos(posBeneathMenu);
+
+            posBeneathMenu.y += buttonSize + button.padding;
         }
         return nRows;
     }
@@ -309,22 +330,22 @@ private:
         return timeSinceLastIoActivity;
     }
 };
-template<std::size_t unique_id, bool isRadialMenu>
-bool PopupMenu<unique_id, isRadialMenu>::_isOpen = false;
-template<std::size_t unique_id, bool isRadialMenu>
-const std::string PopupMenu<unique_id, isRadialMenu>::_popupId = fmt::format("MenuPopup_{}", unique_id);
-template<std::size_t unique_id, bool isRadialMenu>
-ImRect PopupMenu<unique_id, isRadialMenu>::_itemBoundaryBox = {{ -1.f, -1.f }, { -1.f, -1.f }};
-template<std::size_t unique_id, bool isRadialMenu>
-float PopupMenu<unique_id, isRadialMenu>::_animationProgress = 0.f;
-template<std::size_t unique_id, bool isRadialMenu>
-std::vector<MenuButton> PopupMenu<unique_id, isRadialMenu>::_buttons;
+template<std::size_t unique_id, MenuType menuType>
+bool PopupMenu<unique_id, menuType>::_isOpen = false;
+template<std::size_t unique_id, MenuType menuType>
+const std::string PopupMenu<unique_id, menuType>::_popupId = fmt::format("MenuPopup_{}", unique_id);
+template<std::size_t unique_id, MenuType menuType>
+ImRect PopupMenu<unique_id, menuType>::_itemBoundaryBox = { { -1.f, -1.f }, { -1.f, -1.f } };
+template<std::size_t unique_id, MenuType menuType>
+float PopupMenu<unique_id, menuType>::_animationProgress = 0.f;
+template<std::size_t unique_id, MenuType menuType>
+std::vector<MenuButton> PopupMenu<unique_id, menuType>::_buttons;
 
 template<std::size_t unique_id>
-using RadialCircularMenu = PopupMenu<unique_id, true>;
+using RadialCircularMenu = PopupMenu<unique_id, MenuType::Radial>;
 
 template<std::size_t unique_id>
-using VerticalPopupMenu = PopupMenu<unique_id, false>;
+using VerticalPopupMenu = PopupMenu<unique_id, MenuType::Vertical>;
 
 } // namespace fair
 

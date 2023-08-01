@@ -129,16 +129,18 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.8f, .8f, .8f, 0.4f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
     fair::VerticalPopupMenu<1> leftMenu;
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, 0.6f));
     ImGui::PushFont(app.fontIconsSolidLarge);
     bool menuButtonPushed = ImGui::Button(app.prototypeMode ? "" : "");
     ImGui::PopFont();
+    ImGui::PopStyleColor();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, 6));
     if (menuButtonPushed || ImGui::IsItemHovered()) {
         using fair::MenuButton;
         const bool wasAlreadyOpen = leftMenu.isOpen();
 
-        leftMenu.addButton("\uF0D7", []() { /* dummy button */}, app.fontIconsSolid, "dummy button");
         ImGui::PushStyleColor(ImGuiCol_Button, { 126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f }); // green
         leftMenu.addButton(
                 "\uF201", [&app]() {
@@ -179,7 +181,19 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     // right menu
     fair::RadialCircularMenu<2> rightMenu(localLogoSize, 75.f, 195.f);
     ImGui::SetCursorPos(ImVec2(ImGui::GetIO().DisplaySize.x - localLogoSize.x, 0));
-    if (ImGui::Button("##rightMenuDummyButton", localLogoSize) || ImGui::IsItemHovered()) {
+
+    const bool mouseMoved = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
+    static float buttonTimeOut = 0;
+    buttonTimeOut -=  std::max(ImGui::GetIO().DeltaTime, 0.f);
+    if (mouseMoved) {
+        buttonTimeOut = 2.f;
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, (mouseMoved || buttonTimeOut > 0.f) ? 0.9f : 0.f));
+    ImGui::PushFont(app.fontIconsSolidLarge);
+    bool devMenuButtonPushed = ImGui::Button("");
+    ImGui::PopFont();
+    ImGui::PopStyleColor();
+    if (devMenuButtonPushed || ImGui::IsItemHovered()) {
         using fair::MenuButton;
         using enum DigitizerUi::WindowMode;
 
