@@ -334,7 +334,7 @@ static void main_loop(void *arg) {
         ImGui::BeginDisabled();
     }
 
-    auto    pos = ImGui::GetCursorPos();
+    auto    pos    = ImGui::GetCursorPos();
     ImGuiID viewId = 0;
     if (app->mainViewMode == "View" || app->mainViewMode == "") {
         viewId = ImGui::GetID("");
