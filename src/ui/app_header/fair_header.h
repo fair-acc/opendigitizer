@@ -182,9 +182,9 @@ void draw_header_bar(std::string_view title, ImFont *title_font, Style style) {
     fair::RadialCircularMenu<2> rightMenu(localLogoSize, 75.f, 195.f);
     ImGui::SetCursorPos(ImVec2(ImGui::GetIO().DisplaySize.x - localLogoSize.x, 0));
 
-    const bool mouseMoved = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
+    const bool   mouseMoved    = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
     static float buttonTimeOut = 0;
-    buttonTimeOut -=  std::max(ImGui::GetIO().DeltaTime, 0.f);
+    buttonTimeOut -= std::max(ImGui::GetIO().DeltaTime, 0.f);
     if (mouseMoved) {
         buttonTimeOut = 2.f;
     }
