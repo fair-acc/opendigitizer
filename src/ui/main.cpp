@@ -93,7 +93,7 @@ static void loadFonts(DigitizerUi::App &app) {
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
     ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
 
-    auto loadIconsFont         = [](auto name) {
+    auto loadIconsFont         = [](auto name, float fontSize) {
         ImGuiIO             &io            = ImGui::GetIO();
         static const ImWchar glyphRanges[] = {
             0XF005, 0XF2ED, // 0xf005 is "", 0xf2ed is "trash can"
@@ -108,11 +108,42 @@ static void loadFonts(DigitizerUi::App &app) {
         auto         file = fs.open(name);
         ImFontConfig cfg;
         cfg.FontDataOwnedByAtlas = false;
-        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), 12, &cfg, glyphRanges);
+        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize, &cfg, glyphRanges);
     };
 
-    app.fontIcons      = loadIconsFont("assets/fontawesome/fa-regular-400.otf");
-    app.fontIconsSolid = loadIconsFont("assets/fontawesome/fa-solid-900.otf");
+    app.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
+    app.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 18);
+    app.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 36);
+    app.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 12);
+    app.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 18);
+    app.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 36);
+}
+
+void setWindowMode(SDL_Window *window, DigitizerUi::WindowMode &state) {
+    using enum DigitizerUi::WindowMode;
+    const Uint32 flags        = SDL_GetWindowFlags(window);
+    const bool   isMaximised  = (flags & SDL_WINDOW_MAXIMIZED) != 0;
+    const bool   isMinimised  = (flags & SDL_WINDOW_MINIMIZED) != 0;
+    const bool   isFullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+    if ((isMaximised && state == MAXIMISED) || (isMinimised && state == MINIMISED) || (isFullscreen && state == FULLSCREEN)) {
+        return;
+    }
+    switch (state) {
+    case FULLSCREEN:
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        return;
+    case MAXIMISED:
+        SDL_SetWindowFullscreen(window, 0);
+        SDL_MaximizeWindow(window);
+        return;
+    case MINIMISED:
+        SDL_SetWindowFullscreen(window, 0);
+        SDL_MinimizeWindow(window);
+        return;
+    case RESTORED:
+        SDL_SetWindowFullscreen(window, 0);
+        SDL_RestoreWindow(window);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -259,10 +290,29 @@ static void main_loop(void *arg) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
-        if (event.type == SDL_QUIT)
+        switch (event.type) {
+        case SDL_QUIT:
             app->running = false;
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(app->sdlState->window))
-            app->running = false;
+            break;
+        case SDL_WINDOWEVENT:
+            if (event.window.windowID != SDL_GetWindowID(app->sdlState->window)) {
+                break;
+            }
+            switch (event.window.event) {
+            case SDL_WINDOWEVENT_CLOSE:
+                app->running = false;
+                break;
+            case SDL_WINDOWEVENT_RESTORED:
+                app->windowMode = DigitizerUi::WindowMode::RESTORED;
+                break;
+            case SDL_WINDOWEVENT_MINIMIZED:
+                app->windowMode = DigitizerUi::WindowMode::MINIMISED;
+                break;
+            case SDL_WINDOWEVENT_MAXIMIZED:
+                app->windowMode = DigitizerUi::WindowMode::MAXIMISED;
+                break;
+            }
+        }
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
 
@@ -280,51 +330,48 @@ static void main_loop(void *arg) {
     app_header::draw_header_bar("OpenDigitizer", app->fontLarge[app->prototypeMode],
             app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
 
-    const bool dashboardLoaded = app->dashboard != nullptr;
-    if (!dashboardLoaded) {
+    if (app->dashboard == nullptr) {
         ImGui::BeginDisabled();
     }
 
-    auto pos = ImGui::GetCursorPos();
-    ImGui::BeginTabBar("maintabbar");
-    ImGuiID viewId;
-    if (ImGui::BeginTabItem("View")) {
+    auto    pos    = ImGui::GetCursorPos();
+    ImGuiID viewId = 0;
+    if (app->mainViewMode == "View" || app->mainViewMode == "") {
         viewId = ImGui::GetID("");
-        if (dashboardLoaded) {
+        if (app->dashboard != nullptr) {
             app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get());
         }
-
-        ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem("Layout")) {
+    } else if (app->mainViewMode == "Layout") {
         // The ID of this tab is different than the ID of the view tab. That means that the plots in the two tabs
         // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
         // not reflect in the layout tab.
         // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
         // of the view tab.
         ImGui::PushOverrideID(viewId);
-        if (dashboardLoaded) {
+        if (app->dashboard != nullptr) {
             app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
         ImGui::PopID();
-        ImGui::EndTabItem();
-    }
-
-    if (ImGui::BeginTabItem("Flowgraph")) {
-        if (dashboardLoaded) {
+    } else if (app->mainViewMode == "FlowGraph") {
+        if (app->dashboard != nullptr) {
             auto contentRegion = ImGui::GetContentRegionAvail();
 
             app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
         }
-
-        ImGui::EndTabItem();
+    } else if (app->mainViewMode == "OpenSaveDashboard") {
+        app->openDashboardPage.draw(app);
+    } else {
+        fmt::print("unknown view mode {}\n", app->mainViewMode);
     }
 
+    // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     DigitizerUi::Dashboard::Service *service = nullptr;
-    if (dashboardLoaded) {
+    if (app->dashboard != nullptr) {
+        if (!app->dashboard->remoteServices().empty()) {
+            ImGui::BeginTabBar("maintabbar");
+        }
         for (auto &s : app->dashboard->remoteServices()) {
             auto name          = fmt::format("Flowgraph of {}", s.name);
             auto contentRegion = ImGui::GetContentRegionAvail();
@@ -334,16 +381,12 @@ static void main_loop(void *arg) {
                 ImGui::EndTabItem();
             }
         }
+        if (!app->dashboard->remoteServices().empty()) {
+            ImGui::EndTabBar();
+        }
     } else {
         ImGui::EndDisabled();
     }
-
-    if (ImGui::BeginTabItem("File", nullptr, dashboardLoaded ? 0 : ImGuiTabItemFlags_SetSelected)) {
-        app->openDashboardPage.draw(app);
-        ImGui::EndTabItem();
-    }
-
-    ImGui::EndTabBar();
 
     if (service) {
         ImGui::SameLine();
@@ -351,49 +394,6 @@ static void main_loop(void *arg) {
         if (ImGui::Button("Save flow graph")) {
             app->dashboard->saveRemoteServiceFlowgraph(service);
         }
-    }
-
-    ImGui::SetCursorPos(pos + ImVec2(static_cast<float>(width) - 75.f, 0.f));
-    ImGui::PushFont(app->fontIcons);
-    if (app->prototypeMode) {
-        if (ImGui::Button("")) {
-            app->prototypeMode         = false;
-            ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
-        }
-        ImGui::PopFont();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("switch to production mode");
-        }
-    } else {
-        if (ImGui::Button("")) {
-            app->prototypeMode         = true;
-            ImGui::GetIO().FontDefault = app->fontNormal[app->prototypeMode];
-        }
-        ImGui::PopFont();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("switch to prototype mode");
-        }
-    }
-    ImGui::SameLine();
-    ImGui::PushFont(app->fontIcons);
-    if (app->style() == DigitizerUi::Style::Light) {
-        if (ImGui::Button("")) {
-            app->setStyle(DigitizerUi::Style::Dark);
-        }
-        ImGui::PopFont();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("switch to dark mode");
-        }
-    } else if (app->style() == DigitizerUi::Style::Dark) {
-        if (ImGui::Button("")) {
-            app->setStyle(DigitizerUi::Style::Light);
-        }
-        ImGui::PopFont();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("switch to light mode");
-        }
-    } else {
-        ImGui::PopFont();
     }
 
     ImGui::End();
@@ -409,4 +409,5 @@ static void main_loop(void *arg) {
     const auto stopLoop = std::chrono::high_resolution_clock::now();
     app->execTime       = std::chrono::duration_cast<std::chrono::milliseconds>(stopLoop - startLoop);
     SDL_GL_SwapWindow(app->sdlState->window);
+    setWindowMode(app->sdlState->window, app->windowMode);
 }

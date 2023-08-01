@@ -10,7 +10,7 @@
 
 namespace DigitizerUi {
 
-class App;
+struct App;
 
 class DashboardPage {
 public:
