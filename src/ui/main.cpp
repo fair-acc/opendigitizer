@@ -376,7 +376,7 @@ static void main_loop(void *arg) {
     } else {
         ImGui::GetIO().MouseDown[1] = false;
     }
-    //TODO: add gesture pinch, stretch and rotate event mappings here
+    // TODO: add gesture pinch, stretch and rotate event mappings here
 
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
