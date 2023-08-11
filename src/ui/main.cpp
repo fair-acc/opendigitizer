@@ -1,3 +1,7 @@
+#ifndef IMPLOT_POINT_CLASS_EXTRA
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -25,6 +29,7 @@
 #include "flowgraph/datasource.h"
 #include "flowgraph/fftblock.h"
 #include "flowgraphitem.h"
+#include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
@@ -183,7 +188,9 @@ int main(int argc, char **argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImPlot::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
+    ImGuiIO &io                  = ImGui::GetIO();
+    ImPlot::GetInputMap().Select = ImGuiPopupFlags_MouseButtonLeft;
+    ImPlot::GetInputMap().Pan    = ImGuiPopupFlags_MouseButtonMiddle;
 
     // For an Emscripten build we are disabling file-system access, so let's not
     // attempt to do a fopen() of the imgui.ini file. You may manually call
@@ -287,8 +294,7 @@ static void main_loop(void *arg) {
     app->fireCallbacks();
 
     // Poll and handle events (inputs, window resize, etc.)
-    SDL_Event          event;
-    static std::size_t nFingers = 0;
+    SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         switch (event.type) {
@@ -324,41 +330,11 @@ static void main_loop(void *arg) {
                 break;
             }
             break;
-        case SDL_FINGERDOWN:
-            ++nFingers;
-            if (!app->touchDiagnostics) {
-                break;
-            }
-            fmt::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", //
-                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
-            break;
-        case SDL_FINGERUP:
-            --nFingers;
-            if (!app->touchDiagnostics) {
-                break;
-            }
-            fmt::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", //
-                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
-            break;
-        case SDL_FINGERMOTION:
-            if (!app->touchDiagnostics) {
-                break;
-            }
-            fmt::print("touch: finger motion: {} fingerID: {} p:{} @({},{}) motion (dx,dy): ({}, {})\n", //
-                    nFingers, event.tfinger.fingerId, event.tfinger.pressure, event.tfinger.x, event.tfinger.y, event.tfinger.dx, event.tfinger.dy);
-            break;
-        case SDL_MULTIGESTURE:
-            switch (event.mgesture.type) {
-            case SDL_MULTIGESTURE:
-                const auto &gesture = event.mgesture;
-                fmt::print("detected multi-gesture event -- touchId:{} numFingers: {} @({},{}) dDist:{} dTheta:{}\n", //
-                        gesture.touchId, gesture.numFingers, gesture.x, gesture.y, gesture.dDist, gesture.dTheta);
-                break;
-            }
-            break;
         }
+        fair::TouchHandler<>::processSDLEvent(event);
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
+    fair::TouchHandler<>::updateGestures();
 
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
@@ -369,14 +345,7 @@ static void main_loop(void *arg) {
     int width, height;
     SDL_GetWindowSize(app->sdlState->window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
-    if (nFingers >= 2) {
-        fmt::print("touch -- pressed two fingers emulating mouse button two\n");
-        ImGui::GetIO().MouseDown[0] = false;
-        ImGui::GetIO().MouseDown[1] = true;
-    } else {
-        ImGui::GetIO().MouseDown[1] = false;
-    }
-    // TODO: add gesture pinch, stretch and rotate event mappings here
+    fair::TouchHandler<>::applyToImGui();
 
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
@@ -387,7 +356,6 @@ static void main_loop(void *arg) {
         ImGui::BeginDisabled();
     }
 
-    auto    pos    = ImGui::GetCursorPos();
     ImGuiID viewId = 0;
     if (app->mainViewMode == "View" || app->mainViewMode == "") {
         viewId = ImGui::GetID("");

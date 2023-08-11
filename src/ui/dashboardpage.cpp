@@ -8,6 +8,8 @@
 #include "flowgraph/datasink.h"
 #include "imguiutils.h"
 
+#include "utils/TouchHandler.hpp"
+
 namespace DigitizerUi {
 
 namespace {
@@ -470,7 +472,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
 
         ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{ 0, 0 }); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
         ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{ 3, 1 });
-        if (ImPlot::BeginPlot(plot.name.c_str(), plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
+        if (fair::TouchHandler<>::BeginZoomablePlot(plot.name, plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
             drawPlot(plot);
 
             // allow the main plot area to be a DND target
@@ -517,7 +519,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                 }
             }
 
-            ImPlot::EndPlot();
+            fair::TouchHandler<>::EndZoomablePlot();
             ImPlot::PopStyleVar(2);
 
             if (mode == Mode::Layout) {

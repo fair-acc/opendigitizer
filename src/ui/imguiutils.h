@@ -1,6 +1,10 @@
 #ifndef IMGUIUTILS_H
 #define IMGUIUTILS_H
 
+#ifndef IMPLOT_POINT_CLASS_EXTRA
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -8,23 +12,10 @@
 #include <vector>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "flowgraph.h"
-
-inline ImVec2 operator+(const ImVec2 a, const ImVec2 b) {
-    ImVec2 r = a;
-    r.x += b.x;
-    r.y += b.y;
-    return r;
-}
-
-inline ImVec2 operator-(const ImVec2 a, const ImVec2 b) {
-    ImVec2 r = a;
-    r.x -= b.x;
-    r.y -= b.y;
-    return r;
-}
 
 namespace DigitizerUi {
 class Block;
@@ -198,7 +189,9 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
 }
 
 template<typename Items, typename ItemGetter>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 })
+    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
+{
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
         return ImGui::Selectable(item.second.data(), selected);
@@ -206,7 +199,9 @@ auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const Im
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 }) requires std::is_invocable_v<ItemGetter, decltype(*items.begin())> {
+auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 })
+    requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
+{
     using T = decltype(getItem(*items.begin()));
     return filteredListBox<T>(id, size, items, getItem, drawItem);
 }

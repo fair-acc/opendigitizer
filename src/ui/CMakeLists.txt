@@ -29,6 +29,7 @@ set(sources
 set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")
 
 add_subdirectory(app_header)
+add_subdirectory(utils)
 
 if (EMSCRIPTEN)
     message(STATUS "Detected emscripten webassembly build")
@@ -90,6 +91,7 @@ if (EMSCRIPTEN)
             implot
             plf_colony
             app_header
+            utils
             ui_assets
             sample_dashboards
             fonts
@@ -107,7 +109,8 @@ if (EMSCRIPTEN)
 else () # native build
 
     set(target_name "opendigitizer-ui")
-    add_executable(${target_name})
+    add_executable(${target_name}
+            utils/TouchHandler.hpp)
 
     target_sources(${target_name} PRIVATE ${sources})
 
@@ -123,6 +126,7 @@ else () # native build
             core
             client
             app_header
+            utils
             ui_assets
             sample_dashboards
             fonts
