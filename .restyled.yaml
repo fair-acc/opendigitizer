@@ -29,4 +29,9 @@ restylers:
   - clang-format:
       image:
         tag: v16
-  - "*"
+  - cmake-format
+  - prettier-markdown
+  - prettier-yaml
+  - shellcheck
+  - whitespace
+  - black
