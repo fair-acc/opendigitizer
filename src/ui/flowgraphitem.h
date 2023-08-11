@@ -1,6 +1,12 @@
 #pragma once
 
+#ifndef IMPLOT_POINT_CLASS_EXTRA
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
 #include <functional>
+#include <imgui.h>
+#include <imgui_internal.h>
 #include <span>
 #include <vector>
 
