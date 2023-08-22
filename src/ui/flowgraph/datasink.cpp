@@ -1,5 +1,22 @@
 #include "datasink.h"
 
+#include <data_sink.hpp>
+
+template<typename T>
+struct DSSink : fair::graph::node<DSSink<T>>
+{
+    fair::graph::IN<fair::graph::DataSet<T>> in;
+
+    void process_one(fair::graph::DataSet<T> ds)
+    {
+        dataset = ds;
+    }
+
+    fair::graph::DataSet<T> dataset;
+};
+ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (DSSink<T>), in);
+
+
 namespace DigitizerUi {
 
 namespace {
@@ -29,17 +46,83 @@ DataSink::DataSink(std::string_view name)
     , color(randomColor()) {
 }
 
-void DataSink::processData() {
-    const auto &in = inputs()[0];
-    if (!in.connections.empty()) {
-        hasData  = true;
-        auto *c  = in.connections[0];
-        dataType = c->ports[0]->type;
-        data     = static_cast<Block::OutputPort *>(c->ports[0])->dataSet;
-    } else {
-        hasData = false;
+void DataSink::update() {
+    if (updaterFun) {
+        updaterFun();
     }
 }
+
+template<typename T>
+std::unique_ptr<fair::graph::node_model> DataSink::createNode()
+{
+    dataType = DataType::of<T>();
+    data = EmptyDataSet{};
+
+    if constexpr (meta::is_dataset_v<T>) {
+        using Sink = DSSink<typename T::value_type>;
+        auto wrapper = std::make_unique<fair::graph::node_wrapper<Sink>>();
+
+
+        auto *node = static_cast<Sink *>(wrapper->raw());
+        updaterFun = [this, node]() mutable {
+            data = node->dataset;
+        };
+        return wrapper;
+    } else {
+        using Sink   = fair::graph::data_sink<T>;
+        auto wrapper = std::make_unique<fair::graph::node_wrapper<Sink>>();
+
+        auto *sink = static_cast<Sink *>(wrapper->raw());
+        auto p = sink->get_streaming_poller(fair::graph::blocking_mode::NonBlocking);
+        updaterFun = [this, p, vec = std::vector<T>()]() mutable {
+            auto d = p->reader.get();
+            vec.resize(d.size());
+            std::copy(d.rbegin(), d.rend(), vec.begin());
+
+            data = vec;
+        };
+        return wrapper;
+    }
+}
+
+std::unique_ptr<fair::graph::node_model> DataSink::createGraphNode() {
+    auto *c = inputs()[0].connections[0];
+    if (!c) {
+        return nullptr;
+    }
+
+    auto type = c->src.block->outputs()[c->src.index].type;
+/*
+    if (type == DataType::DataSetFloat32) {
+        using Sink = DSSink<float>;
+        auto wrapper = std::make_unique<fair::graph::node_wrapper<Sink>>();
+
+        dataType = DataType::DataSetFloat32;
+        data = EmptyDataSet{};
+        auto *node = static_cast<Sink *>(wrapper->raw());
+
+        updaterFun = [this, node]() mutable {
+            data = node->dataset;
+        };
+        return wrapper;
+    }*/
+
+    return type.asType([this]<typename T>() {
+        return this->template createNode<T>();
+    });
+}
+
+// void DataSink::processData() {
+//     const auto &in = inputs()[0];
+//     if (!in.connections.empty()) {
+//         hasData  = true;
+//         auto *c  = in.connections[0];
+//         dataType = c->ports[0]->type;
+//         data     = static_cast<Block::OutputPort *>(c->ports[0])->dataSet;
+//     } else {
+//         hasData = false;
+//     }
+// }
 
 void DataSink::registerBlockType() {
     auto t = std::make_unique<BlockType>("sink");
@@ -59,13 +142,13 @@ DataSinkSource::DataSinkSource(std::string_view name)
     : Block(name, "sink_source", g_btypeSource) {
 }
 
-void DataSinkSource::processData() {
-    auto &out      = outputs()[0];
-    auto  sinkName = std::string_view(&name[11], &name[name.size()]);
-    auto *sink     = static_cast<DataSink *>(flowGraph()->findSinkBlock(sinkName));
-    out.dataSet    = sink->data;
-    out.type       = sink->dataType;
-}
+// void DataSinkSource::processData() {
+//     auto &out      = outputs()[0];
+//     auto  sinkName = std::string_view(&name[11], &name[name.size()]);
+//     auto *sink     = static_cast<DataSink *>(flowGraph()->findSinkBlock(sinkName));
+//     out.dataSet    = sink->data;
+//     out.type       = sink->dataType;
+// }
 
 void DataSinkSource::registerBlockType() {
     auto t = std::make_unique<BlockType>("sink_source", "Sink Source", "", true);
@@ -73,9 +156,9 @@ void DataSinkSource::registerBlockType() {
     auto &out      = t->outputs[0];
     out.name       = "out";
     out.type       = "";
-    t->createBlock = [](std::string_view name) {
-        return std::make_unique<DataSinkSource>(name);
-    };
+    // t->createBlock = [](std::string_view name) {
+    //     return std::make_unique<DataSinkSource>(name);
+    // };
     g_btypeSource = t.get();
 
     BlockType::registry().addBlockType(std::move(t));

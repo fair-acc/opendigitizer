@@ -92,10 +92,14 @@ RemoteDataSource::~RemoteDataSource() {
     m_type->unsubscribe();
 }
 
-void RemoteDataSource::processData() {
-    std::lock_guard lock(m_type->m_mutex);
-    outputs()[0].dataSet = m_type->m_data[m_type->m_active].channelValue;
+std::unique_ptr<fair::graph::node_model> RemoteDataSource::createGraphNode() {
+    return {};
 }
+
+// void RemoteDataSource::processData() {
+//     std::lock_guard lock(m_type->m_mutex);
+//     outputs()[0].dataSet = m_type->m_data[m_type->m_active].channelValue;
+// }
 
 void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
     opencmw::client::Command command;

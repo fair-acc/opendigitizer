@@ -288,27 +288,33 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         auto color = ImGui::ColorConvertU32ToFloat4(source->color);
         ImPlot::SetNextLineStyle(color);
 
-        const auto [dataType, dataSet] = [&]() -> std::tuple<DataType, DataSet> {
-            if (auto *sink = dynamic_cast<DataSink *>(source->block)) {
-                return { sink->dataType, sink->data };
-            }
-            auto &port = const_cast<const Block *>(source->block)->outputs()[source->port];
-            return { port.type, port.dataSet };
-        }();
-
+        auto *sink = static_cast<DataSink *>(source->block);
         ImPlot::HideNextItem(false, ImPlotCond_Always);
-        if (dataSet.empty()) {
+        sink->update();
+        if (sink->data.empty()) {
             // Plot one single dummy value so that the sink shows up in the plot legend
             float v = 0;
             if (source->visible) {
                 ImPlot::PlotLine(source->name.c_str(), &v, 1);
             }
-        } else {
-            switch (dataType) {
+        } else if (source->visible) {
+            switch (sink->dataType) {
             case DigitizerUi::DataType::Float32: {
-                if (source->visible) {
-                    auto values = dataSet.asFloat32();
-                    ImPlot::PlotLine(source->name.c_str(), values.data(), values.size());
+                auto            values = sink->data.asFloat32();
+                std::lock_guard lock(sink->m_mutex);
+                ImPlot::PlotLine(source->name.c_str(), values.data(), int(values.size()));
+                break;
+            }
+            case DigitizerUi::DataType::DataSetFloat32: {
+                auto            ds = sink->data.asDataSetFloat32();
+                if (ds.extents.empty()) {
+                    break;
+                }
+                auto &values = ds.signal_values;
+                std::lock_guard lock(sink->m_mutex);
+                for (int i = 0; i < ds.extents[0]; ++i) {
+                    auto n = ds.extents[1];
+                    ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n*i, n);
                 }
                 break;
             }

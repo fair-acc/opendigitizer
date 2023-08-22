@@ -10,7 +10,8 @@ class DataSource final : public Block {
 public:
     explicit DataSource(std::string_view name);
 
-    void        processData() final;
+    // void        processData() final;
+    std::unique_ptr<fair::graph::node_model> createGraphNode() final;
     static void registerBlockType();
 
 private:

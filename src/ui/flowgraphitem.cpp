@@ -225,7 +225,7 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
     ImGui::SetCursorPosY(y + rectSize.y + spacing);
 };
 
-template<auto GetPorts, int ConnectionEnd>
+template<auto GetPorts, decltype(Connection::src) Connection::*ConnectionEnd>
 static bool blockInTreeHelper(const Block *block, const Block *start) {
     if (block == start) {
         return true;
@@ -233,7 +233,7 @@ static bool blockInTreeHelper(const Block *block, const Block *start) {
 
     for (const auto &port : GetPorts(start)) {
         for (auto *c : port.connections) {
-            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, c->ports[ConnectionEnd]->block)) {
+            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, (c->*ConnectionEnd).block)) {
                 return true;
             }
         }
@@ -244,7 +244,24 @@ static bool blockInTreeHelper(const Block *block, const Block *start) {
 static bool blockInTree(const Block *block, const Block *start) {
     constexpr auto inputs  = [](const Block *b) { return b->inputs(); };
     constexpr auto outputs = [](const Block *b) { return b->outputs(); };
-    return blockInTreeHelper<inputs, 0>(block, start) || blockInTreeHelper<outputs, 1>(block, start);
+    return blockInTreeHelper<inputs, &Connection::src>(block, start) || blockInTreeHelper<outputs, &Connection::dst>(block, start);
+}
+
+namespace {
+template<class... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+template<typename... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+} // namespace
+
+void valToString(const pmtv::pmt &val, std::string &str) {
+    std::visit(overloaded{
+                       [&](const std::string &s) { str = s; },
+                       [&](const auto &a) { str = "na"; },
+               },
+            val);
 }
 
 void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alignment alignment) {
@@ -269,8 +286,10 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         if (alignment == Alignment::Right) {
             float width = 80;
             if (b.type) {
-                for (int i = 0; i < b.parameters().size(); ++i) {
-                    float w = ImGui::CalcTextSize("%s: %s", b.type->parameters[i].label.c_str(), b.parameters()[i].toString().c_str()).x;
+                std::string value;
+                for (const auto &val : b.parameters()) {
+                    valToString(val.second, value);
+                    float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
                     width   = std::max(width, w);
                 }
                 width += padding.x + padding.z;
@@ -298,8 +317,10 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         ImGui::Dummy(ImVec2(80.0f, 45.0f));
         ImGui::SetCursorPos(curPos);
 
-        for (int i = 0; i < b.parameters().size(); ++i) {
-            ImGui::Text("%s: %s", b.type->parameters[i].label.c_str(), b.parameters()[i].toString().c_str());
+        std::string value;
+        for (const auto &val : b.parameters()) {
+            valToString(val.second, value);
+            ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
         }
 
         ImGui::SetCursorPos(curPos);
@@ -441,7 +462,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
     for (auto &c : fg->connections()) {
-        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(c.ports[0]), ax::NodeEditor::PinId(c.ports[1]),
+        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.block->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.block->inputs()[c.dst.index]),
                 linkColor);
     }
 
@@ -524,10 +545,10 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         if (block && block->type) {
             ImGui::OpenPopup("Block parameters");
             m_selectedBlock = block;
-            m_parameters.clear();
-            for (auto &p : block->parameters()) {
-                m_parameters.push_back(p);
-            }
+            // m_parameters.clear();
+            // for (auto &p : block->parameters()) {
+            //     m_parameters.push_back(p);
+            // }
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
@@ -536,57 +557,6 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
             ImGui::OpenPopup("block_ctx_menu");
             m_selectedBlock = block;
         }
-    }
-
-    ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
-    if (ImGui::BeginPopupModal("Block parameters")) {
-        auto contentRegion = ImGui::GetContentRegionAvail();
-        int  w             = contentRegion.x / 2;
-        ImGui::TextUnformatted(m_selectedBlock->type ? m_selectedBlock->type->name.c_str() : "Unknown type");
-        for (int i = 0; i < m_selectedBlock->type->parameters.size(); ++i) {
-            const auto &p = m_selectedBlock->type->parameters[i];
-
-            // Split the window in half and put the labels on the left and the widgets on the right
-            ImGui::Text("%s", p.label.c_str());
-            ImGui::SameLine(w, 0);
-            ImGui::SetNextItemWidth(w);
-
-            char label[64];
-            snprintf(label, sizeof(label), "##parameter_%d", i);
-
-            if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
-                auto &value = std::get<Block::EnumParameter>(m_parameters[i]);
-
-                if (ImGui::BeginCombo(label, value.toString().c_str())) {
-                    for (int i = 0; i < e->options.size(); ++i) {
-                        auto &opt      = e->options[i];
-
-                        bool  selected = value.optionIndex == i;
-                        if (ImGui::Selectable(opt.c_str(), selected)) {
-                            value.optionIndex = i;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-            } else if (auto *ip = std::get_if<Block::NumberParameter<int>>(&m_parameters[i])) {
-                ImGui::InputInt(label, &ip->value);
-            } else if (auto *fp = std::get_if<Block::NumberParameter<float>>(&m_parameters[i])) {
-                ImGui::InputFloat(label, &fp->value);
-            } else if (auto *rp = std::get_if<Block::RawParameter>(&m_parameters[i])) {
-                rp->value.reserve(256);
-                ImGui::InputText(label, rp->value.data(), rp->value.capacity());
-            }
-        }
-
-        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
-            for (int i = 0; i < m_parameters.size(); ++i) {
-                m_selectedBlock->setParameter(i, m_parameters[i]);
-            }
-            m_selectedBlock->update();
-            m_selectedBlock = nullptr;
-        }
-
-        ImGui::EndPopup();
     }
 
     bool openNewBlockDialog = false;

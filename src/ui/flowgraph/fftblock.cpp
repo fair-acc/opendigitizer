@@ -2,6 +2,8 @@
 
 #include <complex>
 
+#include <blocklib/core/fft/fft.hpp>
+
 namespace DigitizerUi {
 
 namespace {
@@ -77,19 +79,22 @@ FFTBlock::FFTBlock(std::string_view name, BlockType *type)
     : Block(name, type->name, type) {
 }
 
-void FFTBlock::processData() {
-    auto &in = inputs()[0];
-    if (in.connections.empty()) {
-        return;
-    }
-
-    auto *p   = static_cast<DigitizerUi::Block::OutputPort *>(in.connections[0]->ports[0]);
-    auto  val = p->dataSet.asFloat32();
-
-    m_data.resize(val.size());
-    FFT<float> fft(val.size());
-    m_data               = fft.compute_magnitude_spectrum(val);
-    outputs()[0].dataSet = m_data;
+std::unique_ptr<fair::graph::node_model> FFTBlock::createGraphNode() {
+    return std::make_unique<fair::graph::node_wrapper<gr::blocks::fft::fft<float>>>();
 }
+// void FFTBlock::processData() {
+//     auto &in = inputs()[0];
+//     if (in.connections.empty()) {
+//         return;
+//     }
+//
+//     auto *p   = static_cast<DigitizerUi::Block::OutputPort *>(in.connections[0]->ports[0]);
+//     auto  val = p->dataSet.asFloat32();
+//
+//     m_data.resize(val.size());
+//     FFT<float> fft(val.size());
+//     m_data               = fft.compute_magnitude_spectrum(val);
+//     outputs()[0].dataSet = m_data;
+// }
 
 } // namespace DigitizerUi

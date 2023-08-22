@@ -56,7 +56,7 @@ struct DashboardDescription {
 class Dashboard {
 public:
     struct Source {
-        Block      *block;
+        DataSink   *block;
         int         port;
         std::string name;
         uint32_t    color;

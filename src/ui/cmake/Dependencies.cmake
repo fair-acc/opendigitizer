@@ -52,7 +52,7 @@ FetchContent_Declare(
     GIT_TAG 4.2.2
 )
 
-FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2)
+FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2 graph-prototype)
 
 if (NOT EMSCRIPTEN)
     find_package(SDL2 REQUIRED)

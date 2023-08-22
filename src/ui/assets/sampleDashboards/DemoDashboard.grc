@@ -6,15 +6,11 @@ blocks:
   - name: sine source 1
     id: sine_source
     parameters:
-      frequency: 0.100000
+      frequency: 1.000000
   - name: sine source 3
     id: sine_source
     parameters:
-      frequency: 0.130000
-  - name: source for sink 1
-    id: sink_source
-  - name: source for sink 2
-    id: sink_source
+      frequency: 1.300000
   - name: sink 1
     id: sink
   - name: sink 2

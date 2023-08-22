@@ -19,6 +19,9 @@
 #include <array>
 #include <cstdio>
 
+#include <scheduler.hpp>
+#include <blocklib/core/fft/fft.hpp>
+
 #include "app.h"
 #include "dashboard.h"
 #include "dashboardpage.h"
@@ -232,23 +235,25 @@ int main(int argc, char **argv) {
 
     DigitizerUi::DataSource::registerBlockType();
     DigitizerUi::DataSink::registerBlockType();
-    DigitizerUi::DataSinkSource::registerBlockType();
+    // DigitizerUi::DataSinkSource::registerBlockType();
     DigitizerUi::ArithmeticBlock::registerBlockType();
 
-    DigitizerUi::BlockType::registry().addBlockType([]() {
-        auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
-        t->createBlock = [t = t.get()](std::string_view name) {
-            return std::make_unique<DigitizerUi::FFTBlock>(name, t);
-        };
-        t->inputs.resize(1);
-        t->inputs[0].name = "in1";
-        t->inputs[0].type = "float";
+    DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::fft>("FFT");
 
-        t->outputs.resize(1);
-        t->outputs[0].name = "out";
-        t->outputs[0].type = "float";
-        return t;
-    }());
+    // DigitizerUi::BlockType::registry().addBlockType([]() {
+    //     auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
+    //     t->createBlock = [t = t.get()](std::string_view name) {
+    //         return std::make_unique<DigitizerUi::FFTBlock>(name, t);
+    //     };
+    //     t->inputs.resize(1);
+    //     t->inputs[0].name = "in1";
+    //     t->inputs[0].type = "float";
+    //
+    //     t->outputs.resize(1);
+    //     t->outputs[0].name = "out";
+    //     t->outputs[0].type = "dataset<float>";
+    //     return t;
+    // }());
 
     loadFonts(app);
 
@@ -264,6 +269,12 @@ int main(int argc, char **argv) {
     if (auto first_dashboard = app.openDashboardPage.get(0); app.dashboard == nullptr && first_dashboard != nullptr) { // load first dashboard if there is a dashboard available
         app.loadDashboard(first_dashboard);
     }
+
+    // auto graph = app.dashboard->localFlowGraph.createGraph();
+    // fair::graph::scheduler::simple<fair::graph::scheduler::single_threaded> scheduler(std::move(graph));
+    // app.scheduler = &scheduler;
+    // scheduler.init();
+    // scheduler.start();
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
@@ -292,6 +303,14 @@ static void main_loop(void *arg) {
     ImGuiIO   &io        = ImGui::GetIO();
 
     app->fireCallbacks();
+
+    if (app->dashboard->localFlowGraph.graphChanged()) {
+        auto graph = app->dashboard->localFlowGraph.createGraph();
+        app->scheduler.emplace<fair::graph::scheduler::simple<fair::graph::scheduler::single_threaded>>(std::move(graph));
+        // scheduler.init();
+        // app->scheduler = std::move(scheduler);
+    }
+    app->scheduler.run();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;

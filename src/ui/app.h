@@ -70,6 +70,40 @@ struct App {
     ImFont                    *fontIconsSolidBig;
     ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
+    struct SchedWrapper {
+        SchedWrapper() {}
+        // // template<typename T>
+        // // SchedWrapper(T &&sched)
+        // //     : handler(std::make_unique<HandlerImpl<T>>(std::move(sched)))
+        // // {
+        // // }
+
+        template<typename T, typename... Args>
+        void emplace(Args &&...args) {
+            handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
+        }
+
+        void run() { handler->run(); }
+
+    private:
+        struct Handler {
+            virtual ~Handler() = default;
+            virtual void run() = 0;
+        };
+        template<typename T>
+        struct HandlerImpl : Handler {
+            T data;
+            template<typename... Args>
+            HandlerImpl(Args &&...args)
+                : data(std::forward<Args>(args)...) {
+                data.init();
+            }
+            void run() final { data.run_and_wait(); }
+        };
+
+        std::unique_ptr<Handler> handler;
+    };
+    SchedWrapper scheduler;
 
 private:
     App();

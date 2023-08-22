@@ -1079,11 +1079,11 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                             ImGui::PushFont(app.fontIconsSolid);
                             if (ImGui::Button(prevString, buttonSize)) {
-                                ctx.block = conn->ports[1]->block;
+                                ctx.block = conn->src.block;
                             }
                             ImGui::PopFont();
                             if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip("%s", conn->ports[1]->block->name.c_str());
+                                ImGui::SetTooltip("%s", conn->dst.block->name.c_str());
                             }
                             ImGui::PopID();
                             if (verticalLayout) {
@@ -1114,8 +1114,8 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                                 int index = 0;
                                 for (auto &out : ctx.block->outputs()) {
                                     for (auto *conn : out.connections) {
-                                        ctx.insertFrom      = conn->ports[0];
-                                        ctx.insertBefore    = conn->ports[1];
+                                        ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
+                                        ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
                                         ctx.breakConnection = conn;
                                         return;
                                     }
@@ -1132,11 +1132,11 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                         int index = 0;
                         for (auto &out : ctx.block->outputs()) {
                             for (auto *conn : out.connections) {
-                                auto text = fmt::format("Before block '{}'", conn->ports[1]->block->name);
+                                auto text = fmt::format("Before block '{}'", conn->dst.block->name);
                                 if (ImGui::Selectable(text.c_str())) {
-                                    ctx.insertBefore    = conn->ports[1];
+                                    ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
                                     ctx.mode            = BlockControlsPanel::Mode::Insert;
-                                    ctx.insertFrom      = conn->ports[0];
+                                    ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
                                     ctx.breakConnection = conn;
                                 }
                             }
@@ -1279,11 +1279,11 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     ImGuiUtils::DisabledGuard dg(in.connections.empty());
 
                     if (ImGui::Button(nextString, buttonSize)) {
-                        ctx.block = in.connections.front()->ports[0]->block;
+                        ctx.block = in.connections.front()->src.block;
                     }
                     if (ImGui::IsItemHovered()) {
                         ImGui::PopFont();
-                        ImGui::SetTooltip("%s", in.connections.front()->ports[0]->block->name.c_str());
+                        ImGui::SetTooltip("%s", in.connections.front()->src.block->name.c_str());
                         ImGui::PushFont(app.fontIconsSolid);
                     }
                     ImGui::PopID();
@@ -1300,6 +1300,14 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
     }
 }
 
+namespace {
+template<class... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+template<typename... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+} // namespace
+
 void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size) {
     const auto availableSize = ImGui::GetContentRegionAvail();
 
@@ -1310,10 +1318,9 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
     const auto  indent    = style.IndentSpacing;
     const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
 
-    for (int i = 0; i < b->type->parameters.size(); ++i) {
-        const auto &p  = b->type->parameters[i];
-
-        auto        id = ImGui::GetID(p.label.c_str());
+    int         i         = 0;
+    for (const auto &p : b->parameters()) {
+        auto id = ImGui::GetID(p.first.c_str());
         ImGui::PushID(int(id));
         auto *enabled = storage->GetBoolRef(id, true);
 
@@ -1322,53 +1329,67 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
         ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
         ImGui::BeginGroup();
 
+        bool controlDrawn = true;
+
         if (*enabled) {
             char label[64];
             snprintf(label, sizeof(label), "##parameter_%d", i);
 
-            if (auto *e = std::get_if<DigitizerUi::BlockType::EnumParameter>(&p.impl)) {
-                auto value = std::get<DigitizerUi::Block::EnumParameter>(b->parameters()[i]);
+            controlDrawn = std::visit(overloaded{
+                               [&](int val) {
+                                   ImGui::SetNextItemWidth(100);
+                                   if (InputKeypad<>::edit(label, &val)) {
+                                       b->setParameter(p.first, val);
+                                       b->update();
+                                   }
+                                   return true;
+                               },
+                               [&](float val) {
+                                   ImGui::SetNextItemWidth(100);
+                                   if (InputKeypad<>::edit(label, &val)) {
+                                       b->setParameter(p.first, val);
+                                       b->update();
+                                   }
+                                   return true;
+                               },
+                               [&](std::string_view val) {
+                                   ImGui::SetNextItemWidth(100);
 
-                for (int j = 0; j < e->options.size(); ++j) {
-                    auto &opt      = e->options[j];
+                                   std::string str(val);
+                                   if (InputKeypad<>::edit(label, &str)) {
+                                       b->setParameter(p.first, std::move(str));
+                                       b->update();
+                                   }
+                                   return true;
+                               },
+                               [](auto &&) {
+                                   return false;
+                            } },
+                    p.second);
 
-                    bool  selected = value.optionIndex == j;
-                    if (ImGui::RadioButton(opt.c_str(), selected)) {
-                        value.optionIndex = j;
-                        b->setParameter(i, value);
-                        b->update();
-                    }
-                }
-            } else if (auto *ip = std::get_if<DigitizerUi::Block::NumberParameter<int>>(&b->parameters()[i])) {
-                int val = ip->value;
-                ImGui::SetNextItemWidth(100);
-                if (InputKeypad<>::edit(label, &val)) {
-                    b->setParameter(i, DigitizerUi::Block::NumberParameter<int>{ val });
-                    b->update();
-                }
-            } else if (auto *fp = std::get_if<DigitizerUi::Block::NumberParameter<float>>(&b->parameters()[i])) {
-                float val = fp->value;
-                ImGui::SetNextItemWidth(100);
-                if (InputKeypad<>::edit(label, &val)) {
-                    b->setParameter(i, DigitizerUi::Block::NumberParameter<float>{ val });
-                    b->update();
-                }
-            } else if (auto *rp = std::get_if<DigitizerUi::Block::RawParameter>(&b->parameters()[i])) {
-                std::string val = rp->value;
-                ImGui::SetNextItemWidth(100);
+            if (!controlDrawn) continue;
 
-                if (InputKeypad<>::edit(label, &val)) {
-                    b->setParameter(i, DigitizerUi::Block::RawParameter{ std::move(val) });
-                    b->update();
-                }
-            }
+            /*
+                        if (auto *e = std::get_if<DigitizerUi::BlockType::EnumParameter>(&p.impl)) {
+                            auto value = std::get<DigitizerUi::Block::EnumParameter>(b->parameters()[i]);
+
+                            for (int j = 0; j < e->options.size(); ++j) {
+                                auto &opt      = e->options[j];
+
+                                bool  selected = value.optionIndex == j;
+                                if (ImGui::RadioButton(opt.c_str(), selected)) {
+                                    value.optionIndex = j;
+                                    b->setParameter(i, value);
+                                    b->update();
+                                }
+                            }*/
         }
 
         ImGui::EndGroup();
         ImGui::SameLine(0, 0);
 
         auto        width = verticalLayout ? availableSize.x : ImGui::GetCursorPosX() - curpos.x;
-        const auto *text  = *enabled || verticalLayout ? p.label.c_str() : "";
+        const auto *text  = *enabled || verticalLayout ? p.first.c_str() : "";
         width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
 
         if (*enabled) {
@@ -1385,14 +1406,14 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
         }
         ImGui::PopStyleColor();
 
-        setItemTooltip("%s", p.label.c_str());
+        setItemTooltip("%s", p.first.c_str());
 
         ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
         ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);
 
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
         if (*enabled || verticalLayout) {
-            ImGui::TextUnformatted(p.label.c_str());
+            ImGui::TextUnformatted(p.first.c_str());
         }
 
         ImGui::EndGroup();
@@ -1402,6 +1423,7 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
         }
 
         ImGui::PopID();
+        ++i;
     }
     ImGui::PopID();
 }

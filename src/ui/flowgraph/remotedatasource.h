@@ -13,7 +13,8 @@ public:
     RemoteDataSource(std::string_view name, RemoteBlockType *t);
     ~RemoteDataSource();
 
-    void        processData() final;
+    // void        processData() final;
+    std::unique_ptr<fair::graph::node_model> createGraphNode() final;
     static void registerBlockType(FlowGraph *fg, std::string_view path);
     static void registerBlockType(FlowGraph *fg, std::string_view path, std::string_view signalName);
 

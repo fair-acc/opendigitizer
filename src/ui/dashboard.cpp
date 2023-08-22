@@ -221,17 +221,17 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
     m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
-        if (dynamic_cast<DataSinkSource *>(b)) {
-            return;
-        }
-        for (int i = 0; i < b->type->outputs.size(); ++i) {
-            auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
-            m_sources.insert({ b, i, name, randomColor() });
-        }
-    };
+    // localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
+    //     if (dynamic_cast<DataSinkSource *>(b)) {
+    //         return;
+    //     }
+    //     for (int i = 0; i < b->type->outputs.size(); ++i) {
+    //         auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
+    //         m_sources.insert({ b, i, name, randomColor() });
+    //     }
+    // };
     localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
-        m_sources.insert({ b, -1, b->name, randomColor() });
+        m_sources.insert({ static_cast<DataSink *>(b), -1, b->name, randomColor() });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
@@ -252,8 +252,8 @@ DataSink *Dashboard::createSink() {
     auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
     auto sinkptr = sink.get();
     localFlowGraph.addSinkBlock(std::move(sink));
-    name = fmt::format("source for sink {}", n);
-    localFlowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
+    // name = fmt::format("source for sink {}", n);
+    // localFlowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
     return sinkptr;
 }
 

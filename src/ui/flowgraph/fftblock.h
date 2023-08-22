@@ -10,7 +10,8 @@ namespace DigitizerUi {
 class FFTBlock : public Block {
 public:
     explicit FFTBlock(std::string_view name, BlockType *type);
-    void               processData() override;
+    // void               processData() override;
+    std::unique_ptr<fair::graph::node_model> createGraphNode() final;
 
     std::vector<float> m_data;
 };
