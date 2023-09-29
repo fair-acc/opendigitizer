@@ -5,7 +5,7 @@
 template<typename T>
 struct DSSink : fair::graph::node<DSSink<T>>
 {
-    fair::graph::IN<fair::graph::DataSet<T>> in;
+    fair::graph::PortIn<fair::graph::DataSet<T>> in;
 
     void process_one(fair::graph::DataSet<T> ds)
     {

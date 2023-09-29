@@ -62,13 +62,13 @@ public:
             : defaultValue(v) {}
         T defaultValue;
     };
-    struct RawParameter {
+    struct StringParameter {
         std::string defaultValue;
     };
     struct Parameter {
         const std::string                                                                       id;
         const std::string                                                                       label;
-        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> impl;
+        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
     explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
@@ -85,8 +85,10 @@ public:
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 
     template<typename T>
-    void initPort(PortDefinition &p)
+    void initPort(auto &vec)
     {
+        vec.push_back({});
+        auto &p = vec.back();
         p.name = T::static_name();
         p.type = "float";
         if (meta::is_dataset_v<typename T::value_type>) {
@@ -100,9 +102,9 @@ public:
 
         //automatically create a BlockType from a graph prototype node template class
         template<template<typename> typename T>
-        void               addBlockType(std::string_view name)
+        void               addBlockType(std::string_view typeName)
         {
-            auto t         = std::make_unique<DigitizerUi::BlockType>(name);
+            auto t         = std::make_unique<DigitizerUi::BlockType>(typeName);
             t->createBlock = [t = t.get()](std::string_view name) {
                 return std::make_unique<DefaultGPBlock<T>>(name, t);
             };
@@ -111,14 +113,12 @@ public:
 
             constexpr std::size_t input_port_count = meta::template input_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                t->inputs.push_back({});
-                (t->template initPort<typename meta::template input_ports<Node>::template at<Is>>(t->inputs.back()), ...);
+                (t->template initPort<typename meta::template input_ports<Node>::template at<Is>>(t->inputs), ...);
             }(std::make_index_sequence<input_port_count>());
 
             constexpr std::size_t output_port_count = meta::template output_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                t->outputs.push_back({});
-                (t->template initPort<typename meta::template output_ports<Node>::template at<Is>>(t->outputs.back()), ...);
+                (t->template initPort<typename meta::template output_ports<Node>::template at<Is>>(t->outputs), ...);
             }(std::make_index_sequence<output_port_count>());
 
             addBlockType(std::move(t));
@@ -210,9 +210,9 @@ struct DataType {
             case BusConnection:
             case Wildcard:
             case Untyped: break;
-
+            default: break;
         }
-
+        return decltype(fun.template operator()<float>()){};
     }
 
     constexpr inline DataType() {}
@@ -329,17 +329,40 @@ protected:
     friend FlowGraph;
 };
 
+namespace meta
+{
+
 template<template<typename> typename T, typename D>
-concept crr = requires {
+concept is_creatable = requires {
     { new T<D> };
+};
+
+}
+
+class Connection {
+public:
+    struct {
+        Block      *block;
+        std::size_t index;
+    } src, dst;
+
+private:
+    inline Connection(Block *s, std::size_t srcIndex, Block *d, std::size_t dstIndex)
+        : src{s, srcIndex}, dst{d, dstIndex} {}
+
+    friend FlowGraph;
 };
 
 template<template<typename> typename T>
 class DefaultGPBlock : public Block
 {
 public:
-    DefaultGPBlock(std::string_view name, BlockType *type)
-        : Block(name, type->name, type) {}
+    DefaultGPBlock(std::string_view typeName, BlockType *t)
+        : Block(typeName, t->name, t) {
+        T<float> node;
+        node.settings().update_active_parameters();
+        m_parameters = node.settings().get();
+    }
 
     std::unique_ptr<fair::graph::node_model> createGraphNode() final
     {
@@ -351,27 +374,13 @@ public:
             }
         }
         return t.asType([]<typename D>() -> std::unique_ptr<fair::graph::node_model> {
-            if constexpr (crr<T, D>) {
+            if constexpr (meta::is_creatable<T, D>) {
                 return std::make_unique<fair::graph::node_wrapper<T<D>>>();
             } else {
                 return nullptr;
             }
         });
     }
-};
-
-class Connection {
-public:
-    struct {
-        Block      *block;
-        std::size_t index;
-    } src, dst;
-
-private:
-    inline Connection(Block *src, std::size_t srcIndex, Block *dst, std::size_t dstIndex)
-        : src{src, srcIndex}, dst{dst, dstIndex} {}
-
-    friend FlowGraph;
 };
 
 class FlowGraph {

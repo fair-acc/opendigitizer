@@ -1073,13 +1073,15 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
                     ImGui::BeginGroup();
                     int id = 1;
+                    // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
+                    // that switches to the connected block
                     for (auto &out : ctx.block->outputs()) {
                         for (const auto *conn : out.connections) {
                             ImGui::PushID(id++);
 
                             ImGui::PushFont(app.fontIconsSolid);
                             if (ImGui::Button(prevString, buttonSize)) {
-                                ctx.block = conn->src.block;
+                                ctx.block = conn->dst.block;
                             }
                             ImGui::PopFont();
                             if (ImGui::IsItemHovered()) {
@@ -1326,7 +1328,7 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
 
         ImGui::BeginGroup();
         const auto curpos = ImGui::GetCursorPos();
-        ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+
         ImGui::BeginGroup();
 
         bool controlDrawn = true;
@@ -1336,15 +1338,8 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
             snprintf(label, sizeof(label), "##parameter_%d", i);
 
             controlDrawn = std::visit(overloaded{
-                               [&](int val) {
-                                   ImGui::SetNextItemWidth(100);
-                                   if (InputKeypad<>::edit(label, &val)) {
-                                       b->setParameter(p.first, val);
-                                       b->update();
-                                   }
-                                   return true;
-                               },
                                [&](float val) {
+                                   ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                    ImGui::SetNextItemWidth(100);
                                    if (InputKeypad<>::edit(label, &val)) {
                                        b->setParameter(p.first, val);
@@ -1352,19 +1347,40 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                                    }
                                    return true;
                                },
-                               [&](std::string_view val) {
-                                   ImGui::SetNextItemWidth(100);
+                               // [&](std::string_view val) {
+                               //     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                               //     ImGui::SetNextItemWidth(100);
+                               //
+                               //     std::string str(val);
+                               //     if (InputKeypad<>::edit(label, &str)) {
+                               //         b->setParameter(p.first, std::move(str));
+                               //         b->update();
+                               //     }
+                               //     return true;
+                               // },
+                               [&](auto &&val) {
+                                   using T = std::decay_t<decltype(val)>;
+                                   if constexpr (std::integral<T>) {
+                                       int v = val;
+                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                    ImGui::SetNextItemWidth(100);
+                                    if (InputKeypad<>::edit(label, &v)) {
+                                        b->setParameter(p.first, v);
+                                        b->update();
+                                    }
+                                    return true;
+                                    } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                            ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                    ImGui::SetNextItemWidth(100);
 
-                                   std::string str(val);
-                                   if (InputKeypad<>::edit(label, &str)) {
-                                       b->setParameter(p.first, std::move(str));
-                                       b->update();
-                                   }
-                                   return true;
-                               },
-                               [](auto &&) {
+                                    std::string str(val);
+                                    ImGui::InputText("##in", &str);
+                                    b->setParameter(p.first, std::move(str));
+                                    return true;
+                                    }
                                    return false;
-                            } },
+                               }
+                            },
                     p.second);
 
             if (!controlDrawn) continue;

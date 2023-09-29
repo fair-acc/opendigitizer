@@ -30,7 +30,6 @@
 #include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
 #include "flowgraph/datasource.h"
-#include "flowgraph/fftblock.h"
 #include "flowgraphitem.h"
 #include "utils/TouchHandler.hpp"
 
@@ -239,21 +238,6 @@ int main(int argc, char **argv) {
     DigitizerUi::ArithmeticBlock::registerBlockType();
 
     DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::fft>("FFT");
-
-    // DigitizerUi::BlockType::registry().addBlockType([]() {
-    //     auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
-    //     t->createBlock = [t = t.get()](std::string_view name) {
-    //         return std::make_unique<DigitizerUi::FFTBlock>(name, t);
-    //     };
-    //     t->inputs.resize(1);
-    //     t->inputs[0].name = "in1";
-    //     t->inputs[0].type = "float";
-    //
-    //     t->outputs.resize(1);
-    //     t->outputs[0].name = "out";
-    //     t->outputs[0].type = "dataset<float>";
-    //     return t;
-    // }());
 
     loadFonts(app);
 

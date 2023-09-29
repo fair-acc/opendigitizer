@@ -11,6 +11,35 @@
 
 using namespace opendigitizer::acq;
 
+template<typename T>
+requires std::is_arithmetic_v<T>
+struct RemoteSource : public fair::graph::node<RemoteSource<T>> {
+    fair::graph::PortOut<T> out{};
+
+    RemoteSource()
+    {
+    }
+
+    ~RemoteSource()
+    {
+    }
+
+    std::make_signed_t<std::size_t>
+    available_samples(const RemoteSource & /*d*/) noexcept {
+        // std::lock_guard lock(m_type->m_mutex);
+        // outputs()[0].dataSet = m_type->m_data[m_type->m_active].channelValue;
+
+        return 0;
+    }
+
+    T
+    process_one() {
+        return {};
+    }
+};
+
+ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (RemoteSource<T>), out);
+
 namespace DigitizerUi {
 
 class RemoteBlockType : public BlockType {
@@ -93,7 +122,7 @@ RemoteDataSource::~RemoteDataSource() {
 }
 
 std::unique_ptr<fair::graph::node_model> RemoteDataSource::createGraphNode() {
-    return {};
+    return std::make_unique<fair::graph::node_wrapper<RemoteSource<float>>>();
 }
 
 // void RemoteDataSource::processData() {

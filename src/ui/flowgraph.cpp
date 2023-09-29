@@ -45,12 +45,12 @@ public:
     }
 };
 
-BlockType::BlockType(std::string_view n, std::string_view label, std::string_view cat, bool source)
+BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat, bool source)
     : name(n)
-    , label(label.empty() ? n : label)
+    , label(l.empty() ? n : l)
     , category(cat)
     , isSource(source)
-    , createBlock([this](std::string_view name) { return std::make_unique<GRBlock>(name, this->name, this); }) {
+    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
 }
 
 BlockType::Registry &BlockType::registry() {
@@ -67,8 +67,8 @@ void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
-Block::Block(std::string_view name, std::string_view id, BlockType *type)
-    : type(type)
+Block::Block(std::string_view name, std::string_view id, BlockType *t)
+    : type(t)
     , name(name)
     , id(id) {
     if (!type) {
@@ -330,7 +330,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
                 def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<float>{ defaultValue } });
             } else if (dtype == "raw") {
                 auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::RawParameter{ defaultValue } });
+                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::StringParameter{ defaultValue } });
             }
         }
 
@@ -484,12 +484,12 @@ void FlowGraph::parse(const std::string &str) {
 
         auto srcBlockName = c[0].as<std::string>();
         auto srcPortStr   = c[1].as<std::string>();
-        int  srcPort;
+        std::size_t  srcPort;
         std::from_chars(srcPortStr.data(), srcPortStr.data() + srcPortStr.size(), srcPort);
 
         auto dstBlockName = c[2].as<std::string>();
         auto dstPortStr   = c[3].as<std::string>();
-        int  dstPort;
+        std::size_t  dstPort;
         std::from_chars(dstPortStr.data(), dstPortStr.data() + dstPortStr.size(), dstPort);
 
         auto srcBlock = findBlock(srcBlockName);
@@ -572,7 +572,7 @@ int FlowGraph::save(std::ostream &stream) {
     }
 
     stream << out.c_str();
-    return out.size();
+    return int(out.size());
 }
 
 static Block *findBlockImpl(std::string_view name, auto &list) {
@@ -669,8 +669,8 @@ Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
         std::swap(a, b);
     }
 
-    int  ain = a - a->block->outputs().data();
-    int  bin = b - b->block->inputs().data();
+    auto ain = std::size_t(a - a->block->outputs().data());
+    auto bin = std::size_t(b - b->block->inputs().data());
 
     auto it  = m_connections.insert(Connection(a->block, ain, b->block, bin));
     a->connections.push_back(&(*it));
