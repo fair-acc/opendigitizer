@@ -46,12 +46,12 @@ private:
         Right,
     };
 
-    void addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
-    void drawNewBlockDialog(FlowGraph *fg);
-    void drawAddSourceDialog(FlowGraph *fg);
+    void                              addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
+    void                              drawNewBlockDialog(FlowGraph *fg);
+    void                              drawAddSourceDialog(FlowGraph *fg);
 
-    QueryFilterElementList           querySignalFilters;
-    SignalList                       signalList{ querySignalFilters };
+    QueryFilterElementList            querySignalFilters;
+    SignalList                        signalList{ querySignalFilters };
     Block                            *m_selectedBlock = nullptr;
     std::vector<Block::Parameter>     m_parameters;
     BlockType                        *m_selectedBlockType = nullptr;

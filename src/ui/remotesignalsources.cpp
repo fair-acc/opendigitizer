@@ -5,7 +5,6 @@
 #include "remotesignalsources.h"
 #include <misc/cpp/imgui_stdlib.h>
 
-
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
     if (ImGui::BeginCombo(_keyIdentifier.c_str(), field_names[_selectedIndex])) {
@@ -42,7 +41,6 @@ void QueryFilterElement::drawFilterLine() {
     if (ImGui::Button(_buttonIdentifier.data())) {
         list.pop(*this);
     }
-
 }
 
 QueryFilterElement &QueryFilterElement::operator=(const QueryFilterElement &other) {
@@ -63,19 +61,17 @@ void QueryFilterElementList::triggerChange() {
     std::for_each(onChange.begin(), onChange.end(), [](auto &f) { f(); });
 }
 
-
 #ifdef COMPILEWITHMAIN
-#include <SDL.h>
 #include <imgui.h>
-#include <imgui_impl_sdl.h>
 #include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl.h>
+#include <SDL.h>
 
 QueryFilterElementList querySignalFilters;
-SignalList signalList{querySignalFilters};
-SDL_Window* window;
+SignalList             signalList{ querySignalFilters };
+SDL_Window            *window;
 
-void SetupImGui(SDL_Window* window) {
-
+void                   SetupImGui(SDL_Window *window) {
 }
 
 void RenderImGui() {
@@ -108,7 +104,7 @@ void RenderImGui() {
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         // Handle initialization error
@@ -117,10 +113,10 @@ int main(int argc, char* argv[]) {
 
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    SDL_WindowFlags       window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags) (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 
-    auto window    = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
-    auto glContext = SDL_GL_CreateContext(window);
+    auto            window       = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    auto            glContext    = SDL_GL_CreateContext(window);
     if (!glContext) {
         fprintf(stderr, "Failed to initialize WebGL context!\n");
         return 1;
@@ -132,7 +128,6 @@ int main(int argc, char* argv[]) {
 
     ImGui_ImplSDL2_InitForOpenGL(window, nullptr);
     ImGui_ImplOpenGL3_Init("#version 330"); // Provide the appropriate OpenGL version
-
 
     bool done = false;
     while (!done) {

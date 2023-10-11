@@ -1,15 +1,14 @@
 #ifndef OPENDIGITIZER_REMOTESIGNALSOURCES_H
 #define OPENDIGITIZER_REMOTESIGNALSOURCES_H
 
-
 /*     Draws a Combo box, to choose the field to filter, the filter keyword and delete button for it     */
 //#include "ClientContext.hpp"
-#include <services/dns_client.hpp>
 #include "imgui.h"
 #include "RestClient.hpp"
 #include "services/dns_types.hpp"
-#include <refl.hpp>
 #include <list>
+#include <refl.hpp>
+#include <services/dns_client.hpp>
 
 struct QueryFilterElementList;
 struct QueryFilterElement {
@@ -47,7 +46,7 @@ struct QueryFilterElement {
         : list(other.list), _keyIdentifier(other._keyIdentifier), _valueIdentifier(other._valueIdentifier), _selectedIndex(other._selectedIndex), _buttonIdentifier(other._buttonIdentifier) {}
     QueryFilterElement &operator=(const QueryFilterElement &other);
 
-    bool operator==(const QueryFilterElement &rhs) const {
+    bool                operator==(const QueryFilterElement &rhs) const {
         return &list == &rhs.list
             && _keyIdentifier == rhs._keyIdentifier
             && _valueIdentifier == rhs._valueIdentifier;
