@@ -24,6 +24,7 @@ set(sources
         dashboardpage.cpp
         opendashboardpage.cpp
         imguiutils.cpp
+        remotesignalsources.cpp remotesignalsources.h
  )
 
 set(GNURADIO_PREFIX "/usr/" CACHE FILEPATH "Prefix of the GNURadio installation")
@@ -134,3 +135,8 @@ endif()
 
 target_link_libraries(${target_name} PRIVATE function2::function2)
 target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) #for daq_api.hpp
+
+
+add_executable(remotesignalsources_test remotesignalsources.cpp)
+target_compile_options(remotesignalsources_test PUBLIC -DCOMPILEWITHMAIN=1)
+target_link_libraries(remotesignalsources_test PRIVATE client services imgui SDL2)

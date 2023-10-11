@@ -271,6 +271,8 @@ private:
         std::string uri;
     };
     std::vector<RemoteSource> m_remoteSources;
+
+    // TODO add remote sources here?
 };
 
 } // namespace DigitizerUi
