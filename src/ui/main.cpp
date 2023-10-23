@@ -19,8 +19,9 @@
 #include <array>
 #include <cstdio>
 
-#include <scheduler.hpp>
-#include <blocklib/core/fft/fft.hpp>
+#include <fmt/format.h>
+#include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
 
 #include "app.h"
 #include "dashboard.h"
@@ -35,6 +36,11 @@
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
+
+// template <typename T>
+// struct SpecFFT : gr::blocks::fft::FFT<float, gr::DataSet<float>> {};
+template<typename T>
+using SpecFFT = gr::blocks::fft::FFT<float, gr::DataSet<float>>;
 
 namespace DigitizerUi {
 
@@ -237,7 +243,7 @@ int main(int argc, char **argv) {
     // DigitizerUi::DataSinkSource::registerBlockType();
     DigitizerUi::ArithmeticBlock::registerBlockType();
 
-    DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::fft>("FFT");
+    DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
 
     loadFonts(app);
 
@@ -255,7 +261,7 @@ int main(int argc, char **argv) {
     }
 
     // auto graph = app.dashboard->localFlowGraph.createGraph();
-    // fair::graph::scheduler::simple<fair::graph::scheduler::single_threaded> scheduler(std::move(graph));
+    // gr::scheduler::simple<gr::scheduler::single_threaded> scheduler(std::move(graph));
     // app.scheduler = &scheduler;
     // scheduler.init();
     // scheduler.start();
@@ -290,7 +296,7 @@ static void main_loop(void *arg) {
 
     if (app->dashboard->localFlowGraph.graphChanged()) {
         auto graph = app->dashboard->localFlowGraph.createGraph();
-        app->scheduler.emplace<fair::graph::scheduler::simple<fair::graph::scheduler::single_threaded>>(std::move(graph));
+        app->scheduler.emplace<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
         // scheduler.init();
         // app->scheduler = std::move(scheduler);
     }

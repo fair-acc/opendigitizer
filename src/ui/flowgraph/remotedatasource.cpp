@@ -12,16 +12,14 @@
 using namespace opendigitizer::acq;
 
 template<typename T>
-requires std::is_arithmetic_v<T>
-struct RemoteSource : public fair::graph::node<RemoteSource<T>> {
-    fair::graph::PortOut<T> out{};
+    requires std::is_arithmetic_v<T>
+struct RemoteSource : public gr::Block<RemoteSource<T>> {
+    gr::PortOut<T> out{};
 
-    RemoteSource()
-    {
+    RemoteSource() {
     }
 
-    ~RemoteSource()
-    {
+    ~RemoteSource() {
     }
 
     std::make_signed_t<std::size_t>
@@ -32,8 +30,7 @@ struct RemoteSource : public fair::graph::node<RemoteSource<T>> {
         return 0;
     }
 
-    T
-    process_one() {
+    T processOne() {
         return {};
     }
 };
@@ -121,8 +118,8 @@ RemoteDataSource::~RemoteDataSource() {
     m_type->unsubscribe();
 }
 
-std::unique_ptr<fair::graph::node_model> RemoteDataSource::createGraphNode() {
-    return std::make_unique<fair::graph::node_wrapper<RemoteSource<float>>>();
+std::unique_ptr<gr::BlockModel> RemoteDataSource::createGraphNode() {
+    return std::make_unique<gr::BlockWrapper<RemoteSource<float>>>();
 }
 
 // void RemoteDataSource::processData() {

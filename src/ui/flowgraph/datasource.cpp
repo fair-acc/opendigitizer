@@ -4,20 +4,21 @@
 #include <math.h>
 #include <mutex>
 
-#include <node.hpp>
+#include <fmt/format.h>
+#include <gnuradio-4.0/Block.hpp>
 
 #include "../flowgraph.h"
 
 template<typename T>
-requires std::is_arithmetic_v<T>
-struct SineSource : public fair::graph::node<SineSource<T>> {
-    fair::graph::PortOut<T> out{};
-    float               val       = 0;
-    float               frequency = 1.f;
-    std::mutex          mutex;
-    std::deque<T>       samples;
-    std::thread         thread;
-    std::atomic_bool    quit = false;
+    requires std::is_arithmetic_v<T>
+struct SineSource : public gr::Block<SineSource<T>> {
+    gr::PortOut<T>   out{};
+    float            val       = 0;
+    float            frequency = 1.f;
+    std::mutex       mutex;
+    std::deque<T>    samples;
+    std::thread      thread;
+    std::atomic_bool quit = false;
 
     SineSource()
         : thread([this]() {
@@ -34,8 +35,7 @@ struct SineSource : public fair::graph::node<SineSource<T>> {
         }) {
     }
 
-    ~SineSource()
-    {
+    ~SineSource() {
         quit = true;
         thread.join();
     }
@@ -43,12 +43,11 @@ struct SineSource : public fair::graph::node<SineSource<T>> {
     std::make_signed_t<std::size_t>
     available_samples(const SineSource & /*d*/) noexcept {
         std::lock_guard lock(mutex);
-        const auto ret = std::make_signed_t<std::size_t>(samples.size());
+        const auto      ret = std::make_signed_t<std::size_t>(samples.size());
         return ret > 0 ? ret : -1;
     }
 
-    T
-    process_one() {
+    T processOne() {
         std::lock_guard guard(mutex);
 
         T               v = samples.front();
@@ -58,6 +57,8 @@ struct SineSource : public fair::graph::node<SineSource<T>> {
 };
 
 ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (SineSource<T>), out, frequency);
+static_assert(gr::traits::block::can_processOne<SineSource<float>>);
+static_assert(gr::traits::block::can_processOne<SineSource<double>>);
 
 namespace DigitizerUi {
 

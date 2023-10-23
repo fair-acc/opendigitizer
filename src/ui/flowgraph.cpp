@@ -39,7 +39,7 @@ std::string Block::Parameter::toString() const {
 class GRBlock : public Block {
 public:
     using Block::Block;
-    std::unique_ptr<fair::graph::node_model> createGraphNode() final {
+    std::unique_ptr<gr::BlockModel> createGraphNode() final {
         fmt::print("eeee {}\n", name);
         return {};
     }
@@ -172,7 +172,7 @@ void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
 
 void Block::update() {
     auto parseType = [](const std::string &t, bool dataset) -> DataType {
-        fmt::print("pt {}\n",t);
+        fmt::print("pt {}\n", t);
         if (t == "fc64") return DataType::ComplexFloat64;
         if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
         if (t == "sc64") return DataType::ComplexInt64;
@@ -409,9 +409,9 @@ void FlowGraph::parse(const std::string &str) {
         auto pars  = b["parameters"];
         if (pars && pars.IsMap()) {
             for (auto it = pars.begin(); it != pars.end(); ++it) {
-                auto key            = it->first.as<std::string>();
+                auto key = it->first.as<std::string>();
 
-                auto p              = block->parameters().find(key);
+                auto p   = block->parameters().find(key);
                 if (p == block->parameters().end()) {
                     continue;
                 }
@@ -482,14 +482,14 @@ void FlowGraph::parse(const std::string &str) {
     for (const auto &c : connections) {
         assert(c.size() == 4);
 
-        auto srcBlockName = c[0].as<std::string>();
-        auto srcPortStr   = c[1].as<std::string>();
-        std::size_t  srcPort;
+        auto        srcBlockName = c[0].as<std::string>();
+        auto        srcPortStr   = c[1].as<std::string>();
+        std::size_t srcPort;
         std::from_chars(srcPortStr.data(), srcPortStr.data() + srcPortStr.size(), srcPort);
 
-        auto dstBlockName = c[2].as<std::string>();
-        auto dstPortStr   = c[3].as<std::string>();
-        std::size_t  dstPort;
+        auto        dstBlockName = c[2].as<std::string>();
+        auto        dstPortStr   = c[3].as<std::string>();
+        std::size_t dstPort;
         std::from_chars(dstPortStr.data(), dstPortStr.data() + dstPortStr.size(), dstPort);
 
         auto srcBlock = findBlock(srcBlockName);
@@ -528,7 +528,7 @@ int FlowGraph::save(std::ostream &stream) {
                         // for (int i = 0; i < parameters.size(); ++i) {
                         //     pars.write(b->type->parameters[i].id, parameters[i].toString());
                         // }
-                       });
+                    });
                 }
             };
 
@@ -715,8 +715,8 @@ void FlowGraph::registerRemoteSource(std::unique_ptr<BlockType> &&type, std::str
     BlockType::registry().addBlockType(std::move(type));
 }
 
-fair::graph::graph FlowGraph::createGraph() {
-    fair::graph::graph graph;
+gr::Graph FlowGraph::createGraph() {
+    gr::Graph graph;
 
     for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
         for (const auto &block : *list) {
@@ -729,14 +729,14 @@ fair::graph::graph FlowGraph::createGraph() {
             }
             // assert(node);
             fmt::print("add {}\n", node->name());
-            node->settings().set(block->parameters());
-            graph.add_node(std::move(node));
+            std::ignore = node->settings().set(block->parameters());
+            graph.addBlock(std::move(node));
         }
     }
 
     for (auto &c : m_connections) {
         if (!c.src.block->m_node || !c.dst.block->m_node) continue;
-        graph.dynamic_connect(*c.src.block->m_node, c.src.index, *c.dst.block->m_node, c.dst.index);
+        graph.connect(*c.src.block->m_node, c.src.index, *c.dst.block->m_node, c.dst.index);
     }
 
     m_graphChanged = false;

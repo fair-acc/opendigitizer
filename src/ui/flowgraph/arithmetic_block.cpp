@@ -5,18 +5,17 @@
 #include "../flowgraph.h"
 
 template<typename T>
-requires std::is_arithmetic_v<T>
-struct MathNode : public fair::graph::node<MathNode<T>>
-{
-    fair::graph::PortIn<T>  in1{};
-    fair::graph::PortIn<T>  in2{};
+    requires std::is_arithmetic_v<T>
+struct MathNode : public gr::Block<MathNode<T>> {
+    gr::PortIn<T>                           in1{};
+    gr::PortIn<T>                           in2{};
 
-    fair::graph::PortOut<T> out{};
+    gr::PortOut<T>                          out{};
 
-    fair::graph::Annotated<std::string, "operation"> operation = std::string("+");
+    gr::Annotated<std::string, "operation"> operation = std::string("+");
 
     constexpr T
-    process_one(T a, T b) {
+    processOne(T a, T b) {
         auto setting = this->settings().get("operation");
         if (setting.has_value()) {
             auto op = setting.value();

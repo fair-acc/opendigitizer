@@ -1,4 +1,3 @@
-
 #ifndef DATASINK_H
 #define DATASINK_H
 
@@ -14,23 +13,24 @@ public:
     explicit DataSink(std::string_view name);
 
     // void        processData() override;
-    std::unique_ptr<fair::graph::node_model> createGraphNode() final;
-    static void registerBlockType();
+    std::unique_ptr<gr::BlockModel> createGraphNode() final;
+    static void                     registerBlockType();
 
-    void                                     update();
+    void                            update();
 
-    bool        hasData = false;
-    DataType    dataType;
-    DataSet     data;
+    bool                            hasData = false;
+    DataType                        dataType;
+    DataSet                         data;
 
-    std::mutex                               m_mutex;
+    std::mutex                      m_mutex;
 
-    ImVec4      color;
+    ImVec4                          color;
+
 private:
     template<typename T>
-    std::unique_ptr<fair::graph::node_model> createNode();
+    std::unique_ptr<gr::BlockModel> createNode();
 
-    std::function<void ()> updaterFun;
+    std::function<void()>           updaterFun;
 };
 
 class DataSinkSource final : public Block {

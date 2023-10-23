@@ -98,7 +98,7 @@ struct App {
                 : data(std::forward<Args>(args)...) {
                 data.init();
             }
-            void run() final { data.run_and_wait(); }
+            void run() final { data.runAndWait(); }
         };
 
         std::unique_ptr<Handler> handler;

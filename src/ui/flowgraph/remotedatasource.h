@@ -1,4 +1,3 @@
-
 #ifndef REMOTEDATASOURCE_H
 #define REMOTEDATASOURCE_H
 
@@ -14,9 +13,9 @@ public:
     ~RemoteDataSource();
 
     // void        processData() final;
-    std::unique_ptr<fair::graph::node_model> createGraphNode() final;
-    static void registerBlockType(FlowGraph *fg, std::string_view path);
-    static void registerBlockType(FlowGraph *fg, std::string_view path, std::string_view signalName);
+    std::unique_ptr<gr::BlockModel> createGraphNode() final;
+    static void                     registerBlockType(FlowGraph *fg, std::string_view path);
+    static void                     registerBlockType(FlowGraph *fg, std::string_view path, std::string_view signalName);
 
 private:
     RemoteBlockType *m_type;
