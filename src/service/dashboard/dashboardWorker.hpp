@@ -156,31 +156,18 @@ public:
                 }
             }
         });
-        auto     fs   = cmrc::dashboardFilesystem::get_filesystem();
-        auto     file = fs.open("dashboard.ddd");
-
-        uint32_t hstart, hsize;
-        uint32_t dstart, dsize;
-        uint32_t fstart, fsize;
-
-        memcpy(&hstart, file.begin(), 4);
-        memcpy(&hsize, file.begin() + 4, 4);
-
-        memcpy(&dstart, file.begin() + 8, 4);
-        memcpy(&dsize, file.begin() + 12, 4);
-
-        memcpy(&fstart, file.begin() + 16, 4);
-        memcpy(&fsize, file.begin() + 20, 4);
+        auto      fs        = cmrc::dashboardFilesystem::get_filesystem();
+        auto      header    = fs.open("defaultDashboard.header");
+        auto      dashboard = fs.open("defaultDashboard.dashboard");
+        auto      flowgraph = fs.open("defaultDashboard.flowgraph");
 
         Dashboard ds;
-        ds.header.resize(hsize);
-        memcpy(ds.header.data(), file.begin() + hstart, hsize);
-
-        ds.dashboard.resize(dsize);
-        memcpy(ds.dashboard.data(), file.begin() + dstart, dsize);
-
-        ds.flowgraph.resize(fsize);
-        memcpy(ds.flowgraph.data(), file.begin() + fstart, fsize);
+        ds.header.resize(header.size());
+        std::copy(header.begin(), header.end(), ds.header.begin());
+        ds.dashboard.resize(dashboard.size());
+        std::copy(dashboard.begin(), dashboard.end(), ds.dashboard.begin());
+        ds.flowgraph.resize(flowgraph.size());
+        std::copy(flowgraph.begin(), flowgraph.end(), ds.flowgraph.begin());
 
         names.push_back("dashboard1");
         dashboards.push_back(ds);
