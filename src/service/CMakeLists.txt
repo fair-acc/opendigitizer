@@ -52,17 +52,31 @@ add_library(project_warnings INTERFACE)
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
-if (ENABLE_COVERAGE)
-    if (UNIX AND NOT APPLE) # Linux
-        message("Coverage reporting enabled")
-        include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
-        # (License: BSL-1.0)
-        target_compile_options(project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
-        target_link_libraries(project_options INTERFACE --coverage)
-        append_coverage_compiler_flags()
-    else ()
-        message(WARNING "Coverage is only supported on linux")
-    endif ()
+if (OPENDIGITIZER_ENABLE_TESTING)
+    if (ENABLE_COVERAGE)
+        if (UNIX AND NOT APPLE) # Linux
+            message("Coverage reporting enabled")
+            include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
+            # (License: BSL-1.0)
+            target_compile_options(project_options INTERFACE --coverage -O0 -g -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
+            target_link_libraries(project_options INTERFACE --coverage)
+            append_coverage_compiler_flags()
+            setup_target_for_coverage_gcovr_xml(
+                NAME opendigitizer_coverage
+                EXECUTABLE ctest
+                EXECUTABLE_ARGS "--output-on-failure"
+                DEPENDENCIES qa_BlockScalingOffset qa_GnuRadioWorker # TODO prevent qa_BlockScalingOffset (gr-digitizers) from being run and remove it here
+                EXCLUDE "$CMAKE_BUILD_DIR/*")
+            setup_target_for_coverage_gcovr_html(
+                NAME opendigitizer_coverage_html
+                EXECUTABLE ctest
+                EXECUTABLE_ARGS "--output-on-failure"
+                DEPENDENCIES qa_BlockScalingOffset qa_GnuRadioWorker
+                EXCLUDE "$CMAKE_BUILD_DIR/*")
+        else ()
+            message(WARNING "Coverage is only supported on linux")
+        endif ()
+    endif()
 endif()
 
 add_subdirectory(acquisition)

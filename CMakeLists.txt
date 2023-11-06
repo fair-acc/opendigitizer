@@ -32,4 +32,9 @@ ExternalProject_Add( ui-wasm
 )
 set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
 
+option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
+if (OPENDIGITIZER_ENABLE_TESTING)
+    enable_testing()
+endif()
+
 add_subdirectory(src/service)

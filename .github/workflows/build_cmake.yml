@@ -94,13 +94,25 @@ jobs:
         source ~/emsdk/emsdk_env.sh
         cmake --build ../build
 
+    - name: execute tests
+      if: matrix.configurations.compiler != 'gcc13' || matrix.cmake-build-type != 'Debug'
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: ctest --output-on-failure
+
+    - name: execute tests with coverage
+      if: matrix.configurations.compiler == 'gcc13' && matrix.cmake-build-type == 'Debug'
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: cmake --build . --target opendigitizer_coverage
+
     - name: Setup Pages
       uses: actions/configure-pages@v3
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v1
       with:
         path: '../build/CMakeExternals/Build/ui-wasm/web/'
-        
+
   deploy_pages:
     name: Deploy to GitHub Pages
     if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
