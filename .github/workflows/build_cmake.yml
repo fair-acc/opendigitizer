@@ -21,14 +21,14 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest gcc
+          - name: Ubuntu gcc 13
             os: ubuntu-22.04
-            compiler: gcc
+            compiler: gcc13
           # - name: Ubuntu Latest clang
           #   os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
           #   compiler: clang
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        cmake-build-type: [ Release ] #, Debug ]
+        cmake-build-type: [ Release, Debug ]
 
     steps:
     - uses: actions/checkout@v3
@@ -43,18 +43,28 @@ jobs:
         path: ${{runner.workspace}}/build/_deps
         key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
-    - name: Setup emsdk
-      uses: mymindstorm/setup-emsdk@v12
-      with:
-        version: 3.1.41
-        actions-cache-folder: 'emsdk-cache'
-
-    - name: Install gcc-12
-      if: matrix.configurations.compiler == 'gcc'
+    - name: Install emscripten
+      shell: bash
       run: |
-        sudo apt update
-        sudo apt install -y gcc-12 g++-12
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
+        cd
+        git clone --depth=1 https://github.com/emscripten-core/emsdk.git
+        cd emsdk
+        # Download and install emscripten.
+        ./emsdk install 3.1.44 # (latest = 3.1.47 -> 21/10/2023)
+        # Make "active" for the current user. (writes .emscripten file)
+        ./emsdk activate 3.1.44
+
+    - name: Install gcovr
+      shell: bash
+      if: matrix.cmake-build-type == 'Debug'
+      run: |
+        python3 -m pip install gcovr --user --no-warn-script-location
+        gcovr --version
+
+    - name: Install gcc-13
+      run: |
+        sudo apt-get install -y gcc-13 g++-13 gcovr
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13
 
     - name: Install openGL
       run: |
@@ -63,11 +73,16 @@ jobs:
 
     - name: Configure CMake
       shell: bash
-      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DEMCMAKE_COMMAND=`which emcmake`
+      run: |
+        export SYSTEM_NODE=`which node` # use system node instead of old version distributed with emsdk for threading support
+        source ~/emsdk/emsdk_env.sh
+        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DEMCMAKE_COMMAND=`which emcmake`
 
     - name: Build
       shell: bash
-      run: cmake --build ../build
+      run: |
+        source ~/emsdk/emsdk_env.sh
+        cmake --build ../build
 
     - name: Setup Pages
       uses: actions/configure-pages@v3
