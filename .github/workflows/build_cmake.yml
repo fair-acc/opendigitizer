@@ -71,6 +71,16 @@ jobs:
         sudo apt update
         sudo apt install -y libx11-dev libgl1-mesa-dev libsdl2-dev
 
+    # Temporary dependency, until we rely on the plugin system to load gr-digitizers blocks at runtime
+    - name: Install picoscope libraries
+      run: |
+        # https://www.picotech.com/downloads/linux
+        wget -O - https://labs.picotech.com/Release.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb https://labs.picotech.com/rc/picoscope7/debian/ picoscope main'
+        sudo apt update
+        sudo apt install -y udev libusb-1.0-0-dev libps3000a libps4000a libps5000a libps6000 libps6000a || true # ignore udev errors in post install because of udev in container
+
+
     - name: Configure CMake
       shell: bash
       run: |
