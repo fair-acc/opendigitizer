@@ -11,6 +11,7 @@ set(BUILD_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Build)
 set(INSTALL_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Install)
 
 
+add_subdirectory(src/acquisition)
 add_subdirectory(src/ui)
 
 ExternalProject_Add( ui-wasm

@@ -1,7 +1,7 @@
 #ifndef OPENDIGITIZER_SERVICE_ACQWORKER_H
 #define OPENDIGITIZER_SERVICE_ACQWORKER_H
 
-#include "daq_api.hpp"
+#include <daq_api.hpp>
 #include <majordomo/Worker.hpp>
 #include <ranges>
 #include <string_view>

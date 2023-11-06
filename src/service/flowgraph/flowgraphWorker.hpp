@@ -3,6 +3,8 @@
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 
+#include <daq_api.hpp>
+
 #include <atomic>
 #include <cmath>
 #include <fstream>
@@ -14,21 +16,8 @@
 CMRC_DECLARE(flowgraphFilesystem);
 
 using namespace opencmw::majordomo;
+using namespace opendigitizer::flowgraph;
 using namespace std::chrono_literals;
-
-struct FilterContext {
-    opencmw::MIME::MimeType contentType = opencmw::MIME::JSON;
-};
-ENABLE_REFLECTION_FOR(FilterContext, contentType)
-
-struct Flowgraph {
-    std::string flowgraph;
-    std::string layout;
-};
-
-ENABLE_REFLECTION_FOR(Flowgraph, flowgraph, layout)
-
-using namespace opencmw::majordomo;
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class FlowgraphWorker : public Worker<serviceName, FilterContext, Flowgraph, Flowgraph, Meta...> {

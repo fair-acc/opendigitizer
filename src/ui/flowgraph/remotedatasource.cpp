@@ -9,6 +9,8 @@
 
 #include "../app.h"
 
+using namespace opendigitizer::acq;
+
 namespace DigitizerUi {
 
 class RemoteBlockType : public BlockType {

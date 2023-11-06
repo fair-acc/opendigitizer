@@ -1,4 +1,5 @@
-#pragma once
+#ifndef OPENDIGITIZER_ACQUISITION_DAQ_API_H
+#define OPENDIGITIZER_ACQUISITION_DAQ_API_H
 
 #include <MultiArray.hpp>
 #include <opencmw.hpp>
@@ -6,6 +7,24 @@
 #include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
 #include <vector>
+
+namespace opendigitizer::flowgraph {
+
+struct FilterContext {
+    opencmw::MIME::MimeType contentType = opencmw::MIME::JSON;
+};
+
+struct Flowgraph {
+    std::string flowgraph;
+    std::string layout;
+};
+
+} // namespace opendigitizer::flowgraph
+
+ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::FilterContext, contentType)
+ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::Flowgraph, flowgraph, layout)
+
+namespace opendigitizer::acq {
 
 using opencmw::Annotated;
 using namespace units::isq;
@@ -34,7 +53,6 @@ struct Acquisition {
     Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMax;
     Annotated<float, opencmw::NoUnit, "temperature of the measurement device">                   temperature;
 };
-ENABLE_REFLECTION_FOR(Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelUnit, status, channelRangeMin, channelRangeMax, temperature)
 
 /**
  * Generic frequency domain data object.
@@ -57,7 +75,6 @@ struct AcquisitionSpectra {
     Annotated<std::vector<long>, si::time<si::second>, "timestamps of samples">                  channelPhase_dim1_labels; // todo: either nanosecond or float
     Annotated<std::vector<float>, opencmw::NoUnit, "freqency scale">                             channelPhase_dim2_labels; // unit: Hz or f_rev
 };
-ENABLE_REFLECTION_FOR(AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
 // clang-format: ON
 
 struct TimeDomainContext {
@@ -68,8 +85,6 @@ struct TimeDomainContext {
     opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
 };
 
-ENABLE_REFLECTION_FOR(TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
-
 struct FreqDomainContext {
     std::string             channelNameFilter;
     int32_t                 acquisitionModeFilter = 0; // STREAMING
@@ -78,4 +93,11 @@ struct FreqDomainContext {
     opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
 };
 
-ENABLE_REFLECTION_FOR(FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
+} // namespace opendigitizer::acq
+
+ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelUnit, status, channelRangeMin, channelRangeMax, temperature)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
+
+#endif

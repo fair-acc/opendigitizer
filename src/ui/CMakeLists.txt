@@ -88,6 +88,7 @@ if (EMSCRIPTEN)
     target_link_libraries(
             ${outputFileName}
             PRIVATE
+            function2::function2
             implot
             plf_colony
             app_header
@@ -106,6 +107,10 @@ if (EMSCRIPTEN)
             COMMENT start a python server serving the webassembly app
             DEPENDS ${outputFileName}
     )
+
+    # TODO should be pulled via linking od_acquisition, but that's outside the source folder (src/ui) for the ui-wasm build
+    target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../acquisition) #for daq_api.hpp
+
 else () # native build
 
     set(target_name "opendigitizer-ui")
@@ -118,6 +123,8 @@ else () # native build
     target_link_libraries(
             ${target_name}
             PRIVATE
+            od_acquisition
+            function2::function2
             SDL2
             implot
             imgui-node-editor
@@ -134,5 +141,3 @@ else () # native build
     target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 endif()
 
-target_link_libraries(${target_name} PRIVATE function2::function2)
-target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) #for daq_api.hpp
