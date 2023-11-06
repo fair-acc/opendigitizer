@@ -78,26 +78,32 @@ struct AcquisitionSpectra {
 // clang-format: ON
 
 struct TimeDomainContext {
-    std::string             channelNameFilter;
-    int32_t                 acquisitionModeFilter = 0; // STREAMING
-    std::string             triggerNameFilter;
-    int32_t                 maxClientUpdateFrequencyFilter = 25;
-    opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
+    std::string channelNameFilter;
+    std::string acquisitionModeFilter = "continuous"; // one of "continuous", "triggered", "multiplexed", "snapshot"
+    std::string triggerNameFilter;
+    int32_t     maxClientUpdateFrequencyFilter = 25;
+    // TODO should we use sensible defaults for the following properties?
+    // TODO make the following unsigned? (add unsigned support to query serialiser)
+    int32_t                 preSamples        = 0;                     // Trigger mode
+    int32_t                 postSamples       = 0;                     // Trigger mode
+    int32_t                 maximumWindowSize = 65535;                 // Multiplexed mode
+    int64_t                 snapshotDelay     = 0;                     // nanoseconds, Snapshot mode
+    opencmw::MIME::MimeType contentType       = opencmw::MIME::BINARY; // YaS
 };
 
 struct FreqDomainContext {
     std::string             channelNameFilter;
-    int32_t                 acquisitionModeFilter = 0; // STREAMING
+    std::string             acquisitionModeFilter = "continuous"; // one of "continuous", "triggered", "multiplexed", "snapshot"
     std::string             triggerNameFilter;
     int32_t                 maxClientUpdateFrequencyFilter = 25;
-    opencmw::MIME::MimeType contentType                    = opencmw::MIME::JSON;
+    opencmw::MIME::MimeType contentType                    = opencmw::MIME::BINARY; // YaS
 };
 
 } // namespace opendigitizer::acq
 
 ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelUnit, status, channelRangeMin, channelRangeMax, temperature)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
-ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, preSamples, postSamples, maximumWindowSize, snapshotDelay, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
 
 #endif
