@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG main # todo: use proper release once available
+        GIT_TAG a245ee17adaa61f530d95883da38b68fb53f4de8
 )
 
 FetchContent_Declare(

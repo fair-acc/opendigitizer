@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 include(cmake/Dependencies.cmake)
 
@@ -28,7 +28,7 @@ endif ()
 add_library(project_options INTERFACE)
 target_include_directories(project_options INTERFACE ${CMAKE_SOURCE_DIR}/3rd_party)
 
-target_compile_features(project_options INTERFACE cxx_std_20)
+target_compile_features(project_options INTERFACE cxx_std_23)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
     option(ENABLE_BUILD_WITH_TIME_TRACE "Enable -ftime-trace to generate time tracing .json files on clang" OFF)
