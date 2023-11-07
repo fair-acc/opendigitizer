@@ -6,9 +6,7 @@
 #include <fstream>
 #include <thread>
 
-#include "acquisition/acqWorker.hpp"
 #include "dashboard/dashboardWorker.hpp"
-#include "flowgraph/flowgraphWorker.hpp"
 #include "gnuradio/GnuRadioWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
@@ -74,22 +72,10 @@ int main(int argc, char **argv) {
 
     std::jthread restThread([&rest] { rest.run(); });
 
-#if 0
-    // flowgraph worker (mock)
-    using FgWorker = FlowgraphWorker<"flowgraph", description<"Provides R/W access to the flowgraph as a yaml serialized string">>;
-    FgWorker     flowgraphWorker(broker);
-    std::jthread flowgraphWorkerThread([&flowgraphWorker] { flowgraphWorker.run(); });
-#endif
-
     // dashboard worker (mock)
     using DsWorker = DashboardWorker<"dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
     DsWorker     dashboardWorker(broker);
     std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
-
-    // acquisition worker (mock)
-    using AcqWorker = AcquisitionWorker<"/DeviceName/Acquisition", description<"Provides data acquisition updates">>;
-    AcqWorker    acquisitionWorker(broker, 3000ms);
-    std::jthread acquisitionWorkerThread([&acquisitionWorker] { acquisitionWorker.run(); });
 
     using GrAcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data from a GnuRadio flow graph execution">>;
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "flowgraph", description<"Provides access to the GnuRadio flow graph">>;
@@ -126,11 +112,8 @@ int main(int argc, char **argv) {
     restThread.join();
 
     client.stop();
-#if 0
-    flowgraphWorkerThread.join();
-#endif
+
     dashboardWorkerThread.join();
-    acquisitionWorkerThread.join();
     grAcqWorkerThread.join();
     grFgWorkerThread.join();
 }
