@@ -121,7 +121,7 @@ struct TestSetup {
     void setGrc(std::string_view grc) {
         std::atomic<bool> receivedReply = false;
         setGrc(grc, [&](const auto &reply) { expect(eq(reply.error, std::string{})); expect(!reply.data.empty()); receivedReply = true; });
-        waitWhile([&receivedReply]{ return !receivedReply.load(); });
+        waitWhile([&receivedReply] { return !receivedReply.load(); });
     }
 
     ~TestSetup() {

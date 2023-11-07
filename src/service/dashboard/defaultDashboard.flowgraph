@@ -12,7 +12,7 @@ blocks:
   - name: source for sink 2
     id: sink_source
   - name: remote source 1
-    id: http://localhost:8080/DeviceName/Acquisition?channelNameFilter=sine
+    id: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
   - name: sink 1
     id: sink
   - name: sink 2
@@ -24,5 +24,5 @@ connections:
   - [source for sink 1, 0, sum sigs, 1]
   - [sum sigs, 0, sink 2, 0]
 remote_sources:
-  - uri: http://localhost:8080/DeviceName/Acquisition?channelNameFilter=sine
-    signal_name: sine
+  - uri: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+    signal_name: test

@@ -550,7 +550,9 @@ void Dashboard::addRemoteService(std::string_view uri) {
 
             FlowgraphMessage reply;
             opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
+#if 0 // TODO this crashes on e.g. unknown blocks
             s.flowGraph.parse(reply.flowgraph);
+#endif
             App::instance().fgItem.setSettings(&s.flowGraph, reply.layout);
         };
         s.client.request(command);

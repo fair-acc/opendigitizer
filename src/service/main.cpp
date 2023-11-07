@@ -10,14 +10,70 @@
 #include "gnuradio/GnuRadioWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
+// TODO instead of including and registering blocks manually here, rely on the plugin system
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.h>
 #include <gnuradio-4.0/basic/selector.hpp>
 
-// TODO instead of including and registering blocks manually here, rely on the plugin system
 #ifndef __EMSCRIPTEN__
 #include <Picoscope4000a.hpp>
 #endif
+
+// TODO use built-in GR blocks
+
+template<typename T>
+struct TestSource : public gr::Block<TestSource<T>> {
+    using clock      = std::chrono::system_clock;
+    using time_point = clock::time_point;
+    gr::PortOut<T>            out;
+    float                     sample_rate = 20000;
+    std::size_t               _produced   = 0;
+    std::optional<time_point> _start;
+
+    void
+    settingsChanged(const gr::property_map & /*old_settings*/, const gr::property_map & /*new_settings*/) {
+        _produced = 0;
+    }
+
+    gr::work::Status
+    processBulk(gr::PublishableSpan auto &output) noexcept {
+        using enum gr::work::Status;
+        auto       n   = output.size();
+        const auto now = clock::now();
+        if (_start) {
+            const std::chrono::duration<float> duration = now - *_start;
+            n                                           = std::min(static_cast<std::size_t>(duration.count() * sample_rate) - _produced, n);
+        } else {
+            _start = now;
+            output.publish(0);
+            return gr::work::Status::OK;
+        }
+
+        if (_produced == 0 && n > 0) {
+            auto &tag = this->output_tags()[0];
+            tag       = { 0, { { std::string(gr::tag::SIGNAL_MIN.key()), -0.3f }, { std::string(gr::tag::SIGNAL_MAX.key()), 0.3f } } };
+            this->forward_tags();
+        }
+
+        const auto edgeLength = static_cast<std::size_t>(sample_rate / 200.f);
+        auto       low        = (_produced / edgeLength) % 2 == 0;
+        auto       firstChunk = std::span(output).first(std::min(n, edgeLength - (_produced % edgeLength)));
+        std::fill(firstChunk.begin(), firstChunk.end(), low ? static_cast<T>(-0.3) : static_cast<T>(0.3));
+        auto written = firstChunk.size();
+        while (written < n) {
+            low              = !low;
+            const auto num   = std::min(n - written, edgeLength);
+            auto       chunk = std::span(output).subspan(written, num);
+            std::fill(chunk.begin(), chunk.end(), low ? static_cast<T>(-0.3) : static_cast<T>(0.3));
+            written += num;
+        }
+        _produced += n;
+        output.publish(n);
+        return gr::work::Status::OK;
+    }
+};
+
+ENABLE_REFLECTION_FOR_TEMPLATE(TestSource, out, sample_rate);
 
 namespace {
 template<typename Registry>
@@ -25,6 +81,7 @@ void registerTestBlocks(Registry *registry) {
     registerBuiltinBlocks(registry);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
+    GP_REGISTER_NODE_RUNTIME(registry, TestSource, double, float);
     GP_REGISTER_NODE_RUNTIME(registry, gr::basic::DataSink, double, float, int16_t);
 #ifndef __EMSCRIPTEN__
     GP_REGISTER_NODE_RUNTIME(registry, fair::picoscope::Picoscope4000a, double, float, int16_t);
@@ -41,7 +98,17 @@ int main(int argc, char **argv) {
     using namespace opencmw::majordomo;
     using namespace std::chrono_literals;
 
-    std::string grc;
+    std::string grc = R"(
+blocks:
+  - name: source
+    id: TestSource
+  - name: sink
+    id: gr::basic::DataSink
+    parameters:
+      signal_name: test
+connections:
+  - [source, 0, sink, 0]
+)";
     if (argc > 1) {
         std::ifstream     in(argv[1]);
         std::stringstream grcBuffer;
@@ -52,10 +119,8 @@ int main(int argc, char **argv) {
         grc = grcBuffer.str();
     }
 
-    // broker
     Broker broker("PrimaryBroker");
     // REST backend
-    // auto fs           = cmrc::assets_opencmw::get_filesystem();
     auto fs           = cmrc::assets::get_filesystem();
     using RestBackend = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
     RestBackend rest(broker, fs, "./");
@@ -90,24 +155,19 @@ int main(int argc, char **argv) {
 
     std::this_thread::sleep_for(100ms);
 
-    // start some simple subscription client
-    fmt::print("starting some client subscriptions\n");
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
     opencmw::client::ClientContext client{ std::move(clients) };
 
-    client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?channelNameFilter=saw"), [](const opencmw::mdp::Message &update) {
-        fmt::print("Client('saw') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName, update.endpoint.str(), update.data.asString());
-    });
-    client.subscribe(URI("mds://127.0.0.1:12345/DeviceName/Acquisition?contentType=application%2Fjson"), [](const opencmw::mdp::Message &update) {
-        fmt::print("Client('all') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName, update.endpoint.str(), update.data.asString());
-    });
-    // TODO this test makes only sense if the signal in the grc is called "test"
-    client.subscribe(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?contentType=application%2Fjson&channelNameFilter=test"), [](const opencmw::mdp::Message &update) {
-        fmt::print("Client('all') received message from service '{}' for endpoint '{}'\n{}\n", update.serviceName, update.endpoint.str(), update.data.asString());
-    });
-
+    // TODO this subscription needs to match what the UI should receive, because the UI only subscribes to "/GnuRadio/Acquisition"!
+    // (query parameters are dropped by RestClient/Backend)
+    const auto subscriptions = std::array{ URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?contentType=application%2Fjson&channelNameFilter=test") };
+    for (const auto &subscription : subscriptions) {
+        fmt::println("Subscribing to {}", subscription.str());
+        client.subscribe(subscription, [](const opencmw::mdp::Message &) {});
+    }
+    fmt::println("WARNING: The UI will receive the subscription(s) above and not the one specified in the UI, as the REST service currently only subscribes to 'GnuRadio/Acquisition'!");
     brokerThread.join();
     restThread.join();
 

@@ -310,7 +310,7 @@ private:
         pollerEntry.in_use     = true;
 
         const auto wasFinished = pollerEntry.poller->finished.load();
-        while (pollerEntry.poller->process(processData)) {
+        if (pollerEntry.poller->process(processData)) {
             super_t::notify(std::string(serviceName.c_str()), context, reply);
         }
         return wasFinished;
