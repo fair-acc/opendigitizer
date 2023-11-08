@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.12)
 
 project(opendigitizer CXX)
 
-set(EMCMAKE_COMMAND "emcmake" CACHE FILEPATH "Path to the emcmake command")
+set(EMCMAKE_COMMAND
+    "emcmake"
+    CACHE FILEPATH "Path to the emcmake command")
 
 include(ExternalProject)
 
@@ -10,31 +12,28 @@ set(PREFIX_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Prefix)
 set(BUILD_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Build)
 set(INSTALL_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Install)
 
-
 add_subdirectory(src/acquisition)
 add_subdirectory(src/ui)
 
-ExternalProject_Add( ui-wasm
+ExternalProject_Add(
+  ui-wasm
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
   PREFIX ${PREFIX_DIR}/ui-wasm
-        CONFIGURE_COMMAND ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
+  CONFIGURE_COMMAND
+    ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm
+    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
   BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
   BINARY_DIR ${BUILD_DIR}/ui-wasm
   BUILD_ALWAYS 1
   INSTALL_COMMAND "" # skip install
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-    -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
-  BUILD_BYPRODUCTS
-    ${BUILD_DIR}/ui-wasm/web/index.html
-    ${BUILD_DIR}/ui-wasm/web/index.js
-    ${BUILD_DIR}/ui-wasm/web/index.wasm
-)
+  CMAKE_ARGS -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
+  BUILD_BYPRODUCTS ${BUILD_DIR}/ui-wasm/web/index.html ${BUILD_DIR}/ui-wasm/web/index.js
+                   ${BUILD_DIR}/ui-wasm/web/index.wasm)
 set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
 
 option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
-if (OPENDIGITIZER_ENABLE_TESTING)
-    enable_testing()
+if(OPENDIGITIZER_ENABLE_TESTING)
+  enable_testing()
 endif()
 
 add_subdirectory(src/service)
