@@ -27,8 +27,20 @@ public:
 
         auto cmrcHandler = [this](const httplib::Request &request, httplib::Response &response) {
             if (super_t::_vfs.is_file(request.path)) {
+                // headers required for using the SharedArrayBuffer
+                response.set_header("Cross-Origin-Opener-Policy", "same-origin");
+                response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
+                // webworkers and wasm can only be executed if they have the correct mimetype
+                std::string contentType;
+                if (request.path.ends_with(".js")) {
+                    contentType = "application/javascript";
+                } else if (request.path.ends_with(".wasm")) {
+                    contentType = "application/wasm";
+                } else if (request.path.ends_with(".html")) {
+                    contentType = "text/html";
+                }
                 auto file = super_t::_vfs.open(request.path);
-                response.set_content(std::string(file.begin(), file.end()), "");
+                response.set_content(std::string(file.begin(), file.end()), contentType);
             } else {
             }
         };

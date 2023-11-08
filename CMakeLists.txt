@@ -27,8 +27,11 @@ ExternalProject_Add(
   BUILD_ALWAYS 1
   INSTALL_COMMAND "" # skip install
   CMAKE_ARGS -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
-  BUILD_BYPRODUCTS ${BUILD_DIR}/ui-wasm/web/index.html ${BUILD_DIR}/ui-wasm/web/index.js
-                   ${BUILD_DIR}/ui-wasm/web/index.wasm)
+  BUILD_BYPRODUCTS
+    ${BUILD_DIR}/ui-wasm/web/index.html
+    ${BUILD_DIR}/ui-wasm/web/index.js
+    ${BUILD_DIR}/ui-wasm/web/index.worker.js
+    ${BUILD_DIR}/ui-wasm/web/index.wasm)
 set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
 
 option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)

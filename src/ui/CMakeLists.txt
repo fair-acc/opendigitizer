@@ -44,7 +44,9 @@ if(EMSCRIPTEN)
     -Wall
     -Wformat
     -Os
-    "SHELL:-s USE_SDL=2")
+    "SHELL:-s USE_SDL=2"
+    -fwasm-exceptions
+    -pthread)
 
   add_link_options(
     "SHELL:-s WASM=1"
@@ -55,7 +57,10 @@ if(EMSCRIPTEN)
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s USE_SDL=2"
-    -sFETCH)
+    -sFETCH
+    -fwasm-exceptions
+    -pthread
+    "SHELL:-s PTHREAD_POOL_SIZE=30")
 endif()
 
 # dependencies
