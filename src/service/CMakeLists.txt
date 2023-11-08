@@ -66,13 +66,13 @@ if (OPENDIGITIZER_ENABLE_TESTING)
                 EXECUTABLE ctest
                 EXECUTABLE_ARGS "--output-on-failure"
                 DEPENDENCIES qa_BlockScalingOffset qa_GnuRadioWorker # TODO prevent qa_BlockScalingOffset (gr-digitizers) from being run and remove it here
-                EXCLUDE "$CMAKE_BUILD_DIR/*")
+                EXCLUDE "$CMAKE_BUILD_DIR/*" ".*/test/.*")
             setup_target_for_coverage_gcovr_html(
                 NAME opendigitizer_coverage_html
                 EXECUTABLE ctest
                 EXECUTABLE_ARGS "--output-on-failure"
                 DEPENDENCIES qa_BlockScalingOffset qa_GnuRadioWorker
-                EXCLUDE "$CMAKE_BUILD_DIR/*")
+                EXCLUDE "$CMAKE_BUILD_DIR/*" ".*/test/.*")
         else ()
             message(WARNING "Coverage is only supported on linux")
         endif ()
