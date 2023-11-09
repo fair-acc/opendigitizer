@@ -182,9 +182,8 @@ private:
                         for (auto &[_, pollerEntry] : dataSetPollers) {
                             pollerEntry.in_use = false;
                         }
-                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers, stopScheduler);
+                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers);
                         // drop pollers of old subscriptions to avoid the sinks from blocking
-                        // TODO there's a possible issue here if the buffer is already full and the sink already blocked
                         std::erase_if(streamingPollers, [](const auto &item) { return !item.second.in_use; });
                         std::erase_if(dataSetPollers, [](const auto &item) { return !item.second.in_use; });
                     } while (stopScheduler && !pollersFinished);
@@ -229,7 +228,7 @@ private:
 
                     stopScheduler     = false;
                     schedulerFinished = false;
-                    handleSubscriptions(streamingPollers, dataSetPollers, false); // create pollers for new sinks before starting graph
+                    handleSubscriptions(streamingPollers, dataSetPollers); // create pollers for new sinks before starting graph
                     schedulerThread = std::jthread(runScheduler, std::move(*pendingFlowGraph));
                 }
 
@@ -243,7 +242,7 @@ private:
         });
     }
 
-    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry> &streamingPollers, std::map<PollerKey, DataSetPollerEntry> &dataSetPollers, bool flushSinks) {
+    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry> &streamingPollers, std::map<PollerKey, DataSetPollerEntry> &dataSetPollers) {
         bool pollersFinished = true;
         for (const auto &subscription : super_t::activeSubscriptions()) {
             if (subscription.path() != serviceName.c_str()) {
@@ -254,10 +253,10 @@ private:
                 const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
                 for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto &&r) { return std::string_view{ &*r.begin(), std::ranges::distance(r) }; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
-                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName, flushSinks))
+                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName))
                             pollersFinished = false;
                     } else {
-                        if (!handleDataSetSubscription(dataSetPollers, filterIn, acquisitionMode, signalName, flushSinks))
+                        if (!handleDataSetSubscription(dataSetPollers, filterIn, acquisitionMode, signalName))
                             pollersFinished = false;
                     }
                 }
@@ -268,22 +267,22 @@ private:
         return pollersFinished;
     }
 
-    auto getStreamingPoller(bool create, std::map<PollerKey, StreamingPollerEntry> &pollers, std::string_view signalName) {
+    auto getStreamingPoller(std::map<PollerKey, StreamingPollerEntry> &pollers, std::string_view signalName) {
         const auto key = PollerKey{
             .mode        = AcquisitionMode::Continuous,
             .signal_name = std::string(signalName)
         };
 
         auto pollerIt = pollers.find(key);
-        if (pollerIt == pollers.end() && create) {
+        if (pollerIt == pollers.end()) {
             const auto query = basic::DataSinkQuery::signalName(signalName);
             pollerIt         = pollers.emplace(key, basic::DataSinkRegistry::instance().getStreamingPoller<double>(query)).first;
         }
         return pollerIt;
     }
 
-    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry> &pollers, const TimeDomainContext &context, std::string_view signalName, bool flushingSinks) {
-        auto pollerIt = getStreamingPoller(!flushingSinks, pollers, signalName);
+    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry> &pollers, const TimeDomainContext &context, std::string_view signalName) {
+        auto pollerIt = getStreamingPoller(pollers, signalName);
         if (pollerIt == pollers.end()) // flushing, do not create new pollers
             return true;
 
@@ -324,7 +323,7 @@ private:
         return wasFinished;
     }
 
-    auto getDataSetPoller(bool create, std::map<PollerKey, DataSetPollerEntry> &pollers, const TimeDomainContext &context, AcquisitionMode mode, std::string_view signalName) {
+    auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry> &pollers, const TimeDomainContext &context, AcquisitionMode mode, std::string_view signalName) {
         const auto key = PollerKey{
             .mode                = mode,
             .signal_name         = std::string(signalName),
@@ -336,7 +335,7 @@ private:
         };
 
         auto pollerIt = pollers.find(key);
-        if (pollerIt == pollers.end() && create) {
+        if (pollerIt == pollers.end()) {
             auto matcher = [trigger_name = context.triggerNameFilter](const gr::Tag &tag) {
                 using enum gr::basic::TriggerMatchResult;
                 const auto v = tag.get(gr::tag::TRIGGER_NAME);
@@ -364,8 +363,8 @@ private:
         return pollerIt;
     }
 
-    bool handleDataSetSubscription(std::map<PollerKey, DataSetPollerEntry> &pollers, const TimeDomainContext &context, AcquisitionMode mode, std::string_view signalName, bool flushingSinks) {
-        auto pollerIt = getDataSetPoller(!flushingSinks, pollers, context, mode, signalName);
+    bool handleDataSetSubscription(std::map<PollerKey, DataSetPollerEntry> &pollers, const TimeDomainContext &context, AcquisitionMode mode, std::string_view signalName) {
+        auto pollerIt = getDataSetPoller(pollers, context, mode, signalName);
         if (pollerIt == pollers.end()) // flushing, do not create new pollers
             return true;
 
