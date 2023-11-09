@@ -203,6 +203,9 @@ private:
 
                 if (pendingFlowGraph) {
                     auto runScheduler = [&stopScheduler, &schedulerFinished](gr::Graph fg) {
+                    // TODO using a multithreaded scheduler requires some fixes (frank/scheduler_fixes branch and the per-block lifecycle methods (stop(), in particular)), so we use a
+                    // single-threaded scheduler for now until those issues are solved. This prevents terminating the running scheduler and replacing the graph.
+#if 0
                         using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
                         // TODO currently we limit ourselves to one thread here, because
                         // - (seen with 2 threads) the data sink receives too large chunks, e.g. samples 0..100 when there's a tag at 0 and 50, instead of 0..49 (see triggered test case)
@@ -217,6 +220,11 @@ private:
                             }
                         }
                         scheduler.stop();
+#else
+                        gr::scheduler::Simple sched(std::move(fg));
+                        sched.runAndWait();
+                        schedulerFinished = true;
+#endif
                     };
 
                     stopScheduler     = false;

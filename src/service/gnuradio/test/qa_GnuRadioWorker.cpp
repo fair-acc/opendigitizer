@@ -257,6 +257,7 @@ connections:
         expect(eq(receivedDownData, expectedDownData));
     };
 
+#if 0 // TODO this only works with a multithreaded scheduler (see comment in GnuRadioWorker.hpp)
     "Flow graph management non-terminating graphs"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
@@ -339,6 +340,7 @@ connections:
 
         expect(eq(receivedData, getIota(20, 45)));
     };
+#endif // disabled test
 
     "Trigger - sparse tags"_test = [] {
         // Tests that tags detection and offsets work when the tag data is spread among multiple threads
