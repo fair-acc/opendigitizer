@@ -11,7 +11,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         gr-digitizers
         GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
-        GIT_TAG frank/opendigitizer-service
+        GIT_TAG 4bd135940cdf2b82b195fcdac0a662da7bdc8689 # latest dev-prototype as of 2023-11-09
 )
 
 FetchContent_Declare(
