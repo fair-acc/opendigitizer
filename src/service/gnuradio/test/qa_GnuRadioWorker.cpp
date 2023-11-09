@@ -257,7 +257,7 @@ connections:
         expect(eq(receivedDownData, expectedDownData));
     };
 
-#if 0 // TODO this only works with a multithreaded scheduler (see comment in GnuRadioWorker.hpp)
+#if 0  // TODO this only works with a multithreaded scheduler (see comment in GnuRadioWorker.hpp)
     "Flow graph management non-terminating graphs"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
