@@ -1,0 +1,65 @@
+sources:
+  - name: sine source 1.out
+    block: sine source 1
+    port: 0
+    color: 4292240583
+  - name: source for sink 1.out
+    block: source for sink 1
+    port: 0
+    color: 4283810630
+  - name: source for sink 2.out
+    block: source for sink 2
+    port: 0
+    color: 4284318450
+  - name: remote source 1.sine
+    block: remote source 1
+    port: 0
+    color: 4293501622
+plots:
+  - name: Plot 1
+    axes:
+      - axis: X
+        min: -12.661030686446349
+        max: 580.68847757027561
+      - axis: Y
+        min: -1.1052913129824811
+        max: 1.2526563780175193
+    sources:
+      - sine source 1.out
+    rect:
+      - 0
+      - 0
+      - 8
+      - 6
+  - name: Plot 2
+    axes:
+      - axis: X
+        min: -5.0791591167480172
+        max: 440.71265782820461
+      - axis: Y
+        min: -1.7225485895235
+        max: 1.7593722791967299
+    sources:
+      - source for sink 2.out
+      - source for sink 1.out
+    rect:
+      - 0
+      - 6
+      - 12
+      - 9
+  - name: Plot 3
+    axes:
+      - axis: X
+        min: -1.6188251748247495
+        max: 58.379570122302532
+      - axis: Y
+        min: 0
+        max: 1
+    sources:
+      - remote source 1.test
+    rect:
+      - 8
+      - 0
+      - 8
+      - 6
+flowgraphLayout: "{\"nodes\":{\"node:94017877764736\":{\"location\":{\"x\":22,\"y\":-35},\"name\":\"FFT\"},\"node:94017878239328\":{\"location\":{\"x\":492,\"y\":0},\"name\":\"sink 1\"},\"node:94017878270656\":{\"location\":{\"x\":492,\"y\":91},\"name\":\"sink 2\"},\"node:94017879131664\":{\"location\":{\"x\":-442,\"y\":0},\"name\":\"sine source 1\"},\"node:94017879138960\":{\"location\":{\"x\":-9,\"y\":201},\"name\":\"sum sigs\"},\"node:94017879141824\":{\"location\":{\"x\":-442,\"y\":182},\"name\":\"source for sink 2\"},\"node:94017879144160\":{\"location\":{\"x\":-442,\"y\":91},\"name\":\"source for sink 1\"},\"node:94017880719440\":{\"location\":{\"x\":-442,\"y\":273},\"name\":\"remote source 1\"}},\"selection\":null,\"view\":{\"scroll\":{\"x\":-674.0001220703125,\"y\":-19.0000267028808594},\"visible_rect\":{\"max\":{\"x\":594.6666259765625,\"y\":484.00006103515625},\"min\":{\"x\":-449.333465576171875,\"y\":-12.6666860580444336}},\"zoom\":1.4999997615814209}}"

@@ -21,14 +21,14 @@ jobs:
       fail-fast: false
       matrix:
         configurations:
-          - name: Ubuntu Latest gcc
+          - name: Ubuntu gcc 13
             os: ubuntu-22.04
-            compiler: gcc
+            compiler: gcc13
           # - name: Ubuntu Latest clang
           #   os: ubuntu-22.04 # pre-release, ubuntu-latest still points to ubuntu-2004
           #   compiler: clang
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        cmake-build-type: [ Release ] #, Debug ]
+        cmake-build-type: [ Release, Debug ]
 
     steps:
     - uses: actions/checkout@v3
@@ -43,31 +43,68 @@ jobs:
         path: ${{runner.workspace}}/build/_deps
         key: ${{ runner.os }}-${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
-    - name: Setup emsdk
-      uses: mymindstorm/setup-emsdk@v12
-      with:
-        version: 3.1.41
-        actions-cache-folder: 'emsdk-cache'
-
-    - name: Install gcc-12
-      if: matrix.configurations.compiler == 'gcc'
+    - name: Install emscripten
+      shell: bash
       run: |
-        sudo apt update
-        sudo apt install -y gcc-12 g++-12
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
+        cd
+        git clone --depth=1 https://github.com/emscripten-core/emsdk.git
+        cd emsdk
+        # Download and install emscripten.
+        ./emsdk install 3.1.44 # (latest = 3.1.47 -> 21/10/2023)
+        # Make "active" for the current user. (writes .emscripten file)
+        ./emsdk activate 3.1.44
+
+    - name: Install gcovr
+      shell: bash
+      if: matrix.cmake-build-type == 'Debug'
+      run: |
+        python3 -m pip install gcovr --user --no-warn-script-location
+        gcovr --version
+
+    - name: Install gcc-13
+      run: |
+        sudo apt-get install -y gcc-13 g++-13 # gcovr # packaged gcovr is too old for gcc13
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110 --slave /usr/bin/g++ g++ /usr/bin/g++-13 --slave /usr/bin/gcov gcov /usr/bin/gcov-13
 
     - name: Install openGL
       run: |
         sudo apt update
         sudo apt install -y libx11-dev libgl1-mesa-dev libsdl2-dev
 
+    # Temporary dependency, until we rely on the plugin system to load gr-digitizers blocks at runtime
+    - name: Install picoscope libraries
+      run: |
+        # https://www.picotech.com/downloads/linux
+        wget -O - https://labs.picotech.com/Release.gpg.key|sudo apt-key add -
+        sudo add-apt-repository 'deb https://labs.picotech.com/rc/picoscope7/debian/ picoscope main'
+        sudo apt update
+        sudo apt install -y udev libusb-1.0-0-dev libps3000a libps4000a libps5000a libps6000 libps6000a || true # ignore udev errors in post install because of udev in container
+
+
     - name: Configure CMake
       shell: bash
-      run: cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DEMCMAKE_COMMAND=`which emcmake`
+      run: |
+        export SYSTEM_NODE=`which node` # use system node instead of old version distributed with emsdk for threading support
+        source ~/emsdk/emsdk_env.sh
+        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DEMCMAKE_COMMAND=`which emcmake`
 
     - name: Build
       shell: bash
-      run: cmake --build ../build
+      run: |
+        source ~/emsdk/emsdk_env.sh
+        cmake --build ../build
+
+    - name: execute tests
+      if: matrix.configurations.compiler != 'gcc13' || matrix.cmake-build-type != 'Debug'
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: ctest --output-on-failure
+
+    - name: execute tests with coverage
+      if: matrix.configurations.compiler == 'gcc13' && matrix.cmake-build-type == 'Debug'
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: cmake --build . --target opendigitizer_coverage
 
     - name: Setup Pages
       uses: actions/configure-pages@v3
@@ -75,7 +112,7 @@ jobs:
       uses: actions/upload-pages-artifact@v1
       with:
         path: '../build/CMakeExternals/Build/ui-wasm/web/'
-        
+
   deploy_pages:
     name: Deploy to GitHub Pages
     if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
