@@ -128,7 +128,7 @@ connections:
     const auto  requestedAddress    = URI<>("mds://127.0.0.1:12345");
     const auto  brokerRouterAddress = broker.bind(requestedAddress);
     if (!brokerRouterAddress) {
-        fmt::println(std::cerr, "Could bind to broker address {}", requestedAddress.str());
+        fmt::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
     std::jthread brokerThread([&broker] {
