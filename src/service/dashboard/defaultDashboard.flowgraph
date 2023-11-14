@@ -17,12 +17,18 @@ blocks:
     id: sink
   - name: sink 2
     id: sink
+  - name: sink 3
+    id: sink
+  - name: sink 4
+    id: sink
 connections:
   - [sine source 1, 0, FFT, 0]
   - [FFT, 0, sink 1, 0]
   - [sine source 1, 0, sum sigs, 0]
   - [source for sink 1, 0, sum sigs, 1]
   - [sum sigs, 0, sink 2, 0]
+  - [sine source 1, 0, sink 3, 0]
+  - [remote source 1, 0, sink 4, 0]
 remote_sources:
   - uri: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
     signal_name: test

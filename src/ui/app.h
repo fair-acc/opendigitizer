@@ -72,18 +72,13 @@ struct App {
     std::chrono::seconds       editPaneCloseDelay{ 15 };
     struct SchedWrapper {
         SchedWrapper() {}
-        // // template<typename T>
-        // // SchedWrapper(T &&sched)
-        // //     : handler(std::make_unique<HandlerImpl<T>>(std::move(sched)))
-        // // {
-        // // }
 
         template<typename T, typename... Args>
         void emplace(Args &&...args) {
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
-
         void run() { handler->run(); }
+        operator bool() const { return handler.get() != nullptr; };
 
     private:
         struct Handler {

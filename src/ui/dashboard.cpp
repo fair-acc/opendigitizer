@@ -252,8 +252,8 @@ DataSink *Dashboard::createSink() {
     auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
     auto sinkptr = sink.get();
     localFlowGraph.addSinkBlock(std::move(sink));
-    // name = fmt::format("source for sink {}", n);
-    // localFlowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
+    name = fmt::format("source for sink {}", n);
+    localFlowGraph.addSourceBlock(std::make_unique<DigitizerUi::DataSinkSource>(name));
     return sinkptr;
 }
 

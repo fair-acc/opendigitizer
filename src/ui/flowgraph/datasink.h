@@ -12,7 +12,6 @@ class DataSink final : public Block {
 public:
     explicit DataSink(std::string_view name);
 
-    // void        processData() override;
     std::unique_ptr<gr::BlockModel> createGraphNode() final;
     static void                     registerBlockType();
 
@@ -37,8 +36,9 @@ class DataSinkSource final : public Block {
 public:
     explicit DataSinkSource(std::string_view name);
 
-    // void        processData() override;
-    // std::unique_ptr<fair::graph::node_model> createGraphNode() final;
+    std::unique_ptr<gr::BlockModel> createGraphNode() final;
+    void setup(gr::Graph &graph) final;
+
     static void registerBlockType();
 
 private:

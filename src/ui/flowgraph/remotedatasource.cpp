@@ -12,26 +12,54 @@
 using namespace opendigitizer::acq;
 
 template<typename T>
-    requires std::is_arithmetic_v<T>
 struct RemoteSource : public gr::Block<RemoteSource<T>> {
     gr::PortOut<T> out{};
 
-    RemoteSource() {
+    DigitizerUi::RemoteBlockType *block;
+    RemoteSource(DigitizerUi::RemoteBlockType *b) : block(b) {
     }
 
     ~RemoteSource() {
     }
 
-    std::make_signed_t<std::size_t>
-    available_samples(const RemoteSource & /*d*/) noexcept {
-        // std::lock_guard lock(m_type->m_mutex);
-        // outputs()[0].dataSet = m_type->m_data[m_type->m_active].channelValue;
-
-        return 0;
+    void append(const Acquisition &data)
+    {
+        std::lock_guard lock(m_mutex);
+        m_data.push_back({ data, 0 });
     }
 
-    T processOne() {
-        return {};
+    struct Data {
+        Acquisition data;
+        int read = 0;
+    };
+    std::vector<Data> m_data;
+    std::mutex                  m_mutex;
+
+    std::make_signed_t<std::size_t>
+    available_samples(const RemoteSource & /*d*/) noexcept {
+        std::lock_guard lock(m_mutex);
+        int available = 0;
+        for (const auto &d: m_data) {
+            available += (d.data.channelValue.size() - d.read);
+        }
+        return available > 0 ? available : -1;
+    }
+
+    auto processBulk(std::span<T> output) noexcept {
+        auto toWrite = output.size();
+        T *out = output.data();
+
+        std::lock_guard lock(m_mutex);
+        while (toWrite > 0 && !m_data.empty()) {
+            auto &d = m_data.front();
+            auto toCopy = std::min<int>(toWrite, d.data.channelValue.size() - d.read);
+            memcpy(out, d.data.channelValue.data() + d.read, toCopy * sizeof(T));
+            d.read += toCopy;
+            if (d.read == d.data.channelValue.size()) {
+                m_data.erase(m_data.begin());
+            }
+        }
+        return gr::work::Status::OK;
     }
 };
 
@@ -57,7 +85,8 @@ public:
         };
     }
 
-    void subscribe() {
+    void subscribe(RemoteDataSource *block) {
+        m_blocks.push_back(block);
         if (m_subscribed++ > 0) {
             return;
         }
@@ -74,9 +103,12 @@ public:
             auto buf = rep.data;
 
             try {
-                std::lock_guard lock(m_mutex);
-                m_active = (m_active + 1) % 2;
-                opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, m_data[m_active]);
+                opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, m_data);
+                for (auto *b: m_blocks) {
+                    if (auto *n = static_cast<RemoteSource<float> *>(b->graphNode()->raw())) {
+                        n->append(m_data);
+                    }
+                }
             } catch (opencmw::ProtocolException &e) {
                 fmt::print("{}\n", e.what());
                 return;
@@ -85,8 +117,15 @@ public:
         m_client.request(command);
     }
 
-    void unsubscribe() {
+    void unsubscribe(RemoteDataSource *block) {
         assert(m_subscribed > 0);
+
+        auto it = std::find(m_blocks.begin(), m_blocks.end(), block);
+        if (it == m_blocks.end()) {
+            return;
+        }
+        m_blocks.erase(it);
+
         if (--m_subscribed > 0) {
             return;
         }
@@ -102,30 +141,24 @@ public:
     opencmw::client::RestClient m_client;
     int                         m_subscribed = 0;
 
-    Acquisition                 m_data[2];
-
-    std::mutex                  m_mutex;
-    int                         m_active = 0;
+    Acquisition                 m_data;
+    std::vector<RemoteDataSource *> m_blocks;
 };
 
 RemoteDataSource::RemoteDataSource(std::string_view name, RemoteBlockType *t)
     : Block(name, t->name, t)
     , m_type(t) {
-    m_type->subscribe();
+    m_type->subscribe(this);
 }
 
 RemoteDataSource::~RemoteDataSource() {
-    m_type->unsubscribe();
+    m_type->unsubscribe(this);
 }
 
 std::unique_ptr<gr::BlockModel> RemoteDataSource::createGraphNode() {
-    return std::make_unique<gr::BlockWrapper<RemoteSource<float>>>();
+    // return nullptr;
+    return std::make_unique<gr::BlockWrapper<RemoteSource<float>>>(m_type);
 }
-
-// void RemoteDataSource::processData() {
-//     std::lock_guard lock(m_type->m_mutex);
-//     outputs()[0].dataSet = m_type->m_data[m_type->m_active].channelValue;
-// }
 
 void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
     opencmw::client::Command command;

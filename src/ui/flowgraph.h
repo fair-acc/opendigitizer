@@ -12,7 +12,6 @@
 #endif
 #include <plf_colony.h>
 
-// #include <dataset.hpp>
 #include <fmt/format.h>
 #include <gnuradio-4.0/BlockTraits.hpp>
 #include <gnuradio-4.0/Graph.hpp>
@@ -182,6 +181,18 @@ struct DataType {
             return Int32;
         } else if constexpr (std::is_same_v<T, int64_t>) {
             return Int64;
+        } else if constexpr (std::is_same_v<T, std::complex<double>>) {
+            return ComplexFloat64;
+        } else if constexpr (std::is_same_v<T, std::complex<float>>) {
+            return ComplexFloat32;
+        } else if constexpr (std::is_same_v<T, std::complex<int64_t>>) {
+            return ComplexInt64;
+        } else if constexpr (std::is_same_v<T, std::complex<int32_t>>) {
+            return ComplexInt32;
+        } else if constexpr (std::is_same_v<T, std::complex<int16_t>>) {
+            return ComplexInt16;
+        } else if constexpr (std::is_same_v<T, std::complex<int8_t>>) {
+            return ComplexInt8;
         } else if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
             return DataSetFloat32;
         } else {
@@ -192,8 +203,9 @@ struct DataType {
     template<typename F>
     auto asType(F fun) {
         switch (m_id) {
-        // case ComplexFloat64: return fun.template operator()<std::complex<double>>();
-        // case ComplexFloat32: return fun.template operator()<std::complex<float>>();
+        case ComplexFloat64: return fun.template operator()<std::complex<double>>();
+        case ComplexFloat32: return fun.template operator()<std::complex<float>>();
+        // unsupported by graph-prototype
         // case ComplexInt64: return fun.template operator()<std::complex<int64_t>>();
         // case ComplexInt32: return fun.template operator()<std::complex<int32_t>>();
         // case ComplexInt16: return fun.template operator()<std::complex<int16_t>>();
@@ -202,9 +214,9 @@ struct DataType {
         case Float32: return fun.template operator()<float>();
         case DataSetFloat32: return fun.template operator()<gr::DataSet<float>>();
         // case Int64: return fun.template operator()<int64_t>();
-        // case Int32: return fun.template operator()<int32_t>();
-        // case Int16: return fun.template operator()<int16_t>();
-        // case Int8: return fun.template operator()<int8_t>();
+        case Int32: return fun.template operator()<int32_t>();
+        case Int16: return fun.template operator()<int16_t>();
+        case Int8: return fun.template operator()<int8_t>();
         case Bits:
         case AsyncMessage:
         case BusConnection:
@@ -229,7 +241,12 @@ private:
 
 struct EmptyDataSet {};
 
-using DataSetBase = std::variant<EmptyDataSet, std::span<const float>, std::span<const double>, std::reference_wrapper<gr::DataSet<float>>>;
+using DataSetBase = std::variant<EmptyDataSet,
+                                 std::span<const std::complex<double>>, std::span<const std::complex<float>>,
+                                 std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
+                                 std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
+                                 std::span<const float>, std::span<const double>,
+                                 std::reference_wrapper<gr::DataSet<float>>>;
 class DataSet : DataSetBase {
 public:
     using DataSetBase::DataSetBase;
@@ -290,24 +307,20 @@ public:
         std::string toString() const;
     };
 
-    // using ParameterValue = std::variant<std::string, int, float>;
-
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
     const auto &inputs() const { return m_inputs; }
     const auto &outputs() const { return m_outputs; }
 
-    // ParameterValue                getParameterValue(const std::string &par) const;
-
     void        setParameter(const std::string &name, const pmtv::pmt &par);
     const auto &parameters() const { return m_parameters; }
 
     void        update();
-    void        updateInputs();
 
-    // virtual void                  processData() {}
     virtual std::unique_ptr<gr::BlockModel> createGraphNode() = 0;
+    virtual void setup(gr::Graph &graph) {}
+    auto *graphNode() { return m_node; }
 
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
     const BlockType                        *type;
@@ -404,8 +417,6 @@ public:
     Connection                  *connect(Block::Port *a, Block::Port *b);
 
     void                         disconnect(Connection *c);
-
-    void                         update();
 
     inline bool                  graphChanged() const { return m_graphChanged; }
     gr::Graph                    createGraph();

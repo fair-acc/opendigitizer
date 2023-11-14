@@ -240,7 +240,7 @@ int main(int argc, char **argv) {
 
     DigitizerUi::DataSource::registerBlockType();
     DigitizerUi::DataSink::registerBlockType();
-    // DigitizerUi::DataSinkSource::registerBlockType();
+    DigitizerUi::DataSinkSource::registerBlockType();
     DigitizerUi::ArithmeticBlock::registerBlockType();
 
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
@@ -259,12 +259,6 @@ int main(int argc, char **argv) {
     if (auto first_dashboard = app.openDashboardPage.get(0); app.dashboard == nullptr && first_dashboard != nullptr) { // load first dashboard if there is a dashboard available
         app.loadDashboard(first_dashboard);
     }
-
-    // auto graph = app.dashboard->localFlowGraph.createGraph();
-    // gr::scheduler::simple<gr::scheduler::single_threaded> scheduler(std::move(graph));
-    // app.scheduler = &scheduler;
-    // scheduler.init();
-    // scheduler.start();
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
@@ -295,12 +289,13 @@ static void main_loop(void *arg) {
     app->fireCallbacks();
 
     if (app->dashboard->localFlowGraph.graphChanged()) {
+        // create the graph and the scheduler
         auto graph = app->dashboard->localFlowGraph.createGraph();
         app->scheduler.emplace<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
-        // scheduler.init();
-        // app->scheduler = std::move(scheduler);
     }
-    app->scheduler.run();
+    if (app->scheduler) {
+        app->scheduler.run();
+    }
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
@@ -369,7 +364,6 @@ static void main_loop(void *arg) {
     if (app->mainViewMode == "View" || app->mainViewMode == "") {
         viewId = ImGui::GetID("");
         if (app->dashboard != nullptr) {
-            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get());
         }
     } else if (app->mainViewMode == "Layout") {
@@ -380,7 +374,6 @@ static void main_loop(void *arg) {
         // of the view tab.
         ImGui::PushOverrideID(viewId);
         if (app->dashboard != nullptr) {
-            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
         ImGui::PopID();

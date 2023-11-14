@@ -40,7 +40,6 @@ class GRBlock : public Block {
 public:
     using Block::Block;
     std::unique_ptr<gr::BlockModel> createGraphNode() final {
-        fmt::print("eeee {}\n", name);
         return {};
     }
 };
@@ -75,19 +74,6 @@ Block::Block(std::string_view name, std::string_view id, BlockType *t)
         return;
     }
 
-    // m_parameters.reserve(type->parameters.size());
-    // for (auto &p : type->parameters) {
-    //     if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
-    //         m_parameters.push_back(Block::EnumParameter{ *e, 0 });
-    //     } else if (auto *i = std::get_if<BlockType::NumberParameter<int>>(&p.impl)) {
-    //         m_parameters.push_back(Block::NumberParameter<int>{ i->defaultValue });
-    //     } else if (auto *i = std::get_if<BlockType::NumberParameter<float>>(&p.impl)) {
-    //         m_parameters.push_back(Block::NumberParameter<float>{ i->defaultValue });
-    //     } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
-    //         m_parameters.push_back(Block::RawParameter{ r->defaultValue });
-    //     }
-    // }
-
     m_outputs.reserve(type->outputs.size());
     m_inputs.reserve(type->inputs.size());
     for (auto &o : type->outputs) {
@@ -98,71 +84,6 @@ Block::Block(std::string_view name, std::string_view id, BlockType *t)
     }
 }
 
-// Block::ParameterValue Block::getParameterValue(const std::string &str) const {
-//     std::string words[2];
-//     int         numWords = 0;
-//
-//     int         start    = 0;
-//     int         last     = str.size() - 1;
-//     while (str[start] == ' ') {
-//         ++start;
-//     }
-//     while (str[last] == ' ') {
-//         --last;
-//     }
-//
-//     while (start < last && numWords <= 2) {
-//         int i = str.find('.', start);
-//         if (i == std::string::npos) {
-//             i = last + 1;
-//         }
-//
-//         int end = i - 1;
-//
-//         while (str[start] == ' ' && start < end) {
-//             ++start;
-//         }
-//         while (str[end] == ' ' && end > start) {
-//             --end;
-//         }
-//
-//         words[numWords++] = str.substr(start, end - start + 1);
-//         start             = i + 1;
-//     }
-//
-//     if (numWords > 0) {
-//         for (int i = 0; i < m_parameters.size(); ++i) {
-//             const auto &p = type->parameters[i];
-//             if (p.id != words[0]) {
-//                 continue;
-//             }
-//
-//             const auto &bp = m_parameters[i];
-//             if (numWords == 1) {
-//                 switch (p.impl.index()) {
-//                 case 0: return std::get<BlockType::EnumParameter>(p.impl).options[std::get<Block::EnumParameter>(bp).optionIndex];
-//                 case 1: return std::get<Block::NumberParameter<int>>(bp).value;
-//                 case 2: return std::get<Block::NumberParameter<float>>(bp).value;
-//                 default:
-//                     assert(0);
-//                     break;
-//                 }
-//             } else {
-//                 assert(p.impl.index() == 0);
-//                 const auto &e  = std::get<BlockType::EnumParameter>(p.impl);
-//                 auto        it = e.optionsAttributes.find(words[1]);
-//                 if (it != e.optionsAttributes.end()) {
-//                     const auto &attr = it->second;
-//                     return attr[std::get<Block::EnumParameter>(bp).optionIndex];
-//                 }
-//             }
-//         }
-//     }
-//     std::cerr << "Failed parsing parameter '" << str << "' for block '" << name << "'\n";
-//     assert(0);
-//     return 0;
-// }
-
 void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
     m_parameters[name] = p;
     if (m_node) {
@@ -172,7 +93,6 @@ void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
 
 void Block::update() {
     auto parseType = [](const std::string &t, bool dataset) -> DataType {
-        fmt::print("pt {}\n", t);
         if (t == "fc64") return DataType::ComplexFloat64;
         if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
         if (t == "sc64") return DataType::ComplexInt64;
@@ -210,19 +130,6 @@ void Block::update() {
     for (auto &out : m_outputs) {
         out.type = getType(out.m_rawType, out.dataset);
     }
-}
-
-void Block::updateInputs() {
-    // for (auto &i : m_inputs) {
-    //     for (auto *c : i.connections) {
-    //         auto *b = c->src.block;
-    //         if (!b->m_updated) {
-    //             b->updateInputs();
-    //             b->processData();
-    //             b->m_updated = true;
-    //         }
-    //     }
-    // }
 }
 
 std::string Block::EnumParameter::toString() const {
@@ -430,42 +337,6 @@ void FlowGraph::parse(const std::string &str) {
                     }
                 },
                         p->second);
-                /*
-                                int  parameterIndex = -1;
-                                for (int i = 0; i < type->parameters.size(); ++i) {
-                                    if (type->parameters[i].id == key) {
-                                        parameterIndex = i;
-                                        break;
-                                    }
-                                }
-                                if (parameterIndex != -1) {
-                                    auto &p              = type->parameters[parameterIndex];
-                                    auto &blockParameter = block->m_parameters[parameterIndex];
-                                    switch (p.impl.index()) {
-                                    case 0: {
-                                        auto        option = it->second.as<std::string>();
-                                        const auto &e      = std::get<BlockType::EnumParameter>(p.impl);
-                                        for (int i = 0; i < e.options.size(); ++i) {
-                                            if (e.options[i] == option) {
-                                                std::get<Block::EnumParameter>(blockParameter).optionIndex = i;
-                                                break;
-                                            }
-                                        }
-                                        break;
-                                    }
-                                    case 1: {
-                                        std::get<Block::NumberParameter<int>>(blockParameter).value = it->second.as<int>();
-                                        break;
-                                    }
-                                    case 2: {
-                                        std::get<Block::NumberParameter<float>>(blockParameter).value = it->second.as<float>();
-                                        break;
-                                    }
-                                    case 3:
-                                        std::get<Block::RawParameter>(blockParameter).value = it->second.as<std::string>();
-                                        break;
-                                    }
-                                }*/
             }
         }
 
@@ -672,6 +543,8 @@ Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
     auto ain = std::size_t(a - a->block->outputs().data());
     auto bin = std::size_t(b - b->block->inputs().data());
 
+    fmt::print("connect {}.{} to {}.{}\n", a->block->name, ain, b->block->name, bin);
+
     auto it  = m_connections.insert(Connection(a->block, ain, b->block, bin));
     a->connections.push_back(&(*it));
     b->connections.push_back(&(*it));
@@ -692,20 +565,6 @@ void FlowGraph::disconnect(Connection *c) {
     m_graphChanged = true;
 }
 
-void FlowGraph::update() {
-    // for (auto &b : m_blocks) {
-    //     b->m_updated = false;
-    // }
-    // for (auto &b : m_sourceBlocks) {
-    //     b->processData();
-    // }
-    //
-    // for (auto &b : m_sinkBlocks) {
-    //     b->updateInputs();
-    //     b->processData();
-    // }
-}
-
 void FlowGraph::addRemoteSource(std::string_view uri) {
     RemoteDataSource::registerBlockType(this, uri);
 }
@@ -722,15 +581,18 @@ gr::Graph FlowGraph::createGraph() {
         for (const auto &block : *list) {
             auto node     = block->createGraphNode();
             block->m_node = node.get();
-            // if (!node) continue;
             if (!node) {
                 fmt::print("no node {}\n", block->name);
                 continue;
             }
-            // assert(node);
-            fmt::print("add {}\n", node->name());
             std::ignore = node->settings().set(block->parameters());
             graph.addBlock(std::move(node));
+        }
+    }
+
+    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
+        for (const auto &block : *list) {
+            block->setup(graph);
         }
     }
 

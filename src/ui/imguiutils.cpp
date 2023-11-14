@@ -1348,21 +1348,10 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                                                   }
                                                   return true;
                                               },
-                                              // [&](std::string_view val) {
-                                              //     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                              //     ImGui::SetNextItemWidth(100);
-                                              //
-                                              //     std::string str(val);
-                                              //     if (InputKeypad<>::edit(label, &str)) {
-                                              //         b->setParameter(p.first, std::move(str));
-                                              //         b->update();
-                                              //     }
-                                              //     return true;
-                                              // },
                                               [&](auto &&val) {
                                                   using T = std::decay_t<decltype(val)>;
                                                   if constexpr (std::integral<T>) {
-                                                      int v = val;
+                                                      auto v = int(val);
                                                       ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                                       ImGui::SetNextItemWidth(100);
                                                       if (InputKeypad<>::edit(label, &v)) {
@@ -1372,8 +1361,6 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                                                       return true;
                                                   } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
                                                       ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                      ImGui::SetNextItemWidth(100);
-
                                                       std::string str(val);
                                                       ImGui::InputText("##in", &str);
                                                       b->setParameter(p.first, std::move(str));
@@ -1384,21 +1371,6 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                     p.second);
 
             if (!controlDrawn) continue;
-
-            /*
-                        if (auto *e = std::get_if<DigitizerUi::BlockType::EnumParameter>(&p.impl)) {
-                            auto value = std::get<DigitizerUi::Block::EnumParameter>(b->parameters()[i]);
-
-                            for (int j = 0; j < e->options.size(); ++j) {
-                                auto &opt      = e->options[j];
-
-                                bool  selected = value.optionIndex == j;
-                                if (ImGui::RadioButton(opt.c_str(), selected)) {
-                                    value.optionIndex = j;
-                                    b->setParameter(i, value);
-                                    b->update();
-                                }
-                            }*/
         }
 
         ImGui::EndGroup();
