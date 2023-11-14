@@ -108,6 +108,7 @@ if(EMSCRIPTEN)
   target_link_libraries(
     ${outputFileName}
     PRIVATE implot
+            function2::function2
             SDL2::SDL2
             plf_colony
             app_header

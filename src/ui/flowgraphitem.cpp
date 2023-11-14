@@ -754,8 +754,8 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                     m_addRemoteSignal = false;
                 }
             }
-            ImGui::EndChild();
         }
+        ImGui::EndChild();
 
         if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
             fg->addSourceBlock(sel->createBlock({}));
