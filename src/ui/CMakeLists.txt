@@ -46,6 +46,7 @@ if(EMSCRIPTEN)
     -Wformat
     -Os
     -fwasm-exceptions
+    "SHELL:-s USE_SDL=2"
     -pthread)
 
   add_link_options(
@@ -57,6 +58,7 @@ if(EMSCRIPTEN)
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s PTHREAD_POOL_SIZE=30"
+    "SHELL:-s USE_SDL=2"
     -fwasm-exceptions
     -pthread
     -sFETCH)
@@ -109,7 +111,6 @@ if(EMSCRIPTEN)
     ${outputFileName}
     PRIVATE implot
             function2::function2
-            SDL2::SDL2
             plf_colony
             app_header
             utils
@@ -181,5 +182,4 @@ target_link_libraries(
   remotesignalsources_test
   PRIVATE client
           services
-          imgui
-          SDL2::SDL2)
+          imgui)
