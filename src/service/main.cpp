@@ -1,6 +1,7 @@
 #include <Client.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/Worker.hpp>
+#include <services/dns.hpp>
 #include <zmq/ZmqUtils.hpp>
 
 #include <fstream>
@@ -137,6 +138,11 @@ connections:
 
     std::jthread restThread([&rest] { rest.run(); });
 
+    opencmw::service::dns::DnsWorkerType dns_worker{broker, opencmw::service::dns::DnsHandler{}};
+    std::jthread dnsThread([&dns_worker] {
+        dns_worker.run();
+    });
+
     // dashboard worker (mock)
     using DsWorker = DashboardWorker<"dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
     DsWorker     dashboardWorker(broker);
@@ -158,8 +164,17 @@ connections:
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
+    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
     opencmw::client::ClientContext client{ std::move(clients) };
 
+    // create example signals
+    opencmw::service::dns::DnsClient dns_client{client, "http://localhost:8080/dns"};
+    dns_client.registerSignals({
+        {"http", "localhost", 8080, "service 1", "service"},
+        {"http", "localhost", 8080, "service 2", "service"},
+        {"http", "localhost", 8080, "service 3", "service"},
+        {"http", "localhost", 8080, "service 4", "service"}
+    });
     // TODO this subscription needs to match what the UI should receive, because the UI only subscribes to "/GnuRadio/Acquisition"!
     // (query parameters are dropped by RestClient/Backend)
     const auto subscriptions = std::array{ URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?contentType=application%2Fjson&channelNameFilter=test") };
@@ -173,6 +188,7 @@ connections:
 
     client.stop();
 
+    dnsThread.join();
     dashboardWorkerThread.join();
     grAcqWorkerThread.join();
     grFgWorkerThread.join();

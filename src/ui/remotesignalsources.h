@@ -85,7 +85,7 @@ class SignalList {
         clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
         return opencmw::client::ClientContext{ std::move(clients) };
     }();
-    opencmw::service::dns::DnsClient          dnsClient{ clientContext, opencmw::URI<>{ "http://localhost:8055/dns" } };
+    opencmw::service::dns::DnsClient          dnsClient{ clientContext, opencmw::URI<>{ "http://localhost:8080/dns" } };
 
     QueryFilterElementList                   &filters;
     QueryFilterElementList::Hook              myOnChange{ [this]() { this->update(); } };
