@@ -55,17 +55,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2)
 
 if (NOT EMSCRIPTEN)
-FetchContent_Declare(
+    find_package(SDL2 REQUIRED)
+    find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+    FetchContent_Declare(
         sdl2
         OVERRIDE_FIND_PACKAGE
         GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
         GIT_TAG        release-2.28.2
-)
-FetchContent_MakeAvailable(sdl2)
-
-find_package(SDL2 REQUIRED)
-find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-
+    )
+    FetchContent_MakeAvailable(sdl2)
 endif()
 
 # imgui and implot are not CMake Projects, so we have to define their targets manually here

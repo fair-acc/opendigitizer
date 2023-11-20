@@ -170,10 +170,10 @@ connections:
     // create example signals
     opencmw::service::dns::DnsClient dns_client{client, "http://localhost:8080/dns"};
     dns_client.registerSignals({
-        {"http", "localhost", 8080, "service 1", "service"},
-        {"http", "localhost", 8080, "service 2", "service"},
-        {"http", "localhost", 8080, "service 3", "service"},
-        {"http", "localhost", 8080, "service 4", "service"}
+        {"http", "localhost", 8080, "opendigitizer", "", "Signal A", "A", 1e3, "TRIGGERED"},
+        {"http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING"},
+        {"https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED"},
+        {"mdp", "dcct.example.com", 9999, "opendigitizer", "", "signal 4", "ms", 4e3, "STREAMING"}
     });
     // TODO this subscription needs to match what the UI should receive, because the UI only subscribes to "/GnuRadio/Acquisition"!
     // (query parameters are dropped by RestClient/Backend)
