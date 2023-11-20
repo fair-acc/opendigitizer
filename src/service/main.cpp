@@ -132,14 +132,14 @@ connections:
         fmt::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
-    std::jthread brokerThread([&broker] {
+    std::jthread                         brokerThread([&broker] {
         broker.run();
     });
 
-    std::jthread restThread([&rest] { rest.run(); });
+    std::jthread                         restThread([&rest] { rest.run(); });
 
-    opencmw::service::dns::DnsWorkerType dns_worker{broker, opencmw::service::dns::DnsHandler{}};
-    std::jthread dnsThread([&dns_worker] {
+    opencmw::service::dns::DnsWorkerType dns_worker{ broker, opencmw::service::dns::DnsHandler{} };
+    std::jthread                         dnsThread([&dns_worker] {
         dns_worker.run();
     });
 
@@ -168,13 +168,11 @@ connections:
     opencmw::client::ClientContext client{ std::move(clients) };
 
     // create example signals
-    opencmw::service::dns::DnsClient dns_client{client, "http://localhost:8080/dns"};
-    dns_client.registerSignals({
-        {"http", "localhost", 8080, "opendigitizer", "", "Signal A", "A", 1e3, "TRIGGERED"},
-        {"http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING"},
-        {"https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED"},
-        {"mdp", "dcct.example.com", 9999, "opendigitizer", "", "signal 4", "ms", 4e3, "STREAMING"}
-    });
+    opencmw::service::dns::DnsClient dns_client{ client, "http://localhost:8080/dns" };
+    dns_client.registerSignals({ { "http", "localhost", 8080, "opendigitizer", "", "Signal A", "A", 1e3, "TRIGGERED" },
+            { "http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING" },
+            { "https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED" },
+            { "mdp", "dcct.example.com", 9999, "opendigitizer", "", "signal 4", "ms", 4e3, "STREAMING" } });
     // TODO this subscription needs to match what the UI should receive, because the UI only subscribes to "/GnuRadio/Acquisition"!
     // (query parameters are dropped by RestClient/Backend)
     const auto subscriptions = std::array{ URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?contentType=application%2Fjson&channelNameFilter=test") };
