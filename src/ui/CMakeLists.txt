@@ -23,7 +23,8 @@ set(sources
     flowgraph/arithmetic_block.cpp
     dashboardpage.cpp
     opendashboardpage.cpp
-    imguiutils.cpp)
+    imguiutils.cpp
+    remotesignalsources.cpp)
 
 set(GNURADIO_PREFIX
     "/usr/"
@@ -44,8 +45,8 @@ if(EMSCRIPTEN)
     -Wall
     -Wformat
     -Os
-    "SHELL:-s USE_SDL=2"
     -fwasm-exceptions
+    "SHELL:-s USE_SDL=2"
     -pthread)
 
   add_link_options(
@@ -56,11 +57,11 @@ if(EMSCRIPTEN)
     "SHELL:-s NO_FILESYSTEM=1"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
+    "SHELL:-s PTHREAD_POOL_SIZE=30"
     "SHELL:-s USE_SDL=2"
-    -sFETCH
     -fwasm-exceptions
     -pthread
-    "SHELL:-s PTHREAD_POOL_SIZE=30")
+    -sFETCH)
 endif()
 
 # dependencies
@@ -108,8 +109,8 @@ if(EMSCRIPTEN)
   # link the executable
   target_link_libraries(
     ${outputFileName}
-    PRIVATE function2::function2
-            implot
+    PRIVATE implot
+            function2::function2
             plf_colony
             app_header
             utils
@@ -118,6 +119,7 @@ if(EMSCRIPTEN)
             fonts
             core
             client
+            services
             imgui-node-editor
             yaml-cpp::yaml-cpp)
 
@@ -162,6 +164,7 @@ else() # native build
             yaml-cpp::yaml-cpp
             core
             client
+            services
             app_header
             utils
             ui_assets

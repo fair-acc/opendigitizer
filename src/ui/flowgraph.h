@@ -112,7 +112,7 @@ struct DataType {
 
     const std::string &toString() const;
 
-    inline             operator Id() const { return m_id; }
+    inline operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;
@@ -271,6 +271,8 @@ private:
         std::string uri;
     };
     std::vector<RemoteSource> m_remoteSources;
+
+    // TODO add remote sources here?
 };
 
 } // namespace DigitizerUi

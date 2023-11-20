@@ -117,6 +117,7 @@ target_link_libraries(
           od_gnuradio_worker
           od_rest
           majordomo
+          services
           client
           project_options
           project_warnings

@@ -15,6 +15,7 @@
 #include "common.h"
 #include "flowgraph.h"
 #include "imguiutils.h"
+#include "remotesignalsources.h"
 
 namespace DigitizerUi {
 
@@ -40,19 +41,23 @@ private:
         Right,
     };
 
-    void                          addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
-    void                          drawNewBlockDialog(FlowGraph *fg);
-    void                          drawAddSourceDialog(FlowGraph *fg);
+    void                              addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
+    void                              drawNewBlockDialog(FlowGraph *fg);
+    void                              drawAddSourceDialog(FlowGraph *fg);
 
-    Block                        *m_selectedBlock = nullptr;
-    std::vector<Block::Parameter> m_parameters;
-    BlockType                    *m_selectedBlockType = nullptr;
-    ImVec2                        m_mouseDrag         = { 0, 0 };
-    bool                          m_createNewBlock    = false;
-    ImVec2                        m_contextMenuPosition;
-    bool                          m_addRemoteSignal             = false;
-    bool                          m_addRemoteSignalDialogOpened = false;
-    std::string                   m_addRemoteSignalUri;
+    QueryFilterElementList            querySignalFilters;
+    SignalList                        signalList{ querySignalFilters };
+    Block                            *m_selectedBlock = nullptr;
+    std::vector<Block::Parameter>     m_parameters;
+    BlockType                        *m_selectedBlockType = nullptr;
+    ImVec2                            m_mouseDrag         = { 0, 0 };
+    bool                              m_createNewBlock    = false;
+    ImVec2                            m_contextMenuPosition;
+    bool                              m_addRemoteSignal             = false;
+    bool                              m_addRemoteSignalDialogOpened = false;
+    std::string                       m_addRemoteSignalUri;
+
+    opencmw::service::dns::QueryEntry m_queryFilter;
 
     // new block dialog data
     const Block *m_filterBlock = nullptr;

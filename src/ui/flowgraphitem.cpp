@@ -1,5 +1,6 @@
 #include "flowgraphitem.h"
 
+#include <algorithm>
 #include <crude_json.h>
 #include <imgui.h>
 #include <imgui_node_editor.h>
@@ -613,8 +614,11 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         ImGui::OpenPopup("New block");
     }
 
-    ImGui::SetCursorPosX(left);
-    ImGui::SetCursorPosY(top + size.y - 20);
+    // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
+    // if we don't put the buttons in this overlay, they will be overdrawn by the editor
+    ImGui::SetNextWindowPos(ImVec2(0, top + size.y - 30), ImGuiCond_Always);
+    ImGui::Begin("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
+
     if (ImGui::Button("Add signal")) {
         ImGui::OpenPopup("addSignalPopup");
     }
@@ -626,6 +630,8 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     drawAddSourceDialog(fg);
     drawNewBlockDialog(fg);
+
+    ImGui::End(); // overlay
 
     if (horizontalSplit) {
         const float w = size.x * ratio;
@@ -644,7 +650,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
                 return {};
             }
             return std::pair{ it.second.get(), it.first };
-                   });
+        });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
         if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
@@ -657,7 +663,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
 }
 
 void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
-    ImGui::SetNextWindowSize({ 600, 200 }, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({ 800, 600 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         static BlockType *sel = nullptr;
         if (ImGui::BeginChild(1, { 0, ImGui::GetContentRegionAvail().y - 50 })) {
@@ -680,6 +686,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                     }
                 }
             }
+            cats.push_back({ "Query signals", {} });
 
             for (const auto &c : cats) {
                 const bool isRemote = c.name == "Remote signals";
@@ -688,6 +695,30 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         if (ImGui::Selectable(t->label.c_str(), sel == t, ImGuiSelectableFlags_DontClosePopups)) {
                             sel = t;
                         }
+                    }
+
+                    if (c.name == "Query signals") {
+                        querySignalFilters.drawFilters();
+
+                        float windowWidth = ImGui::GetWindowWidth();
+                        float buttonPosX  = windowWidth - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Add Filter").x;
+                        ImGui::SetCursorPosX(buttonPosX);
+                        if (ImGui::Button("Add Filter")) {
+                            querySignalFilters.emplace_back(QueryFilterElement{ querySignalFilters });
+                        }
+                        ImGui::Separator();
+                        ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
+                        ImGui::BeginChild("Signals");
+                        signalList.drawElements();
+
+                        float refreshButtonPosX = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Refresh").x;
+                        float refreshButtonPosY = ImGui::GetWindowHeight() - ImGui::GetStyle().ItemSpacing.y - ImGui::GetStyle().FramePadding.y - ImGui::CalcTextSize("Refresh").y;
+                        ImGui::SetCursorPos({ refreshButtonPosX, refreshButtonPosY });
+                        if (ImGui::Button("Refresh")) {
+                            signalList.update();
+                        }
+
+                        ImGui::EndChild();
                     }
 
                     if (isRemote) {
@@ -723,8 +754,8 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                     m_addRemoteSignal = false;
                 }
             }
-            ImGui::EndChild();
         }
+        ImGui::EndChild();
 
         if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
             fg->addSourceBlock(sel->createBlock({}));
