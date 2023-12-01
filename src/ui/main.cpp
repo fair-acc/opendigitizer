@@ -37,8 +37,6 @@
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
 
-// template <typename T>
-// struct SpecFFT : gr::blocks::fft::FFT<float, gr::DataSet<float>> {};
 template<typename T>
 using SpecFFT = gr::blocks::fft::FFT<float, gr::DataSet<float>>;
 
