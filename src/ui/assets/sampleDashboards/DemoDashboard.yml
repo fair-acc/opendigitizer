@@ -1,12 +1,4 @@
 sources:
-  - name: sine source 1.out
-    block: sine source 1
-    port: 0
-    color: 4292240583
-  - name: sine source 3.out
-    block: sine source 3
-    port: 0
-    color: 4281939916
   - name: sink 1
     block: sink 1
     port: 0

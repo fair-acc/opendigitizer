@@ -1,18 +1,18 @@
 sources:
-  - name: sine source 3.out
-    block: sine source 3
+  - name: sink 3
+    block: sink 3
     port: 0
     color: 4279072064
-  - name: sine source 4.out
-    block: sine source 4
+  - name: sink 4
+    block: sink 4
     port: 0
     color: 4285507928
-  - name: sine source 5.out
-    block: sine source 5
+  - name: sink 5
+    block: sink 5
     port: 0
     color: 4291210500
-  - name: sine source 6.out
-    block: sine source 6
+  - name: sink 6
+    block: sink 6
     port: 0
     color: 4285336815
   - name: sink 1
@@ -33,7 +33,7 @@ plots:
         min: -0.99999994039535522
         max: 0.99999994039535522
     sources:
-      - sine source 3.out
+      - sink 3
     rect:
       - 0
       - 0
@@ -63,7 +63,7 @@ plots:
         min: -1
         max: 1
     sources:
-      - sine source 4.out
+      - sink 4
     rect:
       - 0
       - 4
@@ -93,7 +93,7 @@ plots:
         min: -0.99999994039535522
         max: 0.99999994039535522
     sources:
-      - sine source 5.out
+      - sink 5
     rect:
       - 0
       - 8
@@ -108,7 +108,7 @@ plots:
         min: -1
         max: 0.99999940395355225
     sources:
-      - sine source 6.out
+      - sink 6
     rect:
       - 0
       - 12

@@ -31,6 +31,14 @@ blocks:
     id: sink
   - name: sink 2
     id: sink
+  - name: sink 3
+    id: sink
+  - name: sink 4
+    id: sink
+  - name: sink 5
+    id: sink
+  - name: sink 6
+    id: sink
 connections:
   - [sine source 3, 0, sum sigs1, 0]
   - [sine source 4, 0, sum sigs1, 1]
@@ -41,3 +49,7 @@ connections:
   - [sum sigs3, 0, FFT, 0]
   - [FFT, 0, sink 2, 0]
   - [sum sigs3, 0, sink 1, 0]
+  - [sine source 3, 0, sink 3, 0]
+  - [sine source 4, 0, sink 4, 0]
+  - [sine source 5, 0, sink 5, 0]
+  - [sine source 6, 0, sink 6, 0]
