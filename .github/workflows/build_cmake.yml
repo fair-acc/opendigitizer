@@ -50,7 +50,7 @@ jobs:
         git clone --depth=1 https://github.com/emscripten-core/emsdk.git
         cd emsdk
         # Download and install emscripten.
-        ./emsdk install 3.1.44 # (latest = 3.1.47 -> 21/10/2023)
+        ./emsdk install 3.1.44
         # Make "active" for the current user. (writes .emscripten file)
         ./emsdk activate 3.1.44
 

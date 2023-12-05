@@ -8,7 +8,7 @@
 #include <refl.hpp>
 #include <services/dns_client.hpp>
 
-struct QueryFilterElementList;
+class QueryFilterElementList;
 
 /*     Draws a Combo box, to choose the field to filter, the filter keyword and delete button for it     */
 struct QueryFilterElement {
