@@ -15,15 +15,6 @@ cmrc_add_resource_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/default.mustache
   ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/ServicesList.mustache)
 
-cmrc_add_resources(
-  OPENDIGITIZER_ASSETS
-  WHENCE
-  ${WASM_BUILD_DIR}
-  ${WASM_BUILD_DIR}/web/index.html
-  ${WASM_BUILD_DIR}/web/index.js
-  ${WASM_BUILD_DIR}/web/index.worker.js
-  ${WASM_BUILD_DIR}/web/index.wasm)
-
 add_library(od_rest INTERFACE fileserverRestBackend.hpp)
 target_include_directories(od_rest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/.)
 target_link_libraries(

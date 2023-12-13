@@ -3,6 +3,8 @@
 
 using namespace opencmw::majordomo;
 
+namespace sfs = std::filesystem;
+
 template<typename Mode, typename VirtualFS, role... Roles>
 class FileServerRestBackend : public RestBackend<Mode, VirtualFS, Roles...> {
 private:
@@ -25,23 +27,44 @@ public:
             response.set_content("", "text/plain");
         });
 
-        auto cmrcHandler = [this](const httplib::Request &request, httplib::Response &response) {
+        auto contentTypeForFilename = [](const auto &path) {
+            std::string contentType;
+            if (path.ends_with(".js")) {
+                contentType = "application/javascript";
+            } else if (path.ends_with(".wasm")) {
+                contentType = "application/wasm";
+            } else if (path.ends_with(".html")) {
+                contentType = "text/html";
+            }
+            return contentType;
+        };
+
+        auto cmrcHandler = [this, contentTypeForFilename](const httplib::Request &request, httplib::Response &response) {
+            response.set_header("Cross-Origin-Opener-Policy", "same-origin");
+            response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
+
+            const auto contentType = contentTypeForFilename(request.path);
+
             if (super_t::_vfs.is_file(request.path)) {
                 // headers required for using the SharedArrayBuffer
-                response.set_header("Cross-Origin-Opener-Policy", "same-origin");
-                response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
                 // webworkers and wasm can only be executed if they have the correct mimetype
-                std::string contentType;
-                if (request.path.ends_with(".js")) {
-                    contentType = "application/javascript";
-                } else if (request.path.ends_with(".wasm")) {
-                    contentType = "application/wasm";
-                } else if (request.path.ends_with(".html")) {
-                    contentType = "text/html";
-                }
                 auto file = super_t::_vfs.open(request.path);
                 response.set_content(std::string(file.begin(), file.end()), contentType);
+
+            } else if (sfs::exists(_serverRoot / request.path)) {
+                std::ifstream inFile(_serverRoot / request.path);
+                std::string   data;
+
+                inFile.seekg(0, std::ios::end);
+                data.reserve(inFile.tellg());
+                inFile.seekg(0, std::ios::beg);
+
+                data.assign(std::istreambuf_iterator<char>(inFile), std::istreambuf_iterator<char>());
+                response.set_content(std::move(data), contentType);
+
             } else {
+                std::cerr << "File not found in CMRC and in " << _serverRoot << std::endl;
+                response.set_content("Not found", "text/plain");
             }
         };
 
