@@ -21,9 +21,7 @@ include_directories(${CMAKE_BINARY_DIR})
 add_subdirectory(src/acquisition)
 add_subdirectory(src/ui)
 
-option(DISABLE_WASM_BUILD
-    "Skip building WASM UI"
-    OFF)
+option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
   ExternalProject_Add(
@@ -45,15 +43,12 @@ if(NOT DISABLE_WASM_BUILD)
       ${WASM_BUILD_DIR}/web/index.wasm)
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
   add_custom_command(
-    TARGET ui-wasm POST_BUILD COMMAND
-      ${CMAKE_COMMAND} -E make_directory ${ROOT_BUILD_DIR}/ui-wasm/web &&
-      ${CMAKE_COMMAND} -E copy
-        ${WASM_BUILD_DIR}/web/index.html
-        ${WASM_BUILD_DIR}/web/index.js
-        ${WASM_BUILD_DIR}/web/index.worker.js
-        ${WASM_BUILD_DIR}/web/index.wasm
-        ${ROOT_BUILD_DIR}/ui-wasm/web
-    )
+    TARGET ui-wasm
+    POST_BUILD
+    COMMAND
+      ${CMAKE_COMMAND} -E make_directory ${ROOT_BUILD_DIR}/ui-wasm/web && ${CMAKE_COMMAND} -E copy
+      ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.worker.js
+      ${WASM_BUILD_DIR}/web/index.wasm ${ROOT_BUILD_DIR}/ui-wasm/web)
 endif()
 
 option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)

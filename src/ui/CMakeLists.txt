@@ -177,12 +177,23 @@ else() # native build
   endif()
 endif()
 
-target_link_libraries(${target_name} PRIVATE function2::function2 gnuradio-core gnuradio-meta gnuradio-algorithm gr-basic gr-fourier fftw vir pmtv)
-target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition #for daq_api.hpp
-                                                  ${graph-prototype_SOURCE_DIR}/core/include
-                                                  ${graph-prototype_SOURCE_DIR}/meta/include
-                                                  ${graph-prototype_SOURCE_DIR}/algorithm/include
-                                                  ${graph-prototype_SOURCE_DIR}/blocks/basic/include
-                                                  ${graph-prototype_SOURCE_DIR}/blocks/fourier/include
-                                                  )
+target_link_libraries(
+  ${target_name}
+  PRIVATE function2::function2
+          gnuradio-core
+          gnuradio-meta
+          gnuradio-algorithm
+          gr-basic
+          gr-fourier
+          fftw
+          vir
+          pmtv)
+target_include_directories(
+  ${target_name}
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition # for daq_api.hpp
+          ${graph-prototype_SOURCE_DIR}/core/include
+          ${graph-prototype_SOURCE_DIR}/meta/include
+          ${graph-prototype_SOURCE_DIR}/algorithm/include
+          ${graph-prototype_SOURCE_DIR}/blocks/basic/include
+          ${graph-prototype_SOURCE_DIR}/blocks/fourier/include)
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")
