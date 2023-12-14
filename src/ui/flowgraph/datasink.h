@@ -37,9 +37,9 @@ public:
     explicit DataSinkSource(std::string_view name);
 
     std::unique_ptr<gr::BlockModel> createGraphNode() final;
-    void setup(gr::Graph &graph) final;
+    void                            setup(gr::Graph &graph) final;
 
-    static void registerBlockType();
+    static void                     registerBlockType();
 
 private:
 };

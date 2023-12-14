@@ -547,7 +547,7 @@ Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
 
     fmt::print("connect {}.{} to {}.{}\n", a->block->name, ain, b->block->name, bin);
 
-    auto it  = m_connections.insert(Connection(a->block, ain, b->block, bin));
+    auto it = m_connections.insert(Connection(a->block, ain, b->block, bin));
     a->connections.push_back(&(*it));
     b->connections.push_back(&(*it));
     m_graphChanged = true;
@@ -593,7 +593,6 @@ gr::Graph FlowGraph::createGraph() {
                 std::ignore = node->settings().set(block->parameters());
 #ifdef __EMSCRIPTEN__
             } catch (...) {
-
             }
 #endif
             graph.addBlock(std::move(node));

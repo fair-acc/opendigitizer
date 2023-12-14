@@ -41,7 +41,7 @@ public:
             response.set_header("Cross-Origin-Opener-Policy", "same-origin");
             response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
 
-            auto path = request.path;
+            auto       path        = request.path;
             const auto contentType = contentTypeForFilename(path);
 
             if (path.empty()) {
@@ -49,7 +49,7 @@ public:
             }
 
             std::string_view trimmedPath(
-                    std::ranges::find_if_not(path, [] (char c) { return c == '/'; }),
+                    std::ranges::find_if_not(path, [](char c) { return c == '/'; }),
                     path.cend());
 
             if (super_t::_vfs.is_file(path)) {

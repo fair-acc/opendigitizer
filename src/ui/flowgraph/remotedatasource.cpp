@@ -13,46 +13,46 @@ using namespace opendigitizer::acq;
 
 template<typename T>
 struct RemoteSource : public gr::Block<RemoteSource<T>> {
-    gr::PortOut<T> out{};
+    gr::PortOut<T>                out{};
 
     DigitizerUi::RemoteBlockType *block;
-    RemoteSource(DigitizerUi::RemoteBlockType *b) : block(b) {
+    RemoteSource(DigitizerUi::RemoteBlockType *b)
+        : block(b) {
     }
 
     ~RemoteSource() {
     }
 
-    void append(const Acquisition &data)
-    {
+    void append(const Acquisition &data) {
         std::lock_guard lock(m_mutex);
         m_data.push_back({ data, 0 });
     }
 
     struct Data {
         Acquisition data;
-        int read = 0;
+        int         read = 0;
     };
     std::vector<Data> m_data;
-    std::mutex                  m_mutex;
+    std::mutex        m_mutex;
 
     std::make_signed_t<std::size_t>
     available_samples(const RemoteSource & /*d*/) noexcept {
         std::lock_guard lock(m_mutex);
-        int available = 0;
-        for (const auto &d: m_data) {
+        int             available = 0;
+        for (const auto &d : m_data) {
             available += (d.data.channelValue.size() - d.read);
         }
         return available > 0 ? available : -1;
     }
 
     auto processBulk(std::span<T> output) noexcept {
-        auto toWrite = output.size();
-        T *out = output.data();
+        auto            toWrite = output.size();
+        T              *out     = output.data();
 
         std::lock_guard lock(m_mutex);
         while (toWrite > 0 && !m_data.empty()) {
-            auto &d = m_data.front();
-            auto toCopy = std::min<int>(toWrite, d.data.channelValue.size() - d.read);
+            auto &d      = m_data.front();
+            auto  toCopy = std::min<int>(toWrite, d.data.channelValue.size() - d.read);
             memcpy(out, d.data.channelValue.data() + d.read, toCopy * sizeof(T));
             d.read += toCopy;
             if (d.read == d.data.channelValue.size()) {
@@ -106,7 +106,7 @@ public:
 
             try {
                 opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, m_data);
-                for (auto *b: m_blocks) {
+                for (auto *b : m_blocks) {
                     if (b->graphNode()) {
                         if (auto *n = static_cast<RemoteSource<float> *>(b->graphNode()->raw())) {
                             n->append(m_data);
@@ -138,7 +138,7 @@ public:
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Unsubscribe;
         command.endpoint = m_uri;
-        command.callback = [uri = m_uri] (const opencmw::mdp::Message &rep) {
+        command.callback = [uri = m_uri](const opencmw::mdp::Message &rep) {
             // TODO: Add cleanup once openCMW starts calling the callback
             // on successful unsubscribe
             fmt::format("Unsubscribed from {} successfully\n", uri);
@@ -146,11 +146,11 @@ public:
         m_client.request(command);
     }
 
-    opencmw::URI<>              m_uri;
-    opencmw::client::RestClient m_client;
-    int                         m_subscribed = 0;
+    opencmw::URI<>                  m_uri;
+    opencmw::client::RestClient     m_client;
+    int                             m_subscribed = 0;
 
-    Acquisition                 m_data;
+    Acquisition                     m_data;
     std::vector<RemoteDataSource *> m_blocks;
 };
 

@@ -306,15 +306,15 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
                 break;
             }
             case DigitizerUi::DataType::DataSetFloat32: {
-                auto            ds = sink->data.asDataSetFloat32();
+                auto ds = sink->data.asDataSetFloat32();
                 if (ds.extents.empty()) {
                     break;
                 }
-                auto &values = ds.signal_values;
+                auto           &values = ds.signal_values;
                 std::lock_guard lock(sink->m_mutex);
                 for (int i = 0; i < ds.extents[0]; ++i) {
                     auto n = ds.extents[1];
-                    ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n*i, n);
+                    ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n * i, n);
                 }
                 break;
             }

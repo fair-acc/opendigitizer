@@ -15,14 +15,13 @@ struct DSSink : gr::Block<DSSink<T>> {
 };
 ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (DSSink<T>), in);
 
-
 template<typename T>
 struct DSSinkSource : gr::Block<DSSinkSource<T>> {
     // This is just a forwarding block
-    gr::PortIn<T> in;
+    gr::PortIn<T>  in;
     gr::PortOut<T> out;
 
-    T processOne(T ds) {
+    T              processOne(T ds) {
         return ds;
     }
 };
@@ -99,8 +98,8 @@ std::unique_ptr<gr::BlockModel> DataSink::createGraphNode() {
         return nullptr;
     }
 
-    auto *c = inputs()[0].connections[0];
-    auto type = c->src.block->outputs()[c->src.index].type;
+    auto *c    = inputs()[0].connections[0];
+    auto  type = c->src.block->outputs()[c->src.index].type;
 
     return type.asType([this]<typename T>() {
         return this->template createNode<T>();
@@ -129,17 +128,17 @@ std::unique_ptr<gr::BlockModel> DataSinkSource::createGraphNode() {
     auto  sinkName = std::string_view(&name[11], &name[name.size()]);
     auto *sink     = static_cast<DataSink *>(flowGraph()->findSinkBlock(sinkName));
     if (!sink) {
-        fmt::print("{} no sink\n",name);
+        fmt::print("{} no sink\n", name);
         return nullptr;
     }
 
     if (sink->inputs()[0].connections.empty()) {
-        fmt::print("{} no conn\n",name);
+        fmt::print("{} no conn\n", name);
         return nullptr;
     }
 
-    auto *c = sink->inputs()[0].connections[0];
-    auto type = c->src.block->outputs()[c->src.index].type;
+    auto *c           = sink->inputs()[0].connections[0];
+    auto  type        = c->src.block->outputs()[c->src.index].type;
 
     outputs()[0].type = type;
 
@@ -148,8 +147,7 @@ std::unique_ptr<gr::BlockModel> DataSinkSource::createGraphNode() {
     });
 }
 
-void DataSinkSource::setup(gr::Graph &graph)
-{
+void DataSinkSource::setup(gr::Graph &graph) {
     auto  sinkName = std::string_view(&name[11], &name[name.size()]);
     auto *sink     = static_cast<DataSink *>(flowGraph()->findSinkBlock(sinkName));
     if (!sink) {
@@ -158,7 +156,7 @@ void DataSinkSource::setup(gr::Graph &graph)
     }
 
     if (sink->inputs()[0].connections.empty()) {
-        fmt::print("{} no conn\n",name);
+        fmt::print("{} no conn\n", name);
         return;
     }
 
@@ -171,9 +169,9 @@ void DataSinkSource::setup(gr::Graph &graph)
 void DataSinkSource::registerBlockType() {
     auto t = std::make_unique<BlockType>("sink_source", "Sink Source", "", true);
     t->outputs.resize(1);
-    auto &out = t->outputs[0];
-    out.name  = "out";
-    out.type  = "";
+    auto &out      = t->outputs[0];
+    out.name       = "out";
+    out.type       = "";
     t->createBlock = [](std::string_view name) {
         return std::make_unique<DataSinkSource>(name);
     };

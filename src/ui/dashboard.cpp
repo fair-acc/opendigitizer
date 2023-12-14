@@ -218,7 +218,7 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                      = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
         m_sources.insert({ static_cast<DataSink *>(b), -1, b->name, randomColor() });

@@ -53,10 +53,9 @@ struct DashboardDescription {
     static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
 };
 
-class Dashboard: public std::enable_shared_from_this<Dashboard> {
+class Dashboard : public std::enable_shared_from_this<Dashboard> {
 public:
-    std::shared_ptr<Dashboard> shared()
-    {
+    std::shared_ptr<Dashboard> shared() {
         return shared_from_this();
     }
 

@@ -243,11 +243,11 @@ private:
 struct EmptyDataSet {};
 
 using DataSetBase = std::variant<EmptyDataSet,
-                                 std::span<const std::complex<double>>, std::span<const std::complex<float>>,
-                                 std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
-                                 std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
-                                 std::span<const float>, std::span<const double>,
-                                 std::reference_wrapper<gr::DataSet<float>>>;
+        std::span<const std::complex<double>>, std::span<const std::complex<float>>,
+        std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
+        std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
+        std::span<const float>, std::span<const double>,
+        std::reference_wrapper<gr::DataSet<float>>>;
 class DataSet : DataSetBase {
 public:
     using DataSetBase::DataSetBase;
@@ -311,17 +311,17 @@ public:
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
-    const auto &inputs() const { return m_inputs; }
-    const auto &outputs() const { return m_outputs; }
+    const auto                             &inputs() const { return m_inputs; }
+    const auto                             &outputs() const { return m_outputs; }
 
-    void        setParameter(const std::string &name, const pmtv::pmt &par);
-    const auto &parameters() const { return m_parameters; }
+    void                                    setParameter(const std::string &name, const pmtv::pmt &par);
+    const auto                             &parameters() const { return m_parameters; }
 
-    void        update();
+    void                                    update();
 
     virtual std::unique_ptr<gr::BlockModel> createGraphNode() = 0;
-    virtual void setup(gr::Graph &graph) {}
-    auto *graphNode() { return m_node; }
+    virtual void                            setup(gr::Graph &graph) {}
+    auto                                   *graphNode() { return m_node; }
 
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
     const BlockType                        *type;

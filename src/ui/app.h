@@ -71,8 +71,8 @@ struct App {
     ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
 
-    template <typename Scheduler, typename Graph>
-    void assignScheduler(Graph&& graph) {
+    template<typename Scheduler, typename Graph>
+    void assignScheduler(Graph &&graph) {
         if (m_scheduler) {
             m_garbageSchedulers.push_back(std::move(m_scheduler));
         }
@@ -117,7 +117,7 @@ private:
         std::unique_ptr<Handler> handler;
     };
 
-    SchedWrapper m_scheduler;
+    SchedWrapper              m_scheduler;
     std::vector<SchedWrapper> m_garbageSchedulers; // TODO: Cleaning up schedulers needs support in opencmw to return unsubscription confirmation
 
     App();
