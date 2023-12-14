@@ -170,6 +170,11 @@ else() # native build
             sample_dashboards
             fonts)
   target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
+
+  if(OPENDIGITIZER_ENABLE_ASAN)
+    target_compile_options(${target_name} PRIVATE -fsanitize=address)
+    target_link_options(${target_name} PRIVATE -fsanitize=address)
+  endif()
 endif()
 
 target_link_libraries(${target_name} PRIVATE function2::function2 gnuradio-core gnuradio-meta gnuradio-algorithm gr-basic gr-fourier fftw vir pmtv)
