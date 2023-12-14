@@ -35,7 +35,7 @@ struct App {
     inline Style style() const { return m_style; }
 
     // schedule a function to be called at the next opportunity on the main thread
-    void schedule(fu2::unique_function<void()> &&callback);
+    void executeLater(std::function<void()> &&callback);
 
     void fireCallbacks();
 
@@ -47,7 +47,7 @@ struct App {
     std::string                executable;
     FlowGraphItem              fgItem;
     DashboardPage              dashboardPage;
-    std::unique_ptr<Dashboard> dashboard;
+    std::shared_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
     bool                       running          = true;
@@ -70,6 +70,24 @@ struct App {
     ImFont                    *fontIconsSolidBig;
     ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
+
+    template <typename Scheduler, typename Graph>
+    void assignScheduler(Graph&& graph) {
+        if (m_scheduler) {
+            m_garbageSchedulers.push_back(std::move(m_scheduler));
+        }
+        m_scheduler.emplace<Scheduler>(std::forward<Graph>(graph));
+    }
+
+    bool runScheduler() {
+        if (m_scheduler) {
+            m_scheduler.run();
+            return true;
+        }
+        return false;
+    }
+
+private:
     struct SchedWrapper {
         SchedWrapper() {}
 
@@ -98,14 +116,16 @@ struct App {
 
         std::unique_ptr<Handler> handler;
     };
-    SchedWrapper scheduler;
 
-private:
+    SchedWrapper m_scheduler;
+    std::vector<SchedWrapper> m_garbageSchedulers; // TODO: Cleaning up schedulers needs support in opencmw to return unsubscription confirmation
+
     App();
 
-    Style                                     m_style = Style::Light;
-    std::vector<fu2::unique_function<void()>> m_callbacks[2];
-    std::mutex                                m_callbacksMutex;
+    Style                              m_style = Style::Light;
+    std::vector<std::function<void()>> m_activeCallbacks;
+    std::vector<std::function<void()>> m_garbageCallbacks; // TODO: Cleaning up callbacks
+    std::mutex                         m_callbacksMutex;
 };
 
 } // namespace DigitizerUi

@@ -289,11 +289,10 @@ static void main_loop(void *arg) {
     if (app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto graph = app->dashboard->localFlowGraph.createGraph();
-        app->scheduler.emplace<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
+        app->assignScheduler<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
     }
-    if (app->scheduler) {
-        app->scheduler.run();
-    }
+
+    app->runScheduler();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;

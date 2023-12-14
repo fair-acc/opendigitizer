@@ -75,6 +75,7 @@ public:
     };
 
     explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
+    virtual ~BlockType();
 
     const std::string                                       name;
     const std::string                                       label;

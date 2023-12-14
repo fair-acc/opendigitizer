@@ -53,8 +53,13 @@ struct DashboardDescription {
     static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
 };
 
-class Dashboard {
+class Dashboard: public std::enable_shared_from_this<Dashboard> {
 public:
+    std::shared_ptr<Dashboard> shared()
+    {
+        return shared_from_this();
+    }
+
     struct Source {
         DataSink   *block;
         int         port;
@@ -88,7 +93,14 @@ public:
         GridRect rect;
     };
 
-    explicit Dashboard(const std::shared_ptr<DashboardDescription> &desc);
+private:
+    class PrivateTag {};
+
+public:
+    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc);
+
+    static std::shared_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription> &desc);
+
     ~Dashboard();
 
     void                         load();

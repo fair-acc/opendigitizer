@@ -62,7 +62,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
             std::vector<std::string> names;
             opencmw::IoSerialiser<opencmw::Json, decltype(names)>::deserialise(buf, opencmw::FieldDescriptionShort{}, names);
 
-            App::instance().schedule([this, source, names = std::move(names)]() {
+            App::instance().executeLater([this, source, names = std::move(names)]() {
                 for (const auto &n : names) {
                     addDashboard(source, n);
                 }
@@ -378,7 +378,7 @@ void OpenDashboardPage::draw(App *app) {
     ImGui::SameLine();
 
     std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_date));
-    char                        date[11];
+    char                        date[11] = {};
     fmt::format_to(date, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
     if (ImGui::InputTextWithHint("##date", "today", date, 11, ImGuiInputTextFlags_CallbackCharFilter,
                 [](ImGuiInputTextCallbackData *d) -> int {

@@ -33,7 +33,7 @@ void App::loadEmptyDashboard() {
 
 void App::loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
     fgItem.clear();
-    dashboard = std::make_unique<Dashboard>(desc);
+    dashboard = Dashboard::create(desc);
     dashboard->load();
 }
 
@@ -67,20 +67,21 @@ void App::setStyle(Style style) {
     fgItem.setStyle(style);
 }
 
-void App::schedule(fu2::unique_function<void()> &&cb) {
+void App::executeLater(std::function<void()> &&cb) {
     std::lock_guard lock(m_callbacksMutex);
-    m_callbacks[0].push_back(std::move(cb));
+    m_activeCallbacks.push_back(std::move(cb));
 }
 
 void App::fireCallbacks() {
+    std::vector<std::function<void()>> callbacks;
     {
         std::lock_guard lock(m_callbacksMutex);
-        std::swap(m_callbacks[0], m_callbacks[1]);
+        std::swap(callbacks, m_activeCallbacks);
     }
-    for (auto &cb : m_callbacks[1]) {
+    for (auto &cb : callbacks) {
         cb();
+        m_garbageCallbacks.push_back(std::move(cb));
     }
-    m_callbacks[1].clear();
 }
 
 } // namespace DigitizerUi

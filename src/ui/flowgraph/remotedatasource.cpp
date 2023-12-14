@@ -95,6 +95,8 @@ public:
         command.command  = opencmw::mdp::Command::Subscribe;
         command.endpoint = m_uri;
 
+        fmt::print("Subscribing to {}\n", m_uri);
+
         command.callback = [this](const opencmw::mdp::Message &rep) {
             if (rep.data.size() == 0) {
                 return;
@@ -105,8 +107,10 @@ public:
             try {
                 opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, m_data);
                 for (auto *b: m_blocks) {
-                    if (auto *n = static_cast<RemoteSource<float> *>(b->graphNode()->raw())) {
-                        n->append(m_data);
+                    if (b->graphNode()) {
+                        if (auto *n = static_cast<RemoteSource<float> *>(b->graphNode()->raw())) {
+                            n->append(m_data);
+                        }
                     }
                 }
             } catch (opencmw::ProtocolException &e) {
@@ -130,10 +134,15 @@ public:
             return;
         }
 
-        fmt::print("unSUB\n");
+        fmt::print("Unsubscribing from {}\n", m_uri);
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Unsubscribe;
         command.endpoint = m_uri;
+        command.callback = [uri = m_uri] (const opencmw::mdp::Message &rep) {
+            // TODO: Add cleanup once openCMW starts calling the callback
+            // on successful unsubscribe
+            fmt::format("Unsubscribed from {} successfully\n", uri);
+        };
         m_client.request(command);
     }
 
@@ -182,9 +191,9 @@ void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
             return;
         }
 
-        auto t             = std::make_unique<RemoteBlockType>(uri);
-        t->outputs[0].name = std::move(reply.channelName);
-        App::instance().schedule([uri, fg, dashboard, t = std::move(t)]() mutable {
+        App::instance().executeLater([uri, fg, channelName = reply.channelName, dashboard]() mutable {
+            auto t             = std::make_unique<RemoteBlockType>(uri);
+            t->outputs[0].name = channelName;
             if (App::instance().dashboard.get() != dashboard) {
                 // If the current dashboard in the app is not the same as it was before issuing the request
                 // that means that in the mean time that we were waiting for the this callback to be called

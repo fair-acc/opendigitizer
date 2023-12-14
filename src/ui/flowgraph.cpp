@@ -52,6 +52,8 @@ BlockType::BlockType(std::string_view n, std::string_view l, std::string_view ca
     , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
 }
 
+BlockType::~BlockType() = default;
+
 BlockType::Registry &BlockType::registry() {
     static Registry r;
     return r;
