@@ -587,7 +587,15 @@ gr::Graph FlowGraph::createGraph() {
                 fmt::print("no node {}\n", block->name);
                 continue;
             }
-            std::ignore = node->settings().set(block->parameters());
+#ifdef __EMSCRIPTEN__
+            try {
+#endif
+                std::ignore = node->settings().set(block->parameters());
+#ifdef __EMSCRIPTEN__
+            } catch (...) {
+
+            }
+#endif
             graph.addBlock(std::move(node));
         }
     }

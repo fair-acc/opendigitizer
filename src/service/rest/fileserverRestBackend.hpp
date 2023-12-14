@@ -51,7 +51,6 @@ public:
             std::string_view trimmedPath(
                     std::ranges::find_if_not(path, [] (char c) { return c == '/'; }),
                     path.cend());
-            std::cerr << "trimmed path " << trimmedPath << std::endl;
 
             if (super_t::_vfs.is_file(path)) {
                 // headers required for using the SharedArrayBuffer

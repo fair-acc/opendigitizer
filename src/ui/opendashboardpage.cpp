@@ -24,7 +24,7 @@ OpenDashboardPage::OpenDashboardPage()
     : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()))
     , m_filterDate(FilterDate::Before)
     , m_restClient(std::make_unique<opencmw::client::RestClient>()) {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
     addSource(".");
 #endif
 }
