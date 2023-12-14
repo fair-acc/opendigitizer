@@ -20,6 +20,8 @@
 #include <Picoscope4000a.hpp>
 #endif
 
+#include "build_configuration.hpp"
+
 // TODO use built-in GR blocks
 
 template<typename T>
@@ -124,7 +126,7 @@ connections:
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
     using RestBackend = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
-    RestBackend rest(broker, fs, "./");
+    RestBackend rest(broker, fs, SERVING_DIR);
 
     const auto  requestedAddress    = URI<>("mds://127.0.0.1:12345");
     const auto  brokerRouterAddress = broker.bind(requestedAddress);

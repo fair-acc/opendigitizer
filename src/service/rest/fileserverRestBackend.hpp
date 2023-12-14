@@ -21,8 +21,6 @@ public:
     }
 
     void registerHandlers() override {
-        _svr.set_mount_point("/", _serverRoot.string());
-
         _svr.Post("/stdio.html", [](const httplib::Request & /*request*/, httplib::Response &response) {
             response.set_content("", "text/plain");
         });
@@ -43,16 +41,26 @@ public:
             response.set_header("Cross-Origin-Opener-Policy", "same-origin");
             response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
 
-            const auto contentType = contentTypeForFilename(request.path);
+            auto path = request.path;
+            const auto contentType = contentTypeForFilename(path);
 
-            if (super_t::_vfs.is_file(request.path)) {
+            if (path.empty()) {
+                path = "index.html";
+            }
+
+            std::string_view trimmedPath(
+                    std::ranges::find_if_not(path, [] (char c) { return c == '/'; }),
+                    path.cend());
+            std::cerr << "trimmed path " << trimmedPath << std::endl;
+
+            if (super_t::_vfs.is_file(path)) {
                 // headers required for using the SharedArrayBuffer
                 // webworkers and wasm can only be executed if they have the correct mimetype
-                auto file = super_t::_vfs.open(request.path);
+                auto file = super_t::_vfs.open(path);
                 response.set_content(std::string(file.begin(), file.end()), contentType);
 
-            } else if (sfs::exists(_serverRoot / request.path)) {
-                std::ifstream inFile(_serverRoot / request.path);
+            } else if (auto filePath = _serverRoot / trimmedPath; sfs::exists(filePath)) {
+                std::ifstream inFile(filePath);
                 std::string   data;
 
                 inFile.seekg(0, std::ios::end);
@@ -63,7 +71,7 @@ public:
                 response.set_content(std::move(data), contentType);
 
             } else {
-                std::cerr << "File not found in CMRC and in " << _serverRoot << std::endl;
+                std::cerr << "File not found: " << _serverRoot / request.path << std::endl;
                 response.set_content("Not found", "text/plain");
             }
         };
