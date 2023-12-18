@@ -36,13 +36,23 @@ std::string Block::Parameter::toString() const {
     return {};
 }
 
-BlockType::BlockType(std::string_view n, std::string_view label, std::string_view cat, bool source)
+class GRBlock : public Block {
+public:
+    using Block::Block;
+    std::unique_ptr<gr::BlockModel> createGraphNode() final {
+        return {};
+    }
+};
+
+BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat, bool source)
     : name(n)
-    , label(label.empty() ? n : label)
+    , label(l.empty() ? n : l)
     , category(cat)
     , isSource(source)
-    , createBlock([this](std::string_view name) { return std::make_unique<Block>(name, this->name, this); }) {
+    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
 }
+
+BlockType::~BlockType() = default;
 
 BlockType::Registry &BlockType::registry() {
     static Registry r;
@@ -58,113 +68,33 @@ void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
-Block::Block(std::string_view name, std::string_view id, BlockType *type)
-    : type(type)
+Block::Block(std::string_view name, std::string_view id, BlockType *t)
+    : type(t)
     , name(name)
     , id(id) {
     if (!type) {
         return;
     }
 
-    m_parameters.reserve(type->parameters.size());
-    for (auto &p : type->parameters) {
-        if (auto *e = std::get_if<BlockType::EnumParameter>(&p.impl)) {
-            m_parameters.push_back(Block::EnumParameter{ *e, 0 });
-        } else if (auto *i = std::get_if<BlockType::NumberParameter<int>>(&p.impl)) {
-            m_parameters.push_back(Block::NumberParameter<int>{ i->defaultValue });
-        } else if (auto *i = std::get_if<BlockType::NumberParameter<float>>(&p.impl)) {
-            m_parameters.push_back(Block::NumberParameter<float>{ i->defaultValue });
-        } else if (auto *r = std::get_if<BlockType::RawParameter>(&p.impl)) {
-            m_parameters.push_back(Block::RawParameter{ r->defaultValue });
-        }
-    }
-
     m_outputs.reserve(type->outputs.size());
     m_inputs.reserve(type->inputs.size());
     for (auto &o : type->outputs) {
-        m_outputs.push_back({ this, o.type, Port::Kind::Output });
+        m_outputs.push_back({ this, o.type, o.dataset, Port::Kind::Output });
     }
     for (auto &o : type->inputs) {
-        m_inputs.push_back({ this, o.type, Port::Kind::Input });
+        m_inputs.push_back({ this, o.type, o.dataset, Port::Kind::Input });
     }
 }
 
-Block::ParameterValue Block::getParameterValue(const std::string &str) const {
-    std::string words[2];
-    int         numWords = 0;
-
-    int         start    = 0;
-    int         last     = str.size() - 1;
-    while (str[start] == ' ') {
-        ++start;
+void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
+    m_parameters[name] = p;
+    if (m_node) {
+        m_node->settings().set(m_parameters);
     }
-    while (str[last] == ' ') {
-        --last;
-    }
-
-    while (start < last && numWords <= 2) {
-        int i = str.find('.', start);
-        if (i == std::string::npos) {
-            i = last + 1;
-        }
-
-        int end = i - 1;
-
-        while (str[start] == ' ' && start < end) {
-            ++start;
-        }
-        while (str[end] == ' ' && end > start) {
-            --end;
-        }
-
-        words[numWords++] = str.substr(start, end - start + 1);
-        start             = i + 1;
-    }
-
-    if (numWords > 0) {
-        for (int i = 0; i < m_parameters.size(); ++i) {
-            const auto &p = type->parameters[i];
-            if (p.id != words[0]) {
-                continue;
-            }
-
-            const auto &bp = m_parameters[i];
-            if (numWords == 1) {
-                switch (p.impl.index()) {
-                case 0: return std::get<BlockType::EnumParameter>(p.impl).options[std::get<Block::EnumParameter>(bp).optionIndex];
-                case 1: return std::get<Block::NumberParameter<int>>(bp).value;
-                case 2: return std::get<Block::NumberParameter<float>>(bp).value;
-                default:
-                    assert(0);
-                    break;
-                }
-            } else {
-                assert(p.impl.index() == 0);
-                const auto &e  = std::get<BlockType::EnumParameter>(p.impl);
-                auto        it = e.optionsAttributes.find(words[1]);
-                if (it != e.optionsAttributes.end()) {
-                    const auto &attr = it->second;
-                    return attr[std::get<Block::EnumParameter>(bp).optionIndex];
-                }
-            }
-        }
-    }
-    std::cerr << "Failed parsing parameter '" << str << "' for block '" << name << "'\n";
-    assert(0);
-    return 0;
-}
-
-void Block::setParameter(int index, const Parameter &p) {
-    if (p.index() != m_parameters[index].index()) {
-        assert(0);
-        return;
-    }
-
-    m_parameters[index] = p;
 }
 
 void Block::update() {
-    auto parseType = [](const std::string &t) -> DataType {
+    auto parseType = [](const std::string &t, bool dataset) -> DataType {
         if (t == "fc64") return DataType::ComplexFloat64;
         if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
         if (t == "sc64") return DataType::ComplexInt64;
@@ -172,7 +102,7 @@ void Block::update() {
         if (t == "sc16") return DataType::ComplexInt16;
         if (t == "sc8") return DataType::ComplexInt8;
         if (t == "f64") return DataType::Float64;
-        if (t == "f32" || t == "float") return DataType::Float32;
+        if (t == "f32" || t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
         if (t == "s64") return DataType::Int64;
         if (t == "s32" || t == "int") return DataType::Int32;
         if (t == "s16" || t == "short") return DataType::Int16;
@@ -187,33 +117,20 @@ void Block::update() {
         assert(0);
         return DataType::Untyped;
     };
-    auto getType = [&](const std::string &t) {
-        if (t.starts_with("${") && t.ends_with("}")) {
-            auto val = getParameterValue(t.substr(2, t.size() - 3));
-            if (auto type = std::get_if<std::string>(&val)) {
-                return parseType(*type);
-            }
-        }
-        return parseType(t);
+    auto getType = [&](const std::string &t, bool dataset) {
+        // if (t.starts_with("${") && t.ends_with("}")) {
+        //     auto val = getParameterValue(t.substr(2, t.size() - 3));
+        //     if (auto type = std::get_if<std::string>(&val)) {
+        //         return parseType(*type);
+        //     }
+        // }
+        return parseType(t, dataset);
     };
     for (auto &in : m_inputs) {
-        in.type = getType(in.m_rawType);
+        in.type = getType(in.m_rawType, in.dataset);
     }
     for (auto &out : m_outputs) {
-        out.type = getType(out.m_rawType);
-    }
-}
-
-void Block::updateInputs() {
-    for (auto &i : m_inputs) {
-        for (auto *c : i.connections) {
-            auto *b = c->ports[0]->block;
-            if (!b->m_updated) {
-                b->updateInputs();
-                b->processData();
-                b->m_updated = true;
-            }
-        }
+        out.type = getType(out.m_rawType, out.dataset);
     }
 }
 
@@ -261,7 +178,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
         auto       id     = config["id"].as<std::string>();
 
         auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock  = [def](std::string_view name) { return std::make_unique<Block>(name, def->name, def); };
+        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def->name, def); };
 
         auto parameters   = config["parameters"];
         for (const auto &p : parameters) {
@@ -322,7 +239,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
                 def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<float>{ defaultValue } });
             } else if (dtype == "raw") {
                 auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::RawParameter{ defaultValue } });
+                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::StringParameter{ defaultValue } });
             }
         }
 
@@ -391,7 +308,7 @@ void FlowGraph::parse(const std::string &str) {
         if (!type) {
             std::cerr << "Block type '" << id << "' is unkown.\n";
 
-            auto block = std::make_unique<Block>(n, id, type);
+            auto block = std::make_unique<GRBlock>(n, id, type);
             m_blocks.push_back(std::move(block));
             continue;
         }
@@ -401,42 +318,27 @@ void FlowGraph::parse(const std::string &str) {
         auto pars  = b["parameters"];
         if (pars && pars.IsMap()) {
             for (auto it = pars.begin(); it != pars.end(); ++it) {
-                auto key            = it->first.as<std::string>();
-                int  parameterIndex = -1;
-                for (int i = 0; i < type->parameters.size(); ++i) {
-                    if (type->parameters[i].id == key) {
-                        parameterIndex = i;
-                        break;
-                    }
+                auto key = it->first.as<std::string>();
+
+                auto p   = block->parameters().find(key);
+                if (p == block->parameters().end()) {
+                    continue;
                 }
-                if (parameterIndex != -1) {
-                    auto &p              = type->parameters[parameterIndex];
-                    auto &blockParameter = block->m_parameters[parameterIndex];
-                    switch (p.impl.index()) {
-                    case 0: {
-                        auto        option = it->second.as<std::string>();
-                        const auto &e      = std::get<BlockType::EnumParameter>(p.impl);
-                        for (int i = 0; i < e.options.size(); ++i) {
-                            if (e.options[i] == option) {
-                                std::get<Block::EnumParameter>(blockParameter).optionIndex = i;
-                                break;
-                            }
-                        }
-                        break;
+
+                std::visit([&](auto &&a) {
+                    using T = std::decay_t<decltype(a)>;
+                    if constexpr (std::is_same_v<T, std::string>) {
+                        auto value = it->second.as<std::string>();
+                        block->setParameter(key, value);
+                    } else if constexpr (std::is_integral_v<T>) {
+                        auto value = it->second.as<int>();
+                        block->setParameter(key, value);
+                    } else if constexpr (std::is_floating_point_v<T>) {
+                        auto value = it->second.as<float>();
+                        block->setParameter(key, value);
                     }
-                    case 1: {
-                        std::get<Block::NumberParameter<int>>(blockParameter).value = it->second.as<int>();
-                        break;
-                    }
-                    case 2: {
-                        std::get<Block::NumberParameter<float>>(blockParameter).value = it->second.as<float>();
-                        break;
-                    }
-                    case 3:
-                        std::get<Block::RawParameter>(blockParameter).value = it->second.as<std::string>();
-                        break;
-                    }
-                }
+                },
+                        p->second);
             }
         }
 
@@ -453,14 +355,14 @@ void FlowGraph::parse(const std::string &str) {
     for (const auto &c : connections) {
         assert(c.size() == 4);
 
-        auto srcBlockName = c[0].as<std::string>();
-        auto srcPortStr   = c[1].as<std::string>();
-        int  srcPort;
+        auto        srcBlockName = c[0].as<std::string>();
+        auto        srcPortStr   = c[1].as<std::string>();
+        std::size_t srcPort;
         std::from_chars(srcPortStr.data(), srcPortStr.data() + srcPortStr.size(), srcPort);
 
-        auto dstBlockName = c[2].as<std::string>();
-        auto dstPortStr   = c[3].as<std::string>();
-        int  dstPort;
+        auto        dstBlockName = c[2].as<std::string>();
+        auto        dstPortStr   = c[3].as<std::string>();
+        std::size_t dstPort;
         std::from_chars(dstPortStr.data(), dstPortStr.data() + dstPortStr.size(), dstPort);
 
         auto srcBlock = findBlock(srcBlockName);
@@ -496,10 +398,10 @@ int FlowGraph::save(std::ostream &stream) {
                 if (!parameters.empty()) {
                     map.write("parameters", [&]() {
                         YamlMap pars(out);
-                        for (int i = 0; i < parameters.size(); ++i) {
-                            pars.write(b->type->parameters[i].id, parameters[i].toString());
-                        }
-                       });
+                        // for (int i = 0; i < parameters.size(); ++i) {
+                        //     pars.write(b->type->parameters[i].id, parameters[i].toString());
+                        // }
+                    });
                 }
             };
 
@@ -520,15 +422,8 @@ int FlowGraph::save(std::ostream &stream) {
                 for (const auto &c : m_connections) {
                     out << YAML::Flow;
                     YamlSeq seq(out);
-                    auto   *src          = c.ports[0];
-                    auto   *dst          = c.ports[1];
-
-                    auto    getPortIndex = [](Block::Port *port, const auto &ports) {
-                        return port - static_cast<const Block::Port *>(ports.data());
-                    };
-
-                    out << src->block->name << getPortIndex(src, src->block->outputs());
-                    out << dst->block->name << getPortIndex(dst, dst->block->inputs());
+                    out << c.src.block->name << c.src.index;
+                    out << c.dst.block->name << c.dst.index;
                 }
             });
         }
@@ -550,7 +445,7 @@ int FlowGraph::save(std::ostream &stream) {
     }
 
     stream << out.c_str();
-    return out.size();
+    return int(out.size());
 }
 
 static Block *findBlockImpl(std::string_view name, auto &list) {
@@ -584,6 +479,7 @@ void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
     m_blocks.push_back(std::move(block));
+    m_graphChanged = true;
 }
 
 void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
@@ -593,6 +489,7 @@ void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
         sourceBlockAddedCallback(block.get());
     }
     m_sourceBlocks.push_back(std::move(block));
+    m_graphChanged = true;
 }
 
 void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
@@ -602,6 +499,7 @@ void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
         sinkBlockAddedCallback(block.get());
     }
     m_sinkBlocks.push_back(std::move(block));
+    m_graphChanged = true;
 }
 
 void FlowGraph::deleteBlock(Block *block) {
@@ -633,6 +531,8 @@ void FlowGraph::deleteBlock(Block *block) {
     if (auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select); it != m_blocks.end()) {
         m_blocks.erase(it);
     }
+
+    m_graphChanged = true;
 }
 
 Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
@@ -641,9 +541,16 @@ Connection *FlowGraph::connect(Block::Port *a, Block::Port *b) {
     if (a->kind == Block::Port::Kind::Input) {
         std::swap(a, b);
     }
-    auto it = m_connections.insert(Connection(a, b));
+
+    auto ain = std::size_t(a - a->block->outputs().data());
+    auto bin = std::size_t(b - b->block->inputs().data());
+
+    fmt::print("connect {}.{} to {}.{}\n", a->block->name, ain, b->block->name, bin);
+
+    auto it = m_connections.insert(Connection(a->block, ain, b->block, bin));
     a->connections.push_back(&(*it));
     b->connections.push_back(&(*it));
+    m_graphChanged = true;
     return &(*it);
 }
 
@@ -651,25 +558,13 @@ void FlowGraph::disconnect(Connection *c) {
     auto it = m_connections.get_iterator(c);
     assert(it != m_connections.end());
 
-    for (auto *p : c->ports) {
+    auto ports = { &c->src.block->outputs()[c->src.index], &c->dst.block->inputs()[c->dst.index] };
+    for (auto *p : ports) {
         p->connections.erase(std::remove(p->connections.begin(), p->connections.end(), c));
     }
 
     m_connections.erase(it);
-}
-
-void FlowGraph::update() {
-    for (auto &b : m_blocks) {
-        b->m_updated = false;
-    }
-    for (auto &b : m_sourceBlocks) {
-        b->processData();
-    }
-
-    for (auto &b : m_sinkBlocks) {
-        b->updateInputs();
-        b->processData();
-    }
+    m_graphChanged = true;
 }
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
@@ -679,6 +574,44 @@ void FlowGraph::addRemoteSource(std::string_view uri) {
 void FlowGraph::registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri) {
     m_remoteSources.push_back({ type.get(), std::string(uri) });
     BlockType::registry().addBlockType(std::move(type));
+}
+
+gr::Graph FlowGraph::createGraph() {
+    gr::Graph graph;
+
+    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
+        for (const auto &block : *list) {
+            auto node     = block->createGraphNode();
+            block->m_node = node.get();
+            if (!node) {
+                fmt::print("no node {}\n", block->name);
+                continue;
+            }
+#ifdef __EMSCRIPTEN__
+            try {
+#endif
+                std::ignore = node->settings().set(block->parameters());
+#ifdef __EMSCRIPTEN__
+            } catch (...) {
+            }
+#endif
+            graph.addBlock(std::move(node));
+        }
+    }
+
+    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
+        for (const auto &block : *list) {
+            block->setup(graph);
+        }
+    }
+
+    for (auto &c : m_connections) {
+        if (!c.src.block->m_node || !c.dst.block->m_node) continue;
+        graph.connect(*c.src.block->m_node, c.src.index, *c.dst.block->m_node, c.dst.index);
+    }
+
+    m_graphChanged = false;
+    return graph;
 }
 
 } // namespace DigitizerUi

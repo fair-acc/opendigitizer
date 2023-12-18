@@ -1,4 +1,3 @@
-
 #include "dashboard.h"
 
 #include <fmt/format.h>
@@ -114,10 +113,10 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
             }
 
             if (reply[0].empty()) {
-                App::instance().schedule(std::move(errCallback));
+                App::instance().executeLater(std::move(errCallback));
             } else {
                 // schedule the callback so it runs on the main thread
-                App::instance().schedule([callback, reply]() mutable {
+                App::instance().executeLater([callback, reply]() mutable {
                     callback(std::move(reply));
                 });
             }
@@ -217,21 +216,12 @@ Dashboard::Plot::Plot() {
     name         = fmt::format("Plot {}", n++);
 }
 
-Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
+Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed                        = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                      = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    localFlowGraph.sourceBlockAddedCallback = [this](Block *b) {
-        if (dynamic_cast<DataSinkSource *>(b)) {
-            return;
-        }
-        for (int i = 0; i < b->type->outputs.size(); ++i) {
-            auto name = fmt::format("{}.{}", b->name, b->type->outputs[i].name);
-            m_sources.insert({ b, i, name, randomColor() });
-        }
-    };
     localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
-        m_sources.insert({ b, -1, b->name, randomColor() });
+        m_sources.insert({ static_cast<DataSink *>(b), -1, b->name, randomColor() });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
@@ -244,6 +234,10 @@ Dashboard::Dashboard(const std::shared_ptr<DashboardDescription> &desc)
 }
 
 Dashboard::~Dashboard() {
+}
+
+std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription> &desc) {
+    return std::make_shared<Dashboard>(PrivateTag{}, desc);
 }
 
 DataSink *Dashboard::createSink() {
@@ -265,13 +259,13 @@ void Dashboard::load() {
     if (m_desc->source != unsavedSource()) {
         fetch(
                 m_desc->source, m_desc->filename, { What::Flowgraph, What::Dashboard },
-                [this](std::array<std::string, 2> &&data) {
-                    localFlowGraph.parse(std::move(data[0]));
+                [_this = shared()](std::array<std::string, 2> &&data) {
+                    _this->localFlowGraph.parse(std::move(data[0]));
                     // Load is called after parsing the flowgraph so that we already have the list of sources
-                    doLoad(data[1]);
+                    _this->doLoad(data[1]);
                 },
-                [this]() {
-                    fmt::print("Invalid flowgraph for dashboard {}/{}\n", m_desc->source->path, m_desc->filename);
+                [_this = shared()]() {
+                    fmt::print("Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
                     App::instance().closeDashboard();
                 });
     } else {

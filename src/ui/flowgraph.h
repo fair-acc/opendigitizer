@@ -12,17 +12,41 @@
 #endif
 #include <plf_colony.h>
 
+#include <fmt/format.h>
+#include <gnuradio-4.0/BlockTraits.hpp>
+#include <gnuradio-4.0/Graph.hpp>
+
 namespace DigitizerUi {
 
 class FlowGraph;
 class Connection;
 class Block;
+template<template<typename...> typename T>
+class DefaultGPBlock;
+
+namespace meta {
+
+template<typename T>
+struct is_dataset {
+    constexpr inline static bool value = false;
+};
+
+template<typename T>
+struct is_dataset<gr::DataSet<T>> {
+    constexpr inline static bool value = true;
+};
+
+template<typename T>
+constexpr inline bool is_dataset_v = is_dataset<T>::value;
+
+} // namespace meta
 
 class BlockType {
 public:
     struct PortDefinition {
         std::string type;
         std::string name;
+        bool        dataset = false;
     };
 
     struct EnumParameter {
@@ -41,16 +65,17 @@ public:
             : defaultValue(v) {}
         T defaultValue;
     };
-    struct RawParameter {
+    struct StringParameter {
         std::string defaultValue;
     };
     struct Parameter {
-        const std::string                                                                       id;
-        const std::string                                                                       label;
-        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> impl;
+        const std::string                                                                          id;
+        const std::string                                                                          label;
+        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
     explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
+    virtual ~BlockType();
 
     const std::string                                       name;
     const std::string                                       label;
@@ -59,12 +84,48 @@ public:
     std::vector<PortDefinition>                             outputs;
     const std::string                                       category;
     const bool                                              isSource;
+    std::unique_ptr<gr::SettingsBase>                       settings;
 
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 
+    template<typename T>
+    void initPort(auto &vec) {
+        vec.push_back({});
+        auto &p = vec.back();
+        p.name  = T::static_name();
+        p.type  = "float";
+        if (meta::is_dataset_v<typename T::value_type>) {
+            p.dataset = true;
+        }
+    }
+
     struct Registry {
-        void               loadBlockDefinitions(const std::filesystem::path &dir);
-        void               addBlockType(std::unique_ptr<BlockType> &&t);
+        void loadBlockDefinitions(const std::filesystem::path &dir);
+        void addBlockType(std::unique_ptr<BlockType> &&t);
+
+        // automatically create a BlockType from a graph prototype node template class
+        template<template<typename...> typename T>
+        void addBlockType(std::string_view typeName) {
+            auto t         = std::make_unique<DigitizerUi::BlockType>(typeName);
+            t->createBlock = [t = t.get()](std::string_view name) {
+                return std::make_unique<DefaultGPBlock<T>>(name, t);
+            };
+            using Node                             = T<float>;
+            namespace meta                         = gr::traits::block;
+
+            constexpr std::size_t input_port_count = meta::template input_port_types<Node>::size;
+            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                (t->template initPort<typename meta::template input_ports<Node>::template at<Is>>(t->inputs), ...);
+            }(std::make_index_sequence<input_port_count>());
+
+            constexpr std::size_t output_port_count = meta::template output_port_types<Node>::size;
+            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                (t->template initPort<typename meta::template output_ports<Node>::template at<Is>>(t->outputs), ...);
+            }(std::make_index_sequence<output_port_count>());
+
+            addBlockType(std::move(t));
+        }
+
         BlockType         *get(std::string_view id) const;
 
         inline const auto &types() const { return m_types; }
@@ -95,6 +156,7 @@ struct DataType {
         ComplexInt8,
         Float64,
         Float32,
+        DataSetFloat32,
         Int64,
         Int32,
         Int16,
@@ -106,8 +168,68 @@ struct DataType {
         Untyped,
     };
 
-    inline DataType() {}
-    inline DataType(Id id)
+    template<typename T>
+    constexpr static DataType of() {
+        if constexpr (std::is_same_v<T, float>) {
+            return Float32;
+        } else if constexpr (std::is_same_v<T, double>) {
+            return Float64;
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            return Int8;
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+            return Int16;
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+            return Int32;
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            return Int64;
+        } else if constexpr (std::is_same_v<T, std::complex<double>>) {
+            return ComplexFloat64;
+        } else if constexpr (std::is_same_v<T, std::complex<float>>) {
+            return ComplexFloat32;
+        } else if constexpr (std::is_same_v<T, std::complex<int64_t>>) {
+            return ComplexInt64;
+        } else if constexpr (std::is_same_v<T, std::complex<int32_t>>) {
+            return ComplexInt32;
+        } else if constexpr (std::is_same_v<T, std::complex<int16_t>>) {
+            return ComplexInt16;
+        } else if constexpr (std::is_same_v<T, std::complex<int8_t>>) {
+            return ComplexInt8;
+        } else if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
+            return DataSetFloat32;
+        } else {
+            static_assert(!std::is_same_v<T, T>, "DataType of T is not known");
+        }
+    }
+
+    template<typename F>
+    auto asType(F fun) {
+        switch (m_id) {
+        case ComplexFloat64: return fun.template operator()<std::complex<double>>();
+        case ComplexFloat32: return fun.template operator()<std::complex<float>>();
+        // unsupported by graph-prototype
+        // case ComplexInt64: return fun.template operator()<std::complex<int64_t>>();
+        // case ComplexInt32: return fun.template operator()<std::complex<int32_t>>();
+        // case ComplexInt16: return fun.template operator()<std::complex<int16_t>>();
+        // case ComplexInt8: return fun.template operator()<std::complex<int8_t>>();
+        case Float64: return fun.template operator()<double>();
+        case Float32: return fun.template operator()<float>();
+        case DataSetFloat32: return fun.template operator()<gr::DataSet<float>>();
+        // case Int64: return fun.template operator()<int64_t>();
+        case Int32: return fun.template operator()<int32_t>();
+        case Int16: return fun.template operator()<int16_t>();
+        case Int8: return fun.template operator()<int8_t>();
+        case Bits:
+        case AsyncMessage:
+        case BusConnection:
+        case Wildcard:
+        case Untyped: break;
+        default: break;
+        }
+        return decltype(fun.template operator()<float>()){};
+    }
+
+    constexpr inline DataType() {}
+    constexpr inline DataType(Id id)
         : m_id(id) {}
 
     const std::string &toString() const;
@@ -119,15 +241,22 @@ private:
 };
 
 struct EmptyDataSet {};
-class DataSet : public std::variant<EmptyDataSet, std::span<const float>, std::span<const double>> {
+
+using DataSetBase = std::variant<EmptyDataSet,
+        std::span<const std::complex<double>>, std::span<const std::complex<float>>,
+        std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
+        std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
+        std::span<const float>, std::span<const double>,
+        std::reference_wrapper<gr::DataSet<float>>>;
+class DataSet : DataSetBase {
 public:
-    using Super = std::variant<EmptyDataSet, std::span<const float>, std::span<const double>>;
-    using Super::Super;
+    using DataSetBase::DataSetBase;
 
-    inline bool empty() const { return std::holds_alternative<EmptyDataSet>(*this); }
+    inline bool                    empty() const { return std::holds_alternative<EmptyDataSet>(*this); }
 
-    inline auto asFloat32() const { return std::get<std::span<const float>>(*this); }
-    inline auto asFloat64() const { return std::get<std::span<const double>>(*this); }
+    inline std::span<const float>  asFloat32() const { return std::get<std::span<const float>>(*this); }
+    inline std::span<const double> asFloat64() const { return std::get<std::span<const double>>(*this); }
+    inline const auto             &asDataSetFloat32() const { return std::get<std::reference_wrapper<gr::DataSet<float>>>(*this).get(); }
 };
 
 class Block {
@@ -141,6 +270,7 @@ public:
 
         Block                    *block;
         const std::string         m_rawType;
+        bool                      dataset;
         const Kind                kind;
 
         DataType                  type;
@@ -178,52 +308,90 @@ public:
         std::string toString() const;
     };
 
-    using ParameterValue = std::variant<std::string, int, float>;
-
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
-    const auto                   &inputs() const { return m_inputs; }
-    const auto                   &outputs() const { return m_outputs; }
+    const auto                             &inputs() const { return m_inputs; }
+    const auto                             &outputs() const { return m_outputs; }
 
-    ParameterValue                getParameterValue(const std::string &par) const;
+    void                                    setParameter(const std::string &name, const pmtv::pmt &par);
+    const auto                             &parameters() const { return m_parameters; }
 
-    void                          setParameter(int index, const Parameter &par);
-    const std::vector<Parameter> &parameters() const { return m_parameters; }
+    void                                    update();
 
-    void                          update();
-    void                          updateInputs();
+    virtual std::unique_ptr<gr::BlockModel> createGraphNode() = 0;
+    virtual void                            setup(gr::Graph &graph) {}
+    auto                                   *graphNode() { return m_node; }
 
-    virtual void                  processData() {}
-
-    inline FlowGraph             *flowGraph() const { return m_flowGraph; }
-    const BlockType              *type;
-    const std::string             name;
-    const std::string             id;
+    inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
+    const BlockType                        *type;
+    const std::string                       name;
+    const std::string                       id;
 
     // protected:
     auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }
 
-private:
-    std::vector<Port>       m_inputs;
-    std::vector<OutputPort> m_outputs;
-    std::vector<Parameter>  m_parameters;
-    bool                    m_updated = false;
-    FlowGraph              *m_flowGraph;
+protected:
+    std::vector<Port> m_inputs;
+    std::vector<Port> m_outputs;
+    gr::property_map  m_parameters;
+    bool              m_updated = false;
+    FlowGraph        *m_flowGraph;
+    gr::BlockModel   *m_node = nullptr;
 
     friend FlowGraph;
 };
 
+namespace meta {
+
+template<template<typename...> typename T, typename D>
+concept is_creatable = requires {
+    { new T<D> };
+};
+
+}
+
 class Connection {
 public:
-    Block::Port *const ports[2];
+    struct {
+        Block      *block;
+        std::size_t index;
+    } src, dst;
 
 private:
-    inline Connection(Block::Port *a, Block::Port *b)
-        : ports{ a, b } {}
+    inline Connection(Block *s, std::size_t srcIndex, Block *d, std::size_t dstIndex)
+        : src{ s, srcIndex }, dst{ d, dstIndex } {}
 
     friend FlowGraph;
+};
+
+template<template<typename...> typename T>
+class DefaultGPBlock : public Block {
+public:
+    DefaultGPBlock(std::string_view typeName, BlockType *t)
+        : Block(typeName, t->name, t) {
+        T<float> node;
+        node.settings().updateActiveParameters();
+        m_parameters = node.settings().get();
+    }
+
+    std::unique_ptr<gr::BlockModel> createGraphNode() final {
+        DataType t = DataType::Float32;
+        if (inputs().size() > 0) {
+            if (auto &in = inputs().front(); in.connections.size() > 0) {
+                auto &src = in.connections[0]->src;
+                t         = src.block->outputs()[src.index].type;
+            }
+        }
+        return t.asType([]<typename D>() -> std::unique_ptr<gr::BlockModel> {
+            if constexpr (meta::is_creatable<T, D>) {
+                return std::make_unique<gr::BlockWrapper<T<D>>>();
+            } else {
+                return nullptr;
+            }
+        });
+    }
 };
 
 class FlowGraph {
@@ -251,7 +419,8 @@ public:
 
     void                         disconnect(Connection *c);
 
-    void                         update();
+    inline bool                  graphChanged() const { return m_graphChanged; }
+    gr::Graph                    createGraph();
 
     int                          save(std::ostream &stream);
     void                         addRemoteSource(std::string_view uri);
@@ -271,6 +440,7 @@ private:
         std::string uri;
     };
     std::vector<RemoteSource> m_remoteSources;
+    bool                      m_graphChanged = true;
 
     // TODO add remote sources here?
 };

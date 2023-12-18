@@ -1,8 +1,8 @@
-
 #ifndef DATASINK_H
 #define DATASINK_H
 
 #include <imgui.h>
+#include <mutex>
 
 #include "../flowgraph.h"
 
@@ -12,24 +12,34 @@ class DataSink final : public Block {
 public:
     explicit DataSink(std::string_view name);
 
-    void        processData() override;
-    static void registerBlockType();
+    std::unique_ptr<gr::BlockModel> createGraphNode() final;
+    static void                     registerBlockType();
 
-    bool        hasData = false;
-    DataType    dataType;
-    DataSet     data;
+    void                            update();
 
-    ImVec4      color;
+    bool                            hasData = false;
+    DataType                        dataType;
+    DataSet                         data;
+
+    std::mutex                      m_mutex;
+
+    ImVec4                          color;
 
 private:
+    template<typename T>
+    std::unique_ptr<gr::BlockModel> createNode();
+
+    std::function<void()>           updaterFun;
 };
 
 class DataSinkSource final : public Block {
 public:
     explicit DataSinkSource(std::string_view name);
 
-    void        processData() override;
-    static void registerBlockType();
+    std::unique_ptr<gr::BlockModel> createGraphNode() final;
+    void                            setup(gr::Graph &graph) final;
+
+    static void                     registerBlockType();
 
 private:
 };

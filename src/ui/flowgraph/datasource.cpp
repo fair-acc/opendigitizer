@@ -2,47 +2,68 @@
 
 #include <fmt/format.h>
 #include <math.h>
+#include <mutex>
+
+#include <fmt/format.h>
+#include <gnuradio-4.0/Block.hpp>
+
+#include "../flowgraph.h"
+
+template<typename T>
+    requires std::is_arithmetic_v<T>
+struct SineSource : public gr::Block<SineSource<T>> {
+    gr::PortOut<T>   out{};
+    float            val       = 0;
+    float            frequency = 1.f;
+    std::mutex       mutex;
+    std::deque<T>    samples;
+    std::thread      thread;
+    std::atomic_bool quit = false;
+
+    SineSource()
+        : thread([this]() {
+            using namespace std::chrono_literals;
+            while (!quit) {
+                const double sec = double(std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()) * 1e-6;
+
+                mutex.lock();
+                samples.push_back(T(std::sin(sec * double(frequency) * double(2. * M_PI))));
+                mutex.unlock();
+
+                std::this_thread::sleep_for(20ms);
+            }
+        }) {
+    }
+
+    ~SineSource() {
+        quit = true;
+        thread.join();
+    }
+
+    std::make_signed_t<std::size_t>
+    available_samples(const SineSource & /*d*/) noexcept {
+        std::lock_guard lock(mutex);
+        const auto      ret = std::make_signed_t<std::size_t>(samples.size());
+        return ret > 0 ? ret : -1;
+    }
+
+    T processOne() {
+        std::lock_guard guard(mutex);
+
+        T               v = samples.front();
+        samples.pop_front();
+        return v;
+    }
+};
+
+ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (SineSource<T>), out, frequency);
+static_assert(gr::traits::block::can_processOne<SineSource<float>>);
+static_assert(gr::traits::block::can_processOne<SineSource<double>>);
 
 namespace DigitizerUi {
 
-namespace {
-BlockType *g_blockType = nullptr;
-}
-
-DataSource::DataSource(std::string_view name)
-    : Block(name, "sine_source", g_blockType) {
-    m_data.resize(8192);
-
-    processData();
-}
-
-void DataSource::processData() {
-    float freq = std::get<NumberParameter<float>>(parameters()[0]).value;
-    for (int i = 0; i < m_data.size(); ++i) {
-        m_data[i] = std::sin((m_offset + i) * freq);
-    }
-    outputs()[0].dataSet = m_data;
-    m_offset += 1;
-}
-
 void DataSource::registerBlockType() {
-    auto t = std::make_unique<BlockType>("sine_source", "Sine wave", "Local signals", true);
-    t->outputs.resize(1);
-    t->outputs[0].name = "out";
-    t->outputs[0].type = "float";
-    t->parameters.push_back({ "frequency", "frequency", BlockType::NumberParameter<float>(0.1) });
-    t->createBlock = [](std::string_view n) {
-        static int created = 0;
-        ++created;
-        if (n.empty()) {
-            std::string name = fmt::format("sine source {}", created);
-            return std::make_unique<DataSource>(name);
-        }
-        return std::make_unique<DataSource>(n);
-    };
-    g_blockType = t.get();
-
-    BlockType::registry().addBlockType(std::move(t));
+    BlockType::registry().addBlockType<SineSource>("sine_source");
 }
 
 } // namespace DigitizerUi

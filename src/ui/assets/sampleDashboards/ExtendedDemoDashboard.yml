@@ -1,18 +1,18 @@
 sources:
-  - name: sine source 3.out
-    block: sine source 3
+  - name: sink 3
+    block: sink 3
     port: 0
     color: 4279072064
-  - name: sine source 4.out
-    block: sine source 4
+  - name: sink 4
+    block: sink 4
     port: 0
     color: 4285507928
-  - name: sine source 5.out
-    block: sine source 5
+  - name: sink 5
+    block: sink 5
     port: 0
     color: 4291210500
-  - name: sine source 6.out
-    block: sine source 6
+  - name: sink 6
+    block: sink 6
     port: 0
     color: 4285336815
   - name: sink 1
@@ -33,7 +33,7 @@ plots:
         min: -0.99999994039535522
         max: 0.99999994039535522
     sources:
-      - sine source 3.out
+      - sink 3
     rect:
       - 0
       - 0
@@ -63,7 +63,7 @@ plots:
         min: -1
         max: 1
     sources:
-      - sine source 4.out
+      - sink 4
     rect:
       - 0
       - 4
@@ -93,7 +93,7 @@ plots:
         min: -0.99999994039535522
         max: 0.99999994039535522
     sources:
-      - sine source 5.out
+      - sink 5
     rect:
       - 0
       - 8
@@ -108,10 +108,10 @@ plots:
         min: -1
         max: 0.99999940395355225
     sources:
-      - sine source 6.out
+      - sink 6
     rect:
       - 0
       - 12
       - 8
       - 4
-flowgraphLayout: "{\"nodes\":{\"node:19042384\":{\"location\":{\"x\":406,\"y\":41},\"name\":\"sum sigs1\"},\"node:19117400\":{\"location\":{\"x\":1200,\"y\":0},\"name\":\"sink 1\"},\"node:19117536\":{\"location\":{\"x\":133,\"y\":0},\"name\":\"sine source 3\"},\"node:19117912\":{\"location\":{\"x\":133,\"y\":91},\"name\":\"sine source 4\"},\"node:19118296\":{\"location\":{\"x\":662,\"y\":92},\"name\":\"sum sigs3\"},\"node:19120168\":{\"location\":{\"x\":934,\"y\":204},\"name\":\"FFT\"},\"node:19122448\":{\"location\":{\"x\":406,\"y\":188},\"name\":\"sum sigs2\"},\"node:19132400\":{\"location\":{\"x\":133,\"y\":455},\"name\":\"source for sink 2\"},\"node:19198112\":{\"location\":{\"x\":133,\"y\":273},\"name\":\"sine source 6\"},\"node:19560360\":{\"location\":{\"x\":133,\"y\":182},\"name\":\"sine source 5\"},\"node:19561112\":{\"location\":{\"x\":1200,\"y\":91},\"name\":\"sink 2\"},\"node:7371568\":{\"location\":{\"x\":133,\"y\":364},\"name\":\"source for sink 1\"}},\"selection\":null,\"view\":{\"scroll\":{\"x\":190.050186157226562,\"y\":-0.800183236598968506},\"visible_rect\":{\"max\":{\"x\":1303.366943359375,\"y\":884.79998779296875},\"min\":{\"x\":126.700141906738281,\"y\":-0.533455550670623779}},\"zoom\":1.49999988079071045}}"
+flowgraphLayout: '{"nodes":{"node:19042384":{"location":{"x":406,"y":41},"name":"sum sigs1"},"node:19117400":{"location":{"x":1200,"y":0},"name":"sink 1"},"node:19117536":{"location":{"x":133,"y":0},"name":"sine source 3"},"node:19117912":{"location":{"x":133,"y":91},"name":"sine source 4"},"node:19118296":{"location":{"x":662,"y":92},"name":"sum sigs3"},"node:19120168":{"location":{"x":934,"y":204},"name":"FFT"},"node:19122448":{"location":{"x":406,"y":188},"name":"sum sigs2"},"node:19132400":{"location":{"x":133,"y":455},"name":"source for sink 2"},"node:19198112":{"location":{"x":133,"y":273},"name":"sine source 6"},"node:19560360":{"location":{"x":133,"y":182},"name":"sine source 5"},"node:19561112":{"location":{"x":1200,"y":91},"name":"sink 2"},"node:7371568":{"location":{"x":133,"y":364},"name":"source for sink 1"}},"selection":null,"view":{"scroll":{"x":190.050186157226562,"y":-0.800183236598968506},"visible_rect":{"max":{"x":1303.366943359375,"y":884.79998779296875},"min":{"x":126.700141906738281,"y":-0.533455550670623779}},"zoom":1.49999988079071045}}'

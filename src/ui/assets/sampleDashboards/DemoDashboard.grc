@@ -6,22 +6,32 @@ blocks:
   - name: sine source 1
     id: sine_source
     parameters:
-      frequency: 0.100000
+      frequency: 1.000000
   - name: sine source 3
     id: sine_source
     parameters:
-      frequency: 0.130000
-  - name: source for sink 1
-    id: sink_source
-  - name: source for sink 2
-    id: sink_source
+      frequency: 1.300000
   - name: sink 1
     id: sink
+  - name: source for sink 1
+    id: sink_source
   - name: sink 2
     id: sink
+  - name: source for sink 2
+    id: sink_source
+  - name: sink 3
+    id: sink
+  - name: source for sink 3
+    id: sink_source
+  - name: sink 4
+    id: sink
+  - name: source for sink 4
+    id: sink_source
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]
   - [sum sigs, 0, FFT, 0]
   - [sum sigs, 0, sink 1, 0]
   - [FFT, 0, sink 2, 0]
+  - [sine source 1, 0, sink 3, 0]
+  - [sine source 3, 0, sink 4, 0]

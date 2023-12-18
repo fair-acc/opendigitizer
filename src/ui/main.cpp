@@ -19,6 +19,10 @@
 #include <array>
 #include <cstdio>
 
+#include <fmt/format.h>
+#include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
+
 #include "app.h"
 #include "dashboard.h"
 #include "dashboardpage.h"
@@ -27,12 +31,14 @@
 #include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
 #include "flowgraph/datasource.h"
-#include "flowgraph/fftblock.h"
 #include "flowgraphitem.h"
 #include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
+
+template<typename T>
+using SpecFFT = gr::blocks::fft::FFT<float, gr::DataSet<float>>;
 
 namespace DigitizerUi {
 
@@ -235,20 +241,7 @@ int main(int argc, char **argv) {
     DigitizerUi::DataSinkSource::registerBlockType();
     DigitizerUi::ArithmeticBlock::registerBlockType();
 
-    DigitizerUi::BlockType::registry().addBlockType([]() {
-        auto t         = std::make_unique<DigitizerUi::BlockType>("FFT");
-        t->createBlock = [t = t.get()](std::string_view name) {
-            return std::make_unique<DigitizerUi::FFTBlock>(name, t);
-        };
-        t->inputs.resize(1);
-        t->inputs[0].name = "in1";
-        t->inputs[0].type = "float";
-
-        t->outputs.resize(1);
-        t->outputs[0].name = "out";
-        t->outputs[0].type = "float";
-        return t;
-    }());
+    DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
 
     loadFonts(app);
 
@@ -292,6 +285,14 @@ static void main_loop(void *arg) {
     ImGuiIO   &io        = ImGui::GetIO();
 
     app->fireCallbacks();
+
+    if (app->dashboard->localFlowGraph.graphChanged()) {
+        // create the graph and the scheduler
+        auto graph = app->dashboard->localFlowGraph.createGraph();
+        app->assignScheduler<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
+    }
+
+    app->runScheduler();
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
@@ -360,7 +361,6 @@ static void main_loop(void *arg) {
     if (app->mainViewMode == "View" || app->mainViewMode == "") {
         viewId = ImGui::GetID("");
         if (app->dashboard != nullptr) {
-            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get());
         }
     } else if (app->mainViewMode == "Layout") {
@@ -371,7 +371,6 @@ static void main_loop(void *arg) {
         // of the view tab.
         ImGui::PushOverrideID(viewId);
         if (app->dashboard != nullptr) {
-            app->dashboard->localFlowGraph.update();
             app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
         }
         ImGui::PopID();

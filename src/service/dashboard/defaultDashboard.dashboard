@@ -1,18 +1,18 @@
 sources:
-  - name: sine source 1.out
-    block: sine source 1
+  - name: sink 3
+    block: sink 3
     port: 0
     color: 4292240583
-  - name: source for sink 1.out
-    block: source for sink 1
+  - name: sink 1
+    block: sink 1
     port: 0
     color: 4283810630
-  - name: source for sink 2.out
-    block: source for sink 2
+  - name: sink 2
+    block: sink 2
     port: 0
     color: 4284318450
-  - name: remote source 1.sine
-    block: remote source 1
+  - name: sink 4
+    block: sink 4
     port: 0
     color: 4293501622
 plots:
@@ -25,7 +25,7 @@ plots:
         min: -1.1052913129824811
         max: 1.2526563780175193
     sources:
-      - sine source 1.out
+      - sink 3
     rect:
       - 0
       - 0
@@ -40,8 +40,8 @@ plots:
         min: -1.7225485895235
         max: 1.7593722791967299
     sources:
-      - source for sink 2.out
-      - source for sink 1.out
+      - sink 2
+      - sink 1
     rect:
       - 0
       - 6
@@ -56,7 +56,7 @@ plots:
         min: 0
         max: 1
     sources:
-      - remote source 1.test
+      - sink 4
     rect:
       - 8
       - 0

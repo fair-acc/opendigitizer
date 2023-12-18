@@ -1,12 +1,4 @@
 sources:
-  - name: sine source 1.out
-    block: sine source 1
-    port: 0
-    color: 4292240583
-  - name: sine source 3.out
-    block: sine source 3
-    port: 0
-    color: 4281939916
   - name: sink 1
     block: sink 1
     port: 0
@@ -15,6 +7,10 @@ sources:
     block: sink 2
     port: 0
     color: 4284689254
+  - name: sink 3
+    block: sink 3
+    port: 0
+    color: 4289753851
 plots:
   - name: Plot 1
     axes:
@@ -25,8 +21,8 @@ plots:
         min: -1
         max: 1.0175589323043823
     sources:
-      - sine source 1.out
-      - sine source 3.out
+      - sink 3
+      - sink 4
     rect:
       - 0
       - 0
@@ -62,4 +58,4 @@ plots:
       - 0
       - 8
       - 8
-flowgraphLayout: "{\"nodes\":{\"node:18643992\":{\"location\":{\"x\":278,\"y\":12},\"name\":\"sum sigs\"},\"node:18826368\":{\"location\":{\"x\":502,\"y\":92},\"name\":\"FFT\"},\"node:18827920\":{\"location\":{\"x\":-10,\"y\":91},\"name\":\"sine source 3\"},\"node:18828016\":{\"location\":{\"x\":-10,\"y\":0},\"name\":\"sine source 1\"},\"node:18889008\":{\"location\":{\"x\":-10,\"y\":273},\"name\":\"source for sink 2\"},\"node:18890880\":{\"location\":{\"x\":1056,\"y\":0},\"name\":\"sink 1\"},\"node:18891568\":{\"location\":{\"x\":1056,\"y\":91},\"name\":\"sink 2\"},\"node:6130544\":{\"location\":{\"x\":-10,\"y\":182},\"name\":\"source for sink 1\"}},\"selection\":null,\"view\":{\"scroll\":{\"x\":-26.0907745361328125,\"y\":-25.8306369781494141},\"visible_rect\":{\"max\":{\"x\":1159.2728271484375,\"y\":582.1129150390625},\"min\":{\"x\":-17.3938503265380859,\"y\":-17.2204246520996094}},\"zoom\":1.5}}"
+flowgraphLayout: '{"nodes":{"node:18643992":{"location":{"x":278,"y":12},"name":"sum sigs"},"node:18826368":{"location":{"x":502,"y":92},"name":"FFT"},"node:18827920":{"location":{"x":-10,"y":91},"name":"sine source 3"},"node:18828016":{"location":{"x":-10,"y":0},"name":"sine source 1"},"node:18889008":{"location":{"x":-10,"y":273},"name":"source for sink 2"},"node:18890880":{"location":{"x":1056,"y":0},"name":"sink 1"},"node:18891568":{"location":{"x":1056,"y":91},"name":"sink 2"},"node:6130544":{"location":{"x":-10,"y":182},"name":"source for sink 1"}},"selection":null,"view":{"scroll":{"x":-26.0907745361328125,"y":-25.8306369781494141},"visible_rect":{"max":{"x":1159.2728271484375,"y":582.1129150390625},"min":{"x":-17.3938503265380859,"y":-17.2204246520996094}},"zoom":1.5}}'
