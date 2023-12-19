@@ -108,6 +108,11 @@ jobs:
 
     - name: Setup Pages
       uses: actions/configure-pages@v3
+    - name: "Fetch cors header workaround" # we're unable to set custom headers on github pages, workaround according to: https://stackoverflow.com/a/68675301
+      run: |
+        npm i --save coi-serviceworker
+        cp node_modules/coi-serviceworker/coi-serviceworker.js ../build/CMakeExternals/Build/ui-wasm/web/
+        sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i ../build/CMakeExternals/Build/ui-wasm/web/index.html
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v1
       with:
@@ -115,7 +120,8 @@ jobs:
 
   deploy_pages:
     name: Deploy to GitHub Pages
-    if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
+      # if: ${{ github.ref_name == 'main' && github.event_name == 'push' }} # TODO: branch check removed to be able to test gh pages deployment from the PR, re-add before merging!
+    if: ${{ github.event_name == 'push' }}
     environment: github-pages
     runs-on: ubuntu-22.04
     needs: build
