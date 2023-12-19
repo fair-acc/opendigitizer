@@ -245,9 +245,6 @@ private:
     bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry> &streamingPollers, std::map<PollerKey, DataSetPollerEntry> &dataSetPollers) {
         bool pollersFinished = true;
         for (const auto &subscription : super_t::activeSubscriptions()) {
-            if (subscription.path() != serviceName.c_str()) {
-                continue;
-            }
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
             try {
                 const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
@@ -318,7 +315,7 @@ private:
 
         const auto wasFinished = pollerEntry.poller->finished.load();
         if (pollerEntry.poller->process(processData)) {
-            super_t::notify(std::string(serviceName.c_str()), context, reply);
+            super_t::notify(context, reply);
         }
         return wasFinished;
     }
@@ -401,7 +398,7 @@ private:
 
         const auto wasFinished = pollerEntry.poller->finished.load();
         while (pollerEntry.poller->process(processData, 1)) {
-            super_t::notify(std::string(serviceName.c_str()), context, reply);
+            super_t::notify(context, reply);
         }
 
         return wasFinished;
@@ -479,7 +476,7 @@ private:
             auto                 filterOut = filterIn;
             flowgraph::Flowgraph subscriptionReply;
             handleGetRequest(filterIn, filterOut, subscriptionReply);
-            super_t::notify(std::string(serviceName.c_str()), filterOut, subscriptionReply);
+            super_t::notify(filterOut, subscriptionReply);
         }
     }
 };

@@ -90,7 +90,7 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
             }();
         }
 
-        command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
+        command.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
 
         command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message &rep) mutable {
             std::array<std::string, N> reply;
@@ -464,13 +464,13 @@ void Dashboard::save() {
         opencmw::client::Command    hcommand;
         hcommand.command = opencmw::mdp::Command::Set;
         hcommand.data.put(std::string_view(headerOut.c_str(), headerOut.size()));
-        hcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
         client.request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command = opencmw::mdp::Command::Set;
         dcommand.data.put(std::string_view(dashboardOut.c_str(), dashboardOut.size()));
-        dcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
         client.request(dcommand);
 
         opencmw::client::Command fcommand;
@@ -478,7 +478,7 @@ void Dashboard::save() {
         std::stringstream stream;
         localFlowGraph.save(stream);
         fcommand.data.put(stream.str());
-        fcommand.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         client.request(fcommand);
 
     } else {
@@ -538,7 +538,7 @@ void Dashboard::addRemoteService(std::string_view uri) {
 
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
-        command.endpoint = uri;
+        command.topic    = uri;
         command.callback = [&](const opencmw::mdp::Message &rep) {
             auto             buf = rep.data;
 
@@ -558,8 +558,8 @@ void Dashboard::saveRemoteServiceFlowgraph(Service *s) {
     s->flowGraph.save(stream);
 
     opencmw::client::Command command;
-    command.command  = opencmw::mdp::Command::Set;
-    command.endpoint = opencmw::URI<>(s->uri);
+    command.command = opencmw::mdp::Command::Set;
+    command.topic   = opencmw::URI<>(s->uri);
 
     FlowgraphMessage msg;
     msg.flowgraph = std::move(stream).str();

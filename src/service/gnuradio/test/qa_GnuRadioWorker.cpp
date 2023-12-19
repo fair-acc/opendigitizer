@@ -72,7 +72,7 @@ struct TestSetup {
     using FgWorker                     = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
     gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(&r); return r; }();
     gr::plugin_loader     pluginLoader = gr::plugin_loader(&registry, {});
-    majordomo::Broker<>   broker       = majordomo::Broker<>("PrimaryBroker");
+    majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
     AcqWorker             acqWorker    = AcqWorker(broker, 50ms);
     FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);
     std::jthread          brokerThread;
@@ -95,7 +95,7 @@ struct TestSetup {
 
     void subscribeClient(const URI<> &uri, std::function<void(const Acquisition &)> &&handlerFnc) {
         client.subscribe(uri, [handler = std::move(handlerFnc)](const mdp::Message &update) {
-            fmt::println("Client 'received message from service '{}' for endpoint '{}'", update.serviceName, update.endpoint.str());
+            fmt::println("Client 'received message from service '{}' for topic '{}'", update.serviceName, update.topic.str());
             Acquisition acq;
             IoBuffer    buffer(update.data);
             try {
@@ -303,6 +303,7 @@ connections:
         constexpr auto kExpectedSamples = 100000UZ;
         waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
     };
+#endif // disabled test
 
     "Trigger - tightly packed tags"_test = [] {
         constexpr std::string_view grc = R"(
@@ -340,7 +341,6 @@ connections:
 
         expect(eq(receivedData, getIota(20, 45)));
     };
-#endif // disabled test
 
     "Trigger - sparse tags"_test = [] {
         // Tests that tags detection and offsets work when the tag data is spread among multiple threads
