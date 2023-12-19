@@ -1,11 +1,10 @@
 include(FetchContent)
 
 # TODO use proper releases once available
-
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG a245ee17adaa61f530d95883da38b68fb53f4de8
+        GIT_TAG 57f31a19d8998da944ec73223d7f3fba4feeb324
 )
 
 # TODO this should be a graph-prototype dependency only, as gr-digitizer blocks

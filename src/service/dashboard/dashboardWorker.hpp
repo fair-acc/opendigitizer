@@ -39,8 +39,7 @@ public:
         : super_t(broker, {}) {
         super_t::setHandler([this](RequestContext &ctx) {
             auto whatParam = [&]() {
-                auto        uri    = ctx.request.endpoint;
-                const auto &params = uri.queryParamMap();
+                const auto &params = ctx.request.topic.queryParamMap();
                 auto        it     = params.find("what");
                 return it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
             };
@@ -55,15 +54,23 @@ public:
                 return nullptr;
             };
 
-            auto                          uri = ctx.request.endpoint;
-            std::filesystem::path         path(uri.path().value_or("/"));
+            auto topicPath = ctx.request.topic.path().value_or("/");
+            auto pathView  = std::string_view{ topicPath };
+            if (!pathView.starts_with(DashboardWorker::name)) {
+                throw std::invalid_argument(fmt::format("Unexpected service name in topic ('{}'), must start with '{}'", topicPath, DashboardWorker::name));
+            }
+
+            pathView.remove_prefix(DashboardWorker::name.size());
+
+            std::filesystem::path         path(pathView);
             std::vector<std::string_view> parts;
 
-            for (auto &p : path) {
+            for (const auto &p : path) {
                 parts.push_back(p.native());
             }
-            assert(parts.size() > 0);
-            assert(parts[0] == "/");
+            if (parts.empty()) {
+                parts.push_back("/");
+            }
 
             if (ctx.request.command == opencmw::mdp::Command::Get) {
                 fmt::print("worker received 'get' request\n");
@@ -141,7 +148,7 @@ public:
 
                     if (newDashboard) {
                         RequestContext rawCtx;
-                        rawCtx.reply.endpoint = opencmw::URI<>("/dashboards"s);
+                        rawCtx.reply.topic = opencmw::URI<>("/dashboards"s);
                         ;
 
                         opencmw::IoBuffer buffer;

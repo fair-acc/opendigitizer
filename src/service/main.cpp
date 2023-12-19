@@ -122,7 +122,7 @@ connections:
         grc = grcBuffer.str();
     }
 
-    Broker broker("PrimaryBroker");
+    Broker broker("/PrimaryBroker");
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
     using RestBackend = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
@@ -146,12 +146,12 @@ connections:
     });
 
     // dashboard worker (mock)
-    using DsWorker = DashboardWorker<"dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
+    using DsWorker = DashboardWorker<"/dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
     DsWorker     dashboardWorker(broker);
     std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
 
     using GrAcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data from a GnuRadio flow graph execution">>;
-    using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "flowgraph", description<"Provides access to the GnuRadio flow graph">>;
+    using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(&registry);
     gr::plugin_loader pluginLoader(&registry, {});
@@ -175,14 +175,7 @@ connections:
             { "http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING" },
             { "https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED" },
             { "mdp", "dcct.example.com", 9999, "opendigitizer", "", "signal 4", "ms", 4e3, "STREAMING" } });
-    // TODO this subscription needs to match what the UI should receive, because the UI only subscribes to "/GnuRadio/Acquisition"!
-    // (query parameters are dropped by RestClient/Backend)
-    const auto subscriptions = std::array{ URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?contentType=application%2Fjson&channelNameFilter=test") };
-    for (const auto &subscription : subscriptions) {
-        fmt::println("Subscribing to {}", subscription.str());
-        client.subscribe(subscription, [](const opencmw::mdp::Message &) {});
-    }
-    fmt::println("WARNING: The UI will receive the subscription(s) above and not the one specified in the UI, as the REST service currently only subscribes to 'GnuRadio/Acquisition'!");
+
     brokerThread.join();
     restThread.join();
 

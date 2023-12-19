@@ -1,6 +1,6 @@
 #include "remotedatasource.h"
 
-#include <IoSerialiserJson.hpp>
+#include <IoSerialiserYaS.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <RestClient.hpp>
@@ -92,8 +92,8 @@ public:
         }
 
         opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Subscribe;
-        command.endpoint = m_uri;
+        command.command = opencmw::mdp::Command::Subscribe;
+        command.topic   = m_uri;
 
         fmt::print("Subscribing to {}\n", m_uri);
 
@@ -105,7 +105,7 @@ public:
             auto buf = rep.data;
 
             try {
-                opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, m_data);
+                opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, m_data);
                 for (auto *b : m_blocks) {
                     if (b->graphNode()) {
                         if (auto *n = static_cast<RemoteSource<float> *>(b->graphNode()->raw())) {
@@ -137,7 +137,7 @@ public:
         fmt::print("Unsubscribing from {}\n", m_uri);
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Unsubscribe;
-        command.endpoint = m_uri;
+        command.topic    = m_uri;
         command.callback = [uri = m_uri](const opencmw::mdp::Message &rep) {
             // TODO: Add cleanup once openCMW starts calling the callback
             // on successful unsubscribe
@@ -172,7 +172,7 @@ std::unique_ptr<gr::BlockModel> RemoteDataSource::createGraphNode() {
 void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
     opencmw::client::Command command;
     command.command  = opencmw::mdp::Command::Get;
-    command.endpoint = opencmw::URI<opencmw::STRICT>::UriFactory().path(uri).build();
+    command.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(uri).build();
 
     auto *dashboard  = App::instance().dashboard.get();
 
@@ -185,7 +185,7 @@ void RemoteDataSource::registerBlockType(FlowGraph *fg, std::string_view uri) {
         Acquisition reply;
 
         try {
-            opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::IGNORE>(buf, reply);
+            opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, reply);
         } catch (opencmw::ProtocolException &e) {
             fmt::print("{}\n", e.what());
             return;
