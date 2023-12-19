@@ -1,6 +1,10 @@
 #ifndef DASHBOARDPAGE_H
 #define DASHBOARDPAGE_H
 
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
 #include "grid_layout.h"
 #include "imguiutils.h"
 #include <imgui.h>

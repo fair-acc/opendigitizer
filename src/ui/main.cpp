@@ -1,4 +1,4 @@
-#ifndef IMPLOT_POINT_CLASS_EXTRA
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS true
 #endif
 
@@ -7,7 +7,7 @@
 #endif
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
-#include <imgui_impl_sdl.h>
+#include <imgui_impl_sdl2.h>
 #include <imgui_internal.h>
 #include <implot.h>
 #include <SDL.h>
@@ -52,43 +52,56 @@ struct SDLState {
 static void main_loop(void *);
 
 static void loadFonts(DigitizerUi::App &app) {
+    static const ImWchar fullRange[] = {
+        0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
+        // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
+        // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
+    };
     static const std::vector<ImWchar> rangeLatin = {
         0x0020, 0x0080, // Basic Latin
-        0,              // '0' is the end marker (a bit unsafe but it's the ImGui way
+        0, 0
     };
     static const std::vector<ImWchar> rangeLatinExtended     = { 0x80, 0xFFFF, 0 }; // Latin-1 Supplement
     static const std::vector<ImWchar> rangeLatinPlusExtended = {
-        0x0020,
-        0x00FF, // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
-        0,
+        0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
+        0, 0
+    };
+    static const ImWchar glyphRanges[] = { // pick individual glyphs and specific sub-ranges rather than full range
+        0XF005, 0XF2ED,                    // 0xf005 is "", 0xf2ed is "trash can"
+        0X2B, 0X2B,                        // plus
+        0XF055, 0XF055,                    // circle-plus
+        0XF201, 0XF83E,                    // fa-chart-line, fa-wave-square
+        0xF58D, 0xF58D,                    // grid layout
+        0XF7A5, 0XF7A5,                    // horizontal layout,
+        0xF248, 0xF248,                    // free layout,
+        0XF7A4, 0XF7A4,                    // vertical layout
+        0, 0
     };
 
-    auto loadDefaultFont = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar> ranges = {}) {
-        ImFontConfig config;
-        // high oversample to have better looking text when zooming in on the flow graph
-        config.OversampleH          = 4;
-        config.OversampleV          = 4;
-        config.PixelSnapH           = true;
-        config.FontDataOwnedByAtlas = false;
+    static const auto fontSize = [&app]() -> std::array<float, 4> {
+        if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
+            return { 20, 24, 28, 46 }; // 28" monitor
+        } else if (app.verticalDPI > 200) {
+            return { 16, 22, 23, 38 }; // likely mobile monitor
+        } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
+            return { 22, 26, 30, 46 }; // likely large fixed display monitor
+        }
+        return { 18, 24, 26, 46 }; // default
+    }();
 
-        const auto fontSize         = [&app]() -> std::array<float, 4> {
-            const float scalingFactor = app.verticalDPI - app.defaultDPI;
-            if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
-                return { 20, 24, 28, 46 }; // 28" monitor
-            } else if (app.verticalDPI > 200) {
-                return { 16, 22, 23, 38 }; // likely mobile monitor
-            } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
-                return { 22, 26, 30, 46 }; // likely large fixed display monitor
-            }
-            return { 18, 24, 26, 46 }; // default
-        }();
+    static ImFontConfig config;
+    // high oversample to have better looking text when zooming in on the flow graph
+    config.OversampleH          = 4;
+    config.OversampleV          = 4;
+    config.PixelSnapH           = true;
+    config.FontDataOwnedByAtlas = false;
 
-        auto loadFont = [&primaryFont, &secondaryFont, &config, &ranges](float fontSize) {
-            ImGuiIO   &io       = ImGui::GetIO();
-            const auto loadFont = io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(primaryFont.begin()), primaryFont.size(), fontSize, &config);
+    auto loadDefaultFont        = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar> &ranges = {}) {
+        auto loadFont = [&primaryFont, &secondaryFont, &ranges](float fontSize) {
+            const auto loadFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(primaryFont.begin()), int(primaryFont.size()), fontSize, &config);
             if (!ranges.empty()) {
                 config.MergeMode = true;
-                io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(secondaryFont.begin()), secondaryFont.size(), fontSize, &config, ranges.data());
+                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(secondaryFont.begin()), int(secondaryFont.size()), fontSize, &config, ranges.data());
                 config.MergeMode = false;
             }
             return loadFont;
@@ -105,21 +118,8 @@ static void loadFonts(DigitizerUi::App &app) {
     ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
 
     auto loadIconsFont         = [](auto name, float fontSize) {
-        ImGuiIO             &io            = ImGui::GetIO();
-        static const ImWchar glyphRanges[] = {
-            0XF005, 0XF2ED, // 0xf005 is "", 0xf2ed is "trash can"
-            0XF055, 0X2B,   // circle-plus, plus
-            0XF201, 0XF83E, // fa-chart-line, fa-wave-square
-            0XF7A5, 0xF58D, // horizontal layout, grid layout
-            0xF248, 0XF7A4, // free layout, vertical layout
-            0
-        };
-
-        auto         fs   = cmrc::ui_assets::get_filesystem();
-        auto         file = fs.open(name);
-        ImFontConfig cfg;
-        cfg.FontDataOwnedByAtlas = false;
-        return io.Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), file.size(), fontSize, &cfg, glyphRanges);
+        auto file = cmrc::ui_assets::get_filesystem().open(name);
+        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), static_cast<int>(file.size()), fontSize, &config, glyphRanges); // alt: fullRange
     };
 
     app.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
 #endif
     app.sdlState               = &sdlState;
 
-    app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *fg) mutable {
+    app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *) mutable {
         app.dashboard->createSink();
     };
 
@@ -309,10 +309,10 @@ static void main_loop(void *arg) {
                 const int width            = event.window.data1;
                 const int height           = event.window.data2;
 
-                ImGui::GetIO().DisplaySize = ImVec2((float) width, (float) height);
+                ImGui::GetIO().DisplaySize = ImVec2(float(width), float(height));
                 glViewport(0, 0, width, height);
                 ImGui::SetNextWindowPos(ImVec2(0, 0));
-                ImGui::SetNextWindowSize(ImVec2((float) width, (float) height));
+                ImGui::SetNextWindowSize(ImVec2(float(width), float(height)));
             }
             switch (event.window.event) {
             case SDL_WINDOWEVENT_CLOSE:
@@ -358,13 +358,12 @@ static void main_loop(void *arg) {
     }
 
     ImGuiID viewId = 0;
-    if (app->mainViewMode == "View" || app->mainViewMode == "") {
-        viewId = ImGui::GetID("");
+    if (app->mainViewMode == "View" || app->mainViewMode.empty()) {
         if (app->dashboard != nullptr) {
             app->dashboardPage.draw(app, app->dashboard.get());
         }
     } else if (app->mainViewMode == "Layout") {
-        // The ID of this tab is different than the ID of the view tab. That means that the plots in the two tabs
+        // The ID of this tab is different from the ID of the view tab. That means that the plots in the two tabs
         // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
         // not reflect in the layout tab.
         // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
@@ -421,7 +420,7 @@ static void main_loop(void *arg) {
     // Rendering
     ImGui::Render();
     SDL_GL_MakeCurrent(app->sdlState->window, app->sdlState->glContext);
-    glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
+    glViewport(0, 0, int(io.DisplaySize.x), int(io.DisplaySize.y));
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

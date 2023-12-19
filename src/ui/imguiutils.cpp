@@ -163,14 +163,14 @@ class InputKeypad {
         None
     };
 
-    template<LinePreference SameLine, Button primaryButton, ImGuiKey_... keyBinding>
+    template<LinePreference SameLine, Button primaryButton, ImGuiKey... keyBinding>
     [[nodiscard]] Button static keypadButton(ImVec2 size, Button oldValue) {
         if constexpr (SameLine == LinePreference::SameLine) {
             ImGui::SameLine();
         }
         return ImGui::Button(toString(primaryButton), size) || (ImGui::IsKeyPressed(keyBinding) || ...) ? primaryButton : oldValue;
     }
-    template<LinePreference SameLine, Button primaryButton, Button secondaryButton, ImGuiKey_... keyBinding>
+    template<LinePreference SameLine, Button primaryButton, Button secondaryButton, ImGuiKey... keyBinding>
     [[nodiscard]] static Button keypadButton(ImVec2 size, Button oldValue) noexcept {
         static_assert(sizeof...(keyBinding) > 1, "needs to be called with at least two keys provided - second is double-click actions");
         if constexpr (SameLine == LinePreference::SameLine) {
@@ -253,7 +253,8 @@ private:
         }
         ImGui::SetNextWindowPos(mainViewPort.GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
-        if (ImGui::BeginPopupModal(keypad_name, &_visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
+        bool visible = _visible; // copy because BeginPopupModal set this to false when successful but needs to remain true until input is acknowledged
+        if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
             struct PopupGuard {
                 ~PopupGuard() { ImGui::EndPopup(); }
             } guard;

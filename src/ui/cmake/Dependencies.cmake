@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY  https://github.com/ocornut/imgui.git
-    GIT_TAG         v1.88
+    GIT_TAG         v1.90 # latest as of 2023-12-19
 )
 
 # Enables 32 bit vertex indices for ImGui
@@ -12,13 +12,13 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
-    GIT_TAG         18758e237e8906a97ddf42de1e75793526f30ce9 #latest 2023-04-19
+    GIT_TAG         v0.16 # latest as of 2023-12-19
 )
 
 FetchContent_Declare(
     imgui-node-editor
     GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
-    GIT_TAG         2f99b2d613a400f6579762bd7e7c343a0d844158
+    GIT_TAG         v0.9.3 # latest as of 2023-12-19
 )
 
 FetchContent_Declare(
@@ -47,18 +47,12 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    function2
-    GIT_REPOSITORY https://github.com/Naios/function2.git
-    GIT_TAG 4.2.2
-)
-
-FetchContent_Declare(
     graph-prototype
     GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
     GIT_TAG 52f48e9c6449a88ff99807479481a8e80d7ecae4
 )
 
-FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony function2 graph-prototype)
+FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony graph-prototype)
 
 if (NOT EMSCRIPTEN)
     find_package(SDL2 REQUIRED)
@@ -79,7 +73,7 @@ add_library(
         ${imgui_SOURCE_DIR}/imgui_demo.cpp
         ${imgui_SOURCE_DIR}/imgui_draw.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
         ${imgui_SOURCE_DIR}/imgui_tables.cpp
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/imgui.cpp
