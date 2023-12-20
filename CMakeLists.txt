@@ -18,7 +18,18 @@ set(SERVING_DIR ${ROOT_BUILD_DIR}/ui-wasm)
 configure_file(build_configuration.hpp.in ${CMAKE_BINARY_DIR}/build_configuration.hpp @ONLY)
 include_directories(${CMAKE_BINARY_DIR})
 
+include(cmake/Dependencies.cmake)
+include(cmake/StandardProjectSettings.cmake)
+include(cmake/PreventInSourceBuilds.cmake)
+include(cmake/Cache.cmake) # enable cache system
+include(cmake/CMakeRC.cmake)
+add_library(project_warnings INTERFACE) # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
+# standard compiler warnings
+include(cmake/CompilerWarnings.cmake)
+set_project_warnings(project_warnings)
+
 add_subdirectory(src/acquisition)
+add_subdirectory(src/utils)
 add_subdirectory(src/ui)
 
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
