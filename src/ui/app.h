@@ -95,7 +95,7 @@ private:
         void emplace(Args &&...args) {
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
-        void     run() { handler->run(); }
+        void run() { handler->run(); }
         explicit operator bool() const { return handler != nullptr; };
 
     private:
