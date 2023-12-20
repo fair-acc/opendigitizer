@@ -109,7 +109,6 @@ if(EMSCRIPTEN)
   target_link_libraries(
     ${outputFileName}
     PRIVATE implot
-            function2::function2
             plf_colony
             app_header
             utils
@@ -155,7 +154,6 @@ else() # native build
   target_link_libraries(
     ${target_name}
     PRIVATE od_acquisition
-            function2::function2
             SDL2
             implot
             imgui-node-editor
@@ -179,8 +177,7 @@ endif()
 
 target_link_libraries(
   ${target_name}
-  PRIVATE function2::function2
-          gnuradio-core
+  PRIVATE gnuradio-core
           gnuradio-meta
           gnuradio-algorithm
           gr-basic

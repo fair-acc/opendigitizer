@@ -1,5 +1,9 @@
 #include "dashboard.h"
 
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
 #include <fmt/format.h>
 #include <imgui.h>
 #include <implot.h>

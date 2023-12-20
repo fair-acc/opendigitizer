@@ -18,7 +18,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         ut
         GIT_REPOSITORY https://github.com/boost-ext/ut.git
-        GIT_TAG 265199e173b16a75670fae62fc2446b9dffad39e # head as of 2022-12-19
+        GIT_TAG v2.0.1 # latest version as of 2023-12-19
 )
 
 FetchContent_MakeAvailable(opencmw-cpp gr-digitizers ut)

@@ -1,7 +1,9 @@
 #ifndef APP_H
 #define APP_H
 
-#include <function2/function2.hpp>
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
 
 #include "common.h"
 #include "dashboard.h"
@@ -50,9 +52,9 @@ struct App {
     std::shared_ptr<Dashboard> dashboard;
     OpenDashboardPage          openDashboardPage;
     SDLState                  *sdlState;
-    bool                       running          = true;
-    WindowMode                 windowMode       = WindowMode::RESTORED;
-    std::string                mainViewMode     = "";
+    bool                       running    = true;
+    WindowMode                 windowMode = WindowMode::RESTORED;
+    std::string                mainViewMode{};
 
     bool                       prototypeMode    = true;
     bool                       touchDiagnostics = false;
@@ -89,14 +91,12 @@ struct App {
 
 private:
     struct SchedWrapper {
-        SchedWrapper() {}
-
         template<typename T, typename... Args>
         void emplace(Args &&...args) {
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
         void run() { handler->run(); }
-        operator bool() const { return handler.get() != nullptr; };
+        explicit operator bool() const { return handler != nullptr; };
 
     private:
         struct Handler {
@@ -107,7 +107,7 @@ private:
         struct HandlerImpl : Handler {
             T data;
             template<typename... Args>
-            HandlerImpl(Args &&...args)
+            explicit HandlerImpl(Args &&...args)
                 : data(std::forward<Args>(args)...) {
                 data.init();
             }
