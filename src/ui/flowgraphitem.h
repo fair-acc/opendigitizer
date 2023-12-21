@@ -48,7 +48,6 @@ private:
     QueryFilterElementList            querySignalFilters;
     SignalList                        signalList{ querySignalFilters };
     Block                            *m_selectedBlock = nullptr;
-    std::vector<Block::Parameter>     m_parameters;
     BlockType                        *m_selectedBlockType = nullptr;
     ImVec2                            m_mouseDrag         = { 0, 0 };
     bool                              m_createNewBlock    = false;

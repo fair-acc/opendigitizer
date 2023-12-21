@@ -167,7 +167,6 @@ else() # native build
             ui_assets
             sample_dashboards
             fonts)
-  target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 
   if(OPENDIGITIZER_ENABLE_ASAN)
     target_compile_options(${target_name} PRIVATE -fsanitize=address)

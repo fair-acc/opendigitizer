@@ -232,10 +232,6 @@ int main(int argc, char **argv) {
         return verticalDPI;
     }();
 
-#ifndef EMSCRIPTEN
-    DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
-#endif
-
     DigitizerUi::DataSource::registerBlockType();
     DigitizerUi::DataSink::registerBlockType();
     DigitizerUi::DataSinkSource::registerBlockType();

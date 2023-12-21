@@ -22,20 +22,6 @@ const std::string &DataType::toString() const {
     return names[m_id];
 }
 
-std::string Block::Parameter::toString() const {
-    if (auto *e = std::get_if<Block::EnumParameter>(this)) {
-        return e->toString();
-    } else if (auto *r = std::get_if<Block::RawParameter>(this)) {
-        return r->value;
-    } else if (auto *i = std::get_if<Block::NumberParameter<int>>(this)) {
-        return std::to_string(i->value);
-    } else if (auto *i = std::get_if<Block::NumberParameter<float>>(this)) {
-        return std::to_string(i->value);
-    }
-    assert(0);
-    return {};
-}
-
 class GRBlock : public Block {
 public:
     using Block::Block;
@@ -134,10 +120,6 @@ void Block::update() {
     }
 }
 
-std::string Block::EnumParameter::toString() const {
-    return definition.optionsLabels[optionIndex];
-}
-
 static std::string_view strview(auto &&s) {
     return { s.data(), s.size() };
 }
@@ -155,122 +137,6 @@ static bool readFile(const std::filesystem::path &file, std::string &str) {
     stream.seekg(0);
     stream.read(str.data(), size);
     return true;
-}
-
-void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir) {
-    if (!std::filesystem::exists(dir)) {
-        std::cerr << "Cannot open directory '" << dir << "'\n";
-        return;
-    }
-
-    std::filesystem::directory_iterator iterator(dir);
-    std::string                         str;
-
-    for (const auto &entry : iterator) {
-        const auto &path = entry.path();
-        if (!path.native().ends_with(".block.yml")) {
-            continue;
-        }
-
-        readFile(path, str);
-        YAML::Node config = YAML::Load(str);
-
-        auto       id     = config["id"].as<std::string>();
-
-        auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def->name, def); };
-
-        auto parameters   = config["parameters"];
-        for (const auto &p : parameters) {
-            const auto &idNode = p["id"];
-            if (!idNode || !idNode.IsScalar()) {
-                continue;
-            }
-
-            auto dtypeNode = p["dtype"];
-            if (!dtypeNode || !dtypeNode.IsScalar()) {
-                continue;
-            }
-
-            auto dtype       = dtypeNode.as<std::string>();
-            auto id          = idNode.as<std::string>();
-            auto labelNode   = p["label"];
-            auto defaultNode = p["default"];
-            auto label       = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(id) : id;
-
-            if (dtype == "enum") {
-                const auto              &opts = p["options"];
-                std::vector<std::string> options;
-                if (opts && opts.IsSequence()) {
-                    for (const auto &n : opts) {
-                        options.push_back(n.as<std::string>());
-                    }
-                }
-
-                BlockType::EnumParameter par{ int(options.size()) };
-                par.options       = std::move(options);
-
-                par.optionsLabels = par.options;
-
-                const auto &attrs = p["option_attributes"];
-                if (attrs && attrs.IsMap()) {
-                    for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-                        auto                     key = it->first.as<std::string>();
-                        std::vector<std::string> vals;
-                        for (const auto &n : it->second) {
-                            vals.push_back(n.as<std::string>());
-                        }
-
-                        if (par.size != vals.size()) {
-                            std::cerr << "Malformed parameter.\n";
-                            continue;
-                        }
-
-                        par.optionsAttributes.insert({ key, std::move(vals) });
-                    }
-                }
-
-                def->parameters.push_back(BlockType::Parameter{ id, label, std::move(par) });
-            } else if (dtype == "int") {
-                auto defaultValue = defaultNode ? defaultNode.as<int>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<int>{ defaultValue } });
-            } else if (dtype == "float") {
-                auto defaultValue = defaultNode ? defaultNode.as<float>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::NumberParameter<float>{ defaultValue } });
-            } else if (dtype == "raw") {
-                auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
-                def->parameters.push_back(BlockType::Parameter{ id, label, BlockType::StringParameter{ defaultValue } });
-            }
-        }
-
-        auto outputs = config["outputs"];
-        for (const auto &o : outputs) {
-            auto        n    = o["dtype"];
-            std::string type = "";
-            if (n) {
-                type = n.as<std::string>();
-            }
-            std::string name = "out";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
-            }
-            def->outputs.push_back({ type, name });
-        }
-
-        auto inputs = config["inputs"];
-        for (const auto &o : inputs) {
-            auto        n    = o["dtype"];
-            std::string type = "";
-            if (n) {
-                type = n.as<std::string>();
-            }
-            std::string name = "in";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
-            }
-            def->inputs.push_back({ type, name });
-        }
-    }
 }
 
 void FlowGraph::parse(const std::filesystem::path &file) {

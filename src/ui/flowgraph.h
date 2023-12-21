@@ -49,37 +49,11 @@ public:
         bool        dataset = false;
     };
 
-    struct EnumParameter {
-        const int size;
-
-        using Options = std::vector<std::string>;
-        Options                                  options;
-        std::unordered_map<std::string, Options> optionsAttributes;
-        std::vector<std::string>                 optionsLabels;
-
-        std::string                              defaultValue;
-    };
-    template<typename T>
-    struct NumberParameter {
-        inline explicit NumberParameter(T v)
-            : defaultValue(v) {}
-        T defaultValue;
-    };
-    struct StringParameter {
-        std::string defaultValue;
-    };
-    struct Parameter {
-        const std::string                                                                          id;
-        const std::string                                                                          label;
-        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
-    };
-
     explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
     virtual ~BlockType();
 
     const std::string                                       name;
     const std::string                                       label;
-    std::vector<Parameter>                                  parameters;
     std::vector<PortDefinition>                             inputs;
     std::vector<PortDefinition>                             outputs;
     const std::string                                       category;
@@ -100,7 +74,6 @@ public:
     }
 
     struct Registry {
-        void loadBlockDefinitions(const std::filesystem::path &dir);
         void addBlockType(std::unique_ptr<BlockType> &&t);
 
         // automatically create a BlockType from a graph prototype node template class
@@ -280,32 +253,6 @@ public:
     class OutputPort : public Port {
     public:
         DataSet dataSet;
-    };
-
-    struct EnumParameter {
-        const BlockType::EnumParameter &definition;
-        int                             optionIndex;
-
-        std::string                     toString() const;
-
-        inline EnumParameter           &operator=(const EnumParameter &p) {
-            optionIndex = p.optionIndex;
-            return *this;
-        }
-    };
-    template<typename T>
-    struct NumberParameter {
-        T value;
-    };
-    struct RawParameter {
-        std::string value;
-    };
-
-    struct Parameter : std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter> {
-        using Super = std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, RawParameter>;
-
-        using Super::Super;
-        std::string toString() const;
     };
 
     Block(std::string_view name, std::string_view id, BlockType *type);
