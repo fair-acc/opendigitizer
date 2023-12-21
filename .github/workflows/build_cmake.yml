@@ -120,8 +120,7 @@ jobs:
 
   deploy_pages:
     name: Deploy to GitHub Pages
-      # if: ${{ github.ref_name == 'main' && github.event_name == 'push' }} # TODO: branch check removed to be able to test gh pages deployment from the PR, re-add before merging!
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
     environment: github-pages
     runs-on: ubuntu-22.04
     needs: build
