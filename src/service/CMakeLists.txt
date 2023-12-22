@@ -4,8 +4,6 @@ set(CMAKE_CXX_STANDARD 23)
 include(cmake/Dependencies.cmake)
 
 project(opendigitizer-service CXX)
-include(cmake/StandardProjectSettings.cmake)
-include(cmake/PreventInSourceBuilds.cmake)
 include(GNUInstallDirs)
 
 option(WASM_BUILD_DIR
@@ -44,15 +42,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG)
 else()
   option(ENABLE_COVERAGE "Enable Coverage" OFF)
 endif()
-
-# enable cache system
-include(cmake/Cache.cmake)
-
-# Link this 'library' to use the warnings specified in CompilerWarnings.cmake
-add_library(project_warnings INTERFACE)
-# standard compiler warnings
-include(cmake/CompilerWarnings.cmake)
-set_project_warnings(project_warnings)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   if(ENABLE_COVERAGE)
