@@ -125,19 +125,19 @@ private:
     using TConstructReturn = typename detail::function_traits<TConstructor>::return_type;
 
     static_assert(std::is_function_v<std::remove_pointer_t<TConstructor>>, "needs a free-standing C-style constructor function");
+    static_assert(constructFunction != nullptr, "constructFunction must not be null");
     static_assert(std::is_function_v<std::remove_pointer_t<TDestructor>>, "needs a free-standing C-style destructor function");
+    static_assert(destructFunction != nullptr, "destructFunction must not be null");
+    static_assert(!std::is_pointer_v<T> || (std::is_invocable_v<TDestructor, T> || std::is_invocable_v<TDestructor, T *>), "require either destructFunction(T) or  destructFunction(T*)");
 
     constexpr static auto initElement() {
         if constexpr (std::is_pointer_v<T>) {
-            return c_resource_null_value<T>; // int value
+            return c_resource_null_value<T>; // pointer-type value
         } else {
-            return element_type{}; // double value
+            return element_type{}; // integral value
         }
     }
-    static constexpr element_type initValue    = initElement();
-
-    static constexpr bool         destructible = std::is_pointer_v<T> ? (std::is_invocable_v<TDestructor, T> || std::is_invocable_v<TDestructor, T *>) : (destructFunction != nullptr);
-
+    static constexpr element_type initValue = initElement();
     struct construct_t {};
     element_type          _element = initValue;
 
@@ -166,13 +166,9 @@ public:
     // default constructor for API schema 2
     [[nodiscard]] constexpr explicit c_resource() noexcept
         requires requires { construct(&_element); }
-        : _element{ initValue } {
+    {
         construct(&_element);
     }
-
-    [[nodiscard]] constexpr explicit c_resource(construct_t) noexcept
-        requires std::is_invocable_r_v<T, TConstructor>
-        : _element{ constructFunction() } {}
 
     template<typename... Ts>
         requires(std::is_invocable_r_v<TConstructReturn, TConstructor, Ts...> || std::is_invocable_r_v<TConstructReturn, TConstructor, Ts..., bool>)
@@ -208,46 +204,35 @@ public:
     [[nodiscard]] constexpr c_resource(c_resource &&other) noexcept
         requires std::is_pointer_v<T>
     {
-        _element       = other._element;
-        other._element = initValue;
+        if (this != &other) {
+            _element = std::exchange(other._element, initValue);
+        }
     };
     constexpr c_resource &operator=(c_resource &&rhs) noexcept
         requires std::is_pointer_v<T>
     {
         if (this != &rhs) {
             destruct(_element);
-            _element     = rhs._element;
-            rhs._element = initValue;
+            _element = std::exchange(rhs._element, initValue);
         }
         return *this;
     };
-    constexpr void swap(c_resource &other) noexcept {
-        auto ptr       = _element;
-        _element       = other._element;
-        other._element = ptr;
-    }
 
-    constexpr ~c_resource() noexcept = delete;
-    constexpr ~c_resource() noexcept
-        requires destructible && std::is_pointer_v<T>
-    {
-        destruct(_element);
-    }
-    constexpr ~c_resource() noexcept
-        requires(destructible && !std::is_pointer_v<T>)
-    {
-        if constexpr (unconditionallyDestruct) {
-            destructFunction();
+    constexpr ~c_resource() noexcept {
+        if constexpr (std::is_pointer_v<T>) {
+            destruct(_element);
         } else {
-            if (_element) {
+            if constexpr (unconditionallyDestruct) {
                 destructFunction();
+            } else {
+                if (_element) {
+                    destructFunction();
+                }
             }
         }
     }
 
-    constexpr void clear() noexcept
-        requires destructible
-    {
+    constexpr void clear() noexcept {
         if constexpr (std::is_pointer_v<T>) {
             destruct(_element);
             _element = initValue;
