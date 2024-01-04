@@ -350,7 +350,8 @@ static void main_loop(void *arg) {
 
     ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    app_header::draw_header_bar("OpenDigitizer", app->fontLarge[app->prototypeMode],
+    const char *title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
+    app_header::draw_header_bar(title, app->fontLarge[app->prototypeMode],
             app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
 
     if (app->dashboard == nullptr) {
