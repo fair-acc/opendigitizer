@@ -73,6 +73,7 @@ std::unique_ptr<gr::BlockModel> DataSink::createNode() {
 
         auto *node    = static_cast<Sink *>(wrapper->raw());
         updaterFun    = [this, node]() mutable {
+            std::lock_guard lock(m_mutex);
             data = node->dataset;
         };
         return wrapper;
@@ -83,8 +84,11 @@ std::unique_ptr<gr::BlockModel> DataSink::createNode() {
         auto *sink    = static_cast<Sink *>(wrapper->raw());
         auto  p       = sink->getStreamingPoller(gr::basic::BlockingMode::NonBlocking);
         updaterFun    = [this, p, vec = std::vector<T>()]() mutable {
+            std::lock_guard lock(m_mutex);
+
             auto d = p->reader.get();
             vec.resize(d.size());
+
             std::copy(d.rbegin(), d.rend(), vec.begin());
 
             data = vec;

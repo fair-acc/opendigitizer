@@ -111,7 +111,7 @@ private:
                 : data(std::forward<Args>(args)...) {
                 data.init();
             }
-            void run() final { data.runAndWait(); }
+            void run() final { data.iterateAndWait(); }
         };
 
         std::unique_ptr<Handler> handler;

@@ -14,7 +14,6 @@
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.h>
-#include <gnuradio-4.0/basic/Selector.hpp>
 
 #ifndef __EMSCRIPTEN__
 #include <Picoscope4000a.hpp>
