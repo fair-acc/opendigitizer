@@ -289,6 +289,7 @@ void OpenDashboardPage::draw(App *app) {
         ImGui::PushFont(isDashboardActive ? app->fontIconsSolid : app->fontIcons);
         if (ImGui::Button("\uf144")) { // , play icon
             app->loadDashboard(item.first);
+            app->mainViewMode = "View";
         }
         ImGui::PopFont();
         ImGui::EndGroup();
