@@ -35,7 +35,7 @@ add_subdirectory(utils)
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
 
-  # CAUTION: The "SHELL:" before some compile/link options has to be used to explicity tell CMake to not sum up options
+  # CAUTION: The "SHELL:" before some compile/link options has to be used to explicitly tell CMake to not sum up options
   # (e.g. -option A -option B => -option A B)(CMake default behaviour), but instead keep them separated (needed for
   # proper operation of emscripten)
   add_compile_options(
@@ -185,12 +185,5 @@ target_link_libraries(
           fftw
           vir
           pmtv)
-target_include_directories(
-  ${target_name}
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition # for daq_api.hpp
-          ${graph-prototype_SOURCE_DIR}/core/include
-          ${graph-prototype_SOURCE_DIR}/meta/include
-          ${graph-prototype_SOURCE_DIR}/algorithm/include
-          ${graph-prototype_SOURCE_DIR}/blocks/basic/include
-          ${graph-prototype_SOURCE_DIR}/blocks/fourier/include)
+target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")

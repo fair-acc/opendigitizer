@@ -14,7 +14,7 @@
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.h>
-#include <gnuradio-4.0/basic/selector.hpp>
+#include <gnuradio-4.0/basic/Selector.hpp>
 
 #ifndef __EMSCRIPTEN__
 #include <Picoscope4000a.hpp>
@@ -55,7 +55,7 @@ struct TestSource : public gr::Block<TestSource<T>> {
         if (_produced == 0 && n > 0) {
             auto &tag = this->output_tags()[0];
             tag       = { 0, { { std::string(gr::tag::SIGNAL_MIN.key()), -0.3f }, { std::string(gr::tag::SIGNAL_MAX.key()), 0.3f } } };
-            this->forward_tags();
+            this->forwardTags();
         }
 
         const auto edgeLength = static_cast<std::size_t>(sample_rate / 200.f);
