@@ -50,9 +50,9 @@ jobs:
         git clone --depth=1 https://github.com/emscripten-core/emsdk.git
         cd emsdk
         # Download and install emscripten.
-        ./emsdk install 3.1.44 # (latest = 3.1.47 -> 21/10/2023)
+        ./emsdk install 3.1.51 # (2023-12-14)
         # Make "active" for the current user. (writes .emscripten file)
-        ./emsdk activate 3.1.44
+        ./emsdk activate 3.1.51
 
     - name: Install gcovr
       shell: bash
@@ -79,7 +79,6 @@ jobs:
         sudo add-apt-repository 'deb https://labs.picotech.com/rc/picoscope7/debian/ picoscope main'
         sudo apt update
         sudo apt install -y udev libusb-1.0-0-dev libps3000a libps4000a libps5000a libps6000 libps6000a || true # ignore udev errors in post install because of udev in container
-
 
     - name: Configure CMake
       shell: bash
