@@ -71,7 +71,30 @@ jobs:
         sudo apt update
         sudo apt install -y libx11-dev libgl1-mesa-dev libsdl2-dev
 
-    # Temporary dependency, until we rely on the plugin system to load gr-digitizers blocks at runtime
+    # Temporary dependencies for gr-digitizers (should become runtime dependency)
+    - name: "Install timing system dependencies: etherbone"
+      shell: bash
+      run: |
+        git clone --branch v2.1.3 --depth=1 https://ohwr.org/project/etherbone-core.git
+        cd etherbone-core/api
+        touch ChangeLog # add an empty changelog file which is required by autotools
+        sed -e "s%AC_MSG_ERROR%AC_MSG_NOTICE%g" -i configure.ac
+        autoreconf -i
+        ./configure
+        make -j
+        sudo make install
+
+    - name: "Install timing system dependencies: saftlib"
+      shell: bash
+      run: |
+        sudo apt-get -y install libsigc++-2.0-dev libxslt1-dev libboost-all-dev
+        git clone --branch v3.0.3 --depth=1 https://github.com/GSI-CS-CO/saftlib.git
+        cd saftlib
+        ./autogen.sh
+        ./configure
+        make
+        sudo make install
+
     - name: Install picoscope libraries
       run: |
         # https://www.picotech.com/downloads/linux

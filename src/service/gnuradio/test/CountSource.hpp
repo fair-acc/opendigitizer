@@ -78,9 +78,8 @@ struct CountSource : public gr::Block<CountSource<T>> {
             }
         }
         if (!_pending_tags.empty() && _pending_tags[0].index == static_cast<gr::Tag::signed_index_type>(_produced)) {
-            this->output_tags()[0] = { 0, _pending_tags[0].map };
+            this->publishTag(_pending_tags[0].map, 0);
             _pending_tags.pop_front();
-            this->forwardTags();
         }
 
         const auto subspan = std::span(output.begin(), output.end()).first(n);

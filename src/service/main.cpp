@@ -53,9 +53,7 @@ struct TestSource : public gr::Block<TestSource<T>> {
         }
 
         if (_produced == 0 && n > 0) {
-            auto &tag = this->output_tags()[0];
-            tag       = { 0, { { std::string(gr::tag::SIGNAL_MIN.key()), -0.3f }, { std::string(gr::tag::SIGNAL_MAX.key()), 0.3f } } };
-            this->forwardTags();
+            this->publishTag({ { std::string(gr::tag::SIGNAL_MIN.key()), -0.3f }, { std::string(gr::tag::SIGNAL_MAX.key()), 0.3f } }, 0);
         }
 
         const auto edgeLength = static_cast<std::size_t>(sample_rate / 200.f);

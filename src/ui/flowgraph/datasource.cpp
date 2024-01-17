@@ -40,17 +40,13 @@ struct SineSource : public gr::Block<SineSource<T>> {
         thread.join();
     }
 
-    std::make_signed_t<std::size_t>
-    available_samples(const SineSource & /*d*/) noexcept {
-        std::lock_guard lock(mutex);
-        const auto      ret = std::make_signed_t<std::size_t>(samples.size());
-        return ret > 0 ? ret : -1;
-    }
-
     T processOne() {
         std::lock_guard guard(mutex);
-
-        T               v = samples.front();
+        assert(!samples.empty());
+        if (samples.size() == 1) {
+            this->requestStop();
+        }
+        T v = samples.front();
         samples.pop_front();
         return v;
     }
