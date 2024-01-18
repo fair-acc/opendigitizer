@@ -66,7 +66,6 @@ if(OPENDIGITIZER_ENABLE_TESTING)
         EXECUTABLE_ARGS
         "--output-on-failure"
         DEPENDENCIES
-        qa_BlockScalingOffset
         qa_GnuRadioWorker # TODO prevent qa_BlockScalingOffset (gr-digitizers) from being run and remove it here
         EXCLUDE
         "$CMAKE_BUILD_DIR/*"
@@ -79,7 +78,6 @@ if(OPENDIGITIZER_ENABLE_TESTING)
         EXECUTABLE_ARGS
         "--output-on-failure"
         DEPENDENCIES
-        qa_BlockScalingOffset
         qa_GnuRadioWorker
         EXCLUDE
         "$CMAKE_BUILD_DIR/*"
