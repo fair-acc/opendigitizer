@@ -1,11 +1,14 @@
 #ifndef OPENDIGITIZER_ACQUISITION_DAQ_API_H
 #define OPENDIGITIZER_ACQUISITION_DAQ_API_H
 
+#include <MIME.hpp>
 #include <MultiArray.hpp>
 #include <opencmw.hpp>
-#include <string>
+
 #include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
+
+#include <string>
 #include <vector>
 
 namespace opendigitizer::flowgraph {

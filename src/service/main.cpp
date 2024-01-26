@@ -82,10 +82,10 @@ void registerTestBlocks(Registry *registry) {
     registerBuiltinBlocks(registry);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    GP_REGISTER_NODE_RUNTIME(registry, TestSource, double, float);
-    GP_REGISTER_NODE_RUNTIME(registry, gr::basic::DataSink, double, float, int16_t);
+    GP_REGISTER_BLOCK_RUNTIME(registry, TestSource, double, float);
+    GP_REGISTER_BLOCK_RUNTIME(registry, gr::basic::DataSink, double, float, int16_t);
 #ifndef __EMSCRIPTEN__
-    GP_REGISTER_NODE_RUNTIME(registry, fair::picoscope::Picoscope4000a, double, float, int16_t);
+    GP_REGISTER_BLOCK_RUNTIME(registry, fair::picoscope::Picoscope4000a, double, float, int16_t);
 #endif
 #pragma GCC diagnostic pop
 }
@@ -152,12 +152,12 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(&registry);
-    gr::plugin_loader pluginLoader(&registry, {});
-    GrAcqWorker       grAcqWorker(broker, std::chrono::milliseconds(50));
-    GrFgWorker        grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
+    gr::PluginLoader pluginLoader(&registry, {});
+    GrAcqWorker      grAcqWorker(broker, std::chrono::milliseconds(50));
+    GrFgWorker       grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
 
-    std::jthread      grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
-    std::jthread      grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
+    std::jthread     grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
+    std::jthread     grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
 
     std::this_thread::sleep_for(100ms);
 

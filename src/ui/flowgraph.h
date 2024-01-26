@@ -113,14 +113,14 @@ public:
             using Node                             = T<float>;
             namespace meta                         = gr::traits::block;
 
-            constexpr std::size_t input_port_count = meta::template input_port_types<Node>::size;
+            constexpr std::size_t input_port_count = meta::template stream_input_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template input_ports<Node>::template at<Is>>(t->inputs), ...);
+                (t->template initPort<typename meta::template stream_input_ports<Node>::template at<Is>>(t->inputs), ...);
             }(std::make_index_sequence<input_port_count>());
 
-            constexpr std::size_t output_port_count = meta::template output_port_types<Node>::size;
+            constexpr std::size_t output_port_count = meta::template stream_output_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template output_ports<Node>::template at<Is>>(t->outputs), ...);
+                (t->template initPort<typename meta::template stream_output_ports<Node>::template at<Is>>(t->outputs), ...);
             }(std::make_index_sequence<output_port_count>());
 
             addBlockType(std::move(t));
