@@ -81,37 +81,33 @@ struct App {
         m_scheduler.emplace<Scheduler>(std::forward<Graph>(graph));
     }
 
-    bool runScheduler() {
-        if (m_scheduler) {
-            m_scheduler.run();
-            return true;
-        }
-        return false;
-    }
-
 private:
     struct SchedWrapper {
         template<typename T, typename... Args>
         void emplace(Args &&...args) {
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
-        void run() { handler->run(); }
         explicit operator bool() const { return handler != nullptr; };
 
     private:
         struct Handler {
             virtual ~Handler() = default;
-            virtual void run() = 0;
         };
         template<typename T>
         struct HandlerImpl : Handler {
             T data;
+            std::thread thread;
             template<typename... Args>
             explicit HandlerImpl(Args &&...args)
                 : data(std::forward<Args>(args)...) {
-                data.init();
+                thread = std::thread([this]() {
+                    data.init();
+                    data.runAndWait();
+                });
             }
-            void run() final { data.runAndWait(); }
+            ~HandlerImpl() {
+                thread.join();
+            }
         };
 
         std::unique_ptr<Handler> handler;

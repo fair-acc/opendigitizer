@@ -292,8 +292,6 @@ static void main_loop(void *arg) {
         app->assignScheduler<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
     }
 
-    app->runScheduler();
-
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
