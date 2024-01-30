@@ -14,13 +14,10 @@ using namespace opendigitizer::acq;
 template<typename T>
 struct RemoteSource : public gr::Block<RemoteSource<T>> {
     gr::PortOut<T>                out{};
-
     DigitizerUi::RemoteBlockType *block;
+
     RemoteSource(DigitizerUi::RemoteBlockType *b)
         : block(b) {
-    }
-
-    ~RemoteSource() {
     }
 
     void append(const Acquisition &data) {
@@ -30,35 +27,27 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
     struct Data {
         Acquisition data;
-        int         read = 0;
+        std::size_t read = 0;
     };
-    std::vector<Data> m_data;
-    std::mutex        m_mutex;
+    std::deque<Data> m_data;
+    std::mutex       m_mutex;
 
-    std::make_signed_t<std::size_t>
-    available_samples(const RemoteSource & /*d*/) noexcept {
+    auto             processBulk(gr::PublishableSpan auto &output) noexcept {
+        std::size_t     written = 0;
         std::lock_guard lock(m_mutex);
-        int             available = 0;
-        for (const auto &d : m_data) {
-            available += (d.data.channelValue.size() - d.read);
-        }
-        return available > 0 ? available : -1;
-    }
+        while (written < output.size() && !m_data.empty()) {
+            auto &d  = m_data.front();
+            auto  in = std::span<const float>(d.data.channelValue.begin() + d.read, d.data.channelValue.end());
+            in       = in.first(std::min(output.size() - written, in.size()));
 
-    auto processBulk(std::span<T> output) noexcept {
-        auto            toWrite = output.size();
-        T              *out     = output.data();
-
-        std::lock_guard lock(m_mutex);
-        while (toWrite > 0 && !m_data.empty()) {
-            auto &d      = m_data.front();
-            auto  toCopy = std::min<int>(toWrite, d.data.channelValue.size() - d.read);
-            memcpy(out, d.data.channelValue.data() + d.read, toCopy * sizeof(T));
-            d.read += toCopy;
+            std::copy(in.begin(), in.end(), output.begin() + written);
+            written += in.size();
+            d.read += in.size();
             if (d.read == d.data.channelValue.size()) {
-                m_data.erase(m_data.begin());
+                m_data.pop_front();
             }
         }
+        output.publish(written);
         return gr::work::Status::OK;
     }
 };
