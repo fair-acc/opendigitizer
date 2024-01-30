@@ -95,7 +95,7 @@ private:
         };
         template<typename T>
         struct HandlerImpl : Handler {
-            T data;
+            T           data;
             std::thread thread;
             template<typename... Args>
             explicit HandlerImpl(Args &&...args)

@@ -12,14 +12,14 @@
 template<typename T>
     requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
-    gr::PortOut<T>   out{};
-    float            val       = 0;
-    float            frequency = 1.f;
-    std::mutex       mutex;
+    gr::PortOut<T>          out{};
+    float                   val       = 0;
+    float                   frequency = 1.f;
+    std::mutex              mutex;
     std::condition_variable conditionvar;
-    std::deque<T>    samples;
-    std::thread      thread;
-    std::atomic_bool quit = false;
+    std::deque<T>           samples;
+    std::thread             thread;
+    std::atomic_bool        quit = false;
 
     SineSource()
         : thread([this]() {
