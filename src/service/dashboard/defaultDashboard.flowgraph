@@ -12,7 +12,10 @@ blocks:
   - name: source for sink 2
     id: sink_source
   - name: remote source 1
-    id: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+    id: opendigitizer::RemoteSource
+    parameters:
+      remote_uri: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+      signal_name: test
   - name: sink 1
     id: sink
   - name: sink 2
@@ -29,6 +32,3 @@ connections:
   - [sum sigs, 0, sink 2, 0]
   - [sine source 1, 0, sink 3, 0]
   - [remote source 1, 0, sink 4, 0]
-remote_sources:
-  - uri: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
-    signal_name: test

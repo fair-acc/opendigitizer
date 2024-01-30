@@ -32,6 +32,7 @@
 #include "flowgraph/datasink.h"
 #include "flowgraph/datasource.h"
 #include "flowgraphitem.h"
+#include "RemoteSource.hpp"
 #include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
@@ -240,7 +241,7 @@ int main(int argc, char **argv) {
     DigitizerUi::DataSink::registerBlockType();
     DigitizerUi::DataSinkSource::registerBlockType();
     DigitizerUi::ArithmeticBlock::registerBlockType();
-
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
 
     loadFonts(app);
