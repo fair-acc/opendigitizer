@@ -11,24 +11,28 @@
 
 template<typename T>
     requires std::is_arithmetic_v<T>
-struct SineSource : public gr::Block<SineSource<T>> {
-    gr::PortOut<T>   out{};
-    float            val       = 0;
-    float            frequency = 1.f;
-    std::mutex       mutex;
-    std::deque<T>    samples;
-    std::thread      thread;
-    std::atomic_bool quit = false;
+struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
+    gr::PortOut<T>          out{};
+    float                   val       = 0;
+    float                   frequency = 1.f;
+    std::mutex              mutex;
+    std::condition_variable conditionvar;
+    std::deque<T>           samples;
+    std::thread             thread;
+    std::atomic_bool        quit = false;
 
     SineSource()
         : thread([this]() {
             using namespace std::chrono_literals;
             while (!quit) {
-                const double sec = double(std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()) * 1e-6;
+                {
+                    std::unique_lock lock(mutex);
+                    const double     sec = double(std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()).time_since_epoch().count()) * 1e-6;
+                    samples.push_back(T(std::sin(sec * double(frequency) * double(2. * M_PI))));
 
-                mutex.lock();
-                samples.push_back(T(std::sin(sec * double(frequency) * double(2. * M_PI))));
-                mutex.unlock();
+                    out.max_samples = samples.size();
+                    conditionvar.notify_all();
+                }
 
                 std::this_thread::sleep_for(20ms);
             }
@@ -41,13 +45,14 @@ struct SineSource : public gr::Block<SineSource<T>> {
     }
 
     T processOne() {
-        std::lock_guard guard(mutex);
-        assert(!samples.empty());
-        if (samples.size() == 1) {
-            this->requestStop();
+        std::unique_lock guard(mutex);
+        if (samples.size() == 0) {
+            conditionvar.wait(guard);
         }
+
         T v = samples.front();
         samples.pop_front();
+        out.max_samples = std::max<int>(1, samples.size());
         return v;
     }
 };
