@@ -17,7 +17,6 @@ set(sources
   flowgraphitem.cpp
   dashboard.cpp
   flowgraph/datasink.cpp
-  flowgraph/arithmetic_block.cpp
   dashboardpage.cpp
   opendashboardpage.cpp
   imguiutils.cpp

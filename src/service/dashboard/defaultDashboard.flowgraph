@@ -2,7 +2,7 @@ blocks:
   - name: FFT
     id: FFT
   - name: sum sigs
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: sine source 1
     id: opendigitizer::SineSource
     parameters:

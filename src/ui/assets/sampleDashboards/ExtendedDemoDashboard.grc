@@ -1,10 +1,10 @@
 blocks:
   - name: sum sigs1
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: sum sigs2
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: sum sigs3
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: FFT
     id: FFT
   - name: sine source 3

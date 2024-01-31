@@ -24,13 +24,13 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include "app.h"
+#include "blocks/Arithmetic.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
 #include "dashboard.h"
 #include "dashboardpage.h"
 #include "fair_header.h"
 #include "flowgraph.h"
-#include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
 #include "flowgraphitem.h"
 #include "utils/TouchHandler.hpp"
@@ -239,9 +239,9 @@ int main(int argc, char **argv) {
 
     DigitizerUi::DataSink::registerBlockType();
     DigitizerUi::DataSinkSource::registerBlockType();
-    DigitizerUi::ArithmeticBlock::registerBlockType();
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
 
     loadFonts(app);

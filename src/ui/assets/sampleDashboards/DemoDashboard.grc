@@ -1,6 +1,6 @@
 blocks:
   - name: sum sigs
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: FFT
     id: FFT
   - name: sine source 1
