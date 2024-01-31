@@ -8,19 +8,19 @@ blocks:
   - name: FFT
     id: FFT
   - name: sine source 3
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 0.100000
   - name: sine source 4
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 0.200000
   - name: sine source 5
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 0.300000
   - name: sine source 6
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 0.400000
   - name: source for sink 1

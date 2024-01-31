@@ -11,18 +11,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 set(sources
-    main.cpp
-    app.cpp
-    flowgraph.cpp
-    flowgraphitem.cpp
-    dashboard.cpp
-    flowgraph/datasource.cpp
-    flowgraph/datasink.cpp
-    flowgraph/arithmetic_block.cpp
-    dashboardpage.cpp
-    opendashboardpage.cpp
-    imguiutils.cpp
-    remotesignalsources.cpp)
+  main.cpp
+  app.cpp
+  flowgraph.cpp
+  flowgraphitem.cpp
+  dashboard.cpp
+  flowgraph/datasink.cpp
+  flowgraph/arithmetic_block.cpp
+  dashboardpage.cpp
+  opendashboardpage.cpp
+  imguiutils.cpp
+  remotesignalsources.cpp)
 
 set(GNURADIO_PREFIX
     "/usr/"

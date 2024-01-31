@@ -4,7 +4,7 @@ blocks:
   - name: sum sigs
     id: Arithmetic
   - name: sine source 1
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 0.100000
   - name: source for sink 1

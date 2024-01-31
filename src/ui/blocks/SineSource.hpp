@@ -1,13 +1,12 @@
-#include "datasource.h"
 
-#include <fmt/format.h>
-#include <math.h>
-#include <mutex>
+#ifndef OPENDIGITIZER_SINESOURCE_HPP
+#define OPENDIGITIZER_SINESOURCE_HPP
 
-#include <fmt/format.h>
 #include <gnuradio-4.0/Block.hpp>
 
-#include "../flowgraph.h"
+#include <mutex>
+
+namespace opendigitizer {
 
 template<typename T>
     requires std::is_arithmetic_v<T>
@@ -57,14 +56,8 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (SineSource<T>), out, frequency);
-static_assert(gr::traits::block::can_processOne<SineSource<float>>);
-static_assert(gr::traits::block::can_processOne<SineSource<double>>);
+} // namespace opendigitizer
 
-namespace DigitizerUi {
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, frequency)
 
-void DataSource::registerBlockType() {
-    BlockType::registry().addBlockType<SineSource>("sine_source");
-}
-
-} // namespace DigitizerUi
+#endif
