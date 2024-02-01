@@ -64,6 +64,7 @@ if(EMSCRIPTEN)
 endif()
 
 # dependencies
+include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
 cmrc_add_resource_library(
   ui_assets

@@ -28,9 +28,9 @@ template<typename Registry>
 void                   registerTestBlocks(Registry *registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    GP_REGISTER_NODE_RUNTIME(registry, CountSource, double);
-    GP_REGISTER_NODE_RUNTIME(registry, ForeverSource, double);
-    GP_REGISTER_NODE_RUNTIME(registry, gr::basic::DataSink, double);
+    GP_REGISTER_BLOCK_RUNTIME(registry, CountSource, double);
+    GP_REGISTER_BLOCK_RUNTIME(registry, ForeverSource, double);
+    GP_REGISTER_BLOCK_RUNTIME(registry, gr::basic::DataSink, double);
 #pragma GCC diagnostic pop
 }
 
@@ -71,7 +71,7 @@ struct TestSetup {
     using AcqWorker                    = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
     using FgWorker                     = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
     gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(&r); return r; }();
-    gr::plugin_loader     pluginLoader = gr::plugin_loader(&registry, {});
+    gr::PluginLoader      pluginLoader = gr::PluginLoader(&registry, {});
     majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
     AcqWorker             acqWorker    = AcqWorker(broker, 50ms);
     FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);

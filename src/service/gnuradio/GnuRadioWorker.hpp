@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <ranges>
 #include <string_view>
 #include <utility>
@@ -119,9 +120,9 @@ struct DataSetPollerEntry {
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
-    std::jthread             _notifyThread;
-    std::optional<gr::Graph> _pending_flow_graph;
-    std::mutex               _flow_graph_mutex;
+    std::jthread               _notifyThread;
+    std::unique_ptr<gr::Graph> _pending_flow_graph;
+    std::mutex                 _flow_graph_mutex;
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
@@ -145,7 +146,7 @@ public:
         _notifyThread.join();
     }
 
-    void setGraph(gr::Graph fg) {
+    void setGraph(std::unique_ptr<gr::Graph> fg) {
         std::lock_guard lg{ _flow_graph_mutex };
         _pending_flow_graph = std::move(fg);
     }
@@ -407,7 +408,7 @@ private:
 
 template<typename TAcquisitionWorker, units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioFlowGraphWorker : public Worker<serviceName, flowgraph::FilterContext, flowgraph::Flowgraph, flowgraph::Flowgraph, Meta...> {
-    gr::plugin_loader   *_plugin_loader;
+    gr::PluginLoader    *_plugin_loader;
     TAcquisitionWorker  &_acquisition_worker;
     std::mutex           _flow_graph_lock;
     flowgraph::Flowgraph _flow_graph;
@@ -415,13 +416,13 @@ class GnuRadioFlowGraphWorker : public Worker<serviceName, flowgraph::FilterCont
 public:
     using super_t = Worker<serviceName, flowgraph::FilterContext, flowgraph::Flowgraph, flowgraph::Flowgraph, Meta...>;
 
-    explicit GnuRadioFlowGraphWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context &context, gr::plugin_loader *pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker &acquisitionWorker, Settings settings = {})
+    explicit GnuRadioFlowGraphWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context &context, gr::PluginLoader *pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker &acquisitionWorker, Settings settings = {})
         : super_t(std::move(brokerAddress), {}, context, std::move(settings)), _plugin_loader(pluginLoader), _acquisition_worker(acquisitionWorker) {
         init(std::move(initialFlowGraph));
     }
 
     template<typename BrokerType>
-    explicit GnuRadioFlowGraphWorker(const BrokerType &broker, gr::plugin_loader *pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker &acquisitionWorker)
+    explicit GnuRadioFlowGraphWorker(const BrokerType &broker, gr::PluginLoader *pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker &acquisitionWorker)
         : super_t(broker, {}), _plugin_loader(pluginLoader), _acquisition_worker(acquisitionWorker) {
         init(std::move(initialFlowGraph));
     }
@@ -441,7 +442,7 @@ private:
 
         try {
             std::lock_guard lockGuard(_flow_graph_lock);
-            auto            grGraph = gr::load_grc(*_plugin_loader, initialFlowGraph.flowgraph);
+            auto            grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, initialFlowGraph.flowgraph));
             _flow_graph             = std::move(initialFlowGraph);
             _acquisition_worker.setGraph(std::move(grGraph));
         } catch (const std::string &e) {
@@ -458,7 +459,7 @@ private:
         {
             std::lock_guard lockGuard(_flow_graph_lock);
             try {
-                auto grGraph = gr::load_grc(*_plugin_loader, in.flowgraph);
+                auto grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, in.flowgraph));
                 _flow_graph  = in;
                 out          = in;
                 _acquisition_worker.setGraph(std::move(grGraph));
