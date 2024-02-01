@@ -66,7 +66,11 @@ struct CountSource : public gr::Block<CountSource<T>> {
             }
             _waiting = false;
         }
-        auto n = std::min(output.size(), static_cast<std::size_t>(n_samples) - _produced);
+        const auto samplesLeft = static_cast<std::size_t>(n_samples) - _produced;
+        if (samplesLeft == 0) {
+            this->requestStop();
+        }
+        auto n = std::min(output.size(), samplesLeft);
         // chunk data so that there's one tag max, at index 0 in the chunk
         auto tagIt = _pending_tags.begin();
         if (tagIt != _pending_tags.end()) {
@@ -91,7 +95,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
         }
         output.publish(n);
         _produced += n;
-        return n > 0 ? OK : DONE;
+        return OK;
     }
 };
 

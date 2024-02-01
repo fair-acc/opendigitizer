@@ -56,11 +56,14 @@ client::ClientContext makeClient(zmq::Context &ctx) {
 }
 
 void waitWhile(auto condition) {
-    int tries = 10;
-    while (tries > 0) {
+    // Use generous timeout to avoid flakiness when run under gcov
+    constexpr auto kTimeout       = 3s;
+    constexpr auto kSleepInterval = 100ms;
+    auto           elapsed        = 0ms;
+    while (elapsed < kTimeout) {
         if (!condition()) return;
-        tries--;
-        std::this_thread::sleep_for(100ms);
+        std::this_thread::sleep_for(kSleepInterval);
+        elapsed += kSleepInterval;
     }
     expect(false);
 }
@@ -73,7 +76,7 @@ struct TestSetup {
     gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(&r); return r; }();
     gr::PluginLoader      pluginLoader = gr::PluginLoader(&registry, {});
     majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
-    AcqWorker             acqWorker    = AcqWorker(broker, 50ms);
+    AcqWorker             acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
     FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);
     std::jthread          brokerThread;
     std::jthread          acqWorkerThread;
@@ -257,7 +260,6 @@ connections:
         expect(eq(receivedDownData, expectedDownData));
     };
 
-#if 0  // TODO this only works with a multithreaded scheduler (see comment in GnuRadioWorker.hpp)
     "Flow graph management non-terminating graphs"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
@@ -303,7 +305,6 @@ connections:
         constexpr auto kExpectedSamples = 100000UZ;
         waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
     };
-#endif // disabled test
 
     "Trigger - tightly packed tags"_test = [] {
         constexpr std::string_view grc = R"(
