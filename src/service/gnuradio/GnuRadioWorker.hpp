@@ -120,22 +120,23 @@ struct DataSetPollerEntry {
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
+    gr::PluginLoader          *_plugin_loader;
     std::jthread               _notifyThread;
-    std::unique_ptr<gr::Graph> _pending_flow_graph;
+    std::optional<std::string> _pending_flow_graph;
     std::mutex                 _flow_graph_mutex;
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
 
-    explicit GnuRadioAcquisitionWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context &context, std::chrono::milliseconds rate, Settings settings = {})
-        : super_t(std::move(brokerAddress), {}, context, std::move(settings)) {
+    explicit GnuRadioAcquisitionWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context &context, gr::PluginLoader *pluginLoader, std::chrono::milliseconds rate, Settings settings = {})
+        : super_t(std::move(brokerAddress), {}, context, std::move(settings)), _plugin_loader(pluginLoader) {
         // TODO would be useful if one can check if the external broker knows TimeDomainContext and throw an error if not
         init(rate);
     }
 
     template<typename BrokerType>
-    explicit GnuRadioAcquisitionWorker(BrokerType &broker, std::chrono::milliseconds rate)
-        : super_t(broker, {}) {
+    explicit GnuRadioAcquisitionWorker(BrokerType &broker, gr::PluginLoader *pluginLoader, std::chrono::milliseconds rate)
+        : super_t(broker, {}), _plugin_loader(pluginLoader) {
         // this makes sure the subscriptions are filtered correctly
         opencmw::query::registerTypes(TimeDomainContext(), broker);
         init(rate);
@@ -146,7 +147,7 @@ public:
         _notifyThread.join();
     }
 
-    void setGraph(std::unique_ptr<gr::Graph> fg) {
+    void setGraph(std::string fg) {
         std::lock_guard lg{ _flow_graph_mutex };
         _pending_flow_graph = std::move(fg);
     }
@@ -202,16 +203,10 @@ private:
                 }
 
                 if (pendingFlowGraph) {
-                    auto runScheduler = [&stopScheduler, &schedulerFinished](gr::Graph fg) {
-                    // TODO using a multithreaded scheduler requires some fixes (frank/scheduler_fixes branch and the per-block lifecycle methods (stop(), in particular)), so we use a
-                    // single-threaded scheduler for now until those issues are solved. This prevents terminating the running scheduler and replacing the graph.
-#if 0
+                    auto runScheduler = [&stopScheduler, &schedulerFinished](gr::Graph &&fg) {
                         using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-                        // TODO currently we limit ourselves to one thread here, because
-                        // - (seen with 2 threads) the data sink receives too large chunks, e.g. samples 0..100 when there's a tag at 0 and 50, instead of 0..49 (see triggered test case)
-                        // - (seen with unbound thread count) the qa_DataSink test (graph-prototype) fails completely when using a multithreaded scheduler with arbitrary number of threads
-                        auto threadPool = std::make_shared<thread_pool::BasicThreadPool>("simple-scheduler-pool", thread_pool::CPU_BOUND, 1UZ, 1UZ);
-                        auto scheduler  = Scheduler(std::move(fg), threadPool);
+                        auto scheduler  = Scheduler(std::move(fg));
+                        scheduler.init();
                         scheduler.start();
                         while (!stopScheduler) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -219,18 +214,21 @@ private:
                                 schedulerFinished = true;
                             }
                         }
+
                         scheduler.stop();
-#else
-                        gr::scheduler::Simple sched(std::move(fg));
-                        sched.runAndWait();
-                        schedulerFinished = true;
-#endif
                     };
 
                     stopScheduler     = false;
                     schedulerFinished = false;
-                    handleSubscriptions(streamingPollers, dataSetPollers); // create pollers for new sinks before starting graph
-                    schedulerThread = std::jthread(runScheduler, std::move(*pendingFlowGraph));
+                    try {
+                        auto graph = gr::load_grc(*_plugin_loader, *pendingFlowGraph);
+                        handleSubscriptions(streamingPollers, dataSetPollers); // create pollers for new sinks before starting graph
+                        schedulerThread = std::jthread(runScheduler, std::move(graph));
+                    } catch (...) {
+                        // must never happen, parsing ensured by FlowGraphWorker
+                        fmt::println(std::cerr, "Internal error: Could not parse flow graph: {}", *pendingFlowGraph);
+                        std::terminate();
+                    }
                 }
 
                 const auto next_update = update + rate;
@@ -444,7 +442,7 @@ private:
             std::lock_guard lockGuard(_flow_graph_lock);
             auto            grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, initialFlowGraph.flowgraph));
             _flow_graph             = std::move(initialFlowGraph);
-            _acquisition_worker.setGraph(std::move(grGraph));
+            _acquisition_worker.setGraph(_flow_graph.flowgraph);
         } catch (const std::string &e) {
             throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
         }
@@ -459,10 +457,15 @@ private:
         {
             std::lock_guard lockGuard(_flow_graph_lock);
             try {
+                // HACK: we cannot pass the parsed gr::Graph here, because the DataSinkRegistry is shared between gr::Graph instances,
+                // which causes races when tearing down the previous graph. (it might then get a poller from the new graph, and then
+                // waits for it to finish, which never happens).
+                // Thus just parse the graph here to make sure it is valid, and then pass the YAML to the acquisition worker to parse it
+                // there again, after destroying the previous graph.
                 auto grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, in.flowgraph));
                 _flow_graph  = in;
                 out          = in;
-                _acquisition_worker.setGraph(std::move(grGraph));
+                _acquisition_worker.setGraph(in.flowgraph);
             } catch (const std::string &e) {
                 throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
             }

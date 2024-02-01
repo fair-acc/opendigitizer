@@ -153,7 +153,7 @@ connections:
     gr::BlockRegistry registry;
     registerTestBlocks(&registry);
     gr::PluginLoader pluginLoader(&registry, {});
-    GrAcqWorker      grAcqWorker(broker, std::chrono::milliseconds(50));
+    GrAcqWorker      grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
     GrFgWorker       grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
 
     std::jthread     grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
