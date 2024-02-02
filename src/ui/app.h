@@ -8,9 +8,10 @@
 #include "common.h"
 #include "dashboard.h"
 #include "dashboardpage.h"
-#include "flowgraph.h"
 #include "flowgraphitem.h"
 #include "opendashboardpage.h"
+
+#include <gnuradio-4.0/Scheduler.hpp>
 
 struct ImFont;
 
@@ -72,13 +73,14 @@ struct App {
     ImFont                    *fontIconsSolidBig;
     ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
+    // The thread limit here is mainly for emscripten
+    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 2, 4);
 
-    template<typename Scheduler, typename Graph>
+    template<typename Graph>
     void assignScheduler(Graph &&graph) {
-        if (m_scheduler) {
-            m_garbageSchedulers.push_back(std::move(m_scheduler));
-        }
-        m_scheduler.emplace<Scheduler>(std::forward<Graph>(graph));
+        using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
+
+        m_scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
     }
 
 private:
@@ -97,15 +99,22 @@ private:
         struct HandlerImpl : Handler {
             T           data;
             std::thread thread;
+            std::atomic<bool> stopRequested = false;
+
             template<typename... Args>
             explicit HandlerImpl(Args &&...args)
                 : data(std::forward<Args>(args)...) {
                 thread = std::thread([this]() {
                     data.init();
-                    data.runAndWait();
+                    data.start();
+                    while (!stopRequested && data.isProcessing()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    data.stop();
                 });
             }
             ~HandlerImpl() {
+                stopRequested = true;
                 thread.join();
             }
         };
@@ -113,8 +122,7 @@ private:
         std::unique_ptr<Handler> handler;
     };
 
-    SchedWrapper              m_scheduler;
-    std::vector<SchedWrapper> m_garbageSchedulers; // TODO: Cleaning up schedulers needs support in opencmw to return unsubscription confirmation
+    SchedWrapper m_scheduler;
 
     App();
 
