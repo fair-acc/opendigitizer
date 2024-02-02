@@ -19,26 +19,25 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
     gr::PortOut<float>          out;
     std::string                 remote_uri;
     std::string                 signal_name;
-    opencmw::client::RestClient m_client;
+    opencmw::client::RestClient _client;
 
     struct Data {
         opendigitizer::acq::Acquisition data;
         std::size_t                     read = 0;
     };
 
-    std::deque<Data> m_data;
-    std::mutex       m_mutex;
+    struct Queue {
+        std::deque<Data> data;
+        std::mutex       mutex;
+    };
 
-    void             append(opendigitizer::acq::Acquisition &&data) {
-        std::lock_guard lock(m_mutex);
-        m_data.push_back({ std::move(data), 0 });
-    }
+    std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
     auto processBulk(gr::PublishableSpan auto &output) noexcept {
         std::size_t     written = 0;
-        std::lock_guard lock(m_mutex);
-        while (written < output.size() && !m_data.empty()) {
-            auto &d  = m_data.front();
+        std::lock_guard lock(_queue->mutex);
+        while (written < output.size() && !_queue->data.empty()) {
+            auto &d  = _queue->data.front();
             auto  in = std::span<const float>(d.data.channelValue.begin(), d.data.channelValue.end());
             in       = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
 
@@ -46,7 +45,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
             written += in.size();
             d.read += in.size();
             if (d.read == d.data.channelValue.size()) {
-                m_data.pop_front();
+                _queue->data.pop_front();
             }
         }
         output.publish(written);
@@ -76,21 +75,28 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
         command.topic   = opencmw::URI<>(remote_uri);
         fmt::print("Subscribing to {}\n", remote_uri);
 
-        command.callback = [this](const opencmw::mdp::Message &rep) {
+        std::weak_ptr maybeQueue = _queue;
+
+        command.callback         = [maybeQueue](const opencmw::mdp::Message &rep) {
             if (rep.data.empty()) {
                 return;
             }
             try {
+                auto queue = maybeQueue.lock();
+                if (!queue) {
+                    return;
+                }
                 auto                            buf = rep.data;
                 opendigitizer::acq::Acquisition acq;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-                append(std::move(acq));
+                std::lock_guard lock(queue->mutex);
+                queue->data.push_back({ std::move(acq), 0 });
             } catch (opencmw::ProtocolException &e) {
                 fmt::print(std::cerr, "{}\n", e.what());
                 return;
             }
         };
-        m_client.request(command);
+        _client.request(command);
     }
 };
 
