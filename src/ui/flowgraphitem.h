@@ -26,14 +26,15 @@ public:
     FlowGraphItem();
     ~FlowGraphItem();
 
-    void                             draw(FlowGraph *fg, const ImVec2 &size);
+    void                                draw(FlowGraph *fg, const ImVec2 &size);
 
-    std::function<void(FlowGraph *)> newSinkCallback;
+    std::function<Block *(FlowGraph *)> newSinkCallback;
+    std::function<Block *(FlowGraph *)> newSinkSourceCallback;
 
-    std::string                      settings(FlowGraph *fg) const;
-    void                             setSettings(FlowGraph *fg, const std::string &settings);
-    void                             clear();
-    void                             setStyle(Style style);
+    std::string                         settings(FlowGraph *fg) const;
+    void                                setSettings(FlowGraph *fg, const std::string &settings);
+    void                                clear();
+    void                                setStyle(Style style);
 
 private:
     enum class Alignment {
@@ -44,6 +45,9 @@ private:
     void                              addBlock(const Block &b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
     void                              drawNewBlockDialog(FlowGraph *fg);
     void                              drawAddSourceDialog(FlowGraph *fg);
+    void                              sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
+    void                              arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
+    std::vector<const Block *>        getAllBlocks(FlowGraph *fg);
 
     QueryFilterElementList            querySignalFilters;
     SignalList                        signalList{ querySignalFilters };
@@ -56,6 +60,7 @@ private:
     bool                              m_addRemoteSignal             = false;
     bool                              m_addRemoteSignalDialogOpened = false;
     std::string                       m_addRemoteSignalUri;
+    std::vector<const Block *>        m_nodesToArrange;
 
     opencmw::service::dns::QueryEntry m_queryFilter;
 
@@ -70,6 +75,7 @@ private:
     };
     std::unordered_map<FlowGraph *, Context> m_editors;
     ImGuiUtils::BlockControlsPanel           m_editPane;
+    bool                                     m_layoutGraph{ true };
 };
 
 } // namespace DigitizerUi

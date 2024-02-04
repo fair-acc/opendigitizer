@@ -219,7 +219,10 @@ int main(int argc, char **argv) {
     app.sdlState               = &sdlState;
 
     app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *) mutable {
-        app.dashboard->createSink();
+        return app.dashboard->createSink();
+    };
+    app.fgItem.newSinkSourceCallback = [&](DigitizerUi::FlowGraph *) mutable {
+        return app.dashboard->createSource();
     };
 
     app.verticalDPI = [&app]() -> float {
