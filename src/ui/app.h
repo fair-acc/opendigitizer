@@ -97,8 +97,8 @@ private:
         };
         template<typename T>
         struct HandlerImpl : Handler {
-            T           data;
-            std::thread thread;
+            T                 data;
+            std::thread       thread;
             std::atomic<bool> stopRequested = false;
 
             template<typename... Args>

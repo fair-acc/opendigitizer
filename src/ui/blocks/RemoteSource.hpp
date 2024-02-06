@@ -33,7 +33,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    auto processBulk(gr::PublishableSpan auto &output) noexcept {
+    auto                   processBulk(gr::PublishableSpan auto &output) noexcept {
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
