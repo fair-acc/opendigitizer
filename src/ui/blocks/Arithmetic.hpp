@@ -1,16 +1,17 @@
-#include "arithmetic_block.h"
+#ifndef OPENDIGITIZER_ARITHMETIC_HPP
+#define OPENDIGITIZER_ARITHMETIC_HPP
 
-#include <type_traits>
+#include <gnuradio-4.0/Block.hpp>
 
-#include "../flowgraph.h"
+namespace opendigitizer {
 
 template<typename T>
     requires std::is_arithmetic_v<T>
-struct MathNode : public gr::Block<MathNode<T>> {
-    gr::PortIn<T>                           in1{};
-    gr::PortIn<T>                           in2{};
+struct Arithmetic : public gr::Block<Arithmetic<T>> {
+    gr::PortIn<T>                           in1;
+    gr::PortIn<T>                           in2;
 
-    gr::PortOut<T>                          out{};
+    gr::PortOut<T>                          out;
 
     gr::Annotated<std::string, "operation"> operation = std::string("+");
 
@@ -33,12 +34,8 @@ struct MathNode : public gr::Block<MathNode<T>> {
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (MathNode<T>), in1, in2, out, operation);
+} // namespace opendigitizer
 
-namespace DigitizerUi {
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::Arithmetic, in1, in2, out, operation)
 
-void ArithmeticBlock::registerBlockType() {
-    BlockType::registry().addBlockType<MathNode>("Arithmetic");
-}
-
-} // namespace DigitizerUi
+#endif

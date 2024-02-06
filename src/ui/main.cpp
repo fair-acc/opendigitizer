@@ -24,13 +24,14 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include "app.h"
+#include "blocks/Arithmetic.hpp"
+#include "blocks/RemoteSource.hpp"
+#include "blocks/SineSource.hpp"
 #include "dashboard.h"
 #include "dashboardpage.h"
 #include "fair_header.h"
 #include "flowgraph.h"
-#include "flowgraph/arithmetic_block.h"
 #include "flowgraph/datasink.h"
-#include "flowgraph/datasource.h"
 #include "flowgraphitem.h"
 #include "utils/TouchHandler.hpp"
 
@@ -236,11 +237,11 @@ int main(int argc, char **argv) {
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
 
-    DigitizerUi::DataSource::registerBlockType();
     DigitizerUi::DataSink::registerBlockType();
     DigitizerUi::DataSinkSource::registerBlockType();
-    DigitizerUi::ArithmeticBlock::registerBlockType();
-
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
 
     loadFonts(app);
@@ -289,7 +290,7 @@ static void main_loop(void *arg) {
     if (app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto graph = app->dashboard->localFlowGraph.createGraph();
-        app->assignScheduler<gr::scheduler::Simple<gr::scheduler::singleThreaded>>(std::move(graph));
+        app->assignScheduler(std::move(graph));
     }
 
     // Poll and handle events (inputs, window resize, etc.)

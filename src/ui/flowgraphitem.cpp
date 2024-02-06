@@ -12,8 +12,6 @@
 #include "flowgraph.h"
 #include "imguiutils.h"
 
-#include "flowgraph/datasource.h"
-
 namespace DigitizerUi {
 
 FlowGraphItem::FlowGraphItem() {

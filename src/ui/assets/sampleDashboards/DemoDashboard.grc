@@ -1,14 +1,14 @@
 blocks:
   - name: sum sigs
-    id: Arithmetic
+    id: opendigitizer::Arithmetic
   - name: FFT
     id: FFT
   - name: sine source 1
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 1.000000
   - name: sine source 3
-    id: sine_source
+    id: opendigitizer::SineSource
     parameters:
       frequency: 1.300000
   - name: sink 1

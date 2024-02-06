@@ -9,7 +9,6 @@
 
 #include <fmt/format.h>
 
-#include "flowgraph/remotedatasource.h"
 #include "yamlutils.h"
 #include <yaml-cpp/yaml.h>
 
@@ -285,19 +284,9 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 void FlowGraph::parse(const std::string &str) {
     clear();
 
-    YAML::Node tree     = YAML::Load(str);
+    YAML::Node tree   = YAML::Load(str);
 
-    auto       rsources = tree["remote_sources"];
-    if (rsources && rsources.IsSequence()) {
-        for (const auto &s : rsources) {
-            auto uri        = s["uri"].as<std::string>();
-            auto signalName = s["signal_name"].as<std::string>();
-
-            RemoteDataSource::registerBlockType(this, uri, signalName);
-        }
-    }
-
-    auto blocks = tree["blocks"];
+    auto       blocks = tree["blocks"];
     for (const auto &b : blocks) {
         auto n  = b["name"].as<std::string>();
         auto id = b["id"].as<std::string>();
@@ -307,7 +296,6 @@ void FlowGraph::parse(const std::string &str) {
         auto type = BlockType::registry().get(id);
         if (!type) {
             std::cerr << "Block type '" << id << "' is unkown.\n";
-
             auto block = std::make_unique<GRBlock>(n, id, type);
             m_blocks.push_back(std::move(block));
             continue;
@@ -379,7 +367,9 @@ void FlowGraph::clear() {
     m_sourceBlocks.clear();
     m_sinkBlocks.clear();
     m_connections.clear();
+#if 0
     m_remoteSources.clear();
+#endif
 }
 
 int FlowGraph::save(std::ostream &stream) {
@@ -424,21 +414,6 @@ int FlowGraph::save(std::ostream &stream) {
                     YamlSeq seq(out);
                     out << c.src.block->name << c.src.index;
                     out << c.dst.block->name << c.dst.index;
-                }
-            });
-        }
-
-        if (!m_remoteSources.empty()) {
-            root.write("remote_sources", [&]() {
-                YamlSeq sources(out);
-                for (const auto &s : m_remoteSources) {
-                    YamlMap map(out);
-                    map.write("uri", s.uri);
-                    // we need to save down the name of the signal (and in the future probably other stuff) because when we load
-                    // having to wait for information from the servers about all the remote signals used by the flowgraph would
-                    // not be ideal. Moreover, this way a flowgraph can be loaded even when some signal isn't available at the
-                    // moment. There will be no data but the flowgraph will load correctly anyway.
-                    map.write("signal_name", s.type->outputs[0].name);
                 }
             });
         }
@@ -568,12 +543,7 @@ void FlowGraph::disconnect(Connection *c) {
 }
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
-    RemoteDataSource::registerBlockType(this, uri);
-}
-
-void FlowGraph::registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri) {
-    m_remoteSources.push_back({ type.get(), std::string(uri) });
-    BlockType::registry().addBlockType(std::move(type));
+    // TODO create block, etc.
 }
 
 gr::Graph FlowGraph::createGraph() {

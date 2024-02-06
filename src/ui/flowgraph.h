@@ -424,7 +424,6 @@ public:
 
     int                          save(std::ostream &stream);
     void                         addRemoteSource(std::string_view uri);
-    void                         registerRemoteSource(std::unique_ptr<BlockType> &&type, std::string_view uri);
 
     std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> sinkBlockAddedCallback;

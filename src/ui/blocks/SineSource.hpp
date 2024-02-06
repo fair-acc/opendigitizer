@@ -1,13 +1,12 @@
-#include "datasource.h"
 
-#include <fmt/format.h>
-#include <math.h>
-#include <mutex>
+#ifndef OPENDIGITIZER_SINESOURCE_HPP
+#define OPENDIGITIZER_SINESOURCE_HPP
 
-#include <fmt/format.h>
 #include <gnuradio-4.0/Block.hpp>
 
-#include "../flowgraph.h"
+#include <mutex>
+
+namespace opendigitizer {
 
 template<typename T>
     requires std::is_arithmetic_v<T>
@@ -40,31 +39,35 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     }
 
     ~SineSource() {
+        std::unique_lock guard(mutex);
         quit = true;
         thread.join();
+        conditionvar.notify_all();
     }
 
-    T processOne() {
+    auto processBulk(gr::PublishableSpan auto &output) {
+        // technically, this wouldn't have to block, but could just publish 0 samples,
+        // but keep it as test case for BlockingIO<true>.
         std::unique_lock guard(mutex);
-        if (samples.size() == 0) {
+        while (samples.empty() && !quit) {
             conditionvar.wait(guard);
         }
 
-        T v = samples.front();
-        samples.pop_front();
-        out.max_samples = std::max<int>(1, samples.size());
-        return v;
+        const auto n = std::min(output.size(), samples.size());
+        if (n == 0) {
+            output.publish(0);
+            return gr::work::Status::OK;
+        }
+
+        std::copy(samples.begin(), samples.begin() + n, output.begin());
+        samples.erase(samples.begin(), samples.begin() + n);
+        output.publish(n);
+        return gr::work::Status::OK;
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (SineSource<T>), out, frequency);
-static_assert(gr::traits::block::can_processOne<SineSource<float>>);
-static_assert(gr::traits::block::can_processOne<SineSource<double>>);
+} // namespace opendigitizer
 
-namespace DigitizerUi {
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, frequency)
 
-void DataSource::registerBlockType() {
-    BlockType::registry().addBlockType<SineSource>("sine_source");
-}
-
-} // namespace DigitizerUi
+#endif
