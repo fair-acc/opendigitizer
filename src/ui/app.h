@@ -210,6 +210,88 @@ public:
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
     }
+
+    void sendMessage(const gr::Message &msg) {
+        if (m_scheduler) {
+            m_scheduler.sendMessage(msg);
+        }
+    }
+
+    void handleMessages(FlowGraph &fg) {
+        if (m_scheduler) {
+            m_scheduler.handleMessages(fg);
+        }
+    }
+
+private:
+    struct SchedWrapper {
+        template<typename T, typename... Args>
+        void emplace(Args &&...args) {
+            handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
+        }
+        explicit operator bool() const { return handler != nullptr; };
+        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+
+    private:
+        struct Handler {
+            virtual ~Handler()                               = default;
+            virtual void sendMessage(const gr::Message &msg) = 0;
+            virtual void handleMessages(FlowGraph &fg)       = 0;
+        };
+        template<typename T>
+        struct HandlerImpl : Handler {
+            T                                data;
+            std::thread                      thread;
+            std::atomic<bool>                stopRequested = false;
+            gr::MsgPortInNamed<"__Builtin">  msgIn;
+            gr::MsgPortOutNamed<"__Builtin"> msgOut;
+
+            template<typename... Args>
+            explicit HandlerImpl(Args &&...args)
+                : data(std::forward<Args>(args)...) {
+                msgOut.connect(data.msgIn);
+                data.msgOut.connect(msgIn);
+                thread = std::thread([this]() {
+                    data.init();
+                    data.start();
+                    while (!stopRequested && data.isProcessing()) {
+                        data.processScheduledMessages();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    data.stop();
+                });
+            }
+            ~HandlerImpl() {
+                stopRequested = true;
+                thread.join();
+            }
+            void sendMessage(const gr::Message &msg) final {
+                auto t = gr::messageField<std::string>(msg, gr::message::key::Target);
+                msgOut.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
+            }
+            void handleMessages(FlowGraph &fg) final {
+                const auto available = msgIn.streamReader().available();
+                if (available > 0) {
+                    const auto messages = msgIn.streamReader().get(available);
+
+                    for (const auto &msg : messages) {
+                        fg.handleMessage(msg);
+                    }
+                    auto c = msgIn.streamReader().consume(available);
+                }
+            }
+        };
+
+        std::unique_ptr<Handler> handler;
+    };
+
+    SchedWrapper m_scheduler;
+
+    Style                              m_style = Style::Light;
+    std::vector<std::function<void()>> m_activeCallbacks;
+    std::vector<std::function<void()>> m_garbageCallbacks; // TODO: Cleaning up callbacks
+    std::mutex                         m_callbacksMutex;
 };
 
 } // namespace DigitizerUi

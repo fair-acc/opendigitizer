@@ -363,6 +363,8 @@ public:
     auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }
 
+    void  updateSettings(gr::property_map &&settings);
+
 protected:
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
@@ -370,6 +372,7 @@ protected:
     bool              m_updated = false;
     FlowGraph        *m_flowGraph;
     gr::BlockModel   *m_node = nullptr;
+    std::string       m_uniqueName;
 
     friend FlowGraph;
 };
@@ -459,9 +462,24 @@ public:
     int                          save(std::ostream &stream);
     void                         addRemoteSource(std::string_view uri);
 
+    void                         handleMessage(const gr::Message &msg);
+
     std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> sinkBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
+
+    template<typename F>
+    void forEachBlock(F &&f) {
+        for (auto &b : m_sourceBlocks) {
+            if (!f(b)) return;
+        }
+        for (auto &b : m_sinkBlocks) {
+            if (!f(b)) return;
+        }
+        for (auto &b : m_blocks) {
+            if (!f(b)) return;
+        }
+    }
 
 private:
     std::vector<std::unique_ptr<Block>> m_sourceBlocks;
