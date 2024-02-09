@@ -74,7 +74,7 @@ struct App {
     ImFont                    *fontIconsSolidLarge;
     std::chrono::seconds       editPaneCloseDelay{ 15 };
     // The thread limit here is mainly for emscripten
-    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 2, 4);
+    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
 
     template<typename Graph>
     void assignScheduler(Graph &&graph) {
