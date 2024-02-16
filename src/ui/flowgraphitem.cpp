@@ -14,6 +14,33 @@
 
 namespace DigitizerUi {
 
+// Function to perform topological sort on the graph
+inline std::vector<const Block *> topologicalSort(const std::vector<const Block *> &blocks,
+        const plf::colony<Connection>                                              &connections) {
+    std::vector<const Block *>         sortedBlocks;
+    std::set<const Block *>            visited;
+
+    std::function<void(const Block *)> visit = [&](const Block *block) -> void {
+        if (visited.find(block) == visited.end()) {
+            visited.insert(block);
+
+            // Visit connected blocks
+            for (const auto &connection : connections) {
+                if (connection.src.block == block) {
+                    visit(connection.dst.block);
+                }
+            }
+
+            sortedBlocks.push_back(block);
+        }
+    };
+
+    std::ranges::for_each(blocks, visit);
+
+    std::reverse(sortedBlocks.begin(), sortedBlocks.end());
+    return sortedBlocks;
+}
+
 FlowGraphItem::FlowGraphItem() {
 }
 
@@ -110,6 +137,8 @@ void FlowGraphItem::setSettings(FlowGraph *fg, const std::string &settings) {
     c.editor = ax::NodeEditor::CreateEditor(&c.config);
     ax::NodeEditor::SetCurrentEditor(c.editor);
     setEditorStyle(c.editor, App::instance().style());
+
+    m_layoutGraph = true;
 }
 
 void FlowGraphItem::setStyle(Style s) {
@@ -200,6 +229,7 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     if (input) {
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, 10);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_SnapLinkToPinDir, 1);
     }
 
     ax::NodeEditor::BeginPin(id, kind);
@@ -208,7 +238,7 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     ax::NodeEditor::EndPin();
 
     if (input) {
-        ax::NodeEditor::PopStyleVar(2);
+        ax::NodeEditor::PopStyleVar(3);
     }
 };
 
@@ -220,6 +250,7 @@ static void drawPin(ImDrawList *drawList, ImVec2 rectSize, float spacing, float 
 
     auto y = ImGui::GetCursorPosY();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textMargin);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - spacing);
     ImGui::TextUnformatted(name.c_str());
 
     ImGui::SetCursorPosY(y + rectSize.y + spacing);
@@ -301,37 +332,42 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         ax::NodeEditor::SetNodePosition(nodeId, p);
     }
     ax::NodeEditor::BeginNode(nodeId);
+    auto nodeBeginPos = ImGui::GetCursorScreenPos();
 
     ImGui::TextUnformatted(b.name.c_str());
 
-    auto      curPos       = ImGui::GetCursorPos();
-    auto      leftPos      = curPos.x - padding.x;
-    const int rectHeight   = 14;
-    const int rectsSpacing = 5;
-    const int textMargin   = 2;
+    auto         curPos       = ImGui::GetCursorScreenPos();
+    auto         leftPos      = curPos.x - padding.x;
+    const int    rectHeight   = 14;
+    const int    rectsSpacing = 5;
+    const int    textMargin   = 2;
+    const ImVec2 minSize{ 80.0f, 70.0f };
+    auto         yMax{ minSize.y }; // we have to keep track of the Node Size ourselves
 
     if (!b.type) {
-        ImGui::TextUnformatted("Unkown type");
+        ImGui::TextUnformatted("Unknown type");
         ax::NodeEditor::EndNode();
     } else {
-        // Use a dummy to ensure a minimum sensible size on the nodees
-        ImGui::Dummy(ImVec2(80.0f, 45.0f));
-        ImGui::SetCursorPos(curPos);
-
         std::string value;
+        auto       *meta = b.graphNode() ? &b.graphNode()->metaInformation() : nullptr;
         for (const auto &val : b.parameters()) {
+            auto metaKey = val.first + "::visible";
+            if (meta && meta->contains(metaKey)) {
+                if (auto visiblePtr = std::get_if<bool>(std::addressof((*meta)[metaKey])); visiblePtr && !(*visiblePtr))
+                    continue;
+            }
             valToString(val.second, value);
             ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
         }
+        auto positionAfterTexts = ImGui::GetCursorScreenPos();
 
-        ImGui::SetCursorPos(curPos);
-
-        // auto y = curPos.y;
+        ImGui::SetCursorScreenPos(curPos);
         const auto &inputs       = b.inputs();
         auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
 
         auto        curScreenPos = ImGui::GetCursorScreenPos();
         ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
+
         for (std::size_t i = 0; i < inputs.size(); ++i) {
             inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
@@ -339,16 +375,13 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
             }
             pos.y += rectHeight + rectsSpacing;
         }
-
         // make sure the node ends up being tall enough to fit all the pins
-        ImGui::SetCursorPos(curPos);
-        ImGui::Dummy(ImVec2(10, pos.y - curScreenPos.y));
+        yMax                     = std::max(yMax, pos.y - curPos.y);
 
-        // ImGui::SetCursorPosY(y);
         const auto &outputs      = b.outputs();
         auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
         auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
-        pos                      = { curScreenPos.x - padding.x + s.x, curScreenPos.y };
+        pos                      = { curPos.x - padding.x + s.x, curPos.y };
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
@@ -356,10 +389,32 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
             }
             pos.y += rectHeight + rectsSpacing;
         }
-
         // likewise for the output pins
-        ImGui::SetCursorPos(curPos);
-        ImGui::Dummy(ImVec2(10, pos.y - curScreenPos.y));
+        yMax = std::max(yMax, pos.y - curScreenPos.y);
+
+        // Now for the Filter Button
+        ImGui::SetCursorScreenPos(positionAfterTexts);
+        curScreenPos            = ImGui::GetCursorScreenPos();
+        auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
+        auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
+        ImVec2 filterPos;
+
+        if (myHeight < yMax) {
+            // Find the lower end, deduct myHeight
+            filterPos = curPos;
+            filterPos.y += yMax - filterButtonSize;
+            ImGui::SetCursorScreenPos(filterPos);
+        }
+
+        ImGui::PushID(b.name.c_str());
+        if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
+            if (m_filterBlock == &b) {
+                m_filterBlock = nullptr;
+            } else {
+                m_filterBlock = &b;
+            }
+        }
+        ImGui::PopID();
 
         ax::NodeEditor::EndNode();
 
@@ -367,7 +422,7 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         // drawing them would increase the node size, which we need to know to correctly place the
         // output pins, and that would cause the nodes to continuously grow in width
 
-        ImGui::SetCursorPos(curPos);
+        ImGui::SetCursorScreenPos(curPos);
         auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
 
         for (std::size_t i = 0; i < inputs.size(); ++i) {
@@ -377,7 +432,7 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
             drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->inputs[i].name, in.type);
         }
 
-        ImGui::SetCursorPos(curPos);
+        ImGui::SetCursorScreenPos(curPos);
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             const auto &out = outputs[i];
 
@@ -391,19 +446,9 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         ImGui::EndDisabled();
     }
 
-    ImGui::SetCursorPos(curPos);
+    ImGui::SetCursorScreenPos(curPos);
     const auto size = ax::NodeEditor::GetNodeSize(nodeId);
     ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
-
-    ImGui::PushID(b.name.c_str());
-    if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
-        if (m_filterBlock == &b) {
-            m_filterBlock = nullptr;
-        } else {
-            m_filterBlock = &b;
-        }
-    }
-    ImGui::PopID();
 }
 
 void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
@@ -415,6 +460,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     c.config.UserPointer = &c;
     ax::NodeEditor::SetCurrentEditor(c.editor);
 
+    const ImVec2    origCursorPos     = ImGui::GetCursorScreenPos();
     const float     left              = ImGui::GetCursorPosX();
     const float     top               = ImGui::GetCursorPosY();
 
@@ -426,28 +472,21 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    ImGui::BeginChild("##canvas", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth),
-            false, ImGuiWindowFlags_NoScrollbar);
+    ax::NodeEditor::Begin("My Editor", { size.x, size.y }); // ImGui::GetContentRegionAvail());
 
-    ax::NodeEditor::Begin("My Editor", ImGui::GetContentRegionAvail());
+    auto blocks = getAllBlocks(fg);
 
-    int y = 0;
-
-    for (auto &s : fg->sourceBlocks()) {
-        auto p = ax::NodeEditor::ScreenToCanvas({ left + 10, 0 });
-        p.y    = y;
-
-        addBlock(*s, p);
-        y += ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(s.get())).y + 10;
+    for (auto &b : blocks) {
+        if (b)
+            addBlock(*b);
     }
-
-    y = 0;
-    for (auto &s : fg->sinkBlocks()) {
-        auto p = ax::NodeEditor::ScreenToCanvas({ ImGui::GetContentRegionMax().x - 10, 0 });
-        p.y    = y;
-
-        addBlock(*s, p, Alignment::Right);
-        y += ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(s.get())).y + 10;
+    if (m_layoutGraph) {
+        sortNodes(fg, blocks);
+        m_layoutGraph = false;
+    }
+    if (!m_nodesToArrange.empty()) {
+        arrangeUnconnectedNodes(fg, m_nodesToArrange);
+        m_nodesToArrange.clear();
     }
 
     if (m_createNewBlock) {
@@ -455,10 +494,6 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
         fg->addBlock(std::move(b));
         m_createNewBlock = false;
-    }
-
-    for (const auto &b : fg->blocks()) {
-        addBlock(*b);
     }
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
@@ -477,10 +512,10 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
             // validate if connection make sense. Editor is happy to make any.
             //
             // Link always goes from input to output. User may choose to drag
-            // link from output pin or input pin. This determine which pin ids
+            // link from output pin or input pin. This determines which pin ids
             // are valid and which are not:
-            //   * input valid, output invalid - user started to drag new ling from input pin
-            //   * input invalid, output valid - user started to drag new ling from output pin
+            //   * input valid, output invalid - user started to drag new link from input pin
+            //   * input invalid, output valid - user started to drag new link from output pin
             //   * input valid, output valid   - user dragged link over other pin, can be validated
 
             if (inputPinId && outputPinId) // both are valid, let's accept link
@@ -538,8 +573,6 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         }
     }
 
-    ImGui::EndChild();
-
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = n.AsPointer<Block>();
@@ -571,6 +604,9 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         if (ImGui::MenuItem("New block")) {
             openNewBlockDialog = true;
         }
+        if (ImGui::MenuItem("Rearrange blocks")) {
+            sortNodes(fg, blocks);
+        }
         ImGui::EndPopup();
     }
 
@@ -581,26 +617,47 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         ImGui::EndPopup();
     }
 
-    if (openNewBlockDialog) {
-        ImGui::OpenPopup("New block");
-    }
-
     // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
-    // if we don't put the buttons in this overlay, they will be overdrawn by the editor
-    ImGui::SetNextWindowPos(ImVec2(0, top + size.y - 30), ImGuiCond_Always);
+    // if we don't put the buttons in this overlay, the click events will go to the editor instead of the buttons
+    if (horizontalSplit) {
+        ImGui::SetNextWindowPos({ origCursorPos.x, origCursorPos.y + size.y - 37 }, ImGuiCond_Always);
+    } else {
+        ImGui::SetNextWindowPos({ origCursorPos.x, origCursorPos.y + size.y * (1 - ratio) - 39 }, ImGuiCond_Always); // on vertical, we need some extra space for the splitter
+    }
+    ImGui::SetNextWindowSize({ size.x * (ratio && horizontalSplit ? 1 - ratio : 1), 37 });
     ImGui::Begin("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
+    // These Buttons are rendered on top of the Editor, to make them properly readable, take out the opacity
+    ImVec4 buttonColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+    buttonColor.w      = 1.0f;
+    ImGui::PushStyleColor(ImGuiCol_Button, buttonColor);
 
+    ImGui::SetCursorPosX(15);
     if (ImGui::Button("Add signal")) {
         ImGui::OpenPopup("addSignalPopup");
     }
+
     ImGui::SameLine();
-    ImGui::SetCursorPosX(left + size.x - 80);
-    if (ImGui::Button("New sink") && newSinkCallback) {
-        newSinkCallback(fg);
+
+    float newSinkButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("New Sink").x - 15;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + newSinkButtonPos / 2 - ImGui::CalcTextSize("Re-Layout Graph").x);
+    if (ImGui::Button("Re-Layout Graph")) {
+        m_layoutGraph = true;
     }
 
-    drawAddSourceDialog(fg);
+    ImGui::SameLine();
+
+    ImGui::SetCursorPosX(newSinkButtonPos);
+    if (ImGui::Button("New sink") && newSinkCallback) {
+        m_nodesToArrange.push_back(newSinkCallback(fg));
+        m_nodesToArrange.push_back(newSinkSourceCallback(fg));
+    }
+    ImGui::PopStyleColor();
+
+    if (openNewBlockDialog) {
+        ImGui::OpenPopup("New block");
+    }
     drawNewBlockDialog(fg);
+    drawAddSourceDialog(fg);
 
     ImGui::End(); // overlay
 
@@ -733,6 +790,135 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
         }
         ImGui::EndPopup();
     }
+}
+void FlowGraphItem::sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks) {
+    // first take out all unconnected nodes, they will be added later
+    std::vector<const Block *> connectedBlocks, unconnectedBlocks;
+    std::ranges::for_each(blocks, [&connectedBlocks, &unconnectedBlocks](const Block *b) {
+        auto hasNoConnection = [](const Block::Port &p) { return p.connections.empty(); };
+        if (std::ranges::all_of(b->inputs(), hasNoConnection)
+                && std::ranges::all_of(b->outputs(), hasNoConnection)) {
+            unconnectedBlocks.push_back(b);
+        } else
+            connectedBlocks.push_back(b);
+    });
+
+    auto res = topologicalSort(connectedBlocks, fg->connections());
+
+    struct Level {
+        float                      y_min{ 0 }, x_min{ 0 };
+        float                      y_max{ 0 }, x_max{ 0 }; // how much does our biggest elements extent into x/y
+        std::vector<const Block *> blocks;
+    };
+    std::vector<Level> levels;
+    levels.emplace_back();
+    auto          lvl       = levels.begin();
+    constexpr int y_padding = 50, x_padding = 50, lvl_padding_x = 150;
+
+    for (auto bi = res.begin(); bi != res.end(); ++bi) {
+        auto *b = *bi;
+        if (!b) continue; // the last block is nullptr
+        auto   id = ax::NodeEditor::NodeId(b);
+        ImVec2 position;
+
+        if (b->inputs().empty() || std::ranges::all_of(b->inputs(), [](const Block::Port &p) { return p.connections.empty(); })) {
+            lvl = levels.begin();
+        } else {
+            // move back until we find the latest block we are connected to
+            auto back = bi - 1;
+            bool lvlFound{ false };
+
+            do {
+                for (const Block::Port &p : b->inputs()) {
+                    auto f = std::ranges::find_if(p.connections, [back, b](Connection *c) {
+                        return c->src.block == *back;
+                    });
+                    if (f != p.connections.end()) {
+                        auto *lastBlock = (*f)->src.block;
+
+                        lvl             = std::ranges::find_if(levels, [lastBlock](Level &l) { return std::ranges::find(l.blocks, lastBlock) != l.blocks.end(); });
+                        assert(lvl != levels.end());
+                        if (lvl + 1 == levels.end()) { // check if last block is current lvl, because then we start a new lvl
+                            auto new_min = lvl->x_max + lvl_padding_x;
+                            levels.push_back({ lvl->y_min, new_min });
+                            lvl = levels.end() - 1;
+                        } else {
+                            ++lvl;
+                        }
+                        lvlFound = true;
+                        break;
+                    }
+                }
+                --back;
+            } while (!lvlFound);
+        }
+        position.x = lvl->x_min + x_padding;
+        position.y = lvl->y_max + y_padding;
+
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b), position);
+        auto size  = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(b));
+        lvl->x_max = std::max(lvl->x_min + size.x, lvl->x_max);
+        lvl->y_max += size.y + y_padding;
+        lvl->blocks.push_back(b);
+    }
+
+    arrangeUnconnectedNodes(fg, unconnectedBlocks);
+}
+
+void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<const Block *> &blocks) {
+    auto  allBlocks = getAllBlocks(fg);
+    float x_max = 0, y_max = 0, x_min = std::numeric_limits<float>::max();
+    for (auto b : allBlocks) {
+        if (std::ranges::any_of(blocks, [&](auto *n) { return n == b; }) /*|| !b*/) continue;
+        auto id  = ax::NodeEditor::NodeId(b);
+        auto pos = ax::NodeEditor::GetNodePosition(id);
+        auto k   = pos + ax::NodeEditor::GetNodeSize(id);
+        x_max    = std::max(x_max, k.x);
+        y_max    = std::max(y_max, k.y);
+        x_min    = std::min(x_min, pos.x);
+    }
+
+    enum Arrange {
+        Left,
+        Middle,
+        Right
+    } arrange;
+    std::map<Arrange, float> columnOffsets{ { Left, 0 }, { Middle, 0 }, { Right, 0 } };
+    for (auto b : blocks) {
+        auto        id      = ax::NodeEditor::NodeId(b);
+        auto        size    = ax::NodeEditor::GetNodeSize(id);
+
+        const float padding = 50;
+
+        if (b->inputs().size() == 0 && b->outputs().size() > 0)
+            arrange = Left;
+        else if (b->inputs().size() > 0 && b->outputs().size() == 0)
+            arrange = Right;
+        else
+            arrange = Middle;
+
+        ImVec2 position{ x_min, y_max + padding };
+        if (arrange == Left) {
+        } else if (arrange == Middle) {
+            position.x = x_max / 2 - size.x / 2;
+        } else {
+            position.x = x_max - size.x;
+        }
+        position.y += columnOffsets[arrange];
+        columnOffsets[arrange] += padding + size.y;
+
+        ax::NodeEditor::SetNodePosition(id, position);
+    }
+}
+
+std::vector<const Block *> FlowGraphItem::getAllBlocks(FlowGraph *fg) {
+    std::vector<const Block *> blocks;
+    blocks.reserve(fg->sourceBlocks().size() + fg->sinkBlocks().size() + fg->blocks().size());
+    std::array<std::reference_wrapper<const std::vector<std::unique_ptr<Block>>>, 3> v{ fg->sourceBlocks(), fg->blocks(), fg->sinkBlocks() };
+    std::ranges::for_each(v, [&blocks](auto &l) {
+        std::ranges::copy(std::views::transform(l.get(), [](auto &a) { return a.get(); }), std::back_inserter(blocks));
+    });
+    return blocks;
 }
 
 } // namespace DigitizerUi

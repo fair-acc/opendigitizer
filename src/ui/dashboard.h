@@ -26,6 +26,7 @@ class Block;
 class FlowGraph;
 struct DashboardDescription;
 class DataSink;
+class DataSinkSource;
 
 struct DashboardSource {
     ~DashboardSource() noexcept;
@@ -124,14 +125,15 @@ public:
         FlowGraph                   flowGraph;
         opencmw::client::RestClient client;
     };
-    void         addRemoteService(std::string_view uri);
-    void         saveRemoteServiceFlowgraph(Service *s);
+    void            addRemoteService(std::string_view uri);
+    void            saveRemoteServiceFlowgraph(Service *s);
 
-    inline auto &remoteServices() { return m_services; }
+    inline auto    &remoteServices() { return m_services; }
 
-    DataSink    *createSink();
+    DataSink       *createSink();
+    DataSinkSource *createSource();
 
-    FlowGraph    localFlowGraph;
+    FlowGraph       localFlowGraph;
 
 private:
     void                                  doLoad(const std::string &desc);

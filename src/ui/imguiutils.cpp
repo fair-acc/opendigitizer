@@ -1012,295 +1012,294 @@ float splitter(ImVec2 space, bool vertical, float size, float defaultRatio, bool
 }
 
 void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout) {
+    if (!ctx.block) return;
     using namespace DigitizerUi;
 
     auto size = frameSize;
-    if (ctx.block) {
-        if (ctx.closeTime < std::chrono::system_clock::now()) {
-            ctx = {};
-            return;
+    if (ctx.closeTime < std::chrono::system_clock::now()) {
+        ctx = {};
+        return;
+    }
+
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(frameSize);
+    ImGui::Begin("BlockControlsPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+
+    auto &app = App::instance();
+    ImGui::PushFont(app.fontIconsSolid);
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing() * 1.5f;
+    ImGui::PopFont();
+
+    auto resetTime = [&]() {
+        ctx.closeTime = std::chrono::system_clock::now() + app.editPaneCloseDelay;
+    };
+
+    const auto itemSpacing    = ImGui::GetStyle().ItemSpacing;
+
+    auto       calcButtonSize = [&](int numButtons) -> ImVec2 {
+        if (verticalLayout) {
+            return { (size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight };
         }
+        return { lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons) };
+    };
 
-        auto &app = App::instance();
-        ImGui::PushFont(app.fontIconsSolid);
-        const float lineHeight = ImGui::GetTextLineHeightWithSpacing() * 1.5f;
-        ImGui::PopFont();
+    size = ImGui::GetContentRegionAvail();
 
-        auto resetTime = [&]() {
-            ctx.closeTime = std::chrono::system_clock::now() + app.editPaneCloseDelay;
-        };
+    // don't close the panel while the mouse is hovering it or edits are made.
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
+            || InputKeypad<>::isVisible()) {
+        resetTime();
+    }
 
-        const auto itemSpacing    = ImGui::GetStyle().ItemSpacing;
+    auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(ctx.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(app.editPaneCloseDelay).count());
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
+    ImGui::ProgressBar(1.f - duration, { size.x, 3 });
+    ImGui::PopStyleColor();
 
-        auto       calcButtonSize = [&](int numButtons) -> ImVec2 {
-            if (verticalLayout) {
-                return { (size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight };
-            }
-            return { lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons) };
-        };
+    auto minpos      = ImGui::GetCursorPos();
+    size             = ImGui::GetContentRegionAvail();
 
-        ImGui::SetCursorPos(pos);
-
-        if (ImGui::BeginChildFrame(1, size, ImGuiWindowFlags_NoScrollbar)) {
-            size = ImGui::GetContentRegionAvail();
-
-            // don't close the panel while the mouse is hovering it or edits are made.
-            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
-                    || InputKeypad<>::isVisible()) {
-                resetTime();
-            }
-
-            auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(ctx.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(app.editPaneCloseDelay).count());
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
-            ImGui::ProgressBar(1.f - duration, { size.x, 3 });
-            ImGui::PopStyleColor();
-
-            auto minpos      = ImGui::GetCursorPos();
-            size             = ImGui::GetContentRegionAvail();
-
-            int outputsCount = 0;
-            {
-                const char *prevString = verticalLayout ? "\uf062" : "\uf060";
-                for (const auto &out : ctx.block->outputs()) {
-                    outputsCount += out.connections.size();
-                }
-                if (outputsCount == 0) {
-                    ImGuiUtils::DisabledGuard dg;
-                    ImGui::PushFont(app.fontIconsSolid);
-                    ImGui::Button(prevString, calcButtonSize(1));
-                    ImGui::PopFont();
-                } else {
-                    const auto buttonSize = calcButtonSize(outputsCount);
-
-                    ImGui::BeginGroup();
-                    int id = 1;
-                    // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
-                    // that switches to the connected block
-                    for (auto &out : ctx.block->outputs()) {
-                        for (const auto *conn : out.connections) {
-                            ImGui::PushID(id++);
-
-                            ImGui::PushFont(app.fontIconsSolid);
-                            if (ImGui::Button(prevString, buttonSize)) {
-                                ctx.block = conn->dst.block;
-                            }
-                            ImGui::PopFont();
-                            if (ImGui::IsItemHovered()) {
-                                ImGui::SetTooltip("%s", conn->dst.block->name.c_str());
-                            }
-                            ImGui::PopID();
-                            if (verticalLayout) {
-                                ImGui::SameLine();
-                            }
-                        }
-                    }
-                    ImGui::EndGroup();
-                }
-            }
-
-            if (!verticalLayout) {
-                ImGui::SameLine();
-            }
-
-            {
-                // Draw the two add block buttons
-                ImGui::BeginGroup();
-                const auto buttonSize = calcButtonSize(2);
-                {
-                    ImGuiUtils::DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || outputsCount == 0);
-                    ImGui::PushFont(app.fontIconsSolid);
-                    if (ImGui::Button("\uf055", buttonSize)) {
-                        if (outputsCount > 1) {
-                            ImGui::OpenPopup("insertBlockPopup");
-                        } else {
-                            [&]() {
-                                int index = 0;
-                                for (auto &out : ctx.block->outputs()) {
-                                    for (auto *conn : out.connections) {
-                                        ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
-                                        ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
-                                        ctx.breakConnection = conn;
-                                        return;
-                                    }
-                                    ++index;
-                                }
-                            }();
-                            ctx.mode = BlockControlsPanel::Mode::Insert;
-                        }
-                    }
-                    ImGui::PopFont();
-                    setItemTooltip("%s", "Insert new block before the next");
-
-                    if (ImGui::BeginPopup("insertBlockPopup")) {
-                        int index = 0;
-                        for (auto &out : ctx.block->outputs()) {
-                            for (auto *conn : out.connections) {
-                                auto text = fmt::format("Before block '{}'", conn->dst.block->name);
-                                if (ImGui::Selectable(text.c_str())) {
-                                    ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
-                                    ctx.mode            = BlockControlsPanel::Mode::Insert;
-                                    ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
-                                    ctx.breakConnection = conn;
-                                }
-                            }
-                            ++index;
-                        }
-                        ImGui::EndPopup();
-                    }
-
-                    if (verticalLayout) {
-                        ImGui::SameLine();
-                    }
-                }
-
-                ImGui::PushFont(app.fontIconsSolid);
-                DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || ctx.block->outputs().empty());
-                if (ImGui::Button("\uf0fe", buttonSize)) {
-                    if (ctx.block->outputs().size() > 1) {
-                        ImGui::OpenPopup("addBlockPopup");
-                    } else {
-                        ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
-                        ctx.insertFrom = &ctx.block->outputs()[0];
-                    }
-                }
-                ImGui::PopFont();
-                setItemTooltip("%s", "Add new block");
-
-                if (ImGui::BeginPopup("addBlockPopup")) {
-                    int index = 0;
-                    for (const auto &out : ctx.block->type->outputs) {
-                        if (ImGui::Selectable(out.name.c_str())) {
-                            ctx.insertFrom = &ctx.block->outputs()[index];
-                            ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
-                        }
-                        ++index;
-                    }
-                }
-
-                ImGui::EndGroup();
-
-                if (!verticalLayout) {
-                    ImGui::SameLine();
-                }
-            }
-
-            if (ctx.mode != BlockControlsPanel::Mode::None) {
-                ImGui::BeginGroup();
-
-                auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
-                auto ret      = filteredListBox(
-                        "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
-                            if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
-                                return {};
-                            }
-                            return std::pair{ it.second.get(), it.first };
-                        },
-                        listSize);
-
-                {
-                    DisabledGuard dg(!ret.has_value());
-                    if (ImGui::Button("Ok")) {
-                        BlockType  *selected = ret->first;
-                        auto        name     = fmt::format("{}({})", selected->name, ctx.block->name);
-                        auto        block    = selected->createBlock(name);
-
-                        Connection *c1;
-                        if (ctx.mode == BlockControlsPanel::Mode::Insert) {
-                            // mode Insert means that the new block should be added in between this block and the next one.
-                            // put the new block in between this block and the following one
-                            c1 = app.dashboard->localFlowGraph.connect(&block->outputs()[0], ctx.insertBefore);
-                            app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
-                            app.dashboard->localFlowGraph.disconnect(ctx.breakConnection);
-                            ctx.breakConnection = nullptr;
-                        } else {
-                            // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
-                            auto *newsink = app.dashboard->createSink();
-                            c1            = app.dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
-                            app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
-
-                            auto source = std::find_if(app.dashboard->sources().begin(), app.dashboard->sources().end(), [&](const auto &s) {
-                                return s.block == newsink;
-                            });
-
-                            app.dashboardPage.newPlot(app.dashboard.get());
-                            app.dashboard->plots().back().sources.push_back(&*source);
-                        }
-                        ctx.block = block.get();
-
-                        app.dashboard->localFlowGraph.addBlock(std::move(block));
-                        ctx.mode = BlockControlsPanel::Mode::None;
-                    }
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Cancel")) {
-                    ctx.mode = BlockControlsPanel::Mode::None;
-                }
-
-                ImGui::EndGroup();
-
-                if (!verticalLayout) {
-                    ImGui::SameLine();
-                }
-            }
-
-            ImGui::BeginChild("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
-                    ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(ctx.block->name.c_str());
-            ImGuiUtils::blockParametersControls(ctx.block, verticalLayout);
-
-            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-                resetTime();
-            }
-            ImGui::EndChild();
-
-            ImGui::SetCursorPos(minpos);
-
-            // draw the button(s) that go to the previous block(s).
-            const char *nextString = verticalLayout ? "\uf063" : "\uf061";
+    int outputsCount = 0;
+    {
+        const char *prevString = verticalLayout ? "\uf062" : "\uf060";
+        for (const auto &out : ctx.block->outputs()) {
+            outputsCount += out.connections.size();
+        }
+        if (outputsCount == 0) {
+            ImGuiUtils::DisabledGuard dg;
             ImGui::PushFont(app.fontIconsSolid);
-            if (ctx.block->inputs().empty()) {
-                auto buttonSize = calcButtonSize(1);
-                if (verticalLayout) {
-                    ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-                } else {
-                    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-                }
-                ImGuiUtils::DisabledGuard dg;
-                ImGui::Button(nextString, buttonSize);
-            } else {
-                auto buttonSize = calcButtonSize(ctx.block->inputs().size());
-                if (verticalLayout) {
-                    ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-                } else {
-                    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-                }
+            ImGui::Button(prevString, calcButtonSize(1));
+            ImGui::PopFont();
+        } else {
+            const auto buttonSize = calcButtonSize(outputsCount);
 
-                ImGui::BeginGroup();
-                int id = 1;
-                for (auto &in : ctx.block->inputs()) {
+            ImGui::BeginGroup();
+            int id = 1;
+            // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
+            // that switches to the connected block
+            for (auto &out : ctx.block->outputs()) {
+                for (const auto *conn : out.connections) {
                     ImGui::PushID(id++);
-                    ImGuiUtils::DisabledGuard dg(in.connections.empty());
 
-                    if (ImGui::Button(nextString, buttonSize)) {
-                        ctx.block = in.connections.front()->src.block;
+                    ImGui::PushFont(app.fontIconsSolid);
+                    if (ImGui::Button(prevString, buttonSize)) {
+                        ctx.block = conn->dst.block;
                     }
+                    ImGui::PopFont();
                     if (ImGui::IsItemHovered()) {
-                        ImGui::PopFont();
-                        ImGui::SetTooltip("%s", in.connections.front()->src.block->name.c_str());
-                        ImGui::PushFont(app.fontIconsSolid);
+                        ImGui::SetTooltip("%s", conn->dst.block->name.c_str());
                     }
                     ImGui::PopID();
                     if (verticalLayout) {
                         ImGui::SameLine();
                     }
                 }
-                ImGui::EndGroup();
+            }
+            ImGui::EndGroup();
+        }
+    }
+
+    if (!verticalLayout) {
+        ImGui::SameLine();
+    }
+
+    {
+        // Draw the two add block buttons
+        ImGui::BeginGroup();
+        const auto buttonSize = calcButtonSize(2);
+        {
+            ImGuiUtils::DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || outputsCount == 0);
+            ImGui::PushFont(app.fontIconsSolid);
+            if (ImGui::Button("\uf055", buttonSize)) {
+                if (outputsCount > 1) {
+                    ImGui::OpenPopup("insertBlockPopup");
+                } else {
+                    [&]() {
+                        int index = 0;
+                        for (auto &out : ctx.block->outputs()) {
+                            for (auto *conn : out.connections) {
+                                ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
+                                ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
+                                ctx.breakConnection = conn;
+                                return;
+                            }
+                            ++index;
+                        }
+                    }();
+                    ctx.mode = BlockControlsPanel::Mode::Insert;
+                }
             }
             ImGui::PopFont();
+            setItemTooltip("%s", "Insert new block before the next");
+
+            if (ImGui::BeginPopup("insertBlockPopup")) {
+                int index = 0;
+                for (auto &out : ctx.block->outputs()) {
+                    for (auto *conn : out.connections) {
+                        auto text = fmt::format("Before block '{}'", conn->dst.block->name);
+                        if (ImGui::Selectable(text.c_str())) {
+                            ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
+                            ctx.mode            = BlockControlsPanel::Mode::Insert;
+                            ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
+                            ctx.breakConnection = conn;
+                        }
+                    }
+                    ++index;
+                }
+                ImGui::EndPopup();
+            }
+
+            if (verticalLayout) {
+                ImGui::SameLine();
+            }
         }
 
-        ImGui::EndChild();
+        ImGui::PushFont(app.fontIconsSolid);
+        DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || ctx.block->outputs().empty());
+        if (ImGui::Button("\uf0fe", buttonSize)) {
+            if (ctx.block->outputs().size() > 1) {
+                ImGui::OpenPopup("addBlockPopup");
+            } else {
+                ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
+                ctx.insertFrom = &ctx.block->outputs()[0];
+            }
+        }
+        ImGui::PopFont();
+        setItemTooltip("%s", "Add new block");
+
+        if (ImGui::BeginPopup("addBlockPopup")) {
+            int index = 0;
+            for (const auto &out : ctx.block->type->outputs) {
+                if (ImGui::Selectable(out.name.c_str())) {
+                    ctx.insertFrom = &ctx.block->outputs()[index];
+                    ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
+                }
+                ++index;
+            }
+        }
+
+        ImGui::EndGroup();
+
+        if (!verticalLayout) {
+            ImGui::SameLine();
+        }
     }
+
+    if (ctx.mode != BlockControlsPanel::Mode::None) {
+        ImGui::BeginGroup();
+
+        auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
+        auto ret      = filteredListBox(
+                "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+                    if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
+                        return {};
+                    }
+                    return std::pair{ it.second.get(), it.first };
+                },
+                listSize);
+
+        {
+            DisabledGuard dg(!ret.has_value());
+            if (ImGui::Button("Ok")) {
+                BlockType  *selected = ret->first;
+                auto        name     = fmt::format("{}({})", selected->name, ctx.block->name);
+                auto        block    = selected->createBlock(name);
+
+                Connection *c1;
+                if (ctx.mode == BlockControlsPanel::Mode::Insert) {
+                    // mode Insert means that the new block should be added in between this block and the next one.
+                    // put the new block in between this block and the following one
+                    c1 = app.dashboard->localFlowGraph.connect(&block->outputs()[0], ctx.insertBefore);
+                    app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
+                    app.dashboard->localFlowGraph.disconnect(ctx.breakConnection);
+                    ctx.breakConnection = nullptr;
+                } else {
+                    // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
+                    auto *newsink = app.dashboard->createSink();
+                    c1            = app.dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
+                    app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
+
+                    auto source = std::find_if(app.dashboard->sources().begin(), app.dashboard->sources().end(), [&](const auto &s) {
+                        return s.block == newsink;
+                    });
+
+                    app.dashboardPage.newPlot(app.dashboard.get());
+                    app.dashboard->plots().back().sources.push_back(&*source);
+                }
+                ctx.block = block.get();
+
+                app.dashboard->localFlowGraph.addBlock(std::move(block));
+                ctx.mode = BlockControlsPanel::Mode::None;
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ctx.mode = BlockControlsPanel::Mode::None;
+        }
+
+        ImGui::EndGroup();
+
+        if (!verticalLayout) {
+            ImGui::SameLine();
+        }
+    }
+
+    ImGui::BeginChild("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
+            ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::TextUnformatted(ctx.block->name.c_str());
+    ImGuiUtils::blockParametersControls(ctx.block, verticalLayout);
+
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+        resetTime();
+    }
+    ImGui::EndChild();
+
+    ImGui::SetCursorPos(minpos);
+
+    // draw the button(s) that go to the previous block(s).
+    const char *nextString = verticalLayout ? "\uf063" : "\uf061";
+    ImGui::PushFont(app.fontIconsSolid);
+    if (ctx.block->inputs().empty()) {
+        auto buttonSize = calcButtonSize(1);
+        if (verticalLayout) {
+            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
+        } else {
+            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
+        }
+        ImGuiUtils::DisabledGuard dg;
+        ImGui::Button(nextString, buttonSize);
+    } else {
+        auto buttonSize = calcButtonSize(ctx.block->inputs().size());
+        if (verticalLayout) {
+            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
+        } else {
+            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
+        }
+
+        ImGui::BeginGroup();
+        int id = 1;
+        for (auto &in : ctx.block->inputs()) {
+            ImGui::PushID(id++);
+            ImGuiUtils::DisabledGuard dg(in.connections.empty());
+
+            if (ImGui::Button(nextString, buttonSize)) {
+                ctx.block = in.connections.front()->src.block;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::PopFont();
+                ImGui::SetTooltip("%s", in.connections.front()->src.block->name.c_str());
+                ImGui::PushFont(app.fontIconsSolid);
+            }
+            ImGui::PopID();
+            if (verticalLayout) {
+                ImGui::SameLine();
+            }
+        }
+        ImGui::EndGroup();
+    }
+    ImGui::PopFont();
+
+    ImGui::End();
 }
 
 namespace {
@@ -1371,7 +1370,12 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                                               } },
                     p.second);
 
-            if (!controlDrawn) continue;
+            if (!controlDrawn) {
+                ImGui::EndGroup();
+                ImGui::EndGroup();
+                ImGui::PopID();
+                continue;
+            }
         }
 
         ImGui::EndGroup();

@@ -321,7 +321,7 @@ public:
 
     virtual std::unique_ptr<gr::BlockModel> createGraphNode() = 0;
     virtual void                            setup(gr::Graph &graph) {}
-    auto                                   *graphNode() { return m_node; }
+    auto                                   *graphNode() const { return m_node; }
 
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
     const BlockType                        *type;
