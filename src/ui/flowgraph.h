@@ -234,7 +234,7 @@ struct DataType {
 
     const std::string &toString() const;
 
-    inline operator Id() const { return m_id; }
+    inline             operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;
@@ -327,6 +327,12 @@ public:
     const BlockType                        *type;
     const std::string                       name;
     const std::string                       id;
+
+    bool                                    isToolbarBlock() const;
+    void                                    draw() {
+        // TODO: handle return value
+        std::ignore = m_node->draw();
+    }
 
     // protected:
     auto &inputs() { return m_inputs; }

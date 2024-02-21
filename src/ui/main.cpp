@@ -33,6 +33,8 @@
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "flowgraphitem.h"
+#include "toolbar.h"
+#include "toolbar_block.h"
 #include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
@@ -246,6 +248,8 @@ int main(int argc, char **argv) {
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
+    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::GRPlayStopToolbarBlock>("toolbar_playstop_block");
+    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::GRLabelToolbarBlock>("toolbar_label_block");
 
     loadFonts(app);
 
@@ -358,6 +362,10 @@ static void main_loop(void *arg) {
 
     if (app->dashboard == nullptr) {
         ImGui::BeginDisabled();
+    }
+
+    if (app->mainViewMode == "View" || app->mainViewMode == "Layout" || app->mainViewMode == "FlowGraph" || app->mainViewMode.empty()) {
+        DigitizerUi::drawToolbar();
     }
 
     ImGuiID viewId = 0;

@@ -5,7 +5,7 @@ include(FetchContent)
 FetchContent_Declare(
         gr-digitizers
         GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
-        GIT_TAG aff5eae3f55eb9a9fcfbf841b08921d5530078b2 # dev-prototype as of 2024-02-01
+        GIT_TAG 8b261c133f9560f326537fc794641aa9ee4119c5 # dev-prototype as of 2024-02-21
 )
 
 FetchContent_MakeAvailable(gr-digitizers)
