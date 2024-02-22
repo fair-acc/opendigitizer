@@ -1,0 +1,47 @@
+blocks:
+  - name: fair::picoscope::Picoscope4000a<double>
+    id: fair::picoscope::Picoscope4000a
+    parameters:
+      acquisition_mode: Streaming
+      auto_arm: true
+      channel_couplings:
+        - AC_1M
+        - AC_1M
+        - AC_1M
+        - AC_1M
+      channel_ids:
+        - A
+        - B
+        - C
+        - D
+      channel_names:
+        - signal A
+        - signal B
+        - signal C
+        - signal D
+      channel_ranges:
+        - 5
+        - 5
+        - 5
+        - 5
+      channel_units:
+        - Test unit A
+        - Test unit B
+        - Test unit C
+        - Test unit D
+      name: fair::picoscope::Picoscope4000a<double>
+      sample_rate: 80000
+      streaming_mode_poll_rate: 0.000010
+  - name: sinkA
+    id: gr::basic::DataSink
+  - name: sinkB
+    id: gr::basic::DataSink
+  - name: sinkC
+    id: gr::basic::DataSink
+  - name: sinkD
+    id: gr::basic::DataSink
+connections:
+  - [fair::picoscope::Picoscope4000a<double>, [0, 0], sinkA, 0]
+  - [fair::picoscope::Picoscope4000a<double>, [0, 1], sinkB, 0]
+  - [fair::picoscope::Picoscope4000a<double>, [0, 2], sinkC, 0]
+  - [fair::picoscope::Picoscope4000a<double>, [0, 3], sinkD, 0]

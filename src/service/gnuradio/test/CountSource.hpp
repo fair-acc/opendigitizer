@@ -8,12 +8,15 @@ struct CountSource : public gr::Block<CountSource<T>> {
     using clock = std::chrono::system_clock;
     gr::PortOut<T>                   out;
 
-    uint32_t                         n_samples   = 0;
-    uint32_t                         delay_ms    = 0;
-    std::string                      signal_name = "test signal";
-    std::string                      signal_unit = "test unit";
-    double                           sample_rate = 0.;
-    std::string                      direction   = "up";
+    uint32_t                         n_samples     = 0; ///< Number of samples to produce, 0 means infinite
+    T                                initial_value = {};
+    uint32_t                         delay_ms      = 0;
+    float                            sample_rate   = 1.;
+    std::string                      signal_name   = "test signal";
+    std::string                      signal_unit   = "test unit";
+    float                            signal_min    = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
+    float                            signal_max    = std::numeric_limits<float>::max();    ///< maximum value of the signal
+    std::string                      direction     = "up";                                 ///< direction of the count, "up" or "down"
     std::vector<std::string>         timing_tags;
     std::size_t                      _produced = 0;
     std::deque<gr::Tag>              _pending_tags;
@@ -24,13 +27,6 @@ struct CountSource : public gr::Block<CountSource<T>> {
     settingsChanged(const gr::property_map & /*old_settings*/, const gr::property_map & /*new_settings*/) {
         _produced = 0;
         _pending_tags.clear();
-
-        gr::property_map channelInfo = gr::property_map{ { std::string(gr::tag::SAMPLE_RATE.key()), static_cast<float>(sample_rate) } };
-        if (!signal_name.empty())
-            channelInfo.emplace(std::string(gr::tag::SIGNAL_NAME.key()), signal_name);
-        if (!signal_unit.empty())
-            channelInfo.emplace(std::string(gr::tag::SIGNAL_UNIT.key()), signal_unit);
-        _pending_tags.emplace_back(0, channelInfo);
 
         for (const auto &tagStr : timing_tags) {
             auto       view = tagStr | std::ranges::views::split(',');
@@ -66,11 +62,14 @@ struct CountSource : public gr::Block<CountSource<T>> {
             }
             _waiting = false;
         }
-        const auto samplesLeft = static_cast<std::size_t>(n_samples) - _produced;
-        if (samplesLeft == 0) {
-            this->requestStop();
+        auto n = output.size();
+        if (n_samples > 0) {
+            const auto samplesLeft = static_cast<std::size_t>(n_samples) - _produced;
+            if (samplesLeft == 0) {
+                this->requestStop();
+            }
+            n = std::min(n, samplesLeft);
         }
-        auto n = std::min(output.size(), samplesLeft);
         // chunk data so that there's one tag max, at index 0 in the chunk
         auto tagIt = _pending_tags.begin();
         if (tagIt != _pending_tags.end()) {
@@ -88,9 +87,9 @@ struct CountSource : public gr::Block<CountSource<T>> {
 
         const auto subspan = std::span(output.begin(), output.end()).first(n);
         if (direction == "up") {
-            std::iota(subspan.begin(), subspan.end(), static_cast<T>(_produced));
+            std::iota(subspan.begin(), subspan.end(), initial_value + static_cast<T>(_produced));
         } else {
-            std::iota(subspan.begin(), subspan.end(), static_cast<T>(static_cast<std::size_t>(n_samples) - _produced - n));
+            std::iota(subspan.begin(), subspan.end(), initial_value - static_cast<T>(_produced + n - 1));
             std::reverse(subspan.begin(), subspan.end());
         }
         output.publish(n);
@@ -99,6 +98,6 @@ struct CountSource : public gr::Block<CountSource<T>> {
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE(CountSource, out, n_samples, delay_ms, signal_name, signal_unit, sample_rate, direction, timing_tags)
+ENABLE_REFLECTION_FOR_TEMPLATE(CountSource, out, n_samples, initial_value, delay_ms, sample_rate, signal_name, signal_unit, signal_min, signal_max, direction, timing_tags)
 
 #endif

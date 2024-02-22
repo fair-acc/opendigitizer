@@ -88,24 +88,24 @@ struct StreamingPollerEntry {
     std::shared_ptr<gr::basic::DataSink<SampleType>::Poller> poller;
     std::optional<std::string>                               signal_name;
     std::optional<std::string>                               signal_unit;
-    std::optional<SampleType>                                signal_min;
-    std::optional<SampleType>                                signal_max;
+    std::optional<float>                                     signal_min;
+    std::optional<float>                                     signal_max;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::DataSink<SampleType>::Poller> p)
         : poller{ p } {}
 
     void populateFromTags(std::span<const gr::Tag> &tags) {
         for (const auto &tag : tags) {
-            if (const auto name = detail::get<std::string>(tag.map, tag::SIGNAL_NAME.key())) {
+            if (const auto name = detail::get<std::string>(tag.map, tag::SIGNAL_NAME.shortKey())) {
                 signal_name = name;
             }
-            if (const auto unit = detail::get<std::string>(tag.map, tag::SIGNAL_UNIT.key())) {
+            if (const auto unit = detail::get<std::string>(tag.map, tag::SIGNAL_UNIT.shortKey())) {
                 signal_unit = unit;
             }
-            if (const auto min = detail::get<SampleType>(tag.map, tag::SIGNAL_MIN.key())) {
+            if (const auto min = detail::get<float>(tag.map, tag::SIGNAL_MIN.shortKey())) {
                 signal_min = min;
             }
-            if (const auto max = detail::get<SampleType>(tag.map, tag::SIGNAL_MAX.key())) {
+            if (const auto max = detail::get<float>(tag.map, tag::SIGNAL_MAX.shortKey())) {
                 signal_max = max;
             }
         }
@@ -221,9 +221,6 @@ private:
                         if (auto e = scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
                             // TODO: handle error return message
                         }
-                        if (auto e = scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
-                            // TODO: handle error return message
-                        }
                     };
 
                     stopScheduler     = false;
@@ -294,7 +291,6 @@ private:
         auto       &pollerEntry = pollerIt->second;
 
         if (!pollerEntry.poller) {
-            fmt::println("Ignore unknown signal '{}'", key.signal_name);
             return true;
         }
         Acquisition reply;
