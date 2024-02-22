@@ -105,12 +105,13 @@ private:
             explicit HandlerImpl(Args &&...args)
                 : data(std::forward<Args>(args)...) {
                 thread = std::thread([this]() {
-                    data.init();
-                    data.start();
+                    // TODO simplify to runAndWait and use the message ports
+                    data.changeStateTo(gr::lifecycle::State::INITIALISED);
+                    data.changeStateTo(gr::lifecycle::State::RUNNING);
                     while (!stopRequested && data.isProcessing()) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     }
-                    data.stop();
+                    data.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
                 });
             }
             ~HandlerImpl() {

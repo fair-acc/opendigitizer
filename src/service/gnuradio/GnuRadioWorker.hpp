@@ -206,16 +206,16 @@ private:
                     auto runScheduler = [&stopScheduler, &schedulerFinished](gr::Graph &&fg) {
                         using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
                         auto scheduler  = Scheduler(std::move(fg));
-                        scheduler.init();
-                        scheduler.start();
+                        // simplify this with runAndWait + messages
+                        scheduler.changeStateTo(gr::lifecycle::State::INITIALISED);
+                        scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
                         while (!stopScheduler) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(10));
                             if (!scheduler.isProcessing()) {
                                 schedulerFinished = true;
                             }
                         }
-
-                        scheduler.stop();
+                        scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
                     };
 
                     stopScheduler     = false;
