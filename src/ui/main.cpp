@@ -248,8 +248,8 @@ int main(int argc, char **argv) {
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
     DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
-    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::GRPlayStopToolbarBlock>("toolbar_playstop_block");
-    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::GRLabelToolbarBlock>("toolbar_label_block");
+    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
+    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
 
     loadFonts(app);
 

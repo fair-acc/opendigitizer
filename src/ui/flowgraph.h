@@ -234,7 +234,7 @@ struct DataType {
 
     const std::string &toString() const;
 
-    inline             operator Id() const { return m_id; }
+    inline operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;

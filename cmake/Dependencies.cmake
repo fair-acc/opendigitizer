@@ -9,7 +9,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         graph-prototype
         GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-        GIT_TAG 7f22e217e88ef54fe45ece84f804f6de8b7ff989 # main as of 2024-02-22
+        GIT_TAG 5666d3c44fe9945973320701344c10672a63059d # main as of 2024-02-23
 )
 
 FetchContent_Declare(

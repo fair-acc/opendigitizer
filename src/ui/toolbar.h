@@ -39,17 +39,24 @@ inline void endToolbar() {
 } // namespace detail
 
 inline void drawToolbar() {
-    detail::beginToolbar("##Toolbar");
-
-    const auto &blocks = App::instance().dashboard->localFlowGraph.blocks();
+    const auto &blocks         = App::instance().dashboard->localFlowGraph.blocks();
+    bool        hasToolBarItem = false;
     for (const auto &b : blocks) {
-        if (b->isToolbarBlock()) {
-            b->draw();
-            ImGui::SameLine();
-        }
+        hasToolBarItem |= b->isToolbarBlock();
     }
 
-    detail::endToolbar();
+    if (hasToolBarItem) {
+        detail::beginToolbar("##Toolbar");
+
+        for (const auto &b : blocks) {
+            if (b->isToolbarBlock()) {
+                b->draw();
+                ImGui::SameLine();
+            }
+        }
+
+        detail::endToolbar();
+    }
 }
 
 } // namespace DigitizerUi
