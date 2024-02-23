@@ -28,6 +28,10 @@ set(GNURADIO_PREFIX
 add_subdirectory(app_header)
 add_subdirectory(utils)
 
+if(NOT TARGET digitizer_settings)
+  add_subdirectory(../utils ./common_utils)
+endif()
+
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
 
@@ -181,6 +185,7 @@ target_link_libraries(
           gr-fourier
           fftw
           vir
+          digitizer_settings
           pmtv)
 target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")

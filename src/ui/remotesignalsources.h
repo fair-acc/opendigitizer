@@ -4,6 +4,7 @@
 #include "imgui.h"
 #include "RestClient.hpp"
 #include "services/dns_types.hpp"
+#include "settings.h"
 #include <list>
 #include <refl.hpp>
 #include <services/dns_client.hpp>
@@ -80,12 +81,13 @@ protected:
 };
 
 class SignalList {
+    Digitizer::Settings            settings;
     opencmw::client::ClientContext clientContext = []() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
         clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
         return opencmw::client::ClientContext{ std::move(clients) };
     }();
-    opencmw::service::dns::DnsClient          dnsClient{ clientContext, opencmw::URI<>{ "http://localhost:8080/dns" } };
+    opencmw::service::dns::DnsClient          dnsClient{ clientContext, opencmw::URI<>{ settings.serviceUrls() + "/dns" } };
 
     QueryFilterElementList                   &filters;
     QueryFilterElementList::Hook              myOnChange{ [this]() { this->update(); } };

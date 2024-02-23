@@ -14,7 +14,7 @@ blocks:
   - name: remote source 1
     id: opendigitizer::RemoteSource
     parameters:
-      remote_uri: http://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+      remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
       signal_name: test
   - name: sink 1
     id: sink

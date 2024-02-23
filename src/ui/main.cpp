@@ -33,6 +33,7 @@
 #include "flowgraph.h"
 #include "flowgraph/datasink.h"
 #include "flowgraphitem.h"
+#include "settings.h"
 #include "toolbar.h"
 #include "toolbar_block.h"
 #include "utils/TouchHandler.hpp"
@@ -167,6 +168,8 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    Digitizer::Settings settings;
+
     // For the browser using Emscripten, we are going to use WebGL1 with GL ES2.
     // It is very likely the generated file won't work in many browsers.
     // Firefox is the only sure bet, but I have successfully run this code on
@@ -211,7 +214,7 @@ int main(int argc, char **argv) {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     auto &app = DigitizerUi::App::instance();
-    app.openDashboardPage.addSource("http://localhost:8080/dashboards");
+    app.openDashboardPage.addSource(settings.serviceUrls() + "/dashboards");
     app.openDashboardPage.addSource("example://builtin-samples");
 #ifdef EMSCRIPTEN
     app.executable = "index.html";

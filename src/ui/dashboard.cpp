@@ -75,7 +75,7 @@ struct arrsize<T const (&)[N]> {
 template<int N>
 auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &name, What const (&what)[N],
         std::function<void(std::array<std::string, arrsize<decltype(what)>::size> &&)> &&cb, std::function<void()> &&errCb) {
-    if (source->path.starts_with("http://")) {
+    if (source->path.starts_with("http://") || source->path.starts_with("https://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
         auto        path = std::filesystem::path(source->path) / name;
@@ -469,7 +469,7 @@ void Dashboard::save() {
         root.write("flowgraphLayout", App::instance().fgItem.settings(&localFlowGraph));
     }
 
-    if (m_desc->source->path.starts_with("http://")) {
+    if (m_desc->source->path.starts_with("http://") || m_desc->source->path.starts_with("https://")) {
         opencmw::client::RestClient client;
         auto                        path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 

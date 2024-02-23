@@ -108,7 +108,8 @@ target_link_libraries(
           client
           project_options
           project_warnings
-          assets::rest)
+          assets::rest
+          digitizer_settings)
 if(NOT EMSCRIPTEN)
   target_link_libraries(opendigitizer PRIVATE fair-picoscope)
 endif()

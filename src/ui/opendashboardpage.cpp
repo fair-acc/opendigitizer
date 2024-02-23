@@ -48,7 +48,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
     m_sources.push_back(DashboardSource::get(path));
     auto &source = m_sources.back();
 
-    if (path.starts_with("http://")) {
+    if (path.starts_with("https://") | path.starts_with("http://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Subscribe;
         command.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();
@@ -99,7 +99,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
 }
 
 void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource> &source) {
-    if (source->path.starts_with("http://")) {
+    if (source->path.starts_with("https://") || source->path.starts_with("http://")) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Unsubscribe;
         command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(source->path).build();
@@ -429,7 +429,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
 
 #ifdef EMSCRIPTEN
         // on emscripten we cannot use local sources
-        const bool okEnabled = path.starts_with("http://");
+        const bool okEnabled = path.starts_with("https://") || path.starts_with("http://");
 #else
         const bool okEnabled = !path.empty();
 #endif

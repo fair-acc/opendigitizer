@@ -21,6 +21,7 @@
 #endif
 
 #include "build_configuration.hpp"
+#include "settings.h"
 
 // TODO use built-in GR blocks
 
@@ -120,10 +121,11 @@ connections:
         grc = grcBuffer.str();
     }
 
-    Broker broker("/PrimaryBroker");
+    Digitizer::Settings settings;
+    Broker              broker("/PrimaryBroker");
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
-    using RestBackend = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
+    using RestBackend = FileServerRestBackend<HTTPS, decltype(fs)>;
     RestBackend rest(broker, fs, SERVING_DIR);
 
     const auto  requestedAddress    = URI<>("mds://127.0.0.1:12345");
@@ -168,7 +170,7 @@ connections:
     opencmw::client::ClientContext client{ std::move(clients) };
 
     // create example signals
-    opencmw::service::dns::DnsClient dns_client{ client, "http://localhost:8080/dns" };
+    opencmw::service::dns::DnsClient dns_client{ client, settings.serviceUrls() + "/dns" };
     dns_client.registerSignals({ { "http", "localhost", 8080, "opendigitizer", "", "Signal A", "A", 1e3, "TRIGGERED" },
             { "http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING" },
             { "https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED" },
