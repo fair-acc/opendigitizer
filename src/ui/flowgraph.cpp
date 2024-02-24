@@ -133,6 +133,17 @@ void Block::update() {
     }
 }
 
+bool Block::isToolbarBlock() const {
+    const auto &meta = m_node->metaInformation();
+    auto        it   = meta.find("Drawable");
+    if (it != meta.end() && std::holds_alternative<gr::property_map>(it->second)) {
+        const auto &drawableMap = std::get<gr::property_map>(it->second);
+        auto        catIt       = drawableMap.find("Category");
+        return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == "Toolbar";
+    }
+    return false;
+}
+
 std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }

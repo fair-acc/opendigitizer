@@ -328,6 +328,12 @@ public:
     const std::string                       name;
     const std::string                       id;
 
+    bool                                    isToolbarBlock() const;
+    void                                    draw() {
+        // TODO: handle return value
+        std::ignore = m_node->draw();
+    }
+
     // protected:
     auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }

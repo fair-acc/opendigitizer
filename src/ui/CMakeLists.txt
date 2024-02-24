@@ -12,7 +12,6 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 set(sources
     main.cpp
-    app.cpp
     flowgraph.cpp
     flowgraphitem.cpp
     dashboard.cpp
@@ -185,3 +184,7 @@ target_link_libraries(
           pmtv)
 target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")
+
+if(OPENDIGITIZER_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
