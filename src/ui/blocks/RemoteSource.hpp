@@ -21,10 +21,13 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
     gr::PortOut<float>          out;
     std::string                 remote_uri;
     std::string                 signal_name;
+    std::string                 signal_unit;
+    float                       signal_min;
+    float                       signal_max;
     opencmw::client::RestClient _client;
 
     struct Data {
-        opendigitizer::acq::Acquisition data;
+        opendigitizer::acq::Acquisition acq;
         std::size_t                     read = 0;
     };
 
@@ -35,18 +38,25 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    auto                   processBulk(gr::PublishableSpan auto &output) noexcept {
+    void                   updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition &acq) {
+        if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
+            this->settings().set({ { "signal_name", acq.channelName.value() }, { "signal_unit", acq.channelUnit.value() }, { "signal_min", acq.channelRangeMin.value() }, { "signal_max", acq.channelRangeMax.value() } });
+        }
+    }
+
+    auto processBulk(gr::PublishableSpan auto &output) noexcept {
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
-            auto &d  = _queue->data.front();
-            auto  in = std::span<const float>(d.data.channelValue.begin(), d.data.channelValue.end());
-            in       = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
+            auto &d = _queue->data.front();
+            updateSettingsFromAcquisition(d.acq);
+            auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
+            in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
 
             std::copy(in.begin(), in.end(), output.begin() + written);
             written += in.size();
             d.read += in.size();
-            if (d.read == d.data.channelValue.size()) {
+            if (d.read == d.acq.channelValue.size()) {
                 _queue->data.pop_front();
             }
         }
@@ -109,6 +119,6 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
 } // namespace opendigitizer
 
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::RemoteSource, out, remote_uri, signal_name)
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max)
 
 #endif

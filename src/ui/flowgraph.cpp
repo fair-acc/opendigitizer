@@ -386,9 +386,6 @@ void FlowGraph::clear() {
     del(m_sourceBlocks);
     del(m_sinkBlocks);
     m_connections.clear();
-#if 0
-    m_remoteSources.clear();
-#endif
 }
 
 int FlowGraph::save(std::ostream &stream) {
