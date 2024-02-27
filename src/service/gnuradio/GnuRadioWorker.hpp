@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_SERVICE_GNURADIOWORKER_H
 #define OPENDIGITIZER_SERVICE_GNURADIOWORKER_H
 
+#include "gnuradio-4.0/Message.hpp"
 #include <daq_api.hpp>
 
 #include <majordomo/Worker.hpp>
@@ -11,7 +12,6 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include <chrono>
-#include <cmath>
 #include <memory>
 #include <ranges>
 #include <string_view>
@@ -46,6 +46,20 @@ inline std::string findTriggerName(std::span<const gr::Tag> tags) {
         return std::get<std::string>(v->get());
     }
     return {};
+}
+
+template<typename T>
+inline std::optional<T> getSetting(const gr::BlockModel &block, const std::string &key) {
+    try {
+        const auto setting = block.settings().get(key);
+        if (!setting) {
+            return {};
+        }
+        return std::get<T>(*setting);
+    } catch (const std::exception &e) {
+        fmt::println(std::cerr, "Unexpected type for '{}' property", key);
+        return {};
+    }
 }
 
 } // namespace detail
@@ -113,6 +127,14 @@ struct StreamingPollerEntry {
     }
 };
 
+struct SignalEntry {
+    std::string name;
+    std::string unit;
+    float       sample_rate;
+
+    auto        operator<=>(const SignalEntry &) const noexcept = default;
+};
+
 struct DataSetPollerEntry {
     using SampleType = double;
     std::shared_ptr<gr::basic::DataSink<SampleType>::DataSetPoller> poller;
@@ -121,10 +143,11 @@ struct DataSetPollerEntry {
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
-    gr::PluginLoader          *_plugin_loader;
-    std::jthread               _notifyThread;
-    std::unique_ptr<gr::Graph> _pending_flow_graph;
-    std::mutex                 _flow_graph_mutex;
+    gr::PluginLoader                             *_plugin_loader;
+    std::jthread                                  _notifyThread;
+    std::unique_ptr<gr::Graph>                    _pending_flow_graph;
+    std::mutex                                    _flow_graph_mutex;
+    std::function<void(std::vector<SignalEntry>)> _updateSignalEntriesCallback;
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
@@ -153,6 +176,10 @@ public:
         _pending_flow_graph = std::move(fg);
     }
 
+    void setUpdateSignalEntriesCallback(std::function<void(std::vector<SignalEntry>)> callback) {
+        _updateSignalEntriesCallback = std::move(callback);
+    }
+
 private:
     void init(std::chrono::milliseconds rate) {
         // TODO instead of a notify thread with polling, we could also use callbacks. This would require
@@ -164,8 +191,10 @@ private:
             std::map<PollerKey, StreamingPollerEntry> streamingPollers;
             std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
             std::jthread                              schedulerThread;
+            std::map<std::string, SignalEntry>        signalEntryBySink;
             std::unique_ptr<MsgPortOut>               toScheduler;
             std::unique_ptr<MsgPortIn>                fromScheduler;
+
             bool                                      finished = false;
 
             while (!finished) {
@@ -185,15 +214,57 @@ private:
                 }
 
                 if (hasScheduler) {
-                    auto messages = fromScheduler->streamReader().get(fromScheduler->streamReader().available());
+                    bool signalInfoChanged = false;
+                    auto messages          = fromScheduler->streamReader().get(fromScheduler->streamReader().available());
                     for (const auto &message : messages) {
                         const auto updateValue = messageField<std::string>(message, kind::SchedulerStateUpdate);
                         if (updateValue == magic_enum::enum_name(lifecycle::State::STOPPED)) {
                             schedulerFinished = true;
+                            continue;
+                        }
+
+                        const auto kind = messageField<std::string>(message, key::Kind);
+
+                        if (kind == kind::SettingsChanged) {
+                            const auto &settings = messageField<gr::property_map>(message, key::Data);
+                            const auto &sender   = messageField<std::string>(message, key::Sender);
+                            if (!settings || !sender) {
+                                continue;
+                            }
+                            auto sinkIt = signalEntryBySink.find(*sender);
+                            if (sinkIt == signalEntryBySink.end()) {
+                                continue;
+                            }
+                            auto      &entry       = sinkIt->second;
+
+                            const auto signal_name = detail::get<std::string>(*settings, "signal_name");
+                            const auto signal_unit = detail::get<std::string>(*settings, "signal_unit");
+                            const auto sample_rate = detail::get<float>(*settings, "sample_rate");
+                            if (signal_name && signal_name != entry.name) {
+                                entry.name        = *signal_name;
+                                signalInfoChanged = true;
+                            }
+                            if (signal_unit && signal_unit != entry.unit) {
+                                entry.unit        = *signal_unit;
+                                signalInfoChanged = true;
+                            }
+                            if (sample_rate && sample_rate != entry.sample_rate) {
+                                entry.sample_rate = *sample_rate;
+                                signalInfoChanged = true;
+                            }
                         }
                     }
 
-                    std::ignore          = messages.consume(messages.size());
+                    std::ignore = messages.consume(messages.size());
+
+                    if (signalInfoChanged && _updateSignalEntriesCallback) {
+                        std::vector<SignalEntry> entries;
+                        entries.reserve(signalEntryBySink.size());
+                        for (const auto &[_, entry] : signalEntryBySink) {
+                            entries.push_back(entry);
+                        }
+                        _updateSignalEntriesCallback(std::move(entries));
+                    }
 
                     bool pollersFinished = true;
                     do {
@@ -212,6 +283,10 @@ private:
                 }
 
                 if (stopScheduler || schedulerFinished) {
+                    if (_updateSignalEntriesCallback) {
+                        _updateSignalEntriesCallback({});
+                    }
+                    signalEntryBySink.clear();
                     streamingPollers.clear();
                     dataSetPollers.clear();
                     fromScheduler.reset();
@@ -225,6 +300,22 @@ private:
                 }
 
                 if (pendingFlowGraph) {
+                    pendingFlowGraph->forEachBlock([&signalEntryBySink](const auto &block) {
+                        if (block.typeName().starts_with("gr::basic::DataSink")) {
+                            auto &entry       = signalEntryBySink[std::string(block.uniqueName())];
+                            entry.name        = detail::getSetting<std::string>(block, "signal_name").value_or("");
+                            entry.unit        = detail::getSetting<std::string>(block, "signal_unit").value_or("");
+                            entry.sample_rate = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
+                        }
+                    });
+                    if (_updateSignalEntriesCallback) {
+                        std::vector<SignalEntry> entries;
+                        entries.reserve(signalEntryBySink.size());
+                        for (const auto &[_, entry] : signalEntryBySink) {
+                            entries.push_back(entry);
+                        }
+                        _updateSignalEntriesCallback(std::move(entries));
+                    }
                     auto sched      = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
                     toScheduler     = std::make_unique<MsgPortOut>();
                     fromScheduler   = std::make_unique<MsgPortIn>();
