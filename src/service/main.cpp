@@ -4,6 +4,7 @@
 #include <services/dns.hpp>
 #include <zmq/ZmqUtils.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <thread>
 
@@ -97,6 +98,7 @@ int main(int argc, char **argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
     using namespace opencmw::majordomo;
+    using namespace opencmw::service;
     using namespace std::chrono_literals;
 
     std::string grc = R"(
@@ -133,14 +135,14 @@ connections:
         fmt::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
-    std::jthread                         brokerThread([&broker] {
+    std::jthread       brokerThread([&broker] {
         broker.run();
     });
 
-    std::jthread                         restThread([&rest] { rest.run(); });
+    std::jthread       restThread([&rest] { rest.run(); });
 
-    opencmw::service::dns::DnsWorkerType dns_worker{ broker, opencmw::service::dns::DnsHandler{} };
-    std::jthread                         dnsThread([&dns_worker] {
+    dns::DnsWorkerType dns_worker{ broker, dns::DnsHandler{} };
+    std::jthread       dnsThread([&dns_worker] {
         dns_worker.run();
     });
 
@@ -153,14 +155,9 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader pluginLoader(registry, {});
-    GrAcqWorker      grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
-    GrFgWorker       grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
-
-    std::jthread     grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
-    std::jthread     grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
-
-    std::this_thread::sleep_for(100ms);
+    gr::PluginLoader                                          pluginLoader(registry, {});
+    GrAcqWorker                                               grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
+    GrFgWorker                                                grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
 
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
@@ -168,12 +165,41 @@ connections:
     clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
     opencmw::client::ClientContext client{ std::move(clients) };
 
-    // create example signals
-    opencmw::service::dns::DnsClient dns_client{ client, settings.serviceUrls() + "/dns" };
-    dns_client.registerSignals({ { "http", "localhost", 8080, "opendigitizer", "", "Signal A", "A", 1e3, "TRIGGERED" },
-            { "http", "localhost", 8080, "opendigitizer", "", "Signal B", "A", 2e3, "STREAMING" },
-            { "https", "powersupply.example.com", 8080, "powersupply", "", "Supply", "V", 3e3, "TRIGGERED" },
-            { "mdp", "dcct.example.com", 9999, "opendigitizer", "", "signal 4", "ms", 4e3, "STREAMING" } });
+    dns::DnsClient                 dns_client{ client, "http://localhost:8080/dns" };
+
+    std::vector<SignalEntry>       registeredSignals;
+    grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client](std::vector<SignalEntry> signals) {
+        std::ranges::sort(signals);
+        std::vector<SignalEntry> toUnregister;
+        std::ranges::set_difference(registeredSignals, signals, std::back_inserter(toUnregister));
+        std::vector<SignalEntry> toRegister;
+        std::ranges::set_difference(signals, registeredSignals, std::back_inserter(toRegister));
+
+        auto dnsEntriesForSignal = [](const SignalEntry &entry) {
+            // TODO do smarter host name and port, publish acquisition modes other than streaming?
+            return std::vector{
+                dns::Entry{ "http", "localhost", 8080, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+                dns::Entry{ "https", "localhost", 8080, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+                dns::Entry{ "mdp", "localhost", 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+            };
+        };
+        std::vector<dns::Entry> toUnregisterEntries;
+        for (const auto &signal : toUnregister) {
+            auto dns = dnsEntriesForSignal(signal);
+            toUnregisterEntries.insert(toUnregisterEntries.end(), dns.begin(), dns.end());
+        }
+        dns_client.unregisterSignals(std::move(toUnregisterEntries));
+
+        std::vector<dns::Entry> toRegisterEntries;
+        for (const auto &signal : toRegister) {
+            auto dns = dnsEntriesForSignal(signal);
+            toRegisterEntries.insert(toRegisterEntries.end(), dns.begin(), dns.end());
+        }
+        dns_client.registerSignals(std::move(toRegisterEntries));
+    });
+
+    std::jthread grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
+    std::jthread grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
 
     brokerThread.join();
     restThread.join();

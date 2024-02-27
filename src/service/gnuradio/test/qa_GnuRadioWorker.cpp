@@ -87,11 +87,13 @@ struct TestSetup {
     zmq::Context          ctx;
     client::ClientContext client = makeClient(ctx);
 
-    TestSetup() {
+    explicit TestSetup(std::function<void(std::vector<SignalEntry>)> dnsCallback = {}) {
         const auto brokerPubAddress = broker.bind(URI<>("mds://127.0.0.1:12345"));
         expect((brokerPubAddress.has_value() == "bound successful"_b));
         const auto brokerRouterAddress = broker.bind(URI<>("mdp://127.0.0.1:12346"));
         expect((brokerRouterAddress.has_value() == "bound successful"_b));
+        acqWorker.setUpdateSignalEntriesCallback(std::move(dnsCallback));
+
         brokerThread    = std::jthread([this] { broker.run(); });
         acqWorkerThread = std::jthread([this] { acqWorker.run(); });
         fgWorkerThread  = std::jthread([this] { fgWorker.run(); });
@@ -181,7 +183,12 @@ connections:
   - [count_down, 0, delay_down, 0]
   - [delay_down, 0, test_sink_down, 0]
 )";
-        TestSetup                  test;
+        std::vector<SignalEntry>   lastDnsEntries;
+        TestSetup                  test([&lastDnsEntries](auto entries) {
+            if (!entries.empty()) {
+                lastDnsEntries = std::move(entries);
+            }
+        });
 
         constexpr std::size_t      kExpectedSamples = 100;
         const std::vector<float>   expectedUpData   = getIota(kExpectedSamples);
@@ -219,6 +226,12 @@ connections:
         expect(eq(receivedUpData, expectedUpData));
         expect(eq(receivedDownData.size(), kExpectedSamples));
         expect(eq(receivedDownData, expectedDownData));
+        expect(eq(lastDnsEntries.size(), 2UZ));
+        std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
+        expect(eq(lastDnsEntries[0].name, "count_down"sv));
+        expect(eq(lastDnsEntries[0].unit, "down unit"sv));
+        expect(eq(lastDnsEntries[1].name, "count_up"sv));
+        expect(eq(lastDnsEntries[1].unit, "up unit"sv));
     };
 
     "Flow graph management"_test = [] {
@@ -321,7 +334,14 @@ connections:
   - [source, 0, test_sink, 0]
 )";
 
-        TestSetup                  test;
+        std::mutex                 dnsMutex;
+        std::vector<SignalEntry>   lastDnsEntries;
+        TestSetup                  test([&lastDnsEntries, &dnsMutex](auto entries) {
+            if (!entries.empty()) {
+                std::lock_guard lock(dnsMutex);
+                lastDnsEntries = std::move(entries);
+            }
+        });
 
         std::atomic<std::size_t>   receivedCount1 = 0;
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test1"), [&receivedCount1](const auto &acq) {
@@ -335,12 +355,21 @@ connections:
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
-
         std::this_thread::sleep_for(1200ms);
+
+        {
+            std::lock_guard lock(dnsMutex);
+            expect(eq(lastDnsEntries.size(), 1UZ));
+            expect(eq(lastDnsEntries[0].name, "test1"sv));
+        }
         test.setGrc(grc2);
 
         constexpr auto kExpectedSamples = 50000UZ;
         waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
+
+        std::lock_guard lock(dnsMutex);
+        expect(eq(lastDnsEntries.size(), 1UZ));
+        expect(eq(lastDnsEntries[0].name, "test2"sv));
     };
 
     "Trigger - tightly packed tags"_test = [] {
@@ -435,6 +464,7 @@ blocks:
     id: CountSource
     parameters:
       n_samples: 100
+      signal_unit: A unit
       sample_rate: 10
       timing_tags:
         - 30,hello
@@ -452,7 +482,12 @@ connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
 )";
-        TestSetup                  test;
+        std::vector<SignalEntry>   lastDnsEntries;
+        TestSetup                  test([&lastDnsEntries](auto entries) {
+            if (!entries.empty()) {
+                lastDnsEntries = std::move(entries);
+            }
+        });
 
         std::vector<float>         receivedData;
         std::atomic<std::size_t>   receivedCount = 0;
@@ -469,6 +504,10 @@ connections:
         waitWhile([&] { return receivedCount < 20; });
 
         expect(eq(receivedData, getIota(20, 50)));
+        expect(eq(lastDnsEntries.size(), 1UZ));
+        expect(eq(lastDnsEntries[0].name, "count"sv));
+        expect(eq(lastDnsEntries[0].unit, "A unit"sv));
+        expect(eq(lastDnsEntries[0].sample_rate, 10.f));
     };
 
     "Snapshot"_test = [] {
@@ -498,7 +537,13 @@ connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
 )";
-        TestSetup                  test;
+        std::vector<SignalEntry>   lastDnsEntries;
+
+        TestSetup                  test([&lastDnsEntries](auto entries) {
+            if (!entries.empty()) {
+                lastDnsEntries = std::move(entries);
+            }
+        });
 
         std::vector<float>         receivedData;
         std::atomic<std::size_t>   receivedCount = 0;
@@ -519,6 +564,10 @@ connections:
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{ 80.f }));
+        expect(eq(lastDnsEntries.size(), 1UZ));
+        expect(eq(lastDnsEntries[0].name, "count"sv));
+        expect(eq(lastDnsEntries[0].unit, "A unit"sv));
+        expect(eq(lastDnsEntries[0].sample_rate, 10.f));
     };
 
     "Flow graph handling - Unknown block"_test = [] {
@@ -582,11 +631,16 @@ connections:
 
         // Here we rely on the signal_name propagation from the sources to the sinks. As that only happens at execution time, there's a delay between
         // the flowgraph execution starting and the listener registration succeeding, thus we don't get all the signal data from the start.
-        std::vector<float> receivedUpData;
-        std::vector<float> receivedDownData;
+        std::vector<float>       receivedUpData;
+        std::vector<float>       receivedDownData;
+        std::vector<SignalEntry> lastDnsEntries;
 
         {
-            TestSetup test;
+            TestSetup test([&lastDnsEntries](auto entries) {
+                if (!entries.empty()) {
+                    lastDnsEntries = std::move(entries);
+                }
+            });
 
             test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData](const Acquisition &acq) {
                 expect(eq(acq.channelName.value(), "count_up"sv));
@@ -608,6 +662,12 @@ connections:
         }
         expect(!receivedUpData.empty());
         expect(!receivedDownData.empty());
+        std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
+        expect(eq(lastDnsEntries.size(), 2UZ));
+        expect(eq(lastDnsEntries[0].name, "count_down"sv));
+        expect(eq(lastDnsEntries[0].unit, "Test unit B"sv));
+        expect(eq(lastDnsEntries[1].name, "count_up"sv));
+        expect(eq(lastDnsEntries[1].unit, "Test unit A"sv));
     };
 };
 
