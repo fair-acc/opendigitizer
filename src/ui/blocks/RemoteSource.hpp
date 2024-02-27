@@ -11,6 +11,8 @@
 #include <RestClient.hpp>
 #include <type_traits>
 
+#include "../app.h"
+
 namespace opendigitizer {
 
 template<typename T>
@@ -74,6 +76,11 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
         command.command = opencmw::mdp::Command::Subscribe;
         command.topic   = opencmw::URI<>(remote_uri);
         fmt::print("Subscribing to {}\n", remote_uri);
+
+        auto &d = DigitizerUi::App::instance().dashboard;
+        if (d) {
+            d->addRemoteService(remote_uri);
+        }
 
         std::weak_ptr maybeQueue = _queue;
 
