@@ -122,8 +122,13 @@ public:
             : name(std::move(n)), uri(std::move(u)) {}
         std::string                 name;
         std::string                 uri;
+        std::string                 layout;
+        std::string                 grc;
         FlowGraph                   flowGraph;
         opencmw::client::RestClient client;
+
+        void                        reload();
+        void                        execute();
     };
     void            addRemoteService(std::string_view uri);
     void            saveRemoteServiceFlowgraph(Service *s);

@@ -545,24 +545,49 @@ void Dashboard::addRemoteService(std::string_view uri) {
 
     auto       it      = std::find_if(m_services.begin(), m_services.end(), [&](const auto &s) { return s.name == service; });
     if (it == m_services.end()) {
-        auto                     uri = std::move(f).path("/flowgraph").build();
-        auto                    &s   = *m_services.emplace(std::move(service), uri.str());
-
-        opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Get;
-        command.topic    = uri;
-        command.callback = [&](const opencmw::mdp::Message &rep) {
-            auto             buf = rep.data;
-
-            FlowgraphMessage reply;
-            opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
-#if 0 // TODO this crashes on e.g. unknown blocks
-            s.flowGraph.parse(reply.flowgraph);
-#endif
-            App::instance().fgItem.setSettings(&s.flowGraph, reply.layout);
-        };
-        s.client.request(command);
+        auto  uri = std::move(f).path("/flowgraph").build();
+        auto &s   = *m_services.emplace(std::move(service), uri.str());
+        s.reload();
     }
+}
+
+void Dashboard::Service::reload() {
+    opencmw::client::Command command;
+    command.command  = opencmw::mdp::Command::Get;
+    command.topic    = opencmw::URI<>(uri);
+    command.callback = [&](const opencmw::mdp::Message &rep) {
+        auto             buf = rep.data;
+
+        FlowgraphMessage reply;
+        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
+
+        grc    = reply.flowgraph;
+        layout = reply.layout;
+
+#if 0 // TODO this crashes on e.g. unknown blocks
+        s.flowGraph.parse(reply.flowgraph);
+#endif
+        App::instance().fgItem.setSettings(&flowGraph, reply.layout);
+    };
+    client.request(command);
+}
+
+void Dashboard::Service::execute() {
+    opencmw::client::Command command;
+    command.command = opencmw::mdp::Command::Set;
+
+    FlowgraphMessage reply;
+    reply.flowgraph = grc;
+    reply.layout    = layout;
+    opencmw::serialise<opencmw::Json>(command.data, reply);
+
+    command.topic    = opencmw::URI<>(uri);
+    command.callback = [&](const opencmw::mdp::Message &rep) {
+        if (!rep.error.empty()) {
+            fmt::print("{}\n", rep.error);
+        }
+    };
+    client.request(command);
 }
 
 void Dashboard::saveRemoteServiceFlowgraph(Service *s) {

@@ -386,9 +386,38 @@ static void main_loop(void *arg) {
         ImGui::PopID();
     } else if (app->mainViewMode == "FlowGraph") {
         if (app->dashboard != nullptr) {
-            auto contentRegion = ImGui::GetContentRegionAvail();
+            auto drawLocal = [&]() {
+                auto contentRegion = ImGui::GetContentRegionAvail();
+                app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
+            };
 
-            app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
+            // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
+            if (!app->dashboard->remoteServices().empty()) {
+                ImGui::BeginTabBar("maintabbar");
+                if (ImGui::BeginTabItem("Local")) {
+                    drawLocal();
+                    ImGui::EndTabItem();
+                }
+            } else {
+                drawLocal();
+            }
+
+            for (auto &s : app->dashboard->remoteServices()) {
+                if (ImGui::BeginTabItem(s.name.c_str())) {
+                    if (ImGui::Button("Reload from service")) {
+                        s.reload();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Execute on service")) {
+                        s.execute();
+                    }
+                    ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
+                    ImGui::EndTabItem();
+                }
+            }
+            if (!app->dashboard->remoteServices().empty()) {
+                ImGui::EndTabBar();
+            }
         }
     } else if (app->mainViewMode == "OpenSaveDashboard") {
         app->openDashboardPage.draw(app);
@@ -396,34 +425,8 @@ static void main_loop(void *arg) {
         fmt::print("unknown view mode {}\n", app->mainViewMode);
     }
 
-    // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
-    DigitizerUi::Dashboard::Service *service = nullptr;
-    if (app->dashboard != nullptr) {
-        if (!app->dashboard->remoteServices().empty()) {
-            ImGui::BeginTabBar("maintabbar");
-        }
-        for (auto &s : app->dashboard->remoteServices()) {
-            auto name          = fmt::format("Flowgraph of {}", s.name);
-            auto contentRegion = ImGui::GetContentRegionAvail();
-            if (ImGui::BeginTabItem(name.c_str())) {
-                app->fgItem.draw(&s.flowGraph, contentRegion);
-                service = &s;
-                ImGui::EndTabItem();
-            }
-        }
-        if (!app->dashboard->remoteServices().empty()) {
-            ImGui::EndTabBar();
-        }
-    } else {
+    if (app->dashboard == nullptr) {
         ImGui::EndDisabled();
-    }
-
-    if (service) {
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(static_cast<float>(width) - 150.f);
-        if (ImGui::Button("Save flow graph")) {
-            app->dashboard->saveRemoteServiceFlowgraph(service);
-        }
     }
 
     ImGui::End();
