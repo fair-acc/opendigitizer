@@ -28,10 +28,6 @@ set(GNURADIO_PREFIX
 add_subdirectory(app_header)
 add_subdirectory(utils)
 
-if(NOT TARGET digitizer_settings)
-  add_subdirectory(../utils ./common_utils)
-endif()
-
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
 
@@ -140,9 +136,9 @@ if(EMSCRIPTEN)
     app
     DEPENDS ${outputFileName})
 
-  # TODO should be pulled via linking od_acquisition, but that's outside the source folder (src/ui) for the ui-wasm
-  # build
+  # TODO should be pulled via linking the targets, but they're outside the source folder (src/ui) for the ui-wasm build
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../acquisition) # for daq_api.hpp
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../utils/include)
 
 else() # native build
 
@@ -167,6 +163,7 @@ else() # native build
             utils
             ui_assets
             sample_dashboards
+            digitizer_settings
             fonts)
   target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
 
@@ -185,7 +182,6 @@ target_link_libraries(
           gr-fourier
           fftw
           vir
-          digitizer_settings
           pmtv)
 target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")

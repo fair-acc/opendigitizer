@@ -21,5 +21,8 @@ target_link_libraries(
           sample_dashboards
           client
           plf_colony)
+# workaround for getting out of source tree dependencies, should be modelled as proper targets
+target_include_directories(qa_play_stop_bar PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../acquisition) # for daq_api.hpp
+target_include_directories(qa_play_stop_bar PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
 
 add_test(NAME qa_play_stop_bar COMMAND qa_play_stop_bar)
