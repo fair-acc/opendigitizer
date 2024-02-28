@@ -237,7 +237,7 @@ struct LabelToolbarBlock
         this->processScheduledMessages();
         std::ignore                   = this->settings().applyStagedParameters(); // return ignored since there are no tags to be forwarded
         const gr::work::Status status = gr::work::Status::OK;                     // this->invokeWork(); // calls work(...) -> processOne(...) (all in the same thread as this 'draw()'
-        ImGui::Text(message.c_str());
+        ImGui::TextUnformatted(message.c_str());
         return status;
     }
 };
