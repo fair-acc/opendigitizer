@@ -88,12 +88,25 @@ public:
 
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 
+    auto                                                    data_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+    auto data_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+
     template<typename T>
     void initPort(auto &vec) {
         vec.push_back({});
         auto &p = vec.back();
         p.name  = T::static_name();
-        p.type  = "float";
+        p.type  = T::kPortType == gr::PortType::STREAM ? "float" : "message";
         if (meta::is_dataset_v<typename T::value_type>) {
             p.dataset = true;
         }
@@ -113,14 +126,14 @@ public:
             using Node                             = T<float>;
             namespace meta                         = gr::traits::block;
 
-            constexpr std::size_t input_port_count = meta::template stream_input_port_types<Node>::size;
+            constexpr std::size_t input_port_count = meta::template all_input_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template stream_input_ports<Node>::template at<Is>>(t->inputs), ...);
+                (t->template initPort<typename meta::template all_input_ports<Node>::template at<Is>>(t->inputs), ...);
             }(std::make_index_sequence<input_port_count>());
 
-            constexpr std::size_t output_port_count = meta::template stream_output_port_types<Node>::size;
+            constexpr std::size_t output_port_count = meta::template all_output_port_types<Node>::size;
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template stream_output_ports<Node>::template at<Is>>(t->outputs), ...);
+                (t->template initPort<typename meta::template all_output_ports<Node>::template at<Is>>(t->outputs), ...);
             }(std::make_index_sequence<output_port_count>());
 
             addBlockType(std::move(t));
@@ -311,8 +324,20 @@ public:
     Block(std::string_view name, std::string_view id, BlockType *type);
     virtual ~Block() {}
 
-    const auto                             &inputs() const { return m_inputs; }
-    const auto                             &outputs() const { return m_outputs; }
+    const auto &inputs() const { return m_inputs; }
+    const auto &outputs() const { return m_outputs; }
+    auto        dataInputs() const {
+        return m_inputs | std::views::filter([](const Port &p) { return p.type != DataType::AsyncMessage; });
+    }
+    auto dataOutputs() const {
+        return m_outputs | std::views::filter([](const Port &p) { return p.type != DataType::AsyncMessage; });
+    }
+    auto messageInputs() const {
+        return m_inputs | std::views::filter([](const Port &p) { return p.type == DataType::AsyncMessage; });
+    }
+    auto messageOutputs() const {
+        return m_outputs | std::views::filter([](const Port &p) { return p.type == DataType::AsyncMessage; });
+    }
 
     void                                    setParameter(const std::string &name, const pmtv::pmt &par);
     const auto                             &parameters() const { return m_parameters; }
@@ -383,9 +408,10 @@ public:
     }
 
     std::unique_ptr<gr::BlockModel> createGraphNode() final {
-        DataType t = DataType::Float32;
-        if (inputs().size() > 0) {
-            if (auto &in = inputs().front(); in.connections.size() > 0) {
+        DataType t          = DataType::Float32;
+        auto     inputsView = dataInputs();
+        if (!std::ranges::empty(inputsView)) {
+            if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
                 auto &src = in.connections[0]->src;
                 t         = src.block->outputs()[src.index].type;
             }
