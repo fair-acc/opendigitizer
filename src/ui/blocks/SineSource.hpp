@@ -5,12 +5,15 @@
 #include <gnuradio-4.0/Block.hpp>
 
 #include <mutex>
+#include <string>
 
 namespace opendigitizer {
 
 template<typename T>
     requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
+    gr::MsgPortIn           freqIn;
+    gr::MsgPortOut          freqOut;
     gr::PortOut<T>          out{};
     float                   val       = 0;
     float                   frequency = 1.f;
@@ -20,8 +23,32 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     std::thread             thread;
     std::atomic_bool        quit = false;
 
-    SineSource()
-        : thread([this]() {
+    void
+    settingsChanged(const gr::property_map &oldSettings, const gr::property_map &newSettings) {
+        // TODO: enable and fix settings update
+        // fmt::println("{}::settingsChanged(..) - called", this->name); // N.B. for debugging purposes to see how often setting changes are forced
+        if (newSettings.contains("frequency") && newSettings.at("frequency") != oldSettings.at("frequency")) {
+            using namespace std::string_literals;
+            fmt::println("{}::settingsChanged(..): frequency to: {}", this->name, frequency);
+            this->emitMessage(freqOut, { { "frequency"s, frequency } });
+        }
+    }
+
+    void
+    processMessages(auto &, std::span<const gr::Message> message) {
+        fmt::print("received Message: {}", message.size());
+        std::ranges::for_each(message, [this](auto &m) {
+            if (m.contains("frequency")) {
+                using namespace std::string_literals;
+                const auto newFrequency = std::get<float>(m.at("frequency"));
+                fmt::println("{}::processMessages(..): changed frequency to: {}", this->name, newFrequency);
+                this->settings().set({ { "frequency"s, newFrequency } });
+            }
+        });
+    }
+
+    void start() {
+        thread = std::thread([this]() {
             using namespace std::chrono_literals;
             while (!quit) {
                 {
@@ -35,10 +62,10 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 
                 std::this_thread::sleep_for(20ms);
             }
-        }) {
+        });
     }
 
-    ~SineSource() {
+    void stop() {
         std::unique_lock guard(mutex);
         quit = true;
         thread.join();
@@ -68,6 +95,6 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 
 } // namespace opendigitizer
 
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, frequency)
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, freqIn, freqOut, frequency)
 
 #endif
