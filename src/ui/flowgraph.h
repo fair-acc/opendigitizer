@@ -454,6 +454,8 @@ public:
     inline bool                  graphChanged() const { return m_graphChanged; }
     gr::Graph                    createGraph();
 
+    const std::string           &grc() const { return m_grc; }
+
     int                          save(std::ostream &stream);
     void                         addRemoteSource(std::string_view uri);
 
@@ -472,6 +474,7 @@ private:
     };
     std::vector<RemoteSource> m_remoteSources;
     bool                      m_graphChanged = true;
+    std::string               m_grc;
 
     // TODO add remote sources here?
 };

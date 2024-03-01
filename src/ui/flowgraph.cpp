@@ -324,20 +324,18 @@ void FlowGraph::parse(const std::string &str) {
                     continue;
                 }
 
-                std::visit([&](auto &&a) {
-                    using T = std::decay_t<decltype(a)>;
-                    if constexpr (std::is_same_v<T, std::string>) {
-                        auto value = it->second.as<std::string>();
-                        block->setParameter(key, value);
-                    } else if constexpr (std::is_integral_v<T>) {
-                        auto value = it->second.as<int>();
-                        block->setParameter(key, value);
-                    } else if constexpr (std::is_floating_point_v<T>) {
-                        auto value = it->second.as<float>();
-                        block->setParameter(key, value);
-                    }
-                },
-                        p->second);
+                auto unpack = [&]<typename T>() {
+                    return std::visit([&](auto &&val) {
+                        if constexpr (std::is_same_v<T, std::decay_t<decltype(val)>>) {
+                            auto value = it->second.template as<T>();
+                            block->setParameter(key, value);
+                            return true;
+                        }
+                        return false;
+                    },
+                            p->second);
+                };
+                unpack.operator()<std::int8_t>() || unpack.operator()<std::int16_t>() || unpack.operator()<std::int32_t>() || unpack.operator()<std::int64_t>() || unpack.operator()<std::uint8_t>() || unpack.operator()<std::uint16_t>() || unpack.operator()<std::uint32_t>() || unpack.operator()<std::uint64_t>() || unpack.operator()<bool>() || unpack.operator()<float>() || unpack.operator()<double>() || unpack.operator()<std::string>();
             }
         }
 
@@ -371,12 +369,22 @@ void FlowGraph::parse(const std::string &str) {
 
         connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
     }
+
+    m_graphChanged = true;
 }
 
 void FlowGraph::clear() {
-    m_blocks.clear();
-    m_sourceBlocks.clear();
-    m_sinkBlocks.clear();
+    auto del = [&](auto &vec) {
+        if (blockDeletedCallback) {
+            for (auto &b : vec) {
+                blockDeletedCallback(b.get());
+            }
+        }
+        vec.clear();
+    };
+    del(m_blocks);
+    del(m_sourceBlocks);
+    del(m_sinkBlocks);
     m_connections.clear();
 #if 0
     m_remoteSources.clear();
@@ -399,9 +407,9 @@ int FlowGraph::save(std::ostream &stream) {
                 if (!parameters.empty()) {
                     map.write("parameters", [&]() {
                         YamlMap pars(out);
-                        // for (int i = 0; i < parameters.size(); ++i) {
-                        //     pars.write(b->type->parameters[i].id, parameters[i].toString());
-                        // }
+                        for (const auto &[settingsKey, settingsValue] : parameters) {
+                            std::visit([&]<typename T>(const T &value) { pars.write(settingsKey, value); }, settingsValue);
+                        }
                     });
                 }
             };
@@ -592,6 +600,11 @@ gr::Graph FlowGraph::createGraph() {
     }
 
     m_graphChanged = false;
+
+    std::stringstream str;
+    save(str);
+    m_grc = str.str();
+
     return graph;
 }
 

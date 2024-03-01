@@ -77,8 +77,9 @@ public:
 
         Plot();
 
-        std::string           name;
-        std::vector<Source *> sources;
+        std::string              name;
+        std::vector<std::string> sourceNames;
+        std::vector<Source *>    sources;
         struct AxisData {
             Axis  axis;
             float min;
@@ -137,6 +138,8 @@ public:
 
     DataSink       *createSink();
     DataSinkSource *createSource();
+
+    void            loadPlotSources();
 
     FlowGraph       localFlowGraph;
 

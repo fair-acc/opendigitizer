@@ -290,6 +290,12 @@ int main(int argc, char **argv) {
     // emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 10);
 }
 
+namespace {
+
+std::string localFlowgraphGrc = {};
+
+}
+
 static void main_loop(void *arg) {
     const auto startLoop = std::chrono::high_resolution_clock::now();
     auto      *app       = static_cast<DigitizerUi::App *>(arg);
@@ -300,7 +306,9 @@ static void main_loop(void *arg) {
     if (app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto graph = app->dashboard->localFlowGraph.createGraph();
+        app->dashboard->loadPlotSources();
         app->assignScheduler(std::move(graph));
+        localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 
     // Poll and handle events (inputs, window resize, etc.)
@@ -389,20 +397,24 @@ static void main_loop(void *arg) {
         ImGui::PopID();
     } else if (app->mainViewMode == "FlowGraph") {
         if (app->dashboard != nullptr) {
-            auto drawLocal = [&]() {
+            // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
+            ImGui::BeginTabBar("maintabbar");
+            if (ImGui::BeginTabItem("Local")) {
                 auto contentRegion = ImGui::GetContentRegionAvail();
                 app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
-            };
-
-            // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
-            if (!app->dashboard->remoteServices().empty()) {
-                ImGui::BeginTabBar("maintabbar");
-                if (ImGui::BeginTabItem("Local")) {
-                    drawLocal();
-                    ImGui::EndTabItem();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Local - YAML")) {
+                if (ImGui::Button("Reset")) {
+                    localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
                 }
-            } else {
-                drawLocal();
+                ImGui::SameLine();
+                if (ImGui::Button("Apply")) {
+                    app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                }
+
+                ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+                ImGui::EndTabItem();
             }
 
             for (auto &s : app->dashboard->remoteServices()) {
@@ -418,9 +430,7 @@ static void main_loop(void *arg) {
                     ImGui::EndTabItem();
                 }
             }
-            if (!app->dashboard->remoteServices().empty()) {
-                ImGui::EndTabBar();
-            }
+            ImGui::EndTabBar();
         }
     } else if (app->mainViewMode == "OpenSaveDashboard") {
         app->openDashboardPage.draw(app);
