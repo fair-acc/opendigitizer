@@ -379,13 +379,8 @@ void Dashboard::doLoad(const std::string &desc) {
         for (const auto &s : plotSources) {
             if (!s.IsScalar()) ERROR_RETURN("plot source is no scalar");
 
-            auto str    = s.as<std::string>();
-            auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == str; });
-            if (source == m_sources.end()) {
-                fmt::print("Unable to find source {}\n", str);
-                continue;
-            }
-            plot.sources.push_back(&*source);
+            auto str = s.as<std::string>();
+            plot.sourceNames.push_back(str);
         }
 
         plot.rect.x = rect[0].as<int>();
@@ -396,6 +391,8 @@ void Dashboard::doLoad(const std::string &desc) {
 
     auto fgLayout = tree["flowgraphLayout"];
     App::instance().fgItem.setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+
+    loadPlotSources();
 
 #undef ERROR_RETURN
 }
@@ -536,6 +533,21 @@ void Dashboard::newPlot(int x, int y, int w, int h) {
 void Dashboard::deletePlot(Plot *plot) {
     auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot &p) { return plot == &p; });
     m_plots.erase(it);
+}
+
+void Dashboard::loadPlotSources() {
+    for (auto &plot : m_plots) {
+        plot.sources.clear();
+
+        for (const auto &name : plot.sourceNames) {
+            auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
+            if (source == m_sources.end()) {
+                fmt::print("Unable to find source {}\n", name);
+                continue;
+            }
+            plot.sources.push_back(&*source);
+        }
+    }
 }
 
 void Dashboard::addRemoteService(std::string_view uri) {
