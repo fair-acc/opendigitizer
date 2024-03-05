@@ -25,12 +25,12 @@ struct ForeverSource : public gr::Block<ForeverSource<T>> {
 ENABLE_REFLECTION_FOR_TEMPLATE(ForeverSource, out)
 
 template<typename Registry>
-void                   registerTestBlocks(Registry *registry) {
+void                   registerTestBlocks(Registry &registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    GP_REGISTER_BLOCK_RUNTIME(registry, CountSource, double);
-    GP_REGISTER_BLOCK_RUNTIME(registry, ForeverSource, double);
-    GP_REGISTER_BLOCK_RUNTIME(registry, gr::basic::DataSink, double);
+    gr::registerBlock<CountSource, double>(registry);
+    gr::registerBlock<ForeverSource, double>(registry);
+    gr::registerBlock<gr::basic::DataSink, double>(registry);
 #pragma GCC diagnostic pop
 }
 
@@ -73,8 +73,8 @@ void waitWhile(auto condition) {
 struct TestSetup {
     using AcqWorker                    = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
     using FgWorker                     = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
-    gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(&r); return r; }();
-    gr::PluginLoader      pluginLoader = gr::PluginLoader(&registry, {});
+    gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(r); return r; }();
+    gr::PluginLoader      pluginLoader = gr::PluginLoader(registry, {});
     majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
     AcqWorker             acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
     FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);

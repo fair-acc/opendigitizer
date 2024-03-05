@@ -83,7 +83,7 @@ std::unique_ptr<gr::BlockModel> DataSink::createNode() {
         auto *sink    = static_cast<Sink *>(wrapper->raw());
         auto  p       = sink->getStreamingPoller(gr::basic::BlockingMode::NonBlocking);
         updaterFun    = [this, p, vec = std::vector<T>()]() mutable {
-            auto d = p->reader.get();
+            auto d = p->reader.get(p->reader.available());
             vec.resize(d.size());
             std::copy(d.rbegin(), d.rend(), vec.begin());
 
