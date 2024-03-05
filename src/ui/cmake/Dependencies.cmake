@@ -49,7 +49,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     graph-prototype
     GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-    GIT_TAG 7f22e217e88ef54fe45ece84f804f6de8b7ff989 # main as of 2024-02-22
+    GIT_TAG fc33c1793eec5567a8291c885b610a6178a9c84d # main as of 2024-03-05
 )
 
 FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony graph-prototype)

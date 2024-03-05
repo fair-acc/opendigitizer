@@ -79,14 +79,13 @@ ENABLE_REFLECTION_FOR_TEMPLATE(TestSource, out, sample_rate);
 
 namespace {
 template<typename Registry>
-void registerTestBlocks(Registry *registry) {
-    registerBuiltinBlocks(registry);
+void                   registerTestBlocks(Registry &registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    GP_REGISTER_BLOCK_RUNTIME(registry, TestSource, double, float);
-    GP_REGISTER_BLOCK_RUNTIME(registry, gr::basic::DataSink, double, float, int16_t);
+    gr::registerBlock<TestSource, double, float>(registry);
+    gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
 #ifndef __EMSCRIPTEN__
-    GP_REGISTER_BLOCK_RUNTIME(registry, fair::picoscope::Picoscope4000a, double, float, int16_t);
+    gr::registerBlock<fair::picoscope::Picoscope4000a, double, float, std::int16_t>(registry);
 #endif
 #pragma GCC diagnostic pop
 }
@@ -153,8 +152,8 @@ connections:
     using GrAcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data from a GnuRadio flow graph execution">>;
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
-    registerTestBlocks(&registry);
-    gr::PluginLoader pluginLoader(&registry, {});
+    registerTestBlocks(registry);
+    gr::PluginLoader pluginLoader(registry, {});
     GrAcqWorker      grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
     GrFgWorker       grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
 
