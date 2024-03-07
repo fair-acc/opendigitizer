@@ -51,6 +51,7 @@ inline std::string findTriggerName(std::span<const gr::Tag> tags) {
 } // namespace detail
 
 using namespace gr;
+using namespace gr::message;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
@@ -122,7 +123,7 @@ template<units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
     gr::PluginLoader          *_plugin_loader;
     std::jthread               _notifyThread;
-    std::optional<std::string> _pending_flow_graph;
+    std::unique_ptr<gr::Graph> _pending_flow_graph;
     std::mutex                 _flow_graph_mutex;
 
 public:
@@ -147,7 +148,7 @@ public:
         _notifyThread.join();
     }
 
-    void setGraph(std::string fg) {
+    void setGraph(std::unique_ptr<gr::Graph> fg) {
         std::lock_guard lg{ _flow_graph_mutex };
         _pending_flow_graph = std::move(fg);
     }
@@ -163,18 +164,37 @@ private:
             std::map<PollerKey, StreamingPollerEntry> streamingPollers;
             std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
             std::jthread                              schedulerThread;
-
-            bool                                      finished          = false;
-            std::atomic<bool>                         stopScheduler     = false; // to notify scheduler thread to stop the running scheduler
-            std::atomic<bool>                         schedulerFinished = false; // for the scheduler thread to notify this thread that the scheduler finished by itself.
+            std::unique_ptr<MsgPortOut>               toScheduler;
+            std::unique_ptr<MsgPortIn>                fromScheduler;
+            bool                                      finished = false;
 
             while (!finished) {
-                const auto aboutToFinish    = stoken.stop_requested();
-                auto       pendingFlowGraph = [this]() { std::lock_guard lg{ _flow_graph_mutex }; return std::exchange(_pending_flow_graph, {}); }();
-                const auto hasScheduler     = schedulerThread.joinable();
-                stopScheduler               = hasScheduler && (aboutToFinish || pendingFlowGraph || schedulerFinished);
+                const auto aboutToFinish     = stoken.stop_requested();
+                auto       pendingFlowGraph  = [this]() { std::lock_guard lg{ _flow_graph_mutex }; return std::exchange(_pending_flow_graph, {}); }();
+                const auto hasScheduler      = schedulerThread.joinable();
+                const bool stopScheduler     = hasScheduler && (aboutToFinish || pendingFlowGraph);
+                bool       schedulerFinished = false;
+
+                if (stopScheduler) {
+                    auto shutdownMessage = toScheduler->streamWriter().reserve(1);
+                    shutdownMessage[0]   = {
+                        { key::Kind, kind::SchedulerStateChangeRequest },
+                        { key::What, std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP)) }
+                    };
+                    shutdownMessage.publish(1);
+                }
 
                 if (hasScheduler) {
+                    auto messages = fromScheduler->streamReader().get(fromScheduler->streamReader().available());
+                    for (const auto &message : messages) {
+                        const auto updateValue = messageField<std::string>(message, kind::SchedulerStateUpdate);
+                        if (updateValue == magic_enum::enum_name(lifecycle::State::STOPPED)) {
+                            schedulerFinished = true;
+                        }
+                    }
+
+                    std::ignore          = messages.consume(messages.size());
+
                     bool pollersFinished = true;
                     do {
                         pollersFinished = true;
@@ -191,9 +211,11 @@ private:
                     } while (stopScheduler && !pollersFinished);
                 }
 
-                if (stopScheduler) {
+                if (stopScheduler || schedulerFinished) {
                     streamingPollers.clear();
                     dataSetPollers.clear();
+                    fromScheduler.reset();
+                    toScheduler.reset();
                     schedulerThread.join();
                 }
 
@@ -203,37 +225,12 @@ private:
                 }
 
                 if (pendingFlowGraph) {
-                    auto runScheduler = [&stopScheduler, &schedulerFinished](gr::Graph &&fg) {
-                        using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-                        auto scheduler  = Scheduler(std::move(fg));
-                        if (auto e = scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                            // TODO: handle error return message
-                        }
-                        if (auto e = scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                            // TODO: handle error return message
-                        }
-                        while (!stopScheduler) {
-                            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                            if (!scheduler.isProcessing()) {
-                                schedulerFinished = true;
-                            }
-                        }
-                        if (auto e = scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
-                            // TODO: handle error return message
-                        }
-                    };
-
-                    stopScheduler     = false;
-                    schedulerFinished = false;
-                    try {
-                        auto graph = gr::load_grc(*_plugin_loader, *pendingFlowGraph);
-                        handleSubscriptions(streamingPollers, dataSetPollers); // create pollers for new sinks before starting graph
-                        schedulerThread = std::jthread(runScheduler, std::move(graph));
-                    } catch (...) {
-                        // must never happen, parsing ensured by FlowGraphWorker
-                        fmt::println(std::cerr, "Internal error: Could not parse flow graph: {}", *pendingFlowGraph);
-                        std::terminate();
-                    }
+                    auto sched      = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
+                    toScheduler     = std::make_unique<MsgPortOut>();
+                    fromScheduler   = std::make_unique<MsgPortIn>();
+                    std::ignore     = toScheduler->connect(sched->msgIn);
+                    std::ignore     = sched->msgOut.connect(*fromScheduler);
+                    schedulerThread = std::jthread([s = std::move(sched)] { s->runAndWait(); });
                 }
 
                 const auto next_update = update + rate;
@@ -446,7 +443,7 @@ private:
             std::lock_guard lockGuard(_flow_graph_lock);
             auto            grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, initialFlowGraph.flowgraph));
             _flow_graph             = std::move(initialFlowGraph);
-            _acquisition_worker.setGraph(_flow_graph.flowgraph);
+            _acquisition_worker.setGraph(std::move(grGraph));
         } catch (const std::string &e) {
             throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
         }
@@ -461,15 +458,10 @@ private:
         {
             std::lock_guard lockGuard(_flow_graph_lock);
             try {
-                // HACK: we cannot pass the parsed gr::Graph here, because the DataSinkRegistry is shared between gr::Graph instances,
-                // which causes races when tearing down the previous graph. (it might then get a poller from the new graph, and then
-                // waits for it to finish, which never happens).
-                // Thus just parse the graph here to make sure it is valid, and then pass the YAML to the acquisition worker to parse it
-                // there again, after destroying the previous graph.
                 auto grGraph = std::make_unique<gr::Graph>(gr::load_grc(*_plugin_loader, in.flowgraph));
                 _flow_graph  = in;
                 out          = in;
-                _acquisition_worker.setGraph(in.flowgraph);
+                _acquisition_worker.setGraph(std::move(grGraph));
             } catch (const std::string &e) {
                 throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
             }

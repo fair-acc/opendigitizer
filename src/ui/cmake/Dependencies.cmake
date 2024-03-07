@@ -49,7 +49,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     graph-prototype
     GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-    GIT_TAG frank/datasink-metadata
+    GIT_TAG 1f3469c73ea182b38ff66f18d46e5251fc1edbf8 # main as of 2024-03-07
 )
 
 FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony graph-prototype)
