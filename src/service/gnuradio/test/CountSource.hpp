@@ -5,23 +5,19 @@
 
 template<typename T>
 struct CountSource : public gr::Block<CountSource<T>> {
-    using clock = std::chrono::system_clock;
-    gr::PortOut<T>                   out;
+    gr::PortOut<T>           out;
 
-    uint32_t                         n_samples     = 0; ///< Number of samples to produce, 0 means infinite
-    T                                initial_value = {};
-    uint32_t                         delay_ms      = 0;
-    float                            sample_rate   = 1.;
-    std::string                      signal_name   = "test signal";
-    std::string                      signal_unit   = "test unit";
-    float                            signal_min    = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
-    float                            signal_max    = std::numeric_limits<float>::max();    ///< maximum value of the signal
-    std::string                      direction     = "up";                                 ///< direction of the count, "up" or "down"
-    std::vector<std::string>         timing_tags;
-    std::size_t                      _produced = 0;
-    std::deque<gr::Tag>              _pending_tags;
-    std::optional<clock::time_point> _first_request;
-    bool                             _waiting = true;
+    uint32_t                 n_samples     = 0; ///< Number of samples to produce, 0 means infinite
+    T                        initial_value = {};
+    float                    sample_rate   = 1.;
+    std::string              signal_name   = "test signal";
+    std::string              signal_unit   = "test unit";
+    float                    signal_min    = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
+    float                    signal_max    = std::numeric_limits<float>::max();    ///< maximum value of the signal
+    std::string              direction     = "up";                                 ///< direction of the count, "up" or "down"
+    std::vector<std::string> timing_tags;
+    std::size_t              _produced = 0;
+    std::deque<gr::Tag>      _pending_tags;
 
     void
     settingsChanged(const gr::property_map & /*old_settings*/, const gr::property_map & /*new_settings*/) {
@@ -48,20 +44,6 @@ struct CountSource : public gr::Block<CountSource<T>> {
     gr::work::Status
     processBulk(gr::PublishableSpan auto &output) noexcept {
         // From the first processBulk() call, wait some time to give the test clients time to subscribe
-        using enum gr::work::Status;
-        if (!_first_request) {
-            _first_request = clock::now();
-            output.publish(0);
-            return OK;
-        }
-        if (_waiting) {
-            const auto now = clock::now();
-            if (now - *_first_request < std::chrono::milliseconds(delay_ms)) {
-                output.publish(0);
-                return OK;
-            }
-            _waiting = false;
-        }
         auto n = output.size();
         if (n_samples > 0) {
             const auto samplesLeft = static_cast<std::size_t>(n_samples) - _produced;
@@ -94,10 +76,10 @@ struct CountSource : public gr::Block<CountSource<T>> {
         }
         output.publish(n);
         _produced += n;
-        return OK;
+        return n > 0 ? gr::work::Status::OK : gr::work::Status::DONE;
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE(CountSource, out, n_samples, initial_value, delay_ms, sample_rate, signal_name, signal_unit, signal_min, signal_max, direction, timing_tags)
+ENABLE_REFLECTION_FOR_TEMPLATE(CountSource, out, n_samples, initial_value, sample_rate, signal_name, signal_unit, signal_min, signal_max, direction, timing_tags)
 
 #endif
