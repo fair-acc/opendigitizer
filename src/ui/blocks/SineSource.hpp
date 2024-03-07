@@ -1,4 +1,3 @@
-
 #ifndef OPENDIGITIZER_SINESOURCE_HPP
 #define OPENDIGITIZER_SINESOURCE_HPP
 
@@ -12,6 +11,7 @@ namespace opendigitizer {
 template<typename T>
     requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
+    using super_t = gr::Block<SineSource<T>, gr::BlockingIO<true>>;
     gr::MsgPortIn           freqIn;
     gr::MsgPortOut          freqOut;
     gr::PortOut<T>          out{};
@@ -35,8 +35,12 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     }
 
     void
-    processMessages(auto &, std::span<const gr::Message> message) {
-        fmt::print("received Message: {}", message.size());
+    processMessages(gr::MsgPortInNamed<"__Builtin"> &port, std::span<const gr::Message> messages) {
+        super_t::processMessages(port, messages);
+    }
+
+    void
+    processMessages(gr::MsgPortIn &, std::span<const gr::Message> message) {
         std::ranges::for_each(message, [this](auto &m) {
             if (m.contains("frequency")) {
                 using namespace std::string_literals;
@@ -96,5 +100,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 } // namespace opendigitizer
 
 ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, freqIn, freqOut, frequency)
+static_assert(gr::traits::block::can_processMessagesForPortStdSpan<opendigitizer::SineSource<float>, gr::MsgPortInNamed<"__Builtin">>);
+static_assert(gr::traits::block::can_processMessagesForPortStdSpan<opendigitizer::SineSource<float>, gr::MsgPortIn>);
 
 #endif

@@ -93,12 +93,14 @@ void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
     gr::Message msg;
     msg[gr::message::key::Target] = m_uniqueName;
     msg[gr::message::key::Kind]   = gr::message::kind::UpdateSettings;
-    msg[gr::message::key::Data]   = m_parameters;
+    msg[gr::message::key::Data]   = gr::property_map{ { name, p } };
     App::instance().sendMessage(msg);
 }
 
 void Block::updateSettings(gr::property_map &&settings) {
-    m_parameters = std::move(settings);
+    for (const auto &[k, v] : settings) {
+        m_parameters[k] = v;
+    }
 }
 
 void Block::update() {
