@@ -369,7 +369,6 @@ private:
         auto       &pollerEntry = pollerIt->second;
 
         if (!pollerEntry.poller) {
-            fmt::println("Ignore unknown signal '{}'", key.signal_name);
             return true;
         }
         Acquisition reply;
