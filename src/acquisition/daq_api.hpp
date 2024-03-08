@@ -50,7 +50,7 @@ struct Acquisition {
     Annotated<std::string, opencmw::NoUnit, "S.I. unit of post-processed signal">                channelUnit;
     Annotated<int64_t, opencmw::NoUnit, "status bit-mask bits for this channel/signal">          status;
     Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMin;
-    Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMax;
+    Annotated<float, opencmw::NoUnit, "maximum expected value for channel/signal">               channelRangeMax;
     Annotated<float, opencmw::NoUnit, "temperature of the measurement device">                   temperature;
 };
 

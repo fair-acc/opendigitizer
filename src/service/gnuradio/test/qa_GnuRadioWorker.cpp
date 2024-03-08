@@ -4,6 +4,8 @@
 #include <majordomo/Worker.hpp>
 #include <zmq/ZmqUtils.hpp>
 
+#include <gnuradio-4.0/testing/Delay.hpp>
+
 #include <boost/ut.hpp>
 #include <fmt/format.h>
 
@@ -31,6 +33,7 @@ void                   registerTestBlocks(Registry &registry) {
     gr::registerBlock<CountSource, double>(registry);
     gr::registerBlock<ForeverSource, double>(registry);
     gr::registerBlock<gr::basic::DataSink, double>(registry);
+    gr::registerBlock<gr::testing::Delay, double>(registry);
 #pragma GCC diagnostic pop
 }
 
@@ -144,11 +147,26 @@ blocks:
     id: CountSource
     parameters:
       n_samples: 100
+      signal_unit: up unit
+      signal_min: 0
+      signal_max: 99
+  - name: delay_up
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: count_down
     id: CountSource
     parameters:
       n_samples: 100
+      initial_value: 99
       direction: down
+      signal_unit: down unit
+      signal_min: 0
+      signal_max: 99
+  - name: delay_down
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink_up
     id: gr::basic::DataSink
     parameters:
@@ -158,8 +176,10 @@ blocks:
     parameters:
       signal_name: count_down
 connections:
-  - [count_up, 0, test_sink_up, 0]
-  - [count_down, 0, test_sink_down, 0]
+  - [count_up, 0, delay_up, 0]
+  - [delay_up, 0, test_sink_up, 0]
+  - [count_down, 0, delay_down, 0]
+  - [delay_down, 0, test_sink_down, 0]
 )";
         TestSetup                  test;
 
@@ -172,6 +192,9 @@ connections:
         std::atomic<std::size_t> receivedUpCount = 0;
 
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto &acq) {
+            expect(acq.channelUnit.value() == "up unit"sv);
+            expect(acq.channelRangeMin == 0.f);
+            expect(acq.channelRangeMax == 99.f);
             receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedUpCount = receivedUpData.size();
         });
@@ -180,6 +203,9 @@ connections:
         std::atomic<std::size_t> receivedDownCount = 0;
 
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto &acq) {
+            expect(acq.channelUnit.value() == "down unit"sv);
+            expect(acq.channelRangeMin == 0.f);
+            expect(acq.channelRangeMax == 99.f);
             receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedDownCount = receivedDownData.size();
         });
@@ -202,12 +228,17 @@ blocks:
     id: CountSource
     parameters:
       n_samples: 100
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink_up
     id: gr::basic::DataSink
     parameters:
       signal_name: count_up
 connections:
-  - [count_up, 0, test_sink_up, 0]
+  - [count_up, 0, delay, 0]
+  - [delay, 0, test_sink_up, 0]
 )";
         constexpr std::string_view grc2 = R"(
 blocks:
@@ -215,13 +246,19 @@ blocks:
     id: CountSource
     parameters:
       n_samples: 100
+      initial_value: 99
       direction: down
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink_down
     id: gr::basic::DataSink
     parameters:
       signal_name: count_down
 connections:
-  - [count_down, 0, test_sink_down, 0]
+  - [count_down, 0, delay, 0]
+  - [delay, 0, test_sink_down, 0]
 )";
 
         TestSetup                  test;
@@ -249,7 +286,7 @@ connections:
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
-        std::this_thread::sleep_for(500ms);
+        std::this_thread::sleep_for(1200ms);
         test.setGrc(grc2);
 
         waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; });
@@ -299,10 +336,10 @@ connections:
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
 
-        std::this_thread::sleep_for(900ms);
+        std::this_thread::sleep_for(1200ms);
         test.setGrc(grc2);
 
-        constexpr auto kExpectedSamples = 100000UZ;
+        constexpr auto kExpectedSamples = 50000UZ;
         waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
     };
 
@@ -317,12 +354,17 @@ blocks:
         - 40,notatrigger
         - 50,hello
         - 60,ignoreme
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
     parameters:
       signal_name: count
 connections:
-  - [count, 0, test_sink, 0]
+  - [count, 0, delay, 0]
+  - [delay, 0, test_sink, 0]
 )";
         TestSetup                  test;
 
@@ -355,12 +397,17 @@ blocks:
         - 1000,notatrigger
         - 800000,hello
         - 900000,ignoreme
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
     parameters:
       signal_name: count
 connections:
-  - [count, 0, test_sink, 0]
+  - [count, 0, delay, 0]
+  - [delay, 0, test_sink, 0]
 )";
         TestSetup                  test;
 
@@ -393,12 +440,17 @@ blocks:
         - 30,hello
         - 50,start
         - 70,hello
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
     parameters:
       signal_name: count
 connections:
-  - [count, 0, test_sink, 0]
+  - [count, 0, delay, 0]
+  - [delay, 0, test_sink, 0]
 )";
         TestSetup                  test;
 
@@ -427,16 +479,24 @@ blocks:
     parameters:
       n_samples: 100
       sample_rate: 10
+      signal_unit: A unit
+      signal_min: -42
+      signal_max: 42
       timing_tags:
         - 40,hello
         - 50,shoot
         - 60,world
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
     parameters:
       signal_name: count
 connections:
-  - [count, 0, test_sink, 0]
+  - [count, 0, delay, 0]
+  - [delay, 0, test_sink, 0]
 )";
         TestSetup                  test;
 
@@ -444,7 +504,10 @@ connections:
         std::atomic<std::size_t>   receivedCount = 0;
 
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=snapshot&triggerNameFilter=shoot&snapshotDelay=3000000000"), [&receivedData, &receivedCount](const auto &acq) {
-            expect(acq.acqTriggerName.value() == "shoot");
+            expect(eq(acq.acqTriggerName.value(), "shoot"sv));
+            expect(eq(acq.channelUnit.value(), "A unit"sv));
+            expect(eq(acq.channelRangeMin, -42.f));
+            expect(eq(acq.channelRangeMax, 42.f));
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
         });
@@ -463,12 +526,17 @@ connections:
 blocks:
   - name: unknown
     id: UnknownBlock
+  - name: delay
+    id: gr::testing::Delay
+    parameters:
+      delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
     parameters:
       signal_name: count
 connections:
-  - [unknown, 0, test_sink, 0]
+  - [unknown, 0, delay, 0]
+  - [delay, 0, test_sink, 0]
 )";
         TestSetup                  test;
 
@@ -481,6 +549,65 @@ connections:
 
         waitWhile([&] { return !receivedReply; });
         expect(receivedReply.load());
+    };
+
+    "Dynamic signal metadata"_test = [] {
+        constexpr std::string_view grc = R"(
+blocks:
+  - name: count_up
+    id: CountSource
+    parameters:
+      n_samples: 0
+      signal_name: count_up
+      signal_unit: Test unit A
+      signal_min: -42
+      signal_max: 42
+  - name: count_down
+    id: CountSource
+    parameters:
+      n_samples: 0
+      direction: down
+      signal_name: count_down
+      signal_unit: Test unit B
+      signal_min: 0
+      signal_max: 100
+  - name: test_sink_up
+    id: gr::basic::DataSink
+  - name: test_sink_down
+    id: gr::basic::DataSink
+connections:
+  - [count_up, 0, test_sink_up, 0]
+  - [count_down, 0, test_sink_down, 0]
+)";
+
+        // Here we rely on the signal_name propagation from the sources to the sinks. As that only happens at execution time, there's a delay between
+        // the flowgraph execution starting and the listener registration succeeding, thus we don't get all the signal data from the start.
+        std::vector<float> receivedUpData;
+        std::vector<float> receivedDownData;
+
+        {
+            TestSetup test;
+
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData](const Acquisition &acq) {
+                expect(eq(acq.channelName.value(), "count_up"sv));
+                expect(eq(acq.channelUnit.value(), "Test unit A"sv));
+                expect(eq(acq.channelRangeMin, -42.f));
+                expect(eq(acq.channelRangeMax, 42.f));
+                receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
+            });
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData](const Acquisition &acq) {
+                expect(eq(acq.channelName.value(), "count_down"sv));
+                expect(eq(acq.channelUnit.value(), "Test unit B"sv));
+                expect(eq(acq.channelRangeMin, 0.f));
+                expect(eq(acq.channelRangeMax, 100.f));
+                receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
+            });
+
+            test.setGrc(grc);
+            std::this_thread::sleep_for(1200ms);
+        }
+        expect(!receivedUpData.empty());
+        expect(!receivedDownData.empty());
     };
 };
 

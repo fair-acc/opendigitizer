@@ -468,13 +468,8 @@ private:
     std::vector<std::unique_ptr<Block>> m_sinkBlocks;
     std::vector<std::unique_ptr<Block>> m_blocks;
     plf::colony<Connection>             m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
-    struct RemoteSource {
-        BlockType  *type;
-        std::string uri;
-    };
-    std::vector<RemoteSource> m_remoteSources;
-    bool                      m_graphChanged = true;
-    std::string               m_grc;
+    bool                                m_graphChanged = true;
+    std::string                         m_grc;
 
     // TODO add remote sources here?
 };

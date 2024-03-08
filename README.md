@@ -52,7 +52,7 @@ assets.
 ```shell
 export DIGITIZER_CHECK_CERTIFICATES=0                   # to disable certificate checking, if wanted
 export DIGITIZER_HOSTNAME=localhost           # set a custom host
-export OPENCMW_REST_CERT_FILE=${BUILD_DIR}_deps/opencmw-cpp-src/src/client/test/assets/server-cert.pem
+export OPENCMW_REST_CERT_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-cert.pem
 export OPENCMW_REST_PRIVATE_KEY_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-key.pem
 build/service/opendigitizer-service &         # launches the service
 build/ui/opendigitizer_ui &                   # launches the native digitizer UI

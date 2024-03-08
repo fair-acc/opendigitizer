@@ -3,6 +3,7 @@ target_link_libraries(
   qa_GnuRadioWorker
   PRIVATE fmt
           ut
+          gr-testing
           od_gnuradio_worker
           client
           zmq)
