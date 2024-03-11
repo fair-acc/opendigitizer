@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     auto &app = DigitizerUi::App::instance();
-    app.openDashboardPage.addSource(settings.serviceUrls() + "/dashboards");
+    app.openDashboardPage.addSource(settings.serviceUrl().path("/dashboards").build().str());
     app.openDashboardPage.addSource("example://builtin-samples");
 #ifdef EMSCRIPTEN
     app.executable = "index.html";

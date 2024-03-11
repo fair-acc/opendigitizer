@@ -44,10 +44,10 @@ inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
 }
 
 struct Settings {
-    std::string  hostname{ "localhost" };
-    unsigned int port{ 8080 };
-    bool         disableHttps{ false };
-    bool         checkCertificates{ true };
+    std::string hostname{ "localhost" };
+    uint16_t    port{ 8080 };
+    bool        disableHttps{ false };
+    bool        checkCertificates{ true };
 
     Settings() {
         disableHttps      = getValueFromEnv("DIGITIZER_DISABLE_HTTPS", disableHttps);           // use http instead of https
@@ -59,8 +59,8 @@ struct Settings {
 #endif
     }
 
-    std::string serviceUrls() {
-        return std::string(disableHttps ? "http" : "https") + "://" + hostname + ":" + std::to_string(port);
+    opencmw::URI<>::UriFactory serviceUrl() {
+        return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port);
     }
 };
 } // namespace Digitizer
