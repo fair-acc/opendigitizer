@@ -311,6 +311,8 @@ static void main_loop(void *arg) {
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 
+    app->handleMessages(app->dashboard->localFlowGraph);
+
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
     while (SDL_PollEvent(&event)) {

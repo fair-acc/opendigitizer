@@ -1362,8 +1362,9 @@ void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                                                   } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
                                                       ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                                       std::string str(val);
-                                                      ImGui::InputText("##in", &str);
-                                                      b->setParameter(p.first, std::move(str));
+                                                      if (ImGui::InputText("##in", &str)) {
+                                                          b->setParameter(p.first, std::move(str));
+                                                      }
                                                       return true;
                                                   }
                                                   return false;

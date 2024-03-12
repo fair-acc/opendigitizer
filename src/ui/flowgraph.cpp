@@ -12,6 +12,8 @@
 #include "yamlutils.h"
 #include <yaml-cpp/yaml.h>
 
+#include "app.h"
+
 namespace DigitizerUi {
 
 const std::string &DataType::toString() const {
@@ -87,8 +89,17 @@ Block::Block(std::string_view name, std::string_view id, BlockType *t)
 
 void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
     m_parameters[name] = p;
-    if (m_node) {
-        m_node->settings().set(m_parameters);
+
+    gr::Message msg;
+    msg[gr::message::key::Target] = m_uniqueName;
+    msg[gr::message::key::Kind]   = gr::message::kind::UpdateSettings;
+    msg[gr::message::key::Data]   = gr::property_map{ { name, p } };
+    App::instance().sendMessage(msg);
+}
+
+void Block::updateSettings(gr::property_map &&settings) {
+    for (const auto &[k, v] : settings) {
+        m_parameters[k] = v;
     }
 }
 
@@ -573,6 +584,7 @@ gr::Graph FlowGraph::createGraph() {
                 fmt::print("no node {}\n", block->name);
                 continue;
             }
+            block->m_uniqueName = block->m_node->uniqueName();
 #ifdef __EMSCRIPTEN__
             try {
 #endif
@@ -603,6 +615,26 @@ gr::Graph FlowGraph::createGraph() {
     m_grc = str.str();
 
     return graph;
+}
+
+void FlowGraph::handleMessage(const gr::Message &msg) {
+    auto kind = gr::messageField<std::string>(msg, gr::message::key::Kind);
+    if (kind.has_value() && kind.value() == gr::message::kind::SettingsChanged) {
+        auto sender = gr::messageField<std::string>(msg, gr::message::key::Sender);
+        if (!sender.has_value()) {
+            return;
+        }
+        forEachBlock([&, name = sender.value()](auto &block) -> bool {
+            if (block->m_uniqueName == name) {
+                auto data = gr::messageField<gr::property_map>(msg, gr::message::key::Data);
+                if (data.has_value()) {
+                    block->updateSettings(std::move(data.value()));
+                }
+                return false;
+            }
+            return true;
+        });
+    }
 }
 
 } // namespace DigitizerUi

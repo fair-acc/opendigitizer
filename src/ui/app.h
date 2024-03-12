@@ -31,55 +31,6 @@ enum class WindowMode {
 };
 
 namespace detail {
-struct SchedWrapper {
-    template<typename T, typename... Args>
-    void emplace(Args &&...args) {
-        handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
-    }
-
-    explicit operator bool() const { return handler != nullptr; };
-
-private:
-    struct Handler {
-        virtual ~Handler() = default;
-    };
-
-    template<typename TScheduler>
-    struct HandlerImpl : Handler {
-        TScheduler        _scheduler;
-        std::thread       _thread;
-        std::atomic<bool> stopRequested = false;
-
-        template<typename... Args>
-        explicit HandlerImpl(Args &&...args)
-            : _scheduler(std::forward<Args>(args)...) {
-            _thread = std::thread([this]() {
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                    // TODO: handle error return message
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                    // TODO: handle error return message
-                }
-                while (!stopRequested && _scheduler.isProcessing()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
-                    // TODO: handle error return message
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
-                    // TODO: handle error return message
-                }
-            });
-        }
-
-        ~HandlerImpl() {
-            stopRequested = true;
-            _thread.join();
-        }
-    };
-
-    std::unique_ptr<Handler> handler;
-};
 } // namespace detail
 
 class App {
@@ -119,11 +70,94 @@ public:
     std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>(
             "scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
 
-    detail::SchedWrapper               _scheduler;
     Style                              _style = Style::Light;
     std::vector<std::function<void()>> _activeCallbacks;
     std::vector<std::function<void()>> _garbageCallbacks; // TODO: Cleaning up callbacks
     std::mutex                         _callbacksMutex;
+
+    struct SchedWrapper {
+        template<typename T, typename... Args>
+        void emplace(Args &&...args) {
+            handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
+        }
+
+        explicit operator bool() const { return handler != nullptr; };
+
+        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+
+    private:
+        struct Handler {
+            virtual ~Handler()                               = default;
+            virtual void sendMessage(const gr::Message &msg) = 0;
+            virtual void handleMessages(FlowGraph &fg)       = 0;
+        };
+
+        template<typename TScheduler>
+        struct HandlerImpl : Handler {
+            TScheduler        _scheduler;
+            std::thread       _thread;
+            std::atomic<bool> stopRequested = false;
+
+            gr::MsgPortIn     _fromScheduler;
+            gr::MsgPortOut    _toScheduler;
+
+            template<typename... Args>
+            explicit HandlerImpl(Args &&...args)
+                : _scheduler(std::forward<Args>(args)...) {
+                if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
+                    throw fmt::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
+                }
+                if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
+                    throw fmt::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
+                }
+
+                _thread = std::thread([this]() {
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
+                        // TODO: handle error return message
+                    }
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                        // TODO: handle error return message
+                    }
+                    while (!stopRequested && _scheduler.isProcessing()) {
+                        _scheduler.processScheduledMessages();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
+                        // TODO: handle error return message
+                    }
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
+                        // TODO: handle error return message
+                    }
+                });
+            }
+
+            void sendMessage(const gr::Message &msg) final {
+                _toScheduler.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
+            }
+
+            void handleMessages(FlowGraph &fg) final {
+                const auto available = _fromScheduler.streamReader().available();
+                if (available > 0) {
+                    const auto messages = _fromScheduler.streamReader().get(available);
+
+                    for (const auto &msg : messages) {
+                        fg.handleMessage(msg);
+                    }
+                    std::ignore = _fromScheduler.streamReader().consume(available);
+                }
+            }
+
+            ~HandlerImpl() {
+                stopRequested = true;
+                _thread.join();
+            }
+        };
+
+        std::unique_ptr<Handler> handler;
+    };
+
+    SchedWrapper _scheduler;
 
 public:
     App() noexcept { setStyle(Style::Light); }
@@ -209,6 +243,18 @@ public:
         using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
+    }
+
+    void sendMessage(const gr::Message &msg) {
+        if (_scheduler) {
+            _scheduler.sendMessage(msg);
+        }
+    }
+
+    void handleMessages(FlowGraph &fg) {
+        if (_scheduler) {
+            _scheduler.handleMessages(fg);
+        }
     }
 };
 
