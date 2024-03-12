@@ -139,6 +139,8 @@ void SignalList::drawElement(const opencmw::service::dns::Entry &entry, int idx)
     });
     ImGui::TableNextColumn();
     if (ImGui::Button(("+##" + std::to_string(idx)).c_str())) {
-        std::cout << "foobar" << std::endl;
+        if (addRemoteSignalCallback) {
+            addRemoteSignalCallback(entry);
+        }
     }
 }

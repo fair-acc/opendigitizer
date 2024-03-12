@@ -737,6 +737,11 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         ImGui::Separator();
                         ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
                         ImGui::BeginChild("Signals");
+
+                        signalList.addRemoteSignalCallback = [fg](const opencmw::service::dns::Entry &entry) {
+                            const auto uri = opencmw::URI<>::UriFactory().scheme(entry.protocol).hostName(entry.hostname).port(static_cast<uint16_t>(entry.port)).path(entry.service_name).addQueryParameter("channelNameFilter", entry.signal_name).build();
+                            fg->addRemoteSource(uri.str());
+                        };
                         signalList.drawElements();
 
                         float refreshButtonPosX = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Refresh").x;

@@ -96,7 +96,9 @@ class SignalList {
     std::mutex                                signalsMutex;
 
 public:
-    SignalList(QueryFilterElementList &filters);
+    std::function<void(opencmw::service::dns::Entry)> addRemoteSignalCallback;
+
+    explicit SignalList(QueryFilterElementList &filters);
     ~SignalList();
 
     void update();
