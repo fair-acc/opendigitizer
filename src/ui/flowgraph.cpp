@@ -570,7 +570,9 @@ void FlowGraph::disconnect(Connection *c) {
 }
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
-    // TODO create block, etc.
+    auto block = BlockType::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
+    block->setParameter("remote_uri", std::string(uri));
+    addBlock(std::move(block));
 }
 
 gr::Graph FlowGraph::createGraph() {

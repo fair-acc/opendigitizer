@@ -165,22 +165,25 @@ connections:
     clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
     opencmw::client::ClientContext client{ std::move(clients) };
 
-    dns::DnsClient                 dns_client{ client, "http://localhost:8080/dns" };
+    dns::DnsClient                 dns_client{ client, settings.serviceUrl().path("/dns").build() };
+
+    const auto                     restUrl = settings.serviceUrl().build();
 
     std::vector<SignalEntry>       registeredSignals;
-    grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client](std::vector<SignalEntry> signals) {
+    grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client, &restUrl](std::vector<SignalEntry> signals) {
         std::ranges::sort(signals);
         std::vector<SignalEntry> toUnregister;
         std::ranges::set_difference(registeredSignals, signals, std::back_inserter(toUnregister));
         std::vector<SignalEntry> toRegister;
         std::ranges::set_difference(signals, registeredSignals, std::back_inserter(toRegister));
 
-        auto dnsEntriesForSignal = [](const SignalEntry &entry) {
-            // TODO do smarter host name and port, publish acquisition modes other than streaming?
+        auto dnsEntriesForSignal = [&restUrl](const SignalEntry &entry) {
+            // TODO publish acquisition modes other than streaming?
+            // TODO mdp not functional (not implemented in worker)
             return std::vector{
-                dns::Entry{ "http", "localhost", 8080, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
-                dns::Entry{ "https", "localhost", 8080, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
-                dns::Entry{ "mdp", "localhost", 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+                dns::Entry{ *restUrl.scheme(), *restUrl.hostName(), *restUrl.port(), "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+                dns::Entry{ "mdp", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
+                dns::Entry{ "mds", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" }
             };
         };
         std::vector<dns::Entry> toUnregisterEntries;
