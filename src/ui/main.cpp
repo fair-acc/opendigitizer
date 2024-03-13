@@ -224,7 +224,11 @@ int main(int argc, char **argv) {
     app.sdlState               = &sdlState;
 
     app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *) mutable {
-        return app.dashboard->createSink();
+        auto newSink = app.dashboard->createSink();
+        app.dashboardPage.newPlot(app.dashboard.get());
+        auto &plot = app.dashboard->plots().back();
+        plot.sourceNames.push_back(newSink->name);
+        return newSink;
     };
     app.fgItem.newSinkSourceCallback = [&](DigitizerUi::FlowGraph *) mutable {
         return app.dashboard->createSource();
