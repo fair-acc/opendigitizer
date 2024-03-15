@@ -16,6 +16,8 @@
 #else
 #include <SDL_opengl.h>
 #endif
+
+#include <algorithm>
 #include <array>
 #include <cstdio>
 
@@ -416,7 +418,27 @@ static void main_loop(void *arg) {
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Apply")) {
+                    auto sinkNames = [](const auto &sinks) {
+                        std::vector<std::string> names;
+                        std::ranges::transform(sinks, std::back_inserter(names), [](const auto &s) { return s->name; });
+                        std::ranges::sort(names);
+                        names.erase(std::unique(names.begin(), names.end()), names.end());
+                        return names;
+                    };
+                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
                     app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                    const auto               newNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
+                    std::vector<std::string> toRemove;
+                    std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
+                    std::vector<std::string> toAdd;
+                    std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
+                    for (const auto &name : toRemove) {
+                        app->dashboard->removeSinkFromPlots(name);
+                    }
+                    for (const auto &newName : toAdd) {
+                        app->dashboardPage.newPlot(app->dashboard.get());
+                        app->dashboard->plots().back().sourceNames.push_back(newName);
+                    }
                 }
 
                 ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
