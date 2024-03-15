@@ -1224,7 +1224,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     });
 
                     app.dashboardPage.newPlot(app.dashboard.get());
-                    app.dashboard->plots().back().sources.push_back(&*source);
+                    app.dashboard->plots().back().sourceNames.push_back(source->name);
                 }
                 ctx.block = block.get();
 

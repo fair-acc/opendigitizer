@@ -535,6 +535,13 @@ void Dashboard::deletePlot(Plot *plot) {
     m_plots.erase(it);
 }
 
+void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
+    for (auto &plot : m_plots) {
+        std::erase(plot.sourceNames, std::string(sinkName));
+    }
+    std::erase_if(m_plots, [](const Plot &p) { return p.sourceNames.empty(); });
+}
+
 void Dashboard::loadPlotSources() {
     for (auto &plot : m_plots) {
         plot.sources.clear();

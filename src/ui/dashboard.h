@@ -109,6 +109,7 @@ public:
 
     void                         newPlot(int x, int y, int w, int h);
     void                         deletePlot(Plot *plot);
+    void                         removeSinkFromPlots(std::string_view sinkName);
 
     inline const auto           &sources() const { return m_sources; }
     inline auto                 &sources() { return m_sources; }
