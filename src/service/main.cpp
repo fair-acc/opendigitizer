@@ -199,6 +199,7 @@ connections:
             toRegisterEntries.insert(toRegisterEntries.end(), dns.begin(), dns.end());
         }
         dns_client.registerSignals(std::move(toRegisterEntries));
+        registeredSignals = std::move(signals);
     });
 
     std::jthread grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
