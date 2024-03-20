@@ -14,11 +14,11 @@ CMRC_DECLARE(sample_dashboards);
 #include <RestClient.hpp>
 
 #ifdef EMSCRIPTEN
-#include "emscripten_compat.h"
+#include "emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>
 
-#include "flowgraph.h"
+#include "flowgraph.hpp"
 
 namespace DigitizerUi {
 

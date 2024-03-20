@@ -1,4 +1,4 @@
-#include "flowgraph.h"
+#include "flowgraph.hpp"
 
 #include <assert.h>
 
@@ -9,10 +9,10 @@
 
 #include <fmt/format.h>
 
-#include "yamlutils.h"
+#include "yamlutils.hpp"
 #include <yaml-cpp/yaml.h>
 
-#include "app.h"
+#include "app.hpp"
 
 namespace DigitizerUi {
 

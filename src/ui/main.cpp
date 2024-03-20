@@ -25,20 +25,22 @@
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
-#include "app.h"
+#include "app.hpp"
+#include "dashboard.hpp"
+#include "dashboardpage.hpp"
+#include "fair_header.hpp"
+#include "flowgraph.hpp"
+#include "flowgraph/datasink.hpp"
+#include "flowgraphitem.hpp"
+#include "settings.hpp"
+#include "toolbar.hpp"
+#include "toolbar_block.hpp"
+
+#include "utils/TouchHandler.hpp"
+
 #include "blocks/Arithmetic.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
-#include "dashboard.h"
-#include "dashboardpage.h"
-#include "fair_header.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "flowgraphitem.h"
-#include "settings.h"
-#include "toolbar.h"
-#include "toolbar_block.h"
-#include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);

@@ -5,11 +5,11 @@
 #define IMGUI_DEFINE_MATH_OPERATORS true
 #endif
 
-#include "common.h"
-#include "dashboard.h"
-#include "dashboardpage.h"
-#include "flowgraphitem.h"
-#include "opendashboardpage.h"
+#include "common.hpp"
+#include "dashboard.hpp"
+#include "dashboardpage.hpp"
+#include "flowgraphitem.hpp"
+#include "opendashboardpage.hpp"
 
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>

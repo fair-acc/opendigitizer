@@ -7,11 +7,11 @@
 
 #include <imgui.h>
 
-#include "dashboard.h"
-#include "flowgraph.h"
+#include "dashboard.hpp"
+#include "flowgraph.hpp"
 
-#include "app.h"
-#include "toolbar_block.h"
+#include "app.hpp"
+#include "toolbar_block.hpp"
 
 namespace DigitizerUi {
 namespace detail {

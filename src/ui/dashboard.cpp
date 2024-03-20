@@ -1,4 +1,4 @@
-#include "dashboard.h"
+#include "dashboard.hpp"
 
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS true
@@ -17,10 +17,10 @@
 
 #include <yaml-cpp/yaml.h>
 
-#include "app.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "yamlutils.h"
+#include "app.hpp"
+#include "flowgraph.hpp"
+#include "flowgraph/datasink.hpp"
+#include "yamlutils.hpp"
 
 struct FlowgraphMessage {
     std::string flowgraph;

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "dashboard.h"
+#include "dashboard.hpp"
 
 namespace opencmw::client {
 class RestClient;

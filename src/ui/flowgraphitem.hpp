@@ -12,10 +12,10 @@
 
 #include <imgui_node_editor.h>
 
-#include "common.h"
-#include "flowgraph.h"
-#include "imguiutils.h"
-#include "remotesignalsources.h"
+#include "common.hpp"
+#include "flowgraph.hpp"
+#include "imguiutils.hpp"
+#include "remotesignalsources.hpp"
 
 namespace DigitizerUi {
 

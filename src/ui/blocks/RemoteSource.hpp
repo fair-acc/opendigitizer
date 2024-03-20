@@ -11,7 +11,7 @@
 #include <RestClient.hpp>
 #include <type_traits>
 
-#include "../app.h"
+#include "../app.hpp"
 
 namespace opendigitizer {
 

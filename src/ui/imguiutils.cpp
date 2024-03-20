@@ -11,11 +11,11 @@
 #include <tuple>
 #include <type_traits>
 
-#include "app.h"
-#include "calculator.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "imguiutils.h"
+#include "app.hpp"
+#include "calculator.hpp"
+#include "flowgraph.hpp"
+#include "flowgraph/datasink.hpp"
+#include "imguiutils.hpp"
 
 namespace ImGuiUtils {
 

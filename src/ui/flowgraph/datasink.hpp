@@ -4,7 +4,7 @@
 #include <imgui.h>
 #include <mutex>
 
-#include "../flowgraph.h"
+#include "../flowgraph.hpp"
 
 namespace DigitizerUi {
 

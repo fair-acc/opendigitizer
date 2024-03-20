@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifdef EMSCRIPTEN
-#include "emscripten_compat.h"
+#include "emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>
 

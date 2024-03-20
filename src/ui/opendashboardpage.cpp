@@ -1,7 +1,12 @@
-#include "opendashboardpage.h"
-#include "app.h"
-#include "imgui.h"
-#include "imguiutils.h"
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS true
+#endif
+
+#include <imgui.h>
+
+#include "opendashboardpage.hpp"
+#include "app.hpp"
+#include "imguiutils.hpp"
 
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>

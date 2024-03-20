@@ -1,4 +1,4 @@
-#include "datasink.h"
+#include "datasink.hpp"
 
 #include <fmt/format.h>
 #include <gnuradio-4.0/basic/DataSink.hpp>

@@ -8,7 +8,7 @@
 #include <stb_image.h>
 #include <string_view>
 
-#include "../app.h"
+#include "../app.hpp"
 #include <PopupMenu.hpp>
 
 CMRC_DECLARE(ui_assets);

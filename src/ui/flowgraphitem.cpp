@@ -1,4 +1,4 @@
-#include "flowgraphitem.h"
+#include "flowgraphitem.hpp"
 
 #include <algorithm>
 #include <crude_json.h>
@@ -8,9 +8,9 @@
 #include <fmt/format.h>
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "app.h"
-#include "flowgraph.h"
-#include "imguiutils.h"
+#include "app.hpp"
+#include "flowgraph.hpp"
+#include "imguiutils.hpp"
 
 namespace DigitizerUi {
 

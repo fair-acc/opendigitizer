@@ -5,7 +5,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS true
 #endif
 
-#include "app.h"
+#include "app.hpp"
 #include <imgui.h>
 
 #include <gnuradio-4.0/Block.hpp>

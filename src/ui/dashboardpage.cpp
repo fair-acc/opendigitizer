@@ -1,12 +1,12 @@
-#include "dashboardpage.h"
+#include "dashboardpage.hpp"
 
 #include <fmt/format.h>
 #include <implot.h>
 
-#include "app.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "imguiutils.h"
+#include "app.hpp"
+#include "flowgraph.hpp"
+#include "flowgraph/datasink.hpp"
+#include "imguiutils.hpp"
 
 #include "utils/TouchHandler.hpp"
 
