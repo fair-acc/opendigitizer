@@ -91,13 +91,13 @@ void Block::setParameter(const std::string &name, const pmtv::pmt &p) {
     m_parameters[name] = p;
 
     gr::Message msg;
-    msg[gr::message::key::Target] = m_uniqueName;
-    msg[gr::message::key::Kind]   = gr::message::kind::UpdateSettings;
-    msg[gr::message::key::Data]   = gr::property_map{ { name, p } };
+    msg.serviceName = m_uniqueName;
+    msg.endpoint    = gr::block::property::kStagedSetting;
+    msg.data        = gr::property_map{ { name, p } };
     App::instance().sendMessage(msg);
 }
 
-void Block::updateSettings(gr::property_map &&settings) {
+void Block::updateSettings(const gr::property_map &settings) {
     for (const auto &[k, v] : settings) {
         m_parameters[k] = v;
     }
@@ -620,17 +620,11 @@ gr::Graph FlowGraph::createGraph() {
 }
 
 void FlowGraph::handleMessage(const gr::Message &msg) {
-    auto kind = gr::messageField<std::string>(msg, gr::message::key::Kind);
-    if (kind.has_value() && kind.value() == gr::message::kind::SettingsChanged) {
-        auto sender = gr::messageField<std::string>(msg, gr::message::key::Sender);
-        if (!sender.has_value()) {
-            return;
-        }
-        forEachBlock([&, name = sender.value()](auto &block) -> bool {
+    if (msg.endpoint == gr::block::property::kStagedSetting) { // and/or kSettings?
+        forEachBlock([&, name = msg.serviceName](auto &block) -> bool {
             if (block->m_uniqueName == name) {
-                auto data = gr::messageField<gr::property_map>(msg, gr::message::key::Data);
-                if (data.has_value()) {
-                    block->updateSettings(std::move(data.value()));
+                if (msg.data.has_value()) {
+                    block->updateSettings(msg.data.value());
                 }
                 return false;
             }

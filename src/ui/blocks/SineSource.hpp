@@ -23,34 +23,6 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     std::thread             thread;
     std::atomic_bool        quit = false;
 
-    void
-    settingsChanged(const gr::property_map &oldSettings, const gr::property_map &newSettings) {
-        // TODO: enable and fix settings update
-        // fmt::println("{}::settingsChanged(..) - called", this->name); // N.B. for debugging purposes to see how often setting changes are forced
-        if (newSettings.contains("frequency") && newSettings.at("frequency") != oldSettings.at("frequency")) {
-            using namespace std::string_literals;
-            fmt::println("{}::settingsChanged(..): frequency to: {}", this->name, frequency);
-            this->emitMessage(freqOut, { { "frequency"s, frequency } });
-        }
-    }
-
-    void
-    processMessages(gr::MsgPortInNamed<"__Builtin"> &port, std::span<const gr::Message> messages) {
-        super_t::processMessages(port, messages);
-    }
-
-    void
-    processMessages(gr::MsgPortIn &, std::span<const gr::Message> message) {
-        std::ranges::for_each(message, [this](auto &m) {
-            if (m.contains("frequency")) {
-                using namespace std::string_literals;
-                const auto newFrequency = std::get<float>(m.at("frequency"));
-                fmt::println("{}::processMessages(..): changed frequency to: {}", this->name, newFrequency);
-                this->settings().set({ { "frequency"s, newFrequency } });
-            }
-        });
-    }
-
     void start() {
         thread = std::thread([this]() {
             using namespace std::chrono_literals;
@@ -100,7 +72,5 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 } // namespace opendigitizer
 
 ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, freqIn, freqOut, frequency)
-static_assert(gr::traits::block::can_processMessagesForPortStdSpan<opendigitizer::SineSource<float>, gr::MsgPortInNamed<"__Builtin">>);
-static_assert(gr::traits::block::can_processMessagesForPortStdSpan<opendigitizer::SineSource<float>, gr::MsgPortIn>);
 
 #endif

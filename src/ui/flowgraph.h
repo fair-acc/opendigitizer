@@ -363,7 +363,7 @@ public:
     auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }
 
-    void  updateSettings(gr::property_map &&settings);
+    void  updateSettings(const gr::property_map &settings);
 
 protected:
     std::vector<Port> m_inputs;
