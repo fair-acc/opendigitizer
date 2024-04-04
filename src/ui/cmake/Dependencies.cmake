@@ -49,7 +49,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     graph-prototype
     GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-    GIT_TAG 1402c524e557b6a81403e52dfe6a7c42c278dafd # main as of 2024-03-26
+    GIT_TAG frank/scheduler-lifecycle-subscription
 )
 
 FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony graph-prototype)
