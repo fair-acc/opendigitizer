@@ -92,7 +92,7 @@ public:
 
     [[nodiscard]] std::expected<void, gr::Error>
     changeToolStateTo(State newState, const std::source_location location = std::source_location::current()) {
-#if 0
+#if 0 // TODO port to new messaging architecture
         const State oldState = _state;
         if (isValidTransition(oldState, newState)) {
             setAndNotifyState(newState);
@@ -205,7 +205,7 @@ private:
         ImGui::SameLine();
         ImGui::PopStyleVar();
         ImGui::EndDisabled();
-#if 0
+#if 0 // TODO port to new messaging architecture
         if (clicked && !disabled) {
             if (auto e = this->changeToolStateTo(buttonType); e) {
                 this->emitMessage(this->ctrlOut, { { key::Kind, kind::SettingsChanged },
@@ -230,7 +230,7 @@ struct LabelToolbarBlock
     processMessages(auto &, std::span<const gr::Message> messages) {
         using namespace gr::message;
         for (const gr::Message &msg : messages) {
-#if 0
+#if 0 // TODO port to new messaging architecture
             if (msg.contains(key::Kind) && msg.contains(key::What) && std::get<std::string>(msg.at(key::Kind)) == kind::SettingsChanged) {
                 this->settings().set({ { std::string("message"), std::get<std::string>(msg.at(key::What)) } });
             }
