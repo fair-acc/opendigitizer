@@ -228,10 +228,12 @@ connections:
         expect(eq(receivedDownData, expectedDownData));
         expect(eq(lastDnsEntries.size(), 2UZ));
         std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
-        expect(eq(lastDnsEntries[0].name, "count_down"sv));
-        expect(eq(lastDnsEntries[0].unit, "down unit"sv));
-        expect(eq(lastDnsEntries[1].name, "count_up"sv));
-        expect(eq(lastDnsEntries[1].unit, "up unit"sv));
+        if (lastDnsEntries.size() >= 2UZ) {
+            expect(eq(lastDnsEntries[0].name, "count_down"sv));
+            expect(eq(lastDnsEntries[0].unit, "down unit"sv));
+            expect(eq(lastDnsEntries[1].name, "count_up"sv));
+            expect(eq(lastDnsEntries[1].unit, "up unit"sv));
+        }
     };
 
     "Flow graph management"_test = [] {
@@ -369,7 +371,9 @@ connections:
 
         std::lock_guard lock(dnsMutex);
         expect(eq(lastDnsEntries.size(), 1UZ));
-        expect(eq(lastDnsEntries[0].name, "test2"sv));
+        if (!lastDnsEntries.empty()) {
+            expect(eq(lastDnsEntries[0].name, "test2"sv));
+        }
     };
 
     "Trigger - tightly packed tags"_test = [] {
@@ -505,9 +509,11 @@ connections:
 
         expect(eq(receivedData, getIota(20, 50)));
         expect(eq(lastDnsEntries.size(), 1UZ));
-        expect(eq(lastDnsEntries[0].name, "count"sv));
-        expect(eq(lastDnsEntries[0].unit, "A unit"sv));
-        expect(eq(lastDnsEntries[0].sample_rate, 10.f));
+        if (!lastDnsEntries.empty()) {
+            expect(eq(lastDnsEntries[0].name, "count"sv));
+            expect(eq(lastDnsEntries[0].unit, "A unit"sv));
+            expect(eq(lastDnsEntries[0].sample_rate, 10.f));
+        }
     };
 
     "Snapshot"_test = [] {
@@ -565,9 +571,11 @@ connections:
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{ 80.f }));
         expect(eq(lastDnsEntries.size(), 1UZ));
-        expect(eq(lastDnsEntries[0].name, "count"sv));
-        expect(eq(lastDnsEntries[0].unit, "A unit"sv));
-        expect(eq(lastDnsEntries[0].sample_rate, 10.f));
+        if (!lastDnsEntries.empty()) {
+            expect(eq(lastDnsEntries[0].name, "count"sv));
+            expect(eq(lastDnsEntries[0].unit, "A unit"sv));
+            expect(eq(lastDnsEntries[0].sample_rate, 10.f));
+        }
     };
 
     "Flow graph handling - Unknown block"_test = [] {
@@ -664,10 +672,12 @@ connections:
         expect(!receivedDownData.empty());
         std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
         expect(eq(lastDnsEntries.size(), 2UZ));
-        expect(eq(lastDnsEntries[0].name, "count_down"sv));
-        expect(eq(lastDnsEntries[0].unit, "Test unit B"sv));
-        expect(eq(lastDnsEntries[1].name, "count_up"sv));
-        expect(eq(lastDnsEntries[1].unit, "Test unit A"sv));
+        if (lastDnsEntries.size() >= 2UZ) {
+            expect(eq(lastDnsEntries[0].name, "count_down"sv));
+            expect(eq(lastDnsEntries[0].unit, "Test unit B"sv));
+            expect(eq(lastDnsEntries[1].name, "count_up"sv));
+            expect(eq(lastDnsEntries[1].unit, "Test unit A"sv));
+        }
     };
 };
 
