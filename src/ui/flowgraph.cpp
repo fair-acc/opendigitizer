@@ -620,7 +620,7 @@ gr::Graph FlowGraph::createGraph() {
 }
 
 void FlowGraph::handleMessage(const gr::Message &msg) {
-    if (msg.endpoint == gr::block::property::kStagedSetting) { // and/or kSettings?
+    if (msg.endpoint == gr::block::property::kSetting) {
         forEachBlock([&, name = msg.serviceName](auto &block) -> bool {
             if (block->m_uniqueName == name) {
                 if (msg.data.has_value()) {
