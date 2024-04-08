@@ -60,7 +60,7 @@ client::ClientContext makeClient(zmq::Context &ctx) {
 
 void waitWhile(auto condition) {
     // Use generous timeout to avoid flakiness when run under gcov
-    constexpr auto kTimeout       = 3s;
+    constexpr auto kTimeout       = 10s;
     constexpr auto kSleepInterval = 100ms;
     auto           elapsed        = 0ms;
     while (elapsed < kTimeout) {
