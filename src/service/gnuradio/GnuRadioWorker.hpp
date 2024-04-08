@@ -192,6 +192,7 @@ private:
             std::map<PollerKey, StreamingPollerEntry> streamingPollers;
             std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
             std::jthread                              schedulerThread;
+            std::string                               schedulerUniqueName;
             std::map<std::string, SignalEntry>        signalEntryBySink;
             std::unique_ptr<MsgPortOut>               toScheduler;
             std::unique_ptr<MsgPortIn>                fromScheduler;
@@ -206,7 +207,7 @@ private:
                 bool       schedulerFinished = false;
 
                 if (stopScheduler) {
-                    sendMessage<Set>(*toScheduler, "", block::property::kLifeCycleState, { { "state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP)) } }, "");
+                    sendMessage<Set>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, { { "state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP)) } }, "");
                 }
 
                 if (hasScheduler) {
@@ -222,7 +223,7 @@ private:
                                 schedulerFinished = true;
                                 continue;
                             }
-                        } else if (message.endpoint == block::property::kStagedSetting) {
+                        } else if (message.endpoint == block::property::kSetting) {
                             auto sinkIt = signalEntryBySink.find(message.serviceName);
                             if (sinkIt == signalEntryBySink.end()) {
                                 continue;
@@ -287,6 +288,7 @@ private:
                     dataSetPollers.clear();
                     fromScheduler.reset();
                     toScheduler.reset();
+                    schedulerUniqueName.clear();
                     schedulerThread.join();
                 }
 
@@ -317,8 +319,9 @@ private:
                     fromScheduler   = std::make_unique<MsgPortIn>();
                     std::ignore     = toScheduler->connect(sched->msgIn);
                     std::ignore     = sched->msgOut.connect(*fromScheduler);
-                    sendMessage<Subscribe>(*toScheduler, sched->unique_name, block::property::kLifeCycleState, {}, "GnuRadioWorker");
-                    sendMessage<Subscribe>(*toScheduler, "", block::property::kStagedSetting, {}, "GnuRadioWorker");
+                    schedulerUniqueName = sched->unique_name;
+                    sendMessage<Subscribe>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
+                    sendMessage<Subscribe>(*toScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");
                     schedulerThread = std::jthread([s = std::move(sched)] { s->runAndWait(); });
                 }
 
