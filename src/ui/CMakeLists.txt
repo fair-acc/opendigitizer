@@ -10,6 +10,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+# Mainly for FMT
+set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+
 set(sources
     main.cpp
     flowgraph.cpp

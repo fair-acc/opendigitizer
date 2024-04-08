@@ -247,7 +247,7 @@ struct DataType {
 
     const std::string &toString() const;
 
-    inline operator Id() const { return m_id; }
+    inline             operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;
@@ -363,7 +363,7 @@ public:
     auto &inputs() { return m_inputs; }
     auto &outputs() { return m_outputs; }
 
-    void  updateSettings(gr::property_map &&settings);
+    void  updateSettings(const gr::property_map &settings);
 
 protected:
     std::vector<Port> m_inputs;

@@ -44,7 +44,6 @@ bool isValidTransition(State from, State to) {
     }
 }
 
-using gr::lifecycle::ErrorType;
 using gr::lifecycle::StorageType;
 
 template<typename TDerived, StorageType storageType = StorageType::NON_ATOMIC>
@@ -91,10 +90,10 @@ public:
         requires(storageType != StorageType::ATOMIC)
         : _state(other._state) {} // plain enum
 
-    [[nodiscard]] constexpr std::expected<void, ErrorType>
+    [[nodiscard]] std::expected<void, gr::Error>
     changeToolStateTo(State newState, const std::source_location location = std::source_location::current()) {
+#if 0 // TODO port to new messaging architecture
         const State oldState = _state;
-
         if (isValidTransition(oldState, newState)) {
             setAndNotifyState(newState);
             // TODO: remove once message ports are enabled in the UI
@@ -102,12 +101,15 @@ public:
                     magic_enum::enum_name(newState));
             return {};
         } else {
-            return std::unexpected(ErrorType{
+            return std::unexpected(gr::Error{
                     fmt::format("Block '{}' invalid state transition in {} from {} -> to {}", getBlockName(),
                             gr::meta::type_name<TDerived>(), magic_enum::enum_name(toolState()),
                             magic_enum::enum_name(newState)),
                     location });
         }
+#else
+        return {};
+#endif
     }
 
     [[nodiscard]] State
@@ -203,6 +205,7 @@ private:
         ImGui::SameLine();
         ImGui::PopStyleVar();
         ImGui::EndDisabled();
+#if 0 // TODO port to new messaging architecture
         if (clicked && !disabled) {
             if (auto e = this->changeToolStateTo(buttonType); e) {
                 this->emitMessage(this->ctrlOut, { { key::Kind, kind::SettingsChanged },
@@ -213,6 +216,7 @@ private:
                                                         { key::Location, e.error().srcLoc() } });
             }
         }
+#endif
     }
 };
 
@@ -226,9 +230,11 @@ struct LabelToolbarBlock
     processMessages(auto &, std::span<const gr::Message> messages) {
         using namespace gr::message;
         for (const gr::Message &msg : messages) {
+#if 0 // TODO port to new messaging architecture
             if (msg.contains(key::Kind) && msg.contains(key::What) && std::get<std::string>(msg.at(key::Kind)) == kind::SettingsChanged) {
                 this->settings().set({ { std::string("message"), std::get<std::string>(msg.at(key::What)) } });
             }
+#endif
         }
     }
 

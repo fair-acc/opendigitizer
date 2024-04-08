@@ -66,6 +66,7 @@ inline std::optional<T> getSetting(const gr::BlockModel &block, const std::strin
 
 using namespace gr;
 using namespace gr::message;
+using enum gr::message::Command;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
@@ -191,6 +192,7 @@ private:
             std::map<PollerKey, StreamingPollerEntry> streamingPollers;
             std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
             std::jthread                              schedulerThread;
+            std::string                               schedulerUniqueName;
             std::map<std::string, SignalEntry>        signalEntryBySink;
             std::unique_ptr<MsgPortOut>               toScheduler;
             std::unique_ptr<MsgPortIn>                fromScheduler;
@@ -205,34 +207,29 @@ private:
                 bool       schedulerFinished = false;
 
                 if (stopScheduler) {
-                    auto shutdownMessage = toScheduler->streamWriter().reserve(1);
-                    shutdownMessage[0]   = {
-                        { key::Kind, kind::SchedulerStateChangeRequest },
-                        { key::What, std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP)) }
-                    };
-                    shutdownMessage.publish(1);
+                    sendMessage<Set>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, { { "state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP)) } }, "");
                 }
 
                 if (hasScheduler) {
                     bool signalInfoChanged = false;
                     auto messages          = fromScheduler->streamReader().get(fromScheduler->streamReader().available());
                     for (const auto &message : messages) {
-                        const auto updateValue = messageField<std::string>(message, kind::SchedulerStateUpdate);
-                        if (updateValue == magic_enum::enum_name(lifecycle::State::STOPPED)) {
-                            schedulerFinished = true;
-                            continue;
-                        }
-
-                        const auto kind = messageField<std::string>(message, key::Kind);
-
-                        if (kind == kind::SettingsChanged) {
-                            const auto &settings = messageField<gr::property_map>(message, key::Data);
-                            const auto &sender   = messageField<std::string>(message, key::Sender);
-                            if (!settings || !sender) {
+                        if (message.endpoint == block::property::kLifeCycleState) {
+                            if (!message.data) {
                                 continue;
                             }
-                            auto sinkIt = signalEntryBySink.find(*sender);
+                            const auto state = detail::get<std::string>(*message.data, "state");
+                            if (state == magic_enum::enum_name(lifecycle::State::STOPPED)) {
+                                schedulerFinished = true;
+                                continue;
+                            }
+                        } else if (message.endpoint == block::property::kSetting) {
+                            auto sinkIt = signalEntryBySink.find(message.serviceName);
                             if (sinkIt == signalEntryBySink.end()) {
+                                continue;
+                            }
+                            const auto &settings = message.data;
+                            if (!settings) {
                                 continue;
                             }
                             auto      &entry       = sinkIt->second;
@@ -291,6 +288,7 @@ private:
                     dataSetPollers.clear();
                     fromScheduler.reset();
                     toScheduler.reset();
+                    schedulerUniqueName.clear();
                     schedulerThread.join();
                 }
 
@@ -316,11 +314,14 @@ private:
                         }
                         _updateSignalEntriesCallback(std::move(entries));
                     }
-                    auto sched      = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
-                    toScheduler     = std::make_unique<MsgPortOut>();
-                    fromScheduler   = std::make_unique<MsgPortIn>();
-                    std::ignore     = toScheduler->connect(sched->msgIn);
-                    std::ignore     = sched->msgOut.connect(*fromScheduler);
+                    auto sched          = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
+                    toScheduler         = std::make_unique<MsgPortOut>();
+                    fromScheduler       = std::make_unique<MsgPortIn>();
+                    std::ignore         = toScheduler->connect(sched->msgIn);
+                    std::ignore         = sched->msgOut.connect(*fromScheduler);
+                    schedulerUniqueName = sched->unique_name;
+                    sendMessage<Subscribe>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
+                    sendMessage<Subscribe>(*toScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");
                     schedulerThread = std::jthread([s = std::move(sched)] { s->runAndWait(); });
                 }
 

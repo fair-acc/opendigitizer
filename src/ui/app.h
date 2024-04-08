@@ -11,6 +11,7 @@
 #include "flowgraphitem.h"
 #include "opendashboardpage.h"
 
+#include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -83,8 +84,8 @@ public:
 
         explicit operator bool() const { return handler != nullptr; };
 
-        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
-        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+        void     sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void     handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
@@ -111,6 +112,8 @@ public:
                 if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
                     throw fmt::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
                 }
+                gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
+                gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
                 _thread = std::thread([this]() {
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
