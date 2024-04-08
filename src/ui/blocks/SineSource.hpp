@@ -23,7 +23,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     std::thread             thread;
     std::atomic_bool        quit = false;
 
-    void start() {
+    void                    start() {
         thread = std::thread([this]() {
             using namespace std::chrono_literals;
             while (!quit) {

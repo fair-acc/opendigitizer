@@ -314,11 +314,11 @@ private:
                         }
                         _updateSignalEntriesCallback(std::move(entries));
                     }
-                    auto sched      = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
-                    toScheduler     = std::make_unique<MsgPortOut>();
-                    fromScheduler   = std::make_unique<MsgPortIn>();
-                    std::ignore     = toScheduler->connect(sched->msgIn);
-                    std::ignore     = sched->msgOut.connect(*fromScheduler);
+                    auto sched          = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
+                    toScheduler         = std::make_unique<MsgPortOut>();
+                    fromScheduler       = std::make_unique<MsgPortIn>();
+                    std::ignore         = toScheduler->connect(sched->msgIn);
+                    std::ignore         = sched->msgOut.connect(*fromScheduler);
                     schedulerUniqueName = sched->unique_name;
                     sendMessage<Subscribe>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
                     sendMessage<Subscribe>(*toScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");

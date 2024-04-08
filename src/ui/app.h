@@ -84,8 +84,8 @@ public:
 
         explicit operator bool() const { return handler != nullptr; };
 
-        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
-        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+        void     sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void     handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
