@@ -640,8 +640,8 @@ connections:
 
         // Here we rely on the signal_name propagation from the sources to the sinks. As that only happens at execution time, there's a delay between
         // the flowgraph execution starting and the listener registration succeeding, thus we don't get all the signal data from the start.
-        std::vector<float>       receivedUpData;
-        std::vector<float>       receivedDownData;
+        std::atomic<std::size_t> receivedUpCount;
+        std::atomic<std::size_t> receivedDownCount;
         std::vector<SignalEntry> lastDnsEntries;
 
         {
@@ -651,26 +651,26 @@ connections:
                 }
             });
 
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData](const Acquisition &acq) {
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpCount](const Acquisition &acq) {
                 expect(eq(acq.channelName.value(), "count_up"sv));
                 expect(eq(acq.channelUnit.value(), "Test unit A"sv));
                 expect(eq(acq.channelRangeMin, -42.f));
                 expect(eq(acq.channelRangeMax, 42.f));
-                receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
+                receivedUpCount += acq.channelValue.size();
             });
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData](const Acquisition &acq) {
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownCount](const Acquisition &acq) {
                 expect(eq(acq.channelName.value(), "count_down"sv));
                 expect(eq(acq.channelUnit.value(), "Test unit B"sv));
                 expect(eq(acq.channelRangeMin, 0.f));
                 expect(eq(acq.channelRangeMax, 100.f));
-                receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
+                receivedDownCount += acq.channelValue.size();
             });
 
             test.setGrc(grc);
-            std::this_thread::sleep_for(1200ms);
+            waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
         }
-        expect(!receivedUpData.empty());
-        expect(!receivedDownData.empty());
+        expect(receivedUpCount > 0);
+        expect(receivedDownCount > 0);
         std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
         expect(eq(lastDnsEntries.size(), 2UZ));
         if (lastDnsEntries.size() >= 2UZ) {
