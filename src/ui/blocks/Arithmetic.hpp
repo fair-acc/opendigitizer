@@ -38,4 +38,6 @@ struct Arithmetic : public gr::Block<Arithmetic<T>> {
 
 ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::Arithmetic, in1, in2, out, operation)
 
+auto registerArithmetic = gr::registerBlock<opendigitizer::Arithmetic, float, double>(gr::globalBlockRegistry());
+
 #endif

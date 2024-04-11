@@ -16,9 +16,9 @@
 namespace opendigitizer {
 
 template<typename T>
-    requires std::is_same_v<T, float>
+    requires std::is_floating_point_v<T>
 struct RemoteSource : public gr::Block<RemoteSource<T>> {
-    gr::PortOut<float>          out;
+    gr::PortOut<T>              out;
     std::string                 remote_uri;
     std::string                 signal_name;
     std::string                 signal_unit;
@@ -53,7 +53,11 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
             auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
             in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
 
-            std::copy(in.begin(), in.end(), output.begin() + written);
+            if constexpr (std::is_same_v<T, float>) {
+                std::ranges::copy(in, output.begin() + written);
+            } else {
+                std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
+            }
             written += in.size();
             d.read += in.size();
             if (d.read == d.acq.channelValue.size()) {
@@ -120,5 +124,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 } // namespace opendigitizer
 
 ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max)
+
+auto registerRemoteSource = gr::registerBlock<opendigitizer::RemoteSource, float, double>(gr::globalBlockRegistry());
 
 #endif

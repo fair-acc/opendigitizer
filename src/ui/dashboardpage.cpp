@@ -291,37 +291,34 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         auto *sink = static_cast<DataSink *>(source->block);
         ImPlot::HideNextItem(false, ImPlotCond_Always);
         sink->update();
-        if (sink->data.empty()) {
-            // Plot one single dummy value so that the sink shows up in the plot legend
-            float v = 0;
-            if (source->visible) {
+        if (source->visible) {
+            if (sink->data.empty()) {
+                // Plot one single dummy value so that the sink shows up in the plot legend
+                float v = 0;
                 ImPlot::PlotLine(source->name.c_str(), &v, 1);
-            }
-        } else if (source->visible) {
-            switch (sink->dataType) {
-            case DigitizerUi::DataType::Float32: {
-                auto            values = sink->data.asFloat32();
-                std::lock_guard lock(sink->m_mutex);
-                ImPlot::PlotLine(source->name.c_str(), values.data(), int(values.size()));
-                break;
-            }
-            case DigitizerUi::DataType::DataSetFloat32: {
-                auto ds = sink->data.asDataSetFloat32();
-                if (ds.extents.empty()) {
+            } else {
+                switch (sink->dataType) {
+                case DigitizerUi::DataType::Float32: {
+                    auto values = sink->data.asFloat32();
+                    ImPlot::PlotLine(source->name.c_str(), values.data(), int(values.size()));
                     break;
                 }
-                auto           &values = ds.signal_values;
-                std::lock_guard lock(sink->m_mutex);
-                for (int i = 0; i < ds.extents[0]; ++i) {
-                    auto n = ds.extents[1];
-                    ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n * i, n);
+                case DigitizerUi::DataType::DataSetFloat32: {
+                    auto ds = sink->data.asDataSetFloat32();
+                    if (ds.extents.empty()) {
+                        break;
+                    }
+                    auto &values = ds.signal_values;
+                    for (int i = 0; i < ds.extents[0]; ++i) {
+                        auto n = ds.extents[1];
+                        ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n * i, n);
+                    }
+                    break;
                 }
-                break;
-            }
-            default: break;
+                default: break;
+                }
             }
         }
-
         // allow legend item labels to be DND sources
         if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
             DigitizerUi::DashboardPage::DndItem dnd = { &plot, source };

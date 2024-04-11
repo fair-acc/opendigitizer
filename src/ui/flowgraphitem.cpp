@@ -349,12 +349,13 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         ax::NodeEditor::EndNode();
     } else {
         std::string value;
-        auto       *meta = b.graphNode() ? &b.graphNode()->metaInformation() : nullptr;
         for (const auto &val : b.parameters()) {
-            auto metaKey = val.first + "::visible";
-            if (meta && meta->contains(metaKey)) {
-                if (auto visiblePtr = std::get_if<bool>(std::addressof((*meta)[metaKey])); visiblePtr && !(*visiblePtr))
+            const auto metaKey = val.first + "::visible";
+            const auto it      = b.metaInformation().find(metaKey);
+            if (it != b.metaInformation().end()) {
+                if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
                     continue;
+                }
             }
             valToString(val.second, value);
             ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
@@ -649,7 +650,6 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     ImGui::SetCursorPosX(newSinkButtonPos);
     if (ImGui::Button("New sink") && newSinkCallback) {
         m_nodesToArrange.push_back(newSinkCallback(fg));
-        m_nodesToArrange.push_back(newSinkSourceCallback(fg));
     }
     ImGui::PopStyleColor();
 
@@ -674,7 +674,7 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
     if (ImGui::BeginPopupModal("New block")) {
         auto ret            = ImGuiUtils::filteredListBox("blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
-            if (it.second->isSource) {
+            if (it.second->isSource()) {
                 return {};
             }
             return std::pair{ it.second.get(), it.first };
@@ -703,7 +703,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
             cats.clear();
             cats.push_back({ "Remote signals", {} });
             for (const auto &t : BlockType::registry().types()) {
-                if (t.second->isSource && !t.second->category.empty()) {
+                if (t.second->isSource() && !t.second->category.empty()) {
                     auto it = std::find_if(cats.begin(), cats.end(), [&](const auto &c) {
                         return c.name == t.second->category;
                     });

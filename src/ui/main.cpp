@@ -22,8 +22,10 @@
 #include <cstdio>
 
 #include <fmt/format.h>
+#include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/testing/Delay.hpp>
 
 #include "app.hpp"
 #include "dashboard.hpp"
@@ -44,9 +46,6 @@
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
-
-template<typename T>
-using SpecFFT = gr::blocks::fft::FFT<float, gr::DataSet<float>>;
 
 namespace DigitizerUi {
 
@@ -234,9 +233,6 @@ int main(int argc, char **argv) {
         plot.sourceNames.push_back(newSink->name);
         return newSink;
     };
-    app.fgItem.newSinkSourceCallback = [&](DigitizerUi::FlowGraph *) mutable {
-        return app.dashboard->createSource();
-    };
 
     app.verticalDPI = [&app]() -> float {
         float diagonalDPI   = app.defaultDPI;
@@ -253,12 +249,18 @@ int main(int argc, char **argv) {
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
 
+    gr::registerBlock<opendigitizer::DSSink, float, double>(gr::globalBlockRegistry());
+    gr::registerBlock<opendigitizer::PlotSink, float, double>(gr::globalBlockRegistry());
+
     DigitizerUi::DataSink::registerBlockType();
-    DigitizerUi::DataSinkSource::registerBlockType();
+
+    // TODO populate these from the gr::globalBlockRegistry()
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
-    DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
+    // DigitizerUi::BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
+    DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
+    DigitizerUi::BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
     DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
     DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
 
@@ -313,9 +315,11 @@ static void main_loop(void *arg) {
 
     if (app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
-        auto graph = app->dashboard->localFlowGraph.createGraph();
+        auto execution = app->dashboard->localFlowGraph.createExecutionContext();
         app->dashboard->loadPlotSources();
-        app->assignScheduler(std::move(graph));
+        app->_toolbarBlocks = std::move(execution.toolbarBlocks);
+        app->_plotBlocks    = std::move(execution.plotBlocks);
+        app->assignScheduler(std::move(execution.graph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 
@@ -428,18 +432,23 @@ static void main_loop(void *arg) {
                         return names;
                     };
                     const auto oldNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
-                    app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                    const auto               newNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
-                    std::vector<std::string> toRemove;
-                    std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                    std::vector<std::string> toAdd;
-                    std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                    for (const auto &name : toRemove) {
-                        app->dashboard->removeSinkFromPlots(name);
-                    }
-                    for (const auto &newName : toAdd) {
-                        app->dashboardPage.newPlot(app->dashboard.get());
-                        app->dashboard->plots().back().sourceNames.push_back(newName);
+                    try {
+                        app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                        const auto               newNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
+                        std::vector<std::string> toRemove;
+                        std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
+                        std::vector<std::string> toAdd;
+                        std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
+                        for (const auto &name : toRemove) {
+                            app->dashboard->removeSinkFromPlots(name);
+                        }
+                        for (const auto &newName : toAdd) {
+                            app->dashboardPage.newPlot(app->dashboard.get());
+                            app->dashboard->plots().back().sourceNames.push_back(newName);
+                        }
+                    } catch (const std::exception &e) {
+                        // TODO show error message
+                        fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
                     }
                 }
 

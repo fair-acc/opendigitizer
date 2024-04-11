@@ -26,8 +26,6 @@ class Block;
 class FlowGraph;
 struct DashboardDescription;
 class DataSink;
-class DataSinkSource;
-
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
@@ -132,17 +130,16 @@ public:
         void                        reload();
         void                        execute();
     };
-    void            addRemoteService(std::string_view uri);
-    void            saveRemoteServiceFlowgraph(Service *s);
+    void         addRemoteService(std::string_view uri);
+    void         saveRemoteServiceFlowgraph(Service *s);
 
-    inline auto    &remoteServices() { return m_services; }
+    inline auto &remoteServices() { return m_services; }
 
-    DataSink       *createSink();
-    DataSinkSource *createSource();
+    DataSink    *createSink();
 
-    void            loadPlotSources();
+    void         loadPlotSources();
 
-    FlowGraph       localFlowGraph;
+    FlowGraph    localFlowGraph;
 
 private:
     void                                  doLoad(const std::string &desc);

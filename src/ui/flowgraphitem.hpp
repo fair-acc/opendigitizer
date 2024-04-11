@@ -29,7 +29,6 @@ public:
     void                                draw(FlowGraph *fg, const ImVec2 &size);
 
     std::function<Block *(FlowGraph *)> newSinkCallback;
-    std::function<Block *(FlowGraph *)> newSinkSourceCallback;
 
     std::string                         settings(FlowGraph *fg) const;
     void                                setSettings(FlowGraph *fg, const std::string &settings);

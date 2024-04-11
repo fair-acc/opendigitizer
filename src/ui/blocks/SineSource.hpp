@@ -73,4 +73,6 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 
 ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, freqIn, freqOut, frequency)
 
+auto registerSineSource = gr::registerBlock<opendigitizer::SineSource, float, double>(gr::globalBlockRegistry());
+
 #endif

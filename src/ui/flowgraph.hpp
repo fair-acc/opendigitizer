@@ -15,6 +15,7 @@
 #include <fmt/format.h>
 #include <gnuradio-4.0/BlockTraits.hpp>
 #include <gnuradio-4.0/Graph.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
 
 namespace DigitizerUi {
 
@@ -74,7 +75,7 @@ public:
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
-    explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {}, bool source = false);
+    explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {});
     virtual ~BlockType();
 
     const std::string                                       name;
@@ -83,9 +84,7 @@ public:
     std::vector<PortDefinition>                             inputs;
     std::vector<PortDefinition>                             outputs;
     const std::string                                       category;
-    const bool                                              isSource;
     std::unique_ptr<gr::SettingsBase>                       settings;
-
     std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
 
     auto                                                    data_inputs() {
@@ -99,6 +98,14 @@ public:
     }
     auto message_outputs() {
         return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+
+    bool isSource() const {
+        return inputs.empty() && !outputs.empty();
+    }
+
+    bool isSink() const {
+        return !inputs.empty() && outputs.empty();
     }
 
     template<typename T>
@@ -119,11 +126,11 @@ public:
         // automatically create a BlockType from a graph prototype node template class
         template<template<typename...> typename T>
         void addBlockType(std::string_view typeName) {
+            using Node     = T<float>;
             auto t         = std::make_unique<DigitizerUi::BlockType>(typeName);
-            t->createBlock = [t = t.get()](std::string_view name) {
-                return std::make_unique<DefaultGPBlock<T>>(name, t);
+            t->createBlock = [t = t.get()](std::string_view nodeName) {
+                return std::make_unique<DefaultGPBlock<T>>(nodeName, t);
             };
-            using Node                             = T<float>;
             namespace meta                         = gr::traits::block;
 
             constexpr std::size_t input_port_count = meta::template all_input_port_types<Node>::size;
@@ -260,7 +267,7 @@ using DataSetBase = std::variant<EmptyDataSet,
         std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
         std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
         std::span<const float>, std::span<const double>,
-        std::reference_wrapper<gr::DataSet<float>>>;
+        gr::DataSet<float>>;
 class DataSet : DataSetBase {
 public:
     using DataSetBase::DataSetBase;
@@ -269,7 +276,7 @@ public:
 
     inline std::span<const float>  asFloat32() const { return std::get<std::span<const float>>(*this); }
     inline std::span<const double> asFloat64() const { return std::get<std::span<const double>>(*this); }
-    inline const auto             &asDataSetFloat32() const { return std::get<std::reference_wrapper<gr::DataSet<float>>>(*this).get(); }
+    inline const auto             &asDataSetFloat32() const { return std::get<gr::DataSet<float>>(*this); }
 };
 
 class Block {
@@ -344,36 +351,28 @@ public:
 
     void                                    update();
 
-    virtual std::unique_ptr<gr::BlockModel> createGraphNode() = 0;
-    virtual void                            setup(gr::Graph &graph) {}
-    auto                                   *graphNode() const { return m_node; }
+    virtual std::unique_ptr<gr::BlockModel> createGRBlock() = 0;
 
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
     const BlockType                        *type;
     const std::string                       name;
     const std::string                       id;
 
-    bool                                    isToolbarBlock() const;
-    void                                    draw() {
-        // TODO: handle return value
-        std::ignore = m_node->draw();
-    }
-
     // protected:
-    auto &inputs() { return m_inputs; }
-    auto &outputs() { return m_outputs; }
+    auto                   &inputs() { return m_inputs; }
+    auto                   &outputs() { return m_outputs; }
 
-    void  updateSettings(const gr::property_map &settings);
+    void                    updateSettings(const gr::property_map &settings);
+    const gr::property_map &metaInformation() const { return m_metaInformation; }
 
 protected:
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
     gr::property_map  m_parameters;
-    bool              m_updated = false;
-    FlowGraph        *m_flowGraph;
-    gr::BlockModel   *m_node = nullptr;
+    bool              m_updated   = false;
+    FlowGraph        *m_flowGraph = nullptr;
     std::string       m_uniqueName;
-
+    gr::property_map  m_metaInformation;
     friend FlowGraph;
 };
 
@@ -410,7 +409,7 @@ public:
         m_parameters = node.settings().get();
     }
 
-    std::unique_ptr<gr::BlockModel> createGraphNode() final {
+    std::unique_ptr<gr::BlockModel> createGRBlock() final {
         DataType t          = DataType::Float32;
         auto     inputsView = dataInputs();
         if (!std::ranges::empty(inputsView)) {
@@ -429,8 +428,14 @@ public:
     }
 };
 
+struct ExecutionContext {
+    gr::Graph                     graph;
+    std::vector<gr::BlockModel *> toolbarBlocks;
+    std::vector<gr::BlockModel *> plotBlocks;
+};
 class FlowGraph {
 public:
+    FlowGraph();
     void                         parse(const std::filesystem::path &file);
     void                         parse(const std::string &str);
     void                         clear();
@@ -455,7 +460,7 @@ public:
     void                         disconnect(Connection *c);
 
     inline bool                  graphChanged() const { return m_graphChanged; }
-    gr::Graph                    createGraph();
+    ExecutionContext             createExecutionContext();
 
     const std::string           &grc() const { return m_grc; }
 
@@ -482,6 +487,7 @@ public:
     }
 
 private:
+    gr::PluginLoader                    _pluginLoader;
     std::vector<std::unique_ptr<Block>> m_sourceBlocks;
     std::vector<std::unique_ptr<Block>> m_sinkBlocks;
     std::vector<std::unique_ptr<Block>> m_blocks;

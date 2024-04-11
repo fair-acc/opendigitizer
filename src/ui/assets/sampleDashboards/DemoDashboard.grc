@@ -2,7 +2,7 @@ blocks:
   - name: sum sigs
     id: opendigitizer::Arithmetic
   - name: FFT
-    id: FFT
+    id: gr::blocks::fft::FFT
   - name: sine source 1
     id: opendigitizer::SineSource
     parameters:
@@ -12,21 +12,13 @@ blocks:
     parameters:
       frequency: 1.300000
   - name: sink 1
-    id: sink
-  - name: source for sink 1
-    id: sink_source
+    id: opendigitizer::DataSink
   - name: sink 2
-    id: sink
-  - name: source for sink 2
-    id: sink_source
+    id: opendigitizer::DataSink
   - name: sink 3
-    id: sink
-  - name: source for sink 3
-    id: sink_source
+    id: opendigitizer::DataSink
   - name: sink 4
-    id: sink
-  - name: source for sink 4
-    id: sink_source
+    id: opendigitizer::DataSink
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]

@@ -253,16 +253,6 @@ DataSink *Dashboard::createSink() {
     return sinkptr;
 }
 
-DataSinkSource *Dashboard::createSource() {
-    int  n         = localFlowGraph.sourceBlocks().size() + 1;
-    auto name      = fmt::format("source {}", n);
-    auto source    = std::make_unique<DigitizerUi::DataSinkSource>(name);
-    auto sourceptr = source.get();
-    name           = fmt::format("source for sink {}", n);
-    localFlowGraph.addSourceBlock(std::move(source));
-    return sourceptr;
-}
-
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
     m_desc = desc;
 }
@@ -272,12 +262,19 @@ void Dashboard::load() {
         fetch(
                 m_desc->source, m_desc->filename, { What::Flowgraph, What::Dashboard },
                 [_this = shared()](std::array<std::string, 2> &&data) {
-                    _this->localFlowGraph.parse(std::move(data[0]));
-                    // Load is called after parsing the flowgraph so that we already have the list of sources
-                    _this->doLoad(data[1]);
+                    try {
+                        _this->localFlowGraph.parse(std::move(data[0]));
+                        // Load is called after parsing the flowgraph so that we already have the list of sources
+                        _this->doLoad(data[1]);
+                    } catch (const std::exception &e) {
+                        // TODO show error message
+                        fmt::print(std::cerr, "Error: {}", e.what());
+                        App::instance().closeDashboard();
+                    }
                 },
                 [_this = shared()]() {
-                    fmt::print("Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
+                    // TODO show error message
+                    fmt::print(std::cerr, "Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
                     App::instance().closeDashboard();
                 });
     } else {
@@ -286,35 +283,21 @@ void Dashboard::load() {
 }
 
 void Dashboard::doLoad(const std::string &desc) {
-    YAML::Node tree = YAML::Load(desc);
+    YAML::Node tree    = YAML::Load(desc);
 
-    auto       path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
+    auto       path    = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
-#ifdef NDEBUG
-#define ERROR_RETURN(msg) \
-    { \
-        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
-        abort(); \
-    }
-#else
-#define ERROR_RETURN(msg) \
-    { \
-        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
-        return; \
-    }
-#endif
-
-    auto sources = tree["sources"];
-    if (!sources || !sources.IsSequence()) ERROR_RETURN("sources entry invalid");
+    auto       sources = tree["sources"];
+    if (!sources || !sources.IsSequence()) throw std::runtime_error("sources entry invalid");
 
     for (const auto &s : sources) {
-        if (!s.IsMap()) ERROR_RETURN("source is no map");
+        if (!s.IsMap()) throw std::runtime_error("source is no map");
 
         auto block = s["block"];
         auto port  = s["port"];
         auto name  = s["name"];
         auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) ERROR_RETURN("invalid source color definition");
+        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) std::runtime_error("invalid source color definition");
 
         auto blockStr = block.as<std::string>();
         auto portNum  = port.as<int>();
@@ -334,29 +317,29 @@ void Dashboard::doLoad(const std::string &desc) {
     }
 
     auto plots = tree["plots"];
-    if (!plots || !plots.IsSequence()) ERROR_RETURN("plots invalid");
+    if (!plots || !plots.IsSequence()) throw std::runtime_error("plots invalid");
 
     for (const auto &p : plots) {
-        if (!p.IsMap()) ERROR_RETURN("plots is not map");
+        if (!p.IsMap()) std::runtime_error("plots is not map");
 
         auto name        = p["name"];
         auto axes        = p["axes"];
         auto plotSources = p["sources"];
         auto rect        = p["rect"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) ERROR_RETURN("invalid plot definition");
+        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) throw std::runtime_error("invalid plot definition");
 
         m_plots.emplace_back();
         auto &plot = m_plots.back();
         plot.name  = name.as<std::string>();
 
         for (const auto &a : axes) {
-            if (!a.IsMap()) ERROR_RETURN("axes is no map");
+            if (!a.IsMap()) throw std::runtime_error("axes is no map");
 
             auto axis = a["axis"];
             auto min  = a["min"];
             auto max  = a["max"];
 
-            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) ERROR_RETURN("invalid axis definition");
+            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) throw std::runtime_error("invalid axis definition");
 
             plot.axes.push_back({});
             auto &ax      = plot.axes.back();
@@ -377,7 +360,7 @@ void Dashboard::doLoad(const std::string &desc) {
         }
 
         for (const auto &s : plotSources) {
-            if (!s.IsScalar()) ERROR_RETURN("plot source is no scalar");
+            if (!s.IsScalar()) throw std::runtime_error("plot source is no scalar");
 
             auto str = s.as<std::string>();
             plot.sourceNames.push_back(str);
@@ -393,8 +376,6 @@ void Dashboard::doLoad(const std::string &desc) {
     App::instance().fgItem.setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
 
     loadPlotSources();
-
-#undef ERROR_RETURN
 }
 
 void Dashboard::save() {

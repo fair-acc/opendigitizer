@@ -183,6 +183,7 @@ target_link_libraries(
           gnuradio-algorithm
           gr-basic
           gr-fourier
+          gr-testing
           fftw
           vir
           pmtv)

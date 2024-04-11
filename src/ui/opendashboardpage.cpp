@@ -4,9 +4,9 @@
 
 #include <imgui.h>
 
-#include "opendashboardpage.hpp"
 #include "app.hpp"
 #include "imguiutils.hpp"
+#include "opendashboardpage.hpp"
 
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>

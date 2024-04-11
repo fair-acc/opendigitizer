@@ -5,12 +5,17 @@
 #include <charconv>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string_view>
 
 #include <fmt/format.h>
 
+#include "gnuradio-4.0/Tag.hpp"
 #include "yamlutils.hpp"
+#include <unordered_map>
 #include <yaml-cpp/yaml.h>
+
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
 
 #include "app.hpp"
 
@@ -40,16 +45,15 @@ std::string Block::Parameter::toString() const {
 class GRBlock : public Block {
 public:
     using Block::Block;
-    std::unique_ptr<gr::BlockModel> createGraphNode() final {
+    std::unique_ptr<gr::BlockModel> createGRBlock() final {
         return {};
     }
 };
 
-BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat, bool source)
+BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat)
     : name(n)
     , label(l.empty() ? n : l)
     , category(cat)
-    , isSource(source)
     , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
 }
 
@@ -144,17 +148,6 @@ void Block::update() {
     }
 }
 
-bool Block::isToolbarBlock() const {
-    const auto &meta = m_node->metaInformation();
-    auto        it   = meta.find("Drawable");
-    if (it != meta.end() && std::holds_alternative<gr::property_map>(it->second)) {
-        const auto &drawableMap = std::get<gr::property_map>(it->second);
-        auto        catIt       = drawableMap.find("Category");
-        return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == "Toolbar";
-    }
-    return false;
-}
-
 std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }
@@ -163,10 +156,10 @@ static std::string_view strview(auto &&s) {
     return { s.data(), s.size() };
 }
 
-static bool readFile(const std::filesystem::path &file, std::string &str) {
+static void readFile(const std::filesystem::path &file, std::string &str) {
     std::ifstream stream(file);
     if (!stream.is_open()) {
-        return false;
+        throw std::runtime_error(fmt::format("Cannot open file '{}'", file.native()));
     }
 
     stream.seekg(0, std::ios::end);
@@ -175,7 +168,6 @@ static bool readFile(const std::filesystem::path &file, std::string &str) {
     str.resize(size);
     stream.seekg(0);
     stream.read(str.data(), size);
-    return true;
 }
 
 void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir) {
@@ -294,36 +286,31 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
     }
 }
 
+FlowGraph::FlowGraph()
+    : _pluginLoader(gr::globalBlockRegistry(), {}) {}
+
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
-    if (!readFile(file, str)) {
-        std::cerr << "Cannot read file '" << file << "'\n";
-        return;
-    }
+    readFile(file, str);
     parse(str);
 }
 
 void FlowGraph::parse(const std::string &str) {
     clear();
 
-    YAML::Node tree   = YAML::Load(str);
+    auto tree   = YAML::Load(str);
+    auto blocks = tree["blocks"];
 
-    auto       blocks = tree["blocks"];
     for (const auto &b : blocks) {
-        auto n  = b["name"].as<std::string>();
-        auto id = b["id"].as<std::string>();
+        const auto name = b["name"].as<std::string>();
+        const auto id   = b["id"].as<std::string>();
 
-        std::cout << "b" << n << id << "\n";
-
-        auto type = BlockType::registry().get(id);
+        auto       type = BlockType::registry().get(id);
         if (!type) {
-            std::cerr << "Block type '" << id << "' is unkown.\n";
-            auto block = std::make_unique<GRBlock>(n, id, type);
-            m_blocks.push_back(std::move(block));
-            continue;
+            throw std::runtime_error(fmt::format("Block type '{}' is unknown.", id));
         }
 
-        auto block = type->createBlock(n);
+        auto block = type->createBlock(name);
 
         auto pars  = b["parameters"];
         if (pars && pars.IsMap()) {
@@ -350,18 +337,20 @@ void FlowGraph::parse(const std::string &str) {
             }
         }
 
-        if (type->isSource) {
+        if (type->isSource()) {
             addSourceBlock(std::move(block));
-        } else if (type->outputs.size() == 0 && type->inputs.size() > 0) {
+        } else if (type->isSink()) {
             addSinkBlock(std::move(block));
         } else {
             addBlock(std::move(block));
         }
     }
 
-    auto connections = tree["connections"];
+    const auto connections = tree["connections"];
     for (const auto &c : connections) {
-        assert(c.size() == 4);
+        if (c.size() != 4) {
+            throw std::runtime_error("Malformed connection");
+        }
 
         auto        srcBlockName = c[0].as<std::string>();
         auto        srcPortStr   = c[1].as<std::string>();
@@ -575,18 +564,32 @@ void FlowGraph::addRemoteSource(std::string_view uri) {
     addBlock(std::move(block));
 }
 
-gr::Graph FlowGraph::createGraph() {
-    gr::Graph graph;
+namespace {
 
+bool isDrawable(const gr::property_map &meta, std::string_view category) {
+    auto it = meta.find("Drawable");
+    if (it == meta.end() || !std::holds_alternative<gr::property_map>(it->second)) {
+        return false;
+    }
+    const auto &drawableMap = std::get<gr::property_map>(it->second);
+    const auto  catIt       = drawableMap.find("Category");
+    return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == category;
+}
+
+} // namespace
+
+ExecutionContext FlowGraph::createExecutionContext() {
+    ExecutionContext context;
     for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
         for (const auto &block : *list) {
-            auto node     = block->createGraphNode();
-            block->m_node = node.get();
+            auto node = block->createGRBlock();
             if (!node) {
                 fmt::print("no node {}\n", block->name);
                 continue;
             }
-            block->m_uniqueName = block->m_node->uniqueName();
+            block->m_uniqueName      = node->uniqueName();
+            block->m_metaInformation = node->metaInformation();
+
 #ifdef __EMSCRIPTEN__
             try {
 #endif
@@ -595,19 +598,37 @@ gr::Graph FlowGraph::createGraph() {
             } catch (...) {
             }
 #endif
-            graph.addBlock(std::move(node));
+            if (isDrawable(block->metaInformation(), "Toolbar")) {
+                context.toolbarBlocks.push_back(node.get());
+            }
+            if (isDrawable(block->metaInformation(), "Plot")) {
+                context.plotBlocks.push_back(node.get());
+            }
+            context.graph.addBlock(std::move(node));
         }
     }
 
+#if 0 // needed?
     for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
         for (const auto &block : *list) {
-            block->setup(graph);
+            block->connect(graph);
         }
     }
+#endif
+
+    auto findBlock = [&](std::string_view name) -> gr::BlockModel * {
+        const auto it = std::ranges::find_if(context.graph.blocks(), [&](auto &b) { return b->uniqueName() == name; });
+        return it == context.graph.blocks().end() ? nullptr : it->get();
+    };
 
     for (auto &c : m_connections) {
-        if (!c.src.block->m_node || !c.dst.block->m_node) continue;
-        graph.connect(*c.src.block->m_node, c.src.index, *c.dst.block->m_node, c.dst.index);
+        const auto src = findBlock(c.src.block->m_uniqueName);
+        const auto dst = findBlock(c.dst.block->m_uniqueName);
+        if (!src || !dst) {
+            continue;
+        }
+
+        context.graph.connect(*src, c.src.index, *dst, c.dst.index);
     }
 
     m_graphChanged = false;
@@ -616,7 +637,7 @@ gr::Graph FlowGraph::createGraph() {
     save(str);
     m_grc = str.str();
 
-    return graph;
+    return context;
 }
 
 void FlowGraph::handleMessage(const gr::Message &msg) {

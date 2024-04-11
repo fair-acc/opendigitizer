@@ -429,9 +429,9 @@ struct TouchHandler {
 
         const auto &app = DigitizerUi::App::instance();
         if constexpr (zoomViaMouseWheel) {
-            const ImVec2 initialDist = fingerPosDown[0] - fingerPosDown[1];
-            const ImVec2 currDist = fingerPosDiff[0] - fingerPosDiff[1];
-            const ImVec2 zoomFactor = {1.0f - currDist.x / initialDist.x, 1.0f - currDist.y / initialDist.y};
+            const ImVec2 initialDist    = fingerPosDown[0] - fingerPosDown[1];
+            const ImVec2 currDist       = fingerPosDiff[0] - fingerPosDiff[1];
+            const ImVec2 zoomFactor     = { 1.0f - currDist.x / initialDist.x, 1.0f - currDist.y / initialDist.y };
 
             const double ZOOM_THRESHOLD = app.isDesktop ? 0.001 : 0.02;
             if (std::abs(zoomFactor.x - 1.f) < ZOOM_THRESHOLD && std::abs(zoomFactor.y - 1.f) < ZOOM_THRESHOLD) {

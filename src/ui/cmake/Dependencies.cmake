@@ -22,12 +22,6 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    yaml-cpp
-    GIT_REPOSITORY  https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG         yaml-cpp-0.7.0
-)
-
-FetchContent_Declare(
     plf_colony
     GIT_REPOSITORY  https://github.com/mattreecebentley/plf_colony.git
     GIT_TAG         41e387e281b8323ca5584e79f67d632964b24bbf #v7.11
@@ -52,7 +46,7 @@ FetchContent_Declare(
     GIT_TAG 5e15e8478d267a5e74fdd3b310a7483a690fe1b4 # main as of 2024-04-25
 )
 
-FetchContent_MakeAvailable(imgui implot imgui-node-editor yaml-cpp stb opencmw-cpp plf_colony graph-prototype)
+FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony graph-prototype)
 
 if (NOT EMSCRIPTEN)
     find_package(SDL2 REQUIRED)
