@@ -410,8 +410,8 @@ public:
 struct ExecutionContext {
     gr::Graph                     graph;
     std::vector<gr::BlockModel *> toolbarBlocks;
-    std::vector<gr::BlockModel *> plotBlocks;
 };
+
 class FlowGraph {
 public:
     FlowGraph();

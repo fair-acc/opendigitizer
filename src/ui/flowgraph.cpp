@@ -589,7 +589,7 @@ ExecutionContext FlowGraph::createExecutionContext() {
             }
             block->m_uniqueName      = node->uniqueName();
             block->m_metaInformation = node->metaInformation();
-
+            node->setName(block->name);
 #ifdef __EMSCRIPTEN__
             try {
 #endif
@@ -600,9 +600,6 @@ ExecutionContext FlowGraph::createExecutionContext() {
 #endif
             if (isDrawable(block->metaInformation(), "Toolbar")) {
                 context.toolbarBlocks.push_back(node.get());
-            }
-            if (isDrawable(block->metaInformation(), "Plot")) {
-                context.plotBlocks.push_back(node.get());
             }
             context.graph.addBlock(std::move(node));
         }

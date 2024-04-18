@@ -27,8 +27,8 @@ BlockType *g_btype = nullptr;
 
 } // namespace
 
-DataSink::DataSink(std::string_view name)
-    : Block(name, "opendigitizer::DataSink", g_btype)
+DataSink::DataSink(std::string_view name_)
+    : Block(name_, "opendigitizer::DataSink", g_btype)
     , color(randomColor()) {
 }
 

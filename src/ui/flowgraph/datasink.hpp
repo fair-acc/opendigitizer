@@ -45,6 +45,11 @@ namespace opendigitizer {
 template<typename T>
 struct PlotSink : public gr::Block<opendigitizer::PlotSink<T>, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
     gr::PortIn<T> in;
+    std::string                                                                     signal_name;
+    std::string                                                                     signal_unit;
+    float                                                                           signal_min = 0;
+    float                                                                           signal_max = 0;
+
     std::conditional_t<DigitizerUi::meta::is_dataset_v<T>, T, gr::HistoryBuffer<T>> data = [] {
         if constexpr (DigitizerUi::meta::is_dataset_v<T>) {
             return T{};
@@ -67,15 +72,15 @@ struct PlotSink : public gr::Block<opendigitizer::PlotSink<T>, gr::BlockingIO<fa
     draw() noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
         if constexpr (std::is_floating_point_v<T>) { // PlotLine() doesn't support std::complex
-            // TODO use signal_name property if set
+            const auto &label = signal_name.empty() ? this->name.value : signal_name;
             if (data.empty()) {
                 // Plot one single dummy value so that the sink shows up in the plot legend
                 float v = 0;
-                ImPlot::PlotLine(this->name.value.c_str(), &v, 1);
+                ImPlot::PlotLine(label.c_str(), &v, 1);
             } else {
                 const auto span = std::span(data.begin(), data.end());
                 //  TODO should we limit this to the last N (N might be UI-dependent) samples?
-                ImPlot::PlotLine(this->name.value.c_str(), span.data(), static_cast<int>(span.size()));
+                ImPlot::PlotLine(label.c_str(), span.data(), static_cast<int>(span.size()));
             }
         } else if constexpr (DigitizerUi::meta::is_dataset_v<T>) {
             if (data.extents.empty()) {
@@ -93,6 +98,6 @@ struct PlotSink : public gr::Block<opendigitizer::PlotSink<T>, gr::BlockingIO<fa
 
 } // namespace opendigitizer
 
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::PlotSink, in);
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::PlotSink, in, signal_name, signal_unit, signal_min, signal_max);
 
 #endif

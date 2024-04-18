@@ -317,7 +317,6 @@ static void main_loop(void *arg) {
         auto execution = app->dashboard->localFlowGraph.createExecutionContext();
         app->dashboard->loadPlotSources();
         app->_toolbarBlocks = std::move(execution.toolbarBlocks);
-        app->_plotBlocks    = std::move(execution.plotBlocks);
         app->assignScheduler(std::move(execution.graph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }

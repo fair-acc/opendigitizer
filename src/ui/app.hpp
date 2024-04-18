@@ -162,7 +162,6 @@ public:
 
     SchedWrapper                  _scheduler;
     std::vector<gr::BlockModel *> _toolbarBlocks;
-    std::vector<gr::BlockModel *> _plotBlocks;
 
 public:
     App() noexcept { setStyle(Style::Light); }
