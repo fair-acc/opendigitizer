@@ -290,35 +290,7 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
 
         auto *sink = static_cast<DataSink *>(source->block);
         ImPlot::HideNextItem(false, ImPlotCond_Always);
-        sink->update();
-        if (source->visible) {
-            if (sink->data.empty()) {
-                // Plot one single dummy value so that the sink shows up in the plot legend
-                float v = 0;
-                ImPlot::PlotLine(source->name.c_str(), &v, 1);
-            } else {
-                switch (sink->dataType) {
-                case DigitizerUi::DataType::Float32: {
-                    auto values = sink->data.asFloat32();
-                    ImPlot::PlotLine(source->name.c_str(), values.data(), int(values.size()));
-                    break;
-                }
-                case DigitizerUi::DataType::DataSetFloat32: {
-                    auto ds = sink->data.asDataSetFloat32();
-                    if (ds.extents.empty()) {
-                        break;
-                    }
-                    auto &values = ds.signal_values;
-                    for (int i = 0; i < ds.extents[0]; ++i) {
-                        auto n = ds.extents[1];
-                        ImPlot::PlotLine(ds.signal_names[i].c_str(), values.data() + n * i, n);
-                    }
-                    break;
-                }
-                default: break;
-                }
-            }
-        }
+        sink->draw(source->visible);
         // allow legend item labels to be DND sources
         if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
             DigitizerUi::DashboardPage::DndItem dnd = { &plot, source };

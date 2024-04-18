@@ -249,8 +249,7 @@ int main(int argc, char **argv) {
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
 
-    gr::registerBlock<opendigitizer::DSSink, float, double>(gr::globalBlockRegistry());
-    gr::registerBlock<opendigitizer::PlotSink, float, double>(gr::globalBlockRegistry());
+    gr::registerBlock<opendigitizer::PlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>>(gr::globalBlockRegistry());
 
     DigitizerUi::DataSink::registerBlockType();
 

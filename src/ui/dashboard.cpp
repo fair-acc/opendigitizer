@@ -229,11 +229,9 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &de
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
-            p.sources.erase(std::remove_if(p.sources.begin(), p.sources.end(), [=](auto *s) { return s->block == b; }),
-                    p.sources.end());
+            std::erase_if(p.sources, [=](const auto &s) { return s->block == b; });
         }
-        m_sources.erase(std::remove_if(m_sources.begin(), m_sources.end(), [=](const auto &s) { return s.block == b; }),
-                m_sources.end());
+        std::erase_if(m_sources, [=](const auto &s) { return s.block == b; });
     };
 }
 

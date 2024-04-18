@@ -260,25 +260,6 @@ private:
     Id m_id = Id::Untyped;
 };
 
-struct EmptyDataSet {};
-
-using DataSetBase = std::variant<EmptyDataSet,
-        std::span<const std::complex<double>>, std::span<const std::complex<float>>,
-        std::span<const std::complex<int64_t>>, std::span<const std::complex<int32_t>>, std::span<std::complex<int16_t>>, std::span<std::complex<int8_t>>,
-        std::span<const int64_t>, std::span<const int32_t>, std::span<const int16_t>, std::span<const int8_t>,
-        std::span<const float>, std::span<const double>,
-        gr::DataSet<float>>;
-class DataSet : DataSetBase {
-public:
-    using DataSetBase::DataSetBase;
-
-    inline bool                    empty() const { return std::holds_alternative<EmptyDataSet>(*this); }
-
-    inline std::span<const float>  asFloat32() const { return std::get<std::span<const float>>(*this); }
-    inline std::span<const double> asFloat64() const { return std::get<std::span<const double>>(*this); }
-    inline const auto             &asDataSetFloat32() const { return std::get<gr::DataSet<float>>(*this); }
-};
-
 class Block {
 public:
     class Port {
@@ -298,8 +279,6 @@ public:
     };
 
     class OutputPort : public Port {
-    public:
-        DataSet dataSet;
     };
 
     struct EnumParameter {
