@@ -1,4 +1,5 @@
 #include "dashboard.hpp"
+#include <algorithm>
 #include <ranges>
 
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
@@ -231,6 +232,9 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &de
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
             std::erase_if(p.sources, [=](const auto &s) { return s->block == b; });
+        }
+        if (b->typeName() == "opendigitizer::RemoteSource") {
+            unregisterRemoteService(b->name);
         }
         std::erase_if(m_sources, [=](const auto &s) { return s.block == b; });
     };
@@ -537,17 +541,38 @@ void Dashboard::loadPlotSources() {
     }
 }
 
-void Dashboard::addRemoteService(std::string_view uri) {
-    const auto u       = opencmw::URI<>(std::string(uri));
-    auto       f       = u.factory(u).path("").setQuery({});
-    auto       service = f.toString();
+void Dashboard::registerRemoteService(std::string_view blockName, std::string_view uri_) {
+    const auto uri = [&] -> std::optional<opencmw::URI<>> {
+        try {
+            return opencmw::URI<>(std::string(uri_));
+        } catch (const std::exception &e) {
+            fmt::println(std::cerr, "remote_source of '{}' is not a valid URI '{}': {}\n", blockName, uri_, e.what());
+            return {};
+        }
+    }();
 
-    auto       it      = std::find_if(m_services.begin(), m_services.end(), [&](const auto &s) { return s.name == service; });
+    if (!uri) {
+        return;
+    }
+
+    const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
+    m_flowgraphUriByRemoteSource.insert({ std::string{ blockName }, flowgraphUri });
+
+    const auto it = std::ranges::find_if(m_services, [&](const auto &s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
-        auto  uri = std::move(f).path("/flowgraph").build();
-        auto &s   = *m_services.emplace(std::move(service), uri.str());
+        auto &s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
     }
+    removeUnusedRemoteServices();
+}
+
+void Dashboard::unregisterRemoteService(std::string_view blockName) {
+    m_flowgraphUriByRemoteSource.erase(std::string{ blockName });
+    removeUnusedRemoteServices();
+}
+
+void Dashboard::removeUnusedRemoteServices() {
+    std::erase_if(m_services, [&](const auto &s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto &uri) { return uri == s.uri; }); });
 }
 
 void Dashboard::Service::reload() {

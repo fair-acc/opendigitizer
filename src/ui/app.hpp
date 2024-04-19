@@ -114,6 +114,8 @@ public:
                 }
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
+                // Initially fetch all settings to have the message handling see them
+                gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
                 _thread = std::thread([this]() {
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {

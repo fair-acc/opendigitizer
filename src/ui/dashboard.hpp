@@ -130,7 +130,10 @@ public:
         void                        reload();
         void                        execute();
     };
-    void         addRemoteService(std::string_view uri);
+    void         registerRemoteService(std::string_view blockName, std::string_view uri);
+    void         unregisterRemoteService(std::string_view blockName);
+    void         removeUnusedRemoteServices();
+
     void         saveRemoteServiceFlowgraph(Service *s);
 
     inline auto &remoteServices() { return m_services; }
@@ -144,10 +147,11 @@ public:
 private:
     void                                  doLoad(const std::string &desc);
 
-    std::shared_ptr<DashboardDescription> m_desc;
-    std::vector<Plot>                     m_plots;
-    plf::colony<Source>                   m_sources;
-    plf::colony<Service>                  m_services;
+    std::shared_ptr<DashboardDescription>        m_desc;
+    std::vector<Plot>                            m_plots;
+    plf::colony<Source>                          m_sources;
+    std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
+    plf::colony<Service>                         m_services;
 };
 
 } // namespace DigitizerUi

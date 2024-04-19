@@ -455,9 +455,7 @@ void FlowGraph::deleteBlock(Block *block) {
         return block == b.get();
     };
 
-    if (auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select); it != m_blocks.end()) {
-        m_blocks.erase(it);
-    }
+    std::erase_if(m_blocks, select);
 
     m_graphChanged = true;
 }
@@ -572,9 +570,21 @@ ExecutionContext FlowGraph::createExecutionContext() {
 void FlowGraph::handleMessage(const gr::Message &msg) {
     if (msg.endpoint == gr::block::property::kSetting) {
         const auto it = std::ranges::find_if(m_blocks, [&](const auto &b) { return b->m_uniqueName == msg.serviceName; });
-        if (it != m_blocks.end()) {
-            (*it)->updateSettings(msg.data.value());
+        if (it == m_blocks.end()) {
+            fmt::println(std::cerr, "Received setting for unknown block '{}'", msg.serviceName);
+            return;
         }
+        if (!msg.data) {
+            fmt::println(std::cerr, "Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+            return;
+        }
+        // TODO handle this in App or Dashboard
+        if (it->get()->typeName() == "opendigitizer::RemoteSource") {
+            if (const auto remoteUri = std::get_if<std::string>(&msg.data.value().at("remote_uri"))) {
+                App::instance().dashboard->registerRemoteService(it->get()->name, *remoteUri);
+            }
+        }
+        (*it)->updateSettings(msg.data.value());
     }
 }
 
