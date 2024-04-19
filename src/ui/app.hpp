@@ -82,14 +82,14 @@ public:
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
 
-        explicit operator bool() const { return handler != nullptr; };
+        explicit         operator bool() const { return handler != nullptr; };
 
         std::string_view uniqueName() const {
             return handler ? handler->uniqueName() : "";
         }
 
-        void     sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
-        void     handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
@@ -143,7 +143,7 @@ public:
 
             std::string_view uniqueName() const override { return _scheduler.unique_name; }
 
-            void sendMessage(const gr::Message &msg) final {
+            void             sendMessage(const gr::Message &msg) final {
                 _toScheduler.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
             }
 

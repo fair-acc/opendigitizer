@@ -145,7 +145,7 @@ public:
     FlowGraph    localFlowGraph;
 
 private:
-    void                                  doLoad(const std::string &desc);
+    void                                         doLoad(const std::string &desc);
 
     std::shared_ptr<DashboardDescription>        m_desc;
     std::vector<Plot>                            m_plots;

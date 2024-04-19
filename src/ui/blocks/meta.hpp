@@ -19,4 +19,3 @@ constexpr inline bool is_dataset_v = is_dataset<T>::value;
 } // namespace opendigitizer::meta
 
 #endif
-
