@@ -5,8 +5,8 @@
 
 #include "app.hpp"
 #include "flowgraph.hpp"
-#include "flowgraph/datasink.hpp"
 #include "imguiutils.hpp"
+#include "plotsink.hpp"
 
 #include "utils/TouchHandler.hpp"
 
@@ -288,7 +288,7 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         auto color = ImGui::ColorConvertU32ToFloat4(source->color);
         ImPlot::SetNextLineStyle(color);
 
-        auto *sink = static_cast<DataSink *>(source->block);
+        auto *sink = static_cast<PlotSink *>(source->block);
         ImPlot::HideNextItem(false, ImPlotCond_Always);
         sink->draw(source->visible);
         // allow legend item labels to be DND sources

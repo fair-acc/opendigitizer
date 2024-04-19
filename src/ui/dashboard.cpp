@@ -20,7 +20,7 @@
 
 #include "app.hpp"
 #include "flowgraph.hpp"
-#include "flowgraph/datasink.hpp"
+#include "plotsink.hpp"
 #include "yamlutils.hpp"
 
 struct FlowgraphMessage {
@@ -225,8 +225,8 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &de
     : m_desc(desc) {
     m_desc->lastUsed                      = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
-        m_sources.insert({ static_cast<DataSink *>(b), -1, b->name, randomColor() });
+    localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
+        m_sources.insert({ static_cast<PlotSink *>(b), -1, b->name, randomColor() });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
@@ -243,10 +243,10 @@ std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDesc
     return std::make_shared<Dashboard>(PrivateTag{}, desc);
 }
 
-DataSink *Dashboard::createSink() {
+PlotSink *Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type->isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
+    auto       sink      = std::make_unique<DigitizerUi::PlotSink>(name);
     auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));
     return sinkptr;

@@ -14,8 +14,8 @@
 #include "app.hpp"
 #include "calculator.hpp"
 #include "flowgraph.hpp"
-#include "flowgraph/datasink.hpp"
 #include "imguiutils.hpp"
+#include "plotsink.hpp"
 
 namespace ImGuiUtils {
 

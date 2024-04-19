@@ -32,8 +32,8 @@
 #include "dashboardpage.hpp"
 #include "fair_header.hpp"
 #include "flowgraph.hpp"
-#include "flowgraph/datasink.hpp"
 #include "flowgraphitem.hpp"
+#include "plotsink.hpp"
 #include "settings.hpp"
 #include "toolbar.hpp"
 #include "toolbar_block.hpp"
@@ -248,11 +248,7 @@ int main(int argc, char **argv) {
 #ifndef EMSCRIPTEN
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
-
-    gr::registerBlock<opendigitizer::PlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>>(gr::globalBlockRegistry());
-
-    DigitizerUi::DataSink::registerBlockType();
-
+    DigitizerUi::PlotSink::registerBlockType();
     // TODO populate these from the gr::globalBlockRegistry()
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");

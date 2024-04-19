@@ -434,8 +434,8 @@ Block *FlowGraph::findBlock(std::string_view name) const {
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
-    if (block->type->isPlotSink() && sinkBlockAddedCallback) {
-        sinkBlockAddedCallback(block.get());
+    if (block->type->isPlotSink() && plotSinkBlockAddedCallback) {
+        plotSinkBlockAddedCallback(block.get());
     }
     m_blocks.push_back(std::move(block));
     m_graphChanged = true;

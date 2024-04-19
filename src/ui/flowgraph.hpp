@@ -17,6 +17,8 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+#include "blocks/meta.hpp"
+
 namespace DigitizerUi {
 
 class FlowGraph;
@@ -24,23 +26,6 @@ class Connection;
 class Block;
 template<template<typename...> typename T>
 class DefaultGPBlock;
-
-namespace meta {
-
-template<typename T>
-struct is_dataset {
-    constexpr inline static bool value = false;
-};
-
-template<typename T>
-struct is_dataset<gr::DataSet<T>> {
-    constexpr inline static bool value = true;
-};
-
-template<typename T>
-constexpr inline bool is_dataset_v = is_dataset<T>::value;
-
-} // namespace meta
 
 class BlockType {
 public:
@@ -110,7 +95,7 @@ public:
 
     bool isPlotSink() const {
         // TODO make this smarter once metaInformation() is statically available
-        return name == "opendigitizer::DataSink";
+        return name == "opendigitizer::ImPlotSink";
     }
 
     template<typename T>
@@ -119,7 +104,7 @@ public:
         auto &p = vec.back();
         p.name  = T::static_name();
         p.type  = T::kPortType == gr::PortType::STREAM ? "float" : "message";
-        if (meta::is_dataset_v<typename T::value_type>) {
+        if (opendigitizer::meta::is_dataset_v<typename T::value_type>) {
             p.dataset = true;
         }
     }
@@ -446,7 +431,7 @@ public:
 
     void                         handleMessage(const gr::Message &msg);
 
-    std::function<void(Block *)> sinkBlockAddedCallback;
+    std::function<void(Block *)> plotSinkBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
 
     template<typename F>

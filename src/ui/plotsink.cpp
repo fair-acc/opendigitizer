@@ -1,4 +1,6 @@
-#include "datasink.hpp"
+#include "plotsink.hpp"
+
+#include "blocks/ImPlotSink.hpp"
 
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 
@@ -27,17 +29,17 @@ BlockType *g_btype = nullptr;
 
 } // namespace
 
-DataSink::DataSink(std::string_view name_)
-    : Block(name_, "opendigitizer::DataSink", g_btype)
+PlotSink::PlotSink(std::string_view name_)
+    : Block(name_, "opendigitizer::ImPlotSink", g_btype)
     , color(randomColor()) {
 }
 
 template<typename T>
-std::unique_ptr<gr::BlockModel> DataSink::createNode() {
-    return std::make_unique<gr::BlockWrapper<opendigitizer::PlotSink<T>>>();
+std::unique_ptr<gr::BlockModel> PlotSink::createNode() {
+    return std::make_unique<gr::BlockWrapper<opendigitizer::ImPlotSink<T>>>();
 }
 
-std::unique_ptr<gr::BlockModel> DataSink::createGRBlock() {
+std::unique_ptr<gr::BlockModel> PlotSink::createGRBlock() {
     if (inputs()[0].connections.empty()) {
         grBlock = nullptr;
         return nullptr;
@@ -53,14 +55,14 @@ std::unique_ptr<gr::BlockModel> DataSink::createGRBlock() {
     return block;
 }
 
-void DataSink::registerBlockType() {
-    auto t = std::make_unique<BlockType>("opendigitizer::DataSink");
+void PlotSink::registerBlockType() {
+    auto t = std::make_unique<BlockType>("opendigitizer::ImPlotSink");
     t->inputs.resize(1);
     auto &in       = t->inputs[0];
     in.name        = "in";
     in.type        = "";
     t->createBlock = [](std::string_view name) {
-        return std::make_unique<DataSink>(name);
+        return std::make_unique<PlotSink>(name);
     };
     g_btype = t.get();
 

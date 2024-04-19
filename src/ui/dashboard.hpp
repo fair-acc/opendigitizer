@@ -25,7 +25,7 @@ namespace DigitizerUi {
 class Block;
 class FlowGraph;
 struct DashboardDescription;
-class DataSink;
+class PlotSink;
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
@@ -59,7 +59,7 @@ public:
     }
 
     struct Source {
-        DataSink   *block;
+        PlotSink   *block;
         int         port;
         std::string name;
         uint32_t    color;
@@ -135,7 +135,7 @@ public:
 
     inline auto &remoteServices() { return m_services; }
 
-    DataSink    *createSink();
+    PlotSink    *createSink();
 
     void         loadPlotSources();
 
