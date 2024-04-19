@@ -571,15 +571,10 @@ ExecutionContext FlowGraph::createExecutionContext() {
 
 void FlowGraph::handleMessage(const gr::Message &msg) {
     if (msg.endpoint == gr::block::property::kSetting) {
-        forEachBlock([&, name = msg.serviceName](auto &block) -> bool {
-            if (block->m_uniqueName == name) {
-                if (msg.data.has_value()) {
-                    block->updateSettings(msg.data.value());
-                }
-                return false;
-            }
-            return true;
-        });
+        const auto it = std::ranges::find_if(m_blocks, [&](const auto &b) { return b->m_uniqueName == msg.serviceName; });
+        if (it != m_blocks.end()) {
+            (*it)->updateSettings(msg.data.value());
+        }
     }
 }
 
