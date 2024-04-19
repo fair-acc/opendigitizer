@@ -30,7 +30,7 @@ BlockType *g_btype = nullptr;
 } // namespace
 
 PlotSink::PlotSink(std::string_view name_)
-    : Block(name_, "opendigitizer::ImPlotSink", g_btype)
+    : Block(name_, g_btype)
     , color(randomColor()) {
 }
 

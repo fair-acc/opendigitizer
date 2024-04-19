@@ -60,7 +60,7 @@ public:
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
-    explicit BlockType(std::string_view n, std::string_view label = {}, std::string_view cat = {});
+    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
     virtual ~BlockType();
 
     const std::string                                       name;
@@ -297,8 +297,17 @@ public:
         std::string toString() const;
     };
 
-    Block(std::string_view name, std::string_view id, BlockType *type);
+    explicit Block(std::string_view name, BlockType *type);
+
     virtual ~Block() {}
+
+    const BlockType &type() const {
+        return *m_type;
+    }
+
+    std::string_view typeName() const {
+        return m_type->name;
+    }
 
     const auto &inputs() const { return m_inputs; }
     const auto &outputs() const { return m_outputs; }
@@ -323,9 +332,7 @@ public:
     virtual std::unique_ptr<gr::BlockModel> createGRBlock() = 0;
 
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
-    const BlockType                        *type;
     const std::string                       name;
-    const std::string                       id;
 
     // protected:
     auto                   &inputs() { return m_inputs; }
@@ -340,6 +347,7 @@ protected:
     gr::property_map  m_parameters;
     bool              m_updated   = false;
     FlowGraph        *m_flowGraph = nullptr;
+    const BlockType  *m_type;
     std::string       m_uniqueName;
     gr::property_map  m_metaInformation;
     friend FlowGraph;
@@ -372,7 +380,7 @@ template<template<typename...> typename T>
 class DefaultGPBlock : public Block {
 public:
     DefaultGPBlock(std::string_view typeName, BlockType *t)
-        : Block(typeName, t->name, t) {
+        : Block(typeName, t) {
         T<float> node;
         node.settings().updateActiveParameters();
         m_parameters = node.settings().get();

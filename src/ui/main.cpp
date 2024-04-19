@@ -420,7 +420,7 @@ static void main_loop(void *arg) {
                 if (ImGui::Button("Apply")) {
                     auto sinkNames = [](const auto &blocks) {
                         using namespace std;
-                        auto isPlotSink = [](const auto &b) { return b->type->isPlotSink(); };
+                        auto isPlotSink = [](const auto &b) { return b->type().isPlotSink(); };
                         auto getName    = [](const auto &b) { return b->name; };
                         auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
                         auto names      = std::vector(namesView.begin(), namesView.end());

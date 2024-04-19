@@ -316,16 +316,14 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
 
         auto p = nodePos.value();
         if (alignment == Alignment::Right) {
-            float width = 80;
-            if (b.type) {
-                std::string value;
-                for (const auto &val : b.parameters()) {
-                    valToString(val.second, value);
-                    float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
-                    width   = std::max(width, w);
-                }
-                width += padding.x + padding.z;
+            float       width = 80;
+            std::string value;
+            for (const auto &val : b.parameters()) {
+                valToString(val.second, value);
+                float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
+                width   = std::max(width, w);
             }
+            width += padding.x + padding.z;
             p.x -= width;
         }
 
@@ -344,103 +342,98 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
     const ImVec2 minSize{ 80.0f, 70.0f };
     auto         yMax{ minSize.y }; // we have to keep track of the Node Size ourselves
 
-    if (!b.type) {
-        ImGui::TextUnformatted("Unknown type");
-        ax::NodeEditor::EndNode();
-    } else {
-        std::string value;
-        for (const auto &val : b.parameters()) {
-            const auto metaKey = val.first + "::visible";
-            const auto it      = b.metaInformation().find(metaKey);
-            if (it != b.metaInformation().end()) {
-                if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
-                    continue;
-                }
-            }
-            valToString(val.second, value);
-            ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
-        }
-        auto positionAfterTexts = ImGui::GetCursorScreenPos();
-
-        ImGui::SetCursorScreenPos(curPos);
-        const auto &inputs       = b.inputs();
-        auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
-
-        auto        curScreenPos = ImGui::GetCursorScreenPos();
-        ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
-
-        for (std::size_t i = 0; i < inputs.size(); ++i) {
-            inputWidths[i] = ImGui::CalcTextSize(b.type->inputs[i].name.c_str()).x + textMargin * 2;
-            if (!filteredOut) {
-                addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight });
-            }
-            pos.y += rectHeight + rectsSpacing;
-        }
-        // make sure the node ends up being tall enough to fit all the pins
-        yMax                     = std::max(yMax, pos.y - curPos.y);
-
-        const auto &outputs      = b.outputs();
-        auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
-        auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
-        pos                      = { curPos.x - padding.x + s.x, curPos.y };
-        for (std::size_t i = 0; i < outputs.size(); ++i) {
-            outputWidths[i] = ImGui::CalcTextSize(b.type->outputs[i].name.c_str()).x + textMargin * 2;
-            if (!filteredOut) {
-                addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight });
-            }
-            pos.y += rectHeight + rectsSpacing;
-        }
-        // likewise for the output pins
-        yMax = std::max(yMax, pos.y - curScreenPos.y);
-
-        // Now for the Filter Button
-        ImGui::SetCursorScreenPos(positionAfterTexts);
-        curScreenPos            = ImGui::GetCursorScreenPos();
-        auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
-        auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
-        ImVec2 filterPos;
-
-        if (myHeight < yMax) {
-            // Find the lower end, deduct myHeight
-            filterPos = curPos;
-            filterPos.y += yMax - filterButtonSize;
-            ImGui::SetCursorScreenPos(filterPos);
-        }
-
-        ImGui::PushID(b.name.c_str());
-        if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
-            if (m_filterBlock == &b) {
-                m_filterBlock = nullptr;
-            } else {
-                m_filterBlock = &b;
+    std::string  value;
+    for (const auto &val : b.parameters()) {
+        const auto metaKey = val.first + "::visible";
+        const auto it      = b.metaInformation().find(metaKey);
+        if (it != b.metaInformation().end()) {
+            if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                continue;
             }
         }
-        ImGui::PopID();
+        valToString(val.second, value);
+        ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
+    }
+    auto positionAfterTexts = ImGui::GetCursorScreenPos();
 
-        ax::NodeEditor::EndNode();
+    ImGui::SetCursorScreenPos(curPos);
+    const auto &inputs       = b.inputs();
+    auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
 
-        // The input/output pins are drawn after ending the node because otherwise
-        // drawing them would increase the node size, which we need to know to correctly place the
-        // output pins, and that would cause the nodes to continuously grow in width
+    auto        curScreenPos = ImGui::GetCursorScreenPos();
+    ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
 
-        ImGui::SetCursorScreenPos(curPos);
-        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
-
-        for (std::size_t i = 0; i < inputs.size(); ++i) {
-            const auto &in = inputs[i];
-
-            ImGui::SetCursorPosX(leftPos - inputWidths[i]);
-            drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->inputs[i].name, in.type);
+    for (std::size_t i = 0; i < inputs.size(); ++i) {
+        inputWidths[i] = ImGui::CalcTextSize(b.type().inputs[i].name.c_str()).x + textMargin * 2;
+        if (!filteredOut) {
+            addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight });
         }
+        pos.y += rectHeight + rectsSpacing;
+    }
+    // make sure the node ends up being tall enough to fit all the pins
+    yMax                     = std::max(yMax, pos.y - curPos.y);
 
-        ImGui::SetCursorScreenPos(curPos);
-        for (std::size_t i = 0; i < outputs.size(); ++i) {
-            const auto &out = outputs[i];
-
-            auto        s   = ax::NodeEditor::GetNodeSize(nodeId);
-            ImGui::SetCursorPosX(leftPos + s.x);
-            drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type->outputs[i].name, out.type);
+    const auto &outputs      = b.outputs();
+    auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
+    auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
+    pos                      = { curPos.x - padding.x + s.x, curPos.y };
+    for (std::size_t i = 0; i < outputs.size(); ++i) {
+        outputWidths[i] = ImGui::CalcTextSize(b.type().outputs[i].name.c_str()).x + textMargin * 2;
+        if (!filteredOut) {
+            addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight });
         }
+        pos.y += rectHeight + rectsSpacing;
+    }
+    // likewise for the output pins
+    yMax = std::max(yMax, pos.y - curScreenPos.y);
+
+    // Now for the Filter Button
+    ImGui::SetCursorScreenPos(positionAfterTexts);
+    curScreenPos            = ImGui::GetCursorScreenPos();
+    auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
+    auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
+    ImVec2 filterPos;
+
+    if (myHeight < yMax) {
+        // Find the lower end, deduct myHeight
+        filterPos = curPos;
+        filterPos.y += yMax - filterButtonSize;
+        ImGui::SetCursorScreenPos(filterPos);
+    }
+
+    ImGui::PushID(b.name.c_str());
+    if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
+        if (m_filterBlock == &b) {
+            m_filterBlock = nullptr;
+        } else {
+            m_filterBlock = &b;
+        }
+    }
+    ImGui::PopID();
+
+    ax::NodeEditor::EndNode();
+
+    // The input/output pins are drawn after ending the node because otherwise
+    // drawing them would increase the node size, which we need to know to correctly place the
+    // output pins, and that would cause the nodes to continuously grow in width
+
+    ImGui::SetCursorScreenPos(curPos);
+    auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
+
+    for (std::size_t i = 0; i < inputs.size(); ++i) {
+        const auto &in = inputs[i];
+
+        ImGui::SetCursorPosX(leftPos - inputWidths[i]);
+        drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().inputs[i].name, in.type);
+    }
+
+    ImGui::SetCursorScreenPos(curPos);
+    for (std::size_t i = 0; i < outputs.size(); ++i) {
+        const auto &out = outputs[i];
+
+        auto        s   = ax::NodeEditor::GetNodeSize(nodeId);
+        ImGui::SetCursorPosX(leftPos + s.x);
+        drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().outputs[i].name, out.type);
     }
 
     if (filteredOut) {
@@ -578,7 +571,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = n.AsPointer<Block>();
-        if (block && block->type) {
+        if (block) {
             ImGui::OpenPopup("Block parameters");
             m_selectedBlock = block;
             // m_parameters.clear();

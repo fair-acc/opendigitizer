@@ -51,11 +51,11 @@ public:
     }
 };
 
-BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat)
-    : name(n)
-    , label(l.empty() ? n : l)
+BlockType::BlockType(std::string_view name_, std::string_view l, std::string_view cat)
+    : name(name_)
+    , label(l.empty() ? name_ : l)
     , category(cat)
-    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
+    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this); }) {
 }
 
 BlockType::~BlockType() = default;
@@ -74,20 +74,14 @@ void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
-Block::Block(std::string_view name, std::string_view id, BlockType *t)
-    : type(t)
-    , name(name)
-    , id(id) {
-    if (!type) {
-        return;
-    }
-
-    m_outputs.reserve(type->outputs.size());
-    m_inputs.reserve(type->inputs.size());
-    for (auto &o : type->outputs) {
+Block::Block(std::string_view name, BlockType *t)
+    : name(name), m_type(t) {
+    m_outputs.reserve(m_type->outputs.size());
+    m_inputs.reserve(m_type->inputs.size());
+    for (auto &o : m_type->outputs) {
         m_outputs.push_back({ this, o.type, o.dataset, Port::Kind::Output });
     }
-    for (auto &o : type->inputs) {
+    for (auto &o : m_type->inputs) {
         m_inputs.push_back({ this, o.type, o.dataset, Port::Kind::Input });
     }
 }
@@ -192,7 +186,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
         auto       id     = config["id"].as<std::string>();
 
         auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def->name, def); };
+        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def); };
 
         auto parameters   = config["parameters"];
         for (const auto &p : parameters) {
@@ -391,7 +385,7 @@ int FlowGraph::save(std::ostream &stream) {
             auto    emitBlock = [&](auto &&b) {
                 YamlMap map(out);
                 map.write("name", b->name);
-                map.write("id", b->id);
+                map.write("id", b->typeName());
 
                 const auto &parameters = b->parameters();
                 if (!parameters.empty()) {
@@ -434,7 +428,7 @@ Block *FlowGraph::findBlock(std::string_view name) const {
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
-    if (block->type->isPlotSink() && plotSinkBlockAddedCallback) {
+    if (block->type().isPlotSink() && plotSinkBlockAddedCallback) {
         plotSinkBlockAddedCallback(block.get());
     }
     m_blocks.push_back(std::move(block));

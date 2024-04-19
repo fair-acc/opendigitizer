@@ -1169,7 +1169,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
         if (ImGui::BeginPopup("addBlockPopup")) {
             int index = 0;
-            for (const auto &out : ctx.block->type->outputs) {
+            for (const auto &out : ctx.block->type().outputs) {
                 if (ImGui::Selectable(out.name.c_str())) {
                     ctx.insertFrom = &ctx.block->outputs()[index];
                     ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;

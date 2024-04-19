@@ -244,7 +244,7 @@ std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDesc
 }
 
 PlotSink *Dashboard::createSink() {
-    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type->isPlotSink(); });
+    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
     auto       sink      = std::make_unique<DigitizerUi::PlotSink>(name);
     auto       sinkptr   = sink.get();
