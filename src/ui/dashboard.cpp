@@ -223,7 +223,7 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed                      = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                          = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
         m_sources.insert({ static_cast<PlotSink *>(b), -1, b->name, randomColor() });
@@ -247,7 +247,7 @@ PlotSink *Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type->isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
     auto       sink      = std::make_unique<DigitizerUi::PlotSink>(name);
-    auto sinkptr = sink.get();
+    auto       sinkptr   = sink.get();
     localFlowGraph.addBlock(std::move(sink));
     return sinkptr;
 }

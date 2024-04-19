@@ -45,13 +45,13 @@ std::unique_ptr<gr::BlockModel> PlotSink::createGRBlock() {
         return nullptr;
     }
 
-    auto *c    = inputs()[0].connections[0];
+    auto *c       = inputs()[0].connections[0];
     auto  outType = c->src.block->outputs()[c->src.index].type;
 
     auto  block   = outType.asType([this]<typename T>() {
         return this->template createNode<T>();
     });
-    grBlock     = block.get();
+    grBlock       = block.get();
     return block;
 }
 
