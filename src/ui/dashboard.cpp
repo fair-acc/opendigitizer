@@ -560,6 +560,7 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::string_vi
 
     const auto it = std::ranges::find_if(m_services, [&](const auto &s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
+        fmt::println("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
         auto &s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
     }

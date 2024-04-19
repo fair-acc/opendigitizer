@@ -84,14 +84,19 @@ public:
 
         explicit operator bool() const { return handler != nullptr; };
 
+        std::string_view uniqueName() const {
+            return handler ? handler->uniqueName() : "";
+        }
+
         void     sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
         void     handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
-            virtual ~Handler()                               = default;
-            virtual void sendMessage(const gr::Message &msg) = 0;
-            virtual void handleMessages(FlowGraph &fg)       = 0;
+            virtual ~Handler()                                           = default;
+            virtual std::string_view uniqueName() const                  = 0;
+            virtual void             sendMessage(const gr::Message &msg) = 0;
+            virtual void             handleMessages(FlowGraph &fg)       = 0;
         };
 
         template<typename TScheduler>
@@ -114,7 +119,6 @@ public:
                 }
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
-                // Initially fetch all settings to have the message handling see them
                 gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
                 _thread = std::thread([this]() {
@@ -136,6 +140,8 @@ public:
                     }
                 });
             }
+
+            std::string_view uniqueName() const override { return _scheduler.unique_name; }
 
             void sendMessage(const gr::Message &msg) final {
                 _toScheduler.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
@@ -249,6 +255,10 @@ public:
         using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
+    }
+
+    std ::string_view schedulerUniqueName() const {
+        return _scheduler.uniqueName();
     }
 
     void sendMessage(const gr::Message &msg) {
