@@ -14,15 +14,15 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 set(sources
-  main.cpp
-  flowgraph.cpp
-  flowgraphitem.cpp
-  dashboard.cpp
-  dashboardpage.cpp
-  imguiutils.cpp
-  opendashboardpage.cpp
-  plotsink.cpp
-  remotesignalsources.cpp)
+    main.cpp
+    flowgraph.cpp
+    flowgraphitem.cpp
+    dashboard.cpp
+    dashboardpage.cpp
+    imguiutils.cpp
+    opendashboardpage.cpp
+    plotsink.cpp
+    remotesignalsources.cpp)
 
 set(GNURADIO_PREFIX
     "/usr/"
