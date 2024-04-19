@@ -1,5 +1,6 @@
 #include "flowgraph.hpp"
 
+#include <algorithm>
 #include <assert.h>
 
 #include <charconv>
@@ -337,13 +338,7 @@ void FlowGraph::parse(const std::string &str) {
             }
         }
 
-        if (type->isSource()) {
-            addSourceBlock(std::move(block));
-        } else if (type->isSink()) {
-            addSinkBlock(std::move(block));
-        } else {
-            addBlock(std::move(block));
-        }
+        addBlock(std::move(block));
     }
 
     const auto connections = tree["connections"];
@@ -383,8 +378,6 @@ void FlowGraph::clear() {
         vec.clear();
     };
     del(m_blocks);
-    del(m_sourceBlocks);
-    del(m_sinkBlocks);
     m_connections.clear();
 }
 
@@ -414,12 +407,6 @@ int FlowGraph::save(std::ostream &stream) {
             for (auto &b : m_blocks) {
                 emitBlock(b);
             }
-            for (auto &b : m_sourceBlocks) {
-                emitBlock(b);
-            }
-            for (auto &b : m_sinkBlocks) {
-                emitBlock(b);
-            }
         });
 
         if (!m_connections.empty()) {
@@ -439,57 +426,18 @@ int FlowGraph::save(std::ostream &stream) {
     return int(out.size());
 }
 
-static Block *findBlockImpl(std::string_view name, auto &list) {
-    for (auto &b : list) {
-        if (b->name == name) {
-            return b.get();
-        }
-    }
-    return nullptr;
-}
-
 Block *FlowGraph::findBlock(std::string_view name) const {
-    if (auto *b = findSourceBlock(name)) {
-        return b;
-    }
-    if (auto *b = findSinkBlock(name)) {
-        return b;
-    }
-    return findBlockImpl(name, m_blocks);
-}
-
-Block *FlowGraph::findSinkBlock(std::string_view name) const {
-    return findBlockImpl(name, m_sinkBlocks);
-}
-
-Block *FlowGraph::findSourceBlock(std::string_view name) const {
-    return findBlockImpl(name, m_sourceBlocks);
+    const auto it = std::find_if(m_blocks.begin(), m_blocks.end(), [&](const auto &b) { return b->name == name; });
+    return it == m_blocks.end() ? nullptr : it->get();
 }
 
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
-    m_blocks.push_back(std::move(block));
-    m_graphChanged = true;
-}
-
-void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
-    block->m_flowGraph = this;
-    block->update();
-    if (sourceBlockAddedCallback) {
-        sourceBlockAddedCallback(block.get());
-    }
-    m_sourceBlocks.push_back(std::move(block));
-    m_graphChanged = true;
-}
-
-void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
-    block->m_flowGraph = this;
-    block->update();
-    if (sinkBlockAddedCallback) {
+    if (block->type->isPlotSink() && sinkBlockAddedCallback) {
         sinkBlockAddedCallback(block.get());
     }
-    m_sinkBlocks.push_back(std::move(block));
+    m_blocks.push_back(std::move(block));
     m_graphChanged = true;
 }
 
@@ -513,12 +461,6 @@ void FlowGraph::deleteBlock(Block *block) {
         return block == b.get();
     };
 
-    if (auto it = std::find_if(m_sourceBlocks.begin(), m_sourceBlocks.end(), select); it != m_sourceBlocks.end()) {
-        m_sourceBlocks.erase(it);
-    }
-    if (auto it = std::find_if(m_sinkBlocks.begin(), m_sinkBlocks.end(), select); it != m_sinkBlocks.end()) {
-        m_sinkBlocks.erase(it);
-    }
     if (auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select); it != m_blocks.end()) {
         m_blocks.erase(it);
     }
@@ -580,36 +522,32 @@ bool isDrawable(const gr::property_map &meta, std::string_view category) {
 
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
-    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
-        for (const auto &block : *list) {
-            auto node = block->createGRBlock();
-            if (!node) {
-                fmt::print("no node {}\n", block->name);
-                continue;
-            }
-            block->m_uniqueName      = node->uniqueName();
-            block->m_metaInformation = node->metaInformation();
-            node->setName(block->name);
-#ifdef __EMSCRIPTEN__
-            try {
-#endif
-                std::ignore = node->settings().set(block->parameters());
-#ifdef __EMSCRIPTEN__
-            } catch (...) {
-            }
-#endif
-            if (isDrawable(block->metaInformation(), "Toolbar")) {
-                context.toolbarBlocks.push_back(node.get());
-            }
-            context.graph.addBlock(std::move(node));
+    for (const auto &block : m_blocks) {
+        auto node = block->createGRBlock();
+        if (!node) {
+            fmt::print("no node {}\n", block->name);
+            continue;
         }
+        block->m_uniqueName      = node->uniqueName();
+        block->m_metaInformation = node->metaInformation();
+        node->setName(block->name);
+#ifdef __EMSCRIPTEN__
+        try {
+#endif
+            std::ignore = node->settings().set(block->parameters());
+#ifdef __EMSCRIPTEN__
+        } catch (...) {
+        }
+#endif
+        if (isDrawable(block->metaInformation(), "Toolbar")) {
+            context.toolbarBlocks.push_back(node.get());
+        }
+        context.graph.addBlock(std::move(node));
     }
 
 #if 0 // needed?
-    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
-        for (const auto &block : *list) {
-            block->connect(graph);
-        }
+    for (const auto &block : m_blocks) {
+        block->connect(graph);
     }
 #endif
 

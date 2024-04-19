@@ -46,7 +46,6 @@ private:
     void                              drawAddSourceDialog(FlowGraph *fg);
     void                              sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
     void                              arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
-    std::vector<const Block *>        getAllBlocks(FlowGraph *fg);
 
     QueryFilterElementList            querySignalFilters;
     SignalList                        signalList{ querySignalFilters };

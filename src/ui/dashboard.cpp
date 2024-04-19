@@ -1,4 +1,5 @@
 #include "dashboard.hpp"
+#include <ranges>
 
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS true
@@ -243,11 +244,11 @@ std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDesc
 }
 
 DataSink *Dashboard::createSink() {
-    int  n       = localFlowGraph.sinkBlocks().size() + 1;
-    auto name    = fmt::format("sink {}", n);
+    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type->isPlotSink(); });
+    auto       name      = fmt::format("sink {}", sinkCount + 1);
     auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
     auto sinkptr = sink.get();
-    localFlowGraph.addSinkBlock(std::move(sink));
+    localFlowGraph.addBlock(std::move(sink));
     return sinkptr;
 }
 

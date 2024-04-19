@@ -108,6 +108,11 @@ public:
         return !inputs.empty() && outputs.empty();
     }
 
+    bool isPlotSink() const {
+        // TODO make this smarter once metaInformation() is statically available
+        return name == "opendigitizer::DataSink";
+    }
+
     template<typename T>
     void initPort(auto &vec) {
         vec.push_back({});
@@ -420,19 +425,12 @@ public:
     void                         clear();
 
     Block                       *findBlock(std::string_view name) const;
-    Block                       *findSourceBlock(std::string_view name) const;
-    Block                       *findSinkBlock(std::string_view name) const;
 
     inline const auto           &blocks() const { return m_blocks; }
-    inline const auto           &sourceBlocks() const { return m_sourceBlocks; }
-    inline const auto           &sinkBlocks() const { return m_sinkBlocks; }
     inline const auto           &connections() const { return m_connections; }
 
     void                         addBlock(std::unique_ptr<Block> &&block);
     void                         deleteBlock(Block *block);
-
-    void                         addSourceBlock(std::unique_ptr<Block> &&block);
-    void                         addSinkBlock(std::unique_ptr<Block> &&block);
 
     Connection                  *connect(Block::Port *a, Block::Port *b);
 
@@ -448,18 +446,11 @@ public:
 
     void                         handleMessage(const gr::Message &msg);
 
-    std::function<void(Block *)> sourceBlockAddedCallback;
     std::function<void(Block *)> sinkBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
 
     template<typename F>
     void forEachBlock(F &&f) {
-        for (auto &b : m_sourceBlocks) {
-            if (!f(b)) return;
-        }
-        for (auto &b : m_sinkBlocks) {
-            if (!f(b)) return;
-        }
         for (auto &b : m_blocks) {
             if (!f(b)) return;
         }
@@ -467,8 +458,6 @@ public:
 
 private:
     gr::PluginLoader                    _pluginLoader;
-    std::vector<std::unique_ptr<Block>> m_sourceBlocks;
-    std::vector<std::unique_ptr<Block>> m_sinkBlocks;
     std::vector<std::unique_ptr<Block>> m_blocks;
     plf::colony<Connection>             m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
     bool                                m_graphChanged = true;

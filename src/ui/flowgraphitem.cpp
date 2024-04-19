@@ -475,7 +475,8 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
     ax::NodeEditor::Begin("My Editor", { size.x, size.y }); // ImGui::GetContentRegionAvail());
 
-    auto blocks = getAllBlocks(fg);
+    std::vector<const Block *> blocks;
+    std::ranges::transform(fg->blocks(), std::back_inserter(blocks), [](auto &b) { return b.get(); });
 
     for (auto &b : blocks) {
         if (b)
@@ -791,7 +792,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
         ImGui::EndChild();
 
         if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
-            fg->addSourceBlock(sel->createBlock({}));
+            fg->addBlock(sel->createBlock({}));
         }
         ImGui::EndPopup();
     }
@@ -871,11 +872,10 @@ void FlowGraphItem::sortNodes(FlowGraph *fg, const std::vector<const Block *> &b
 }
 
 void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<const Block *> &blocks) {
-    auto  allBlocks = getAllBlocks(fg);
     float x_max = 0, y_max = 0, x_min = std::numeric_limits<float>::max();
-    for (auto b : allBlocks) {
-        if (std::ranges::any_of(blocks, [&](auto *n) { return n == b; }) /*|| !b*/) continue;
-        auto id  = ax::NodeEditor::NodeId(b);
+    for (const auto &b : fg->blocks()) {
+        if (std::ranges::any_of(blocks, [&](auto *n) { return n == b.get(); }) /*|| !b*/) continue;
+        auto id  = ax::NodeEditor::NodeId(b.get());
         auto pos = ax::NodeEditor::GetNodePosition(id);
         auto k   = pos + ax::NodeEditor::GetNodeSize(id);
         x_max    = std::max(x_max, k.x);
@@ -914,16 +914,6 @@ void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<con
 
         ax::NodeEditor::SetNodePosition(id, position);
     }
-}
-
-std::vector<const Block *> FlowGraphItem::getAllBlocks(FlowGraph *fg) {
-    std::vector<const Block *> blocks;
-    blocks.reserve(fg->sourceBlocks().size() + fg->sinkBlocks().size() + fg->blocks().size());
-    std::array<std::reference_wrapper<const std::vector<std::unique_ptr<Block>>>, 3> v{ fg->sourceBlocks(), fg->blocks(), fg->sinkBlocks() };
-    std::ranges::for_each(v, [&blocks](auto &l) {
-        std::ranges::copy(std::views::transform(l.get(), [](auto &a) { return a.get(); }), std::back_inserter(blocks));
-    });
-    return blocks;
 }
 
 } // namespace DigitizerUi

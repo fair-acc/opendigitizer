@@ -422,17 +422,22 @@ static void main_loop(void *arg) {
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Apply")) {
-                    auto sinkNames = [](const auto &sinks) {
-                        std::vector<std::string> names;
-                        std::ranges::transform(sinks, std::back_inserter(names), [](const auto &s) { return s->name; });
-                        std::ranges::sort(names);
+                    auto sinkNames = [](const auto &blocks) {
+                        using namespace std;
+                        auto isPlotSink = [](const auto &b) { return b->type->isPlotSink(); };
+                        auto getName    = [](const auto &b) { return b->name; };
+                        auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
+                        auto names      = std::vector(namesView.begin(), namesView.end());
+                        ranges::sort(names);
                         names.erase(std::unique(names.begin(), names.end()), names.end());
                         return names;
                     };
-                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
+
+                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+
                     try {
                         app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                        const auto               newNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
+                        const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
                         std::vector<std::string> toRemove;
                         std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
                         std::vector<std::string> toAdd;
