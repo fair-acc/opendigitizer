@@ -300,7 +300,7 @@ void Dashboard::doLoad(const std::string &desc) {
         auto port  = s["port"];
         auto name  = s["name"];
         auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) std::runtime_error("invalid source color definition");
+        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) throw std::runtime_error("invalid source color definition");
 
         auto blockStr = block.as<std::string>();
         auto portNum  = port.as<int>();
@@ -323,7 +323,7 @@ void Dashboard::doLoad(const std::string &desc) {
     if (!plots || !plots.IsSequence()) throw std::runtime_error("plots invalid");
 
     for (const auto &p : plots) {
-        if (!p.IsMap()) std::runtime_error("plots is not map");
+        if (!p.IsMap()) throw std::runtime_error("plots is not map");
 
         auto name        = p["name"];
         auto axes        = p["axes"];
