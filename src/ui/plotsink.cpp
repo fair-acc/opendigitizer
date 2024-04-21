@@ -10,28 +10,12 @@ namespace DigitizerUi {
 
 namespace {
 
-template<typename T>
-inline T randomRange(T min, T max) {
-    T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
-    return min + scale * (max - min);
-}
-
-ImVec4 randomColor() {
-    ImVec4 col;
-    col.x = randomRange(0.0f, 1.0f);
-    col.y = randomRange(0.0f, 1.0f);
-    col.z = randomRange(0.0f, 1.0f);
-    col.w = 1.0f;
-    return col;
-}
-
 BlockType *g_btype = nullptr;
 
 } // namespace
 
 PlotSink::PlotSink(std::string_view name_)
-    : Block(name_, g_btype)
-    , color(randomColor()) {
+    : Block(name_, g_btype) {
 }
 
 template<typename T>

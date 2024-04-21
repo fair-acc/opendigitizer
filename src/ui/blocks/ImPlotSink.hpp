@@ -16,11 +16,13 @@ namespace opendigitizer {
 template<typename T>
 struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
     gr::PortIn<T>                                                      in;
+    uint32_t                                                           color = 0xff0000ff;
     std::string                                                        signal_name;
     std::string                                                        signal_unit;
     float                                                              signal_min = std::numeric_limits<float>::lowest();
     float                                                              signal_max = std::numeric_limits<float>::max();
 
+public:
     std::conditional_t<meta::is_dataset_v<T>, T, gr::HistoryBuffer<T>> data       = [] {
         if constexpr (meta::is_dataset_v<T>) {
             return T{};
@@ -49,6 +51,8 @@ struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::D
                 float v = 0;
                 ImPlot::PlotLine(label.c_str(), &v, 1);
             } else {
+                ImPlot::SetNextLineStyle(ImGui::ColorConvertU32ToFloat4(color));
+                ImPlot::HideNextItem(false, ImPlotCond_Always);
                 const auto span = std::span(data.begin(), data.end());
                 //  TODO should we limit this to the last N (N might be UI-dependent) samples?
                 ImPlot::PlotLine(label.c_str(), span.data(), static_cast<int>(span.size()));
@@ -69,7 +73,7 @@ struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::D
 
 } // namespace opendigitizer
 
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::ImPlotSink, in, signal_name, signal_unit, signal_min, signal_max);
+ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::ImPlotSink, in, color, signal_name, signal_unit, signal_min, signal_max);
 
 auto registerImPlotSink = gr::registerBlock<opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>>(gr::globalBlockRegistry());
 

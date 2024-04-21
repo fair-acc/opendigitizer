@@ -227,7 +227,9 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &de
     m_desc->lastUsed                          = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
-        m_sources.insert({ static_cast<PlotSink *>(b), -1, b->name, randomColor() });
+        const auto color = std::get_if<uint32_t>(&b->parameters().at("color"));
+        assert(color);
+        m_sources.insert({ static_cast<PlotSink *>(b), -1, b->name, *color });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
         for (auto &p : m_plots) {
@@ -251,7 +253,8 @@ PlotSink *Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
     auto       sink      = std::make_unique<DigitizerUi::PlotSink>(name);
-    auto       sinkptr   = sink.get();
+    sink->updateSettings({ { "color", randomColor() } });
+    auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));
     return sinkptr;
 }
@@ -271,7 +274,7 @@ void Dashboard::load() {
                         _this->doLoad(data[1]);
                     } catch (const std::exception &e) {
                         // TODO show error message
-                        fmt::print(std::cerr, "Error: {}", e.what());
+                        fmt::println(std::cerr, "Error: {}", e.what());
                         App::instance().closeDashboard();
                     }
                 },

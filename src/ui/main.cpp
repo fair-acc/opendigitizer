@@ -308,7 +308,7 @@ static void main_loop(void *arg) {
 
     app->fireCallbacks();
 
-    if (app->dashboard->localFlowGraph.graphChanged()) {
+    if (app->dashboard && app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto execution = app->dashboard->localFlowGraph.createExecutionContext();
         app->dashboard->loadPlotSources();
@@ -317,7 +317,9 @@ static void main_loop(void *arg) {
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 
-    app->handleMessages(app->dashboard->localFlowGraph);
+    if (app->dashboard) {
+        app->handleMessages(app->dashboard->localFlowGraph);
+    }
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
