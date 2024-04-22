@@ -25,7 +25,6 @@ namespace DigitizerUi {
 class Block;
 class FlowGraph;
 struct DashboardDescription;
-class PlotSink;
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
@@ -59,13 +58,12 @@ public:
     }
 
     struct Source {
-        PlotSink   *block;
-        int         port;
+        std::string blockName;
         std::string name;
         uint32_t    color;
         bool        visible{ true };
 
-        inline bool operator==(const Source &s) const { return s.block == block && s.port == port; };
+        inline bool operator==(const Source &s) const { return s.blockName == blockName; };
     };
     struct Plot {
         enum class Axis {
@@ -138,8 +136,7 @@ public:
 
     inline auto &remoteServices() { return m_services; }
 
-    PlotSink    *createSink();
-
+    Block       *createSink();
     void         loadPlotSources();
 
     FlowGraph    localFlowGraph;

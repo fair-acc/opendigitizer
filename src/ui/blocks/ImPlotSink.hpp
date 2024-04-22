@@ -16,7 +16,7 @@ namespace opendigitizer {
 template<typename T>
 struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
     gr::PortIn<T>                                                      in;
-    uint32_t                                                           color = 0xff0000ff;
+    uint32_t                                                           color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
     std::string                                                        signal_name;
     std::string                                                        signal_unit;
     float                                                              signal_min = std::numeric_limits<float>::lowest();
@@ -51,7 +51,7 @@ public:
                 float v = 0;
                 ImPlot::PlotLine(label.c_str(), &v, 1);
             } else {
-                ImPlot::SetNextLineStyle(ImGui::ColorConvertU32ToFloat4(color));
+                ImPlot::SetNextLineStyle(ImGui::ColorConvertU32ToFloat4((color << 8) | 0xff));
                 ImPlot::HideNextItem(false, ImPlotCond_Always);
                 const auto span = std::span(data.begin(), data.end());
                 //  TODO should we limit this to the last N (N might be UI-dependent) samples?

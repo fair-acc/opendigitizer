@@ -379,11 +379,12 @@ private:
 template<template<typename...> typename T>
 class DefaultGPBlock : public Block {
 public:
-    DefaultGPBlock(std::string_view typeName, BlockType *t)
-        : Block(typeName, t) {
+    DefaultGPBlock(std::string_view name_, BlockType *t)
+        : Block(name_, t) {
         T<float> node;
         node.settings().updateActiveParameters();
         m_parameters = node.settings().get();
+        m_parameters["name"] = std::string(name_);
     }
 
     std::unique_ptr<gr::BlockModel> createGRBlock() final {
@@ -406,8 +407,9 @@ public:
 };
 
 struct ExecutionContext {
-    gr::Graph                     graph;
-    std::vector<gr::BlockModel *> toolbarBlocks;
+    gr::Graph                                         graph;
+    std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks;
+    std::vector<gr::BlockModel *>                     toolbarBlocks;
 };
 
 class FlowGraph {
@@ -439,6 +441,10 @@ public:
 
     void                         handleMessage(const gr::Message &msg);
 
+    void                         setPlotSinkGrBlocks(std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks) {
+        m_plotSinkGrBlocks = std::move(plotSinkGrBlocks);
+    }
+
     std::function<void(Block *)> plotSinkBlockAddedCallback;
     std::function<void(Block *)> blockDeletedCallback;
 
@@ -449,12 +455,21 @@ public:
         }
     }
 
+    gr::BlockModel *findPlotSinkGrBlock(std::string_view name) const {
+        const auto it = m_plotSinkGrBlocks.find(std::string(name));
+        if (it != m_plotSinkGrBlocks.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
 private:
-    gr::PluginLoader                    _pluginLoader;
-    std::vector<std::unique_ptr<Block>> m_blocks;
-    plf::colony<Connection>             m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
-    bool                                m_graphChanged = true;
-    std::string                         m_grc;
+    gr::PluginLoader                                  _pluginLoader;
+    std::vector<std::unique_ptr<Block>>               m_blocks;
+    std::unordered_map<std::string, gr::BlockModel *> m_plotSinkGrBlocks;
+    plf::colony<Connection>                           m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
+    bool                                              m_graphChanged = true;
+    std::string                                       m_grc;
 
     // TODO add remote sources here?
 };

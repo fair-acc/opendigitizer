@@ -321,7 +321,7 @@ void FlowGraph::parse(const std::string &str) {
                     return std::visit([&](auto &&val) {
                         if constexpr (std::is_same_v<T, std::decay_t<decltype(val)>>) {
                             auto value = it->second.template as<T>();
-                            block->setParameter(key, value);
+                            block->updateSettings({ { key, value } });
                             return true;
                         }
                         return false;
@@ -494,7 +494,7 @@ void FlowGraph::disconnect(Connection *c) {
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
     auto block = BlockType::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
-    block->setParameter("remote_uri", std::string(uri));
+    block->updateSettings({ { "remote_uri", std::string(uri) } });
     addBlock(std::move(block));
 }
 
@@ -515,26 +515,30 @@ bool isDrawable(const gr::property_map &meta, std::string_view category) {
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
     for (const auto &block : m_blocks) {
-        auto node = block->createGRBlock();
-        if (!node) {
-            fmt::print("no node {}\n", block->name);
+        auto grBlock = block->createGRBlock();
+        if (!grBlock) {
+            fmt::println(std::cerr, "Could not create GR Block for {} ({})\n", block->name, block->typeName());
             continue;
         }
-        block->m_uniqueName      = node->uniqueName();
-        block->m_metaInformation = node->metaInformation();
-        node->setName(block->name);
+        block->m_uniqueName      = grBlock->uniqueName();
+        block->m_metaInformation = grBlock->metaInformation();
 #ifdef __EMSCRIPTEN__
         try {
 #endif
-            std::ignore = node->settings().set(block->parameters());
+            std::ignore = grBlock->settings().set(block->parameters());
 #ifdef __EMSCRIPTEN__
         } catch (...) {
         }
 #endif
+        grBlock->settings().applyStagedParameters();
+
         if (isDrawable(block->metaInformation(), "Toolbar")) {
-            context.toolbarBlocks.push_back(node.get());
+            context.toolbarBlocks.push_back(grBlock.get());
         }
-        context.graph.addBlock(std::move(node));
+        if (isDrawable(block->metaInformation(), "ChartPane")) {
+            context.plotSinkGrBlocks.insert({ block->name, grBlock.get() });
+        }
+        context.graph.addBlock(std::move(grBlock));
     }
 
 #if 0 // needed?

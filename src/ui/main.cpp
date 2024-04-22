@@ -33,7 +33,6 @@
 #include "fair_header.hpp"
 #include "flowgraph.hpp"
 #include "flowgraphitem.hpp"
-#include "plotsink.hpp"
 #include "settings.hpp"
 #include "toolbar.hpp"
 #include "toolbar_block.hpp"
@@ -41,6 +40,7 @@
 #include "utils/TouchHandler.hpp"
 
 #include "blocks/Arithmetic.hpp"
+#include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
 
@@ -248,11 +248,11 @@ int main(int argc, char **argv) {
 #ifndef EMSCRIPTEN
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
-    DigitizerUi::PlotSink::registerBlockType();
     // TODO populate these from the gr::globalBlockRegistry()
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::ImPlotSink>("opendigitizer::ImPlotSink");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
     // DigitizerUi::BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
     DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
     DigitizerUi::BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
@@ -311,8 +311,9 @@ static void main_loop(void *arg) {
     if (app->dashboard && app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto execution = app->dashboard->localFlowGraph.createExecutionContext();
-        app->dashboard->loadPlotSources();
+        app->dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
         app->_toolbarBlocks = std::move(execution.toolbarBlocks);
+        app->dashboard->loadPlotSources();
         app->assignScheduler(std::move(execution.graph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }

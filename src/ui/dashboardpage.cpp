@@ -6,8 +6,6 @@
 #include "app.hpp"
 #include "flowgraph.hpp"
 #include "imguiutils.hpp"
-#include "plotsink.hpp"
-
 #include "utils/TouchHandler.hpp"
 
 namespace DigitizerUi {
@@ -284,25 +282,25 @@ void DashboardPage::drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept {
         std::for_each(plot.axes.begin(), plot.axes.end(), [xWidth, yHeight](auto &a) { a.width = (a.axis == Dashboard::Plot::Axis::X) ? xWidth : yHeight; });
     }();
 
-    for (auto *source : plot.sources) {
-        auto *sink = static_cast<PlotSink *>(source->block);
-        if (!sink->grBlock) {
+    for (const auto &source : plot.sources) {
+        auto grBlock = App::instance().dashboard->localFlowGraph.findPlotSinkGrBlock(source->name);
+        if (!grBlock) {
             continue;
         }
         if (source->visible) {
-            sink->grBlock->draw();
+            grBlock->draw();
         } else {
             // Consume data to not block the flowgraph
-            std::ignore = sink->grBlock->work(std::numeric_limits<std::size_t>::max());
+            std::ignore = grBlock->work(std::numeric_limits<std::size_t>::max());
         }
 
         // allow legend item labels to be DND sources
         if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
             DigitizerUi::DashboardPage::DndItem dnd = { &plot, source };
             ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
-            const auto color = [sink] {
+            const auto color = [&grBlock] {
                 static const auto defaultColor = ImVec4(1, 0, 0, 1);
-                const auto        maybeColor   = sink->grBlock->settings().get("color");
+                const auto        maybeColor   = grBlock->settings().get("color");
                 if (!maybeColor) {
                     return defaultColor;
                 }
@@ -503,7 +501,7 @@ void DashboardPage::drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, D
                             plotItemHovered = true;
 
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                                m_editPane.block     = s->block;
+                                m_editPane.block     = App::instance().dashboard->localFlowGraph.findBlock(s->blockName);
                                 m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
                             }
 
@@ -584,7 +582,7 @@ void DashboardPage::drawLegend(App *app, Dashboard *dashboard, const DashboardPa
         auto               color  = ImGui::ColorConvertU32ToFloat4(signal.color);
         if (legend_item(color, signal.name, signal.visible)) {
             fmt::print("click\n");
-            m_editPane.block     = signal.block;
+            m_editPane.block     = App::instance().dashboard->localFlowGraph.findBlock(signal.blockName);
             m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
         }
         legend_box.x += ImGui::GetItemRectSize().x;

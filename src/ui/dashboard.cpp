@@ -21,7 +21,6 @@
 
 #include "app.hpp"
 #include "flowgraph.hpp"
-#include "plotsink.hpp"
 #include "yamlutils.hpp"
 
 struct FlowgraphMessage {
@@ -229,16 +228,17 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &de
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
         const auto color = std::get_if<uint32_t>(&b->parameters().at("color"));
         assert(color);
-        m_sources.insert({ static_cast<PlotSink *>(b), -1, b->name, *color });
+        m_sources.insert({ b->name, b->name, (*color << 8) | 0xff });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
+        const auto blockName = b->name;
         for (auto &p : m_plots) {
-            std::erase_if(p.sources, [=](const auto &s) { return s->block == b; });
+            std::erase_if(p.sources, [&blockName](const auto &s) { return s->blockName == blockName; });
         }
         if (b->typeName() == "opendigitizer::RemoteSource") {
             unregisterRemoteService(b->name);
         }
-        std::erase_if(m_sources, [=](const auto &s) { return s.block == b; });
+        std::erase_if(m_sources, [&blockName](const auto &s) { return s.blockName == blockName; });
     };
 }
 
@@ -249,10 +249,10 @@ std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDesc
     return std::make_shared<Dashboard>(PrivateTag{}, desc);
 }
 
-PlotSink *Dashboard::createSink() {
+Block *Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto       sink      = std::make_unique<DigitizerUi::PlotSink>(name);
+    auto       sink      = BlockType::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
     sink->updateSettings({ { "color", randomColor() } });
     auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));
@@ -411,8 +411,7 @@ void Dashboard::save() {
                 YamlMap source(dashboardOut);
                 source.write("name", s.name);
 
-                source.write("block", s.block->name);
-                source.write("port", s.port);
+                source.write("block", s.blockName);
                 source.write("color", s.color);
             }
         });
@@ -534,7 +533,7 @@ void Dashboard::loadPlotSources() {
         plot.sources.clear();
 
         for (const auto &name : plot.sourceNames) {
-            auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
+            auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
             if (source == m_sources.end()) {
                 fmt::print("Unable to find source {}\n", name);
                 continue;

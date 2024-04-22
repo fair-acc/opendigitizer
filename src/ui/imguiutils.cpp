@@ -15,7 +15,6 @@
 #include "calculator.hpp"
 #include "flowgraph.hpp"
 #include "imguiutils.hpp"
-#include "plotsink.hpp"
 
 namespace ImGuiUtils {
 
@@ -1219,8 +1218,8 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     c1            = app.dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
                     app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
 
-                    auto source = std::find_if(app.dashboard->sources().begin(), app.dashboard->sources().end(), [&](const auto &s) {
-                        return s.block == newsink;
+                    auto source = std::ranges::find_if(app.dashboard->sources(), [newsink](const auto &s) {
+                        return s.blockName == newsink->name;
                     });
 
                     app.dashboardPage.newPlot(app.dashboard.get());

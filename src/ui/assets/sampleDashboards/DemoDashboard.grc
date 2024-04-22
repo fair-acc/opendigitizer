@@ -13,12 +13,16 @@ blocks:
       frequency: 1.300000
   - name: sink 1
     id: opendigitizer::ImPlotSink
+    color: 0xff0000
   - name: sink 2
     id: opendigitizer::ImPlotSink
+    color: 0x00ff00
   - name: sink 3
     id: opendigitizer::ImPlotSink
+    color: 0x0000ff
   - name: sink 4
     id: opendigitizer::ImPlotSink
+    color: 0xffff00
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]

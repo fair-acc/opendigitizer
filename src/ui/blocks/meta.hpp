@@ -1,6 +1,8 @@
 #ifndef OPENDIGITIZER_META_H
 #define OPENDIGITIZER_META_H
 
+#include <gnuradio-4.0/DataSet.hpp>
+
 namespace opendigitizer::meta {
 
 template<typename T>
