@@ -24,8 +24,6 @@ namespace DigitizerUi {
 class FlowGraph;
 class Connection;
 class Block;
-template<template<typename...> typename T>
-class DefaultGPBlock;
 
 class BlockType {
 public:
@@ -61,18 +59,18 @@ public:
     };
 
     explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
-    virtual ~BlockType();
 
-    const std::string                                       name;
-    const std::string                                       label;
-    std::vector<Parameter>                                  parameters;
-    std::vector<PortDefinition>                             inputs;
-    std::vector<PortDefinition>                             outputs;
-    const std::string                                       category;
-    std::unique_ptr<gr::SettingsBase>                       settings;
-    std::function<std::unique_ptr<Block>(std::string_view)> createBlock;
+    std::unique_ptr<Block>      createBlock(std::string_view name) const;
 
-    auto                                                    data_inputs() {
+    const std::string           name;
+    const std::string           label;
+    std::vector<Parameter>      parameters;
+    std::vector<PortDefinition> inputs;
+    std::vector<PortDefinition> outputs;
+    const std::string           category;
+    gr::property_map            defaultParameters;
+
+    auto                        data_inputs() {
         return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
     }
     auto message_inputs() {
@@ -118,9 +116,11 @@ public:
         void addBlockType(std::string_view typeName) {
             using Node     = T<float>;
             auto t         = std::make_unique<DigitizerUi::BlockType>(typeName);
-            t->createBlock = [t = t.get()](std::string_view nodeName) {
-                return std::make_unique<DefaultGPBlock<T>>(nodeName, t);
-            };
+            t->defaultParameters = [] {
+                Node instance;
+                instance.settings().applyStagedParameters();
+                return instance.settings().get();
+            }();
             namespace meta                         = gr::traits::block;
 
             constexpr std::size_t input_port_count = meta::template all_input_port_types<Node>::size;
@@ -136,7 +136,7 @@ public:
             addBlockType(std::move(t));
         }
 
-        BlockType         *get(std::string_view id) const;
+        const BlockType   *get(std::string_view id) const;
 
         inline const auto &types() const { return m_types; }
 
@@ -316,9 +316,7 @@ public:
         std::string toString() const;
     };
 
-    explicit Block(std::string_view name, BlockType *type);
-
-    virtual ~Block() {}
+    explicit Block(std::string_view name, const BlockType *type, gr::property_map settings = {});
 
     const BlockType &type() const {
         return *m_type;
@@ -391,18 +389,6 @@ private:
         : src{ s, srcIndex }, dst{ d, dstIndex } {}
 
     friend FlowGraph;
-};
-
-template<template<typename...> typename T>
-class DefaultGPBlock : public Block {
-public:
-    DefaultGPBlock(std::string_view name_, BlockType *t)
-        : Block(name_, t) {
-        T<float> node;
-        node.settings().updateActiveParameters();
-        m_parameters = node.settings().get();
-        m_parameters["name"] = std::string(name_);
-    }
 };
 
 struct ExecutionContext {

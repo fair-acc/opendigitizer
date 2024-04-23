@@ -43,26 +43,24 @@ std::string Block::Parameter::toString() const {
     return {};
 }
 
-class GRBlock : public Block {
-public:
-    using Block::Block;
-};
-
 BlockType::BlockType(std::string_view name_, std::string_view l, std::string_view cat)
     : name(name_)
     , label(l.empty() ? name_ : l)
-    , category(cat)
-    , createBlock([this](std::string_view n) { return std::make_unique<Block>(n, this); }) {
+    , category(cat) {
 }
 
-BlockType::~BlockType() = default;
+std::unique_ptr<Block> BlockType::createBlock(std::string_view name) const {
+    auto params    = defaultParameters;
+    params["name"] = std::string(name);
+    return std::make_unique<Block>(name, this, std::move(params));
+}
 
 BlockType::Registry &BlockType::registry() {
     static Registry r;
     return r;
 }
 
-BlockType *BlockType::Registry::get(std::string_view id) const {
+const BlockType *BlockType::Registry::get(std::string_view id) const {
     auto it = m_types.find(id);
     return it == m_types.end() ? nullptr : it->second.get();
 }
@@ -71,8 +69,8 @@ void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
-Block::Block(std::string_view name, BlockType *t)
-    : name(name), m_type(t) {
+Block::Block(std::string_view name, const BlockType *t, gr::property_map params)
+    : name(name), m_type(t), m_parameters(std::move(params)) {
     m_outputs.reserve(m_type->outputs.size());
     m_inputs.reserve(m_type->inputs.size());
     for (auto &o : m_type->outputs) {
@@ -181,9 +179,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
         YAML::Node config = YAML::Load(str);
 
         auto       id     = config["id"].as<std::string>();
-
-        auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def); };
+        auto       def          = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
 
         auto parameters   = config["parameters"];
         for (const auto &p : parameters) {
