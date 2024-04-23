@@ -285,72 +285,39 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 
 void FlowGraph::parse(const std::string &str) {
     clear();
+    auto graph = gr::load_grc(_pluginLoader, str);
 
-    auto tree   = YAML::Load(str);
-    auto blocks = tree["blocks"];
-
-    for (const auto &b : blocks) {
-        const auto name = b["name"].as<std::string>();
-        const auto id   = b["id"].as<std::string>();
-
-        auto       type = BlockType::registry().get(id);
+    graph.forEachBlock([&](const auto &grBlock) {
+        auto typeName = grBlock.typeName();
+        typeName      = std::string_view(typeName.begin(), typeName.find('<'));
+        auto type     = BlockType::registry().get(typeName);
         if (!type) {
-            throw std::runtime_error(fmt::format("Block type '{}' is unknown.", id));
+            throw std::runtime_error(fmt::format("Block type '{}' is unknown.", typeName));
         }
 
-        auto block = type->createBlock(name);
-
-        auto pars  = b["parameters"];
-        if (pars && pars.IsMap()) {
-            for (auto it = pars.begin(); it != pars.end(); ++it) {
-                auto key = it->first.as<std::string>();
-
-                auto p   = block->parameters().find(key);
-                if (p == block->parameters().end()) {
-                    continue;
-                }
-
-                auto unpack = [&]<typename T>() {
-                    return std::visit([&](auto &&val) {
-                        if constexpr (std::is_same_v<T, std::decay_t<decltype(val)>>) {
-                            auto value = it->second.template as<T>();
-                            block->updateSettings({ { key, value } });
-                            return true;
-                        }
-                        return false;
-                    },
-                            p->second);
-                };
-                unpack.operator()<std::int8_t>() || unpack.operator()<std::int16_t>() || unpack.operator()<std::int32_t>() || unpack.operator()<std::int64_t>() || unpack.operator()<std::uint8_t>() || unpack.operator()<std::uint16_t>() || unpack.operator()<std::uint32_t>() || unpack.operator()<std::uint64_t>() || unpack.operator()<bool>() || unpack.operator()<float>() || unpack.operator()<double>() || unpack.operator()<std::string>();
-            }
-        }
-
+        auto block               = type->createBlock(grBlock.name());
+        block->m_uniqueName      = grBlock.uniqueName();
+        block->m_metaInformation = grBlock.metaInformation();
+        block->updateSettings(grBlock.settings().get());
         addBlock(std::move(block));
-    }
+    });
 
-    const auto connections = tree["connections"];
-    for (const auto &c : connections) {
-        if (c.size() != 4) {
-            throw std::runtime_error("Malformed connection");
-        }
+    auto findBlock = [&](std::string_view uniqueName) -> Block * {
+        const auto it = std::ranges::find_if(m_blocks, [uniqueName](const auto &b) { return b->m_uniqueName == uniqueName; });
+        return it == m_blocks.end() ? nullptr : it->get();
+    };
 
-        auto        srcBlockName = c[0].as<std::string>();
-        auto        srcPortStr   = c[1].as<std::string>();
-        std::size_t srcPort;
-        std::from_chars(srcPortStr.data(), srcPortStr.data() + srcPortStr.size(), srcPort);
-
-        auto        dstBlockName = c[2].as<std::string>();
-        auto        dstPortStr   = c[3].as<std::string>();
-        std::size_t dstPort;
-        std::from_chars(dstPortStr.data(), dstPortStr.data() + dstPortStr.size(), dstPort);
-
-        auto srcBlock = findBlock(srcBlockName);
+    graph.forEachEdge([&](const auto &edge) {
+        auto srcBlock = findBlock(edge._sourceBlock->uniqueName());
         assert(srcBlock);
-        auto dstBlock = findBlock(dstBlockName);
+        const auto sourcePort = edge._sourcePortDefinition.topLevel;
+        auto       dstBlock   = findBlock(edge._destinationBlock->uniqueName());
         assert(dstBlock);
+        const auto destinationPort = edge._destinationPortDefinition.topLevel;
+        // TODO support port collections
 
-        connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
-    }
+        connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+    });
 
     m_graphChanged = true;
 }
