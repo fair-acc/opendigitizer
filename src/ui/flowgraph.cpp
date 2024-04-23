@@ -46,16 +46,13 @@ std::string Block::Parameter::toString() const {
 class GRBlock : public Block {
 public:
     using Block::Block;
-    std::unique_ptr<gr::BlockModel> createGRBlock() final {
-        return {};
-    }
 };
 
 BlockType::BlockType(std::string_view name_, std::string_view l, std::string_view cat)
     : name(name_)
     , label(l.empty() ? name_ : l)
     , category(cat)
-    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this); }) {
+    , createBlock([this](std::string_view n) { return std::make_unique<Block>(n, this); }) {
 }
 
 BlockType::~BlockType() = default;
@@ -500,7 +497,7 @@ void FlowGraph::addRemoteSource(std::string_view uri) {
 
 namespace {
 
-bool isDrawable(const gr::property_map &meta, std::string_view category) {
+static bool isDrawable(const gr::property_map &meta, std::string_view category) {
     auto it = meta.find("Drawable");
     if (it == meta.end() || !std::holds_alternative<gr::property_map>(it->second)) {
         return false;
@@ -510,27 +507,37 @@ bool isDrawable(const gr::property_map &meta, std::string_view category) {
     return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == category;
 }
 
+static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
+    DataType t          = DataType::Float32;
+    auto     inputsView = block.dataInputs();
+    if (!std::ranges::empty(inputsView)) {
+        if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
+            auto &src = in.connections[0]->src;
+            t         = src.block->outputs()[src.index].type;
+        }
+    }
+    auto params    = block.parameters();
+    params["name"] = block.name;
+    auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
+    grBlock->settings().set(params);
+    grBlock->settings().applyStagedParameters();
+
+    if (!grBlock) {
+        fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
+    }
+    return grBlock;
+}
 } // namespace
 
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
     for (const auto &block : m_blocks) {
-        auto grBlock = block->createGRBlock();
+        auto grBlock = createGRBlock(_pluginLoader, *block);
         if (!grBlock) {
-            fmt::println(std::cerr, "Could not create GR Block for {} ({})\n", block->name, block->typeName());
             continue;
         }
         block->m_uniqueName      = grBlock->uniqueName();
         block->m_metaInformation = grBlock->metaInformation();
-#ifdef __EMSCRIPTEN__
-        try {
-#endif
-            std::ignore = grBlock->settings().set(block->parameters());
-#ifdef __EMSCRIPTEN__
-        } catch (...) {
-        }
-#endif
-        grBlock->settings().applyStagedParameters();
 
         if (isDrawable(block->metaInformation(), "Toolbar")) {
             context.toolbarBlocks.push_back(grBlock.get());
@@ -540,12 +547,6 @@ ExecutionContext FlowGraph::createExecutionContext() {
         }
         context.graph.addBlock(std::move(grBlock));
     }
-
-#if 0 // needed?
-    for (const auto &block : m_blocks) {
-        block->connect(graph);
-    }
-#endif
 
     auto findBlock = [&](std::string_view name) -> gr::BlockModel * {
         const auto it = std::ranges::find_if(context.graph.blocks(), [&](auto &b) { return b->uniqueName() == name; });

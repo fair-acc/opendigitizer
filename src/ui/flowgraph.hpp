@@ -178,6 +178,25 @@ struct DataType {
         Untyped,
     };
 
+    static constexpr std::string_view name(Id id) {
+        switch (id) {
+        case ComplexFloat64: return "std::complex<double>";
+        case ComplexFloat32: return "std::complex<float>";
+        case ComplexInt64: return "std::complex<int64_t>";
+        case ComplexInt32: return "std::complex<int32_t>";
+        case ComplexInt16: return "std::complex<int16_t>";
+        case ComplexInt8: return "std::complex<int8_t>";
+        case Float64: return "double";
+        case Float32: return "float";
+        case DataSetFloat32: return "gr::DataSet_float";
+        case Int64: return "int64_t";
+        case Int32: return "int32_t";
+        case Int16: return "int16_t";
+        case Int8: return "int8_t";
+        }
+        return "unknown";
+    }
+
     template<typename T>
     constexpr static DataType of() {
         if constexpr (std::is_same_v<T, float>) {
@@ -329,8 +348,6 @@ public:
 
     void                                    update();
 
-    virtual std::unique_ptr<gr::BlockModel> createGRBlock() = 0;
-
     inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
     const std::string                       name;
 
@@ -385,24 +402,6 @@ public:
         node.settings().updateActiveParameters();
         m_parameters = node.settings().get();
         m_parameters["name"] = std::string(name_);
-    }
-
-    std::unique_ptr<gr::BlockModel> createGRBlock() final {
-        DataType t          = DataType::Float32;
-        auto     inputsView = dataInputs();
-        if (!std::ranges::empty(inputsView)) {
-            if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
-                auto &src = in.connections[0]->src;
-                t         = src.block->outputs()[src.index].type;
-            }
-        }
-        return t.asType([]<typename D>() -> std::unique_ptr<gr::BlockModel> {
-            if constexpr (meta::is_creatable<T, D>) {
-                return std::make_unique<gr::BlockWrapper<T<D>>>();
-            } else {
-                return nullptr;
-            }
-        });
     }
 };
 
