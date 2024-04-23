@@ -176,12 +176,12 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
         }
 
         readFile(path, str);
-        YAML::Node config = YAML::Load(str);
+        YAML::Node config     = YAML::Load(str);
 
-        auto       id     = config["id"].as<std::string>();
-        auto       def          = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
+        auto       id         = config["id"].as<std::string>();
+        auto       def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
 
-        auto parameters   = config["parameters"];
+        auto       parameters = config["parameters"];
         for (const auto &p : parameters) {
             const auto &idNode = p["id"];
             if (!idNode || !idNode.IsScalar()) {

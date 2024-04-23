@@ -16,15 +16,15 @@ namespace opendigitizer {
 template<typename T>
     requires std::is_floating_point_v<T> || (meta::is_dataset_v<T> && std::is_floating_point_v<typename T::value_type>)
 struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::SupportedTypes<float, double, gr::DataSet_float, gr::DataSet_double>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
-    gr::PortIn<T>                                                      in;
-    uint32_t                                                           color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
-    std::string                                                        signal_name;
-    std::string                                                        signal_unit;
-    float                                                              signal_min = std::numeric_limits<float>::lowest();
-    float                                                              signal_max = std::numeric_limits<float>::max();
+    gr::PortIn<T> in;
+    uint32_t      color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
+    std::string   signal_name;
+    std::string   signal_unit;
+    float         signal_min = std::numeric_limits<float>::lowest();
+    float         signal_max = std::numeric_limits<float>::max();
 
 public:
-    std::conditional_t<meta::is_dataset_v<T>, T, gr::HistoryBuffer<T>> data       = [] {
+    std::conditional_t<meta::is_dataset_v<T>, T, gr::HistoryBuffer<T>> data = [] {
         if constexpr (meta::is_dataset_v<T>) {
             return T{};
         } else {

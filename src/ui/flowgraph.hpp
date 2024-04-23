@@ -114,8 +114,8 @@ public:
         // automatically create a BlockType from a graph prototype node template class
         template<template<typename...> typename T>
         void addBlockType(std::string_view typeName) {
-            using Node     = T<float>;
-            auto t         = std::make_unique<DigitizerUi::BlockType>(typeName);
+            using Node           = T<float>;
+            auto t               = std::make_unique<DigitizerUi::BlockType>(typeName);
             t->defaultParameters = [] {
                 Node instance;
                 instance.settings().applyStagedParameters();
@@ -341,13 +341,13 @@ public:
         return m_outputs | std::views::filter([](const Port &p) { return p.type == DataType::AsyncMessage; });
     }
 
-    void                                    setParameter(const std::string &name, const pmtv::pmt &par);
-    const auto                             &parameters() const { return m_parameters; }
+    void              setParameter(const std::string &name, const pmtv::pmt &par);
+    const auto       &parameters() const { return m_parameters; }
 
-    void                                    update();
+    void              update();
 
-    inline FlowGraph                       *flowGraph() const { return m_flowGraph; }
-    const std::string                       name;
+    inline FlowGraph *flowGraph() const { return m_flowGraph; }
+    const std::string name;
 
     // protected:
     auto                   &inputs() { return m_inputs; }
@@ -400,33 +400,33 @@ struct ExecutionContext {
 class FlowGraph {
 public:
     FlowGraph();
-    void                         parse(const std::filesystem::path &file);
-    void                         parse(const std::string &str);
-    void                         clear();
+    void               parse(const std::filesystem::path &file);
+    void               parse(const std::string &str);
+    void               clear();
 
-    Block                       *findBlock(std::string_view name) const;
+    Block             *findBlock(std::string_view name) const;
 
-    inline const auto           &blocks() const { return m_blocks; }
-    inline const auto           &connections() const { return m_connections; }
+    inline const auto &blocks() const { return m_blocks; }
+    inline const auto &connections() const { return m_connections; }
 
-    void                         addBlock(std::unique_ptr<Block> &&block);
-    void                         deleteBlock(Block *block);
+    void               addBlock(std::unique_ptr<Block> &&block);
+    void               deleteBlock(Block *block);
 
-    Connection                  *connect(Block::Port *a, Block::Port *b);
+    Connection        *connect(Block::Port *a, Block::Port *b);
 
-    void                         disconnect(Connection *c);
+    void               disconnect(Connection *c);
 
-    inline bool                  graphChanged() const { return m_graphChanged; }
-    ExecutionContext             createExecutionContext();
+    inline bool        graphChanged() const { return m_graphChanged; }
+    ExecutionContext   createExecutionContext();
 
-    const std::string           &grc() const { return m_grc; }
+    const std::string &grc() const { return m_grc; }
 
-    int                          save(std::ostream &stream);
-    void                         addRemoteSource(std::string_view uri);
+    int                save(std::ostream &stream);
+    void               addRemoteSource(std::string_view uri);
 
-    void                         handleMessage(const gr::Message &msg);
+    void               handleMessage(const gr::Message &msg);
 
-    void                         setPlotSinkGrBlocks(std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks) {
+    void               setPlotSinkGrBlocks(std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks) {
         m_plotSinkGrBlocks = std::move(plotSinkGrBlocks);
     }
 
