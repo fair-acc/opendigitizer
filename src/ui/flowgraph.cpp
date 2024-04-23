@@ -482,12 +482,14 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, c
     auto params    = block.parameters();
     params["name"] = block.name;
     auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
-    grBlock->settings().set(params);
-    grBlock->settings().applyStagedParameters();
 
     if (!grBlock) {
         fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
+        return nullptr;
     }
+
+    grBlock->settings().set(params);
+    grBlock->settings().applyStagedParameters();
     return grBlock;
 }
 } // namespace
