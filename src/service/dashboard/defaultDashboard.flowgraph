@@ -13,16 +13,20 @@ blocks:
       remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
   - name: sink 1
     id: opendigitizer::ImPlotSink
-    color: 0xff0000
+    parameters:
+      color: 0xff0000
   - name: sink 2
     id: opendigitizer::ImPlotSink
-    color: 0x00ff00
+    parameters:
+      color: 0x00ff00
   - name: sink 3
     id: opendigitizer::ImPlotSink
-    color: 0x0000ff
+    parameters:
+      color: 0x0000ff
   - name: sink 4
     id: opendigitizer::ImPlotSink
-    color: 0xffff00
+    parameters:
+      color: 0xffff00
 connections:
   - [sine source 1, 0, FFT, 0]
   - [FFT, 0, sink 1, 0]
