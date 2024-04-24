@@ -60,6 +60,7 @@ if(OPENDIGITIZER_ENABLE_TESTING)
                   -U_FORTIFY_SOURCE
                   -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
       target_link_libraries(project_options INTERFACE --coverage)
+      set(GCOVR_ADDITIONAL_ARGS --print-summary --gcov-ignore-errors=all --verbose)
       append_coverage_compiler_flags()
       setup_target_for_coverage_gcovr_xml(
         NAME
