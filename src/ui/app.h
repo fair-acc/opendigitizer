@@ -142,12 +142,12 @@ public:
             void handleMessages(FlowGraph &fg) final {
                 const auto available = _fromScheduler.streamReader().available();
                 if (available > 0) {
-                    const auto messages = _fromScheduler.streamReader().get(available);
+                    auto messages = _fromScheduler.streamReader().get(available);
 
                     for (const auto &msg : messages) {
                         fg.handleMessage(msg);
                     }
-                    std::ignore = _fromScheduler.streamReader().consume(available);
+                    std::ignore = messages.consume(available);
                 }
             }
 
