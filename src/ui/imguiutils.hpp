@@ -15,7 +15,7 @@
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "flowgraph.h"
+#include "flowgraph.hpp"
 
 namespace DigitizerUi {
 class Block;

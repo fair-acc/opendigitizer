@@ -12,10 +12,10 @@
 
 #include <imgui_node_editor.h>
 
-#include "common.h"
-#include "flowgraph.h"
-#include "imguiutils.h"
-#include "remotesignalsources.h"
+#include "common.hpp"
+#include "flowgraph.hpp"
+#include "imguiutils.hpp"
+#include "remotesignalsources.hpp"
 
 namespace DigitizerUi {
 
@@ -29,7 +29,6 @@ public:
     void                                draw(FlowGraph *fg, const ImVec2 &size);
 
     std::function<Block *(FlowGraph *)> newSinkCallback;
-    std::function<Block *(FlowGraph *)> newSinkSourceCallback;
 
     std::string                         settings(FlowGraph *fg) const;
     void                                setSettings(FlowGraph *fg, const std::string &settings);
@@ -47,7 +46,6 @@ private:
     void                              drawAddSourceDialog(FlowGraph *fg);
     void                              sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
     void                              arrangeUnconnectedNodes(FlowGraph *fg, const std::vector<const Block *> &blocks);
-    std::vector<const Block *>        getAllBlocks(FlowGraph *fg);
 
     QueryFilterElementList            querySignalFilters;
     SignalList                        signalList{ querySignalFilters };

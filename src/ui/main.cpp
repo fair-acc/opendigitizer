@@ -22,29 +22,30 @@
 #include <cstdio>
 
 #include <fmt/format.h>
+#include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/testing/Delay.hpp>
 
-#include "app.h"
+#include "app.hpp"
+#include "dashboard.hpp"
+#include "dashboardpage.hpp"
+#include "fair_header.hpp"
+#include "flowgraph.hpp"
+#include "flowgraphitem.hpp"
+#include "settings.hpp"
+#include "toolbar.hpp"
+#include "toolbar_block.hpp"
+
+#include "utils/TouchHandler.hpp"
+
 #include "blocks/Arithmetic.hpp"
+#include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
-#include "dashboard.h"
-#include "dashboardpage.h"
-#include "fair_header.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "flowgraphitem.h"
-#include "settings.h"
-#include "toolbar.h"
-#include "toolbar_block.h"
-#include "utils/TouchHandler.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
-
-template<typename T>
-using SpecFFT = gr::blocks::fft::FFT<float, gr::DataSet<float>>;
 
 namespace DigitizerUi {
 
@@ -232,9 +233,6 @@ int main(int argc, char **argv) {
         plot.sourceNames.push_back(newSink->name);
         return newSink;
     };
-    app.fgItem.newSinkSourceCallback = [&](DigitizerUi::FlowGraph *) mutable {
-        return app.dashboard->createSource();
-    };
 
     app.verticalDPI = [&app]() -> float {
         float diagonalDPI   = app.defaultDPI;
@@ -250,13 +248,14 @@ int main(int argc, char **argv) {
 #ifndef EMSCRIPTEN
     DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
-
-    DigitizerUi::DataSink::registerBlockType();
-    DigitizerUi::DataSinkSource::registerBlockType();
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    // TODO populate these from the gr::globalBlockRegistry()
     DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
-    DigitizerUi::BlockType::registry().addBlockType<SpecFFT>("FFT");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::ImPlotSink>("opendigitizer::ImPlotSink");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
+    // DigitizerUi::BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
+    DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
+    DigitizerUi::BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
     DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
     DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
 
@@ -309,15 +308,19 @@ static void main_loop(void *arg) {
 
     app->fireCallbacks();
 
-    if (app->dashboard->localFlowGraph.graphChanged()) {
+    if (app->dashboard && app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
-        auto graph = app->dashboard->localFlowGraph.createGraph();
+        auto execution = app->dashboard->localFlowGraph.createExecutionContext();
+        app->dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
+        app->_toolbarBlocks = std::move(execution.toolbarBlocks);
         app->dashboard->loadPlotSources();
-        app->assignScheduler(std::move(graph));
+        app->assignScheduler(std::move(execution.graph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 
-    app->handleMessages(app->dashboard->localFlowGraph);
+    if (app->dashboard) {
+        app->handleMessages(app->dashboard->localFlowGraph);
+    }
 
     // Poll and handle events (inputs, window resize, etc.)
     SDL_Event event;
@@ -418,26 +421,36 @@ static void main_loop(void *arg) {
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Apply")) {
-                    auto sinkNames = [](const auto &sinks) {
-                        std::vector<std::string> names;
-                        std::ranges::transform(sinks, std::back_inserter(names), [](const auto &s) { return s->name; });
-                        std::ranges::sort(names);
+                    auto sinkNames = [](const auto &blocks) {
+                        using namespace std;
+                        auto isPlotSink = [](const auto &b) { return b->type().isPlotSink(); };
+                        auto getName    = [](const auto &b) { return b->name; };
+                        auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
+                        auto names      = std::vector(namesView.begin(), namesView.end());
+                        ranges::sort(names);
                         names.erase(std::unique(names.begin(), names.end()), names.end());
                         return names;
                     };
-                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
-                    app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                    const auto               newNames = sinkNames(app->dashboard->localFlowGraph.sinkBlocks());
-                    std::vector<std::string> toRemove;
-                    std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                    std::vector<std::string> toAdd;
-                    std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                    for (const auto &name : toRemove) {
-                        app->dashboard->removeSinkFromPlots(name);
-                    }
-                    for (const auto &newName : toAdd) {
-                        app->dashboardPage.newPlot(app->dashboard.get());
-                        app->dashboard->plots().back().sourceNames.push_back(newName);
+
+                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+
+                    try {
+                        app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                        const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+                        std::vector<std::string> toRemove;
+                        std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
+                        std::vector<std::string> toAdd;
+                        std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
+                        for (const auto &name : toRemove) {
+                            app->dashboard->removeSinkFromPlots(name);
+                        }
+                        for (const auto &newName : toAdd) {
+                            app->dashboardPage.newPlot(app->dashboard.get());
+                            app->dashboard->plots().back().sourceNames.push_back(newName);
+                        }
+                    } catch (const std::exception &e) {
+                        // TODO show error message
+                        fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
                     }
                 }
 

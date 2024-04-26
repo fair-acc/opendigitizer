@@ -1,18 +1,24 @@
-#include "flowgraph.h"
+#include "flowgraph.hpp"
 
+#include <algorithm>
 #include <assert.h>
 
 #include <charconv>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string_view>
 
 #include <fmt/format.h>
 
-#include "yamlutils.h"
+#include "gnuradio-4.0/Tag.hpp"
+#include "yamlutils.hpp"
+#include <unordered_map>
 #include <yaml-cpp/yaml.h>
 
-#include "app.h"
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
+
+#include "app.hpp"
 
 namespace DigitizerUi {
 
@@ -37,30 +43,24 @@ std::string Block::Parameter::toString() const {
     return {};
 }
 
-class GRBlock : public Block {
-public:
-    using Block::Block;
-    std::unique_ptr<gr::BlockModel> createGraphNode() final {
-        return {};
-    }
-};
-
-BlockType::BlockType(std::string_view n, std::string_view l, std::string_view cat, bool source)
-    : name(n)
-    , label(l.empty() ? n : l)
-    , category(cat)
-    , isSource(source)
-    , createBlock([this](std::string_view n) { return std::make_unique<GRBlock>(n, this->name, this); }) {
+BlockType::BlockType(std::string_view name_, std::string_view l, std::string_view cat)
+    : name(name_)
+    , label(l.empty() ? name_ : l)
+    , category(cat) {
 }
 
-BlockType::~BlockType() = default;
+std::unique_ptr<Block> BlockType::createBlock(std::string_view name) const {
+    auto params    = defaultParameters;
+    params["name"] = std::string(name);
+    return std::make_unique<Block>(name, this, std::move(params));
+}
 
 BlockType::Registry &BlockType::registry() {
     static Registry r;
     return r;
 }
 
-BlockType *BlockType::Registry::get(std::string_view id) const {
+const BlockType *BlockType::Registry::get(std::string_view id) const {
     auto it = m_types.find(id);
     return it == m_types.end() ? nullptr : it->second.get();
 }
@@ -69,20 +69,14 @@ void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
 
-Block::Block(std::string_view name, std::string_view id, BlockType *t)
-    : type(t)
-    , name(name)
-    , id(id) {
-    if (!type) {
-        return;
-    }
-
-    m_outputs.reserve(type->outputs.size());
-    m_inputs.reserve(type->inputs.size());
-    for (auto &o : type->outputs) {
+Block::Block(std::string_view name, const BlockType *t, gr::property_map params)
+    : name(name), m_type(t), m_parameters(std::move(params)) {
+    m_outputs.reserve(m_type->outputs.size());
+    m_inputs.reserve(m_type->inputs.size());
+    for (auto &o : m_type->outputs) {
         m_outputs.push_back({ this, o.type, o.dataset, Port::Kind::Output });
     }
-    for (auto &o : type->inputs) {
+    for (auto &o : m_type->inputs) {
         m_inputs.push_back({ this, o.type, o.dataset, Port::Kind::Input });
     }
 }
@@ -144,17 +138,6 @@ void Block::update() {
     }
 }
 
-bool Block::isToolbarBlock() const {
-    const auto &meta = m_node->metaInformation();
-    auto        it   = meta.find("Drawable");
-    if (it != meta.end() && std::holds_alternative<gr::property_map>(it->second)) {
-        const auto &drawableMap = std::get<gr::property_map>(it->second);
-        auto        catIt       = drawableMap.find("Category");
-        return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == "Toolbar";
-    }
-    return false;
-}
-
 std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }
@@ -163,10 +146,10 @@ static std::string_view strview(auto &&s) {
     return { s.data(), s.size() };
 }
 
-static bool readFile(const std::filesystem::path &file, std::string &str) {
+static void readFile(const std::filesystem::path &file, std::string &str) {
     std::ifstream stream(file);
     if (!stream.is_open()) {
-        return false;
+        throw std::runtime_error(fmt::format("Cannot open file '{}'", file.native()));
     }
 
     stream.seekg(0, std::ios::end);
@@ -175,7 +158,6 @@ static bool readFile(const std::filesystem::path &file, std::string &str) {
     str.resize(size);
     stream.seekg(0);
     stream.read(str.data(), size);
-    return true;
 }
 
 void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir) {
@@ -194,14 +176,12 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
         }
 
         readFile(path, str);
-        YAML::Node config = YAML::Load(str);
+        YAML::Node config     = YAML::Load(str);
 
-        auto       id     = config["id"].as<std::string>();
+        auto       id         = config["id"].as<std::string>();
+        auto       def        = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
 
-        auto       def    = m_types.insert({ id, std::make_unique<BlockType>(id) }).first->second.get();
-        def->createBlock  = [def](std::string_view name) { return std::make_unique<GRBlock>(name, def->name, def); };
-
-        auto parameters   = config["parameters"];
+        auto       parameters = config["parameters"];
         for (const auto &p : parameters) {
             const auto &idNode = p["id"];
             if (!idNode || !idNode.IsScalar()) {
@@ -294,92 +274,50 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
     }
 }
 
+FlowGraph::FlowGraph()
+    : _pluginLoader(gr::globalBlockRegistry(), {}) {}
+
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
-    if (!readFile(file, str)) {
-        std::cerr << "Cannot read file '" << file << "'\n";
-        return;
-    }
+    readFile(file, str);
     parse(str);
 }
 
 void FlowGraph::parse(const std::string &str) {
     clear();
+    auto graph = gr::load_grc(_pluginLoader, str);
 
-    YAML::Node tree   = YAML::Load(str);
-
-    auto       blocks = tree["blocks"];
-    for (const auto &b : blocks) {
-        auto n  = b["name"].as<std::string>();
-        auto id = b["id"].as<std::string>();
-
-        std::cout << "b" << n << id << "\n";
-
-        auto type = BlockType::registry().get(id);
+    graph.forEachBlock([&](const auto &grBlock) {
+        auto typeName = grBlock.typeName();
+        typeName      = std::string_view(typeName.begin(), typeName.find('<'));
+        auto type     = BlockType::registry().get(typeName);
         if (!type) {
-            std::cerr << "Block type '" << id << "' is unkown.\n";
-            auto block = std::make_unique<GRBlock>(n, id, type);
-            m_blocks.push_back(std::move(block));
-            continue;
+            throw std::runtime_error(fmt::format("Block type '{}' is unknown.", typeName));
         }
 
-        auto block = type->createBlock(n);
+        auto block               = type->createBlock(grBlock.name());
+        block->m_uniqueName      = grBlock.uniqueName();
+        block->m_metaInformation = grBlock.metaInformation();
+        block->updateSettings(grBlock.settings().get());
+        addBlock(std::move(block));
+    });
 
-        auto pars  = b["parameters"];
-        if (pars && pars.IsMap()) {
-            for (auto it = pars.begin(); it != pars.end(); ++it) {
-                auto key = it->first.as<std::string>();
+    auto findBlock = [&](std::string_view uniqueName) -> Block * {
+        const auto it = std::ranges::find_if(m_blocks, [uniqueName](const auto &b) { return b->m_uniqueName == uniqueName; });
+        return it == m_blocks.end() ? nullptr : it->get();
+    };
 
-                auto p   = block->parameters().find(key);
-                if (p == block->parameters().end()) {
-                    continue;
-                }
-
-                auto unpack = [&]<typename T>() {
-                    return std::visit([&](auto &&val) {
-                        if constexpr (std::is_same_v<T, std::decay_t<decltype(val)>>) {
-                            auto value = it->second.template as<T>();
-                            block->setParameter(key, value);
-                            return true;
-                        }
-                        return false;
-                    },
-                            p->second);
-                };
-                unpack.operator()<std::int8_t>() || unpack.operator()<std::int16_t>() || unpack.operator()<std::int32_t>() || unpack.operator()<std::int64_t>() || unpack.operator()<std::uint8_t>() || unpack.operator()<std::uint16_t>() || unpack.operator()<std::uint32_t>() || unpack.operator()<std::uint64_t>() || unpack.operator()<bool>() || unpack.operator()<float>() || unpack.operator()<double>() || unpack.operator()<std::string>();
-            }
-        }
-
-        if (type->isSource) {
-            addSourceBlock(std::move(block));
-        } else if (type->outputs.size() == 0 && type->inputs.size() > 0) {
-            addSinkBlock(std::move(block));
-        } else {
-            addBlock(std::move(block));
-        }
-    }
-
-    auto connections = tree["connections"];
-    for (const auto &c : connections) {
-        assert(c.size() == 4);
-
-        auto        srcBlockName = c[0].as<std::string>();
-        auto        srcPortStr   = c[1].as<std::string>();
-        std::size_t srcPort;
-        std::from_chars(srcPortStr.data(), srcPortStr.data() + srcPortStr.size(), srcPort);
-
-        auto        dstBlockName = c[2].as<std::string>();
-        auto        dstPortStr   = c[3].as<std::string>();
-        std::size_t dstPort;
-        std::from_chars(dstPortStr.data(), dstPortStr.data() + dstPortStr.size(), dstPort);
-
-        auto srcBlock = findBlock(srcBlockName);
+    graph.forEachEdge([&](const auto &edge) {
+        auto srcBlock = findBlock(edge._sourceBlock->uniqueName());
         assert(srcBlock);
-        auto dstBlock = findBlock(dstBlockName);
+        const auto sourcePort = edge._sourcePortDefinition.topLevel;
+        auto       dstBlock   = findBlock(edge._destinationBlock->uniqueName());
         assert(dstBlock);
+        const auto destinationPort = edge._destinationPortDefinition.topLevel;
+        // TODO support port collections
 
-        connect(&srcBlock->m_outputs[srcPort], &dstBlock->m_inputs[dstPort]);
-    }
+        connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+    });
 
     m_graphChanged = true;
 }
@@ -394,8 +332,6 @@ void FlowGraph::clear() {
         vec.clear();
     };
     del(m_blocks);
-    del(m_sourceBlocks);
-    del(m_sinkBlocks);
     m_connections.clear();
 }
 
@@ -409,7 +345,7 @@ int FlowGraph::save(std::ostream &stream) {
             auto    emitBlock = [&](auto &&b) {
                 YamlMap map(out);
                 map.write("name", b->name);
-                map.write("id", b->id);
+                map.write("id", b->typeName());
 
                 const auto &parameters = b->parameters();
                 if (!parameters.empty()) {
@@ -423,12 +359,6 @@ int FlowGraph::save(std::ostream &stream) {
             };
 
             for (auto &b : m_blocks) {
-                emitBlock(b);
-            }
-            for (auto &b : m_sourceBlocks) {
-                emitBlock(b);
-            }
-            for (auto &b : m_sinkBlocks) {
                 emitBlock(b);
             }
         });
@@ -450,57 +380,18 @@ int FlowGraph::save(std::ostream &stream) {
     return int(out.size());
 }
 
-static Block *findBlockImpl(std::string_view name, auto &list) {
-    for (auto &b : list) {
-        if (b->name == name) {
-            return b.get();
-        }
-    }
-    return nullptr;
-}
-
 Block *FlowGraph::findBlock(std::string_view name) const {
-    if (auto *b = findSourceBlock(name)) {
-        return b;
-    }
-    if (auto *b = findSinkBlock(name)) {
-        return b;
-    }
-    return findBlockImpl(name, m_blocks);
-}
-
-Block *FlowGraph::findSinkBlock(std::string_view name) const {
-    return findBlockImpl(name, m_sinkBlocks);
-}
-
-Block *FlowGraph::findSourceBlock(std::string_view name) const {
-    return findBlockImpl(name, m_sourceBlocks);
+    const auto it = std::find_if(m_blocks.begin(), m_blocks.end(), [&](const auto &b) { return b->name == name; });
+    return it == m_blocks.end() ? nullptr : it->get();
 }
 
 void FlowGraph::addBlock(std::unique_ptr<Block> &&block) {
     block->m_flowGraph = this;
     block->update();
+    if (block->type().isPlotSink() && plotSinkBlockAddedCallback) {
+        plotSinkBlockAddedCallback(block.get());
+    }
     m_blocks.push_back(std::move(block));
-    m_graphChanged = true;
-}
-
-void FlowGraph::addSourceBlock(std::unique_ptr<Block> &&block) {
-    block->m_flowGraph = this;
-    block->update();
-    if (sourceBlockAddedCallback) {
-        sourceBlockAddedCallback(block.get());
-    }
-    m_sourceBlocks.push_back(std::move(block));
-    m_graphChanged = true;
-}
-
-void FlowGraph::addSinkBlock(std::unique_ptr<Block> &&block) {
-    block->m_flowGraph = this;
-    block->update();
-    if (sinkBlockAddedCallback) {
-        sinkBlockAddedCallback(block.get());
-    }
-    m_sinkBlocks.push_back(std::move(block));
     m_graphChanged = true;
 }
 
@@ -524,15 +415,7 @@ void FlowGraph::deleteBlock(Block *block) {
         return block == b.get();
     };
 
-    if (auto it = std::find_if(m_sourceBlocks.begin(), m_sourceBlocks.end(), select); it != m_sourceBlocks.end()) {
-        m_sourceBlocks.erase(it);
-    }
-    if (auto it = std::find_if(m_sinkBlocks.begin(), m_sinkBlocks.end(), select); it != m_sinkBlocks.end()) {
-        m_sinkBlocks.erase(it);
-    }
-    if (auto it = std::find_if(m_blocks.begin(), m_blocks.end(), select); it != m_blocks.end()) {
-        m_blocks.erase(it);
-    }
+    std::erase_if(m_blocks, select);
 
     m_graphChanged = true;
 }
@@ -571,43 +454,78 @@ void FlowGraph::disconnect(Connection *c) {
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
     auto block = BlockType::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
-    block->setParameter("remote_uri", std::string(uri));
+    block->updateSettings({ { "remote_uri", std::string(uri) } });
     addBlock(std::move(block));
 }
 
-gr::Graph FlowGraph::createGraph() {
-    gr::Graph graph;
+namespace {
 
-    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
-        for (const auto &block : *list) {
-            auto node     = block->createGraphNode();
-            block->m_node = node.get();
-            if (!node) {
-                fmt::print("no node {}\n", block->name);
-                continue;
-            }
-            block->m_uniqueName = block->m_node->uniqueName();
-#ifdef __EMSCRIPTEN__
-            try {
-#endif
-                std::ignore = node->settings().set(block->parameters());
-#ifdef __EMSCRIPTEN__
-            } catch (...) {
-            }
-#endif
-            graph.addBlock(std::move(node));
+static bool isDrawable(const gr::property_map &meta, std::string_view category) {
+    auto it = meta.find("Drawable");
+    if (it == meta.end() || !std::holds_alternative<gr::property_map>(it->second)) {
+        return false;
+    }
+    const auto &drawableMap = std::get<gr::property_map>(it->second);
+    const auto  catIt       = drawableMap.find("Category");
+    return catIt != drawableMap.end() && std::holds_alternative<std::string>(catIt->second) && std::get<std::string>(catIt->second) == category;
+}
+
+static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
+    DataType t          = DataType::Float32;
+    auto     inputsView = block.dataInputs();
+    if (!std::ranges::empty(inputsView)) {
+        if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
+            auto &src = in.connections[0]->src;
+            t         = src.block->outputs()[src.index].type;
         }
     }
+    auto params    = block.parameters();
+    params["name"] = block.name;
+    auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
 
-    for (const auto *list : std::initializer_list<const decltype(m_blocks) *>{ &m_sourceBlocks, &m_blocks, &m_sinkBlocks }) {
-        for (const auto &block : *list) {
-            block->setup(graph);
-        }
+    if (!grBlock) {
+        fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
+        return nullptr;
     }
+
+    grBlock->settings().set(params);
+    grBlock->settings().applyStagedParameters();
+    return grBlock;
+}
+} // namespace
+
+ExecutionContext FlowGraph::createExecutionContext() {
+    ExecutionContext context;
+    for (const auto &block : m_blocks) {
+        auto grBlock = createGRBlock(_pluginLoader, *block);
+        if (!grBlock) {
+            continue;
+        }
+        block->m_uniqueName      = grBlock->uniqueName();
+        block->m_metaInformation = grBlock->metaInformation();
+
+        if (isDrawable(block->metaInformation(), "Toolbar")) {
+            context.toolbarBlocks.push_back(grBlock.get());
+        }
+        if (isDrawable(block->metaInformation(), "ChartPane")) {
+            context.plotSinkGrBlocks.insert({ block->name, grBlock.get() });
+        }
+        context.graph.addBlock(std::move(grBlock));
+    }
+
+    auto findBlock = [&](std::string_view name) -> gr::BlockModel * {
+        const auto it = std::ranges::find_if(context.graph.blocks(), [&](auto &b) { return b->uniqueName() == name; });
+        return it == context.graph.blocks().end() ? nullptr : it->get();
+    };
 
     for (auto &c : m_connections) {
-        if (!c.src.block->m_node || !c.dst.block->m_node) continue;
-        graph.connect(*c.src.block->m_node, c.src.index, *c.dst.block->m_node, c.dst.index);
+        const auto src = findBlock(c.src.block->m_uniqueName);
+        const auto dst = findBlock(c.dst.block->m_uniqueName);
+        if (!src || !dst) {
+            continue;
+        }
+
+        context.graph.connect(*src, c.src.index, *dst, c.dst.index);
     }
 
     m_graphChanged = false;
@@ -616,20 +534,26 @@ gr::Graph FlowGraph::createGraph() {
     save(str);
     m_grc = str.str();
 
-    return graph;
+    return context;
 }
 
 void FlowGraph::handleMessage(const gr::Message &msg) {
-    if (msg.endpoint == gr::block::property::kSetting) {
-        forEachBlock([&, name = msg.serviceName](auto &block) -> bool {
-            if (block->m_uniqueName == name) {
-                if (msg.data.has_value()) {
-                    block->updateSettings(msg.data.value());
-                }
-                return false;
+    if (msg.serviceName != App::instance().schedulerUniqueName() && msg.endpoint == gr::block::property::kSetting) {
+        const auto it = std::ranges::find_if(m_blocks, [&](const auto &b) { return b->m_uniqueName == msg.serviceName; });
+        if (it == m_blocks.end()) {
+            fmt::println(std::cerr, "Received settings for unknown block '{}'", msg.serviceName);
+            return;
+        }
+        if (!msg.data) {
+            fmt::println(std::cerr, "Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+            return;
+        }
+        if (it->get()->typeName() == "opendigitizer::RemoteSource") {
+            if (const auto remoteUri = std::get_if<std::string>(&msg.data.value().at("remote_uri"))) {
+                App::instance().dashboard->registerRemoteService(it->get()->name, *remoteUri);
             }
-            return true;
-        });
+        }
+        (*it)->updateSettings(msg.data.value());
     }
 }
 

@@ -14,20 +14,17 @@ CMRC_DECLARE(sample_dashboards);
 #include <RestClient.hpp>
 
 #ifdef EMSCRIPTEN
-#include "emscripten_compat.h"
+#include "emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>
 
-#include "flowgraph.h"
+#include "flowgraph.hpp"
 
 namespace DigitizerUi {
 
 class Block;
 class FlowGraph;
 struct DashboardDescription;
-class DataSink;
-class DataSinkSource;
-
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
@@ -61,13 +58,12 @@ public:
     }
 
     struct Source {
-        DataSink   *block;
-        int         port;
+        std::string blockName;
         std::string name;
         uint32_t    color;
         bool        visible{ true };
 
-        inline bool operator==(const Source &s) const { return s.block == block && s.port == port; };
+        inline bool operator==(const Source &s) const { return s.blockName == blockName; };
     };
     struct Plot {
         enum class Axis {
@@ -132,25 +128,27 @@ public:
         void                        reload();
         void                        execute();
     };
-    void            addRemoteService(std::string_view uri);
-    void            saveRemoteServiceFlowgraph(Service *s);
+    void         registerRemoteService(std::string_view blockName, std::string_view uri);
+    void         unregisterRemoteService(std::string_view blockName);
+    void         removeUnusedRemoteServices();
 
-    inline auto    &remoteServices() { return m_services; }
+    void         saveRemoteServiceFlowgraph(Service *s);
 
-    DataSink       *createSink();
-    DataSinkSource *createSource();
+    inline auto &remoteServices() { return m_services; }
 
-    void            loadPlotSources();
+    Block       *createSink();
+    void         loadPlotSources();
 
-    FlowGraph       localFlowGraph;
+    FlowGraph    localFlowGraph;
 
 private:
-    void                                  doLoad(const std::string &desc);
+    void                                         doLoad(const std::string &desc);
 
-    std::shared_ptr<DashboardDescription> m_desc;
-    std::vector<Plot>                     m_plots;
-    plf::colony<Source>                   m_sources;
-    plf::colony<Service>                  m_services;
+    std::shared_ptr<DashboardDescription>        m_desc;
+    std::vector<Plot>                            m_plots;
+    plf::colony<Source>                          m_sources;
+    std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
+    plf::colony<Service>                         m_services;
 };
 
 } // namespace DigitizerUi

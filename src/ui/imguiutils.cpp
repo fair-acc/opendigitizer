@@ -11,11 +11,10 @@
 #include <tuple>
 #include <type_traits>
 
-#include "app.h"
-#include "calculator.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "imguiutils.h"
+#include "app.hpp"
+#include "calculator.hpp"
+#include "flowgraph.hpp"
+#include "imguiutils.hpp"
 
 namespace ImGuiUtils {
 
@@ -1169,7 +1168,7 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
 
         if (ImGui::BeginPopup("addBlockPopup")) {
             int index = 0;
-            for (const auto &out : ctx.block->type->outputs) {
+            for (const auto &out : ctx.block->type().outputs) {
                 if (ImGui::Selectable(out.name.c_str())) {
                     ctx.insertFrom = &ctx.block->outputs()[index];
                     ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
@@ -1219,8 +1218,8 @@ void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const Im
                     c1            = app.dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
                     app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
 
-                    auto source = std::find_if(app.dashboard->sources().begin(), app.dashboard->sources().end(), [&](const auto &s) {
-                        return s.block == newsink;
+                    auto source = std::ranges::find_if(app.dashboard->sources(), [newsink](const auto &s) {
+                        return s.blockName == newsink->name;
                     });
 
                     app.dashboardPage.newPlot(app.dashboard.get());

@@ -1,4 +1,4 @@
-#include "remotesignalsources.h"
+#include "remotesignalsources.hpp"
 #include <misc/cpp/imgui_stdlib.h>
 
 void QueryFilterElement::drawFilterLine() {

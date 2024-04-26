@@ -18,10 +18,9 @@ set(sources
     flowgraph.cpp
     flowgraphitem.cpp
     dashboard.cpp
-    flowgraph/datasink.cpp
     dashboardpage.cpp
-    opendashboardpage.cpp
     imguiutils.cpp
+    opendashboardpage.cpp
     remotesignalsources.cpp)
 
 set(GNURADIO_PREFIX
@@ -183,6 +182,7 @@ target_link_libraries(
           gnuradio-algorithm
           gr-basic
           gr-fourier
+          gr-testing
           fftw
           vir
           pmtv)

@@ -22,7 +22,7 @@
 #endif
 
 #include "build_configuration.hpp"
-#include "settings.h"
+#include "settings.hpp"
 
 // TODO use built-in GR blocks
 

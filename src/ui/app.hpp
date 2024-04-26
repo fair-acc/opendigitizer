@@ -5,11 +5,11 @@
 #define IMGUI_DEFINE_MATH_OPERATORS true
 #endif
 
-#include "common.h"
-#include "dashboard.h"
-#include "dashboardpage.h"
-#include "flowgraphitem.h"
-#include "opendashboardpage.h"
+#include "common.hpp"
+#include "dashboard.hpp"
+#include "dashboardpage.hpp"
+#include "flowgraphitem.hpp"
+#include "opendashboardpage.hpp"
 
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -82,16 +82,21 @@ public:
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
 
-        explicit operator bool() const { return handler != nullptr; };
+        explicit         operator bool() const { return handler != nullptr; };
 
-        void     sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
-        void     handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+        std::string_view uniqueName() const {
+            return handler ? handler->uniqueName() : "";
+        }
+
+        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
+        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
-            virtual ~Handler()                               = default;
-            virtual void sendMessage(const gr::Message &msg) = 0;
-            virtual void handleMessages(FlowGraph &fg)       = 0;
+            virtual ~Handler()                                           = default;
+            virtual std::string_view uniqueName() const                  = 0;
+            virtual void             sendMessage(const gr::Message &msg) = 0;
+            virtual void             handleMessages(FlowGraph &fg)       = 0;
         };
 
         template<typename TScheduler>
@@ -114,6 +119,7 @@ public:
                 }
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
+                gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
                 _thread = std::thread([this]() {
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
@@ -135,7 +141,9 @@ public:
                 });
             }
 
-            void sendMessage(const gr::Message &msg) final {
+            std::string_view uniqueName() const override { return _scheduler.unique_name; }
+
+            void             sendMessage(const gr::Message &msg) final {
                 _toScheduler.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
             }
 
@@ -160,7 +168,8 @@ public:
         std::unique_ptr<Handler> handler;
     };
 
-    SchedWrapper _scheduler;
+    SchedWrapper                  _scheduler;
+    std::vector<gr::BlockModel *> _toolbarBlocks;
 
 public:
     App() noexcept { setStyle(Style::Light); }
@@ -246,6 +255,10 @@ public:
         using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
+    }
+
+    std ::string_view schedulerUniqueName() const {
+        return _scheduler.uniqueName();
     }
 
     void sendMessage(const gr::Message &msg) {

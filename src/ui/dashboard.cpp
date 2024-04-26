@@ -1,4 +1,6 @@
-#include "dashboard.h"
+#include "dashboard.hpp"
+#include <algorithm>
+#include <ranges>
 
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS true
@@ -17,10 +19,9 @@
 
 #include <yaml-cpp/yaml.h>
 
-#include "app.h"
-#include "flowgraph.h"
-#include "flowgraph/datasink.h"
-#include "yamlutils.h"
+#include "app.hpp"
+#include "flowgraph.hpp"
+#include "yamlutils.hpp"
 
 struct FlowgraphMessage {
     std::string flowgraph;
@@ -222,18 +223,22 @@ Dashboard::Plot::Plot() {
 
 Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc)
     : m_desc(desc) {
-    m_desc->lastUsed                      = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    m_desc->lastUsed                          = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    localFlowGraph.sinkBlockAddedCallback = [this](Block *b) {
-        m_sources.insert({ static_cast<DataSink *>(b), -1, b->name, randomColor() });
+    localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
+        const auto color = std::get_if<uint32_t>(&b->parameters().at("color"));
+        assert(color);
+        m_sources.insert({ b->name, b->name, (*color << 8) | 0xff });
     };
     localFlowGraph.blockDeletedCallback = [this](Block *b) {
+        const auto blockName = b->name;
         for (auto &p : m_plots) {
-            p.sources.erase(std::remove_if(p.sources.begin(), p.sources.end(), [=](auto *s) { return s->block == b; }),
-                    p.sources.end());
+            std::erase_if(p.sources, [&blockName](const auto &s) { return s->blockName == blockName; });
         }
-        m_sources.erase(std::remove_if(m_sources.begin(), m_sources.end(), [=](const auto &s) { return s.block == b; }),
-                m_sources.end());
+        if (b->typeName() == "opendigitizer::RemoteSource") {
+            unregisterRemoteService(b->name);
+        }
+        std::erase_if(m_sources, [&blockName](const auto &s) { return s.blockName == blockName; });
     };
 }
 
@@ -244,23 +249,14 @@ std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDesc
     return std::make_shared<Dashboard>(PrivateTag{}, desc);
 }
 
-DataSink *Dashboard::createSink() {
-    int  n       = localFlowGraph.sinkBlocks().size() + 1;
-    auto name    = fmt::format("sink {}", n);
-    auto sink    = std::make_unique<DigitizerUi::DataSink>(name);
+Block *Dashboard::createSink() {
+    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type().isPlotSink(); });
+    auto       name      = fmt::format("sink {}", sinkCount + 1);
+    auto       sink      = BlockType::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
+    sink->updateSettings({ { "color", randomColor() } });
     auto sinkptr = sink.get();
-    localFlowGraph.addSinkBlock(std::move(sink));
+    localFlowGraph.addBlock(std::move(sink));
     return sinkptr;
-}
-
-DataSinkSource *Dashboard::createSource() {
-    int  n         = localFlowGraph.sourceBlocks().size() + 1;
-    auto name      = fmt::format("source {}", n);
-    auto source    = std::make_unique<DigitizerUi::DataSinkSource>(name);
-    auto sourceptr = source.get();
-    name           = fmt::format("source for sink {}", n);
-    localFlowGraph.addSourceBlock(std::move(source));
-    return sourceptr;
 }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
@@ -272,12 +268,19 @@ void Dashboard::load() {
         fetch(
                 m_desc->source, m_desc->filename, { What::Flowgraph, What::Dashboard },
                 [_this = shared()](std::array<std::string, 2> &&data) {
-                    _this->localFlowGraph.parse(std::move(data[0]));
-                    // Load is called after parsing the flowgraph so that we already have the list of sources
-                    _this->doLoad(data[1]);
+                    try {
+                        _this->localFlowGraph.parse(std::move(data[0]));
+                        // Load is called after parsing the flowgraph so that we already have the list of sources
+                        _this->doLoad(data[1]);
+                    } catch (const std::exception &e) {
+                        // TODO show error message
+                        fmt::println(std::cerr, "Error: {}", e.what());
+                        App::instance().closeDashboard();
+                    }
                 },
                 [_this = shared()]() {
-                    fmt::print("Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
+                    // TODO show error message
+                    fmt::print(std::cerr, "Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
                     App::instance().closeDashboard();
                 });
     } else {
@@ -286,35 +289,21 @@ void Dashboard::load() {
 }
 
 void Dashboard::doLoad(const std::string &desc) {
-    YAML::Node tree = YAML::Load(desc);
+    YAML::Node tree    = YAML::Load(desc);
 
-    auto       path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
+    auto       path    = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
-#ifdef NDEBUG
-#define ERROR_RETURN(msg) \
-    { \
-        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
-        abort(); \
-    }
-#else
-#define ERROR_RETURN(msg) \
-    { \
-        fmt::print("Error parsing YAML {}: {}\n{}\n", path.native(), msg, desc); \
-        return; \
-    }
-#endif
-
-    auto sources = tree["sources"];
-    if (!sources || !sources.IsSequence()) ERROR_RETURN("sources entry invalid");
+    auto       sources = tree["sources"];
+    if (!sources || !sources.IsSequence()) throw std::runtime_error("sources entry invalid");
 
     for (const auto &s : sources) {
-        if (!s.IsMap()) ERROR_RETURN("source is no map");
+        if (!s.IsMap()) throw std::runtime_error("source is no map");
 
         auto block = s["block"];
         auto port  = s["port"];
         auto name  = s["name"];
         auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) ERROR_RETURN("invalid source color definition");
+        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) throw std::runtime_error("invalid source color definition");
 
         auto blockStr = block.as<std::string>();
         auto portNum  = port.as<int>();
@@ -334,29 +323,29 @@ void Dashboard::doLoad(const std::string &desc) {
     }
 
     auto plots = tree["plots"];
-    if (!plots || !plots.IsSequence()) ERROR_RETURN("plots invalid");
+    if (!plots || !plots.IsSequence()) throw std::runtime_error("plots invalid");
 
     for (const auto &p : plots) {
-        if (!p.IsMap()) ERROR_RETURN("plots is not map");
+        if (!p.IsMap()) throw std::runtime_error("plots is not map");
 
         auto name        = p["name"];
         auto axes        = p["axes"];
         auto plotSources = p["sources"];
         auto rect        = p["rect"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) ERROR_RETURN("invalid plot definition");
+        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) throw std::runtime_error("invalid plot definition");
 
         m_plots.emplace_back();
         auto &plot = m_plots.back();
         plot.name  = name.as<std::string>();
 
         for (const auto &a : axes) {
-            if (!a.IsMap()) ERROR_RETURN("axes is no map");
+            if (!a.IsMap()) throw std::runtime_error("axes is no map");
 
             auto axis = a["axis"];
             auto min  = a["min"];
             auto max  = a["max"];
 
-            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) ERROR_RETURN("invalid axis definition");
+            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) throw std::runtime_error("invalid axis definition");
 
             plot.axes.push_back({});
             auto &ax      = plot.axes.back();
@@ -377,7 +366,7 @@ void Dashboard::doLoad(const std::string &desc) {
         }
 
         for (const auto &s : plotSources) {
-            if (!s.IsScalar()) ERROR_RETURN("plot source is no scalar");
+            if (!s.IsScalar()) throw std::runtime_error("plot source is no scalar");
 
             auto str = s.as<std::string>();
             plot.sourceNames.push_back(str);
@@ -393,8 +382,6 @@ void Dashboard::doLoad(const std::string &desc) {
     App::instance().fgItem.setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
 
     loadPlotSources();
-
-#undef ERROR_RETURN
 }
 
 void Dashboard::save() {
@@ -424,8 +411,7 @@ void Dashboard::save() {
                 YamlMap source(dashboardOut);
                 source.write("name", s.name);
 
-                source.write("block", s.block->name);
-                source.write("port", s.port);
+                source.write("block", s.blockName);
                 source.write("color", s.color);
             }
         });
@@ -547,7 +533,7 @@ void Dashboard::loadPlotSources() {
         plot.sources.clear();
 
         for (const auto &name : plot.sourceNames) {
-            auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
+            auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
             if (source == m_sources.end()) {
                 fmt::print("Unable to find source {}\n", name);
                 continue;
@@ -557,17 +543,39 @@ void Dashboard::loadPlotSources() {
     }
 }
 
-void Dashboard::addRemoteService(std::string_view uri) {
-    const auto u       = opencmw::URI<>(std::string(uri));
-    auto       f       = u.factory(u).path("").setQuery({});
-    auto       service = f.toString();
+void Dashboard::registerRemoteService(std::string_view blockName, std::string_view uri_) {
+    const auto uri = [&] -> std::optional<opencmw::URI<>> {
+        try {
+            return opencmw::URI<>(std::string(uri_));
+        } catch (const std::exception &e) {
+            fmt::println(std::cerr, "remote_source of '{}' is not a valid URI '{}': {}\n", blockName, uri_, e.what());
+            return {};
+        }
+    }();
 
-    auto       it      = std::find_if(m_services.begin(), m_services.end(), [&](const auto &s) { return s.name == service; });
+    if (!uri) {
+        return;
+    }
+
+    const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
+    m_flowgraphUriByRemoteSource.insert({ std::string{ blockName }, flowgraphUri });
+
+    const auto it = std::ranges::find_if(m_services, [&](const auto &s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
-        auto  uri = std::move(f).path("/flowgraph").build();
-        auto &s   = *m_services.emplace(std::move(service), uri.str());
+        fmt::println("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
+        auto &s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
     }
+    removeUnusedRemoteServices();
+}
+
+void Dashboard::unregisterRemoteService(std::string_view blockName) {
+    m_flowgraphUriByRemoteSource.erase(std::string{ blockName });
+    removeUnusedRemoteServices();
+}
+
+void Dashboard::removeUnusedRemoteServices() {
+    std::erase_if(m_services, [&](const auto &s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto &uri) { return uri == s.uri; }); });
 }
 
 void Dashboard::Service::reload() {
