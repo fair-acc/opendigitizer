@@ -1,31 +1,13 @@
-#ifndef IMGUIUTILS_H
-#define IMGUIUTILS_H
+#ifndef OPENDIGITIZER_UI_COMPONENTS_LIST_BOX_HPP_
+#define OPENDIGITIZER_UI_COMPONENTS_LIST_BOX_HPP_
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
-#include <algorithm>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <vector>
-
-#include <imgui.h>
-#include <imgui_internal.h>
+#include "../common/ImguiWrap.hpp"
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "flowgraph.hpp"
+namespace DigitizerUi::components {
 
-namespace DigitizerUi {
-class Block;
-class Dashboard;
-} // namespace DigitizerUi
-
-namespace ImGuiUtils {
-
-namespace {
-void ensureItemVisible() {
+namespace detail {
+inline void ensureItemVisible() {
     auto scroll = ImGui::GetScrollY();
     auto min    = ImGui::GetWindowContentRegionMin().y + scroll;
     auto max    = ImGui::GetWindowContentRegionMax().y + scroll;
@@ -38,13 +20,10 @@ void ensureItemVisible() {
         ImGui::SetScrollHereY(0);
     }
 }
-
-} // namespace
+} // namespace detail
 
 template<typename T, typename Items, typename ItemGetter, typename ItemDrawer>
-std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&items, ItemGetter getItem, ItemDrawer drawItem) {
-    ImGui::PushID(id);
-
+std::optional<T> FilteredListBox(const char *id, const ImVec2 &size, Items &&items, ItemGetter getItem, ItemDrawer drawItem) {
     struct CallbackData {
         const Items &items;
         ItemGetter   getItem;
@@ -93,10 +72,12 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
         return 0;
     };
 
-    ImGui::BeginGroup();
+    IMW::ChangeStrId newId(id);
 
-    auto y = ImGui::GetCursorPosY();
-    auto x = ImGui::GetCursorPosX();
+    IMW::Group       group;
+
+    auto             y = ImGui::GetCursorPosY();
+    auto             x = ImGui::GetCursorPosX();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Filter:");
     ImGui::SameLine();
@@ -120,10 +101,11 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
         ImGui::SetKeyboardFocusHere();
         ctx->filterInputReclaimFocus = false;
     }
-    ImGui::PushItemWidth(size.x - (ImGui::GetCursorPosX() - x));
-    bool scrollToSelected = ImGui::InputText("##filterBlockType", &ctx->filterString, ImGuiInputTextFlags_CallbackCompletion, completeItemName, &cbdata);
 
-    if (ImGui::BeginListBox("##Available Block types", { size.x, size.y - (ImGui::GetCursorPosY() - y) })) {
+    IMW::ItemWidth newItemWidth(size.x - (ImGui::GetCursorPosX() - x));
+    bool           scrollToSelected = ImGui::InputText("##filterBlockType", &ctx->filterString, ImGuiInputTextFlags_CallbackCompletion, completeItemName, &cbdata);
+
+    if (auto listbox = IMW::ListBox("##Available Block types", ImVec2{ size.x, size.y - (ImGui::GetCursorPosY() - y) })) {
         auto filter = [&](std::string_view name) {
             if (!ctx->filterString.empty()) {
                 auto it = std::search(name.begin(), name.end(), ctx->filterString.begin(), ctx->filterString.end(),
@@ -177,87 +159,32 @@ std::optional<T> filteredListBox(const char *id, const ImVec2 &size, Items &&ite
                 ctx->filterInputReclaimFocus = true;
             }
             if (ctx->selected && *ctx->selected == *it && scrollToSelected) {
-                ensureItemVisible();
+                detail::ensureItemVisible();
             }
         }
-        ImGui::EndListBox();
     }
-    ImGui::EndGroup();
 
-    ImGui::PopID();
     return ctx->selected;
 }
 
 template<typename Items, typename ItemGetter>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 })
+auto FilteredListBox(const char *id, Items &&items, ItemGetter getItem, const ImVec2 &size = { 200, 200 })
     requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
-    return filteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
+    return FilteredListBox<T>(id, size, items, getItem, [](auto &&item, bool selected) {
         return ImGui::Selectable(item.second.data(), selected);
     });
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto filteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 })
+auto FilteredListBox(const char *id, Items &&items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2 &size = { 200, 200 })
     requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
-    return filteredListBox<T>(id, size, items, getItem, drawItem);
+    return FilteredListBox<T>(id, size, items, getItem, drawItem);
 }
 
-enum class DialogButton {
-    None,
-    Ok,
-    Cancel
-};
-
-DialogButton drawDialogButtons(bool okEnabled = true);
-float        splitter(ImVec2 space, bool vertical, float size, float defaultRatio = 0.5, bool reset = false);
-
-struct BlockControlsPanel {
-    DigitizerUi::Block *block = {};
-    enum class Mode {
-        None,
-        Insert,
-        AddAndBranch
-    };
-    Mode                                               mode            = Mode::None;
-    DigitizerUi::Block::Port                          *insertBefore    = nullptr;
-    DigitizerUi::Block::Port                          *insertFrom      = nullptr;
-    DigitizerUi::Connection                           *breakConnection = nullptr;
-    std::chrono::time_point<std::chrono::system_clock> closeTime;
-};
-void drawBlockControlsPanel(BlockControlsPanel &context, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout);
-
-void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size = { 0.f, 0.f });
-void setItemTooltip(const char *fmt, auto &&...args) {
-    if (ImGui::IsItemHovered()) {
-        if constexpr (sizeof...(args) == 0) {
-            ImGui::SetTooltip(fmt);
-        } else {
-            ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
-        }
-    }
-}
-
-struct DisabledGuard {
-    explicit inline DisabledGuard(bool disable = true)
-        : m_disabled(disable) {
-        if (m_disabled) {
-            ImGui::BeginDisabled();
-        }
-    }
-    inline ~DisabledGuard() {
-        if (m_disabled) {
-            ImGui::EndDisabled();
-        }
-    }
-
-private:
-    const bool m_disabled;
-};
-
-} // namespace ImGuiUtils
+} // namespace DigitizerUi::components
 
 #endif

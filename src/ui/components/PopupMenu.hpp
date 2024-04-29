@@ -1,16 +1,17 @@
-#ifndef OPENDIGITIZER_POPUPMENU_HPP
-#define OPENDIGITIZER_POPUPMENU_HPP
+#ifndef OPENDIGITIZER_UI_COMPONENTS_POPUP_MENU_HPP_
+#define OPENDIGITIZER_UI_COMPONENTS_POPUP_MENU_HPP_
 
 #include <cmath>
 #include <functional>
-#include <imgui_internal.h>
 #include <string>
 #include <vector>
 
-namespace fair {
+#include "../common/ImguiWrap.hpp"
+
+namespace DigitizerUi {
 
 namespace detail {
-ImVec4 lightenColor(const ImVec4 &color, float percent) {
+inline ImVec4 lightenColor(const ImVec4 &color, float percent) {
     float h;
     float s;
     float v;
@@ -23,7 +24,7 @@ ImVec4 lightenColor(const ImVec4 &color, float percent) {
     return { r, g, b, color.w };
 }
 
-ImVec4 darkenColor(const ImVec4 &color, float percent) {
+inline ImVec4 darkenColor(const ImVec4 &color, float percent) {
     float h;
     float s;
     float v;
@@ -51,40 +52,48 @@ struct MenuButton {
     ImVec4              buttonColor   = ImGui::GetStyleColorVec4(ImGuiCol_Button);
 
     [[nodiscard]] float size() const {
-        ImGui::PushFont(font);
+        IMW::Font    _(font);
         const ImVec2 textSize         = ImGui::CalcTextSize(label.c_str());
         const float  maxSize          = std::max(textSize.x, textSize.y);
         const float  actualButtonSize = std::max(_size, 2.f * padding + maxSize);
-        ImGui::PopFont();
-        _size = actualButtonSize;
+        _size                         = actualButtonSize;
         return _size;
     }
 
     [[nodiscard]] bool create(float buttonRounding = -1.f) {
-        const std::string buttonId = fmt::format("#{}", label);
-        ImGui::PushFont(font);
-        bool        isClicked        = false;
-        const float actualButtonSize = size();
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? .5f * actualButtonSize : buttonRounding);
+        const std::string buttonId  = fmt::format("#{}", label);
+        bool              isClicked = false;
+        {
+            const float        actualButtonSize = size();
+            IMW::Font          _(font);
+            IMW::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? .5f * actualButtonSize : buttonRounding);
 
-        if (!isTransparent) {
-            ImVec4 buttonColorHover  = detail::lightenColor(buttonColor, 0.5f);
-            ImVec4 buttonColorActive = detail::darkenColor(buttonColor, 0.7f);
-            buttonColor.w            = 1.0;
-            buttonColorHover.w       = 1.0;
-            buttonColorActive.w      = 1.0;
-            ImGui::PushStyleColor(ImGuiCol_Button, buttonColor);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, buttonColorHover);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, buttonColorActive);
+            struct ButtonStyle {
+                IMW::StyleColor normal, hover, active;
+
+                ButtonStyle(ImVec4 _normal, ImVec4 _hover, ImVec4 _active)
+                    : normal(ImGuiCol_Button, std::move(_normal))
+                    , hover(ImGuiCol_ButtonHovered, std::move(_hover))
+                    , active(ImGuiCol_ButtonActive, std::move(_active)) {}
+            };
+
+            auto styles = [&]() -> std::optional<ButtonStyle> {
+                if (!isTransparent) {
+                    ImVec4 buttonColorHover  = detail::lightenColor(buttonColor, 0.5f);
+                    ImVec4 buttonColorActive = detail::darkenColor(buttonColor, 0.7f);
+                    buttonColor.w            = 1.0;
+                    buttonColorHover.w       = 1.0;
+                    buttonColorActive.w      = 1.0;
+
+                    return std::make_optional<ButtonStyle>(buttonColor, buttonColorHover, buttonColorActive);
+                } else
+                    return std::nullopt;
+            }();
+
+            if (ImGui::Button(label.c_str(), ImVec2{ actualButtonSize, actualButtonSize })) {
+                isClicked = true;
+            }
         }
-        if (ImGui::Button(label.c_str(), ImVec2{ actualButtonSize, actualButtonSize })) {
-            isClicked = true;
-        }
-        if (!isTransparent) {
-            ImGui::PopStyleColor(3);
-        }
-        ImGui::PopStyleVar();
-        ImGui::PopFont();
 
         if (ImGui::IsItemHovered() && !toolTip.empty()) {
             ImGui::SetTooltip("%s", toolTip.c_str());
@@ -224,13 +233,12 @@ public:
             ImGui::SetNextWindowPos(ImVec2(centre.x - .5f * requiredPopupSize / 2, centre.y - .5f * requiredPopupSize));
 
             ImGui::OpenPopup(_popupId.c_str());
-            if (ImGui::BeginPopup(_popupId.c_str(), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration)) {
+            if (auto popup = IMW::Popup(_popupId.c_str(), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration)) {
                 if constexpr (menuType == MenuType::Radial) {
                     nButtonRows = drawButtonsOnArc(centre, _extraRadius + .5f * buttonSize + _padding);
                 } else {
                     nButtonRows = drawButtonsVertically();
                 }
-                ImGui::EndPopup();
             }
             ImGui::SetCursorScreenPos(oldPos);
         }
@@ -347,6 +355,6 @@ using RadialCircularMenu = PopupMenu<unique_id, MenuType::Radial>;
 template<std::size_t unique_id>
 using VerticalPopupMenu = PopupMenu<unique_id, MenuType::Vertical>;
 
-} // namespace fair
+} // namespace DigitizerUi
 
 #endif // OPENDIGITIZER_POPUPMENU_HPP

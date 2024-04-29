@@ -6,29 +6,28 @@ set(projectName "opendigitizer-ui")
 project(${projectName} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
-# set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # Mainly for FMT
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-set(sources
+set(DIGITIZER_UI_SRCS
     main.cpp
-    flowgraph.cpp
-    flowgraphitem.cpp
-    dashboard.cpp
-    dashboardpage.cpp
-    imguiutils.cpp
-    opendashboardpage.cpp
-    remotesignalsources.cpp)
+    Flowgraph.cpp
+    FlowgraphItem.cpp
+    Dashboard.cpp
+    DashboardPage.cpp
+    OpenDashboardPage.cpp
+    RemoteSignalSources.cpp
+    components/Block.cpp
+    components/Splitter.cpp
+    utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
+)
 
 set(GNURADIO_PREFIX
     "/usr/"
     CACHE FILEPATH "Prefix of the GNURadio installation")
-
-add_subdirectory(app_header)
-add_subdirectory(utils)
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
@@ -64,6 +63,7 @@ endif()
 # dependencies
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
+
 cmrc_add_resource_library(
   ui_assets
   NAMESPACE
@@ -101,7 +101,7 @@ if(EMSCRIPTEN)
   set(outputFileName "index")
   add_executable(${outputFileName})
 
-  target_sources(index PRIVATE ${sources})
+  target_sources(index PRIVATE ${DIGITIZER_UI_SRCS})
   set(target_name "index")
 
   # link the executable
@@ -109,10 +109,9 @@ if(EMSCRIPTEN)
     ${outputFileName}
     PRIVATE implot
             plf_colony
-            app_header
-            utils
             ui_assets
             sample_dashboards
+            stb
             fonts
             core
             client
@@ -145,9 +144,9 @@ if(EMSCRIPTEN)
 else() # native build
 
   set(target_name "opendigitizer-ui")
-  add_executable(${target_name} utils/TouchHandler.hpp)
+  add_executable(${target_name} common/TouchHandler.hpp)
 
-  target_sources(${target_name} PRIVATE ${sources})
+  target_sources(${target_name} PRIVATE ${DIGITIZER_UI_SRCS})
 
   # link the executable
   target_link_libraries(
@@ -161,8 +160,7 @@ else() # native build
             core
             client
             services
-            app_header
-            utils
+            stb
             ui_assets
             sample_dashboards
             digitizer_settings

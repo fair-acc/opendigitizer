@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifdef EMSCRIPTEN
-#include "emscripten_compat.hpp"
+#include "utils/emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>
 
@@ -375,7 +375,7 @@ concept is_creatable = requires {
     { new T<D> };
 };
 
-}
+} // namespace meta
 
 class Connection {
 public:

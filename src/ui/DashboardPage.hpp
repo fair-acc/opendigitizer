@@ -1,20 +1,17 @@
 #ifndef DASHBOARDPAGE_H
 #define DASHBOARDPAGE_H
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
-#include "grid_layout.hpp"
-#include "imguiutils.hpp"
-#include <imgui.h>
 #include <stack>
 #include <string>
 #include <vector>
 
-namespace DigitizerUi {
+#include "common/ImguiWrap.hpp"
 
-struct App;
+#include "components/Block.hpp"
+
+#include "GridLayout.hpp"
+
+namespace DigitizerUi {
 
 class DashboardPage {
 public:
@@ -53,16 +50,17 @@ public:
     };
 
 public:
-    void draw(App *app, Dashboard *Dashboard, Mode mode = Mode::View) noexcept;
-    void newPlot(Dashboard *dashboard);
+    void draw(Dashboard &dashboard, Mode mode = Mode::View) noexcept;
+    void newPlot(Dashboard &dashboard);
 
 private:
-    void                           drawPlots(App *app, DigitizerUi::DashboardPage::Mode mode, Dashboard *dashboard);
-    void                           drawGrid(float w, float h);
-    void                           drawLegend(App *app, Dashboard *dashboard, const Mode &mode) noexcept;
-    static void                    drawPlot(DigitizerUi::Dashboard::Plot &plot) noexcept;
+    void        drawPlots(Dashboard &dashboard, DigitizerUi::DashboardPage::Mode mode);
+    void        drawGrid(float w, float h);
+    void        drawLegend(Dashboard &dashboard, const Mode &mode) noexcept;
+    static void drawPlot(Dashboard &dashboard, DigitizerUi::Dashboard::Plot &plot) noexcept;
 
-    ImGuiUtils::BlockControlsPanel m_editPane;
+    //
+    components::BlockControlsPanelContext m_editPane;
 };
 
 } // namespace DigitizerUi

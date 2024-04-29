@@ -1,21 +1,16 @@
 #pragma once
 
-#ifndef IMPLOT_POINT_CLASS_EXTRA
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
 #include <functional>
-#include <imgui.h>
-#include <imgui_internal.h>
 #include <span>
 #include <vector>
 
-#include <imgui_node_editor.h>
+#include "common/ImguiWrap.hpp"
+#include "common/LookAndFeel.hpp"
 
-#include "common.hpp"
-#include "flowgraph.hpp"
-#include "imguiutils.hpp"
-#include "remotesignalsources.hpp"
+#include "Flowgraph.hpp"
+#include "RemoteSignalSources.hpp"
+
+#include "components/Block.hpp"
 
 namespace DigitizerUi {
 
@@ -26,14 +21,16 @@ public:
     FlowGraphItem();
     ~FlowGraphItem();
 
-    void                                draw(FlowGraph *fg, const ImVec2 &size);
+    void        draw(FlowGraph *fg, const ImVec2 &size);
 
-    std::function<Block *(FlowGraph *)> newSinkCallback;
+    std::string settings(FlowGraph *fg) const;
+    void        setSettings(FlowGraph *fg, const std::string &settings);
+    void        clear();
+    void        setStyle(LookAndFeel::Style style);
 
-    std::string                         settings(FlowGraph *fg) const;
-    void                                setSettings(FlowGraph *fg, const std::string &settings);
-    void                                clear();
-    void                                setStyle(Style style);
+    //
+    std::function<Block *(FlowGraph *)>                                                                newSinkCallback;
+    std::function<void(components::BlockControlsPanelContext &, const ImVec2 &, const ImVec2 &, bool)> requestBlockControlsPanel;
 
 private:
     enum class Alignment {
@@ -72,7 +69,7 @@ private:
         std::string                    settings;
     };
     std::unordered_map<FlowGraph *, Context> m_editors;
-    ImGuiUtils::BlockControlsPanel           m_editPane;
+    components::BlockControlsPanelContext    m_editPaneContext;
     bool                                     m_layoutGraph{ true };
 };
 

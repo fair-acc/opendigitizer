@@ -5,11 +5,27 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
-#include <imgui.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+
+#include <fmt/format.h>
+
+#include <gnuradio-4.0/basic/clock_source.hpp>
+#include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/testing/Delay.hpp>
+
+#include "common/Events.hpp"
+#include "common/ImguiWrap.hpp"
+#include "common/LookAndFeel.hpp"
+
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
-#include <imgui_internal.h>
 #include <implot.h>
+#include <misc/cpp/imgui_stdlib.h>
+
 #include <SDL.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <SDL_opengles2.h>
@@ -17,27 +33,19 @@
 #include <SDL_opengl.h>
 #endif
 
-#include <algorithm>
-#include <array>
-#include <cstdio>
-
-#include <fmt/format.h>
-#include <gnuradio-4.0/basic/clock_source.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
-#include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/testing/Delay.hpp>
-
-#include "app.hpp"
-#include "dashboard.hpp"
-#include "dashboardpage.hpp"
-#include "fair_header.hpp"
-#include "flowgraph.hpp"
-#include "flowgraphitem.hpp"
 #include "settings.hpp"
-#include "toolbar.hpp"
-#include "toolbar_block.hpp"
 
-#include "utils/TouchHandler.hpp"
+#include "App.hpp"
+#include "Dashboard.hpp"
+#include "DashboardPage.hpp"
+#include "Flowgraph.hpp"
+#include "FlowgraphItem.hpp"
+
+#include "common/AppDefinitions.hpp"
+#include "common/TouchHandler.hpp"
+
+#include "components/AppHeader.hpp"
+#include "components/Toolbar.hpp"
 
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
@@ -56,9 +64,11 @@ struct SDLState {
 
 } // namespace DigitizerUi
 
+using namespace DigitizerUi;
+
 static void main_loop(void *);
 
-static void loadFonts(DigitizerUi::App &app) {
+static void loadFonts(App &app) {
     static const ImWchar fullRange[] = {
         0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
         // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
@@ -85,12 +95,12 @@ static void loadFonts(DigitizerUi::App &app) {
         0, 0
     };
 
-    static const auto fontSize = [&app]() -> std::array<float, 4> {
-        if (std::abs(app.verticalDPI - app.defaultDPI) < 8.f) {
+    static const auto fontSize = []() -> std::array<float, 4> {
+        if (std::abs(LookAndFeel::instance().verticalDPI - LookAndFeel::instance().defaultDPI) < 8.f) {
             return { 20, 24, 28, 46 }; // 28" monitor
-        } else if (app.verticalDPI > 200) {
+        } else if (LookAndFeel::instance().verticalDPI > 200) {
             return { 16, 22, 23, 38 }; // likely mobile monitor
-        } else if (std::abs(app.defaultDPI - app.verticalDPI) >= 8.f) {
+        } else if (std::abs(LookAndFeel::instance().defaultDPI - LookAndFeel::instance().verticalDPI) >= 8.f) {
             return { 22, 26, 30, 46 }; // likely large fixed display monitor
         }
         return { 18, 24, 26, 46 }; // default
@@ -114,31 +124,33 @@ static void loadFonts(DigitizerUi::App &app) {
             return loadFont;
         };
 
-        app.fontNormal[index] = loadFont(fontSize[0]);
-        app.fontBig[index]    = loadFont(fontSize[1]);
-        app.fontBigger[index] = loadFont(fontSize[2]);
-        app.fontLarge[index]  = loadFont(fontSize[3]);
+        auto &lookAndFeel             = LookAndFeel::mutableInstance();
+        lookAndFeel.fontNormal[index] = loadFont(fontSize[0]);
+        lookAndFeel.fontBig[index]    = loadFont(fontSize[1]);
+        lookAndFeel.fontBigger[index] = loadFont(fontSize[2]);
+        lookAndFeel.fontLarge[index]  = loadFont(fontSize[3]);
     };
 
     loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
-    ImGui::GetIO().FontDefault = app.fontNormal[app.prototypeMode];
+    ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
 
     auto loadIconsFont         = [](auto name, float fontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);
         return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), static_cast<int>(file.size()), fontSize, &config, glyphRanges); // alt: fullRange
     };
 
-    app.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
-    app.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 18);
-    app.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 36);
-    app.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 12);
-    app.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 18);
-    app.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 36);
+    auto &lookAndFeel               = LookAndFeel::mutableInstance();
+    lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
+    lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 18);
+    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 36);
+    lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 12);
+    lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 18);
+    lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 36);
 }
 
-void setWindowMode(SDL_Window *window, DigitizerUi::WindowMode &state) {
-    using enum DigitizerUi::WindowMode;
+void setWindowMode(SDL_Window *window, const WindowMode &state) {
+    using enum WindowMode;
     const Uint32 flags        = SDL_GetWindowFlags(window);
     const bool   isMaximised  = (flags & SDL_WINDOW_MAXIMIZED) != 0;
     const bool   isMinimised  = (flags & SDL_WINDOW_MINIMIZED) != 0;
@@ -190,8 +202,8 @@ int main(int argc, char **argv) {
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_DisplayMode current;
     SDL_GetCurrentDisplayMode(0, &current);
-    const auto            window_flags = static_cast<SDL_WindowFlags>(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    DigitizerUi::SDLState sdlState;
+    const auto window_flags = static_cast<SDL_WindowFlags>(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDLState   sdlState;
     sdlState.window    = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     sdlState.glContext = SDL_GL_CreateContext(sdlState.window);
     if (!sdlState.glContext) {
@@ -216,7 +228,20 @@ int main(int argc, char **argv) {
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    auto &app = DigitizerUi::App::instance();
+    auto &app = App::instance();
+
+    // Init openDashboardPage
+    app.openDashboardPage.requestCloseDashboard = [&] {
+        app.closeDashboard();
+    };
+    app.openDashboardPage.requestLoadDashboard = [&](const auto &desc) {
+        if (!desc) {
+            app.loadEmptyDashboard();
+        } else {
+            app.loadDashboard(desc);
+            app.mainViewMode = ViewMode::VIEW;
+        }
+    };
     app.openDashboardPage.addSource(settings.serviceUrl().path("/dashboards").build().str());
     app.openDashboardPage.addSource("example://builtin-samples");
 #ifdef EMSCRIPTEN
@@ -224,44 +249,59 @@ int main(int argc, char **argv) {
 #else
     app.executable = argv[0];
 #endif
-    app.sdlState               = &sdlState;
+    app.sdlState                         = &sdlState;
 
-    app.fgItem.newSinkCallback = [&](DigitizerUi::FlowGraph *) mutable {
+    app.fgItem.requestBlockControlsPanel = [&](components::BlockControlsPanelContext &panelContext, const ImVec2 &pos, const ImVec2 &size, bool horizontalSplit) {
+        auto &dashboard     = app.dashboard;
+        auto &dashboardPage = app.dashboardPage;
+        components::BlockControlsPanel(*dashboard, dashboardPage, panelContext, pos, size, horizontalSplit);
+    };
+    app.fgItem.newSinkCallback = [&](FlowGraph *) mutable {
         auto newSink = app.dashboard->createSink();
-        app.dashboardPage.newPlot(app.dashboard.get());
+        app.dashboardPage.newPlot(*app.dashboard);
         auto &plot = app.dashboard->plots().back();
         plot.sourceNames.push_back(newSink->name);
         return newSink;
     };
 
-    app.verticalDPI = [&app]() -> float {
-        float diagonalDPI   = app.defaultDPI;
+    LookAndFeel::mutableInstance().verticalDPI = [&app]() -> float {
+        float diagonalDPI   = LookAndFeel::instance().defaultDPI;
         float horizontalDPI = diagonalDPI;
         float verticalDPI   = diagonalDPI;
         if (SDL_GetDisplayDPI(0, &diagonalDPI, &horizontalDPI, &verticalDPI) != 0) {
             fmt::print("Failed to obtain DPI information for display 0: {}\n", SDL_GetError());
-            return app.defaultDPI;
+            return LookAndFeel::instance().defaultDPI;
         }
         return verticalDPI;
     }();
 
 #ifndef EMSCRIPTEN
-    DigitizerUi::BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
+    BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
 #endif
     // TODO populate these from the gr::globalBlockRegistry()
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::ImPlotSink>("opendigitizer::ImPlotSink");
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
-    DigitizerUi::BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
-    // DigitizerUi::BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
-    DigitizerUi::BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
-    DigitizerUi::BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
-    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
-    DigitizerUi::BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
+    BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
+    BlockType::registry().addBlockType<opendigitizer::ImPlotSink>("opendigitizer::ImPlotSink");
+    BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
+    BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
+    // BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
+    BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
+    BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
+    BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
+    BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
 
     loadFonts(app);
 
-    app_header::load_header_assets();
+    // Init header
+    app.header.requestApplicationSwitchMode = [&app](ViewMode mode) {
+        app.mainViewMode = mode;
+    };
+    app.header.requestApplicationSwitchTheme = [&app](LookAndFeel::Style style) {
+        app.setStyle(style);
+    };
+    app.header.requestApplicationStop = [&app] {
+        app.running = false;
+    };
+    app.header.loadAssets();
 
     if (argc > 1) { // load dashboard if specified on the command line/query parameter
         const char *url = argv[1];
@@ -303,16 +343,16 @@ std::string localFlowgraphGrc = {};
 
 static void main_loop(void *arg) {
     const auto startLoop = std::chrono::high_resolution_clock::now();
-    auto      *app       = static_cast<DigitizerUi::App *>(arg);
+    auto      *app       = static_cast<App *>(arg);
     ImGuiIO   &io        = ImGui::GetIO();
 
-    app->fireCallbacks();
+    EventLoop::instance().fireCallbacks();
 
     if (app->dashboard && app->dashboard->localFlowGraph.graphChanged()) {
         // create the graph and the scheduler
         auto execution = app->dashboard->localFlowGraph.createExecutionContext();
         app->dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
-        app->_toolbarBlocks = std::move(execution.toolbarBlocks);
+        app->toolbarBlocks = std::move(execution.toolbarBlocks);
         app->dashboard->loadPlotSources();
         app->assignScheduler(std::move(execution.graph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
@@ -347,23 +387,23 @@ static void main_loop(void *arg) {
                 app->running = false;
                 break;
             case SDL_WINDOWEVENT_RESTORED:
-                app->windowMode = DigitizerUi::WindowMode::RESTORED;
+                LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED;
                 break;
             case SDL_WINDOWEVENT_MINIMIZED:
-                app->windowMode = DigitizerUi::WindowMode::MINIMISED;
+                LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED;
                 break;
             case SDL_WINDOWEVENT_MAXIMIZED:
-                app->windowMode = DigitizerUi::WindowMode::MAXIMISED;
+                LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED;
                 break;
             case SDL_WINDOWEVENT_SIZE_CHANGED:
                 break;
             }
             break;
         }
-        fair::TouchHandler<>::processSDLEvent(event);
+        TouchHandler<>::processSDLEvent(event);
         // Capture events here, based on io.WantCaptureMouse and io.WantCaptureKeyboard
     }
-    fair::TouchHandler<>::updateGestures();
+    TouchHandler<>::updateGestures();
 
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
@@ -374,116 +414,105 @@ static void main_loop(void *arg) {
     int width, height;
     SDL_GetWindowSize(app->sdlState->window, &width, &height);
     ImGui::SetNextWindowSize({ float(width), float(height) });
-    fair::TouchHandler<>::applyToImGui();
+    TouchHandler<>::applyToImGui();
 
-    ImGui::Begin("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    {
+        IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    const char *title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
-    app_header::draw_header_bar(title, app->fontLarge[app->prototypeMode],
-            app->style() == DigitizerUi::Style::Light ? app_header::Style::Light : app_header::Style::Dark);
+        const char *title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
+        app->header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode],
+                LookAndFeel::instance().style);
 
-    if (app->dashboard == nullptr) {
-        ImGui::BeginDisabled();
-    }
+        IMW::Disabled disabled(app->dashboard == nullptr);
 
-    if (app->mainViewMode == "View" || app->mainViewMode == "Layout" || app->mainViewMode == "FlowGraph" || app->mainViewMode.empty()) {
-        DigitizerUi::drawToolbar();
-    }
-
-    ImGuiID viewId = 0;
-    if (app->mainViewMode == "View" || app->mainViewMode.empty()) {
-        if (app->dashboard != nullptr) {
-            app->dashboardPage.draw(app, app->dashboard.get());
+        if (app->mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
+            components::Toolbar(app->toolbarBlocks);
         }
-    } else if (app->mainViewMode == "Layout") {
-        // The ID of this tab is different from the ID of the view tab. That means that the plots in the two tabs
-        // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
-        // not reflect in the layout tab.
-        // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
-        // of the view tab.
-        ImGui::PushOverrideID(viewId);
-        if (app->dashboard != nullptr) {
-            app->dashboardPage.draw(app, app->dashboard.get(), DigitizerUi::DashboardPage::Mode::Layout);
-        }
-        ImGui::PopID();
-    } else if (app->mainViewMode == "FlowGraph") {
-        if (app->dashboard != nullptr) {
-            // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
-            ImGui::BeginTabBar("maintabbar");
-            if (ImGui::BeginTabItem("Local")) {
-                auto contentRegion = ImGui::GetContentRegionAvail();
-                app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
-                ImGui::EndTabItem();
+
+        ImGuiID viewId = 0;
+        if (app->mainViewMode == ViewMode::VIEW) {
+            if (app->dashboard != nullptr) {
+                app->dashboardPage.draw(*app->dashboard);
             }
-            if (ImGui::BeginTabItem("Local - YAML")) {
-                if (ImGui::Button("Reset")) {
-                    localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Apply")) {
-                    auto sinkNames = [](const auto &blocks) {
-                        using namespace std;
-                        auto isPlotSink = [](const auto &b) { return b->type().isPlotSink(); };
-                        auto getName    = [](const auto &b) { return b->name; };
-                        auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
-                        auto names      = std::vector(namesView.begin(), namesView.end());
-                        ranges::sort(names);
-                        names.erase(std::unique(names.begin(), names.end()), names.end());
-                        return names;
-                    };
-
-                    const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-
-                    try {
-                        app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                        const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-                        std::vector<std::string> toRemove;
-                        std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                        std::vector<std::string> toAdd;
-                        std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                        for (const auto &name : toRemove) {
-                            app->dashboard->removeSinkFromPlots(name);
-                        }
-                        for (const auto &newName : toAdd) {
-                            app->dashboardPage.newPlot(app->dashboard.get());
-                            app->dashboard->plots().back().sourceNames.push_back(newName);
-                        }
-                    } catch (const std::exception &e) {
-                        // TODO show error message
-                        fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
-                    }
-                }
-
-                ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
-                ImGui::EndTabItem();
+        } else if (app->mainViewMode == ViewMode::LAYOUT) {
+            // The ID of this tab is different from the ID of the view tab. That means that the plots in the two tabs
+            // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
+            // not reflect in the layout tab.
+            // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
+            // of the view tab.
+            IMW::OverrideId overrideId(viewId);
+            if (app->dashboard != nullptr) {
+                app->dashboardPage.draw(*app->dashboard, DashboardPage::Mode::Layout);
             }
-
-            for (auto &s : app->dashboard->remoteServices()) {
-                if (ImGui::BeginTabItem(s.name.c_str())) {
-                    if (ImGui::Button("Reload from service")) {
-                        s.reload();
+        } else if (app->mainViewMode == ViewMode::FLOWGRAPH) {
+            if (app->dashboard != nullptr) {
+                // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
+                IMW::TabBar tabBar("maintabbar", 0);
+                if (auto item = IMW::TabItem("Local", nullptr, 0)) {
+                    auto contentRegion = ImGui::GetContentRegionAvail();
+                    app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
+                }
+                if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
+                    if (ImGui::Button("Reset")) {
+                        localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Execute on service")) {
-                        s.execute();
+                    if (ImGui::Button("Apply")) {
+                        auto sinkNames = [](const auto &blocks) {
+                            using namespace std;
+                            auto isPlotSink = [](const auto &b) { return b->type().isPlotSink(); };
+                            auto getName    = [](const auto &b) { return b->name; };
+                            auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
+                            auto names      = std::vector(namesView.begin(), namesView.end());
+                            ranges::sort(names);
+                            names.erase(std::unique(names.begin(), names.end()), names.end());
+                            return names;
+                        };
+
+                        const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+
+                        try {
+                            app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                            const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+                            std::vector<std::string> toRemove;
+                            std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
+                            std::vector<std::string> toAdd;
+                            std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
+                            for (const auto &name : toRemove) {
+                                app->dashboard->removeSinkFromPlots(name);
+                            }
+                            for (const auto &newName : toAdd) {
+                                app->dashboardPage.newPlot(*app->dashboard);
+                                app->dashboard->plots().back().sourceNames.push_back(newName);
+                            }
+                        } catch (const std::exception &e) {
+                            // TODO show error message
+                            fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
+                        }
                     }
-                    ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
-                    ImGui::EndTabItem();
+
+                    ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+                }
+
+                for (auto &s : app->dashboard->remoteServices()) {
+                    if (auto item = IMW::TabItem(s.name.c_str(), nullptr, 0)) {
+                        if (ImGui::Button("Reload from service")) {
+                            s.reload();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Execute on service")) {
+                            s.execute();
+                        }
+                        ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
+                    }
                 }
             }
-            ImGui::EndTabBar();
+        } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
+            app->openDashboardPage.draw(app->dashboard.get());
+        } else {
+            fmt::print("unknown view mode {}\n", static_cast<int>(app->mainViewMode));
         }
-    } else if (app->mainViewMode == "OpenSaveDashboard") {
-        app->openDashboardPage.draw(app);
-    } else {
-        fmt::print("unknown view mode {}\n", app->mainViewMode);
     }
-
-    if (app->dashboard == nullptr) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::End();
 
     // Rendering
     ImGui::Render();
@@ -493,8 +522,8 @@ static void main_loop(void *arg) {
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    const auto stopLoop = std::chrono::high_resolution_clock::now();
-    app->execTime       = std::chrono::duration_cast<std::chrono::milliseconds>(stopLoop - startLoop);
+    const auto stopLoop                     = std::chrono::high_resolution_clock::now();
+    LookAndFeel::mutableInstance().execTime = std::chrono::duration_cast<std::chrono::milliseconds>(stopLoop - startLoop);
     SDL_GL_SwapWindow(app->sdlState->window);
-    setWindowMode(app->sdlState->window, app->windowMode);
+    setWindowMode(app->sdlState->window, LookAndFeel::instance().windowMode);
 }

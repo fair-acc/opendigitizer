@@ -1,16 +1,21 @@
-#include "flowgraphitem.hpp"
+#include "FlowgraphItem.hpp"
 
 #include <algorithm>
-#include <crude_json.h>
-#include <imgui.h>
-#include <imgui_node_editor.h>
 
+#include <crude_json.h>
 #include <fmt/format.h>
+
+#include "common/ImguiWrap.hpp"
+
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "app.hpp"
-#include "flowgraph.hpp"
-#include "imguiutils.hpp"
+#include "Flowgraph.hpp"
+
+#include "common/LookAndFeel.hpp"
+
+#include "components/Dialog.hpp"
+#include "components/ListBox.hpp"
+#include "components/Splitter.hpp"
 
 namespace DigitizerUi {
 
@@ -85,19 +90,19 @@ std::string FlowGraphItem::settings(FlowGraph *fg) const {
     return json.dump();
 }
 
-static void setEditorStyle(ax::NodeEditor::EditorContext *ed, Style s) {
+static void setEditorStyle(ax::NodeEditor::EditorContext *ed, LookAndFeel::Style s) {
     ax::NodeEditor::SetCurrentEditor(ed);
     auto &style        = ax::NodeEditor::GetStyle();
     style.NodeRounding = 0;
     style.PinRounding  = 0;
 
     switch (s) {
-    case Style::Dark:
+    case LookAndFeel::Style::Dark:
         style.Colors[ax::NodeEditor::StyleColor_Bg]         = { 0.1, 0.1, 0.1, 1 };
         style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.2, 0.2, 0.2, 1 };
         style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.7, 0.7, 0.7, 1 };
         break;
-    case Style::Light:
+    case LookAndFeel::Style::Light:
         style.Colors[ax::NodeEditor::StyleColor_Bg]         = { 1, 1, 1, 1 };
         style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = { 0.94, 0.92, 1, 1 };
         style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = { 0.38, 0.38, 0.38, 1 };
@@ -136,12 +141,12 @@ void FlowGraphItem::setSettings(FlowGraph *fg, const std::string &settings) {
 
     c.editor = ax::NodeEditor::CreateEditor(&c.config);
     ax::NodeEditor::SetCurrentEditor(c.editor);
-    setEditorStyle(c.editor, App::instance().style());
+    setEditorStyle(c.editor, LookAndFeel::instance().style);
 
     m_layoutGraph = true;
 }
 
-void FlowGraphItem::setStyle(Style s) {
+void FlowGraphItem::setStyle(LookAndFeel::Style s) {
     for (auto &e : m_editors) {
         setEditorStyle(e.second.editor, s);
     }
@@ -152,7 +157,7 @@ void FlowGraphItem::clear() {
 }
 
 static uint32_t colorForDataType(DataType t) {
-    if (App::instance().style() == Style::Light) {
+    if (LookAndFeel::instance().style == LookAndFeel::Style::Light) {
         switch (t) {
         case DataType::ComplexFloat64: return 0xff795548;
         case DataType::ComplexFloat32: return 0xff2196F3;
@@ -200,7 +205,7 @@ static uint32_t colorForDataType(DataType t) {
 }
 
 static uint32_t darkenOrLighten(uint32_t color) {
-    if (App::instance().style() == Style::Light) {
+    if (LookAndFeel::instance().style == LookAndFeel::Style::Light) {
         uint32_t r = color & 0xff000000;
         for (int i = 0; i < 3; ++i) {
             int shift = 8 * i;
@@ -307,140 +312,138 @@ void FlowGraphItem::addBlock(const Block &b, std::optional<ImVec2> nodePos, Alig
         return false;
     }();
 
-    if (filteredOut) {
-        ImGui::BeginDisabled();
-    }
+    {
+        IMW::Disabled disabled(filteredOut);
 
-    if (nodePos) {
-        ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
+        if (nodePos) {
+            ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
 
-        auto p = nodePos.value();
-        if (alignment == Alignment::Right) {
-            float       width = 80;
-            std::string value;
-            for (const auto &val : b.parameters()) {
-                valToString(val.second, value);
-                float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
-                width   = std::max(width, w);
+            auto p = nodePos.value();
+            if (alignment == Alignment::Right) {
+                float       width = 80;
+                std::string value;
+                for (const auto &val : b.parameters()) {
+                    valToString(val.second, value);
+                    float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
+                    width   = std::max(width, w);
+                }
+                width += padding.x + padding.z;
+                p.x -= width;
             }
-            width += padding.x + padding.z;
-            p.x -= width;
+
+            ax::NodeEditor::SetNodePosition(nodeId, p);
+        }
+        ax::NodeEditor::BeginNode(nodeId);
+        auto nodeBeginPos = ImGui::GetCursorScreenPos();
+
+        ImGui::TextUnformatted(b.name.c_str());
+
+        auto         curPos       = ImGui::GetCursorScreenPos();
+        auto         leftPos      = curPos.x - padding.x;
+        const int    rectHeight   = 14;
+        const int    rectsSpacing = 5;
+        const int    textMargin   = 2;
+        const ImVec2 minSize{ 80.0f, 70.0f };
+        auto         yMax{ minSize.y }; // we have to keep track of the Node Size ourselves
+
+        std::string  value;
+        for (const auto &val : b.parameters()) {
+            const auto metaKey = val.first + "::visible";
+            const auto it      = b.metaInformation().find(metaKey);
+            if (it != b.metaInformation().end()) {
+                if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                    continue;
+                }
+            }
+            valToString(val.second, value);
+            ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
+        }
+        auto positionAfterTexts = ImGui::GetCursorScreenPos();
+
+        ImGui::SetCursorScreenPos(curPos);
+        const auto &inputs       = b.inputs();
+        auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
+
+        auto        curScreenPos = ImGui::GetCursorScreenPos();
+        ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
+
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            inputWidths[i] = ImGui::CalcTextSize(b.type().inputs[i].name.c_str()).x + textMargin * 2;
+            if (!filteredOut) {
+                addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight });
+            }
+            pos.y += rectHeight + rectsSpacing;
+        }
+        // make sure the node ends up being tall enough to fit all the pins
+        yMax                     = std::max(yMax, pos.y - curPos.y);
+
+        const auto &outputs      = b.outputs();
+        auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
+        auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
+        pos                      = { curPos.x - padding.x + s.x, curPos.y };
+        for (std::size_t i = 0; i < outputs.size(); ++i) {
+            outputWidths[i] = ImGui::CalcTextSize(b.type().outputs[i].name.c_str()).x + textMargin * 2;
+            if (!filteredOut) {
+                addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight });
+            }
+            pos.y += rectHeight + rectsSpacing;
+        }
+        // likewise for the output pins
+        yMax = std::max(yMax, pos.y - curScreenPos.y);
+
+        // Now for the Filter Button
+        ImGui::SetCursorScreenPos(positionAfterTexts);
+        curScreenPos            = ImGui::GetCursorScreenPos();
+        auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
+        auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
+        ImVec2 filterPos;
+
+        if (myHeight < yMax) {
+            // Find the lower end, deduct myHeight
+            filterPos = curPos;
+            filterPos.y += yMax - filterButtonSize;
+            ImGui::SetCursorScreenPos(filterPos);
         }
 
-        ax::NodeEditor::SetNodePosition(nodeId, p);
-    }
-    ax::NodeEditor::BeginNode(nodeId);
-    auto nodeBeginPos = ImGui::GetCursorScreenPos();
-
-    ImGui::TextUnformatted(b.name.c_str());
-
-    auto         curPos       = ImGui::GetCursorScreenPos();
-    auto         leftPos      = curPos.x - padding.x;
-    const int    rectHeight   = 14;
-    const int    rectsSpacing = 5;
-    const int    textMargin   = 2;
-    const ImVec2 minSize{ 80.0f, 70.0f };
-    auto         yMax{ minSize.y }; // we have to keep track of the Node Size ourselves
-
-    std::string  value;
-    for (const auto &val : b.parameters()) {
-        const auto metaKey = val.first + "::visible";
-        const auto it      = b.metaInformation().find(metaKey);
-        if (it != b.metaInformation().end()) {
-            if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
-                continue;
+        {
+            IMW::ChangeStrId newId(b.name.c_str());
+            if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
+                if (m_filterBlock == &b) {
+                    m_filterBlock = nullptr;
+                } else {
+                    m_filterBlock = &b;
+                }
             }
         }
-        valToString(val.second, value);
-        ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
-    }
-    auto positionAfterTexts = ImGui::GetCursorScreenPos();
 
-    ImGui::SetCursorScreenPos(curPos);
-    const auto &inputs       = b.inputs();
-    auto       *inputWidths  = static_cast<float *>(alloca(sizeof(float) * inputs.size()));
+        ax::NodeEditor::EndNode();
 
-    auto        curScreenPos = ImGui::GetCursorScreenPos();
-    ImVec2      pos          = { curScreenPos.x - padding.x, curScreenPos.y };
+        // The input/output pins are drawn after ending the node because otherwise
+        // drawing them would increase the node size, which we need to know to correctly place the
+        // output pins, and that would cause the nodes to continuously grow in width
 
-    for (std::size_t i = 0; i < inputs.size(); ++i) {
-        inputWidths[i] = ImGui::CalcTextSize(b.type().inputs[i].name.c_str()).x + textMargin * 2;
-        if (!filteredOut) {
-            addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, { inputWidths[i], rectHeight });
+        ImGui::SetCursorScreenPos(curPos);
+        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
+
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            const auto &in = inputs[i];
+
+            ImGui::SetCursorPosX(leftPos - inputWidths[i]);
+            drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().inputs[i].name, in.type);
         }
-        pos.y += rectHeight + rectsSpacing;
-    }
-    // make sure the node ends up being tall enough to fit all the pins
-    yMax                     = std::max(yMax, pos.y - curPos.y);
 
-    const auto &outputs      = b.outputs();
-    auto       *outputWidths = static_cast<float *>(alloca(sizeof(float) * outputs.size()));
-    auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
-    pos                      = { curPos.x - padding.x + s.x, curPos.y };
-    for (std::size_t i = 0; i < outputs.size(); ++i) {
-        outputWidths[i] = ImGui::CalcTextSize(b.type().outputs[i].name.c_str()).x + textMargin * 2;
-        if (!filteredOut) {
-            addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, { outputWidths[i], rectHeight });
+        ImGui::SetCursorScreenPos(curPos);
+        for (std::size_t i = 0; i < outputs.size(); ++i) {
+            const auto &out = outputs[i];
+
+            auto        s   = ax::NodeEditor::GetNodeSize(nodeId);
+            ImGui::SetCursorPosX(leftPos + s.x);
+            drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().outputs[i].name, out.type);
         }
-        pos.y += rectHeight + rectsSpacing;
-    }
-    // likewise for the output pins
-    yMax = std::max(yMax, pos.y - curScreenPos.y);
 
-    // Now for the Filter Button
-    ImGui::SetCursorScreenPos(positionAfterTexts);
-    curScreenPos            = ImGui::GetCursorScreenPos();
-    auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
-    auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
-    ImVec2 filterPos;
-
-    if (myHeight < yMax) {
-        // Find the lower end, deduct myHeight
-        filterPos = curPos;
-        filterPos.y += yMax - filterButtonSize;
-        ImGui::SetCursorScreenPos(filterPos);
+        ImGui::SetCursorScreenPos(curPos);
     }
 
-    ImGui::PushID(b.name.c_str());
-    if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
-        if (m_filterBlock == &b) {
-            m_filterBlock = nullptr;
-        } else {
-            m_filterBlock = &b;
-        }
-    }
-    ImGui::PopID();
-
-    ax::NodeEditor::EndNode();
-
-    // The input/output pins are drawn after ending the node because otherwise
-    // drawing them would increase the node size, which we need to know to correctly place the
-    // output pins, and that would cause the nodes to continuously grow in width
-
-    ImGui::SetCursorScreenPos(curPos);
-    auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
-
-    for (std::size_t i = 0; i < inputs.size(); ++i) {
-        const auto &in = inputs[i];
-
-        ImGui::SetCursorPosX(leftPos - inputWidths[i]);
-        drawPin(drawList, { inputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().inputs[i].name, in.type);
-    }
-
-    ImGui::SetCursorScreenPos(curPos);
-    for (std::size_t i = 0; i < outputs.size(); ++i) {
-        const auto &out = outputs[i];
-
-        auto        s   = ax::NodeEditor::GetNodeSize(nodeId);
-        ImGui::SetCursorPosX(leftPos + s.x);
-        drawPin(drawList, { outputWidths[i], rectHeight }, rectsSpacing, textMargin, b.type().outputs[i].name, out.type);
-    }
-
-    if (filteredOut) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::SetCursorScreenPos(curPos);
     const auto size = ax::NodeEditor::GetNodeSize(nodeId);
     ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
 }
@@ -461,7 +464,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = ImGuiUtils::splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.block);
+    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPaneContext.block);
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
@@ -561,10 +564,10 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         auto block = n.AsPointer<Block>();
 
         if (!block) {
-            m_editPane.block = nullptr;
+            m_editPaneContext.block = nullptr;
         } else {
-            m_editPane.block     = block;
-            m_editPane.closeTime = std::chrono::system_clock::now() + App::instance().editPaneCloseDelay;
+            m_editPaneContext.block     = block;
+            m_editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 
@@ -595,21 +598,19 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     }
     m_mouseDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
 
-    if (ImGui::BeginPopup("ctx_menu")) {
+    if (auto menu = IMW::Popup("ctx_menu", 0)) {
         if (ImGui::MenuItem("New block")) {
             openNewBlockDialog = true;
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
             sortNodes(fg, blocks);
         }
-        ImGui::EndPopup();
     }
 
-    if (ImGui::BeginPopup("block_ctx_menu")) {
+    if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (ImGui::MenuItem("Delete")) {
             fg->deleteBlock(m_selectedBlock);
         }
-        ImGui::EndPopup();
     }
 
     // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
@@ -619,55 +620,58 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     } else {
         ImGui::SetNextWindowPos({ origCursorPos.x, origCursorPos.y + size.y * (1 - ratio) - 39 }, ImGuiCond_Always); // on vertical, we need some extra space for the splitter
     }
+
     ImGui::SetNextWindowSize({ size.x * (ratio && horizontalSplit ? 1 - ratio : 1), 37 });
-    ImGui::Begin("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
-    // These Buttons are rendered on top of the Editor, to make them properly readable, take out the opacity
-    ImVec4 buttonColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
-    buttonColor.w      = 1.0f;
-    ImGui::PushStyleColor(ImGuiCol_Button, buttonColor);
+    {
+        IMW::Window overlay("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
+        // These Buttons are rendered on top of the Editor, to make them properly readable, take out the opacity
+        ImVec4 buttonColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+        buttonColor.w      = 1.0f;
 
-    ImGui::SetCursorPosX(15);
-    if (ImGui::Button("Add signal")) {
-        ImGui::OpenPopup("addSignalPopup");
+        {
+            IMW::StyleColor buttonStyle(ImGuiCol_Button, buttonColor);
+
+            ImGui::SetCursorPosX(15);
+            if (ImGui::Button("Add signal")) {
+                ImGui::OpenPopup("addSignalPopup");
+            }
+
+            ImGui::SameLine();
+
+            float newSinkButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("New Sink").x - 15;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + newSinkButtonPos / 2 - ImGui::CalcTextSize("Re-Layout Graph").x);
+            if (ImGui::Button("Re-Layout Graph")) {
+                m_layoutGraph = true;
+            }
+
+            ImGui::SameLine();
+
+            ImGui::SetCursorPosX(newSinkButtonPos);
+            if (ImGui::Button("New sink") && newSinkCallback) {
+                m_nodesToArrange.push_back(newSinkCallback(fg));
+            }
+        }
+
+        if (openNewBlockDialog) {
+            ImGui::OpenPopup("New block");
+        }
+        drawNewBlockDialog(fg);
+        drawAddSourceDialog(fg);
     }
-
-    ImGui::SameLine();
-
-    float newSinkButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("New Sink").x - 15;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + newSinkButtonPos / 2 - ImGui::CalcTextSize("Re-Layout Graph").x);
-    if (ImGui::Button("Re-Layout Graph")) {
-        m_layoutGraph = true;
-    }
-
-    ImGui::SameLine();
-
-    ImGui::SetCursorPosX(newSinkButtonPos);
-    if (ImGui::Button("New sink") && newSinkCallback) {
-        m_nodesToArrange.push_back(newSinkCallback(fg));
-    }
-    ImGui::PopStyleColor();
-
-    if (openNewBlockDialog) {
-        ImGui::OpenPopup("New block");
-    }
-    drawNewBlockDialog(fg);
-    drawAddSourceDialog(fg);
-
-    ImGui::End(); // overlay
 
     if (horizontalSplit) {
         const float w = size.x * ratio;
-        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left + size.x - w + halfSplitterWidth, top }, { w - halfSplitterWidth, size.y }, true);
+        requestBlockControlsPanel(m_editPaneContext, { left + size.x - w + halfSplitterWidth, top }, { w - halfSplitterWidth, size.y }, true);
     } else {
         const float h = size.y * ratio;
-        ImGuiUtils::drawBlockControlsPanel(m_editPane, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth }, false);
+        requestBlockControlsPanel(m_editPaneContext, { left, top + size.y - h + halfSplitterWidth }, { size.x, h - halfSplitterWidth }, false);
     }
 }
 
 void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
     ImGui::SetNextWindowSize({ 600, 300 }, ImGuiCond_Once);
-    if (ImGui::BeginPopupModal("New block")) {
-        auto ret            = ImGuiUtils::filteredListBox("blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
+    if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
+        auto ret            = components::FilteredListBox("blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
             if (it.second->isSource()) {
                 return {};
             }
@@ -675,20 +679,19 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
         });
         m_selectedBlockType = ret ? ret.value().first : nullptr;
 
-        if (ImGuiUtils::drawDialogButtons() == ImGuiUtils::DialogButton::Ok) {
+        if (components::DialogButtons() == components::DialogButton::Ok) {
             if (m_selectedBlockType) {
                 m_createNewBlock = true;
             }
         }
-        ImGui::EndPopup();
     }
 }
 
 void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
     ImGui::SetNextWindowSize({ 800, 600 }, ImGuiCond_Once);
-    if (ImGui::BeginPopupModal("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (auto menu = IMW::ModalPopup("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         static BlockType *sel = nullptr;
-        if (ImGui::BeginChild(1, { 0, ImGui::GetContentRegionAvail().y - 50 })) {
+        if (auto child = IMW::ChildWithId(1, ImVec2{ 0, ImGui::GetContentRegionAvail().y - 50 }, 0, 0)) {
             struct Cat {
                 std::string              name;
                 std::vector<BlockType *> types;
@@ -730,7 +733,7 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         }
                         ImGui::Separator();
                         ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
-                        ImGui::BeginChild("Signals");
+                        IMW::Child signals("Signals", ImVec2(0, 0), 0, 0);
 
                         signalList.addRemoteSignalCallback = [fg](const opencmw::service::dns::Entry &entry) {
                             const auto uri = opencmw::URI<>::UriFactory().scheme(entry.protocol).hostName(entry.hostname).port(static_cast<uint16_t>(entry.port)).path(entry.service_name).addQueryParameter("channelNameFilter", entry.signal_name).build();
@@ -744,8 +747,6 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                         if (ImGui::Button("Refresh")) {
                             signalList.update();
                         }
-
-                        ImGui::EndChild();
                     }
 
                     if (isRemote) {
@@ -782,12 +783,10 @@ void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
                 }
             }
         }
-        ImGui::EndChild();
 
-        if (ImGuiUtils::drawDialogButtons(sel) == ImGuiUtils::DialogButton::Ok) {
+        if (components::DialogButtons(sel) == components::DialogButton::Ok) {
             fg->addBlock(sel->createBlock({}));
         }
-        ImGui::EndPopup();
     }
 }
 void FlowGraphItem::sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks) {

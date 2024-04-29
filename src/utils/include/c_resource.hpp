@@ -115,7 +115,6 @@ inline constexpr bool always_false = false;
  * providing a consistent and type-safe interface for resource management in C++.
  */
 template<typename T, auto *constructFunction, auto *destructFunction, bool unconditionallyDestruct = false>
-    requires std::is_pointer_v<T> || std::is_integral_v<T>
 struct c_resource {
     using element_type = T;
 
@@ -344,6 +343,17 @@ public:
     private:
         element_type ptr_;
     };
+};
+template<auto *constructFunction, auto *destructFunction>
+struct c_resource<void, constructFunction, destructFunction, true> {
+    template<typename... Ts>
+    c_resource(Ts &&...args) {
+        constructFunction(std::forward<Ts>(args)...);
+    }
+
+    ~c_resource() {
+        destructFunction();
+    }
 };
 
 } // namespace stdex
