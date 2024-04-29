@@ -61,6 +61,7 @@ FlowGraphItem::Context::Context() {
         }
         return c->settings.size();
     };
+    config.EnableSmoothZoom = true;
 }
 
 std::string FlowGraphItem::settings(FlowGraph *fg) const {

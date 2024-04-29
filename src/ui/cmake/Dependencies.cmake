@@ -18,7 +18,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     imgui-node-editor
     GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
-    GIT_TAG         v0.9.3 # latest as of 2023-12-19
+    GIT_TAG         e78e447900909a051817a760efe13fe83e6e1afc # master from April 2024
 )
 
 FetchContent_Declare(
