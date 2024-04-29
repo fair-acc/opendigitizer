@@ -23,7 +23,7 @@ class InputKeypad {
     static inline constexpr const char *keypad_name = "KeypadX";
 
     //
-    bool        _visible     = true;
+    bool        _visible     = false;
     bool        _altMode     = false;
     bool        _invMode     = false;
     bool        _firstUpdate = true;
