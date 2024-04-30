@@ -33,7 +33,7 @@ struct ToolbarRAII {
 
 } // namespace detail
 
-inline void Toolbar(const std::vector<gr::BlockModel *>& blocks) {
+inline void Toolbar(const std::vector<gr::BlockModel *> &blocks) {
     if (blocks.empty()) {
         return;
     }
