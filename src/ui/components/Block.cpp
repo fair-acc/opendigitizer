@@ -336,43 +336,41 @@ void BlockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
             {
                 IMW::Group controlGroup;
 
-                bool       controlDrawn = true;
-
                 if (*enabled) {
                     char label[64];
                     snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                    controlDrawn = std::visit(overloaded{
-                                                      [&](float val) {
-                                                          ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                          ImGui::SetNextItemWidth(100);
-                                                          if (InputKeypad<>::edit(label, &val)) {
-                                                              b->setParameter(p.first, val);
-                                                              b->update();
-                                                          }
-                                                          return true;
-                                                      },
-                                                      [&](auto &&val) {
-                                                          using T = std::decay_t<decltype(val)>;
-                                                          if constexpr (std::integral<T>) {
-                                                              auto v = int(val);
-                                                              ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                              ImGui::SetNextItemWidth(100);
-                                                              if (InputKeypad<>::edit(label, &v)) {
-                                                                  b->setParameter(p.first, v);
-                                                                  b->update();
-                                                              }
-                                                              return true;
-                                                          } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                                              ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                              std::string str(val);
-                                                              if (ImGui::InputText("##in", &str)) {
-                                                                  b->setParameter(p.first, std::move(str));
-                                                              }
-                                                              return true;
-                                                          }
-                                                          return false;
-                                                      } },
+                    const bool controlDrawn = std::visit(overloaded{
+                                                                 [&](float val) {
+                                                                     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                                                     ImGui::SetNextItemWidth(100);
+                                                                     if (InputKeypad<>::edit(label, &val)) {
+                                                                         b->setParameter(p.first, val);
+                                                                         b->update();
+                                                                     }
+                                                                     return true;
+                                                                 },
+                                                                 [&](auto &&val) {
+                                                                     using T = std::decay_t<decltype(val)>;
+                                                                     if constexpr (std::integral<T>) {
+                                                                         auto v = int(val);
+                                                                         ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                                                         ImGui::SetNextItemWidth(100);
+                                                                         if (InputKeypad<>::edit(label, &v)) {
+                                                                             b->setParameter(p.first, v);
+                                                                             b->update();
+                                                                         }
+                                                                         return true;
+                                                                     } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                                                         ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                                                         std::string str(val);
+                                                                         if (ImGui::InputText("##in", &str)) {
+                                                                             b->setParameter(p.first, std::move(str));
+                                                                         }
+                                                                         return true;
+                                                                     }
+                                                                     return false;
+                                                                 } },
                             p.second);
 
                     if (!controlDrawn) {

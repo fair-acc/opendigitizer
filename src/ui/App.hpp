@@ -33,7 +33,7 @@ public:
     DashboardPage                 dashboardPage;
     std::shared_ptr<Dashboard>    dashboard;
     OpenDashboardPage             openDashboardPage;
-    SDLState                     *sdlState;
+    SDLState                     *sdlState     = nullptr;
     bool                          running      = true;
     ViewMode                      mainViewMode = ViewMode::VIEW;
     std::vector<gr::BlockModel *> toolbarBlocks;

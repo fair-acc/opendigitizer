@@ -9,7 +9,7 @@ namespace DigitizerUi::components {
 namespace detail {
 struct ToolbarRAII {
     bool valid = false;
-    inline ToolbarRAII(const char *id) {
+    inline explicit ToolbarRAII(const char *id) {
         const ImVec2   size   = ImGui::GetContentRegionAvail();
         const auto     width  = size.x;
         constexpr auto height = 36;
@@ -33,7 +33,7 @@ struct ToolbarRAII {
 
 } // namespace detail
 
-inline void Toolbar(std::vector<gr::BlockModel *> blocks) {
+inline void Toolbar(const std::vector<gr::BlockModel *>& blocks) {
     if (blocks.empty()) {
         return;
     }
