@@ -1,21 +1,16 @@
 #ifndef OPENDIGITIZER_TOOLBAR_BLOCK_H
 #define OPENDIGITIZER_TOOLBAR_BLOCK_H
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
-#include "app.hpp"
-#include <imgui.h>
-
-#include <gnuradio-4.0/Block.hpp>
-
 #include <expected>
 
 #include <fmt/format.h>
 
-namespace DigitizerUi {
+#include <gnuradio-4.0/Block.hpp>
 
+#include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
+
+namespace DigitizerUi {
 namespace play_stop {
 enum class State {
     PlayStop,
@@ -196,15 +191,14 @@ private:
             }
         };
         const float actualButtonSize = 28.f;
-        const bool  disabled         = this->isStateDisabled(buttonType);
-        ImGui::BeginDisabled(disabled);
-        ImGui::PushFont(DigitizerUi::App::instance().fontIconsSolid);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
-        const bool clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
-        ImGui::PopFont();
-        ImGui::SameLine();
-        ImGui::PopStyleVar();
-        ImGui::EndDisabled();
+        {
+            const bool         disabled = this->isStateDisabled(buttonType);
+            IMW::Disabled      _(disabled);
+            IMW::Font          font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+            IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
+            const bool         clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
+            ImGui::SameLine();
+        }
 #if 0 // TODO port to new messaging architecture
         if (clicked && !disabled) {
             if (auto e = this->changeToolStateTo(buttonType); e) {

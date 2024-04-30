@@ -16,6 +16,7 @@ target_link_libraries(
           implot
           imgui-node-editor
           services
+          stb
           ui_assets
           fonts
           sample_dashboards

@@ -1,15 +1,17 @@
 #ifndef OPENDIGITIZER_IMPLOTSINK_HPP
 #define OPENDIGITIZER_IMPLOTSINK_HPP
 
-#include "meta.hpp"
+#include <limits>
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 
-#include <imgui.h>
+#include "../common/ImguiWrap.hpp"
+
 #include <implot.h>
-#include <limits>
+
+#include "meta.hpp"
 
 namespace opendigitizer {
 

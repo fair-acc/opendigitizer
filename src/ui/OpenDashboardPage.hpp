@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "dashboard.hpp"
+#include "Dashboard.hpp"
 
 namespace opencmw::client {
 class RestClient;
@@ -13,20 +13,23 @@ class RestClient;
 
 namespace DigitizerUi {
 
-struct App;
-
 class OpenDashboardPage {
 public:
     OpenDashboardPage();
     ~OpenDashboardPage();
 
-    void                                  draw(App *app);
+    std::function<void()>                                              requestCloseDashboard;
+    std::function<void(const std::shared_ptr<DashboardDescription> &)> requestLoadDashboard;
 
-    void                                  addSource(std::string_view path);
-    void                                  addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n);
-    std::shared_ptr<DashboardDescription> get(const size_t index);
+    void                                                               draw(Dashboard *optionalDashboard);
+
+    void                                                               addSource(std::string_view path);
+    void                                                               addDashboard(const std::shared_ptr<DashboardSource> &source, const auto &n);
+
+    std::shared_ptr<DashboardDescription>                              get(const size_t index);
 
 private:
+    void                                               dashboardControls(Dashboard *optionalDashboard);
     void                                               drawAddSourcePopup();
     void                                               unsubscribeSource(const std::shared_ptr<DashboardSource> &source);
 

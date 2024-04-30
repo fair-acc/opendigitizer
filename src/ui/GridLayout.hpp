@@ -1,6 +1,6 @@
 #ifndef GRID_LAYOUT_H
 #define GRID_LAYOUT_H
-#include "dashboard.hpp"
+#include "Dashboard.hpp"
 
 namespace DigitizerUi {
 

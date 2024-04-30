@@ -1,19 +1,21 @@
-#include "remotesignalsources.hpp"
+#include "RemoteSignalSources.hpp"
+
+#include "common/ImguiWrap.hpp"
+
 #include <misc/cpp/imgui_stdlib.h>
 
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
-    if (ImGui::BeginCombo(_keyIdentifier.c_str(), field_names[_selectedIndex])) {
+    if (auto combo = DigitizerUi::IMW::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
         for (int i = 0; i < field_names.size(); i++) {
             bool isSelected = _selectedIndex == i;
             if (ImGui::Selectable(field_names[i], isSelected)) {
                 if (std::any_of(list.begin(), list.end(), [&i, this](auto &e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
-                    if (ImGui::BeginPopupModal("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                    if (auto popup = DigitizerUi::IMW::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
                         ImGui::Text("Key already selected. Please select a different one");
                         if (ImGui::Button("Ok")) {
                             ImGui::CloseCurrentPopup();
                         }
-                        ImGui::EndPopup();
                     }
                 } else {
                     _selectedIndex = i;
@@ -25,7 +27,6 @@ void QueryFilterElement::drawFilterLine() {
                 ImGui::SetItemDefaultFocus();
             }
         }
-        ImGui::EndCombo();
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 2);
@@ -112,7 +113,10 @@ void SignalList::update() {
     }
 }
 void SignalList::drawElements() {
-    ImGui::BeginTable("Signals", refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1, ImGuiTableFlags_BordersInnerV);
+    DigitizerUi::IMW::Table table("Signals", static_cast<int>(refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1),
+            static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV),
+            ImVec2(0.0f, 0.0f), 0.0f);
+    // BeginTable(const char* str_id, int column, ImGuiTableFlags flags = 0, const ImVec2& outer_size = ImVec2(0.0f, 0.0f), float inner_width = 0.0f);
 
     ImGui::TableHeader("SignalsHeader");
     refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [](auto m) {
@@ -124,7 +128,6 @@ void SignalList::drawElements() {
         std::unique_lock l{ signalsMutex };
         std::for_each(signals.begin(), signals.end(), [this, idx = 0](const auto &e) mutable { drawElement(e, idx++); });
     }
-    ImGui::EndTable();
 }
 void SignalList::drawElement(const opencmw::service::dns::Entry &entry, int idx) {
     ImGui::TableNextRow();

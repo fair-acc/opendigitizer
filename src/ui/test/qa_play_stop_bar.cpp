@@ -5,7 +5,7 @@
 #include <map>
 #include <vector>
 
-#include "../toolbar_block.hpp"
+#include "../blocks/ToolbarBlock.hpp"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push // ignore warning of external libraries that from this lib-context we do not have any control over

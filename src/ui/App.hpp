@@ -1,15 +1,15 @@
 #ifndef APP_H
 #define APP_H
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
+#include "common/ImguiWrap.hpp"
+#include "common/LookAndFeel.hpp"
 
-#include "common.hpp"
-#include "dashboard.hpp"
-#include "dashboardpage.hpp"
-#include "flowgraphitem.hpp"
-#include "opendashboardpage.hpp"
+#include "components/AppHeader.hpp"
+
+#include "Dashboard.hpp"
+#include "DashboardPage.hpp"
+#include "FlowgraphItem.hpp"
+#include "OpenDashboardPage.hpp"
 
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -18,63 +18,31 @@
 #include <emscripten.h>
 #endif
 
+#include "common/AppDefinitions.hpp"
+
 struct ImFont;
 
 namespace DigitizerUi {
 
 struct SDLState;
 
-enum class WindowMode {
-    FULLSCREEN,
-    MAXIMISED,
-    MINIMISED,
-    RESTORED
-};
-
-namespace detail {
-} // namespace detail
-
 class App {
 public:
-#ifdef __EMSCRIPTEN__
-    const bool isDesktop = false;
-#else
-    const bool isDesktop = true;
-#endif
-    std::string                executable;
-    FlowGraphItem              fgItem;
-    DashboardPage              dashboardPage;
-    std::shared_ptr<Dashboard> dashboard;
-    OpenDashboardPage          openDashboardPage;
-    SDLState                  *sdlState;
-    bool                       running    = true;
-    WindowMode                 windowMode = WindowMode::RESTORED;
-    std::string                mainViewMode{};
+    std::string                   executable;
+    FlowGraphItem                 fgItem;
+    DashboardPage                 dashboardPage;
+    std::shared_ptr<Dashboard>    dashboard;
+    OpenDashboardPage             openDashboardPage;
+    SDLState                     *sdlState     = nullptr;
+    bool                          running      = true;
+    ViewMode                      mainViewMode = ViewMode::VIEW;
+    std::vector<gr::BlockModel *> toolbarBlocks;
 
-    bool                       prototypeMode    = true;
-    bool                       touchDiagnostics = false;
-    std::chrono::milliseconds  execTime; /// time it took to handle events and draw one frame
-    float                      defaultDPI  = 76.2f;
-    float                      verticalDPI = defaultDPI;
-    std::array<ImFont *, 2>    fontNormal  = { nullptr, nullptr }; /// default font [0] production [1] prototype use
-    std::array<ImFont *, 2>    fontBig     = { nullptr, nullptr }; /// 0: production 1: prototype use
-    std::array<ImFont *, 2>    fontBigger  = { nullptr, nullptr }; /// 0: production 1: prototype use
-    std::array<ImFont *, 2>    fontLarge   = { nullptr, nullptr }; /// 0: production 1: prototype use
-    ImFont                    *fontIcons;
-    ImFont                    *fontIconsBig;
-    ImFont                    *fontIconsLarge;
-    ImFont                    *fontIconsSolid;
-    ImFont                    *fontIconsSolidBig;
-    ImFont                    *fontIconsSolidLarge;
-    std::chrono::seconds       editPaneCloseDelay{ 15 };
+    components::AppHeader         header;
+
     // The thread limit here is mainly for emscripten
     std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>(
             "scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
-
-    Style                              _style = Style::Light;
-    std::vector<std::function<void()>> _activeCallbacks;
-    std::vector<std::function<void()>> _garbageCallbacks; // TODO: Cleaning up callbacks
-    std::mutex                         _callbacksMutex;
 
     struct SchedWrapper {
         template<typename T, typename... Args>
@@ -168,11 +136,10 @@ public:
         std::unique_ptr<Handler> handler;
     };
 
-    SchedWrapper                  _scheduler;
-    std::vector<gr::BlockModel *> _toolbarBlocks;
+    SchedWrapper _scheduler;
 
 public:
-    App() noexcept { setStyle(Style::Light); }
+    App() noexcept { setStyle(LookAndFeel::Style::Light); }
 
     static App &instance() {
         static App app;
@@ -182,7 +149,6 @@ public:
     void openNewWindow() {
 #ifdef EMSCRIPTEN
         std::string script = fmt::format("window.open('{}').focus()", executable);
-        ;
         emscripten_run_script(script.c_str());
 #else
         if (fork() == 0) {
@@ -217,37 +183,17 @@ public:
 
     void closeDashboard() { dashboard = {}; }
 
-    void setStyle(Style style) {
+    void setStyle(LookAndFeel::Style style) {
         switch (style) {
-        case Style::Dark:
+        case LookAndFeel::Style::Dark:
             ImGui::StyleColorsDark();
             break;
-        case Style::Light:
+        case LookAndFeel::Style::Light:
             ImGui::StyleColorsLight();
             break;
         }
-        _style = style;
+        LookAndFeel::mutableInstance().style = style;
         fgItem.setStyle(style);
-    }
-
-    [[nodiscard]] inline Style style() const noexcept { return _style; }
-
-    // schedule a function to be called at the next opportunity on the main thread
-    void executeLater(std::function<void()> &&callback) {
-        std::lock_guard lock(_callbacksMutex);
-        _activeCallbacks.push_back(std::move(callback));
-    }
-
-    void fireCallbacks() {
-        std::vector<std::function<void()>> callbacks;
-        {
-            std::lock_guard lock(_callbacksMutex);
-            std::swap(callbacks, _activeCallbacks);
-        }
-        for (auto &cb : callbacks) {
-            cb();
-            _garbageCallbacks.push_back(std::move(cb));
-        }
     }
 
     template<typename Graph>

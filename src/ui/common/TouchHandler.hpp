@@ -1,26 +1,24 @@
 #ifndef OPENDIGITIZER_TOUCHHANDLER_HPP
 #define OPENDIGITIZER_TOUCHHANDLER_HPP
 
-#ifndef IMPLOT_POINT_CLASS_EXTRA
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
 #include <array>
 #include <cassert>
 #include <chrono>
 #include <cmath>
-#include <fmt/core.h>
-#include <fmt/format.h>
-#include <imgui.h>
-#include <imgui_internal.h>
-#include <implot_internal.h>
-#include <SDL.h>
 #include <stack>
 #include <unordered_map>
 
-#include "../app.hpp"
+#include <fmt/core.h>
+#include <fmt/format.h>
 
-namespace fair {
+#include "ImguiWrap.hpp"
+#include <implot_internal.h>
+
+#include <SDL.h>
+
+#include "../common/LookAndFeel.hpp"
+
+namespace DigitizerUi {
 
 template<typename ClockSourceType = std::chrono::system_clock, bool zoomViaMouseWheel = false>
 struct TouchHandler {
@@ -156,7 +154,6 @@ struct TouchHandler {
     }
 
     static void processSDLEvent(const SDL_Event &event) {
-        const auto &app         = DigitizerUi::App::instance();
         const auto &displaySize = ImGui::GetIO().DisplaySize;
         const auto  now         = ClockSourceType::now();
 
@@ -195,7 +192,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMouseButtonEvent(fingerIndex, true);
                 singleFingerClicked = true;
             }
-            if (app.touchDiagnostics) {
+            if (LookAndFeel::instance().touchDiagnostics) {
                 fmt::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
@@ -237,7 +234,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMouseButtonEvent(fingerIndex, false);
             }
 
-            if (app.touchDiagnostics) {
+            if (LookAndFeel::instance().touchDiagnostics) {
                 fmt::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
@@ -254,7 +251,7 @@ struct TouchHandler {
             if (nFingers == 1) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
             }
-            if (app.touchDiagnostics) {
+            if (LookAndFeel::instance().touchDiagnostics) {
                 fmt::print("touch: finger motion: {} fingerID: {} p:{} @({},{}) motion (dx,dy): ({}, {})\n",
                         nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y,
                         event.tfinger.dx, event.tfinger.dy);
@@ -265,8 +262,7 @@ struct TouchHandler {
     }
 
     static void updateGestures() {
-        const auto  now = ClockSourceType::now();
-        const auto &app = DigitizerUi::App::instance();
+        const auto now = ClockSourceType::now();
 
         // auto-lift finger if it hasn't been active (moving/lifted) for more than 10 seconds -> usually happens when an IO event has been lost
         const auto timeSinceAnyLastActive = std::chrono::duration_cast<std::chrono::milliseconds>(now - *std::max_element(fingerTimeStamp.begin(), fingerTimeStamp.end()));
@@ -301,7 +297,7 @@ struct TouchHandler {
                     ImGui::GetIO().AddMouseButtonEvent(ImPlot::GetInputMap().Pan, true);
                     // ImGui::GetIO().AddMousePosEvent(gestureCentre.x, gestureCentre.y);
                     gestureDragActive = true;
-                    if (app.touchDiagnostics) {
+                    if (LookAndFeel::instance().touchDiagnostics) {
                         fmt::print("gesture: start two finger drag - centre ({},{}) move {} vs. threshold {}\n",
                                 gestureCentreUp.x, gestureCentreUp.y,
                                 std::hypot(gestureCentreDiff.x, gestureCentreDiff.y),
@@ -330,7 +326,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMouseButtonEvent(ImPlot::GetInputMap().Pan, false);
                 gestureDragActive = false;
 
-                if (app.touchDiagnostics) {
+                if (LookAndFeel::instance().touchDiagnostics) {
                     fmt::print("gesture: stop two finger drag - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
                 }
             }
@@ -339,7 +335,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, false);
                 ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonRight, false);
                 ImGui::GetIO().AddMousePosEvent(0.f, 0.f);
-                if (app.touchDiagnostics) {
+                if (LookAndFeel::instance().touchDiagnostics) {
                     fmt::print("gesture: stop two finger zoom - centre ({},{})\n", gestureCentreUp.x,
                             gestureCentreUp.y);
                 }
@@ -369,7 +365,7 @@ struct TouchHandler {
         gestureRotationRad = (currAngle - prevAngle);
         gestureRotationDeg = gestureRotationRad * (180.f / std::numbers::pi_v<float>);
 
-        if (app.touchDiagnostics) {
+        if (LookAndFeel::instance().touchDiagnostics) {
             fmt::print("multi-gesture event -- {}: numFingers: {} @({},{} delta {},{}) pinchFactor:{} dTheta:{}\n",
                     fingerTimeStamp[0], nFingers, fingerLastPos[0].x, fingerLastPos[0].y, fingerPosDiff[1].x, fingerPosDiff[1].y, pinchFactor, gestureRotationDeg);
         }
@@ -427,13 +423,12 @@ struct TouchHandler {
             return;
         }
 
-        const auto &app = DigitizerUi::App::instance();
         if constexpr (zoomViaMouseWheel) {
             const ImVec2 initialDist    = fingerPosDown[0] - fingerPosDown[1];
             const ImVec2 currDist       = fingerPosDiff[0] - fingerPosDiff[1];
             const ImVec2 zoomFactor     = { 1.0f - currDist.x / initialDist.x, 1.0f - currDist.y / initialDist.y };
 
-            const double ZOOM_THRESHOLD = app.isDesktop ? 0.001 : 0.02;
+            const double ZOOM_THRESHOLD = LookAndFeel::instance().isDesktop ? 0.001 : 0.02;
             if (std::abs(zoomFactor.x - 1.f) < ZOOM_THRESHOLD && std::abs(zoomFactor.y - 1.f) < ZOOM_THRESHOLD) {
                 return;
             }
@@ -442,7 +437,7 @@ struct TouchHandler {
         if (!gestureZoomActive) {
             gestureZoomActive = true;
             ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, false);
-            if (app.touchDiagnostics) {
+            if (LookAndFeel::instance().touchDiagnostics) {
                 fmt::print("gesture: start two finger zoom - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
             }
         }
@@ -516,9 +511,7 @@ struct TouchHandler {
     }
 
     static void applyToImGui() {
-        const auto &app = DigitizerUi::App::instance();
-
-        if (app.touchDiagnostics) {
+        if (LookAndFeel::instance().touchDiagnostics) {
             drawFingerPositions();
         }
 
@@ -530,6 +523,6 @@ struct TouchHandler {
     }
 };
 
-} // namespace fair
+} // namespace DigitizerUi
 
 #endif // OPENDIGITIZER_TOUCHHANDLER_HPP

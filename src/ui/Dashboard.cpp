@@ -1,27 +1,25 @@
-#include "dashboard.hpp"
+#include "Dashboard.hpp"
+
 #include <algorithm>
+#include <fstream>
 #include <ranges>
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
 #include <fmt/format.h>
-#include <imgui.h>
-#include <implot.h>
 
-#include <fstream>
+#include "common/Events.hpp"
+#include "common/ImguiWrap.hpp"
+
+#include <implot.h>
 
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <opencmw.hpp>
 #include <RestClient.hpp>
 
-#include <yaml-cpp/yaml.h>
+#include "App.hpp"
+#include "Flowgraph.hpp"
 
-#include "app.hpp"
-#include "flowgraph.hpp"
-#include "yamlutils.hpp"
+#include "utils/Yaml.hpp"
 
 struct FlowgraphMessage {
     std::string flowgraph;
@@ -118,10 +116,10 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
             }
 
             if (reply[0].empty()) {
-                App::instance().executeLater(std::move(errCallback));
+                EventLoop::instance().executeLater(std::move(errCallback));
             } else {
                 // schedule the callback so it runs on the main thread
-                App::instance().executeLater([callback, reply]() mutable {
+                EventLoop::instance().executeLater([callback, reply]() mutable {
                     callback(std::move(reply));
                 });
             }

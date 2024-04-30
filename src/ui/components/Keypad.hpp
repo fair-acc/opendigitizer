@@ -1,22 +1,345 @@
-#ifndef IMPLOT_POINT_CLASS_EXTRA
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
+#ifndef OPENDIGITIZER_UI_COMPONENTS_HEYPAD_HPP_
+#define OPENDIGITIZER_UI_COMPONENTS_HEYPAD_HPP_
 
-#include <any>
-#include <cctype>
+#include "../common/LookAndFeel.hpp"
+
 #include <charconv>
-#include <fmt/format.h>
-#include <functional>
-#include <imgui_internal.h>
-#include <tuple>
-#include <type_traits>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "app.hpp"
-#include "calculator.hpp"
-#include "flowgraph.hpp"
-#include "imguiutils.hpp"
+namespace DigitizerUi::components {
 
-namespace ImGuiUtils {
+// from calculator.hpp
+enum class TType {
+    tt_none,
+
+    tt_plus,
+    tt_minus,
+    tt_mul,
+    tt_div,
+    tt_power,
+
+    tt_uminus,
+    tt_sin,
+    tt_cos,
+    tt_tan,
+    tt_sinh,
+    tt_cosh,
+    tt_tanh,
+
+    tt_expr,
+    tt_popen,
+    tt_pclose,
+    tt_const,
+    tt_end
+};
+
+constexpr auto operator+(TType ty) {
+    return static_cast<std::size_t>(ty);
+}
+
+struct ASTNode {
+    TType type  = TType::tt_end;
+    float value = 0.0f;
+};
+
+struct Token {
+    TType                        type = TType::tt_none;
+    std::string_view             range;
+
+    [[nodiscard]] constexpr bool is_operator() const noexcept {
+        return +type >= +TType::tt_plus && +type < +TType::tt_expr;
+    }
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        return type != TType::tt_none && type != TType::tt_end;
+    }
+    [[nodiscard]] constexpr bool is_popen() const noexcept {
+        return type == TType::tt_popen || +type >= +TType::tt_sin && +type <= +TType::tt_tanh;
+    }
+};
+
+constexpr inline std::string_view parse_float(std::string_view stream) {
+    auto begin = stream.begin();
+    while (begin != stream.end()) {
+        if (!isdigit(*begin) && *begin != '.' && *begin != '-' && *begin != '+' && *begin != 'e')
+            break;
+        begin++;
+    }
+    return { stream.begin(), begin };
+}
+
+constexpr inline Token get_token(std::string_view stream) {
+    auto begin = stream.begin();
+    while (begin != stream.end()) {
+        switch (*begin) {
+        case '+': return {
+            TType::tt_plus, { begin - 1, begin + 2 }
+        };
+        case '-':
+            if (auto it = begin + 1; *it == ' ')
+                return {
+                    TType::tt_minus, { begin - 1, begin + 2 }
+                };
+            return {
+                TType::tt_uminus, { begin, begin + 1 }
+            };
+        case '*': return {
+            TType::tt_mul, { begin - 1, begin + 2 }
+        };
+        case '/': return {
+            TType::tt_div, { begin - 1, begin + 2 }
+        };
+        case '^': return {
+            TType::tt_power, { begin - 1, begin + 2 }
+        };
+        case '(': return {
+            TType::tt_popen, { begin, begin + 1 }
+        };
+        case ')': return {
+            TType::tt_pclose, { begin, begin + 1 }
+        };
+        case 's':
+            if (stream.starts_with("sinh("))
+                return {
+                    TType::tt_sinh, { begin, begin + 5 }
+                };
+            return {
+                TType::tt_sin, { begin, begin + 4 }
+            };
+        case 'c':
+            if (stream.starts_with("cosh("))
+                return {
+                    TType::tt_cosh, { begin, begin + 5 }
+                };
+            return {
+                TType::tt_cos, { begin, begin + 4 }
+            };
+        case 't':
+            if (stream.starts_with("tanh("))
+                return {
+                    TType::tt_tanh, { begin, begin + 5 }
+                };
+            return {
+                TType::tt_tan, { begin, begin + 4 }
+            };
+        }
+
+        if (isdigit(*begin) || *begin == '.') {
+            return { TType::tt_const, parse_float({ begin, stream.end() }) };
+        }
+        begin++;
+    }
+    return { TType::tt_end, "" };
+}
+
+inline Token last_token(std::string_view stream) {
+    Token t;
+    while (true) {
+        auto t1 = get_token(stream);
+        if (t1.type == TType::tt_end)
+            return t;
+        t = t1;
+        stream.remove_prefix(t.range.size());
+    }
+}
+
+inline bool only_token(std::string_view stream) {
+    Token t = get_token(stream);
+    stream.remove_prefix(t.range.size());
+    if (t.type == TType::tt_uminus) {
+        get_token(stream);
+        stream.remove_prefix(t.range.size());
+    }
+
+    auto t1 = get_token(stream);
+    return t1.type == TType::tt_end;
+}
+
+inline std::vector<Token> tokenize(std::string_view stream) {
+    std::vector<Token> tokens;
+    while (true) {
+        auto t = get_token(stream);
+        tokens.push_back(t);
+        if (t.type == TType::tt_end)
+            return tokens;
+        stream.remove_prefix(t.range.size());
+    }
+}
+
+struct PTable {
+    enum Action : uint8_t {
+        S, // shift           (<)
+        R, // reduce          (>)
+        E, // equal           (=)
+        X, // nothing - error ( )
+        A, // accept          (A)
+    };
+
+    // columns(incoming) {^}{-a}{*/}{+-}{f/(}{)}{id}{$}
+    constexpr static Action precedence_table[][8] = {
+        /* {^}    */ { S, S, R, R, S, R, S, R },
+        /* {-a}   */ { R, X, R, R, S, R, S, R },
+        /* {* }   */ { S, S, R, R, S, R, S, R },
+        /* {+-}   */ { S, S, S, R, S, R, S, R },
+        /* {f/(}  */ { S, S, S, S, S, E, S, X },
+        /* {)}    */ { R, X, R, R, X, R, X, R },
+        /* {$}    */ { S, S, S, S, S, X, S, A },
+    };
+
+public:
+    constexpr static Action GetAction(TType stack, TType incoming) {
+        auto table_nav = [](TType entry) {switch (entry) {
+            default:
+                return entry == TType::tt_popen || +entry >= +TType::tt_sin && +entry <= +TType::tt_tanh?4:-1;
+        case TType::tt_power: return 0;
+        case TType::tt_uminus: return 1;
+
+        case TType::tt_mul:
+        case TType::tt_div: return 2;
+
+        case TType::tt_plus:
+        case TType::tt_minus: return 3;
+
+        case TType::tt_pclose: return 5;
+
+        case TType::tt_end: return 6;
+        } };
+
+        int  row       = table_nav(stack);
+        if (row == -1) return X;
+
+        int col = -1;
+        switch (incoming) {
+        case TType::tt_const:
+            col = 6;
+            break;
+        case TType::tt_end:
+            col = 7;
+            break;
+        default:
+            col = table_nav(incoming);
+            break;
+        }
+
+        if (col == -1) return X;
+        return precedence_table[row][col];
+    }
+};
+
+inline std::optional<float> evaluate(std::string_view stream) {
+    std::vector<ASTNode> context;
+    context.reserve(64);
+    context.emplace_back(); // Add end
+
+    auto last_term = [&]() {
+        auto it = context.rbegin();
+        while (it->type == TType::tt_expr)
+            it++;
+        return it;
+    };
+
+    auto reduce = [&](auto l_term) {
+        using enum TType;
+        if (l_term->type == TType::tt_uminus) {
+            float a = -context.back().value;
+            context.pop_back();
+            context.back() = { TType::tt_expr, a };
+            return;
+        }
+        if (l_term->type == tt_pclose) {
+            // remove braces
+            context.pop_back();
+            auto prev = last_term();
+            if (prev->type == tt_popen) {
+                context.erase(context.end() - 2);
+                prev = last_term();
+                if (prev->type != tt_uminus)
+                    return;
+
+                context.back().value = -context.back().value;
+                context.erase(context.end() - 2);
+                return;
+            }
+
+            auto &last_value = context.back().value;
+
+            switch (prev->type) {
+            case TType::tt_sin:
+                last_value = sinf(last_value);
+                break;
+            case TType::tt_cos:
+                last_value = cosf(last_value);
+                break;
+            case TType::tt_tan:
+                last_value = tanf(last_value);
+                break;
+            case TType::tt_sinh:
+                last_value = sinhf(last_value);
+                break;
+            case TType::tt_cosh:
+                last_value = coshf(last_value);
+                break;
+            case TType::tt_tanh:
+                last_value = tanhf(last_value);
+                break;
+            default:
+                return;
+            }
+            context.erase(context.end() - 2);
+            return;
+        }
+
+        float a = context.rbegin()->value;
+        float b = (context.rbegin() + 2)->value;
+        context.pop_back();
+        context.pop_back();
+
+        switch (l_term->type) {
+        case TType::tt_plus:
+            context.back().value = a + b;
+            break;
+        case TType::tt_minus:
+            context.back().value = b - a;
+            break;
+        case TType::tt_mul:
+            context.back().value = b * a;
+            break;
+        case TType::tt_div:
+            context.back().value = b / a;
+            break;
+        case TType::tt_power:
+            context.back().value = powf(b, a);
+            break;
+        default:
+            assert(false);
+        }
+    };
+
+    auto in_tk = get_token(stream);
+    stream.remove_prefix(in_tk.range.size());
+
+    while (true) {
+        auto l_term = last_term();
+        auto action = PTable::GetAction(l_term->type, in_tk.type);
+
+        switch (action) {
+        case PTable::E:
+        case PTable::S: // Shift
+            if (in_tk.type == TType::tt_const)
+                context.emplace_back(ASTNode{ TType::tt_expr, stof(std::string{ in_tk.range }) });
+            else
+                context.emplace_back(ASTNode{ in_tk.type });
+
+            in_tk = get_token(stream);
+            stream.remove_prefix(in_tk.range.size());
+            continue;
+        case PTable::R: reduce(l_term); break;
+        case PTable::X: return std::nullopt;
+        case PTable::A: return context.back().value;
+        }
+    }
+}
 
 template<std::size_t BufferSize = 256>
 class InputKeypad {
@@ -207,6 +530,7 @@ class InputKeypad {
     InputKeypad() {
         _editBuffer.reserve(BufferSize);
     };
+
     static auto &getInstance() {
         static InputKeypad instance;
         return instance;
@@ -253,30 +577,22 @@ private:
         ImGui::SetNextWindowPos(mainViewPort.GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
         bool visible = _visible; // copy because BeginPopupModal set this to false when successful but needs to remain true until input is acknowledged
-        if (ImGui::BeginPopupModal(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
-            struct PopupGuard {
-                ~PopupGuard() { ImGui::EndPopup(); }
-            } guard;
-
+        if (auto popup = IMW::ModalPopup(keypad_name, &visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration)) {
             ReturnState returnState = ReturnState::None;
-            if (ImGui::BeginChild("drawKeypad Input", ImVec2{}, true)) {
+            if (auto keypadInput = IMW::Child("drawKeypad Input", ImVec2{}, true, 0)) {
                 const ImVec2 windowSize = ImGui::GetContentRegionAvail(); // now inside this child;
 
                 // setup number and function keypad -- global style settings
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
-                ImGui::PushFont(DigitizerUi::App::instance().fontBigger[DigitizerUi::App::instance().prototypeMode]);
-                const Button activatedKey = windowSize.x < windowSize.y ? drawPortraitKeypad(valueLabel, windowSize) : drawLandscapeKeypad(valueLabel, windowSize);
-                ImGui::PopFont();
-                ImGui::PopStyleVar();
-
-                ImGui::EndChild();
-                returnState = processKeypadLogic(activatedKey);
+                IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, 6.0f);
+                IMW::Font          font(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+                const Button       activatedKey = windowSize.x < windowSize.y ? drawPortraitKeypad(valueLabel, windowSize) : drawLandscapeKeypad(valueLabel, windowSize);
+                returnState                     = processKeypadLogic(activatedKey);
             }
 
             switch (returnState) {
             case ReturnState::Change:
                 _firstUpdate = false;
-                _lastToken   = ::last_token(_editBuffer);
+                _lastToken   = last_token(_editBuffer);
                 return ReturnState::Change;
             case ReturnState::Accept:
                 _firstUpdate = true;
@@ -299,7 +615,7 @@ private:
             _prevValue.emplace<EdTy>(*value); // save for discard
             _editBuffer.clear();
             fmt::format_to(std::back_inserter(_editBuffer), "{}\0", *value);
-            _lastToken = ::last_token(_editBuffer);
+            _lastToken = last_token(_editBuffer);
         }
 
         switch (drawKeypadPopup(_editBuffer)) {
@@ -364,23 +680,23 @@ private:
         // setup common number editing field
         std::vector<char> buffer(valueLabel.begin(), valueLabel.end());
         buffer.resize(BufferSize);
-        ImGui::PushFont(DigitizerUi::App::instance().fontLarge[DigitizerUi::App::instance().prototypeMode]);
-        // the '-1' is to accommodate the 'Esc' button
-        ImGui::PushItemWidth(buttonSize.x * (nCols - 1.f) + (nCols - 2.f) * style.WindowPadding.x);
-        if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
-            valueLabel = std::string(buffer.data());
-            ImGui::PopFont();
-            ImGui::PopItemWidth();
-            return NoButton;
+
+        {
+            IMW::Font font(LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode]);
+            // the '-1' is to accommodate the 'Esc' button
+            IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 1.f) + (nCols - 2.f) * style.WindowPadding.x);
+            if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
+                valueLabel = std::string(buffer.data());
+                return NoButton;
+            }
         }
-        ImGui::PopFont();
-        ImGui::PopItemWidth();
 
         // the 'ESC' clause button
-        ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-        ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
-        key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
-        ImGui::PopStyleColor(2);
+        {
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
+        }
 
         // start row 2: 2nd,sin[h],cos[h],tan[h],<-
         if (_altMode) {
@@ -388,10 +704,11 @@ private:
             button_color.x *= 0.6f; // R
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
-            ImGui::PushStyleColor(ImGuiCol_Button, button_color);
-            ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
+
+            IMW::StyleColor button(ImGuiCol_Button, button_color);
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
-            ImGui::PopStyleColor(2);
+
         } else {
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
         }
@@ -424,10 +741,9 @@ private:
             button_color.x *= 0.6f; // R
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
-            ImGui::PushStyleColor(ImGuiCol_Button, button_color);
-            ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, button_color);
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
-            ImGui::PopStyleColor(2);
         } else {
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         }
@@ -473,12 +789,14 @@ private:
         key = keypadButton<SameLine, Button1, ImGuiKey_1, ImGuiKey_Keypad1>(buttonSize, key);
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
-        ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-        ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
-        const float vpos_before_enter = ImGui::GetCursorPosY();
-        key                           = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
-        ImGui::PopStyleColor(2);
-        ImGui::SetCursorPosY(vpos_before_enter);
+
+        {
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            const float     vpos_before_enter = ImGui::GetCursorPosY();
+            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
+            ImGui::SetCursorPosY(vpos_before_enter);
+        }
 
         // start row 8: ±,0 (two columns),.,enter(2/2, two rows)
         key = keypadButton<None, Sign>(buttonSize, key);
@@ -516,27 +834,26 @@ private:
         // setup common number editing field
         std::vector<char> buffer(valueLabel.begin(), valueLabel.end());
         buffer.resize(BufferSize);
-        ImGui::PushFont(DigitizerUi::App::instance().fontLarge[DigitizerUi::App::instance().prototypeMode]);
-        // the '-2' is to accommodate the '<-' and 'Esc' button
-        ImGui::PushItemWidth(buttonSize.x * (nCols - 2.f) + (nCols - 3.f) * style.WindowPadding.x);
-        if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
-            valueLabel = std::string(buffer.data());
-            ImGui::PopFont();
-            ImGui::PopStyleVar();
-            ImGui::PopItemWidth();
-            return NoButton;
+
+        {
+            IMW::Font font(LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode]);
+            // the '-2' is to accommodate the '<-' and 'Esc' button
+            IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 2.f) + (nCols - 3.f) * style.WindowPadding.x);
+            if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
+                valueLabel = std::string(buffer.data());
+                return NoButton;
+            }
         }
-        ImGui::PopFont();
-        ImGui::PopItemWidth();
 
         // the '<-' button is exceptionally placed next to the 'ESC' button
         key = keypadButton<SameLine, Backspace, AC /* double-click action  */, ImGuiKey_Backspace, ImGuiKey_Delete>(buttonSize, key);
 
         // the 'ESC' clause button
-        ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-        ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
-        key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
-        ImGui::PopStyleColor(2);
+        {
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
+        }
 
         // Row 2: 2nd,Inv,Log,10^x,/,*,-
         if (_altMode) {
@@ -544,10 +861,9 @@ private:
             button_color.x *= 0.6f; // R
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
-            ImGui::PushStyleColor(ImGuiCol_Button, button_color);
-            ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, button_color);
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
-            ImGui::PopStyleColor(2);
         } else {
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
         }
@@ -556,10 +872,9 @@ private:
             button_color.x *= 0.6f; // R
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
-            ImGui::PushStyleColor(ImGuiCol_Button, button_color);
-            ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, button_color);
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
-            ImGui::PopStyleColor(2);
         } else {
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         }
@@ -628,12 +943,13 @@ private:
         key = keypadButton<SameLine, Button1, ImGuiKey_1, ImGuiKey_Keypad1>(buttonSize, key);
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
-        ImGui::PushStyleColor(ImGuiCol_Button, { 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-        ImGui::PushStyleColor(ImGuiCol_Text, { 1.0f, 1.0f, 1.0f, 1.0f });
-        const float vpos_before_enter = ImGui::GetCursorPosY();
-        key                           = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
-        ImGui::PopStyleColor(2);
-        ImGui::SetCursorPosY(vpos_before_enter);
+        {
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            const float     vpos_before_enter = ImGui::GetCursorPosY();
+            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
+            ImGui::SetCursorPosY(vpos_before_enter);
+        }
 
         // Row 7: ?,^,±,0,0,.,enter(2/2, two rows)
         key = keypadButton<None, NoButton>(buttonSize, key);
@@ -896,529 +1212,8 @@ private:
         }
         return ReturnState::None;
     }
-}; // end: class InputKeypad
-
-DialogButton drawDialogButtons(bool okEnabled) {
-    float y = ImGui::GetContentRegionAvail().y;
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + y - 20);
-    ImGui::Separator();
-
-    if (!okEnabled) {
-        ImGui::BeginDisabled();
-    }
-    if (ImGui::Button("Ok") || (okEnabled && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
-        ImGui::CloseCurrentPopup();
-        return DialogButton::Ok;
-    }
-    if (!okEnabled) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        ImGui::CloseCurrentPopup();
-        return DialogButton::Cancel;
-    }
-    return DialogButton::None;
-}
-
-struct Splitter {
-    enum class State {
-        Hidden,
-        AnimatedForward,
-        AnimatedBackward,
-        Shown
-    } anim_state
-            = State::Hidden;
-    float start_ratio = 0.0f;
-    float ratio       = 0.0f;
-    float speed       = 0.02f;
-
-    void  move(float max, bool forward = true) noexcept {
-        if (forward)
-            move_forward(max);
-        else
-            move_backward();
-    }
-
-    void move_forward(float max) noexcept {
-        if (anim_state == State::Shown)
-            return;
-
-        anim_state = State::AnimatedForward;
-        if (ratio / max >= 0.7f)
-            speed = 0.01f;
-
-        ratio += speed;
-        if (ratio >= max) {
-            ratio      = max;
-            anim_state = State::Shown;
-            speed      = 0.02f;
-        }
-    }
-    void move_backward() noexcept {
-        if (anim_state == State::Hidden)
-            return;
-
-        anim_state = State::AnimatedBackward;
-        ratio -= speed;
-        if (ratio <= 0.0f)
-            reset();
-    }
-
-    void reset() noexcept {
-        anim_state  = State::Hidden;
-        start_ratio = 0.0f;
-        ratio       = 0.0f;
-    }
-    [[nodiscard]] bool is_hidden() const noexcept {
-        return anim_state == State::Hidden;
-    }
-} splitter_state;
-
-float splitter(ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
-    float startRatio = splitter_state.start_ratio;
-
-    splitter_state.move(defaultRatio, !reset);
-    if (splitter_state.is_hidden())
-        return 0.0f;
-
-    float s = vertical ? space.x : space.y;
-    auto  w = s * splitter_state.ratio;
-    if (vertical) {
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + s - w - size / 2.f);
-    } else {
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + s - w - size / 2.f);
-    }
-
-    ImGui::BeginChild("##c");
-    ImGui::Button("##sep", vertical ? ImVec2{ size, space.y } : ImVec2{ space.x, size });
-
-    const auto cursor = vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS;
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetMouseCursor(cursor);
-    }
-
-    if (ImGui::IsItemActive()) {
-        ImGui::SetMouseCursor(cursor);
-        const auto delta     = ImGui::GetMouseDragDelta();
-        splitter_state.ratio = startRatio - (vertical ? delta.x : delta.y) / s;
-    } else {
-        splitter_state.start_ratio = splitter_state.ratio;
-    }
-    ImGui::EndChild();
-    return splitter_state.ratio;
-}
-
-void drawBlockControlsPanel(BlockControlsPanel &ctx, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout) {
-    if (!ctx.block) return;
-    using namespace DigitizerUi;
-
-    auto size = frameSize;
-    if (ctx.closeTime < std::chrono::system_clock::now()) {
-        ctx = {};
-        return;
-    }
-
-    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(frameSize);
-    ImGui::Begin("BlockControlsPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
-
-    auto &app = App::instance();
-    ImGui::PushFont(app.fontIconsSolid);
-    const float lineHeight = ImGui::GetTextLineHeightWithSpacing() * 1.5f;
-    ImGui::PopFont();
-
-    auto resetTime = [&]() {
-        ctx.closeTime = std::chrono::system_clock::now() + app.editPaneCloseDelay;
-    };
-
-    const auto itemSpacing    = ImGui::GetStyle().ItemSpacing;
-
-    auto       calcButtonSize = [&](int numButtons) -> ImVec2 {
-        if (verticalLayout) {
-            return { (size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight };
-        }
-        return { lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons) };
-    };
-
-    size = ImGui::GetContentRegionAvail();
-
-    // don't close the panel while the mouse is hovering it or edits are made.
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
-            || InputKeypad<>::isVisible()) {
-        resetTime();
-    }
-
-    auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(ctx.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(app.editPaneCloseDelay).count());
-    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
-    ImGui::ProgressBar(1.f - duration, { size.x, 3 });
-    ImGui::PopStyleColor();
-
-    auto minpos      = ImGui::GetCursorPos();
-    size             = ImGui::GetContentRegionAvail();
-
-    int outputsCount = 0;
-    {
-        const char *prevString = verticalLayout ? "\uf062" : "\uf060";
-        for (const auto &out : ctx.block->outputs()) {
-            outputsCount += out.connections.size();
-        }
-        if (outputsCount == 0) {
-            ImGuiUtils::DisabledGuard dg;
-            ImGui::PushFont(app.fontIconsSolid);
-            ImGui::Button(prevString, calcButtonSize(1));
-            ImGui::PopFont();
-        } else {
-            const auto buttonSize = calcButtonSize(outputsCount);
-
-            ImGui::BeginGroup();
-            int id = 1;
-            // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
-            // that switches to the connected block
-            for (auto &out : ctx.block->outputs()) {
-                for (const auto *conn : out.connections) {
-                    ImGui::PushID(id++);
-
-                    ImGui::PushFont(app.fontIconsSolid);
-                    if (ImGui::Button(prevString, buttonSize)) {
-                        ctx.block = conn->dst.block;
-                    }
-                    ImGui::PopFont();
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%s", conn->dst.block->name.c_str());
-                    }
-                    ImGui::PopID();
-                    if (verticalLayout) {
-                        ImGui::SameLine();
-                    }
-                }
-            }
-            ImGui::EndGroup();
-        }
-    }
-
-    if (!verticalLayout) {
-        ImGui::SameLine();
-    }
-
-    {
-        // Draw the two add block buttons
-        ImGui::BeginGroup();
-        const auto buttonSize = calcButtonSize(2);
-        {
-            ImGuiUtils::DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || outputsCount == 0);
-            ImGui::PushFont(app.fontIconsSolid);
-            if (ImGui::Button("\uf055", buttonSize)) {
-                if (outputsCount > 1) {
-                    ImGui::OpenPopup("insertBlockPopup");
-                } else {
-                    [&]() {
-                        int index = 0;
-                        for (auto &out : ctx.block->outputs()) {
-                            for (auto *conn : out.connections) {
-                                ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
-                                ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
-                                ctx.breakConnection = conn;
-                                return;
-                            }
-                            ++index;
-                        }
-                    }();
-                    ctx.mode = BlockControlsPanel::Mode::Insert;
-                }
-            }
-            ImGui::PopFont();
-            setItemTooltip("%s", "Insert new block before the next");
-
-            if (ImGui::BeginPopup("insertBlockPopup")) {
-                int index = 0;
-                for (auto &out : ctx.block->outputs()) {
-                    for (auto *conn : out.connections) {
-                        auto text = fmt::format("Before block '{}'", conn->dst.block->name);
-                        if (ImGui::Selectable(text.c_str())) {
-                            ctx.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
-                            ctx.mode            = BlockControlsPanel::Mode::Insert;
-                            ctx.insertFrom      = &conn->src.block->outputs()[conn->src.index];
-                            ctx.breakConnection = conn;
-                        }
-                    }
-                    ++index;
-                }
-                ImGui::EndPopup();
-            }
-
-            if (verticalLayout) {
-                ImGui::SameLine();
-            }
-        }
-
-        ImGui::PushFont(app.fontIconsSolid);
-        DisabledGuard dg(ctx.mode != BlockControlsPanel::Mode::None || ctx.block->outputs().empty());
-        if (ImGui::Button("\uf0fe", buttonSize)) {
-            if (ctx.block->outputs().size() > 1) {
-                ImGui::OpenPopup("addBlockPopup");
-            } else {
-                ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
-                ctx.insertFrom = &ctx.block->outputs()[0];
-            }
-        }
-        ImGui::PopFont();
-        setItemTooltip("%s", "Add new block");
-
-        if (ImGui::BeginPopup("addBlockPopup")) {
-            int index = 0;
-            for (const auto &out : ctx.block->type().outputs) {
-                if (ImGui::Selectable(out.name.c_str())) {
-                    ctx.insertFrom = &ctx.block->outputs()[index];
-                    ctx.mode       = BlockControlsPanel::Mode::AddAndBranch;
-                }
-                ++index;
-            }
-        }
-
-        ImGui::EndGroup();
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-    }
-
-    if (ctx.mode != BlockControlsPanel::Mode::None) {
-        ImGui::BeginGroup();
-
-        auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
-        auto ret      = filteredListBox(
-                "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
-                    if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
-                        return {};
-                    }
-                    return std::pair{ it.second.get(), it.first };
-                },
-                listSize);
-
-        {
-            DisabledGuard dg(!ret.has_value());
-            if (ImGui::Button("Ok")) {
-                BlockType  *selected = ret->first;
-                auto        name     = fmt::format("{}({})", selected->name, ctx.block->name);
-                auto        block    = selected->createBlock(name);
-
-                Connection *c1;
-                if (ctx.mode == BlockControlsPanel::Mode::Insert) {
-                    // mode Insert means that the new block should be added in between this block and the next one.
-                    // put the new block in between this block and the following one
-                    c1 = app.dashboard->localFlowGraph.connect(&block->outputs()[0], ctx.insertBefore);
-                    app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
-                    app.dashboard->localFlowGraph.disconnect(ctx.breakConnection);
-                    ctx.breakConnection = nullptr;
-                } else {
-                    // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
-                    auto *newsink = app.dashboard->createSink();
-                    c1            = app.dashboard->localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
-                    app.dashboard->localFlowGraph.connect(ctx.insertFrom, &block->inputs()[0]);
-
-                    auto source = std::ranges::find_if(app.dashboard->sources(), [newsink](const auto &s) {
-                        return s.blockName == newsink->name;
-                    });
-
-                    app.dashboardPage.newPlot(app.dashboard.get());
-                    app.dashboard->plots().back().sourceNames.push_back(source->name);
-                }
-                ctx.block = block.get();
-
-                app.dashboard->localFlowGraph.addBlock(std::move(block));
-                ctx.mode = BlockControlsPanel::Mode::None;
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
-            ctx.mode = BlockControlsPanel::Mode::None;
-        }
-
-        ImGui::EndGroup();
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-    }
-
-    ImGui::BeginChild("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
-            ImGuiWindowFlags_HorizontalScrollbar);
-    ImGui::TextUnformatted(ctx.block->name.c_str());
-    ImGuiUtils::blockParametersControls(ctx.block, verticalLayout);
-
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-        resetTime();
-    }
-    ImGui::EndChild();
-
-    ImGui::SetCursorPos(minpos);
-
-    // draw the button(s) that go to the previous block(s).
-    const char *nextString = verticalLayout ? "\uf063" : "\uf061";
-    ImGui::PushFont(app.fontIconsSolid);
-    if (ctx.block->inputs().empty()) {
-        auto buttonSize = calcButtonSize(1);
-        if (verticalLayout) {
-            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-        } else {
-            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-        }
-        ImGuiUtils::DisabledGuard dg;
-        ImGui::Button(nextString, buttonSize);
-    } else {
-        auto buttonSize = calcButtonSize(ctx.block->inputs().size());
-        if (verticalLayout) {
-            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-        } else {
-            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-        }
-
-        ImGui::BeginGroup();
-        int id = 1;
-        for (auto &in : ctx.block->inputs()) {
-            ImGui::PushID(id++);
-            ImGuiUtils::DisabledGuard dg(in.connections.empty());
-
-            if (ImGui::Button(nextString, buttonSize)) {
-                ctx.block = in.connections.front()->src.block;
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::PopFont();
-                ImGui::SetTooltip("%s", in.connections.front()->src.block->name.c_str());
-                ImGui::PushFont(app.fontIconsSolid);
-            }
-            ImGui::PopID();
-            if (verticalLayout) {
-                ImGui::SameLine();
-            }
-        }
-        ImGui::EndGroup();
-    }
-    ImGui::PopFont();
-
-    ImGui::End();
-}
-
-namespace {
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
 };
-template<typename... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-} // namespace
 
-void blockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size) {
-    const auto availableSize = ImGui::GetContentRegionAvail();
+} // namespace DigitizerUi::components
 
-    auto       storage       = ImGui::GetStateStorage();
-    ImGui::PushID("block_controls");
-
-    const auto &style     = ImGui::GetStyle();
-    const auto  indent    = style.IndentSpacing;
-    const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
-
-    int         i         = 0;
-    for (const auto &p : b->parameters()) {
-        auto id = ImGui::GetID(p.first.c_str());
-        ImGui::PushID(int(id));
-        auto *enabled = storage->GetBoolRef(id, true);
-
-        ImGui::BeginGroup();
-        const auto curpos = ImGui::GetCursorPos();
-
-        ImGui::BeginGroup();
-
-        bool controlDrawn = true;
-
-        if (*enabled) {
-            char label[64];
-            snprintf(label, sizeof(label), "##parameter_%d", i);
-
-            controlDrawn = std::visit(overloaded{
-                                              [&](float val) {
-                                                  ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                  ImGui::SetNextItemWidth(100);
-                                                  if (InputKeypad<>::edit(label, &val)) {
-                                                      b->setParameter(p.first, val);
-                                                      b->update();
-                                                  }
-                                                  return true;
-                                              },
-                                              [&](auto &&val) {
-                                                  using T = std::decay_t<decltype(val)>;
-                                                  if constexpr (std::integral<T>) {
-                                                      auto v = int(val);
-                                                      ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                      ImGui::SetNextItemWidth(100);
-                                                      if (InputKeypad<>::edit(label, &v)) {
-                                                          b->setParameter(p.first, v);
-                                                          b->update();
-                                                      }
-                                                      return true;
-                                                  } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                                      ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                      std::string str(val);
-                                                      if (ImGui::InputText("##in", &str)) {
-                                                          b->setParameter(p.first, std::move(str));
-                                                      }
-                                                      return true;
-                                                  }
-                                                  return false;
-                                              } },
-                    p.second);
-
-            if (!controlDrawn) {
-                ImGui::EndGroup();
-                ImGui::EndGroup();
-                ImGui::PopID();
-                continue;
-            }
-        }
-
-        ImGui::EndGroup();
-        ImGui::SameLine(0, 0);
-
-        auto        width = verticalLayout ? availableSize.x : ImGui::GetCursorPosX() - curpos.x;
-        const auto *text  = *enabled || verticalLayout ? p.first.c_str() : "";
-        width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
-
-        if (*enabled) {
-            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_ButtonActive]);
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_TabUnfocusedActive]);
-        }
-
-        ImGui::SetCursorPos(curpos);
-
-        float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
-        if (ImGui::Button("##nothing", { width, height })) {
-            *enabled = !*enabled;
-        }
-        ImGui::PopStyleColor();
-
-        setItemTooltip("%s", p.first.c_str());
-
-        ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
-        ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);
-
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-        if (*enabled || verticalLayout) {
-            ImGui::TextUnformatted(p.first.c_str());
-        }
-
-        ImGui::EndGroup();
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-
-        ImGui::PopID();
-        ++i;
-    }
-    ImGui::PopID();
-}
-
-} // namespace ImGuiUtils
+#endif
