@@ -38,16 +38,16 @@ public:
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
     }();
 
-    FlowGraphItem                     fgItem;
-    DashboardPage                     dashboardPage;
-    std::shared_ptr<Dashboard>        dashboard;
-    OpenDashboardPage                 openDashboardPage;
-    SDLState                         *sdlState     = nullptr;
-    bool                              running      = true;
-    ViewMode                          mainViewMode = ViewMode::VIEW;
-    std::vector<gr::BlockModel *>     toolbarBlocks;
+    FlowGraphItem                 fgItem;
+    DashboardPage                 dashboardPage;
+    std::shared_ptr<Dashboard>    dashboard;
+    OpenDashboardPage             openDashboardPage;
+    SDLState                     *sdlState     = nullptr;
+    bool                          running      = true;
+    ViewMode                      mainViewMode = ViewMode::VIEW;
+    std::vector<gr::BlockModel *> toolbarBlocks;
 
-    components::AppHeader             header;
+    components::AppHeader         header;
 
     // The thread limit here is mainly for emscripten
     std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>(
