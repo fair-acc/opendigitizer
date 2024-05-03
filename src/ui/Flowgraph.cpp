@@ -64,6 +64,37 @@ const BlockType *BlockType::Registry::get(std::string_view id) const {
     return it == m_types.end() ? nullptr : it->second.get();
 }
 
+void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader) {
+    for (const auto &typeName : pluginLoader.knownBlocks()) {
+        // TODO make this also work if the block doesn't allow T=float, or has multiple
+        // non-defaulted template parameters.
+        // (needs information about possible instantiations from the plugin loader)
+        auto prototype = pluginLoader.instantiate(typeName, "float");
+        if (!prototype) {
+            fmt::println(std::cerr, "Could not instantiate block of type '{}<float>'", typeName);
+            continue;
+        }
+        fmt::println("Registering block type '{}'", typeName);
+
+        auto type               = std::make_unique<BlockType>(typeName, typeName, "TODO category");
+        std::ignore             = prototype->settings().applyStagedParameters();
+        type->defaultParameters = prototype->settings().get();
+        for (const auto &[id, v] : type->defaultParameters) {
+            if (auto param = std::get_if<int>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::NumberParameter<int>{ *param });
+            } else if (auto param = std::get_if<float>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::NumberParameter<float>{ *param });
+            } else if (auto param = std::get_if<std::string>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::StringParameter{ *param });
+            }
+        }
+
+        // TODO Create input and output ports (needs port information in BlockModel)
+
+        addBlockType(std::move(type));
+    }
+}
+
 void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
@@ -273,8 +304,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
     }
 }
 
-FlowGraph::FlowGraph()
-    : _pluginLoader(gr::globalBlockRegistry(), {}) {}
+FlowGraph::FlowGraph() {}
 
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
@@ -284,7 +314,7 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 
 void FlowGraph::parse(const std::string &str) {
     clear();
-    auto graph = gr::load_grc(_pluginLoader, str);
+    auto graph = gr::load_grc(*_pluginLoader, str);
 
     graph.forEachBlock([&](const auto &grBlock) {
         auto typeName = grBlock.typeName();
@@ -496,7 +526,7 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, c
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
     for (const auto &block : m_blocks) {
-        auto grBlock = createGRBlock(_pluginLoader, *block);
+        auto grBlock = createGRBlock(*_pluginLoader, *block);
         if (!grBlock) {
             continue;
         }
@@ -556,4 +586,7 @@ void FlowGraph::handleMessage(const gr::Message &msg) {
     }
 }
 
+void FlowGraph::setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) {
+    _pluginLoader = std::move(loader);
+}
 } // namespace DigitizerUi

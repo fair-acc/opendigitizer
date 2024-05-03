@@ -28,17 +28,26 @@ struct SDLState;
 
 class App {
 public:
-    std::string                   executable;
-    FlowGraphItem                 fgItem;
-    DashboardPage                 dashboardPage;
-    std::shared_ptr<Dashboard>    dashboard;
-    OpenDashboardPage             openDashboardPage;
-    SDLState                     *sdlState     = nullptr;
-    bool                          running      = true;
-    ViewMode                      mainViewMode = ViewMode::VIEW;
-    std::vector<gr::BlockModel *> toolbarBlocks;
+    std::string                       executable;
+    std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
+        std::vector<std::filesystem::path> pluginPaths;
+#ifndef __EMSCRIPTEN__
+        // TODO set correct paths
+        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
+#endif
+        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
+    }();
 
-    components::AppHeader         header;
+    FlowGraphItem                     fgItem;
+    DashboardPage                     dashboardPage;
+    std::shared_ptr<Dashboard>        dashboard;
+    OpenDashboardPage                 openDashboardPage;
+    SDLState                         *sdlState     = nullptr;
+    bool                              running      = true;
+    ViewMode                          mainViewMode = ViewMode::VIEW;
+    std::vector<gr::BlockModel *>     toolbarBlocks;
+
+    components::AppHeader             header;
 
     // The thread limit here is mainly for emscripten
     std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>(
@@ -139,7 +148,10 @@ public:
     SchedWrapper _scheduler;
 
 public:
-    App() noexcept { setStyle(LookAndFeel::Style::Light); }
+    App() {
+        BlockType::registry().addBlockTypesFromPluginLoader(*pluginLoader);
+        setStyle(LookAndFeel::Style::Light);
+    }
 
     static App &instance() {
         static App app;
@@ -164,6 +176,7 @@ public:
     void loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
         fgItem.clear();
         dashboard = Dashboard::create(desc);
+        dashboard->setPluginLoader(pluginLoader);
         dashboard->load();
     }
 

@@ -275,20 +275,6 @@ int main(int argc, char **argv) {
         return verticalDPI;
     }();
 
-#ifndef EMSCRIPTEN
-    BlockType::registry().loadBlockDefinitions(BLOCKS_DIR);
-#endif
-    // TODO populate these from the gr::globalBlockRegistry()
-    BlockType::registry().addBlockType<opendigitizer::Arithmetic>("opendigitizer::Arithmetic");
-    BlockType::registry().addBlockType<opendigitizer::ImPlotSink>("opendigitizer::ImPlotSink");
-    BlockType::registry().addBlockType<opendigitizer::RemoteSource>("opendigitizer::RemoteSource");
-    BlockType::registry().addBlockType<opendigitizer::SineSource>("opendigitizer::SineSource");
-    // BlockType::registry().addBlockType<gr::basic::DefaultClockSource>("gr::basic::ClockSource");
-    BlockType::registry().addBlockType<gr::blocks::fft::DefaultFFT>("gr::blocks::fft::FFT");
-    BlockType::registry().addBlockType<gr::testing::Delay>("gr::testing::Delay");
-    BlockType::registry().addBlockType<DigitizerUi::PlayStopToolbarBlock>("toolbar_playstop_block");
-    BlockType::registry().addBlockType<DigitizerUi::LabelToolbarBlock>("toolbar_label_block");
-
     loadFonts(app);
 
     // Init header

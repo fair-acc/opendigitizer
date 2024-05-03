@@ -53,8 +53,8 @@ public:
         std::string defaultValue;
     };
     struct Parameter {
-        const std::string                                                                          id;
-        const std::string                                                                          label;
+        std::string                                                                                id;
+        std::string                                                                                label;
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
@@ -95,46 +95,12 @@ public:
         // TODO make this smarter once metaInformation() is statically available
         return name == "opendigitizer::ImPlotSink";
     }
-
-    template<typename T>
-    void initPort(auto &vec) {
-        vec.push_back({});
-        auto &p = vec.back();
-        p.name  = T::static_name();
-        p.type  = T::kPortType == gr::PortType::STREAM ? "float" : "message";
-        if (opendigitizer::meta::is_dataset_v<typename T::value_type>) {
-            p.dataset = true;
-        }
-    }
-
     struct Registry {
-        void loadBlockDefinitions(const std::filesystem::path &dir);
-        void addBlockType(std::unique_ptr<BlockType> &&t);
+        void               loadBlockDefinitions(const std::filesystem::path &dir);
 
-        // automatically create a BlockType from a graph prototype node template class
-        template<template<typename...> typename T>
-        void addBlockType(std::string_view typeName) {
-            using Node           = T<float>;
-            auto t               = std::make_unique<DigitizerUi::BlockType>(typeName);
-            t->defaultParameters = [] {
-                Node instance;
-                instance.settings().applyStagedParameters();
-                return instance.settings().get();
-            }();
-            namespace meta                         = gr::traits::block;
+        void               addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader);
 
-            constexpr std::size_t input_port_count = meta::template all_input_port_types<Node>::size;
-            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template all_input_ports<Node>::template at<Is>>(t->inputs), ...);
-            }(std::make_index_sequence<input_port_count>());
-
-            constexpr std::size_t output_port_count = meta::template all_output_port_types<Node>::size;
-            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template all_output_ports<Node>::template at<Is>>(t->outputs), ...);
-            }(std::make_index_sequence<output_port_count>());
-
-            addBlockType(std::move(t));
-        }
+        void               addBlockType(std::unique_ptr<BlockType> &&t);
 
         const BlockType   *get(std::string_view id) const;
 
@@ -400,6 +366,7 @@ struct ExecutionContext {
 class FlowGraph {
 public:
     FlowGraph();
+    void               setPluginLoader(std::shared_ptr<gr::PluginLoader> loader);
     void               parse(const std::filesystem::path &file);
     void               parse(const std::string &str);
     void               clear();
@@ -449,7 +416,7 @@ public:
     }
 
 private:
-    gr::PluginLoader                                  _pluginLoader;
+    std::shared_ptr<gr::PluginLoader>                 _pluginLoader;
     std::vector<std::unique_ptr<Block>>               m_blocks;
     std::unordered_map<std::string, gr::BlockModel *> m_plotSinkGrBlocks;
     plf::colony<Connection>                           m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
