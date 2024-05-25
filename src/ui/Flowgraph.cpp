@@ -19,6 +19,8 @@
 
 #include "App.hpp"
 
+using namespace std::string_literals;
+
 namespace DigitizerUi {
 
 const std::string &DataType::toString() const {
@@ -90,6 +92,14 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         }
 
         // TODO Create input and output ports (needs port information in BlockModel)
+        for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
+            const auto& port = prototype->dynamicInputPort(index);
+            type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : port.valueTypeName(), port.name, false);
+        }
+        for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
+            const auto& port = prototype->dynamicOutputPort(index);
+            type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : port.valueTypeName(), port.name, false);
+        }
 
         addBlockType(std::move(type));
     }
@@ -129,6 +139,7 @@ void Block::updateSettings(const gr::property_map &settings) {
 
 void Block::update() {
     auto parseType = [](const std::string &t, bool dataset) -> DataType {
+        // old names
         if (t == "fc64") return DataType::ComplexFloat64;
         if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
         if (t == "sc64") return DataType::ComplexInt64;
@@ -136,12 +147,30 @@ void Block::update() {
         if (t == "sc16") return DataType::ComplexInt16;
         if (t == "sc8") return DataType::ComplexInt8;
         if (t == "f64") return DataType::Float64;
-        if (t == "f32" || t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
+        if (t == "f32") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
         if (t == "s64") return DataType::Int64;
-        if (t == "s32" || t == "int") return DataType::Int32;
-        if (t == "s16" || t == "short") return DataType::Int16;
-        if (t == "s8" || t == "byte") return DataType::Int8;
+        if (t == "s32") return DataType::Int32;
+        if (t == "s16") return DataType::Int16;
+        if (t == "s8") return DataType::Int8;
+        if (t == "byte") return DataType::Int8;
         if (t == "bit" || t == "bits") return DataType::Bits;
+
+        // GR4 names
+        if (t == "std::complex<double>") return DataType::ComplexFloat64;
+        if (t == "std::complex<float>") return DataType::ComplexFloat32;
+        // if (t == "std::complex<std::int64_t>") return DataType::ComplexInt64;
+        // if (t == "std::complex<std::int32_t>") return DataType::ComplexInt32;
+        // if (t == "std::complex<std::int16_t>") return DataType::ComplexInt16;
+        // if (t == "std::complex<std::int8_t>") return DataType::ComplexInt8;
+        if (t == "double") return DataType::Float64;
+        if (t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
+        if (t == "std::int64_t") return DataType::Int64;
+        if (t == "std::int32_t" || t == "int") return DataType::Int32;
+        if (t == "std::int16_t" || t == "short") return DataType::Int16;
+        if (t == "std::int8_t") return DataType::Int8;
+
+        if (t == "gr::DataSet<float>") return DataType::DataSetFloat32;
+
         if (t == "message") return DataType::AsyncMessage;
         if (t == "bus") return DataType::BusConnection;
         if (t == "") return DataType::Wildcard;
@@ -345,7 +374,13 @@ void FlowGraph::parse(const std::string &str) {
         const auto destinationPort = edge._destinationPortDefinition.topLevel;
         // TODO support port collections
 
-        connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+        if (sourcePort >= srcBlock->m_outputs.size()) {
+            fmt::print("ERROR: Cannot connect, no output port with index {} in {}, have only {} ports\n", sourcePort, srcBlock->m_uniqueName, srcBlock->m_outputs.size());
+        } else if (destinationPort >= dstBlock->m_inputs.size()) {
+            fmt::print("ERROR: Cannot connect, no input port with index {} in {}, have only {} ports\n", destinationPort, dstBlock->m_uniqueName, dstBlock->m_inputs.size());
+        } else {
+            connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+        }
     });
 
     m_graphChanged = true;

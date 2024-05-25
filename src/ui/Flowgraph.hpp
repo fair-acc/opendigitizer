@@ -148,17 +148,17 @@ struct DataType {
         switch (id) {
         case ComplexFloat64: return "std::complex<double>";
         case ComplexFloat32: return "std::complex<float>";
-        case ComplexInt64: return "std::complex<int64_t>";
-        case ComplexInt32: return "std::complex<int32_t>";
-        case ComplexInt16: return "std::complex<int16_t>";
-        case ComplexInt8: return "std::complex<int8_t>";
+        case ComplexInt64: return "std::complex<std::int64_t>";
+        case ComplexInt32: return "std::complex<std::int32_t>";
+        case ComplexInt16: return "std::complex<std::int16_t>";
+        case ComplexInt8: return "std::complex<std::int8_t>";
         case Float64: return "double";
         case Float32: return "float";
-        case DataSetFloat32: return "gr::DataSet_float";
-        case Int64: return "int64_t";
-        case Int32: return "int32_t";
-        case Int16: return "int16_t";
-        case Int8: return "int8_t";
+        case DataSetFloat32: return "gr::DataSet<float>";
+        case Int64: return "std::int64_t";
+        case Int32: return "std::int32_t";
+        case Int16: return "std::int16_t";
+        case Int8: return "std::int8_t";
         }
         return "unknown";
     }
