@@ -176,6 +176,7 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::BusConnection: return 0xffffffff;
         case DataType::Wildcard: return 0xffffffff;
         case DataType::Untyped: return 0xffffffff;
+        case DataType::DataSetFloat64: return 0xff00BCD4;
         case DataType::DataSetFloat32: return 0xffF57C00;
         }
     } else {
@@ -197,6 +198,7 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::BusConnection: return 0xff000000;
         case DataType::Wildcard: return 0xff000000;
         case DataType::Untyped: return 0xff000000;
+        case DataType::DataSetFloat64: return 0xffff432b;
         case DataType::DataSetFloat32: return 0xff0a83ff;
         }
     }

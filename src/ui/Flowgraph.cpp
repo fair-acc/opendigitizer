@@ -71,9 +71,12 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         // TODO make this also work if the block doesn't allow T=float, or has multiple
         // non-defaulted template parameters.
         // (needs information about possible instantiations from the plugin loader)
-        auto prototype = pluginLoader.instantiate(typeName, "float");
+        auto availableParametrizations = pluginLoader.knownBlockParametrizations(typeName);
+        auto prototypeParams = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
+
+        auto prototype = pluginLoader.instantiate(typeName, prototypeParams);
         if (!prototype) {
-            fmt::println(std::cerr, "Could not instantiate block of type '{}<float>'", typeName);
+            fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, prototypeParams);
             continue;
         }
         fmt::println("Registering block type '{}'", typeName);
@@ -146,7 +149,7 @@ void Block::update() {
         if (t == "sc32") return DataType::ComplexInt32;
         if (t == "sc16") return DataType::ComplexInt16;
         if (t == "sc8") return DataType::ComplexInt8;
-        if (t == "f64") return DataType::Float64;
+        if (t == "f64") return dataset ? DataType::DataSetFloat64 : DataType::Float64;
         if (t == "f32") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
         if (t == "s64") return DataType::Int64;
         if (t == "s32") return DataType::Int32;
@@ -162,7 +165,7 @@ void Block::update() {
         // if (t == "std::complex<std::int32_t>") return DataType::ComplexInt32;
         // if (t == "std::complex<std::int16_t>") return DataType::ComplexInt16;
         // if (t == "std::complex<std::int8_t>") return DataType::ComplexInt8;
-        if (t == "double") return DataType::Float64;
+        if (t == "double") return dataset ? DataType::DataSetFloat64 : DataType::Float64;
         if (t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
         if (t == "std::int64_t") return DataType::Int64;
         if (t == "std::int32_t" || t == "int") return DataType::Int32;
@@ -170,6 +173,7 @@ void Block::update() {
         if (t == "std::int8_t") return DataType::Int8;
 
         if (t == "gr::DataSet<float>") return DataType::DataSetFloat32;
+        if (t == "gr::DataSet<double>") return DataType::DataSetFloat64;
 
         if (t == "message") return DataType::AsyncMessage;
         if (t == "bus") return DataType::BusConnection;
@@ -535,7 +539,7 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
-    DataType t          = DataType::Float32;
+    DataType t          = DataType::Float64;
     auto     inputsView = block.dataInputs();
     if (!std::ranges::empty(inputsView)) {
         if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
@@ -545,6 +549,7 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, c
     }
     auto params    = block.parameters();
     params["name"] = block.name;
+    fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
     auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
 
     if (!grBlock) {

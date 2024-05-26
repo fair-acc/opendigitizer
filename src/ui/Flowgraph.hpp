@@ -133,6 +133,7 @@ struct DataType {
         Float64,
         Float32,
         DataSetFloat32,
+        DataSetFloat64,
         Int64,
         Int32,
         Int16,
@@ -155,6 +156,7 @@ struct DataType {
         case Float64: return "double";
         case Float32: return "float";
         case DataSetFloat32: return "gr::DataSet<float>";
+        case DataSetFloat64: return "gr::DataSet<double>";
         case Int64: return "std::int64_t";
         case Int32: return "std::int32_t";
         case Int16: return "std::int16_t";
@@ -191,6 +193,8 @@ struct DataType {
             return ComplexInt8;
         } else if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
             return DataSetFloat32;
+        } else if constexpr (std::is_same_v<T, gr::DataSet<double>>) {
+            return DataSetFloat64;
         } else {
             static_assert(!std::is_same_v<T, T>, "DataType of T is not known");
         }
@@ -209,6 +213,7 @@ struct DataType {
         case Float64: return fun.template operator()<double>();
         case Float32: return fun.template operator()<float>();
         case DataSetFloat32: return fun.template operator()<gr::DataSet<float>>();
+        case DataSetFloat64: return fun.template operator()<gr::DataSet<double>>();
         // case Int64: return fun.template operator()<int64_t>();
         case Int32: return fun.template operator()<int32_t>();
         case Int16: return fun.template operator()<int16_t>();
