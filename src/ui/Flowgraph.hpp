@@ -205,7 +205,7 @@ struct DataType {
         switch (m_id) {
         case ComplexFloat64: return fun.template operator()<std::complex<double>>();
         case ComplexFloat32: return fun.template operator()<std::complex<float>>();
-        // unsupported by graph-prototype
+        // unsupported by gnuradio4
         // case ComplexInt64: return fun.template operator()<std::complex<int64_t>>();
         // case ComplexInt32: return fun.template operator()<std::complex<int32_t>>();
         // case ComplexInt16: return fun.template operator()<std::complex<int16_t>>();

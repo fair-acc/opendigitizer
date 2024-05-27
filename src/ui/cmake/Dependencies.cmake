@@ -46,12 +46,12 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    graph-prototype
-    GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-    GIT_TAG a27202ea7afebf761870e47b3bf671e2d422aa3a # to be main soon after 2024-05-26
+    gnuradio4
+    GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
+    GIT_TAG 800763fc40a67efc6df81d9ff41f495803c9b567 # to be main soon after 2024-05-26
 )
 
-FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony graph-prototype)
+FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony gnuradio4)
 
 if (NOT EMSCRIPTEN)
     find_package(SDL2 REQUIRED)

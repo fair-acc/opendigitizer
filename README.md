@@ -2,7 +2,7 @@
 
 OpenDigitizer is an open-source project modernising FAIR’s time- and frequency-domain digitizer infrastructure embracing
 modern C++20 standards and uses the [OpenCMW](https://github.com/fair-acc/opencmw-cpp), [GNU Radio](https://www.gnuradio.org/)
-([version 4.0](https://github.com/fair-acc/graph-prototype)), [ImGUI](https://github.com/ocornut/imgui)
+([version 4.0](https://github.com/fair-acc/gnuradio4)), [ImGUI](https://github.com/ocornut/imgui)
 and [WebAssembly](https://webassembly.org/) ecosystems.
 
 While initially designed for the FAIR facility, the expressed intent is to be highly adaptable also for use by other
@@ -26,7 +26,7 @@ The key components are:
 
 - [OpenCMW](https://github.com/fair-acc/opencmw-cpp), an open-source middleware solution developed at GSI and FAIR
   providing flexible data transport, efficient data serialisation, and intuitive domain objects based on compile-time reflection
-- [GNU Radio](https://www.gnuradio.org/) ([version 4.0](https://github.com/fair-acc/graph-prototype)), a powerful
+- [GNU Radio](https://www.gnuradio.org/) ([version 4.0](https://github.com/fair-acc/gnuradio4)), a powerful
   software toolkit designed for signal processing and software-defined radios. GNU Radio uses directed signal flow graphs
   for efficient expression of post-processing and feedback control loop logic. This feature makes it easy for domain
   experts with minimal programming experience to inspect and reconfigure existing systems, while at the same time keeping

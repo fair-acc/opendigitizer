@@ -86,7 +86,8 @@ void                   registerTestBlocks(Registry &registry) {
     gr::registerBlock<TestSource, double, float>(registry);
     gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
 #ifndef __EMSCRIPTEN__
-    gr::registerBlock<fair::picoscope::Picoscope4000a, double, float, std::int16_t>(registry);
+    // TODO: Current implementation of Picoscope4000a does not satisfy the new block API
+    // gr::registerBlock<fair::picoscope::Picoscope4000a, double, float, std::int16_t>(registry);
 #endif
 #pragma GCC diagnostic pop
 }
