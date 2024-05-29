@@ -23,6 +23,37 @@ using namespace std::string_literals;
 
 namespace DigitizerUi {
 
+template<typename T>
+auto typeToName() {
+    std::any value = T{};
+    return value.type().name();
+}
+
+std::string valueTypeName(auto& port) {
+
+    static const std::map<std::string, std::string> mangledToName {
+        { typeToName<float>(), "float"s },
+        { typeToName<double>(), "double"s },
+
+        { typeToName<std::complex<float>>(), "std::complex<float>"s },
+        { typeToName<std::complex<double>>(), "std::complex<double>"s },
+
+        { typeToName<gr::DataSet<float>>(), "gr::DataSet<float>"s },
+        { typeToName<gr::DataSet<double>>(), "gr::DataSet<double>"s },
+
+        { typeToName<std::int8_t>(), "std::int8_t"s },
+        { typeToName<std::int16_t>(), "std::int16_t"s },
+        { typeToName<std::int32_t>(), "std::int32_t"s },
+        { typeToName<std::int64_t>(), "std::int64_t"s }
+    };
+
+    if (auto it = mangledToName.find(port.defaultValue().type().name()); it != mangledToName.end()) {
+        return it->second;
+    } else {
+        return "unknown_type"s;
+    }
+}
+
 const std::string &DataType::toString() const {
     const static std::string names[] = {
         "int32", "float32", "complex float 32"
@@ -71,7 +102,7 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         // TODO make this also work if the block doesn't allow T=float, or has multiple
         // non-defaulted template parameters.
         // (needs information about possible instantiations from the plugin loader)
-        auto availableParametrizations = pluginLoader.knownBlockParametrizations(typeName);
+        auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
         auto prototypeParams = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
 
         auto prototype = pluginLoader.instantiate(typeName, prototypeParams);
@@ -97,11 +128,11 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         // TODO Create input and output ports (needs port information in BlockModel)
         for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
             const auto& port = prototype->dynamicInputPort(index);
-            type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : port.valueTypeName(), port.name, false);
+            type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
         }
         for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
             const auto& port = prototype->dynamicOutputPort(index);
-            type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : port.valueTypeName(), port.name, false);
+            type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
         }
 
         addBlockType(std::move(type));

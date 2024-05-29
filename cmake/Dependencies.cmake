@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         gnuradio4
         GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-        GIT_TAG 800763fc40a67efc6df81d9ff41f495803c9b567 # to be main soon after 2024-05-26
+        GIT_TAG f00cba2c81422f143c9d48552921ec63bbaef652 # main as of 2024-05-29
 )
 
 FetchContent_Declare(
