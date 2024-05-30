@@ -232,6 +232,13 @@ void Block::update() {
     }
 }
 
+void Block::setDatatype(DataType type) {
+    m_datatype = type;
+}
+DataType Block::getDatatype() const {
+    return m_datatype;
+}
+
 std::string Block::EnumParameter::toString() const {
     return definition.optionsLabels[optionIndex];
 }
@@ -570,14 +577,15 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
-    DataType t          = DataType::Float64;
-    auto     inputsView = block.dataInputs();
+    DataType t          = block.getDatatype();
+    // we could keep this in, and have our set type propagate
+    /*auto     inputsView = block.dataInputs();
     if (!std::ranges::empty(inputsView)) {
         if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
             auto &src = in.connections[0]->src;
             t         = src.block->outputs()[src.index].type;
         }
-    }
+    }*/
     auto params    = block.parameters();
     params["name"] = block.name;
     fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
@@ -660,4 +668,28 @@ void FlowGraph::handleMessage(const gr::Message &msg) {
 void FlowGraph::setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) {
     _pluginLoader = std::move(loader);
 }
+
+void FlowGraph::changeBlockType(Block *block, DataType type) {
+    auto select = [&](const auto &b) {
+        return block == b.get();
+    };
+    auto it = std::ranges::find_if(m_blocks, select);
+    assert(it != m_blocks.end());
+    std::unique_ptr<Block> b{std::move((*it))};
+    m_blocks.erase(it);
+
+    deleteBlock(block);
+    block->setDatatype(type);
+    addBlock(std::move(b));
+
+    m_graphChanged = true;
+
+    // store connections?
+
+    // save output and input connections and types
+    // parameters
+    // metaInformation?
+    //BlockType::createBlock
+}
+
 } // namespace DigitizerUi

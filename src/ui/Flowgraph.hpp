@@ -327,7 +327,12 @@ public:
     void                    updateSettings(const gr::property_map &settings);
     const gr::property_map &metaInformation() const { return m_metaInformation; }
 
+    std::vector<DataType> supportedTypes() const {
+        return {DataType::Float32, DataType::Float64, DataType::Int32};
+    }
+    DataType getDatatype() const;
 protected:
+    DataType          m_datatype{DataType::Float32};
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
     gr::property_map  m_parameters;
@@ -337,6 +342,7 @@ protected:
     std::string       m_uniqueName;
     gr::property_map  m_metaInformation;
     friend FlowGraph;
+    void setDatatype(DataType type);
 };
 
 namespace meta {
@@ -420,6 +426,7 @@ public:
         return nullptr;
     }
 
+    void changeBlockType(Block *block, DataType type);
 private:
     std::shared_ptr<gr::PluginLoader>                 _pluginLoader;
     std::vector<std::unique_ptr<Block>>               m_blocks;

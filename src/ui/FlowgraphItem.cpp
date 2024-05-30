@@ -526,6 +526,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
                 if (inputPort->kind == outputPort->kind) {
                     ax::NodeEditor::RejectNewItem();
                 } else {
+                    std::cout << inputPort->type << " vs " << outputPort->type << std::endl;  // it seems that at least inputPort->type DataSet<float> and outputPort->type float should be compatible (sum sigs -> sink 1)
                     bool compatibleTypes = inputPort->type == outputPort->type || inputPort->type == DataType::Wildcard || outputPort->type == DataType::Wildcard;
                     if (!compatibleTypes) {
                         ax::NodeEditor::RejectNewItem();
@@ -612,6 +613,14 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (ImGui::MenuItem("Delete")) {
             fg->deleteBlock(m_selectedBlock);
+        }
+        for (auto t : m_selectedBlock->supportedTypes()) {
+            // std::cout << DataType::name(t) << std::endl;
+            auto name = std::string{ "Change Type to " } + DataType::name(t).data();
+            // std::cout << "name: " << name << std::endl;
+            if (ImGui::MenuItem(name.c_str())) {
+                fg->changeBlockType(m_selectedBlock, t);
+            }
         }
     }
 
