@@ -25,105 +25,8 @@ class FlowGraph;
 class Connection;
 class Block;
 
-class BlockType {
-public:
-    struct PortDefinition {
-        std::string type;
-        std::string name;
-        bool        dataset = false;
-    };
-
-    struct EnumParameter {
-        const int size;
-
-        using Options = std::vector<std::string>;
-        Options                                  options;
-        std::unordered_map<std::string, Options> optionsAttributes;
-        std::vector<std::string>                 optionsLabels;
-
-        std::string                              defaultValue;
-    };
-    template<typename T>
-    struct NumberParameter {
-        inline explicit NumberParameter(T v)
-            : defaultValue(v) {}
-        T defaultValue;
-    };
-    struct StringParameter {
-        std::string defaultValue;
-    };
-    struct Parameter {
-        std::string                                                                                id;
-        std::string                                                                                label;
-        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
-    };
-
-    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
-
-    std::unique_ptr<Block>      createBlock(std::string_view name) const;
-
-    const std::string           name;
-    const std::string           label;
-    std::vector<Parameter>      parameters;
-    std::vector<PortDefinition> inputs;
-    std::vector<PortDefinition> outputs;
-    const std::string           category;
-    gr::property_map            defaultParameters;
-
-    auto                        data_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
-    }
-    auto message_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
-    }
-    auto data_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
-    }
-    auto message_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
-    }
-
-    bool isSource() const {
-        return inputs.empty() && !outputs.empty();
-    }
-
-    bool isSink() const {
-        return !inputs.empty() && outputs.empty();
-    }
-
-    bool isPlotSink() const {
-        // TODO make this smarter once metaInformation() is statically available
-        return name == "opendigitizer::ImPlotSink";
-    }
-    struct Registry {
-        void               loadBlockDefinitions(const std::filesystem::path &dir);
-
-        void               addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader);
-
-        void               addBlockType(std::unique_ptr<BlockType> &&t);
-
-        const BlockType   *get(std::string_view id) const;
-
-        inline const auto &types() const { return m_types; }
-
-    private:
-        // This stuff is to enable looking up in the m_types map with string_view
-        template<typename... Keys>
-        struct transparent_hash : std::hash<Keys>... {
-            using is_transparent = void;
-            using std::hash<Keys>::operator()...;
-        };
-
-        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
-
-        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
-    };
-
-    static Registry &registry();
-};
-
 struct DataType {
-    enum Id {
+    enum Id : int {
         ComplexFloat64,
         ComplexFloat32,
         ComplexInt64,
@@ -228,6 +131,17 @@ struct DataType {
         return decltype(fun.template operator()<float>()){};
     }
 
+    static DataType fromString(std::string s) {
+        int biggest = static_cast<int>(Id::Untyped);
+        std::cout << biggest << std::endl;
+        for (int i = 0; i < static_cast<int>(Id::Untyped); i++) {
+            auto d = DataType(static_cast<Id>(i));
+            if (DataType::name(static_cast<Id>(i)) == s)
+                return d;
+        }
+        return DataType(Id::Untyped);
+    }
+
     constexpr inline DataType() {}
     constexpr inline DataType(Id id)
         : m_id(id) {}
@@ -238,6 +152,104 @@ struct DataType {
 
 private:
     Id m_id = Id::Untyped;
+};
+
+class BlockType {
+public:
+    struct PortDefinition {
+        std::string type;
+        std::string name;
+        bool        dataset = false;
+    };
+
+    struct EnumParameter {
+        const int size;
+
+        using Options = std::vector<std::string>;
+        Options                                  options;
+        std::unordered_map<std::string, Options> optionsAttributes;
+        std::vector<std::string>                 optionsLabels;
+
+        std::string                              defaultValue;
+    };
+    template<typename T>
+    struct NumberParameter {
+        inline explicit NumberParameter(T v)
+            : defaultValue(v) {}
+        T defaultValue;
+    };
+    struct StringParameter {
+        std::string defaultValue;
+    };
+    struct Parameter {
+        std::string                                                                                id;
+        std::string                                                                                label;
+        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
+    };
+
+    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
+
+    std::unique_ptr<Block>      createBlock(std::string_view name) const;
+
+    const std::string           name;
+    const std::string           label;
+    std::vector<Parameter>      parameters;
+    std::vector<PortDefinition> inputs;
+    std::vector<PortDefinition> outputs;
+    std::vector<DataType>       availableBaseTypes;
+    const std::string           category;
+    gr::property_map            defaultParameters;
+
+    auto                        data_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+    auto data_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+
+    bool isSource() const {
+        return inputs.empty() && !outputs.empty();
+    }
+
+    bool isSink() const {
+        return !inputs.empty() && outputs.empty();
+    }
+
+    bool isPlotSink() const {
+        // TODO make this smarter once metaInformation() is statically available
+        return name == "opendigitizer::ImPlotSink";
+    }
+    struct Registry {
+        void               loadBlockDefinitions(const std::filesystem::path &dir);
+
+        void               addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader);
+
+        void               addBlockType(std::unique_ptr<BlockType> &&t);
+
+        const BlockType   *get(std::string_view id) const;
+
+        inline const auto &types() const { return m_types; }
+
+    private:
+        // This stuff is to enable looking up in the m_types map with string_view
+        template<typename... Keys>
+        struct transparent_hash : std::hash<Keys>... {
+            using is_transparent = void;
+            using std::hash<Keys>::operator()...;
+        };
+
+        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
+
+        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
+    };
+
+    static Registry &registry();
 };
 
 class Block {
@@ -327,10 +339,8 @@ public:
     void                    updateSettings(const gr::property_map &settings);
     const gr::property_map &metaInformation() const { return m_metaInformation; }
 
-    std::vector<DataType> supportedTypes() const {
-        return {DataType::Float32, DataType::Float64, DataType::Int32};
-    }
-    DataType getDatatype() const;
+    [[nodiscard]] DataType datatype() const;
+    void setDatatype(DataType type);
 protected:
     DataType          m_datatype{DataType::Float32};
     std::vector<Port> m_inputs;
@@ -342,7 +352,6 @@ protected:
     std::string       m_uniqueName;
     gr::property_map  m_metaInformation;
     friend FlowGraph;
-    void setDatatype(DataType type);
 };
 
 namespace meta {

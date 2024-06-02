@@ -254,6 +254,32 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
                 ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(context.block->name.c_str());
+        std::string_view typeName = context.block->typeName();
+/*
+        ImGui::TextUnformatted(typeName.data());
+        ImGui::SameLine();
+*/
+        ImGui::TextUnformatted("<");
+        ImGui::SameLine();
+
+        auto                     types = context.block->type().availableBaseTypes;
+        std::vector<std::string> typeNames{ types.size() };
+        std::ranges::transform(types, typeNames.begin(), [](auto t) { return DataType::name(t); });
+        if (ImGui::BeginCombo("##baseTypeCombo", DataType::name(context.block->datatype()).data())) {
+            for (auto e : typeNames) {
+                if (ImGui::Selectable(e.c_str(), e == typeName)) {
+                    context.block->flowGraph()->changeBlockType(context.block, DataType::fromString(e));
+                }
+                if (e == typeName) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::SameLine();
+        ImGui::TextUnformatted(">");
+
         BlockParametersControls(context.block, verticalLayout);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {

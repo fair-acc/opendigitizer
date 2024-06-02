@@ -113,6 +113,8 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         fmt::println("Registering block type '{}'", typeName);
 
         auto type               = std::make_unique<BlockType>(typeName, typeName, "TODO category");
+        type->availableBaseTypes.resize(pluginLoader.knownBlockParameterizations(typeName).size());
+        std::ranges::transform(pluginLoader.knownBlockParameterizations(typeName), type->availableBaseTypes.begin(), [](auto s) { return DataType::fromString(s); });
         std::ignore             = prototype->settings().applyStagedParameters();
         type->defaultParameters = prototype->settings().get();
         for (const auto &[id, v] : type->defaultParameters) {
@@ -235,7 +237,7 @@ void Block::update() {
 void Block::setDatatype(DataType type) {
     m_datatype = type;
 }
-DataType Block::getDatatype() const {
+DataType Block::datatype() const {
     return m_datatype;
 }
 
@@ -577,7 +579,7 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
-    DataType t          = block.getDatatype();
+    DataType t          = block.datatype();
     // we could keep this in, and have our set type propagate
     /*auto     inputsView = block.dataInputs();
     if (!std::ranges::empty(inputsView)) {

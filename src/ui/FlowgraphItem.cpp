@@ -614,7 +614,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
         if (ImGui::MenuItem("Delete")) {
             fg->deleteBlock(m_selectedBlock);
         }
-        for (auto t : m_selectedBlock->supportedTypes()) {
+        for (auto t : m_selectedBlock->type().availableBaseTypes) {
             // std::cout << DataType::name(t) << std::endl;
             auto name = std::string{ "Change Type to " } + DataType::name(t).data();
             // std::cout << "name: " << name << std::endl;
