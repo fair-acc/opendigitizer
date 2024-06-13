@@ -338,10 +338,11 @@ public:
     void                    updateSettings(const gr::property_map &settings);
     const gr::property_map &metaInformation() const { return m_metaInformation; }
 
-    [[nodiscard]] DataType datatype() const;
-    void setDatatype(DataType type);
+    [[nodiscard]] DataType  datatype() const;
+    void                    setDatatype(DataType type);
+
 protected:
-    DataType          m_datatype{DataType::Float32};
+    DataType          m_datatype{ DataType::Float32 };
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
     gr::property_map  m_parameters;
@@ -435,6 +436,7 @@ public:
     }
 
     void changeBlockType(Block *block, DataType type);
+
 private:
     std::shared_ptr<gr::PluginLoader>                 _pluginLoader;
     std::vector<std::unique_ptr<Block>>               m_blocks;

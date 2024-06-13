@@ -29,9 +29,8 @@ auto typeToName() {
     return value.type().name();
 }
 
-std::string valueTypeName(auto& port) {
-
-    static const std::map<std::string, std::string> mangledToName {
+std::string valueTypeName(auto &port) {
+    static const std::map<std::string, std::string> mangledToName{
         { typeToName<float>(), "float"s },
         { typeToName<double>(), "double"s },
 
@@ -103,16 +102,16 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
         // non-defaulted template parameters.
         // (needs information about possible instantiations from the plugin loader)
         auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
-        auto prototypeParams = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
+        auto prototypeParams           = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
 
-        auto prototype = pluginLoader.instantiate(typeName, prototypeParams);
+        auto prototype                 = pluginLoader.instantiate(typeName, prototypeParams);
         if (!prototype) {
             fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, prototypeParams);
             continue;
         }
         fmt::println("Registering block type '{}'", typeName);
 
-        auto type               = std::make_unique<BlockType>(typeName, typeName, "TODO category");
+        auto type = std::make_unique<BlockType>(typeName, typeName, "TODO category");
         type->availableBaseTypes.resize(pluginLoader.knownBlockParameterizations(typeName).size());
         std::ranges::transform(pluginLoader.knownBlockParameterizations(typeName), type->availableBaseTypes.begin(), [](auto s) { return DataType::fromString(s); });
         std::ignore             = prototype->settings().applyStagedParameters();
@@ -129,11 +128,11 @@ void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &plugin
 
         // TODO Create input and output ports (needs port information in BlockModel)
         for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
-            const auto& port = prototype->dynamicInputPort(index);
+            const auto &port = prototype->dynamicInputPort(index);
             type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
         }
         for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
-            const auto& port = prototype->dynamicOutputPort(index);
+            const auto &port = prototype->dynamicOutputPort(index);
             type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
         }
 
@@ -579,11 +578,11 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
-    DataType t          = block.datatype();
-    auto params    = block.parameters();
-    params["name"] = block.name;
+    DataType t      = block.datatype();
+    auto     params = block.parameters();
+    params["name"]  = block.name;
     fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
-    auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
+    auto grBlock = loader.instantiate(block.typeName(), DataType::name(t));
 
     if (!grBlock) {
         fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
@@ -669,7 +668,7 @@ void FlowGraph::changeBlockType(Block *block, DataType type) {
     };
     auto it = std::ranges::find_if(m_blocks, select);
     assert(it != m_blocks.end());
-    std::unique_ptr<Block> b{std::move((*it))};
+    std::unique_ptr<Block> b{ std::move((*it)) };
     m_blocks.erase(it);
 
     deleteBlock(block);
