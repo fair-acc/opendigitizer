@@ -580,14 +580,6 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
     DataType t          = block.datatype();
-    // we could keep this in, and have our set type propagate
-    /*auto     inputsView = block.dataInputs();
-    if (!std::ranges::empty(inputsView)) {
-        if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
-            auto &src = in.connections[0]->src;
-            t         = src.block->outputs()[src.index].type;
-        }
-    }*/
     auto params    = block.parameters();
     params["name"] = block.name;
     fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
@@ -685,13 +677,6 @@ void FlowGraph::changeBlockType(Block *block, DataType type) {
     addBlock(std::move(b));
 
     m_graphChanged = true;
-
-    // store connections?
-
-    // save output and input connections and types
-    // parameters
-    // metaInformation?
-    //BlockType::createBlock
 }
 
 } // namespace DigitizerUi

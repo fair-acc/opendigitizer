@@ -255,10 +255,7 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
                 ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(context.block->name.c_str());
         std::string_view typeName = context.block->typeName();
-/*
-        ImGui::TextUnformatted(typeName.data());
-        ImGui::SameLine();
-*/
+
         ImGui::TextUnformatted("<");
         ImGui::SameLine();
 
