@@ -25,139 +25,8 @@ class FlowGraph;
 class Connection;
 class Block;
 
-class BlockType {
-public:
-    struct PortDefinition {
-        std::string type;
-        std::string name;
-        bool        dataset = false;
-    };
-
-    struct EnumParameter {
-        const int size;
-
-        using Options = std::vector<std::string>;
-        Options                                  options;
-        std::unordered_map<std::string, Options> optionsAttributes;
-        std::vector<std::string>                 optionsLabels;
-
-        std::string                              defaultValue;
-    };
-    template<typename T>
-    struct NumberParameter {
-        inline explicit NumberParameter(T v)
-            : defaultValue(v) {}
-        T defaultValue;
-    };
-    struct StringParameter {
-        std::string defaultValue;
-    };
-    struct Parameter {
-        const std::string                                                                          id;
-        const std::string                                                                          label;
-        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
-    };
-
-    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
-
-    std::unique_ptr<Block>      createBlock(std::string_view name) const;
-
-    const std::string           name;
-    const std::string           label;
-    std::vector<Parameter>      parameters;
-    std::vector<PortDefinition> inputs;
-    std::vector<PortDefinition> outputs;
-    const std::string           category;
-    gr::property_map            defaultParameters;
-
-    auto                        data_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
-    }
-    auto message_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
-    }
-    auto data_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
-    }
-    auto message_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
-    }
-
-    bool isSource() const {
-        return inputs.empty() && !outputs.empty();
-    }
-
-    bool isSink() const {
-        return !inputs.empty() && outputs.empty();
-    }
-
-    bool isPlotSink() const {
-        // TODO make this smarter once metaInformation() is statically available
-        return name == "opendigitizer::ImPlotSink";
-    }
-
-    template<typename T>
-    void initPort(auto &vec) {
-        vec.push_back({});
-        auto &p = vec.back();
-        p.name  = T::static_name();
-        p.type  = T::kPortType == gr::PortType::STREAM ? "float" : "message";
-        if (opendigitizer::meta::is_dataset_v<typename T::value_type>) {
-            p.dataset = true;
-        }
-    }
-
-    struct Registry {
-        void loadBlockDefinitions(const std::filesystem::path &dir);
-        void addBlockType(std::unique_ptr<BlockType> &&t);
-
-        // automatically create a BlockType from a graph prototype node template class
-        template<template<typename...> typename T>
-        void addBlockType(std::string_view typeName) {
-            using Node           = T<float>;
-            auto t               = std::make_unique<DigitizerUi::BlockType>(typeName);
-            t->defaultParameters = [] {
-                Node instance;
-                instance.settings().applyStagedParameters();
-                return instance.settings().get();
-            }();
-            namespace meta                         = gr::traits::block;
-
-            constexpr std::size_t input_port_count = meta::template all_input_port_types<Node>::size;
-            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template all_input_ports<Node>::template at<Is>>(t->inputs), ...);
-            }(std::make_index_sequence<input_port_count>());
-
-            constexpr std::size_t output_port_count = meta::template all_output_port_types<Node>::size;
-            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (t->template initPort<typename meta::template all_output_ports<Node>::template at<Is>>(t->outputs), ...);
-            }(std::make_index_sequence<output_port_count>());
-
-            addBlockType(std::move(t));
-        }
-
-        const BlockType   *get(std::string_view id) const;
-
-        inline const auto &types() const { return m_types; }
-
-    private:
-        // This stuff is to enable looking up in the m_types map with string_view
-        template<typename... Keys>
-        struct transparent_hash : std::hash<Keys>... {
-            using is_transparent = void;
-            using std::hash<Keys>::operator()...;
-        };
-
-        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
-
-        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
-    };
-
-    static Registry &registry();
-};
-
 struct DataType {
-    enum Id {
+    enum Id : int {
         ComplexFloat64,
         ComplexFloat32,
         ComplexInt64,
@@ -167,6 +36,7 @@ struct DataType {
         Float64,
         Float32,
         DataSetFloat32,
+        DataSetFloat64,
         Int64,
         Int32,
         Int16,
@@ -182,17 +52,18 @@ struct DataType {
         switch (id) {
         case ComplexFloat64: return "std::complex<double>";
         case ComplexFloat32: return "std::complex<float>";
-        case ComplexInt64: return "std::complex<int64_t>";
-        case ComplexInt32: return "std::complex<int32_t>";
-        case ComplexInt16: return "std::complex<int16_t>";
-        case ComplexInt8: return "std::complex<int8_t>";
+        case ComplexInt64: return "std::complex<std::int64_t>";
+        case ComplexInt32: return "std::complex<std::int32_t>";
+        case ComplexInt16: return "std::complex<std::int16_t>";
+        case ComplexInt8: return "std::complex<std::int8_t>";
         case Float64: return "double";
         case Float32: return "float";
-        case DataSetFloat32: return "gr::DataSet_float";
-        case Int64: return "int64_t";
-        case Int32: return "int32_t";
-        case Int16: return "int16_t";
-        case Int8: return "int8_t";
+        case DataSetFloat32: return "gr::DataSet<float>";
+        case DataSetFloat64: return "gr::DataSet<double>";
+        case Int64: return "std::int64_t";
+        case Int32: return "std::int32_t";
+        case Int16: return "std::int16_t";
+        case Int8: return "std::int8_t";
         }
         return "unknown";
     }
@@ -225,6 +96,8 @@ struct DataType {
             return ComplexInt8;
         } else if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
             return DataSetFloat32;
+        } else if constexpr (std::is_same_v<T, gr::DataSet<double>>) {
+            return DataSetFloat64;
         } else {
             static_assert(!std::is_same_v<T, T>, "DataType of T is not known");
         }
@@ -235,7 +108,7 @@ struct DataType {
         switch (m_id) {
         case ComplexFloat64: return fun.template operator()<std::complex<double>>();
         case ComplexFloat32: return fun.template operator()<std::complex<float>>();
-        // unsupported by graph-prototype
+        // unsupported by gnuradio4
         // case ComplexInt64: return fun.template operator()<std::complex<int64_t>>();
         // case ComplexInt32: return fun.template operator()<std::complex<int32_t>>();
         // case ComplexInt16: return fun.template operator()<std::complex<int16_t>>();
@@ -243,6 +116,7 @@ struct DataType {
         case Float64: return fun.template operator()<double>();
         case Float32: return fun.template operator()<float>();
         case DataSetFloat32: return fun.template operator()<gr::DataSet<float>>();
+        case DataSetFloat64: return fun.template operator()<gr::DataSet<double>>();
         // case Int64: return fun.template operator()<int64_t>();
         case Int32: return fun.template operator()<int32_t>();
         case Int16: return fun.template operator()<int16_t>();
@@ -257,6 +131,16 @@ struct DataType {
         return decltype(fun.template operator()<float>()){};
     }
 
+    static DataType fromString(std::string s) {
+        int biggest = static_cast<int>(Id::Untyped);
+        for (int i = 0; i < static_cast<int>(Id::Untyped); i++) {
+            auto d = DataType(static_cast<Id>(i));
+            if (DataType::name(static_cast<Id>(i)) == s)
+                return d;
+        }
+        return DataType(Id::Untyped);
+    }
+
     constexpr inline DataType() {}
     constexpr inline DataType(Id id)
         : m_id(id) {}
@@ -267,6 +151,104 @@ struct DataType {
 
 private:
     Id m_id = Id::Untyped;
+};
+
+class BlockType {
+public:
+    struct PortDefinition {
+        std::string type;
+        std::string name;
+        bool        dataset = false;
+    };
+
+    struct EnumParameter {
+        const int size;
+
+        using Options = std::vector<std::string>;
+        Options                                  options;
+        std::unordered_map<std::string, Options> optionsAttributes;
+        std::vector<std::string>                 optionsLabels;
+
+        std::string                              defaultValue;
+    };
+    template<typename T>
+    struct NumberParameter {
+        inline explicit NumberParameter(T v)
+            : defaultValue(v) {}
+        T defaultValue;
+    };
+    struct StringParameter {
+        std::string defaultValue;
+    };
+    struct Parameter {
+        std::string                                                                                id;
+        std::string                                                                                label;
+        std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
+    };
+
+    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
+
+    std::unique_ptr<Block>      createBlock(std::string_view name) const;
+
+    const std::string           name;
+    const std::string           label;
+    std::vector<Parameter>      parameters;
+    std::vector<PortDefinition> inputs;
+    std::vector<PortDefinition> outputs;
+    std::vector<DataType>       availableBaseTypes;
+    const std::string           category;
+    gr::property_map            defaultParameters;
+
+    auto                        data_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_inputs() {
+        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+    auto data_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    }
+    auto message_outputs() {
+        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+    }
+
+    bool isSource() const {
+        return inputs.empty() && !outputs.empty();
+    }
+
+    bool isSink() const {
+        return !inputs.empty() && outputs.empty();
+    }
+
+    bool isPlotSink() const {
+        // TODO make this smarter once metaInformation() is statically available
+        return name == "opendigitizer::ImPlotSink";
+    }
+    struct Registry {
+        void               loadBlockDefinitions(const std::filesystem::path &dir);
+
+        void               addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader);
+
+        void               addBlockType(std::unique_ptr<BlockType> &&t);
+
+        const BlockType   *get(std::string_view id) const;
+
+        inline const auto &types() const { return m_types; }
+
+    private:
+        // This stuff is to enable looking up in the m_types map with string_view
+        template<typename... Keys>
+        struct transparent_hash : std::hash<Keys>... {
+            using is_transparent = void;
+            using std::hash<Keys>::operator()...;
+        };
+
+        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
+
+        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
+    };
+
+    static Registry &registry();
 };
 
 class Block {
@@ -356,7 +338,11 @@ public:
     void                    updateSettings(const gr::property_map &settings);
     const gr::property_map &metaInformation() const { return m_metaInformation; }
 
+    [[nodiscard]] DataType  datatype() const;
+    void                    setDatatype(DataType type);
+
 protected:
+    DataType          m_datatype{ DataType::Float32 };
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
     gr::property_map  m_parameters;
@@ -400,6 +386,7 @@ struct ExecutionContext {
 class FlowGraph {
 public:
     FlowGraph();
+    void               setPluginLoader(std::shared_ptr<gr::PluginLoader> loader);
     void               parse(const std::filesystem::path &file);
     void               parse(const std::string &str);
     void               clear();
@@ -448,8 +435,10 @@ public:
         return nullptr;
     }
 
+    void changeBlockType(Block *block, DataType type);
+
 private:
-    gr::PluginLoader                                  _pluginLoader;
+    std::shared_ptr<gr::PluginLoader>                 _pluginLoader;
     std::vector<std::unique_ptr<Block>>               m_blocks;
     std::unordered_map<std::string, gr::BlockModel *> m_plotSinkGrBlocks;
     plf::colony<Connection>                           m_connections; // We're using plf::colony because it guarantees pointer/iterator stability

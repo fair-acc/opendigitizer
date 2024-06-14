@@ -19,7 +19,39 @@
 
 #include "App.hpp"
 
+using namespace std::string_literals;
+
 namespace DigitizerUi {
+
+template<typename T>
+auto typeToName() {
+    std::any value = T{};
+    return value.type().name();
+}
+
+std::string valueTypeName(auto &port) {
+    static const std::map<std::string, std::string> mangledToName{
+        { typeToName<float>(), "float"s },
+        { typeToName<double>(), "double"s },
+
+        { typeToName<std::complex<float>>(), "std::complex<float>"s },
+        { typeToName<std::complex<double>>(), "std::complex<double>"s },
+
+        { typeToName<gr::DataSet<float>>(), "gr::DataSet<float>"s },
+        { typeToName<gr::DataSet<double>>(), "gr::DataSet<double>"s },
+
+        { typeToName<std::int8_t>(), "std::int8_t"s },
+        { typeToName<std::int16_t>(), "std::int16_t"s },
+        { typeToName<std::int32_t>(), "std::int32_t"s },
+        { typeToName<std::int64_t>(), "std::int64_t"s }
+    };
+
+    if (auto it = mangledToName.find(port.defaultValue().type().name()); it != mangledToName.end()) {
+        return it->second;
+    } else {
+        return "unknown_type"s;
+    }
+}
 
 const std::string &DataType::toString() const {
     const static std::string names[] = {
@@ -64,6 +96,50 @@ const BlockType *BlockType::Registry::get(std::string_view id) const {
     return it == m_types.end() ? nullptr : it->second.get();
 }
 
+void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader) {
+    for (const auto &typeName : pluginLoader.knownBlocks()) {
+        // TODO make this also work if the block doesn't allow T=float, or has multiple
+        // non-defaulted template parameters.
+        // (needs information about possible instantiations from the plugin loader)
+        auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
+        auto prototypeParams           = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
+
+        auto prototype                 = pluginLoader.instantiate(typeName, prototypeParams);
+        if (!prototype) {
+            fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, prototypeParams);
+            continue;
+        }
+        fmt::println("Registering block type '{}'", typeName);
+
+        auto type = std::make_unique<BlockType>(typeName, typeName, "TODO category");
+        type->availableBaseTypes.resize(pluginLoader.knownBlockParameterizations(typeName).size());
+        std::ranges::transform(pluginLoader.knownBlockParameterizations(typeName), type->availableBaseTypes.begin(), [](auto s) { return DataType::fromString(s); });
+        std::ignore             = prototype->settings().applyStagedParameters();
+        type->defaultParameters = prototype->settings().get();
+        for (const auto &[id, v] : type->defaultParameters) {
+            if (auto param = std::get_if<int>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::NumberParameter<int>{ *param });
+            } else if (auto param = std::get_if<float>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::NumberParameter<float>{ *param });
+            } else if (auto param = std::get_if<std::string>(&v)) {
+                type->parameters.emplace_back(id, id, BlockType::StringParameter{ *param });
+            }
+        }
+
+        // TODO Create input and output ports (needs port information in BlockModel)
+        for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
+            const auto &port = prototype->dynamicInputPort(index);
+            type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+        }
+        for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
+            const auto &port = prototype->dynamicOutputPort(index);
+            type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+        }
+
+        addBlockType(std::move(type));
+    }
+}
+
 void BlockType::Registry::addBlockType(std::unique_ptr<BlockType> &&t) {
     m_types.insert({ t->name, std::move(t) });
 }
@@ -98,19 +174,39 @@ void Block::updateSettings(const gr::property_map &settings) {
 
 void Block::update() {
     auto parseType = [](const std::string &t, bool dataset) -> DataType {
+        // old names
         if (t == "fc64") return DataType::ComplexFloat64;
         if (t == "fc32" || t == "complex") return DataType::ComplexFloat32;
         if (t == "sc64") return DataType::ComplexInt64;
         if (t == "sc32") return DataType::ComplexInt32;
         if (t == "sc16") return DataType::ComplexInt16;
         if (t == "sc8") return DataType::ComplexInt8;
-        if (t == "f64") return DataType::Float64;
-        if (t == "f32" || t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
+        if (t == "f64") return dataset ? DataType::DataSetFloat64 : DataType::Float64;
+        if (t == "f32") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
         if (t == "s64") return DataType::Int64;
-        if (t == "s32" || t == "int") return DataType::Int32;
-        if (t == "s16" || t == "short") return DataType::Int16;
-        if (t == "s8" || t == "byte") return DataType::Int8;
+        if (t == "s32") return DataType::Int32;
+        if (t == "s16") return DataType::Int16;
+        if (t == "s8") return DataType::Int8;
+        if (t == "byte") return DataType::Int8;
         if (t == "bit" || t == "bits") return DataType::Bits;
+
+        // GR4 names
+        if (t == "std::complex<double>") return DataType::ComplexFloat64;
+        if (t == "std::complex<float>") return DataType::ComplexFloat32;
+        // if (t == "std::complex<std::int64_t>") return DataType::ComplexInt64;
+        // if (t == "std::complex<std::int32_t>") return DataType::ComplexInt32;
+        // if (t == "std::complex<std::int16_t>") return DataType::ComplexInt16;
+        // if (t == "std::complex<std::int8_t>") return DataType::ComplexInt8;
+        if (t == "double") return dataset ? DataType::DataSetFloat64 : DataType::Float64;
+        if (t == "float") return dataset ? DataType::DataSetFloat32 : DataType::Float32;
+        if (t == "std::int64_t") return DataType::Int64;
+        if (t == "std::int32_t" || t == "int") return DataType::Int32;
+        if (t == "std::int16_t" || t == "short") return DataType::Int16;
+        if (t == "std::int8_t") return DataType::Int8;
+
+        if (t == "gr::DataSet<float>") return DataType::DataSetFloat32;
+        if (t == "gr::DataSet<double>") return DataType::DataSetFloat64;
+
         if (t == "message") return DataType::AsyncMessage;
         if (t == "bus") return DataType::BusConnection;
         if (t == "") return DataType::Wildcard;
@@ -135,6 +231,13 @@ void Block::update() {
     for (auto &out : m_outputs) {
         out.type = getType(out.m_rawType, out.dataset);
     }
+}
+
+void Block::setDatatype(DataType type) {
+    m_datatype = type;
+}
+DataType Block::datatype() const {
+    return m_datatype;
 }
 
 std::string Block::EnumParameter::toString() const {
@@ -273,8 +376,7 @@ void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path &dir)
     }
 }
 
-FlowGraph::FlowGraph()
-    : _pluginLoader(gr::globalBlockRegistry(), {}) {}
+FlowGraph::FlowGraph() {}
 
 void FlowGraph::parse(const std::filesystem::path &file) {
     std::string str;
@@ -284,7 +386,7 @@ void FlowGraph::parse(const std::filesystem::path &file) {
 
 void FlowGraph::parse(const std::string &str) {
     clear();
-    auto graph = gr::load_grc(_pluginLoader, str);
+    auto graph = gr::load_grc(*_pluginLoader, str);
 
     graph.forEachBlock([&](const auto &grBlock) {
         auto typeName = grBlock.typeName();
@@ -315,7 +417,13 @@ void FlowGraph::parse(const std::string &str) {
         const auto destinationPort = edge._destinationPortDefinition.topLevel;
         // TODO support port collections
 
-        connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+        if (sourcePort >= srcBlock->m_outputs.size()) {
+            fmt::print("ERROR: Cannot connect, no output port with index {} in {}, have only {} ports\n", sourcePort, srcBlock->m_uniqueName, srcBlock->m_outputs.size());
+        } else if (destinationPort >= dstBlock->m_inputs.size()) {
+            fmt::print("ERROR: Cannot connect, no input port with index {} in {}, have only {} ports\n", destinationPort, dstBlock->m_uniqueName, dstBlock->m_inputs.size());
+        } else {
+            connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+        }
     });
 
     m_graphChanged = true;
@@ -470,17 +578,11 @@ static bool isDrawable(const gr::property_map &meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, const Block &block) {
-    DataType t          = DataType::Float32;
-    auto     inputsView = block.dataInputs();
-    if (!std::ranges::empty(inputsView)) {
-        if (auto &in = *std::ranges::begin(inputsView); in.connections.size() > 0) {
-            auto &src = in.connections[0]->src;
-            t         = src.block->outputs()[src.index].type;
-        }
-    }
-    auto params    = block.parameters();
-    params["name"] = block.name;
-    auto grBlock   = loader.instantiate(block.typeName(), DataType::name(t));
+    DataType t      = block.datatype();
+    auto     params = block.parameters();
+    params["name"]  = block.name;
+    fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
+    auto grBlock = loader.instantiate(block.typeName(), DataType::name(t));
 
     if (!grBlock) {
         fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
@@ -496,7 +598,7 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader &loader, c
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
     for (const auto &block : m_blocks) {
-        auto grBlock = createGRBlock(_pluginLoader, *block);
+        auto grBlock = createGRBlock(*_pluginLoader, *block);
         if (!grBlock) {
             continue;
         }
@@ -554,6 +656,26 @@ void FlowGraph::handleMessage(const gr::Message &msg) {
         }
         (*it)->updateSettings(msg.data.value());
     }
+}
+
+void FlowGraph::setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) {
+    _pluginLoader = std::move(loader);
+}
+
+void FlowGraph::changeBlockType(Block *block, DataType type) {
+    auto select = [&](const auto &b) {
+        return block == b.get();
+    };
+    auto it = std::ranges::find_if(m_blocks, select);
+    assert(it != m_blocks.end());
+    std::unique_ptr<Block> b{ std::move((*it)) };
+    m_blocks.erase(it);
+
+    deleteBlock(block);
+    block->setDatatype(type);
+    addBlock(std::move(b));
+
+    m_graphChanged = true;
 }
 
 } // namespace DigitizerUi

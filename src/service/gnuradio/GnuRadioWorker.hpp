@@ -390,7 +390,7 @@ private:
             reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
             reply.channelUnit    = pollerEntry.signal_unit.value_or("N/A");
             // work around fix the Annotated::operator= ambiguity here (move vs. copy assignment) when creating a temporary unit here
-            // Should be fixed in Annotated (templated forwarding assignment operator=?)/or go for graph-prototype's Annotated?
+            // Should be fixed in Annotated (templated forwarding assignment operator=?)/or go for gnuradio4's Annotated?
             const typename decltype(reply.channelRangeMin)::R rangeMin = pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest();
             const typename decltype(reply.channelRangeMax)::R rangeMax = pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max();
             reply.channelRangeMin                                      = rangeMin;

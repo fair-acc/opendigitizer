@@ -100,6 +100,10 @@ public:
 
     ~Dashboard();
 
+    void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) {
+        localFlowGraph.setPluginLoader(std::move(loader));
+    }
+
     void                         load();
     void                         save();
 

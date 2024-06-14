@@ -176,6 +176,7 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::BusConnection: return 0xffffffff;
         case DataType::Wildcard: return 0xffffffff;
         case DataType::Untyped: return 0xffffffff;
+        case DataType::DataSetFloat64: return 0xff00BCD4;
         case DataType::DataSetFloat32: return 0xffF57C00;
         }
     } else {
@@ -197,6 +198,7 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::BusConnection: return 0xff000000;
         case DataType::Wildcard: return 0xff000000;
         case DataType::Untyped: return 0xff000000;
+        case DataType::DataSetFloat64: return 0xffff432b;
         case DataType::DataSetFloat32: return 0xff0a83ff;
         }
     }
@@ -610,6 +612,12 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (ImGui::MenuItem("Delete")) {
             fg->deleteBlock(m_selectedBlock);
+        }
+        for (auto t : m_selectedBlock->type().availableBaseTypes) {
+            auto name = std::string{ "Change Type to " } + DataType::name(t).data();
+            if (ImGui::MenuItem(name.c_str())) {
+                fg->changeBlockType(m_selectedBlock, t);
+            }
         }
     }
 

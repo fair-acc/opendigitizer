@@ -1,9 +1,9 @@
 include(FetchContent)
 
 FetchContent_Declare(
-        graph-prototype
-        GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-        GIT_TAG ad904a094b835e2884cea0a7aa22890f0c9908bc # main as of 2024-04-28
+        gnuradio4
+        GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
+        GIT_TAG f00cba2c81422f143c9d48552921ec63bbaef652 # main as of 2024-05-29
 )
 
 FetchContent_Declare(
@@ -18,4 +18,4 @@ FetchContent_Declare(
         GIT_TAG v2.0.1 # latest version as of 2023-12-19
 )
 
-FetchContent_MakeAvailable(opencmw-cpp graph-prototype ut)
+FetchContent_MakeAvailable(opencmw-cpp gnuradio4 ut)

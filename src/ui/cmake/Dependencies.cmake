@@ -17,8 +17,13 @@ FetchContent_Declare(
 
 FetchContent_Declare(
     imgui-node-editor
-    GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
-    GIT_TAG         v0.9.3 # latest as of 2023-12-19
+    # GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git
+    # GIT_TAG         v0.9.3 # latest as of 2023-12-19
+
+    # Temporary until https://github.com/thedmd/imgui-node-editor/pull/291
+    # is merged
+    GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-imgui-node-editor.git
+    GIT_TAG        2e4740361b7bddb924807f6d5be64818b72bf15e
 )
 
 FetchContent_Declare(
@@ -41,12 +46,12 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    graph-prototype
-    GIT_REPOSITORY https://github.com/fair-acc/graph-prototype.git
-    GIT_TAG ad904a094b835e2884cea0a7aa22890f0c9908bc # main as of 2024-04-28
+    gnuradio4
+    GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
+    GIT_TAG f00cba2c81422f143c9d48552921ec63bbaef652 # main as of 2024-05-29
 )
 
-FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony graph-prototype)
+FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony gnuradio4)
 
 if (NOT EMSCRIPTEN)
     find_package(SDL2 REQUIRED)
