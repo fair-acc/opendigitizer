@@ -1,8 +1,8 @@
-#/bin/bash
+#!/bin/bash
 
 #enforces .clang-format style guide prior to committing to the git repository
 
-CLANG_MIN_VERSION="9.0.0"
+CLANG_MIN_VERSION="18.0.0"
 
 set -e
 
