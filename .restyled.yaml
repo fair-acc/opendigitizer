@@ -1,10 +1,4 @@
 # Default Restyler Configuration: https://github.com/restyled-io/restyler/blob/main/config/default.yaml
-exclude:
-  - "**/node_modules/**/*"
-  - "**/vendor/**/*"
-
-remote_files: []
-
 pull_requests: false # Open Restyle PRs?
 request_review: none
 labels: []
@@ -28,7 +22,7 @@ restylers_version: stable
 restylers:
   - clang-format:
       image:
-        tag: v17
+        tag: v18
   - cmake-format
   - prettier-markdown
   - prettier-yaml
