@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(opendigitizer CXX)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 set(EMCMAKE_COMMAND
     "emcmake"
