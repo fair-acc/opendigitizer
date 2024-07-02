@@ -27,6 +27,8 @@ private:
         Category    category;
         std::string title;
         bool        isActive;
+
+        auto operator<=>(const FilterData& other) const = default;
     };
 
     struct CategoryData {
@@ -203,17 +205,82 @@ private:
         {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedHvPS"}     //
     };
 
-    std::map<std::string, std::vector<SignalData*>> deviceIndex;
-    std::map<std::string, std::vector<SignalData*>> frontendIndex;
-    std::map<std::string, std::vector<SignalData*>> signalNameIndex;
-    std::map<std::string, std::vector<SignalData*>> subDevicePropertyIndex;
-    std::map<std::string, std::vector<SignalData*>> quantityIndex;
-    std::map<std::string, std::vector<SignalData*>> sampleRateIndex;
-    std::map<std::string, std::vector<SignalData*>> unitIndex;
-    std::map<std::string, std::vector<SignalData*>> acceleratorIndex;
-    std::map<std::string, std::vector<SignalData*>> deviceClassIndex;
+    using SignalsIndexMap = std::map<std::string, std::vector<SignalData*>>;
+    SignalsIndexMap deviceIndex;
+    SignalsIndexMap frontendIndex;
+    SignalsIndexMap signalNameIndex;
+    SignalsIndexMap subDevicePropertyIndex;
+    SignalsIndexMap quantityIndex;
+    SignalsIndexMap sampleRateIndex;
+    SignalsIndexMap unitIndex;
+    SignalsIndexMap acceleratorIndex;
+    SignalsIndexMap deviceClassIndex;
+
+    std::array<SignalsIndexMap*, 5> categoryIndices{&acceleratorIndex, &deviceClassIndex, &subDevicePropertyIndex, &unitIndex, &quantityIndex};
+
+    // Filtering state
+    std::string                           m_shownSearchString;
+    std::string                           m_searchString;
+    std::vector<SignalData*>              m_filteredItems;
+
+    SignalsIndexMap*                      m_mainFilterCategoryIndex = nullptr;
+    std::vector<std::vector<SignalData*>> m_signalsToProcess;
+    std::size_t                           m_nextItemToFilter = 0;
+    std::vector<FilterData*>              m_filters;
+
+    void startSearching(const std::string& _searchString, std::vector<FilterData*> _filters) {
+        m_filteredItems.clear();
+        m_searchString = _searchString;
+        m_filters      = std::move(_filters);
+        m_signalsToProcess.clear();
+
+        if (!m_filters.empty()) {
+            std::ranges::sort(m_filters, [](const auto* left, const auto* right) { return *left < *right; });
+            auto mainCategory         = m_filters.front()->category;
+            m_mainFilterCategoryIndex = categoryIndices[static_cast<std::size_t>(mainCategory)];
+
+            for (const auto& filter : m_filters) {
+                if (filter->category != mainCategory) {
+                    break;
+                }
+                m_signalsToProcess.push_back((*m_mainFilterCategoryIndex)[filter->title]);
+            }
+        } else {
+            m_mainFilterCategoryIndex = nullptr;
+        }
+        m_nextItemToFilter = 0UZ;
+    }
+
+    bool loadMoreItems() {
+        if (m_mainFilterCategoryIndex) {
+            if (m_nextItemToFilter >= m_mainFilterCategoryIndex->size()) {
+                return false;
+            }
+
+        } else {
+            // We list everything that matches the search string,
+            // no extra filters have been defined
+            if (m_nextItemToFilter >= m_signals.size()) {
+                return false;
+            }
+
+            if (m_signals[m_nextItemToFilter].signalName.find(m_searchString) != std::string::npos || //
+                m_signals[m_nextItemToFilter].comment.find(m_searchString) != std::string::npos) {
+                m_filteredItems.push_back(&m_signals[m_nextItemToFilter]);
+            }
+
+            m_nextItemToFilter++;
+            return true;
+        }
+    }
 
     void buildIndex() {
+        m_mainFilterCategoryIndex = nullptr;
+        m_nextItemToFilter        = 0UZ;
+        m_searchString.clear();
+        m_filters.clear();
+        m_filteredItems.clear();
+
         for (SignalData& signal : m_signals) {
             auto* signalPtr = std::addressof(signal);
             deviceIndex[signal.device].push_back(signalPtr);
@@ -227,7 +294,8 @@ private:
             deviceClassIndex[signal.deviceClass].push_back(signalPtr);
         }
 
-        auto itemsForIndex = [](Category category, const auto& index) {
+        auto itemsForIndex = [this](Category category) {
+            const auto&             index = *categoryIndices[static_cast<std::size_t>(category)];
             std::vector<FilterData> result;
             result.resize(index.size());
             std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterData{category, kvp.first, false}; });
@@ -235,11 +303,11 @@ private:
         };
 
         m_filterCombos.setData({
-            {"##comboDomain", "Domain", colorForCategory(Category::Domain), itemsForIndex(Category::Domain, acceleratorIndex)},                //
-            {"##comboDeviceType", "Dev. type", colorForCategory(Category::DeviceType), itemsForIndex(Category::DeviceType, deviceClassIndex)}, //
-            {"##comboDAQ", "DAQ-M.", colorForCategory(Category::DAQ_M), {}},                                                                   //
-            {"##comboStatus", "Status", colorForCategory(Category::Status), {}},                                                               //
-            {"##comboQuantity", "Quantity", colorForCategory(Category::Quantity), itemsForIndex(Category::Quantity, quantityIndex)}            //
+            {"##comboDomain", "Domain", colorForCategory(Category::Domain), itemsForIndex(Category::Domain)},                //
+            {"##comboDeviceType", "Dev. type", colorForCategory(Category::DeviceType), itemsForIndex(Category::DeviceType)}, //
+            {"##comboDAQ", "DAQ-M.", colorForCategory(Category::DAQ_M), {}},                                                 //
+            {"##comboStatus", "Status", colorForCategory(Category::Status), {}},                                             //
+            {"##comboQuantity", "Quantity", colorForCategory(Category::Quantity), itemsForIndex(Category::Quantity)}         //
         });
     }
 
@@ -292,6 +360,8 @@ public:
     void drawSignalSelector(FlowGraph* fg) {
         m_querySignalFilters.drawFilters();
 
+        bool filtersChanged = false;
+
         if (auto comboSelectedItem = m_filterCombos.draw()) {
             auto* item      = *comboSelectedItem;
             bool  wasActive = item->isActive;
@@ -302,10 +372,16 @@ public:
             } else {
                 m_selectedFilters.addLabel({item->title, item, colorForCategory(item->category)});
             }
+
+            filtersChanged = true;
         }
 
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        ImGui::InputText("##textFilter", &m_addRemoteSignalUri);
+
+        ImGui::InputText("##textFilter", &m_shownSearchString);
+        if (m_shownSearchString != m_searchString) {
+            filtersChanged = true;
+        }
 
         auto contentWidth          = ImGui::GetContentRegionAvail().x;
         auto remainingContentWidth = contentWidth;
@@ -313,7 +389,25 @@ public:
 
         if (auto removedLabel = m_selectedFilters.draw()) {
             (*removedLabel)->isActive = false;
+            filtersChanged            = true;
         }
+
+        if (filtersChanged) {
+            std::vector<FilterData*> filters;
+            filters.resize(m_selectedFilters.labels().size());
+            std::ranges::transform(m_selectedFilters.labels(), filters.begin(), [](const auto& filter) { return filter.data; });
+            startSearching(m_shownSearchString, filters);
+        }
+
+        if (filtersChanged) // TODO remove this condition
+        while( // TODO - remove while
+            loadMoreItems()
+        );
+        fmt::print("--vvvv---------------------- | search string {} | {}\n", m_searchString, m_shownSearchString);
+        for (const auto* signal : m_filteredItems) {
+            fmt::print("    {} {}\n", signal->signalName, signal->comment);
+        }
+        fmt::print("--^^^^----------------------\n");
 
         // if (ImGui::BeginCombo("##baseTypeCombo", DataType::name(context.block->datatype()).data())) {
         //     for (auto e : typeNames) {

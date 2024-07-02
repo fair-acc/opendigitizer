@@ -92,7 +92,7 @@ private:
 public:
     SelectedLabelsView(std::vector<LabelInfo> labels = {}) : m_labels(std::move(labels)) {}
 
-    std::span<const LabelInfo> labels() const { return m_labels; }
+    const std::vector<LabelInfo>& labels() { return m_labels; }
 
     void addLabel(LabelInfo label) { m_labels.emplace_back(std::move(label)); }
 
