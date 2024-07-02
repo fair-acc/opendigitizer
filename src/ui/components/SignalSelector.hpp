@@ -87,155 +87,140 @@ private:
         }
     }
 
-    std::vector<SignalData> m_signals{
-        {"GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
-        {"GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
-        {"GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
-        {"GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
-        {"GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
-        {"GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
-        {"GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
-        {"GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
-        {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedHvPS"},             //
-        {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedHvPS"},         //
-        {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedHvPS"},    //
+    std::vector<SignalData> m_signals;
 
-        {"zTEST 01", "frontend", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},    //
-        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
-        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
-        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
-        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"}, //
-        {"zTEST 01", "frontend", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},   //
-        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
-        {"zTEST 01", "frontend", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
-        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
-        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
-        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"} //
+    std::vector<SignalData> m_signalsTestData{
+        {"TEST GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP03", "scuxl0158", "ESR", "RampedPS", "GE01KP03:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP04", "scuxl0181", "ESR", "RampedPS", "GE01KP04:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP05", "scuxl0181", "ESR", "RampedPS", "GE01KP05:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP06", "scuxl0153", "ESR", "RampedPS", "GE01KP06:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP07", "scuxl0211", "ESR", "RampedPS", "GE01KP07:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP08", "scuxl0153", "ESR", "RampedPS", "GE01KP08:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP09", "scuxl0153", "ESR", "RampedPS", "GE01KP09:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP10", "scuxl0153", "ESR", "RampedPS", "GE01KP10:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP17", "scuxl0211", "ESR", "RampedPS", "GE01KP17:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP18", "scuxl0211", "ESR", "RampedPS", "GE01KP18:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP19", "scuxl0211", "ESR", "RampedPS", "GE01KP19:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP20", "scuxl0211", "ESR", "RampedPS", "GE01KP20:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP21", "scuxl0153", "ESR", "RampedPS", "GE01KP21:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP22", "scuxl0181", "ESR", "RampedPS", "GE01KP22:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP23", "scuxl0158", "ESR", "RampedPS", "GE01KP23:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01KP24", "scuxl0158", "ESR", "RampedPS", "GE01KP24:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KS1", "scuxl0170", "ESR", "RampedPS", "GE01KS1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KS2", "scuxl0170", "ESR", "RampedPS", "GE01KS2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KS3", "scuxl0170", "ESR", "RampedPS", "GE01KS3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KS4", "scuxl0170", "ESR", "RampedPS", "GE01KS4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX1", "scuxl0206", "ESR", "RampedPS", "GE01KX1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX2", "scuxl0158", "ESR", "RampedPS", "GE01KX2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX3", "scuxl0206", "ESR", "RampedPS", "GE01KX3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX4", "scuxl0206", "ESR", "RampedPS", "GE01KX4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX5", "scuxl0206", "ESR", "RampedPS", "GE01KX5:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KX6", "scuxl0206", "ESR", "RampedPS", "GE01KX6:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KY1", "scuxl0169", "ESR", "RampedPS", "GE01KY1:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KY2", "scuxl0169", "ESR", "RampedPS", "GE01KY2:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KY3", "scuxl0169", "ESR", "RampedPS", "GE01KY3:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},                 //
+        {"TEST GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},             //
+        {"TEST GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},        //
+        {"TEST GE01KY4", "scuxl0169", "ESR", "RampedPS", "GE01KY4:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"},   //
+        {"TEST GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
+        {"TEST GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedPS"},           //
+        {"TEST GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedPS"},      //
+        {"TEST GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
+        {"TEST GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedHvPS"},             //
+        {"TEST GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedHvPS"},         //
+        {"TEST GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedHvPS"},    //
     };
 
     using SignalsIndexMap = std::map<std::string, std::vector<SignalData*>>;
@@ -394,7 +379,12 @@ private:
     }
 
 public:
-    SignalSelector() { buildIndex(); }
+    SignalSelector() {
+        if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
+            m_signals = m_signalsTestData;
+        }
+        buildIndex();
+    }
 
     void open() { ImGui::OpenPopup(m_windowName.c_str()); }
 
@@ -524,9 +514,9 @@ public:
         // float refreshButtonPosX = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Refresh").x;
         // float refreshButtonPosY = ImGui::GetWindowHeight() - ImGui::GetStyle().ItemSpacing.y - ImGui::GetStyle().FramePadding.y - ImGui::CalcTextSize("Refresh").y;
         // ImGui::SetCursorPos({refreshButtonPosX, refreshButtonPosY});
-        // if (ImGui::Button("Refresh")) {
-        //     m_signalList.update();
-        // }
+        if (ImGui::Button("Refresh")) {
+            m_signalList.update();
+        }
     }
 
     void draw(FlowGraph* fg) {
@@ -545,8 +535,6 @@ public:
 
             drawSignalSelector(fg);
 
-            ImGui::NewLine();
-            ImGui::NewLine();
 #if 0
             static BlockType* sel = nullptr;
             if (auto child = IMW::ChildWithId(1, ImVec2{0, ImGui::GetContentRegionAvail().y - 50}, 0, 0)) {

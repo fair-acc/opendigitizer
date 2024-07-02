@@ -55,7 +55,7 @@ struct Token {
         return type != TType::tt_none && type != TType::tt_end;
     }
     [[nodiscard]] constexpr bool is_popen() const noexcept {
-        return type == TType::tt_popen || +type >= +TType::tt_sin && +type <= +TType::tt_tanh;
+        return type == TType::tt_popen || (+type >= +TType::tt_sin && +type <= +TType::tt_tanh);
     }
 };
 
@@ -191,7 +191,7 @@ public:
     constexpr static Action GetAction(TType stack, TType incoming) {
         auto table_nav = [](TType entry) {switch (entry) {
             default:
-                return entry == TType::tt_popen || +entry >= +TType::tt_sin && +entry <= +TType::tt_tanh?4:-1;
+                return entry == TType::tt_popen || (+entry >= +TType::tt_sin && +entry <= +TType::tt_tanh) ? 4 : -1;
         case TType::tt_power: return 0;
         case TType::tt_uminus: return 1;
 
@@ -511,7 +511,7 @@ class InputKeypad {
             static ImVec2 lastClickPos{ -1, -1 };
             const double  time                    = ImGui::GetTime();
             const ImVec2  clickPos                = ImGui::GetMousePos();
-            const bool    isWithinDoubleClickTime = lastClick >= 0.0f && time - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
+            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && time - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
             const auto    isDoubleClick           = [&]() {
                 return (lastClickPos.x != -1 && std::hypot(clickPos.x - lastClickPos.x, clickPos.y - lastClickPos.y) <= ImGui::GetIO().MouseDoubleClickMaxDist);
             };

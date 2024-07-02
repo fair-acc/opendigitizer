@@ -4,6 +4,7 @@ FetchContent_Declare(
     imgui
     GIT_REPOSITORY  https://github.com/ocornut/imgui.git
     GIT_TAG         v1.90.8 # latest as of 2024-07-01
+    SYSTEM
 )
 
 # Enables 32 bit vertex indices for ImGui
@@ -13,6 +14,7 @@ FetchContent_Declare(
     implot
     GIT_REPOSITORY  https://github.com/epezent/implot.git
     GIT_TAG         v0.16 # latest as of 2023-12-19
+    SYSTEM
 )
 
 FetchContent_Declare(
@@ -24,18 +26,21 @@ FetchContent_Declare(
     # is merged
     GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-imgui-node-editor.git
     GIT_TAG        2e4740361b7bddb924807f6d5be64818b72bf15e
+    SYSTEM
 )
 
 FetchContent_Declare(
     plf_colony
     GIT_REPOSITORY  https://github.com/mattreecebentley/plf_colony.git
     GIT_TAG         41e387e281b8323ca5584e79f67d632964b24bbf #v7.11
+    SYSTEM
 )
 
 FetchContent_Declare( # needed to load images in ImGui
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
     GIT_TAG 8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55 # master from Sep 2022
+    SYSTEM
 )
 
 # TODO use proper release once available
@@ -43,12 +48,14 @@ FetchContent_Declare(
     opencmw-cpp
     GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
     GIT_TAG 0fb3758c3ffe7707aa5e0bd2ad25f9e8fb19f79d# main as of 2024-04-26
+    SYSTEM
 )
 
 FetchContent_Declare(
     gnuradio4
     GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
     GIT_TAG c51a5d5253bdd2ce7bbc785970b7ec4bbe2878dc # main as of 2024-06-14
+    SYSTEM
 )
 
 FetchContent_MakeAvailable(imgui implot imgui-node-editor stb opencmw-cpp plf_colony gnuradio4)
@@ -61,6 +68,7 @@ if (NOT EMSCRIPTEN)
         OVERRIDE_FIND_PACKAGE
         GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
         GIT_TAG        release-2.28.2
+        SYSTEM
     )
     FetchContent_MakeAvailable(sdl2)
 endif()
@@ -83,7 +91,7 @@ if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to sp
 endif()
 
 target_include_directories(
-    imgui BEFORE
+    imgui SYSTEM BEFORE
     PUBLIC
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends
@@ -94,7 +102,7 @@ add_library(
     OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_DIR}/implot_items.cpp ${implot_SOURCE_DIR}/implot.cpp
 )
 target_include_directories(
-    implot BEFORE
+    implot SYSTEM BEFORE
     PUBLIC
         ${implot_SOURCE_DIR}
 )
@@ -109,14 +117,14 @@ add_library(
         ${imgui-node-editor_SOURCE_DIR}/crude_json.cpp
 )
 target_include_directories(
-    imgui-node-editor BEFORE
+    imgui-node-editor SYSTEM BEFORE
     PUBLIC
         ${imgui-node-editor_SOURCE_DIR}
 )
 target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
 add_library(stb INTERFACE)
-target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+target_include_directories(stb SYSTEM INTERFACE ${stb_SOURCE_DIR})
 
 add_library(plf_colony INTERFACE)
-target_include_directories(plf_colony INTERFACE ${plf_colony_SOURCE_DIR})
+target_include_directories(plf_colony SYSTEM INTERFACE ${plf_colony_SOURCE_DIR})

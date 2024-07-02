@@ -132,7 +132,6 @@ struct DataType {
     }
 
     static DataType fromString(std::string s) {
-        int biggest = static_cast<int>(Id::Untyped);
         for (int i = 0; i < static_cast<int>(Id::Untyped); i++) {
             auto d = DataType(static_cast<Id>(i));
             if (DataType::name(static_cast<Id>(i)) == s)

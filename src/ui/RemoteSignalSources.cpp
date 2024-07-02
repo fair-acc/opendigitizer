@@ -7,7 +7,7 @@
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
     if (auto combo = DigitizerUi::IMW::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
-        for (int i = 0; i < field_names.size(); i++) {
+        for (std::size_t i = 0; i < field_names.size(); i++) {
             bool isSelected = _selectedIndex == i;
             if (ImGui::Selectable(field_names[i], isSelected)) {
                 if (std::any_of(list.begin(), list.end(), [&i, this](auto& e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
@@ -49,7 +49,7 @@ QueryFilterElement& QueryFilterElement::operator=(const QueryFilterElement& othe
     this->filterText        = other.filterText;
     return *this;
 }
-QueryFilterElement::QueryFilterElement(QueryFilterElementList& list) : list(list) {
+QueryFilterElement::QueryFilterElement(QueryFilterElementList& _list) : list(_list) {
     static int counter = 0;
     _keyIdentifier     = "##queryKey_" + std::to_string(counter);
     _valueIdentifier   = "##queryValue_" + std::to_string(counter);
@@ -69,7 +69,7 @@ void QueryFilterElementList::drawFilters() {
     }
 }
 
-SignalList::SignalList(QueryFilterElementList& filters) : filters(filters) {
+SignalList::SignalList(QueryFilterElementList& _filters) : filters(_filters) {
     filters.onChange.emplace_back(myOnChange);
     update();
 }
