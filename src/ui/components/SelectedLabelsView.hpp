@@ -94,6 +94,8 @@ public:
 
     const std::vector<LabelInfo>& labels() { return m_labels; }
 
+    void clear() { m_labels.clear(); }
+
     void addLabel(LabelInfo label) { m_labels.emplace_back(std::move(label)); }
 
     bool removeLabel(LabelData data) {

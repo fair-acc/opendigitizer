@@ -75,7 +75,9 @@ public:
             remainingContentWidth -= desiredWidth * 1.2;
 
             auto currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items);
-            if (currentResult) result = currentResult;
+            if (currentResult) {
+                result = currentResult;
+            }
             first = false;
         }
 

@@ -1,6 +1,10 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SIGNAL_SELECTOR_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SIGNAL_SELECTOR_HPP_
 
+#include <deque>
+#include <string>
+#include <vector>
+
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 
@@ -22,6 +26,8 @@ private:
     SignalList             m_signalList{m_querySignalFilters};
 
     enum class Category { Domain = 0, DeviceType = 1, DAQ_M = 2, Status = 3, Quantity = 4 };
+    static constexpr std::size_t CategoriesCount = 5;
+    friend constexpr std::size_t operator+(Category category) { return static_cast<std::size_t>(category); }
 
     struct FilterData {
         Category    category;
@@ -52,8 +58,8 @@ private:
     static constexpr std::array<ImColor, 2> colorForCategory(Category category) {
         return {
             //
-            colorsForLight[static_cast<std::size_t>(category)], //
-            colorsForDark[static_cast<std::size_t>(category)]   //
+            colorsForLight[+category], //
+            colorsForDark[+category]   //
         };
     }
 
@@ -70,6 +76,16 @@ private:
         std::string accelerator;
         std::string deviceClass;
     };
+
+    static const std::string& categoryFieldForSignal(Category category, const SignalData& signal) {
+        switch (category) {
+        case Category::Domain: return signal.accelerator;
+        case Category::DAQ_M: return signal.frontend;
+        case Category::Quantity: return signal.quantity;
+        case Category::Status: return signal.sampleRate;
+        case Category::DeviceType: return signal.deviceClass;
+        }
+    }
 
     std::vector<SignalData> m_signals{
         {"GE01KP02", "scuxl0181", "ESR", "RampedPS", "GE01KP02:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedPS"},               //
@@ -202,7 +218,24 @@ private:
         {"GE01MU0R", "scuxl0198", "ESR", "RampedPS", "GE01MU0R:gap:voltage@Injection1", "gap", "voltage", "Injection1", "V", "ESR", "RampedPS"}, //
         {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@1Hz", "gap", "voltage", "1Hz", "V", "ESR", "RampedHvPS"},             //
         {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:voltage@10kHz", "gap", "voltage", "10kHz", "V", "ESR", "RampedHvPS"},         //
-        {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedHvPS"}     //
+        {"GE01MU1", "scuxl0174", "ESR", "RampedHvPS", "GE01MU1:gap:frequency@10kHz", "gap", "frequency", "10kHz", "Hz", "ESR", "RampedHvPS"},    //
+
+        {"zTEST 01", "frontend", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},    //
+        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
+        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
+        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},   //
+        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity", "sampleRate", "unit", "accelerator", "deviceClass"}, //
+        {"zTEST 01", "frontend", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},   //
+        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
+        {"zTEST 01", "frontend", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"},  //
+        {"zTEST 01", "frontend2", "_ignore", "comment", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
+        {"zTEST 01", "frontend", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"}, //
+        {"zTEST 01", "frontend2", "_ignore", "comment2", "signalName2", "subDeviceProperty", "quantity2", "sampleRate", "unit", "accelerator", "deviceClass"} //
     };
 
     using SignalsIndexMap = std::map<std::string, std::vector<SignalData*>>;
@@ -216,70 +249,119 @@ private:
     SignalsIndexMap acceleratorIndex;
     SignalsIndexMap deviceClassIndex;
 
-    std::array<SignalsIndexMap*, 5> categoryIndices{&acceleratorIndex, &deviceClassIndex, &subDevicePropertyIndex, &unitIndex, &quantityIndex};
+    std::array<SignalsIndexMap*, CategoriesCount> categoryIndices{&acceleratorIndex, &deviceClassIndex, &subDevicePropertyIndex, &unitIndex, &quantityIndex};
 
     // Filtering state
-    std::string                           m_shownSearchString;
-    std::string                           m_searchString;
-    std::vector<SignalData*>              m_filteredItems;
+    std::string              m_shownSearchString;
+    std::string              m_searchString;
+    std::vector<SignalData*> m_filteredItems;
 
-    SignalsIndexMap*                      m_mainFilterCategoryIndex = nullptr;
-    std::vector<std::vector<SignalData*>> m_signalsToProcess;
-    std::size_t                           m_nextItemToFilter = 0;
-    std::vector<FilterData*>              m_filters;
+    struct CategorySearch {
+        // SignalsIndexMap*                      mainFilterCategoryIndex = nullptr;
+        std::deque<std::vector<SignalData*>> signalsToProcess;
+        std::vector<FilterData*>             filters;
+    };
+    std::optional<CategorySearch> m_categorySearch;
+    std::size_t                   m_nextItemToFilter = 0UZ;
 
     void startSearching(const std::string& _searchString, std::vector<FilterData*> _filters) {
         m_filteredItems.clear();
         m_searchString = _searchString;
-        m_filters      = std::move(_filters);
-        m_signalsToProcess.clear();
+        m_nextItemToFilter = 0UZ;
 
-        if (!m_filters.empty()) {
-            std::ranges::sort(m_filters, [](const auto* left, const auto* right) { return *left < *right; });
-            auto mainCategory         = m_filters.front()->category;
-            m_mainFilterCategoryIndex = categoryIndices[static_cast<std::size_t>(mainCategory)];
+        if (!_filters.empty()) {
+            m_categorySearch          = CategorySearch{};
+            m_categorySearch->filters = std::move(_filters);
 
-            for (const auto& filter : m_filters) {
+            std::ranges::sort(m_categorySearch->filters, [](const auto* left, const auto* right) { return *left < *right; });
+            auto mainCategory      = m_categorySearch->filters.front()->category;
+            auto mainCategoryIndex = categoryIndices[+mainCategory];
+
+            for (const auto& filter : m_categorySearch->filters) {
                 if (filter->category != mainCategory) {
                     break;
                 }
-                m_signalsToProcess.push_back((*m_mainFilterCategoryIndex)[filter->title]);
+                m_categorySearch->signalsToProcess.push_back((*mainCategoryIndex)[filter->title]);
             }
         } else {
-            m_mainFilterCategoryIndex = nullptr;
+            m_categorySearch.reset();
         }
-        m_nextItemToFilter = 0UZ;
+    }
+
+    bool signalMatchesSearchString(const SignalData& signal) const {
+        return signal.signalName.find(m_searchString) != std::string::npos || //
+               signal.comment.find(m_searchString) != std::string::npos;
+    }
+
+    bool signalMatchesActiveFilters(const SignalData& signal) const {
+        assert(m_categorySearch.has_value());
+        enum MatchState { Unspecified = 0, NoMatches = 1, HasMatches = 2 };
+        std::array<MatchState, CategoriesCount> stateMatches{};
+        std::ranges::fill(stateMatches, Unspecified);
+
+        fmt::print("Number of filters {}\n", m_categorySearch->filters.size());
+
+        for (const auto filter : m_categorySearch->filters) {
+            if (stateMatches[+filter->category] == Unspecified) {
+                stateMatches[+filter->category] = NoMatches;
+            }
+
+            if (stateMatches[+filter->category] == NoMatches) {
+                if (filter->title == categoryFieldForSignal(filter->category, signal)) {
+                    stateMatches[+filter->category] = HasMatches;
+                }
+            }
+        }
+
+        return !std::ranges::contains(stateMatches, NoMatches);
     }
 
     bool loadMoreItems() {
-        if (m_mainFilterCategoryIndex) {
-            if (m_nextItemToFilter >= m_mainFilterCategoryIndex->size()) {
+        if (m_categorySearch) {
+            if (m_categorySearch->signalsToProcess.empty()) {
                 return false;
             }
 
-        } else {
+            const auto& currentList = m_categorySearch->signalsToProcess.front();
+            if (m_nextItemToFilter >= currentList.size()) {
+                // Current list done, removing it and moving to the next one
+                m_categorySearch->signalsToProcess.pop_front();
+                m_nextItemToFilter = 0UZ;
+                return true;
+            }
+
+            const auto& signal = *currentList[m_nextItemToFilter];
+            if (signalMatchesSearchString(signal) && signalMatchesActiveFilters(signal)) {
+                m_filteredItems.push_back(currentList[m_nextItemToFilter]);
+            }
+
+            m_nextItemToFilter++;
+            return true;
+
+        } else if (!m_searchString.empty()) {
             // We list everything that matches the search string,
             // no extra filters have been defined
             if (m_nextItemToFilter >= m_signals.size()) {
                 return false;
             }
 
-            if (m_signals[m_nextItemToFilter].signalName.find(m_searchString) != std::string::npos || //
-                m_signals[m_nextItemToFilter].comment.find(m_searchString) != std::string::npos) {
+            if (signalMatchesSearchString(m_signals[m_nextItemToFilter])) {
                 m_filteredItems.push_back(&m_signals[m_nextItemToFilter]);
             }
 
             m_nextItemToFilter++;
             return true;
+        } else {
+            // just show everything, no need for loadMoreItems()
+            return false;
         }
     }
 
     void buildIndex() {
-        m_mainFilterCategoryIndex = nullptr;
-        m_nextItemToFilter        = 0UZ;
+        m_nextItemToFilter = 0UZ;
         m_searchString.clear();
-        m_filters.clear();
         m_filteredItems.clear();
+        m_categorySearch.reset();
 
         for (SignalData& signal : m_signals) {
             auto* signalPtr = std::addressof(signal);
@@ -295,7 +377,7 @@ private:
         }
 
         auto itemsForIndex = [this](Category category) {
-            const auto&             index = *categoryIndices[static_cast<std::size_t>(category)];
+            const auto&             index = *categoryIndices[+category];
             std::vector<FilterData> result;
             result.resize(index.size());
             std::ranges::transform(index, result.begin(), [category](const auto& kvp) { return FilterData{category, kvp.first, false}; });
@@ -399,15 +481,17 @@ public:
             startSearching(m_shownSearchString, filters);
         }
 
-        if (filtersChanged) // TODO remove this condition
-        while( // TODO - remove while
-            loadMoreItems()
-        );
-        fmt::print("--vvvv---------------------- | search string {} | {}\n", m_searchString, m_shownSearchString);
-        for (const auto* signal : m_filteredItems) {
-            fmt::print("    {} {}\n", signal->signalName, signal->comment);
+        if (filtersChanged) { // TODO remove this condition
+            while (           // TODO - remove while
+                loadMoreItems())
+                ;
+
+            fmt::print("--vvvv---------------------- | search string {} | {}\n", m_searchString, m_shownSearchString);
+            for (const auto* signal : m_filteredItems) {
+                fmt::print("    {} {}\n", signal->signalName, signal->comment);
+            }
+            fmt::print("--^^^^----------------------\n");
         }
-        fmt::print("--^^^^----------------------\n");
 
         // if (ImGui::BeginCombo("##baseTypeCombo", DataType::name(context.block->datatype()).data())) {
         //     for (auto e : typeNames) {
