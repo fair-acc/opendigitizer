@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY  https://github.com/ocornut/imgui.git
-    GIT_TAG         v1.90 # latest as of 2023-12-19
+    GIT_TAG         v1.90.8 # latest as of 2024-07-01
 )
 
 # Enables 32 bit vertex indices for ImGui

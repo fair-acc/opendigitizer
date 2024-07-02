@@ -291,7 +291,7 @@ void OpenDashboardPage::draw(Dashboard *optionalDashboard) {
             IMW::Group group;
 
             {
-                IMW::Font fonr(item.first->isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
+                IMW::Font font(item.first->isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
                 // ImGui::SetNextItemWidth(-5)
                 if (ImGui::Button("\uf005")) { // , star icon
                     item.first->isFavorite = !item.first->isFavorite;

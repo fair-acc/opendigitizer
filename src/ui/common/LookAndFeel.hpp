@@ -24,7 +24,7 @@ struct LookAndFeel {
 #else
     const bool isDesktop = true;
 #endif
-    bool                      prototypeMode    = true;
+    bool                      prototypeMode    = false;
     bool                      touchDiagnostics = false;
     std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
     float                     defaultDPI  = 76.2f;

@@ -38,42 +38,39 @@ public:
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
     }();
 
-    FlowGraphItem                 fgItem;
-    DashboardPage                 dashboardPage;
-    std::shared_ptr<Dashboard>    dashboard;
-    OpenDashboardPage             openDashboardPage;
-    SDLState                     *sdlState     = nullptr;
-    bool                          running      = true;
-    ViewMode                      mainViewMode = ViewMode::VIEW;
-    std::vector<gr::BlockModel *> toolbarBlocks;
+    FlowGraphItem                fgItem;
+    DashboardPage                dashboardPage;
+    std::shared_ptr<Dashboard>   dashboard;
+    OpenDashboardPage            openDashboardPage;
+    SDLState*                    sdlState     = nullptr;
+    bool                         running      = true;
+    ViewMode                     mainViewMode = ViewMode::VIEW;
+    std::vector<gr::BlockModel*> toolbarBlocks;
 
-    components::AppHeader         header;
+    components::AppHeader header;
 
     // The thread limit here is mainly for emscripten
-    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>(
-            "scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
+    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
 
     struct SchedWrapper {
         template<typename T, typename... Args>
-        void emplace(Args &&...args) {
+        void emplace(Args&&... args) {
             handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
         }
 
-        explicit         operator bool() const { return handler != nullptr; };
+        explicit operator bool() const { return handler != nullptr; };
 
-        std::string_view uniqueName() const {
-            return handler ? handler->uniqueName() : "";
-        }
+        std::string_view uniqueName() const { return handler ? handler->uniqueName() : ""; }
 
-        void sendMessage(const gr::Message &msg) { handler->sendMessage(msg); }
-        void handleMessages(FlowGraph &fg) { handler->handleMessages(fg); }
+        void sendMessage(const gr::Message& msg) { handler->sendMessage(msg); }
+        void handleMessages(FlowGraph& fg) { handler->handleMessages(fg); }
 
     private:
         struct Handler {
             virtual ~Handler()                                           = default;
             virtual std::string_view uniqueName() const                  = 0;
-            virtual void             sendMessage(const gr::Message &msg) = 0;
-            virtual void             handleMessages(FlowGraph &fg)       = 0;
+            virtual void             sendMessage(const gr::Message& msg) = 0;
+            virtual void             handleMessages(FlowGraph& fg)       = 0;
         };
 
         template<typename TScheduler>
@@ -82,12 +79,11 @@ public:
             std::thread       _thread;
             std::atomic<bool> stopRequested = false;
 
-            gr::MsgPortIn     _fromScheduler;
-            gr::MsgPortOut    _toScheduler;
+            gr::MsgPortIn  _fromScheduler;
+            gr::MsgPortOut _toScheduler;
 
             template<typename... Args>
-            explicit HandlerImpl(Args &&...args)
-                : _scheduler(std::forward<Args>(args)...) {
+            explicit HandlerImpl(Args&&... args) : _scheduler(std::forward<Args>(args)...) {
                 if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
                     throw fmt::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
                 }
@@ -120,16 +116,16 @@ public:
 
             std::string_view uniqueName() const override { return _scheduler.unique_name; }
 
-            void             sendMessage(const gr::Message &msg) final {
-                _toScheduler.streamWriter().publish([&](auto &output) { output[0] = msg; }, 1);
+            void sendMessage(const gr::Message& msg) final {
+                _toScheduler.streamWriter().publish([&](auto& output) { output[0] = msg; }, 1);
             }
 
-            void handleMessages(FlowGraph &fg) final {
+            void handleMessages(FlowGraph& fg) final {
                 const auto available = _fromScheduler.streamReader().available();
                 if (available > 0) {
                     auto messages = _fromScheduler.streamReader().get(available);
 
-                    for (const auto &msg : messages) {
+                    for (const auto& msg : messages) {
                         fg.handleMessage(msg);
                     }
                     std::ignore = messages.consume(available);
@@ -150,10 +146,10 @@ public:
 public:
     App() {
         BlockType::registry().addBlockTypesFromPluginLoader(*pluginLoader);
-        setStyle(LookAndFeel::Style::Light);
+        setStyle(LookAndFeel::Style::Dark);
     }
 
-    static App &instance() {
+    static App& instance() {
         static App app;
         return app;
     }
@@ -169,11 +165,9 @@ public:
 #endif
     }
 
-    void loadEmptyDashboard() {
-        loadDashboard(DashboardDescription::createEmpty("New dashboard"));
-    }
+    void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
-    void loadDashboard(const std::shared_ptr<DashboardDescription> &desc) {
+    void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
         fgItem.clear();
         dashboard = Dashboard::create(desc);
         dashboard->setPluginLoader(pluginLoader);
@@ -184,14 +178,13 @@ public:
         namespace fs = std::filesystem;
         fs::path path(url);
 
-        auto     source = DashboardSource::get(path.parent_path().native());
-        DashboardDescription::load(source, path.filename(),
-                [this, source](std::shared_ptr<DashboardDescription> &&desc) {
-                    if (desc) {
-                        loadDashboard(desc);
-                        openDashboardPage.addSource(source->path);
-                    }
-                });
+        auto source = DashboardSource::get(path.parent_path().native());
+        DashboardDescription::load(source, path.filename(), [this, source](std::shared_ptr<DashboardDescription>&& desc) {
+            if (desc) {
+                loadDashboard(desc);
+                openDashboardPage.addSource(source->path);
+            }
+        });
     }
 
     void closeDashboard() { dashboard = {}; }
@@ -201,32 +194,28 @@ public:
         case LookAndFeel::Style::Dark:
             ImGui::StyleColorsDark();
             break;
-        case LookAndFeel::Style::Light:
-            ImGui::StyleColorsLight();
-            break;
+        case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
         }
         LookAndFeel::mutableInstance().style = style;
         fgItem.setStyle(style);
     }
 
     template<typename Graph>
-    void assignScheduler(Graph &&graph) {
+    void assignScheduler(Graph&& graph) {
         using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
     }
 
-    std ::string_view schedulerUniqueName() const {
-        return _scheduler.uniqueName();
-    }
+    std ::string_view schedulerUniqueName() const { return _scheduler.uniqueName(); }
 
-    void sendMessage(const gr::Message &msg) {
+    void sendMessage(const gr::Message& msg) {
         if (_scheduler) {
             _scheduler.sendMessage(msg);
         }
     }
 
-    void handleMessages(FlowGraph &fg) {
+    void handleMessages(FlowGraph& fg) {
         if (_scheduler) {
             _scheduler.handleMessages(fg);
         }

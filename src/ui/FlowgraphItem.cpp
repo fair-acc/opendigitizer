@@ -9,8 +9,6 @@
 
 #include <misc/cpp/imgui_stdlib.h>
 
-#include "Flowgraph.hpp"
-
 #include "common/LookAndFeel.hpp"
 
 #include "components/Dialog.hpp"
@@ -641,7 +639,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
 
             ImGui::SetCursorPosX(15);
             if (ImGui::Button("Add signal")) {
-                ImGui::OpenPopup("addSignalPopup");
+                m_signalSelector.open();
             }
 
             ImGui::SameLine();
@@ -664,7 +662,7 @@ void FlowGraphItem::draw(FlowGraph *fg, const ImVec2 &size) {
             ImGui::OpenPopup("New block");
         }
         drawNewBlockDialog(fg);
-        drawAddSourceDialog(fg);
+        m_signalSelector.draw(fg);
     }
 
     if (horizontalSplit) {
@@ -695,108 +693,6 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph *fg) {
     }
 }
 
-void FlowGraphItem::drawAddSourceDialog(FlowGraph *fg) {
-    ImGui::SetNextWindowSize({ 800, 600 }, ImGuiCond_Once);
-    if (auto menu = IMW::ModalPopup("addSignalPopup", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        static BlockType *sel = nullptr;
-        if (auto child = IMW::ChildWithId(1, ImVec2{ 0, ImGui::GetContentRegionAvail().y - 50 }, 0, 0)) {
-            struct Cat {
-                std::string              name;
-                std::vector<BlockType *> types;
-            };
-            static std::vector<Cat> cats;
-            cats.clear();
-            cats.push_back({ "Remote signals", {} });
-            for (const auto &t : BlockType::registry().types()) {
-                if (t.second->isSource() && !t.second->category.empty()) {
-                    auto it = std::find_if(cats.begin(), cats.end(), [&](const auto &c) {
-                        return c.name == t.second->category;
-                    });
-                    if (it == cats.end()) {
-                        cats.push_back({ t.second->category, { t.second.get() } });
-                    } else {
-                        it->types.push_back(t.second.get());
-                    }
-                }
-            }
-            cats.push_back({ "Query signals", {} });
-
-            for (const auto &c : cats) {
-                const bool isRemote = c.name == "Remote signals";
-                if (ImGui::TreeNode(c.name.c_str())) {
-                    for (auto *t : c.types) {
-                        if (ImGui::Selectable(t->label.c_str(), sel == t, ImGuiSelectableFlags_DontClosePopups)) {
-                            sel = t;
-                        }
-                    }
-
-                    if (c.name == "Query signals") {
-                        querySignalFilters.drawFilters();
-
-                        float windowWidth = ImGui::GetWindowWidth();
-                        float buttonPosX  = windowWidth - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Add Filter").x;
-                        ImGui::SetCursorPosX(buttonPosX);
-                        if (ImGui::Button("Add Filter")) {
-                            querySignalFilters.emplace_back(QueryFilterElement{ querySignalFilters });
-                        }
-                        ImGui::Separator();
-                        ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
-                        IMW::Child signals("Signals", ImVec2(0, 0), 0, 0);
-
-                        signalList.addRemoteSignalCallback = [fg](const opencmw::service::dns::Entry &entry) {
-                            const auto uri = opencmw::URI<>::UriFactory().scheme(entry.protocol).hostName(entry.hostname).port(static_cast<uint16_t>(entry.port)).path(entry.service_name).addQueryParameter("channelNameFilter", entry.signal_name).build();
-                            fg->addRemoteSource(uri.str());
-                        };
-                        signalList.drawElements();
-
-                        float refreshButtonPosX = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Refresh").x;
-                        float refreshButtonPosY = ImGui::GetWindowHeight() - ImGui::GetStyle().ItemSpacing.y - ImGui::GetStyle().FramePadding.y - ImGui::CalcTextSize("Refresh").y;
-                        ImGui::SetCursorPos({ refreshButtonPosX, refreshButtonPosY });
-                        if (ImGui::Button("Refresh")) {
-                            signalList.update();
-                        }
-                    }
-
-                    if (isRemote) {
-                        if (!m_addRemoteSignal) {
-                            if (ImGui::Button("Add remote signal")) {
-                                m_addRemoteSignal             = true;
-                                m_addRemoteSignalDialogOpened = true;
-                                m_addRemoteSignalUri          = {};
-                            }
-                        } else {
-                            ImGui::AlignTextToFramePadding();
-                            ImGui::Text("URI:");
-                            ImGui::SameLine();
-                            if (m_addRemoteSignalDialogOpened) {
-                                ImGui::SetKeyboardFocusHere();
-                                m_addRemoteSignalDialogOpened = false;
-                            }
-                            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-                            ImGui::InputText("##uri", &m_addRemoteSignalUri);
-
-                            if (ImGui::Button("Ok")) {
-                                m_addRemoteSignal = false;
-                                fg->addRemoteSource(m_addRemoteSignalUri);
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("Cancel")) {
-                                m_addRemoteSignal = false;
-                            }
-                        }
-                    }
-                    ImGui::TreePop();
-                } else if (isRemote) {
-                    m_addRemoteSignal = false;
-                }
-            }
-        }
-
-        if (components::DialogButtons(sel) == components::DialogButton::Ok) {
-            fg->addBlock(sel->createBlock({}));
-        }
-    }
-}
 void FlowGraphItem::sortNodes(FlowGraph *fg, const std::vector<const Block *> &blocks) {
     // first take out all unconnected nodes, they will be added later
     std::vector<const Block *> connectedBlocks, unconnectedBlocks;
