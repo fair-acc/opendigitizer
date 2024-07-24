@@ -191,9 +191,7 @@ public:
 
     void setStyle(LookAndFeel::Style style) {
         switch (style) {
-        case LookAndFeel::Style::Dark:
-            ImGui::StyleColorsDark();
-            break;
+        case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
         case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
         }
         LookAndFeel::mutableInstance().style = style;

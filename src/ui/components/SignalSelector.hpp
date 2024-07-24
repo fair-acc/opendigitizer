@@ -122,7 +122,7 @@ private:
 
     void startSearching(const std::string& _searchString, std::vector<FilterData*> _filters) {
         m_filteredItems.clear();
-        m_searchString = _searchString;
+        m_searchString     = _searchString;
         m_nextItemToFilter = 0UZ;
 
         if (!_filters.empty()) {

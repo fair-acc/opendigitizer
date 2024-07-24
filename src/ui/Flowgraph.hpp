@@ -128,25 +128,25 @@ struct DataType {
         case Untyped: break;
         default: break;
         }
-        return decltype(fun.template operator()<float>()){};
+        return decltype(fun.template operator()<float>()) {};
     }
 
     static DataType fromString(std::string s) {
         for (int i = 0; i < static_cast<int>(Id::Untyped); i++) {
             auto d = DataType(static_cast<Id>(i));
-            if (DataType::name(static_cast<Id>(i)) == s)
+            if (DataType::name(static_cast<Id>(i)) == s) {
                 return d;
+            }
         }
         return DataType(Id::Untyped);
     }
 
     constexpr inline DataType() {}
-    constexpr inline DataType(Id id)
-        : m_id(id) {}
+    constexpr inline DataType(Id id) : m_id(id) {}
 
-    const std::string &toString() const;
+    const std::string& toString() const;
 
-    inline             operator Id() const { return m_id; }
+    inline operator Id() const { return m_id; }
 
 private:
     Id m_id = Id::Untyped;
@@ -168,12 +168,11 @@ public:
         std::unordered_map<std::string, Options> optionsAttributes;
         std::vector<std::string>                 optionsLabels;
 
-        std::string                              defaultValue;
+        std::string defaultValue;
     };
     template<typename T>
     struct NumberParameter {
-        inline explicit NumberParameter(T v)
-            : defaultValue(v) {}
+        inline explicit NumberParameter(T v) : defaultValue(v) {}
         T defaultValue;
     };
     struct StringParameter {
@@ -187,7 +186,7 @@ public:
 
     explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
 
-    std::unique_ptr<Block>      createBlock(std::string_view name) const;
+    std::unique_ptr<Block> createBlock(std::string_view name) const;
 
     const std::string           name;
     const std::string           label;
@@ -198,41 +197,37 @@ public:
     const std::string           category;
     gr::property_map            defaultParameters;
 
-    auto                        data_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+    auto data_inputs() {
+        return inputs | std::views::filter([](const PortDefinition& p) { return p.type != "message"; });
     }
     auto message_inputs() {
-        return inputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+        return inputs | std::views::filter([](const PortDefinition& p) { return p.type == "message"; });
     }
     auto data_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type != "message"; });
+        return outputs | std::views::filter([](const PortDefinition& p) { return p.type != "message"; });
     }
     auto message_outputs() {
-        return outputs | std::views::filter([](const PortDefinition &p) { return p.type == "message"; });
+        return outputs | std::views::filter([](const PortDefinition& p) { return p.type == "message"; });
     }
 
-    bool isSource() const {
-        return inputs.empty() && !outputs.empty();
-    }
+    bool isSource() const { return inputs.empty() && !outputs.empty(); }
 
-    bool isSink() const {
-        return !inputs.empty() && outputs.empty();
-    }
+    bool isSink() const { return !inputs.empty() && outputs.empty(); }
 
     bool isPlotSink() const {
         // TODO make this smarter once metaInformation() is statically available
         return name == "opendigitizer::ImPlotSink";
     }
     struct Registry {
-        void               loadBlockDefinitions(const std::filesystem::path &dir);
+        void loadBlockDefinitions(const std::filesystem::path& dir);
 
-        void               addBlockTypesFromPluginLoader(gr::PluginLoader &pluginLoader);
+        void addBlockTypesFromPluginLoader(gr::PluginLoader& pluginLoader);
 
-        void               addBlockType(std::unique_ptr<BlockType> &&t);
+        void addBlockType(std::unique_ptr<BlockType>&& t);
 
-        const BlockType   *get(std::string_view id) const;
+        const BlockType* get(std::string_view id) const;
 
-        inline const auto &types() const { return m_types; }
+        inline const auto& types() const { return m_types; }
 
     private:
         // This stuff is to enable looking up in the m_types map with string_view
@@ -242,12 +237,12 @@ public:
             using std::hash<Keys>::operator()...;
         };
 
-        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char *, char *>;
+        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char*, char*>;
 
         std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
     };
 
-    static Registry &registry();
+    static Registry& registry();
 };
 
 class Block {
@@ -259,25 +254,24 @@ public:
             Output,
         };
 
-        Block                    *block;
-        const std::string         m_rawType;
-        bool                      dataset;
-        const Kind                kind;
+        Block*            block;
+        const std::string m_rawType;
+        bool              dataset;
+        const Kind        kind;
 
-        DataType                  type;
-        std::vector<Connection *> connections;
+        DataType                 type;
+        std::vector<Connection*> connections;
     };
 
-    class OutputPort : public Port {
-    };
+    class OutputPort : public Port {};
 
     struct EnumParameter {
-        const BlockType::EnumParameter &definition;
+        const BlockType::EnumParameter& definition;
         int                             optionIndex;
 
-        std::string                     toString() const;
+        std::string toString() const;
 
-        inline EnumParameter           &operator=(const EnumParameter &p) {
+        inline EnumParameter& operator=(const EnumParameter& p) {
             optionIndex = p.optionIndex;
             return *this;
         }
@@ -297,57 +291,53 @@ public:
         std::string toString() const;
     };
 
-    explicit Block(std::string_view name, const BlockType *type, gr::property_map settings = {});
+    explicit Block(std::string_view name, const BlockType* type, gr::property_map settings = {});
 
-    const BlockType &type() const {
-        return *m_type;
-    }
+    const BlockType& type() const { return *m_type; }
 
-    std::string_view typeName() const {
-        return m_type->name;
-    }
+    std::string_view typeName() const { return m_type->name; }
 
-    const auto &inputs() const { return m_inputs; }
-    const auto &outputs() const { return m_outputs; }
+    const auto& inputs() const { return m_inputs; }
+    const auto& outputs() const { return m_outputs; }
     auto        dataInputs() const {
-        return m_inputs | std::views::filter([](const Port &p) { return p.type != DataType::AsyncMessage; });
+        return m_inputs | std::views::filter([](const Port& p) { return p.type != DataType::AsyncMessage; });
     }
     auto dataOutputs() const {
-        return m_outputs | std::views::filter([](const Port &p) { return p.type != DataType::AsyncMessage; });
+        return m_outputs | std::views::filter([](const Port& p) { return p.type != DataType::AsyncMessage; });
     }
     auto messageInputs() const {
-        return m_inputs | std::views::filter([](const Port &p) { return p.type == DataType::AsyncMessage; });
+        return m_inputs | std::views::filter([](const Port& p) { return p.type == DataType::AsyncMessage; });
     }
     auto messageOutputs() const {
-        return m_outputs | std::views::filter([](const Port &p) { return p.type == DataType::AsyncMessage; });
+        return m_outputs | std::views::filter([](const Port& p) { return p.type == DataType::AsyncMessage; });
     }
 
-    void              setParameter(const std::string &name, const pmtv::pmt &par);
-    const auto       &parameters() const { return m_parameters; }
+    void        setParameter(const std::string& name, const pmtv::pmt& par);
+    const auto& parameters() const { return m_parameters; }
 
-    void              update();
+    void update();
 
-    inline FlowGraph *flowGraph() const { return m_flowGraph; }
+    inline FlowGraph* flowGraph() const { return m_flowGraph; }
     const std::string name;
 
     // protected:
-    auto                   &inputs() { return m_inputs; }
-    auto                   &outputs() { return m_outputs; }
+    auto& inputs() { return m_inputs; }
+    auto& outputs() { return m_outputs; }
 
-    void                    updateSettings(const gr::property_map &settings);
-    const gr::property_map &metaInformation() const { return m_metaInformation; }
+    void                    updateSettings(const gr::property_map& settings);
+    const gr::property_map& metaInformation() const { return m_metaInformation; }
 
-    [[nodiscard]] DataType  datatype() const;
-    void                    setDatatype(DataType type);
+    [[nodiscard]] DataType datatype() const;
+    void                   setDatatype(DataType type);
 
 protected:
-    DataType          m_datatype{ DataType::Float32 };
+    DataType          m_datatype{DataType::Float32};
     std::vector<Port> m_inputs;
     std::vector<Port> m_outputs;
     gr::property_map  m_parameters;
     bool              m_updated   = false;
-    FlowGraph        *m_flowGraph = nullptr;
-    const BlockType  *m_type;
+    FlowGraph*        m_flowGraph = nullptr;
+    const BlockType*  m_type;
     std::string       m_uniqueName;
     gr::property_map  m_metaInformation;
     friend FlowGraph;
@@ -365,68 +355,67 @@ concept is_creatable = requires {
 class Connection {
 public:
     struct {
-        Block      *block;
+        Block*      block;
         std::size_t index;
     } src, dst;
 
 private:
-    inline Connection(Block *s, std::size_t srcIndex, Block *d, std::size_t dstIndex)
-        : src{ s, srcIndex }, dst{ d, dstIndex } {}
+    inline Connection(Block* s, std::size_t srcIndex, Block* d, std::size_t dstIndex) : src{s, srcIndex}, dst{d, dstIndex} {}
 
     friend FlowGraph;
 };
 
 struct ExecutionContext {
-    gr::Graph                                         graph;
-    std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks;
-    std::vector<gr::BlockModel *>                     toolbarBlocks;
+    gr::Graph                                        graph;
+    std::unordered_map<std::string, gr::BlockModel*> plotSinkGrBlocks;
+    std::vector<gr::BlockModel*>                     toolbarBlocks;
 };
 
 class FlowGraph {
 public:
     FlowGraph();
-    void               setPluginLoader(std::shared_ptr<gr::PluginLoader> loader);
-    void               parse(const std::filesystem::path &file);
-    void               parse(const std::string &str);
-    void               clear();
+    void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader);
+    void parse(const std::filesystem::path& file);
+    void parse(const std::string& str);
+    void clear();
 
-    Block             *findBlock(std::string_view name) const;
+    Block* findBlock(std::string_view name) const;
 
-    inline const auto &blocks() const { return m_blocks; }
-    inline const auto &connections() const { return m_connections; }
+    inline const auto& blocks() const { return m_blocks; }
+    inline const auto& connections() const { return m_connections; }
 
-    void               addBlock(std::unique_ptr<Block> &&block);
-    void               deleteBlock(Block *block);
+    void addBlock(std::unique_ptr<Block>&& block);
+    void deleteBlock(Block* block);
 
-    Connection        *connect(Block::Port *a, Block::Port *b);
+    Connection* connect(Block::Port* a, Block::Port* b);
 
-    void               disconnect(Connection *c);
+    void disconnect(Connection* c);
 
-    inline bool        graphChanged() const { return m_graphChanged; }
-    ExecutionContext   createExecutionContext();
+    inline bool      graphChanged() const { return m_graphChanged; }
+    ExecutionContext createExecutionContext();
 
-    const std::string &grc() const { return m_grc; }
+    const std::string& grc() const { return m_grc; }
 
-    int                save(std::ostream &stream);
-    void               addRemoteSource(std::string_view uri);
+    int  save(std::ostream& stream);
+    void addRemoteSource(std::string_view uri);
 
-    void               handleMessage(const gr::Message &msg);
+    void handleMessage(const gr::Message& msg);
 
-    void               setPlotSinkGrBlocks(std::unordered_map<std::string, gr::BlockModel *> plotSinkGrBlocks) {
-        m_plotSinkGrBlocks = std::move(plotSinkGrBlocks);
-    }
+    void setPlotSinkGrBlocks(std::unordered_map<std::string, gr::BlockModel*> plotSinkGrBlocks) { m_plotSinkGrBlocks = std::move(plotSinkGrBlocks); }
 
-    std::function<void(Block *)> plotSinkBlockAddedCallback;
-    std::function<void(Block *)> blockDeletedCallback;
+    std::function<void(Block*)> plotSinkBlockAddedCallback;
+    std::function<void(Block*)> blockDeletedCallback;
 
     template<typename F>
-    void forEachBlock(F &&f) {
-        for (auto &b : m_blocks) {
-            if (!f(b)) return;
+    void forEachBlock(F&& f) {
+        for (auto& b : m_blocks) {
+            if (!f(b)) {
+                return;
+            }
         }
     }
 
-    gr::BlockModel *findPlotSinkGrBlock(std::string_view name) const {
+    gr::BlockModel* findPlotSinkGrBlock(std::string_view name) const {
         const auto it = m_plotSinkGrBlocks.find(std::string(name));
         if (it != m_plotSinkGrBlocks.end()) {
             return it->second;
@@ -434,15 +423,15 @@ public:
         return nullptr;
     }
 
-    void changeBlockType(Block *block, DataType type);
+    void changeBlockType(Block* block, DataType type);
 
 private:
-    std::shared_ptr<gr::PluginLoader>                 _pluginLoader;
-    std::vector<std::unique_ptr<Block>>               m_blocks;
-    std::unordered_map<std::string, gr::BlockModel *> m_plotSinkGrBlocks;
-    plf::colony<Connection>                           m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
-    bool                                              m_graphChanged = true;
-    std::string                                       m_grc;
+    std::shared_ptr<gr::PluginLoader>                _pluginLoader;
+    std::vector<std::unique_ptr<Block>>              m_blocks;
+    std::unordered_map<std::string, gr::BlockModel*> m_plotSinkGrBlocks;
+    plf::colony<Connection>                          m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
+    bool                                             m_graphChanged = true;
+    std::string                                      m_grc;
 
     // TODO add remote sources here?
 };

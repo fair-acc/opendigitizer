@@ -9,8 +9,8 @@
 
 #include "Flowgraph.hpp"
 
-#include "components/SignalSelector.hpp"
 #include "components/Block.hpp"
+#include "components/SignalSelector.hpp"
 
 namespace DigitizerUi {
 

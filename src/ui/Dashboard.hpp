@@ -28,15 +28,15 @@ struct DashboardDescription;
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
-    std::string                             path;
-    bool                                    enabled;
-    const bool                              isValid = true;
+    std::string path;
+    bool        enabled;
+    const bool  isValid = true;
 
     static std::shared_ptr<DashboardSource> get(std::string_view path);
 };
 
 struct DashboardDescription {
-    static constexpr const char                                      *fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
+    static constexpr const char* fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
 
     std::string                                                       name;
     std::shared_ptr<DashboardSource>                                  source;
@@ -44,38 +44,32 @@ struct DashboardDescription {
     bool                                                              isFavorite;
     std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
 
-    void                                                              save();
+    void save();
 
-    static void                                                       load(const std::shared_ptr<DashboardSource> &source, const std::string &filename,
-                                                                  const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb);
-    static std::shared_ptr<DashboardDescription>                      createEmpty(const std::string &name);
+    static void                                  load(const std::shared_ptr<DashboardSource>& source, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+    static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
 };
 
 class Dashboard : public std::enable_shared_from_this<Dashboard> {
 public:
-    std::shared_ptr<Dashboard> shared() {
-        return shared_from_this();
-    }
+    std::shared_ptr<Dashboard> shared() { return shared_from_this(); }
 
     struct Source {
         std::string blockName;
         std::string name;
         uint32_t    color;
-        bool        visible{ true };
+        bool        visible{true};
 
-        inline bool operator==(const Source &s) const { return s.blockName == blockName; };
+        inline bool operator==(const Source& s) const { return s.blockName == blockName; };
     };
     struct Plot {
-        enum class Axis {
-            X,
-            Y
-        };
+        enum class Axis { X, Y };
 
         Plot();
 
         std::string              name;
         std::vector<std::string> sourceNames;
-        std::vector<Source *>    sources;
+        std::vector<Source*>     sources;
         struct AxisData {
             Axis  axis;
             float min;
@@ -94,34 +88,31 @@ private:
     class PrivateTag {};
 
 public:
-    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc);
+    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc);
 
-    static std::shared_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription> &desc);
+    static std::shared_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription>& desc);
 
     ~Dashboard();
 
-    void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) {
-        localFlowGraph.setPluginLoader(std::move(loader));
-    }
+    void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) { localFlowGraph.setPluginLoader(std::move(loader)); }
 
-    void                         load();
-    void                         save();
+    void load();
+    void save();
 
-    void                         newPlot(int x, int y, int w, int h);
-    void                         deletePlot(Plot *plot);
-    void                         removeSinkFromPlots(std::string_view sinkName);
+    void newPlot(int x, int y, int w, int h);
+    void deletePlot(Plot* plot);
+    void removeSinkFromPlots(std::string_view sinkName);
 
-    inline const auto           &sources() const { return m_sources; }
-    inline auto                 &sources() { return m_sources; }
+    inline const auto& sources() const { return m_sources; }
+    inline auto&       sources() { return m_sources; }
 
-    inline auto                 &plots() { return m_plots; }
+    inline auto& plots() { return m_plots; }
 
-    void                         setNewDescription(const std::shared_ptr<DashboardDescription> &desc);
-    inline DashboardDescription *description() const { return m_desc.get(); }
+    void                         setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
+    inline DashboardDescription* description() const { return m_desc.get(); }
 
     struct Service {
-        Service(std::string n, std::string u)
-            : name(std::move(n)), uri(std::move(u)) {}
+        Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
         std::string                 name;
         std::string                 uri;
         std::string                 layout;
@@ -129,24 +120,24 @@ public:
         FlowGraph                   flowGraph;
         opencmw::client::RestClient client;
 
-        void                        reload();
-        void                        execute();
+        void reload();
+        void execute();
     };
-    void         registerRemoteService(std::string_view blockName, std::string_view uri);
-    void         unregisterRemoteService(std::string_view blockName);
-    void         removeUnusedRemoteServices();
+    void registerRemoteService(std::string_view blockName, std::string_view uri);
+    void unregisterRemoteService(std::string_view blockName);
+    void removeUnusedRemoteServices();
 
-    void         saveRemoteServiceFlowgraph(Service *s);
+    void saveRemoteServiceFlowgraph(Service* s);
 
-    inline auto &remoteServices() { return m_services; }
+    inline auto& remoteServices() { return m_services; }
 
-    Block       *createSink();
-    void         loadPlotSources();
+    Block* createSink();
+    void   loadPlotSources();
 
-    FlowGraph    localFlowGraph;
+    FlowGraph localFlowGraph;
 
 private:
-    void                                         doLoad(const std::string &desc);
+    void doLoad(const std::string& desc);
 
     std::shared_ptr<DashboardDescription>        m_desc;
     std::vector<Plot>                            m_plots;
