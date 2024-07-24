@@ -90,7 +90,7 @@ private:
     std::vector<LabelInfo> m_labels;
 
 public:
-    SelectedLabelsView(std::vector<LabelInfo> labels = {}) : m_labels(std::move(labels)) {}
+    explicit SelectedLabelsView(std::vector<LabelInfo> labels = {}) : m_labels(std::move(labels)) {}
 
     const std::vector<LabelInfo>& labels() { return m_labels; }
 

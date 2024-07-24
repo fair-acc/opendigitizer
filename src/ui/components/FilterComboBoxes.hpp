@@ -54,7 +54,7 @@ private:
     std::vector<ComboboxDefinition> m_comboboxes;
 
 public:
-    FilterComboBoxes(std::vector<ComboboxDefinition> comboboxes = {}) : m_comboboxes(std::move(comboboxes)) {};
+    explicit FilterComboBoxes(std::vector<ComboboxDefinition> comboboxes = {}) : m_comboboxes(std::move(comboboxes)) {};
 
     void setData(std::vector<ComboboxDefinition> comboboxes) { m_comboboxes = std::move(comboboxes); }
 

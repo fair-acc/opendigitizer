@@ -89,6 +89,7 @@ class SignalList {
 
 public:
     std::function<void(opencmw::service::dns::Entry)> addRemoteSignalCallback;
+    std::function<void(const std::vector<opencmw::service::dns::Entry>&)> updateSignalsCallback;
 
     explicit SignalList(QueryFilterElementList& filters);
     ~SignalList();

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <thread>
 
+#include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
@@ -172,6 +173,21 @@ connections:
 
     std::vector<SignalEntry>       registeredSignals;
     grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client, &restUrl](std::vector<SignalEntry> signals) {
+        if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
+            size_t x = 0;
+            for (auto& i : fair::testDeviceNames) {
+                if (x >= 12) {
+                    break;
+                }
+                const auto  info = fair::getDeviceInfo(i);
+                SignalEntry entry;
+                entry.name        = info.name;
+                entry.sample_rate = 1.f;
+                signals.push_back(entry);
+                x++;
+            }
+        }
+
         std::ranges::sort(signals);
         std::vector<SignalEntry> toUnregister;
         std::ranges::set_difference(registeredSignals, signals, std::back_inserter(toUnregister));

@@ -101,7 +101,12 @@ void SignalList::update() {
     });
     try {
         std::unique_lock l{signalsMutex};
-        dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry>& entries) { signals = entries; }, queryEntry);
+        dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry>& entries) {
+            signals = entries;
+            if (updateSignalsCallback) {
+                updateSignalsCallback(signals);
+            }
+        });
     } catch (const std::exception& e) {
         std::cerr << "Error loading signals: " << e.what() << std::endl;
     }
