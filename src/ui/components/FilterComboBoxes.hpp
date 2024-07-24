@@ -14,7 +14,7 @@ inline auto ColorComboBoxExpectedWidth(const std::string& label) {
     ImVec2     textSize = ImGui::CalcTextSize(label.c_str(), NULL, true);
 
     // Space for the main title, plus the arrow and some extra spacetitle
-    auto comboWidth = 1.3 * textSize.x + textSize.y + 3 * padding;
+    auto comboWidth = 1.3f * textSize.x + textSize.y + 3 * padding;
     return comboWidth;
 }
 

@@ -64,8 +64,8 @@ struct DataType {
         case Int32: return "std::int32_t";
         case Int16: return "std::int16_t";
         case Int8: return "std::int8_t";
+        default: return "unknown";
         }
-        return "unknown";
     }
 
     template<typename T>

@@ -93,7 +93,7 @@ void SignalList::update() {
             if constexpr (std::is_integral_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
                 member(queryEntry) = std::atoi(strValue.c_str());
             } else if constexpr (std::is_floating_point_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
-                member(queryEntry) = std::atof(strValue.c_str());
+                member(queryEntry) = std::stof(strValue);
             } else {
                 member(queryEntry) = strValue;
             }

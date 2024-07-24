@@ -80,7 +80,7 @@ public:
             Axis  axis;
             float min;
             float max;
-            float width = 1e99;
+            float width = 1e99f;
         };
         std::vector<AxisData> axes;
 
