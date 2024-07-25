@@ -169,7 +169,7 @@ private:
             }
         }
 
-        return !std::ranges::contains(stateMatches, NoMatches);
+        return std::ranges::find(stateMatches, NoMatches) == stateMatches.end();
     }
 
     bool loadMoreItems() {
