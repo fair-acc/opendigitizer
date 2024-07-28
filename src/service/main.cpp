@@ -175,6 +175,7 @@ connections:
                 SignalEntry entry;
                 entry.name        = info.name;
                 entry.sample_rate = 1.f;
+                entry.unit        = "TEST unit";
                 signals.push_back(entry);
                 x++;
             }

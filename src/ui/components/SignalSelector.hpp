@@ -155,8 +155,6 @@ private:
         std::array<MatchState, CategoriesCount> stateMatches{};
         std::ranges::fill(stateMatches, Unspecified);
 
-        fmt::print("Number of filters {}\n", m_categorySearch->filters.size());
-
         for (const auto filter : m_categorySearch->filters) {
             if (stateMatches[+filter->category] == Unspecified) {
                 stateMatches[+filter->category] = NoMatches;
@@ -262,18 +260,27 @@ public:
                 sig.protocol    = s.protocol;
                 sig.port        = s.port;
                 sig.hostname    = s.hostname;
+                sig.unit        = s.signal_unit;
+                sig.sampleRate  = s.signal_rate;
 
                 if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
                     const auto info       = fair::getDeviceInfo(s.signal_name);
-                    sig.device            = "TEST device";
+                    sig.device            = s.signal_name;
                     sig.deviceClass       = "TEST deviceClass";
                     sig.subDeviceProperty = "TEST subdevice";
                     sig.accelerator       = "TEST accelerator";
                     sig.comment           = info.deviceFunction;
+                    sig.device            = info.name;
                     sig.frontend          = "TEST frontend";
                     sig.quantity          = "1";
-                    sig.sampleRate        = "1";
-                    sig.unit              = "1";
+
+                    for (auto i = 0; i < 8000; ++i) {
+                        // simulate a lot of devices for the UI
+                        SignalData dup  = sig;
+                        dup.signalName  = "TEST signal" + std::to_string(i);
+                        dup.accelerator = "TEST accelerator" + std::to_string(i % 10);
+                        m_signals.push_back(dup);
+                    }
                 }
 
                 m_signals.push_back(sig);
@@ -281,6 +288,7 @@ public:
 
             m_forceRefresh = true;
             buildIndex();
+            fmt::println("Listing {} signals", m_signals.size());
         };
 
         buildIndex();
@@ -332,7 +340,15 @@ public:
     void drawElement(const SignalData& entry, int idx, FlowGraph* fg) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
+        ImGui::TextUnformatted(entry.device.c_str());
+        ImGui::TableNextColumn();
         ImGui::TextUnformatted(entry.signalName.c_str());
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(entry.quantity.c_str());
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(entry.unit.c_str());
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(entry.frontend.c_str());
         ImGui::TableNextColumn();
         ImGui::Text(entry.comment.c_str());
         ImGui::TableNextColumn();
@@ -391,9 +407,13 @@ public:
         ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
         IMW::Child signals("Signals", ImVec2(0, 0), 0, 0);
 
-        if (auto table = DigitizerUi::IMW::Table("Signals", 3, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
+        if (auto table = DigitizerUi::IMW::Table("Signals", 7, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
             ImGui::TableHeader("SignalsHeader");
+            ImGui::TableSetupColumn("Device");
             ImGui::TableSetupColumn("Name");
+            ImGui::TableSetupColumn("Quantity");
+            ImGui::TableSetupColumn("Unit");
+            ImGui::TableSetupColumn("DAQ-M");
             ImGui::TableSetupColumn("Comment");
             ImGui::TableSetupColumn("Add Signal");
             ImGui::TableHeadersRow();
