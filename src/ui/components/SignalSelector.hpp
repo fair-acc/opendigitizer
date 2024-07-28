@@ -22,7 +22,7 @@ namespace DigitizerUi {
 
 class SignalSelector {
 private:
-    std::string            m_windowName = "addSignalPopup";
+    std::string            m_windowName = "Add Device Signals";
     QueryFilterElementList m_querySignalFilters;
     SignalList             m_signalList{m_querySignalFilters};
 
