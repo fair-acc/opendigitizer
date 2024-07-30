@@ -8,14 +8,15 @@
 #include <fstream>
 #include <thread>
 
+#include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
+#include <gnuradio-4.0/basic/Selector.hpp>
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.h>
-#include <gnuradio-4.0/basic/Selector.hpp>
 
 #ifndef __EMSCRIPTEN__
 #include <Picoscope4000a.hpp>
@@ -35,13 +36,9 @@ struct TestSource : public gr::Block<TestSource<T>> {
     std::size_t               _produced   = 0;
     std::optional<time_point> _start;
 
-    void
-    settingsChanged(const gr::property_map & /*old_settings*/, const gr::property_map & /*new_settings*/) {
-        _produced = 0;
-    }
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) { _produced = 0; }
 
-    gr::work::Status
-    processBulk(gr::PublishableSpan auto &output) noexcept {
+    gr::work::Status processBulk(gr::PublishableSpan auto& output) noexcept {
         using enum gr::work::Status;
         auto       n   = output.size();
         const auto now = clock::now();
@@ -55,7 +52,7 @@ struct TestSource : public gr::Block<TestSource<T>> {
         }
 
         if (_produced == 0 && n > 0) {
-            this->publishTag({ { std::string(gr::tag::SIGNAL_MIN.key()), -0.3f }, { std::string(gr::tag::SIGNAL_MAX.key()), 0.3f } }, 0);
+            this->publishTag({{std::string(gr::tag::SIGNAL_MIN.key()), -0.3f}, {std::string(gr::tag::SIGNAL_MAX.key()), 0.3f}}, 0);
         }
 
         const auto edgeLength = static_cast<std::size_t>(sample_rate / 200.f);
@@ -80,7 +77,7 @@ ENABLE_REFLECTION_FOR_TEMPLATE(TestSource, out, sample_rate);
 
 namespace {
 template<typename Registry>
-void                   registerTestBlocks(Registry &registry) {
+void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<TestSource, double, float>(registry);
@@ -95,7 +92,7 @@ void                   registerTestBlocks(Registry &registry) {
 
 using namespace opencmw::majordomo;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
     using namespace opencmw::majordomo;
@@ -130,22 +127,18 @@ connections:
     using RestBackend = FileServerRestBackend<HTTPS, decltype(fs)>;
     RestBackend rest(broker, fs, SERVING_DIR);
 
-    const auto  requestedAddress    = URI<>("mds://127.0.0.1:12345");
-    const auto  brokerRouterAddress = broker.bind(requestedAddress);
+    const auto requestedAddress    = URI<>("mds://127.0.0.1:12345");
+    const auto brokerRouterAddress = broker.bind(requestedAddress);
     if (!brokerRouterAddress) {
         fmt::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
-    std::jthread       brokerThread([&broker] {
-        broker.run();
-    });
+    std::jthread brokerThread([&broker] { broker.run(); });
 
-    std::jthread       restThread([&rest] { rest.run(); });
+    std::jthread restThread([&rest] { rest.run(); });
 
-    dns::DnsWorkerType dns_worker{ broker, dns::DnsHandler{} };
-    std::jthread       dnsThread([&dns_worker] {
-        dns_worker.run();
-    });
+    dns::DnsWorkerType dns_worker{broker, dns::DnsHandler{}};
+    std::jthread       dnsThread([&dns_worker] { dns_worker.run(); });
 
     // dashboard worker (mock)
     using DsWorker = DashboardWorker<"/dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
@@ -156,46 +149,62 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                                          pluginLoader(registry, {});
-    GrAcqWorker                                               grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
-    GrFgWorker                                                grFgWorker(broker, &pluginLoader, { grc, {} }, grAcqWorker);
+    gr::PluginLoader pluginLoader(registry, {});
+    GrAcqWorker      grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
+    GrFgWorker       grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
 
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
     clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
-    opencmw::client::ClientContext client{ std::move(clients) };
+    opencmw::client::ClientContext client{std::move(clients)};
 
-    dns::DnsClient                 dns_client{ client, settings.serviceUrl().path("/dns").build() };
+    dns::DnsClient dns_client{client, settings.serviceUrl().path("/dns").build()};
 
-    const auto                     restUrl = settings.serviceUrl().build();
+    const auto restUrl = settings.serviceUrl().build();
 
-    std::vector<SignalEntry>       registeredSignals;
+    std::vector<SignalEntry> registeredSignals;
     grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client, &restUrl](std::vector<SignalEntry> signals) {
+        if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
+            size_t x = 0;
+            for (auto& i : fair::testDeviceNames) {
+                if (x >= 12) {
+                    break;
+                }
+                const auto  info = fair::getDeviceInfo(i);
+                SignalEntry entry;
+                entry.name        = info.name;
+                entry.sample_rate = 1.f;
+                entry.unit        = "TEST unit";
+                signals.push_back(entry);
+                x++;
+            }
+        }
+
         std::ranges::sort(signals);
         std::vector<SignalEntry> toUnregister;
         std::ranges::set_difference(registeredSignals, signals, std::back_inserter(toUnregister));
         std::vector<SignalEntry> toRegister;
         std::ranges::set_difference(signals, registeredSignals, std::back_inserter(toRegister));
 
-        auto dnsEntriesForSignal = [&restUrl](const SignalEntry &entry) {
+        auto dnsEntriesForSignal = [&restUrl](const SignalEntry& entry) {
             // TODO publish acquisition modes other than streaming?
             // TODO mdp not functional (not implemented in worker)
             return std::vector{
-                dns::Entry{ *restUrl.scheme(), *restUrl.hostName(), *restUrl.port(), "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
-                dns::Entry{ "mdp", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" },
-                dns::Entry{ "mds", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING" }
+                dns::Entry{*restUrl.scheme(), *restUrl.hostName(), *restUrl.port(), "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING"},
+                // dns::Entry{"mdp", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING"},
+                // dns::Entry{"mds", *restUrl.hostName(), 12345, "/GnuRadio/Acquisition", "", entry.name, entry.unit, entry.sample_rate, "STREAMING"}
             };
         };
         std::vector<dns::Entry> toUnregisterEntries;
-        for (const auto &signal : toUnregister) {
+        for (const auto& signal : toUnregister) {
             auto dns = dnsEntriesForSignal(signal);
             toUnregisterEntries.insert(toUnregisterEntries.end(), dns.begin(), dns.end());
         }
         dns_client.unregisterSignals(std::move(toUnregisterEntries));
 
         std::vector<dns::Entry> toRegisterEntries;
-        for (const auto &signal : toRegister) {
+        for (const auto& signal : toRegister) {
             auto dns = dnsEntriesForSignal(signal);
             toRegisterEntries.insert(toRegisterEntries.end(), dns.begin(), dns.end());
         }

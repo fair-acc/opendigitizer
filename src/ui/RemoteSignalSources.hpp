@@ -11,42 +11,33 @@
 #include "services/dns_types.hpp"
 #include "settings.hpp"
 
-struct QueryFilterElementList;
+class QueryFilterElementList;
 
 /*     Draws a Combo box, to choose the field to filter, the filter keyword and delete button for it     */
 struct QueryFilterElement {
-    QueryFilterElementList     &list;
+    QueryFilterElementList&     list;
     static constexpr std::array field_names = [] {
-        constexpr auto                 descriptor = refl::reflect<opencmw::service::dns::QueryEntry>();
-        constexpr auto                 size       = descriptor.members.size;
-        std::array<const char *, size> arr;
-        int                            index = 0;
-        refl::util::for_each(descriptor.members, [&](auto member) {
-            arr[index++] = member.name.c_str();
-        });
+        constexpr auto                descriptor = refl::reflect<opencmw::service::dns::QueryEntry>();
+        constexpr auto                size       = descriptor.members.size;
+        std::array<const char*, size> arr;
+        std::size_t                   index = 0;
+        refl::util::for_each(descriptor.members, [&](auto member) { arr[index++] = member.name.c_str(); });
         return arr;
     }();
-    int         _selectedIndex{ 1 };
     std::string _keyIdentifier;
     std::string _valueIdentifier;
+    std::size_t _selectedIndex{1};
     std::string _buttonIdentifier;
     std::string filterText;
 
-    std::string selectedField() const {
-        return field_names[_selectedIndex];
-    }
+    std::string selectedField() const { return field_names[_selectedIndex]; }
 
-    QueryFilterElement(QueryFilterElementList &list);
+    QueryFilterElement(QueryFilterElementList& list);
 
-    QueryFilterElement(const QueryFilterElement &other)
-        : list(other.list), _keyIdentifier(other._keyIdentifier), _valueIdentifier(other._valueIdentifier), _selectedIndex(other._selectedIndex), _buttonIdentifier(other._buttonIdentifier) {}
-    QueryFilterElement &operator=(const QueryFilterElement &other);
+    QueryFilterElement(const QueryFilterElement& other) : list(other.list), _keyIdentifier(other._keyIdentifier), _valueIdentifier(other._valueIdentifier), _selectedIndex(other._selectedIndex), _buttonIdentifier(other._buttonIdentifier) {}
+    QueryFilterElement& operator=(const QueryFilterElement& other);
 
-    bool                operator==(const QueryFilterElement &rhs) const {
-        return &list == &rhs.list
-            && _keyIdentifier == rhs._keyIdentifier
-            && _valueIdentifier == rhs._valueIdentifier;
-    };
+    bool operator==(const QueryFilterElement& rhs) const { return &list == &rhs.list && _keyIdentifier == rhs._keyIdentifier && _valueIdentifier == rhs._valueIdentifier; };
     void drawFilterLine();
 };
 class QueryFilterElementList : public std::list<QueryFilterElement> {
@@ -61,15 +52,14 @@ public:
             function       = func;
         }
 
-        void operator()() {
-            function();
-        }
-        bool operator==(const Hook &other) const { return id == other.id; }
+        void operator()() { function(); }
+        bool operator==(const Hook& other) const { return id == other.id; }
     };
     std::vector<Hook> onChange;
     void              triggerChange();
-    void              pop(QueryFilterElement &element) {
-        auto toDelete     = std::remove(begin(), end(), element);
+    void              pop(QueryFilterElement& element) {
+        // TODO: this was wrong
+        // auto toDelete     = std::remove(begin(), end(), element);
         marked_for_delete = std::remove(begin(), end(), element);
     }
     void add() {
@@ -87,26 +77,27 @@ class SignalList {
     opencmw::client::ClientContext clientContext = []() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
         clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
-        return opencmw::client::ClientContext{ std::move(clients) };
+        return opencmw::client::ClientContext{std::move(clients)};
     }();
-    opencmw::service::dns::DnsClient          dnsClient{ clientContext, settings.serviceUrl().path("/dns").build() };
+    opencmw::service::dns::DnsClient dnsClient{clientContext, settings.serviceUrl().path("/dns").build()};
 
-    QueryFilterElementList                   &filters;
-    QueryFilterElementList::Hook              myOnChange{ [this]() { this->update(); } };
+    QueryFilterElementList&      filters;
+    QueryFilterElementList::Hook myOnChange{[this]() { this->update(); }};
 
     std::vector<opencmw::service::dns::Entry> signals;
     std::mutex                                signalsMutex;
 
 public:
-    std::function<void(opencmw::service::dns::Entry)> addRemoteSignalCallback;
+    std::function<void(opencmw::service::dns::Entry)>                     addRemoteSignalCallback;
+    std::function<void(const std::vector<opencmw::service::dns::Entry>&)> updateSignalsCallback;
 
-    explicit SignalList(QueryFilterElementList &filters);
+    explicit SignalList(QueryFilterElementList& filters);
     ~SignalList();
 
     void update();
 
     void drawElements();
-    void drawElement(const opencmw::service::dns::Entry &entry, int idx);
+    void drawElement(const opencmw::service::dns::Entry& entry, int idx);
 };
 
 #endif // OPENDIGITIZER_REMOTESIGNALSOURCES_H

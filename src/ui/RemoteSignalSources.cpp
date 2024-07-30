@@ -7,10 +7,10 @@
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
     if (auto combo = DigitizerUi::IMW::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
-        for (int i = 0; i < field_names.size(); i++) {
+        for (std::size_t i = 0; i < field_names.size(); i++) {
             bool isSelected = _selectedIndex == i;
             if (ImGui::Selectable(field_names[i], isSelected)) {
-                if (std::any_of(list.begin(), list.end(), [&i, this](auto &e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
+                if (std::any_of(list.begin(), list.end(), [&i, this](auto& e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
                     if (auto popup = DigitizerUi::IMW::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
                         ImGui::Text("Key already selected. Please select a different one");
                         if (ImGui::Button("Ok")) {
@@ -40,7 +40,7 @@ void QueryFilterElement::drawFilterLine() {
     }
 }
 
-QueryFilterElement &QueryFilterElement::operator=(const QueryFilterElement &other) {
+QueryFilterElement& QueryFilterElement::operator=(const QueryFilterElement& other) {
     this->list              = other.list;
     this->_valueIdentifier  = other._valueIdentifier;
     this->_keyIdentifier    = other._keyIdentifier;
@@ -49,8 +49,7 @@ QueryFilterElement &QueryFilterElement::operator=(const QueryFilterElement &othe
     this->filterText        = other.filterText;
     return *this;
 }
-QueryFilterElement::QueryFilterElement(QueryFilterElementList &list)
-    : list(list) {
+QueryFilterElement::QueryFilterElement(QueryFilterElementList& _list) : list(_list) {
     static int counter = 0;
     _keyIdentifier     = "##queryKey_" + std::to_string(counter);
     _valueIdentifier   = "##queryValue_" + std::to_string(counter);
@@ -59,19 +58,18 @@ QueryFilterElement::QueryFilterElement(QueryFilterElementList &list)
 }
 
 void QueryFilterElementList::triggerChange() {
-    std::for_each(onChange.begin(), onChange.end(), [](auto &f) { f(); });
+    std::for_each(onChange.begin(), onChange.end(), [](auto& f) { f(); });
 }
 void QueryFilterElementList::drawFilters() {
     marked_for_delete = end();
-    std::for_each(begin(), end(), [](auto &f) { f.drawFilterLine(); });
+    std::for_each(begin(), end(), [](auto& f) { f.drawFilterLine(); });
     if (marked_for_delete != end()) {
         erase(marked_for_delete);
         triggerChange();
     }
 }
 
-SignalList::SignalList(QueryFilterElementList &filters)
-    : filters(filters) {
+SignalList::SignalList(QueryFilterElementList& _filters) : filters(_filters) {
     filters.onChange.emplace_back(myOnChange);
     update();
 }
@@ -88,48 +86,45 @@ void SignalList::update() {
     refl::util::for_each(refl::reflect(queryEntry).members, [&](auto member) {
         // TODO maybe pick the last instead of the first
 
-        auto it = std::find_if(filters.begin(), filters.end(), [&member](const auto &f) {
-            return f.selectedField() == refl::descriptor::get_display_name(member);
-        });
+        auto it = std::find_if(filters.begin(), filters.end(), [&member](const auto& f) { return f.selectedField() == refl::descriptor::get_display_name(member); });
         // we pick the first
-        auto &strValue = it->filterText;
+        auto& strValue = it->filterText;
         if (it != filters.end() && strValue != "") {
-            if constexpr (std::is_integral_v<std::remove_cvref_t<decltype(member(queryEntry))>>)
+            if constexpr (std::is_integral_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
                 member(queryEntry) = std::atoi(strValue.c_str());
-            else if constexpr (std::is_floating_point_v<std::remove_cvref_t<decltype(member(queryEntry))>>)
-                member(queryEntry) = std::atof(strValue.c_str());
-            else
+            } else if constexpr (std::is_floating_point_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
+                member(queryEntry) = std::stof(strValue);
+            } else {
                 member(queryEntry) = strValue;
+            }
         }
     });
     try {
-        std::unique_lock l{ signalsMutex };
-        dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry> &entries) {
+        std::unique_lock l{signalsMutex};
+        dnsClient.querySignalsAsync([this](const std::vector<opencmw::service::dns::Entry>& entries) {
             signals = entries;
-        },
-                queryEntry);
-    } catch (const std::exception &e) {
+            if (updateSignalsCallback) {
+                updateSignalsCallback(signals);
+            }
+        });
+    } catch (const std::exception& e) {
         std::cerr << "Error loading signals: " << e.what() << std::endl;
     }
 }
 void SignalList::drawElements() {
-    DigitizerUi::IMW::Table table("Signals", static_cast<int>(refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1),
-            static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV),
-            ImVec2(0.0f, 0.0f), 0.0f);
-    // BeginTable(const char* str_id, int column, ImGuiTableFlags flags = 0, const ImVec2& outer_size = ImVec2(0.0f, 0.0f), float inner_width = 0.0f);
+    if (auto table = DigitizerUi::IMW::Table("Signals", static_cast<int>(refl::reflect<opencmw::service::dns::QueryEntry>().members.size + 1), static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
 
-    ImGui::TableHeader("SignalsHeader");
-    refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [](auto m) {
-        ImGui::TableSetupColumn(static_cast<const char *>(m.name));
-    });
-    ImGui::TableSetupColumn("Add Signal");
-    ImGui::TableHeadersRow();
-    {
-        std::unique_lock l{ signalsMutex };
-        std::for_each(signals.begin(), signals.end(), [this, idx = 0](const auto &e) mutable { drawElement(e, idx++); });
+        ImGui::TableHeader("SignalsHeader");
+        refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [](auto m) { ImGui::TableSetupColumn(static_cast<const char*>(m.name)); });
+        ImGui::TableSetupColumn("Add Signal");
+        ImGui::TableHeadersRow();
+        {
+            std::unique_lock l{signalsMutex};
+            std::for_each(signals.begin(), signals.end(), [this, idx = 0](const auto& e) mutable { drawElement(e, idx++); });
+        }
     }
 }
-void SignalList::drawElement(const opencmw::service::dns::Entry &entry, int idx) {
+void SignalList::drawElement(const opencmw::service::dns::Entry& entry, int idx) {
     ImGui::TableNextRow();
     refl::util::for_each(refl::reflect<opencmw::service::dns::QueryEntry>().members, [&entry](auto m) {
         auto value = m(entry);

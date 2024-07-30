@@ -35,9 +35,7 @@ enum class TType {
     tt_end
 };
 
-constexpr auto operator+(TType ty) {
-    return static_cast<std::size_t>(ty);
-}
+constexpr auto operator+(TType ty) { return static_cast<std::size_t>(ty); }
 
 struct ASTNode {
     TType type  = TType::tt_end;
@@ -45,100 +43,72 @@ struct ASTNode {
 };
 
 struct Token {
-    TType                        type = TType::tt_none;
-    std::string_view             range;
+    TType            type = TType::tt_none;
+    std::string_view range;
 
-    [[nodiscard]] constexpr bool is_operator() const noexcept {
-        return +type >= +TType::tt_plus && +type < +TType::tt_expr;
-    }
-    [[nodiscard]] constexpr bool is_valid() const noexcept {
-        return type != TType::tt_none && type != TType::tt_end;
-    }
-    [[nodiscard]] constexpr bool is_popen() const noexcept {
-        return type == TType::tt_popen || +type >= +TType::tt_sin && +type <= +TType::tt_tanh;
-    }
+    [[nodiscard]] constexpr bool is_operator() const noexcept { return +type >= +TType::tt_plus && +type < +TType::tt_expr; }
+    [[nodiscard]] constexpr bool is_valid() const noexcept { return type != TType::tt_none && type != TType::tt_end; }
+    [[nodiscard]] constexpr bool is_popen() const noexcept { return type == TType::tt_popen || (+type >= +TType::tt_sin && +type <= +TType::tt_tanh); }
 };
 
 constexpr inline std::string_view parse_float(std::string_view stream) {
     auto begin = stream.begin();
     while (begin != stream.end()) {
-        if (!isdigit(*begin) && *begin != '.' && *begin != '-' && *begin != '+' && *begin != 'e')
+        if (!isdigit(*begin) && *begin != '.' && *begin != '-' && *begin != '+' && *begin != 'e') {
             break;
+        }
         begin++;
     }
-    return { stream.begin(), begin };
+    return {stream.begin(), begin};
 }
 
 constexpr inline Token get_token(std::string_view stream) {
     auto begin = stream.begin();
     while (begin != stream.end()) {
         switch (*begin) {
-        case '+': return {
-            TType::tt_plus, { begin - 1, begin + 2 }
-        };
+        case '+': return {TType::tt_plus, {begin - 1, begin + 2}};
         case '-':
-            if (auto it = begin + 1; *it == ' ')
-                return {
-                    TType::tt_minus, { begin - 1, begin + 2 }
-                };
-            return {
-                TType::tt_uminus, { begin, begin + 1 }
-            };
-        case '*': return {
-            TType::tt_mul, { begin - 1, begin + 2 }
-        };
-        case '/': return {
-            TType::tt_div, { begin - 1, begin + 2 }
-        };
-        case '^': return {
-            TType::tt_power, { begin - 1, begin + 2 }
-        };
-        case '(': return {
-            TType::tt_popen, { begin, begin + 1 }
-        };
-        case ')': return {
-            TType::tt_pclose, { begin, begin + 1 }
-        };
+            if (auto it = begin + 1; *it == ' ') {
+                return {TType::tt_minus, {begin - 1, begin + 2}};
+            }
+            return {TType::tt_uminus, {begin, begin + 1}};
+        case '*': return {TType::tt_mul, {begin - 1, begin + 2}};
+        case '/': return {TType::tt_div, {begin - 1, begin + 2}};
+        case '^': return {TType::tt_power, {begin - 1, begin + 2}};
+        case '(': return {TType::tt_popen, {begin, begin + 1}};
+        case ')': return {TType::tt_pclose, {begin, begin + 1}};
         case 's':
-            if (stream.starts_with("sinh("))
-                return {
-                    TType::tt_sinh, { begin, begin + 5 }
-                };
-            return {
-                TType::tt_sin, { begin, begin + 4 }
-            };
+            if (stream.starts_with("sinh(")) {
+                return {TType::tt_sinh, {begin, begin + 5}};
+            }
+            return {TType::tt_sin, {begin, begin + 4}};
         case 'c':
-            if (stream.starts_with("cosh("))
-                return {
-                    TType::tt_cosh, { begin, begin + 5 }
-                };
-            return {
-                TType::tt_cos, { begin, begin + 4 }
-            };
+            if (stream.starts_with("cosh(")) {
+                return {TType::tt_cosh, {begin, begin + 5}};
+            }
+            return {TType::tt_cos, {begin, begin + 4}};
         case 't':
-            if (stream.starts_with("tanh("))
-                return {
-                    TType::tt_tanh, { begin, begin + 5 }
-                };
-            return {
-                TType::tt_tan, { begin, begin + 4 }
-            };
+            if (stream.starts_with("tanh(")) {
+                return {TType::tt_tanh, {begin, begin + 5}};
+            }
+            return {TType::tt_tan, {begin, begin + 4}};
         }
 
         if (isdigit(*begin) || *begin == '.') {
-            return { TType::tt_const, parse_float({ begin, stream.end() }) };
+            return {TType::tt_const, parse_float({begin, stream.end()})};
         }
         begin++;
     }
-    return { TType::tt_end, "" };
+    return {TType::tt_end, ""};
 }
 
 inline Token last_token(std::string_view stream) {
     Token t;
     while (true) {
         auto t1 = get_token(stream);
-        if (t1.type == TType::tt_end)
+        if (t1.type == TType::tt_end) {
             return t;
+        }
         t = t1;
         stream.remove_prefix(t.range.size());
     }
@@ -161,8 +131,9 @@ inline std::vector<Token> tokenize(std::string_view stream) {
     while (true) {
         auto t = get_token(stream);
         tokens.push_back(t);
-        if (t.type == TType::tt_end)
+        if (t.type == TType::tt_end) {
             return tokens;
+        }
         stream.remove_prefix(t.range.size());
     }
 }
@@ -178,51 +149,50 @@ struct PTable {
 
     // columns(incoming) {^}{-a}{*/}{+-}{f/(}{)}{id}{$}
     constexpr static Action precedence_table[][8] = {
-        /* {^}    */ { S, S, R, R, S, R, S, R },
-        /* {-a}   */ { R, X, R, R, S, R, S, R },
-        /* {* }   */ { S, S, R, R, S, R, S, R },
-        /* {+-}   */ { S, S, S, R, S, R, S, R },
-        /* {f/(}  */ { S, S, S, S, S, E, S, X },
-        /* {)}    */ { R, X, R, R, X, R, X, R },
-        /* {$}    */ { S, S, S, S, S, X, S, A },
+        /* {^}    */ {S, S, R, R, S, R, S, R},
+        /* {-a}   */ {R, X, R, R, S, R, S, R},
+        /* {* }   */ {S, S, R, R, S, R, S, R},
+        /* {+-}   */ {S, S, S, R, S, R, S, R},
+        /* {f/(}  */ {S, S, S, S, S, E, S, X},
+        /* {)}    */ {R, X, R, R, X, R, X, R},
+        /* {$}    */ {S, S, S, S, S, X, S, A},
     };
 
 public:
     constexpr static Action GetAction(TType stack, TType incoming) {
-        auto table_nav = [](TType entry) {switch (entry) {
-            default:
-                return entry == TType::tt_popen || +entry >= +TType::tt_sin && +entry <= +TType::tt_tanh?4:-1;
-        case TType::tt_power: return 0;
-        case TType::tt_uminus: return 1;
+        auto table_nav = [](TType entry) {
+            switch (entry) {
+            default: return entry == TType::tt_popen || (+entry >= +TType::tt_sin && +entry <= +TType::tt_tanh) ? 4 : -1;
+            case TType::tt_power: return 0;
+            case TType::tt_uminus: return 1;
 
-        case TType::tt_mul:
-        case TType::tt_div: return 2;
+            case TType::tt_mul:
+            case TType::tt_div: return 2;
 
-        case TType::tt_plus:
-        case TType::tt_minus: return 3;
+            case TType::tt_plus:
+            case TType::tt_minus: return 3;
 
-        case TType::tt_pclose: return 5;
+            case TType::tt_pclose: return 5;
 
-        case TType::tt_end: return 6;
-        } };
+            case TType::tt_end: return 6;
+            }
+        };
 
-        int  row       = table_nav(stack);
-        if (row == -1) return X;
+        int row = table_nav(stack);
+        if (row == -1) {
+            return X;
+        }
 
         int col = -1;
         switch (incoming) {
-        case TType::tt_const:
-            col = 6;
-            break;
-        case TType::tt_end:
-            col = 7;
-            break;
-        default:
-            col = table_nav(incoming);
-            break;
+        case TType::tt_const: col = 6; break;
+        case TType::tt_end: col = 7; break;
+        default: col = table_nav(incoming); break;
         }
 
-        if (col == -1) return X;
+        if (col == -1) {
+            return X;
+        }
         return precedence_table[row][col];
     }
 };
@@ -234,8 +204,9 @@ inline std::optional<float> evaluate(std::string_view stream) {
 
     auto last_term = [&]() {
         auto it = context.rbegin();
-        while (it->type == TType::tt_expr)
+        while (it->type == TType::tt_expr) {
             it++;
+        }
         return it;
     };
 
@@ -244,7 +215,7 @@ inline std::optional<float> evaluate(std::string_view stream) {
         if (l_term->type == TType::tt_uminus) {
             float a = -context.back().value;
             context.pop_back();
-            context.back() = { TType::tt_expr, a };
+            context.back() = {TType::tt_expr, a};
             return;
         }
         if (l_term->type == tt_pclose) {
@@ -254,37 +225,25 @@ inline std::optional<float> evaluate(std::string_view stream) {
             if (prev->type == tt_popen) {
                 context.erase(context.end() - 2);
                 prev = last_term();
-                if (prev->type != tt_uminus)
+                if (prev->type != tt_uminus) {
                     return;
+                }
 
                 context.back().value = -context.back().value;
                 context.erase(context.end() - 2);
                 return;
             }
 
-            auto &last_value = context.back().value;
+            auto& last_value = context.back().value;
 
             switch (prev->type) {
-            case TType::tt_sin:
-                last_value = sinf(last_value);
-                break;
-            case TType::tt_cos:
-                last_value = cosf(last_value);
-                break;
-            case TType::tt_tan:
-                last_value = tanf(last_value);
-                break;
-            case TType::tt_sinh:
-                last_value = sinhf(last_value);
-                break;
-            case TType::tt_cosh:
-                last_value = coshf(last_value);
-                break;
-            case TType::tt_tanh:
-                last_value = tanhf(last_value);
-                break;
-            default:
-                return;
+            case TType::tt_sin: last_value = sinf(last_value); break;
+            case TType::tt_cos: last_value = cosf(last_value); break;
+            case TType::tt_tan: last_value = tanf(last_value); break;
+            case TType::tt_sinh: last_value = sinhf(last_value); break;
+            case TType::tt_cosh: last_value = coshf(last_value); break;
+            case TType::tt_tanh: last_value = tanhf(last_value); break;
+            default: return;
             }
             context.erase(context.end() - 2);
             return;
@@ -296,23 +255,12 @@ inline std::optional<float> evaluate(std::string_view stream) {
         context.pop_back();
 
         switch (l_term->type) {
-        case TType::tt_plus:
-            context.back().value = a + b;
-            break;
-        case TType::tt_minus:
-            context.back().value = b - a;
-            break;
-        case TType::tt_mul:
-            context.back().value = b * a;
-            break;
-        case TType::tt_div:
-            context.back().value = b / a;
-            break;
-        case TType::tt_power:
-            context.back().value = powf(b, a);
-            break;
-        default:
-            assert(false);
+        case TType::tt_plus: context.back().value = a + b; break;
+        case TType::tt_minus: context.back().value = b - a; break;
+        case TType::tt_mul: context.back().value = b * a; break;
+        case TType::tt_div: context.back().value = b / a; break;
+        case TType::tt_power: context.back().value = powf(b, a); break;
+        default: assert(false);
         }
     };
 
@@ -326,10 +274,11 @@ inline std::optional<float> evaluate(std::string_view stream) {
         switch (action) {
         case PTable::E:
         case PTable::S: // Shift
-            if (in_tk.type == TType::tt_const)
-                context.emplace_back(ASTNode{ TType::tt_expr, stof(std::string{ in_tk.range }) });
-            else
-                context.emplace_back(ASTNode{ in_tk.type });
+            if (in_tk.type == TType::tt_const) {
+                context.emplace_back(ASTNode{TType::tt_expr, stof(std::string{in_tk.range})});
+            } else {
+                context.emplace_back(ASTNode{in_tk.type});
+            }
 
             in_tk = get_token(stream);
             stream.remove_prefix(in_tk.range.size());
@@ -343,7 +292,7 @@ inline std::optional<float> evaluate(std::string_view stream) {
 
 template<std::size_t BufferSize = 256>
 class InputKeypad {
-    static inline constexpr const char *keypad_name = "KeypadX";
+    static inline constexpr const char* keypad_name = "KeypadX";
 
     //
     bool        _visible     = true;
@@ -355,12 +304,7 @@ class InputKeypad {
     std::any    _prevValue;
     Token       _lastToken;
 
-    enum class ReturnState {
-        None,
-        Change,
-        Accept,
-        Discard
-    };
+    enum class ReturnState { None, Change, Accept, Discard };
 
     enum class Button {
         NoButton,
@@ -374,8 +318,8 @@ class InputKeypad {
         Alt_2nd,
         Alt_Inv,
 
-        POpen   = '(',
-        PClose  = ')',
+        POpen  = '(',
+        PClose = ')',
 
         Add     = '+',
         Sub     = '-',
@@ -423,7 +367,7 @@ class InputKeypad {
     constexpr static bool always_true = true;
 
     template<typename T = void>
-    [[nodiscard]] consteval static const char *toString(Button button) noexcept {
+    [[nodiscard]] consteval static const char* toString(Button button) noexcept {
         using enum InputKeypad<>::Button;
         switch (button) {
         case NoButton: return " ";
@@ -475,15 +419,11 @@ class InputKeypad {
         case Ln: return "Ln";
         case Pow10: return "10^";
         case PowE: return "e^";
-        default:
-            static_assert(always_true<T>, "not all possible Button enum values are mapped");
+        default: static_assert(always_true<T>, "not all possible Button enum values are mapped");
         }
     }
 
-    enum class LinePreference {
-        SameLine,
-        None
-    };
+    enum class LinePreference { SameLine, None };
 
     template<LinePreference SameLine, Button primaryButton, ImGuiKey... keyBinding>
     [[nodiscard]] Button static keypadButton(ImVec2 size, Button oldValue) {
@@ -500,7 +440,7 @@ class InputKeypad {
         }
         const bool buttonActivated = ImGui::Button(toString(primaryButton), size);
 
-        if (constexpr auto keyList = std::array{ keyBinding... }; ImGui::IsKeyPressed(keyList[0])) {
+        if (constexpr auto keyList = std::array{keyBinding...}; ImGui::IsKeyPressed(keyList[0])) {
             return primaryButton;
         } else if ((ImGui::IsKeyPressed(keyBinding) || ...)) {
             return secondaryButton;
@@ -508,14 +448,12 @@ class InputKeypad {
 
         if (buttonActivated) {
             static double lastClick = -1.0f;
-            static ImVec2 lastClickPos{ -1, -1 };
+            static ImVec2 lastClickPos{-1, -1};
             const double  time                    = ImGui::GetTime();
             const ImVec2  clickPos                = ImGui::GetMousePos();
-            const bool    isWithinDoubleClickTime = lastClick >= 0.0f && time - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
-            const auto    isDoubleClick           = [&]() {
-                return (lastClickPos.x != -1 && std::hypot(clickPos.x - lastClickPos.x, clickPos.y - lastClickPos.y) <= ImGui::GetIO().MouseDoubleClickMaxDist);
-            };
-            bool doubleClicked = false;
+            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && time - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
+            const auto    isDoubleClick           = [&]() { return (lastClickPos.x != -1 && std::hypot(clickPos.x - lastClickPos.x, clickPos.y - lastClickPos.y) <= ImGui::GetIO().MouseDoubleClickMaxDist); };
+            bool          doubleClicked           = false;
             if (isWithinDoubleClickTime && isDoubleClick()) {
                 doubleClicked = true;
             }
@@ -527,27 +465,25 @@ class InputKeypad {
         return oldValue;
     }
 
-    InputKeypad() {
-        _editBuffer.reserve(BufferSize);
-    };
+    InputKeypad() { _editBuffer.reserve(BufferSize); };
 
-    static auto &getInstance() {
+    static auto& getInstance() {
         static InputKeypad instance;
         return instance;
     }
 
 public:
     template<typename EdTy>
-        requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
-    [[nodiscard]] static bool edit(const char *label, EdTy *value) {
+    requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
+    [[nodiscard]] static bool edit(const char* label, EdTy* value) {
         if (!label || !value) {
             return false;
         }
 
         if constexpr (std::floating_point<EdTy>) {
-            ImGui::DragFloat(label, static_cast<float *>(value), 0.1f);
+            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f);
         } else if constexpr (std::integral<EdTy>) {
-            ImGui::DragInt(label, static_cast<int *>(value));
+            ImGui::DragInt(label, static_cast<int*>(value));
         } else {
             ImGui::InputText(label, value);
         }
@@ -557,12 +493,12 @@ public:
     static bool isVisible() noexcept { return getInstance()._visible; }
 
 private:
-    [[nodiscard]] ReturnState drawKeypadPopup(std::string &valueLabel) noexcept {
-        const auto      &mainViewPort     = *ImGui::GetMainViewport();
+    [[nodiscard]] ReturnState drawKeypadPopup(std::string& valueLabel) noexcept {
+        const auto&      mainViewPort     = *ImGui::GetMainViewport();
         const ImVec2     mainViewPortSize = mainViewPort.WorkSize;
         const bool       portraitMode     = mainViewPortSize.x < mainViewPortSize.y;
-        constexpr ImVec2 defaultPortraitSize{ 400.f, 600.f };
-        constexpr ImVec2 defaultLandscapeSize{ 485.f, 400.f };
+        constexpr ImVec2 defaultPortraitSize{400.f, 600.f};
+        constexpr ImVec2 defaultLandscapeSize{485.f, 400.f};
 
         if (mainViewPortSize.x > defaultPortraitSize.x && mainViewPortSize.y > defaultPortraitSize.y) { // fits on screen
             ImGui::SetNextWindowSize(defaultPortraitSize);
@@ -594,21 +530,16 @@ private:
                 _firstUpdate = false;
                 _lastToken   = last_token(_editBuffer);
                 return ReturnState::Change;
-            case ReturnState::Accept:
-                _firstUpdate = true;
-                return ReturnState::Accept;
-            case ReturnState::Discard:
-                _firstUpdate = true;
-                return ReturnState::Discard;
-            default:
-                return ReturnState::None;
+            case ReturnState::Accept: _firstUpdate = true; return ReturnState::Accept;
+            case ReturnState::Discard: _firstUpdate = true; return ReturnState::Discard;
+            default: return ReturnState::None;
             }
         }
         return ReturnState::None;
     }
 
     template<typename EdTy>
-    [[nodiscard]] bool editImpl(const char *label, EdTy *value) noexcept {
+    [[nodiscard]] bool editImpl(const char* label, EdTy* value) noexcept {
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             _visible = true;
             ImGui::OpenPopup(keypad_name);
@@ -627,7 +558,7 @@ private:
                 *value         = strtof(_editBuffer.c_str(), nullptr);
             } else {
                 EdTy             converted = 0;
-                std::string_view a{ _editBuffer };
+                std::string_view a{_editBuffer};
                 auto [ptr, ec] = std::from_chars(a.begin(), a.end(), converted);
                 if (ec != std::errc()) {
                     return false;
@@ -642,12 +573,11 @@ private:
             _visible     = false;
             _firstUpdate = true;
             return true;
-        default:
-            return false;
+        default: return false;
         }
     }
 
-    [[nodiscard]] Button drawPortraitKeypad(std::string &valueLabel, const ImVec2 &windowSize) const {
+    [[nodiscard]] Button drawPortraitKeypad(std::string& valueLabel, const ImVec2& windowSize) const {
         /**
          * ┌───────────────────────┬─────┐
          * │   NumberInputField    │ ESC │
@@ -671,7 +601,7 @@ private:
         constexpr float nCols = 5; // see above layout
         using enum InputKeypad<>::Button;
         using enum InputKeypad<>::LinePreference;
-        const ImGuiStyle &style = ImGui::GetStyle();
+        const ImGuiStyle& style = ImGui::GetStyle();
         const float       nx    = floorf(windowSize.x / nCols) - .5f * nCols / (nCols - 1) * style.WindowPadding.x;
         const float       ny    = floorf(windowSize.y / nRows) - .5f * nRows / (nRows - 1) * style.WindowPadding.y;
         ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny)); // buttons are square
@@ -693,8 +623,8 @@ private:
 
         // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
@@ -706,7 +636,7 @@ private:
             button_color.z *= 0.8f; // B
 
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
 
         } else {
@@ -742,7 +672,7 @@ private:
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
@@ -775,7 +705,7 @@ private:
         key                          = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
         key                          = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
         const float vpos_before_plus = ImGui::GetCursorPosY();
-        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({ buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y }, key);
+        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
         ImGui::SetCursorPosY(vpos_before_plus);
 
         // start row 6: ),4,5,6,+(2/2, two rows)
@@ -791,21 +721,21 @@ private:
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
 
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             const float     vpos_before_enter = ImGui::GetCursorPosY();
-            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
+            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
             ImGui::SetCursorPosY(vpos_before_enter);
         }
 
         // start row 8: ±,0 (two columns),.,enter(2/2, two rows)
         key = keypadButton<None, Sign>(buttonSize, key);
-        key = keypadButton<SameLine, Button0, ImGuiKey_0, ImGuiKey_Keypad0>({ buttonSize[0] * 2.f + style.WindowPadding.x, buttonSize.y }, key);
+        key = keypadButton<SameLine, Button0, ImGuiKey_0, ImGuiKey_Keypad0>({buttonSize[0] * 2.f + style.WindowPadding.x, buttonSize.y}, key);
         key = keypadButton<SameLine, Period, ImGuiKey_Period, ImGuiKey_KeypadDecimal>(buttonSize, key);
         return key;
     }
 
-    [[nodiscard]] Button drawLandscapeKeypad(std::string &valueLabel, const ImVec2 &windowSize) const {
+    [[nodiscard]] Button drawLandscapeKeypad(std::string& valueLabel, const ImVec2& windowSize) const {
         /**
          * ┌─────────────────────────────┬─────┬─────┐
          * │       NumberInputField      │ <-  │ ESC │
@@ -825,7 +755,7 @@ private:
         constexpr float nCols = 7; // see above layout
         using enum InputKeypad<>::Button;
         using enum InputKeypad<>::LinePreference;
-        const ImGuiStyle &style = ImGui::GetStyle();
+        const ImGuiStyle& style = ImGui::GetStyle();
         const float       nx    = floorf(windowSize.x / nCols) - .5f * nCols / (nCols - 1) * style.WindowPadding.x;
         const float       ny    = floorf(windowSize.y / nRows) - .5f * nRows / (nRows - 1) * style.WindowPadding.y;
         ImVec2            buttonSize(std::min(nx, ny), std::min(nx, ny)); // buttons are square
@@ -850,8 +780,8 @@ private:
 
         // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
@@ -862,7 +792,7 @@ private:
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
         } else {
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
@@ -873,7 +803,7 @@ private:
             button_color.y *= 0.6f; // G
             button_color.z *= 0.8f; // B
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
@@ -909,7 +839,7 @@ private:
         key                          = keypadButton<SameLine, Button8, ImGuiKey_8, ImGuiKey_Keypad8>(buttonSize, key);
         key                          = keypadButton<SameLine, Button9, ImGuiKey_9, ImGuiKey_Keypad9>(buttonSize, key);
         const float vpos_before_plus = ImGui::GetCursorPosY();
-        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({ buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y }, key);
+        key                          = keypadButton<SameLine, Add, ImGuiKey_KeypadAdd>({buttonSize.x, buttonSize.y * 2.0f + 0.5f * style.WindowPadding.y}, key);
         ImGui::SetCursorPosY(vpos_before_plus);
 
         // Row 4: cos[h],x²,),5,4,6,+(2/2, two rows)
@@ -944,10 +874,10 @@ private:
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{ 11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f });
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f });
+            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
             const float     vpos_before_enter = ImGui::GetCursorPosY();
-            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({ buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y }, key);
+            key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
             ImGui::SetCursorPosY(vpos_before_enter);
         }
 
@@ -955,25 +885,29 @@ private:
         key = keypadButton<None, NoButton>(buttonSize, key);
         key = keypadButton<SameLine, Pow>(buttonSize, key);
         key = keypadButton<SameLine, Sign>(buttonSize, key);
-        key = keypadButton<SameLine, Button0, ImGuiKey_0, ImGuiKey_Keypad0>({ buttonSize[0] * 2.f + style.WindowPadding.x, buttonSize.y }, key);
+        key = keypadButton<SameLine, Button0, ImGuiKey_0, ImGuiKey_Keypad0>({buttonSize[0] * 2.f + style.WindowPadding.x, buttonSize.y}, key);
         key = keypadButton<SameLine, Period, ImGuiKey_Period, ImGuiKey_KeypadDecimal>(buttonSize, key);
 
         return key;
     }
 
-    [[nodiscard]] ReturnState processKeypadLogic(const Button &key) {
+    [[nodiscard]] ReturnState processKeypadLogic(const Button& key) {
         using enum InputKeypad<>::Button;
 
         switch (key) {
         case NoButton: return ReturnState::None;
         case Escape: return ReturnState::Discard;
         case Enter: {
-            if (_lastToken.type != TType::tt_const && _lastToken.type != TType::tt_pclose)
+            if (_lastToken.type != TType::tt_const && _lastToken.type != TType::tt_pclose) {
                 return ReturnState::None;
-            if (only_token(_editBuffer))
+            }
+            if (only_token(_editBuffer)) {
                 return ReturnState::Accept;
+            }
             auto result = evaluate(_editBuffer);
-            if (!result) return ReturnState::None;
+            if (!result) {
+                return ReturnState::None;
+            }
             _editBuffer = fmt::format("{}", result.value());
             return ReturnState::Change;
         }
@@ -989,15 +923,9 @@ private:
                 _editBuffer.pop_back();
             }
             return ReturnState::Change;
-        case AC:
-            _editBuffer.clear();
-            return ReturnState::Change;
-        case Alt_2nd:
-            _altMode = !_altMode;
-            return ReturnState::Change;
-        case Alt_Inv:
-            _invMode = !_invMode;
-            return ReturnState::Change;
+        case AC: _editBuffer.clear(); return ReturnState::Change;
+        case Alt_2nd: _altMode = !_altMode; return ReturnState::Change;
+        case Alt_Inv: _invMode = !_invMode; return ReturnState::Change;
 
         case Sign: {
             if (_lastToken.type == TType::tt_const) {
@@ -1009,12 +937,13 @@ private:
                 return ReturnState::Change;
             }
 
-            if (_lastToken.type != TType::tt_pclose)
+            if (_lastToken.type != TType::tt_pclose) {
                 return ReturnState::None;
+            }
 
-            const char *brace = nullptr;
+            const char* brace = nullptr;
 
-            for (const auto &token : tokenize(_editBuffer)) {
+            for (const auto& token : tokenize(_editBuffer)) {
                 if (token.type == TType::tt_pclose) {
                     brace++;
                 }
@@ -1035,10 +964,11 @@ private:
             return ReturnState::Change;
         }
         case Sqrt:
-            if (_lastToken.type != TType::tt_const)
+            if (_lastToken.type != TType::tt_const) {
                 return ReturnState::None;
+            }
             {
-                std::string a{ _lastToken.range };
+                std::string a{_lastToken.range};
                 float       f = stof(a);
                 if (f < 0.0f) {
                     return ReturnState::None;
@@ -1048,12 +978,15 @@ private:
             }
             return ReturnState::Change;
         case Rcp: // reciprocate
-            if (_lastToken.type != TType::tt_const)
+            if (_lastToken.type != TType::tt_const) {
                 return ReturnState::None;
+            }
             {
-                std::string a{ _lastToken.range };
+                std::string a{_lastToken.range};
                 float       f = stof(a);
-                if (f == 0.0f) return ReturnState::None;
+                if (f == 0.0f) {
+                    return ReturnState::None;
+                }
                 _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
                 _editBuffer.append(fmt::format("{}", 1.0f / f));
             }
@@ -1063,9 +996,11 @@ private:
                 return ReturnState::None;
             }
             {
-                std::string a{ _lastToken.range };
+                std::string a{_lastToken.range};
                 float       f = stof(a);
-                if (f == 0.0f) return ReturnState::None;
+                if (f == 0.0f) {
+                    return ReturnState::None;
+                }
                 _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
                 _editBuffer.append(fmt::format("{}", f / 100.0f));
             }
