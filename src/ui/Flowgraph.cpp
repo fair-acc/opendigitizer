@@ -64,83 +64,81 @@ std::string Block::Parameter::toString() const {
     return {};
 }
 
-BlockType::BlockType(std::string_view name_, std::string_view l, std::string_view cat) : name(name_), label(l.empty() ? name_ : l), category(cat) {}
+BlockDefinition::BlockDefinition(std::string_view name_, std::string_view l, std::string_view cat) : name(name_), label(l.empty() ? name_ : l), category(cat) {}
 
-std::unique_ptr<Block> BlockType::createBlock(std::string_view name) const {
-    auto params    = defaultParameters;
+std::unique_ptr<Block> BlockDefinition::createBlock(std::string_view name) const {
+    auto params    = defaultSettings;
     params["name"] = std::string(name);
     return std::make_unique<Block>(name, this, std::move(params));
 }
 
-BlockType::Registry& BlockType::registry() {
+BlockDefinition::Registry& BlockDefinition::registry() {
     static Registry r;
     return r;
 }
 
-const BlockType* BlockType::Registry::get(std::string_view id) const {
+const BlockDefinition* BlockDefinition::Registry::get(std::string_view id) const {
     auto it = m_types.find(id);
     return it == m_types.end() ? nullptr : it->second.get();
 }
 
-void BlockType::Registry::addBlockTypesFromPluginLoader(gr::PluginLoader& pluginLoader) {
+void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader) {
     for (const auto& typeName : pluginLoader.knownBlocks()) {
-        // TODO make this also work if the block doesn't allow T=float, or has multiple
-        // non-defaulted template parameters.
-        // (needs information about possible instantiations from the plugin loader)
-        auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
-        auto prototypeParams           = availableParametrizations.empty() ? std::string{} : availableParametrizations[0];
+        const auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
+        auto       type                      = std::make_unique<BlockDefinition>(typeName, typeName, "TODO category");
+        bool       first                     = true;
 
-        auto prototype = pluginLoader.instantiate(typeName, prototypeParams);
-        if (!prototype) {
-            fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, prototypeParams);
-            continue;
-        }
-        fmt::println("Registering block type '{}'", typeName);
+        for (const auto& parametrization : availableParametrizations) {
+            BlockInstantiationDefinition instantiationType;
 
-        auto type = std::make_unique<BlockType>(typeName, typeName, "TODO category");
-        type->availableBaseTypes.resize(pluginLoader.knownBlockParameterizations(typeName).size());
-        std::ranges::transform(pluginLoader.knownBlockParameterizations(typeName), type->availableBaseTypes.begin(), [](auto s) { return DataType::fromString(s); });
-        std::ignore             = prototype->settings().applyStagedParameters();
-        type->defaultParameters = prototype->settings().get();
-        for (const auto& [id, v] : type->defaultParameters) {
-            if (auto param = std::get_if<int>(&v)) {
-                type->parameters.emplace_back(id, id, BlockType::NumberParameter<int>{*param});
-            } else if (auto param = std::get_if<float>(&v)) {
-                type->parameters.emplace_back(id, id, BlockType::NumberParameter<float>{*param});
-            } else if (auto param = std::get_if<std::string>(&v)) {
-                type->parameters.emplace_back(id, id, BlockType::StringParameter{*param});
+            auto prototype = pluginLoader.instantiate(typeName, parametrization);
+            if (!prototype) {
+                fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, parametrization);
+                continue;
             }
-        }
 
-        // TODO Create input and output ports (needs port information in BlockModel)
-        for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
-            const auto& port = prototype->dynamicInputPort(index);
-            type->inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
-        }
-        for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
-            const auto& port = prototype->dynamicOutputPort(index);
-            type->outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
-        }
+            std::ignore          = prototype->settings().applyStagedParameters();
+            auto defaultSettings = prototype->settings().get();
+            for (const auto& [id, v] : defaultSettings) {
+                if (auto param = std::get_if<int>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<int>{*param});
+                } else if (auto param = std::get_if<float>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<float>{*param});
+                } else if (auto param = std::get_if<std::string>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::StringParameter{*param});
+                }
+            }
 
-        addBlockType(std::move(type));
+            for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
+                const auto& port = prototype->dynamicInputPort(index);
+                instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+            }
+            for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
+                const auto& port = prototype->dynamicOutputPort(index);
+                instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+            }
+
+            if (first) {
+                type->isSource        = instantiationType.inputs.empty() && !instantiationType.outputs.empty();
+                type->isSink          = !instantiationType.inputs.empty() && instantiationType.outputs.empty();
+                type->defaultSettings = std::move(defaultSettings);
+                first                 = false;
+            }
+
+            type->instantiations[parametrization] = std::move(instantiationType);
+        }
+        addBlockDefinition(std::move(type));
     }
 }
 
-void BlockType::Registry::addBlockType(std::unique_ptr<BlockType>&& t) { m_types.insert({t->name, std::move(t)}); }
+void BlockDefinition::Registry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { m_types.insert({t->name, std::move(t)}); }
 
-Block::Block(std::string_view name, const BlockType* t, gr::property_map params) : name(name), m_type(t), m_parameters(std::move(params)) {
-    m_outputs.reserve(m_type->outputs.size());
-    m_inputs.reserve(m_type->inputs.size());
-    for (auto& o : m_type->outputs) {
-        m_outputs.push_back({this, o.type, o.dataset, Port::Kind::Output});
-    }
-    for (auto& o : m_type->inputs) {
-        m_inputs.push_back({this, o.type, o.dataset, Port::Kind::Input});
-    }
+Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) { //
+    setCurrentInstantiation(m_type->instantiations.cbegin()->first);
 }
 
-void Block::setParameter(const std::string& name, const pmtv::pmt& p) {
-    m_parameters[name] = p;
+void Block::setSetting(const std::string& name, const pmtv::pmt& p) {
+    m_settings[name] = p;
 
     gr::Message msg;
     msg.serviceName = m_uniqueName;
@@ -151,7 +149,7 @@ void Block::setParameter(const std::string& name, const pmtv::pmt& p) {
 
 void Block::updateSettings(const gr::property_map& settings) {
     for (const auto& [k, v] : settings) {
-        m_parameters[k] = v;
+        m_settings[k] = v;
     }
 }
 
@@ -265,15 +263,29 @@ void Block::update() {
         return parseType(t, dataset);
     };
     for (auto& in : m_inputs) {
-        in.type = getType(in.m_rawType, in.dataset);
+        in.portDataType = getType(in.rawPortType, in.isDataset);
     }
     for (auto& out : m_outputs) {
-        out.type = getType(out.m_rawType, out.dataset);
+        out.portDataType = getType(out.rawPortType, out.isDataset);
     }
 }
 
-void     Block::setDatatype(DataType type) { m_datatype = type; }
-DataType Block::datatype() const { return m_datatype; }
+void Block::setCurrentInstantiation(const std::string& newInstantiation) {
+    m_inputs.clear();
+    m_outputs.clear();
+
+    m_currentInstantiation = newInstantiation;
+
+    const auto& instantiation = currentInstantiation();
+    m_outputs.reserve(instantiation.outputs.size());
+    m_inputs.reserve(instantiation.inputs.size());
+    for (auto& o : instantiation.outputs) {
+        m_outputs.push_back({this, o.type, o.dataset, Port::Direction::Output});
+    }
+    for (auto& o : instantiation.inputs) {
+        m_inputs.push_back({this, o.type, o.dataset, Port::Direction::Input});
+    }
+}
 
 std::string Block::EnumParameter::toString() const { return definition.optionsLabels[optionIndex]; }
 
@@ -293,120 +305,6 @@ static void readFile(const std::filesystem::path& file, std::string& str) {
     stream.read(str.data(), size);
 }
 
-void BlockType::Registry::loadBlockDefinitions(const std::filesystem::path& dir) {
-    if (!std::filesystem::exists(dir)) {
-        std::cerr << "Cannot open directory '" << dir << "'\n";
-        return;
-    }
-
-    std::filesystem::directory_iterator iterator(dir);
-    std::string                         str;
-
-    for (const auto& entry : iterator) {
-        const auto& path = entry.path();
-        if (!path.native().ends_with(".block.yml")) {
-            continue;
-        }
-
-        readFile(path, str);
-        YAML::Node config = YAML::Load(str);
-
-        auto id  = config["id"].as<std::string>();
-        auto def = m_types.insert({id, std::make_unique<BlockType>(id)}).first->second.get();
-
-        auto parameters = config["parameters"];
-        for (const auto& p : parameters) {
-            const auto& idNode = p["id"];
-            if (!idNode || !idNode.IsScalar()) {
-                continue;
-            }
-
-            auto dtypeNode = p["dtype"];
-            if (!dtypeNode || !dtypeNode.IsScalar()) {
-                continue;
-            }
-
-            auto dtype       = dtypeNode.as<std::string>();
-            auto id          = idNode.as<std::string>();
-            auto labelNode   = p["label"];
-            auto defaultNode = p["default"];
-            auto label       = labelNode && labelNode.IsScalar() ? labelNode.as<std::string>(id) : id;
-
-            if (dtype == "enum") {
-                const auto&              opts = p["options"];
-                std::vector<std::string> options;
-                if (opts && opts.IsSequence()) {
-                    for (const auto& n : opts) {
-                        options.push_back(n.as<std::string>());
-                    }
-                }
-
-                BlockType::EnumParameter par{int(options.size())};
-                par.options = std::move(options);
-
-                par.optionsLabels = par.options;
-
-                const auto& attrs = p["option_attributes"];
-                if (attrs && attrs.IsMap()) {
-                    for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-                        auto                     key = it->first.as<std::string>();
-                        std::vector<std::string> vals;
-                        for (const auto& n : it->second) {
-                            vals.push_back(n.as<std::string>());
-                        }
-
-                        if (par.size != vals.size()) {
-                            std::cerr << "Malformed parameter.\n";
-                            continue;
-                        }
-
-                        par.optionsAttributes.insert({key, std::move(vals)});
-                    }
-                }
-
-                def->parameters.push_back(BlockType::Parameter{id, label, std::move(par)});
-            } else if (dtype == "int") {
-                auto defaultValue = defaultNode ? defaultNode.as<int>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{id, label, BlockType::NumberParameter<int>{defaultValue}});
-            } else if (dtype == "float") {
-                auto defaultValue = defaultNode ? defaultNode.as<float>(0) : 0;
-                def->parameters.push_back(BlockType::Parameter{id, label, BlockType::NumberParameter<float>{defaultValue}});
-            } else if (dtype == "raw") {
-                auto defaultValue = defaultNode ? defaultNode.as<std::string>(std::string{}) : "";
-                def->parameters.push_back(BlockType::Parameter{id, label, BlockType::StringParameter{defaultValue}});
-            }
-        }
-
-        auto outputs = config["outputs"];
-        for (const auto& o : outputs) {
-            auto        n    = o["dtype"];
-            std::string type = "";
-            if (n) {
-                type = n.as<std::string>();
-            }
-            std::string name = "out";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
-            }
-            def->outputs.push_back({type, name});
-        }
-
-        auto inputs = config["inputs"];
-        for (const auto& o : inputs) {
-            auto        n    = o["dtype"];
-            std::string type = "";
-            if (n) {
-                type = n.as<std::string>();
-            }
-            std::string name = "in";
-            if (auto id = o["id"]) {
-                name = id.as<std::string>(name);
-            }
-            def->inputs.push_back({type, name});
-        }
-    }
-}
-
 FlowGraph::FlowGraph() {}
 
 void FlowGraph::parse(const std::filesystem::path& file) {
@@ -422,7 +320,7 @@ void FlowGraph::parse(const std::string& str) {
     graph.forEachBlock([&](const auto& grBlock) {
         auto typeName = grBlock.typeName();
         typeName      = std::string_view(typeName.begin(), typeName.find('<'));
-        auto type     = BlockType::registry().get(typeName);
+        auto type     = BlockDefinition::registry().get(typeName);
         if (!type) {
             throw std::runtime_error(fmt::format("Block type '{}' is unknown.", typeName));
         }
@@ -485,11 +383,11 @@ int FlowGraph::save(std::ostream& stream) {
                 map.write("name", b->name);
                 map.write("id", b->typeName());
 
-                const auto& parameters = b->parameters();
-                if (!parameters.empty()) {
+                const auto& settings = b->settings();
+                if (!settings.empty()) {
                     map.write("parameters", [&]() {
                         YamlMap pars(out);
-                        for (const auto& [settingsKey, settingsValue] : parameters) {
+                        for (const auto& [settingsKey, settingsValue] : settings) {
                             std::visit([&]<typename T>(const T& value) { pars.write(settingsKey, value); }, settingsValue);
                         }
                     });
@@ -507,8 +405,8 @@ int FlowGraph::save(std::ostream& stream) {
                 for (const auto& c : m_connections) {
                     out << YAML::Flow;
                     YamlSeq seq(out);
-                    out << c.src.block->name << c.src.index;
-                    out << c.dst.block->name << c.dst.index;
+                    out << c.src.uiBlock->name << c.src.index;
+                    out << c.dst.uiBlock->name << c.dst.index;
                 }
             });
         }
@@ -535,12 +433,12 @@ void FlowGraph::addBlock(std::unique_ptr<Block>&& block) {
 
 void FlowGraph::deleteBlock(Block* block) {
     for (auto& p : block->inputs()) {
-        for (auto* c : p.connections) {
+        for (auto* c : p.portConnections) {
             disconnect(c);
         }
     }
     for (auto& p : block->outputs()) {
-        for (auto* c : p.connections) {
+        for (auto* c : p.portConnections) {
             disconnect(c);
         }
     }
@@ -557,20 +455,20 @@ void FlowGraph::deleteBlock(Block* block) {
 }
 
 Connection* FlowGraph::connect(Block::Port* a, Block::Port* b) {
-    assert(a->kind != b->kind);
+    assert(a->portDirection != b->portDirection);
     // make sure a is the output and b the input
-    if (a->kind == Block::Port::Kind::Input) {
+    if (a->portDirection == Block::Port::Direction::Input) {
         std::swap(a, b);
     }
 
-    auto ain = std::size_t(a - a->block->outputs().data());
-    auto bin = std::size_t(b - b->block->inputs().data());
+    auto ain = std::size_t(a - a->owningUiBlock->outputs().data());
+    auto bin = std::size_t(b - b->owningUiBlock->inputs().data());
 
-    fmt::print("connect {}.{} to {}.{}\n", a->block->name, ain, b->block->name, bin);
+    fmt::print("connect {}.{} to {}.{}\n", a->owningUiBlock->name, ain, b->owningUiBlock->name, bin);
 
-    auto it = m_connections.insert(Connection(a->block, ain, b->block, bin));
-    a->connections.push_back(&(*it));
-    b->connections.push_back(&(*it));
+    auto it = m_connections.insert(Connection(a->owningUiBlock, ain, b->owningUiBlock, bin));
+    a->portConnections.push_back(&(*it));
+    b->portConnections.push_back(&(*it));
     m_graphChanged = true;
     return &(*it);
 }
@@ -579,9 +477,9 @@ void FlowGraph::disconnect(Connection* c) {
     auto it = m_connections.get_iterator(c);
     assert(it != m_connections.end());
 
-    auto ports = {&c->src.block->outputs()[c->src.index], &c->dst.block->inputs()[c->dst.index]};
+    auto ports = {&c->src.uiBlock->outputs()[c->src.index], &c->dst.uiBlock->inputs()[c->dst.index]};
     for (auto* p : ports) {
-        p->connections.erase(std::remove(p->connections.begin(), p->connections.end(), c));
+        p->portConnections.erase(std::remove(p->portConnections.begin(), p->portConnections.end(), c));
     }
 
     m_connections.erase(it);
@@ -589,7 +487,7 @@ void FlowGraph::disconnect(Connection* c) {
 }
 
 void FlowGraph::addRemoteSource(std::string_view uri) {
-    auto block = BlockType::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
+    auto block = BlockDefinition::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
     block->updateSettings({{"remote_uri", std::string(uri)}});
     addBlock(std::move(block));
 }
@@ -607,14 +505,13 @@ static bool isDrawable(const gr::property_map& meta, std::string_view category) 
 }
 
 static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, const Block& block) {
-    DataType t      = block.datatype();
-    auto     params = block.parameters();
-    params["name"]  = block.name;
-    fmt::println("Creating block {} with types {}\n", block.typeName(), DataType::name(t));
-    auto grBlock = loader.instantiate(block.typeName(), DataType::name(t));
+    auto        params            = block.settings();
+    const auto& instantiationName = block.currentInstantiationName();
+    params["name"]                = block.name;
+    auto grBlock                  = loader.instantiate(block.typeName(), instantiationName);
 
     if (!grBlock) {
-        fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), DataType::name(t));
+        fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), instantiationName);
         return nullptr;
     }
 
@@ -649,8 +546,8 @@ ExecutionContext FlowGraph::createExecutionContext() {
     };
 
     for (auto& c : m_connections) {
-        const auto src = findBlock(c.src.block->m_uniqueName);
-        const auto dst = findBlock(c.dst.block->m_uniqueName);
+        const auto src = findBlock(c.src.uiBlock->m_uniqueName);
+        const auto dst = findBlock(c.dst.uiBlock->m_uniqueName);
         if (!src || !dst) {
             continue;
         }
@@ -689,15 +586,17 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
 
 void FlowGraph::setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) { _pluginLoader = std::move(loader); }
 
-void FlowGraph::changeBlockType(Block* block, DataType type) {
+void FlowGraph::changeBlockDefinition(Block* block, const std::string& type) {
     auto select = [&](const auto& b) { return block == b.get(); };
     auto it     = std::ranges::find_if(m_blocks, select);
     assert(it != m_blocks.end());
     std::unique_ptr<Block> b{std::move((*it))};
     m_blocks.erase(it);
 
+    // TODO: refactor -- this can be takeBlock to be a bit cleaner.
+    // Now it looks like we are using a deleted thing
     deleteBlock(block);
-    block->setDatatype(type);
+    block->setCurrentInstantiation(type);
     addBlock(std::move(b));
 
     m_graphChanged = true;

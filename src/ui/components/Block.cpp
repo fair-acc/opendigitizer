@@ -11,7 +11,7 @@
 
 namespace DigitizerUi::components {
 
-void setItemTooltip(const char *fmt, auto &&...args) {
+void setItemTooltip(const char* fmt, auto&&... args) {
     if (ImGui::IsItemHovered()) {
         if constexpr (sizeof...(args) == 0) {
             ImGui::SetTooltip(fmt);
@@ -21,8 +21,10 @@ void setItemTooltip(const char *fmt, auto &&...args) {
     }
 }
 
-void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, BlockControlsPanelContext &context, const ImVec2 &pos, const ImVec2 &frameSize, bool verticalLayout) {
-    if (!context.block) return;
+void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
+    if (!context.block) {
+        return;
+    }
     using namespace DigitizerUi;
 
     auto size = frameSize;
@@ -40,24 +42,21 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
         return ImGui::GetTextLineHeightWithSpacing() * 1.5f;
     }();
 
-    auto resetTime = [&]() {
-        context.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
-    };
+    auto resetTime = [&]() { context.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; };
 
-    const auto itemSpacing    = ImGui::GetStyle().ItemSpacing;
+    const auto itemSpacing = ImGui::GetStyle().ItemSpacing;
 
-    auto       calcButtonSize = [&](int numButtons) -> ImVec2 {
+    auto calcButtonSize = [&](int numButtons) -> ImVec2 {
         if (verticalLayout) {
-            return { (size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight };
+            return {(size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight};
         }
-        return { lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons) };
+        return {lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons)};
     };
 
     size = ImGui::GetContentRegionAvail();
 
     // don't close the panel while the mouse is hovering it or edits are made.
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
-            || InputKeypad<>::isVisible()) {
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible()) {
         resetTime();
     }
 
@@ -65,17 +64,17 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
     {
         // IMW::StyleColor color(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
         IMW::StyleColor color(ImGuiCol_PlotHistogram, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        ImGui::ProgressBar(1.f - duration, { size.x, 3 });
+        ImGui::ProgressBar(1.f - duration, {size.x, 3});
     }
 
-    auto minpos      = ImGui::GetCursorPos();
-    size             = ImGui::GetContentRegionAvail();
+    auto minpos = ImGui::GetCursorPos();
+    size        = ImGui::GetContentRegionAvail();
 
     int outputsCount = 0;
     {
-        const char *prevString = verticalLayout ? "\uf062" : "\uf060";
-        for (const auto &out : context.block->outputs()) {
-            outputsCount += out.connections.size();
+        const char* prevString = verticalLayout ? "\uf062" : "\uf060";
+        for (const auto& out : context.block->outputs()) {
+            outputsCount += out.portConnections.size();
         }
         if (outputsCount == 0) {
             IMW::Disabled dg(true);
@@ -88,16 +87,16 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
             int        id = 1;
             // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
             // that switches to the connected block
-            for (auto &out : context.block->outputs()) {
-                for (const auto *conn : out.connections) {
+            for (auto& out : context.block->outputs()) {
+                for (const auto* conn : out.portConnections) {
                     IMW::ChangeId newId(id++);
 
                     if (IMW::Font font(LookAndFeel::instance().fontIconsSolid); ImGui::Button(prevString, buttonSize)) {
-                        context.block = conn->dst.block;
+                        context.block = conn->dst.uiBlock;
                     }
 
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%s", conn->dst.block->name.c_str());
+                        ImGui::SetTooltip("%s", conn->dst.uiBlock->name.c_str());
                     }
                     if (verticalLayout) {
                         ImGui::SameLine();
@@ -124,10 +123,10 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
                     } else {
                         [&]() {
                             int index = 0;
-                            for (auto &out : context.block->outputs()) {
-                                for (auto *conn : out.connections) {
-                                    context.insertFrom      = &conn->src.block->outputs()[conn->src.index];
-                                    context.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
+                            for (auto& out : context.block->outputs()) {
+                                for (auto* conn : out.portConnections) {
+                                    context.insertFrom      = &conn->src.uiBlock->outputs()[conn->src.index];
+                                    context.insertBefore    = &conn->dst.uiBlock->inputs()[conn->dst.index];
                                     context.breakConnection = conn;
                                     return;
                                 }
@@ -141,13 +140,13 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
 
                 if (auto popup = IMW::Popup("insertBlockPopup", 0)) {
                     int index = 0;
-                    for (auto &out : context.block->outputs()) {
-                        for (auto *conn : out.connections) {
-                            auto text = fmt::format("Before block '{}'", conn->dst.block->name);
+                    for (auto& out : context.block->outputs()) {
+                        for (auto* conn : out.portConnections) {
+                            auto text = fmt::format("Before block '{}'", conn->dst.uiBlock->name);
                             if (ImGui::Selectable(text.c_str())) {
-                                context.insertBefore    = &conn->dst.block->inputs()[conn->dst.index];
+                                context.insertBefore    = &conn->dst.uiBlock->inputs()[conn->dst.index];
                                 context.mode            = BlockControlsPanelContext::Mode::Insert;
-                                context.insertFrom      = &conn->src.block->outputs()[conn->src.index];
+                                context.insertFrom      = &conn->src.uiBlock->outputs()[conn->src.index];
                                 context.breakConnection = conn;
                             }
                         }
@@ -176,7 +175,7 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
 
             if (auto popup = IMW::Popup("addBlockPopup", 0)) {
                 int index = 0;
-                for (const auto &out : context.block->type().outputs) {
+                for (const auto& out : context.block->currentInstantiation().outputs) {
                     if (ImGui::Selectable(out.name.c_str())) {
                         context.insertFrom = &context.block->outputs()[index];
                         context.mode       = BlockControlsPanelContext::Mode::AddAndBranch;
@@ -195,24 +194,27 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
         {
             IMW::Group group;
 
-            auto       listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
-            auto       ret      = FilteredListBox(
-                    "blocks", BlockType::registry().types(), [](auto &it) -> std::pair<BlockType *, std::string> {
-                        if (it.second->inputs.size() != 1 || it.second->outputs.size() != 1) {
-                            return {};
-                        }
-                        return std::pair{ it.second.get(), it.first };
-                    },
-                    listSize);
+            auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
+            auto ret      = FilteredListBox(
+                "blocks", BlockDefinition::registry().types(),
+                [](auto& it) -> std::pair<BlockDefinition*, std::string> {
+                    auto anyInstantiation = it.second->defaultInstantiation();
+                    if (anyInstantiation.inputs.size() != 1 || anyInstantiation.outputs.size() != 1) {
+                        return {};
+                    }
+                    return std::pair{it.second.get(), it.first};
+                },
+                listSize);
 
             {
                 IMW::Disabled dg(!ret.has_value());
                 if (ImGui::Button("Ok")) {
-                    BlockType  *selected = ret->first;
-                    auto        name     = fmt::format("{}({})", selected->name, context.block->name);
-                    auto        block    = selected->createBlock(name);
+                    BlockDefinition* selected = ret->first;
+                    auto             name     = fmt::format("{}({})", selected->name, context.block->name);
 
-                    Connection *c1;
+                    auto block = selected->createBlock(name);
+
+                    Connection* c1;
                     if (context.mode == BlockControlsPanelContext::Mode::Insert) {
                         // mode Insert means that the new block should be added in between this block and the next one.
                         // put the new block in between this block and the following one
@@ -222,13 +224,11 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
                         context.breakConnection = nullptr;
                     } else {
                         // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
-                        auto *newsink = dashboard.createSink();
+                        auto* newsink = dashboard.createSink();
                         c1            = dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
                         dashboard.localFlowGraph.connect(context.insertFrom, &block->inputs()[0]);
 
-                        auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto &s) {
-                            return s.blockName == newsink->name;
-                        });
+                        auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
 
                         dashboardPage.newPlot(dashboard);
                         dashboard.plots().back().sourceNames.push_back(source->name);
@@ -251,23 +251,22 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
     }
 
     {
-        IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true,
-                ImGuiWindowFlags_HorizontalScrollbar);
+        IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(context.block->name.c_str());
         std::string_view typeName = context.block->typeName();
 
         ImGui::TextUnformatted("<");
         ImGui::SameLine();
 
-        auto                     types = context.block->type().availableBaseTypes;
-        std::vector<std::string> typeNames{ types.size() };
-        std::ranges::transform(types, typeNames.begin(), [](auto t) { return DataType::name(t); });
-        if (ImGui::BeginCombo("##baseTypeCombo", DataType::name(context.block->datatype()).data())) {
-            for (auto e : typeNames) {
-                if (ImGui::Selectable(e.c_str(), e == typeName)) {
-                    context.block->flowGraph()->changeBlockType(context.block, DataType::fromString(e));
+        // auto                     types = context.block->type().availableBaseTypes;
+        // std::vector<std::string> typeNames{types.size()};
+        // std::ranges::transform(types, typeNames.begin(), [](auto t) { return DataType::name(t); });
+        if (ImGui::BeginCombo("##baseTypeCombo", context.block->currentInstantiationName().c_str())) {
+            for (const auto& [instantiationName, _] : context.block->type().instantiations) {
+                if (ImGui::Selectable(instantiationName.c_str(), typeName == instantiationName)) {
+                    context.block->flowGraph()->changeBlockDefinition(context.block, instantiationName);
                 }
-                if (e == typeName) {
+                if (typeName == instantiationName) {
                     ImGui::SetItemDefaultFocus();
                 }
             }
@@ -277,7 +276,7 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
         ImGui::SameLine();
         ImGui::TextUnformatted(">");
 
-        BlockParametersControls(context.block, verticalLayout);
+        BlockSettingsControls(context.block, verticalLayout);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
             resetTime();
@@ -287,7 +286,7 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
     ImGui::SetCursorPos(minpos);
 
     // draw the button(s) that go to the previous block(s).
-    const char *nextString = verticalLayout ? "\uf063" : "\uf061";
+    const char* nextString = verticalLayout ? "\uf063" : "\uf061";
     IMW::Font   font(LookAndFeel::instance().fontIconsSolid);
     if (context.block->inputs().empty()) {
         auto buttonSize = calcButtonSize(1);
@@ -308,16 +307,16 @@ void BlockControlsPanel(Dashboard &dashboard, DashboardPage &dashboardPage, Bloc
 
         IMW::Group group;
         int        id = 1;
-        for (auto &in : context.block->inputs()) {
+        for (auto& in : context.block->inputs()) {
             IMW::ChangeId newId(id++);
-            IMW::Disabled dg(in.connections.empty());
+            IMW::Disabled dg(in.portConnections.empty());
 
             if (ImGui::Button(nextString, buttonSize)) {
-                context.block = in.connections.front()->src.block;
+                context.block = in.portConnections.front()->src.uiBlock;
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::PopFont();
-                ImGui::SetTooltip("%s", in.connections.front()->src.block->name.c_str());
+                ImGui::SetTooltip("%s", in.portConnections.front()->src.uiBlock->name.c_str());
                 ImGui::PushFont(LookAndFeel::instance().fontIconsSolid);
             }
             if (verticalLayout) {
@@ -336,21 +335,21 @@ template<typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 } // namespace
 
-void BlockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const ImVec2 &size) {
-    const auto       availableSize = ImGui::GetContentRegionAvail();
+void BlockSettingsControls(DigitizerUi::Block* b, bool verticalLayout, const ImVec2& size) {
+    const auto availableSize = ImGui::GetContentRegionAvail();
 
-    auto             storage       = ImGui::GetStateStorage();
+    auto             storage = ImGui::GetStateStorage();
     IMW::ChangeStrId mainId("block_controls");
 
-    const auto      &style     = ImGui::GetStyle();
-    const auto       indent    = style.IndentSpacing;
-    const auto       textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
+    const auto& style     = ImGui::GetStyle();
+    const auto  indent    = style.IndentSpacing;
+    const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
 
-    int              i         = 0;
-    for (const auto &p : b->parameters()) {
+    int i = 0;
+    for (const auto& p : b->settings()) {
         auto id = ImGui::GetID(p.first.c_str());
         ImGui::PushID(int(id));
-        auto *enabled = storage->GetBoolRef(id, true);
+        auto* enabled = storage->GetBoolRef(id, true);
 
         {
             IMW::Group topGroup;
@@ -363,38 +362,37 @@ void BlockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                     char label[64];
                     snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                    const bool controlDrawn = std::visit(overloaded{
-                                                                 [&](float val) {
+                    const bool controlDrawn = std::visit(overloaded{[&](float val) {
+                                                                        ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                                                        ImGui::SetNextItemWidth(100);
+                                                                        if (InputKeypad<>::edit(label, &val)) {
+                                                                            b->setSetting(p.first, val);
+                                                                            b->update();
+                                                                        }
+                                                                        return true;
+                                                                    },
+                                                             [&](auto&& val) {
+                                                                 using T = std::decay_t<decltype(val)>;
+                                                                 if constexpr (std::integral<T>) {
+                                                                     auto v = int(val);
                                                                      ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                                                      ImGui::SetNextItemWidth(100);
-                                                                     if (InputKeypad<>::edit(label, &val)) {
-                                                                         b->setParameter(p.first, val);
+                                                                     if (InputKeypad<>::edit(label, &v)) {
+                                                                         b->setSetting(p.first, v);
                                                                          b->update();
                                                                      }
                                                                      return true;
-                                                                 },
-                                                                 [&](auto &&val) {
-                                                                     using T = std::decay_t<decltype(val)>;
-                                                                     if constexpr (std::integral<T>) {
-                                                                         auto v = int(val);
-                                                                         ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                                         ImGui::SetNextItemWidth(100);
-                                                                         if (InputKeypad<>::edit(label, &v)) {
-                                                                             b->setParameter(p.first, v);
-                                                                             b->update();
-                                                                         }
-                                                                         return true;
-                                                                     } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                                                         ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                                         std::string str(val);
-                                                                         if (ImGui::InputText("##in", &str)) {
-                                                                             b->setParameter(p.first, std::move(str));
-                                                                         }
-                                                                         return true;
+                                                                 } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                                                     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                                                     std::string str(val);
+                                                                     if (ImGui::InputText("##in", &str)) {
+                                                                         b->setSetting(p.first, std::move(str));
                                                                      }
-                                                                     return false;
-                                                                 } },
-                            p.second);
+                                                                     return true;
+                                                                 }
+                                                                 return false;
+                                                             }},
+                        p.second);
 
                     if (!controlDrawn) {
                         ImGui::PopID();
@@ -405,7 +403,7 @@ void BlockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
             ImGui::SameLine(0, 0);
 
             auto        width = verticalLayout ? availableSize.x : ImGui::GetCursorPosX() - curpos.x;
-            const auto *text  = *enabled || verticalLayout ? p.first.c_str() : "";
+            const auto* text  = *enabled || verticalLayout ? p.first.c_str() : "";
             width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
 
             {
@@ -413,7 +411,7 @@ void BlockParametersControls(DigitizerUi::Block *b, bool verticalLayout, const I
                 ImGui::SetCursorPos(curpos);
 
                 float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
-                if (ImGui::Button("##nothing", { width, height })) {
+                if (ImGui::Button("##nothing", {width, height})) {
                     *enabled = !*enabled;
                 }
             }

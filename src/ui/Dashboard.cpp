@@ -13,8 +13,8 @@
 
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
-#include <opencmw.hpp>
 #include <RestClient.hpp>
+#include <opencmw.hpp>
 
 #include "App.hpp"
 #include "Flowgraph.hpp"
@@ -33,7 +33,7 @@ namespace DigitizerUi {
 namespace {
 template<typename T>
 inline T randomRange(T min, T max) {
-    T scale = rand() / (T) RAND_MAX;
+    T scale = rand() / (T)RAND_MAX;
     return min + scale * (max - min);
 }
 
@@ -46,22 +46,18 @@ uint32_t randomColor() {
 
 std::shared_ptr<DashboardSource> unsavedSource() {
     static auto source = std::make_shared<DashboardSource>(DashboardSource{
-            .path    = "Unsaved",
-            .isValid = false,
+        .path    = "Unsaved",
+        .isValid = false,
     });
     return source;
 }
 
-auto &sources() {
+auto& sources() {
     static std::vector<std::weak_ptr<DashboardSource>> sources;
     return sources;
 }
 
-enum class What {
-    Header,
-    Dashboard,
-    Flowgraph
-};
+enum class What { Header, Dashboard, Flowgraph };
 
 template<typename T>
 struct arrsize;
@@ -72,8 +68,7 @@ struct arrsize<T const (&)[N]> {
 };
 
 template<int N>
-auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &name, What const (&what)[N],
-        std::function<void(std::array<std::string, arrsize<decltype(what)>::size> &&)> &&cb, std::function<void()> &&errCb) {
+auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
     if (source->path.starts_with("http://") || source->path.starts_with("https://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
@@ -93,13 +88,13 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
             }();
         }
 
-        command.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
+        command.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", whatStr).build();
 
-        command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message &rep) mutable {
+        command.callback = [callback = std::move(cb), errCallback = std::move(errCb)](const opencmw::mdp::Message& rep) mutable {
             std::array<std::string, N> reply;
 
-            const char                *s = reinterpret_cast<const char *>(rep.data.data());
-            const char                *e = reinterpret_cast<const char *>(s + rep.data.size());
+            const char* s = reinterpret_cast<const char*>(rep.data.data());
+            const char* e = reinterpret_cast<const char*>(s + rep.data.size());
             if (rep.data.data()) {
                 for (int i = 0; i < N; ++i) {
                     // the format is: <size>;<content>
@@ -119,9 +114,7 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
                 EventLoop::instance().executeLater(std::move(errCallback));
             } else {
                 // schedule the callback so it runs on the main thread
-                EventLoop::instance().executeLater([callback, reply]() mutable {
-                    callback(std::move(reply));
-                });
+                EventLoop::instance().executeLater([callback, reply]() mutable { callback(std::move(reply)); });
             }
         };
 
@@ -137,15 +130,14 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
                 switch (what[i]) {
                 case What::Dashboard: {
                     auto file = fs.open(fmt::format("assets/sampleDashboards/{}.yml", name));
-                    return { file.begin(), file.end() };
+                    return {file.begin(), file.end()};
                 }
                 case What::Flowgraph: {
                     auto file = fs.open(fmt::format("assets/sampleDashboards/{}.grc", name));
-                    return { file.begin(), file.end() };
+                    return {file.begin(), file.end()};
                 }
                 default:
-                case What::Header:
-                    return { "favorite: false\nlastUsed: 07/04/2023" };
+                case What::Header: return {"favorite: false\nlastUsed: 07/04/2023"};
                 }
             }();
         }
@@ -160,9 +152,9 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
             const auto filesize = stream.tellg();
             stream.seekg(0);
 
-#define ERR \
-    fmt::print("Cannot load dashboard from '{}'. File is corrupted.\n", path.native()); \
-    errCb(); \
+#define ERR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
+    fmt::print("Cannot load dashboard from '{}'. File is corrupted.\n", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \
+    errCb();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \
     return;
 
             if (filesize < 32) {
@@ -175,8 +167,8 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
                 stream.seekg(w == What::Header ? 0 : (w == What::Dashboard ? 8 : 16));
 
                 uint32_t start, size;
-                stream.read(reinterpret_cast<char *>(&start), 4);
-                stream.read(reinterpret_cast<char *>(&size), 4);
+                stream.read(reinterpret_cast<char*>(&start), 4);
+                stream.read(reinterpret_cast<char*>(&size), 4);
 
                 stream.seekg(start);
 
@@ -199,17 +191,16 @@ auto fetch(const std::shared_ptr<DashboardSource> &source, const std::string &na
 } // namespace
 
 DashboardSource::~DashboardSource() noexcept {
-    sources().erase(std::remove_if(sources().begin(), sources().end(), [](const auto &s) { return s.expired(); }),
-            sources().end());
+    sources().erase(std::remove_if(sources().begin(), sources().end(), [](const auto& s) { return s.expired(); }), sources().end());
 }
 
 std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {
-    auto it = std::find_if(sources().begin(), sources().end(), [=](const auto &s) { return s.lock()->path == path; });
+    auto it = std::find_if(sources().begin(), sources().end(), [=](const auto& s) { return s.lock()->path == path; });
     if (it != sources().end()) {
         return it->lock();
     }
 
-    auto s = std::make_shared<DashboardSource>(DashboardSource{ std::string(path), true });
+    auto s = std::make_shared<DashboardSource>(DashboardSource{std::string(path), true});
     sources().push_back(s);
     return s;
 }
@@ -219,98 +210,96 @@ Dashboard::Plot::Plot() {
     name         = fmt::format("Plot {}", n++);
 }
 
-Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription> &desc)
-    : m_desc(desc) {
-    m_desc->lastUsed                          = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc) {
+    m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    localFlowGraph.plotSinkBlockAddedCallback = [this](Block *b) {
-        const auto color = std::get_if<uint32_t>(&b->parameters().at("color"));
+    localFlowGraph.plotSinkBlockAddedCallback = [this](Block* b) {
+        const auto color = std::get_if<uint32_t>(&b->settings().at("color"));
         assert(color);
-        m_sources.insert({ b->name, b->name, (*color << 8) | 0xff });
+        m_sources.insert({b->name, b->name, (*color << 8) | 0xff});
     };
-    localFlowGraph.blockDeletedCallback = [this](Block *b) {
+    localFlowGraph.blockDeletedCallback = [this](Block* b) {
         const auto blockName = b->name;
-        for (auto &p : m_plots) {
-            std::erase_if(p.sources, [&blockName](const auto &s) { return s->blockName == blockName; });
+        for (auto& p : m_plots) {
+            std::erase_if(p.sources, [&blockName](const auto& s) { return s->blockName == blockName; });
         }
         if (b->typeName() == "opendigitizer::RemoteSource") {
             unregisterRemoteService(b->name);
         }
-        std::erase_if(m_sources, [&blockName](const auto &s) { return s.blockName == blockName; });
+        std::erase_if(m_sources, [&blockName](const auto& s) { return s.blockName == blockName; });
     };
 }
 
-Dashboard::~Dashboard() {
-}
+Dashboard::~Dashboard() {}
 
-std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription> &desc) {
-    return std::make_shared<Dashboard>(PrivateTag{}, desc);
-}
+std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription>& desc) { return std::make_shared<Dashboard>(PrivateTag{}, desc); }
 
-Block *Dashboard::createSink() {
-    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto &b) { return b->type().isPlotSink(); });
+Block* Dashboard::createSink() {
+    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto& b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto       sink      = BlockType::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
-    sink->updateSettings({ { "color", randomColor() } });
+    auto       sink      = BlockDefinition::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
+    sink->updateSettings({{"color", randomColor()}});
     auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));
     return sinkptr;
 }
 
-void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription> &desc) {
-    m_desc = desc;
-}
+void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
 void Dashboard::load() {
     if (m_desc->source != unsavedSource()) {
         fetch(
-                m_desc->source, m_desc->filename, { What::Flowgraph, What::Dashboard },
-                [_this = shared()](std::array<std::string, 2> &&data) {
-                    try {
-                        _this->localFlowGraph.parse(std::move(data[0]));
-                        // Load is called after parsing the flowgraph so that we already have the list of sources
-                        _this->doLoad(data[1]);
-                    } catch (const std::exception &e) {
-                        // TODO show error message
-                        fmt::println(std::cerr, "Error: {}", e.what());
-                        App::instance().closeDashboard();
-                    }
-                },
-                [_this = shared()]() {
+            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard},
+            [_this = shared()](std::array<std::string, 2>&& data) {
+                try {
+                    _this->localFlowGraph.parse(std::move(data[0]));
+                    // Load is called after parsing the flowgraph so that we already have the list of sources
+                    _this->doLoad(data[1]);
+                } catch (const std::exception& e) {
                     // TODO show error message
-                    fmt::print(std::cerr, "Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
+                    fmt::println(std::cerr, "Error: {}", e.what());
                     App::instance().closeDashboard();
-                });
+                }
+            },
+            [_this = shared()]() {
+                // TODO show error message
+                fmt::print(std::cerr, "Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
+                App::instance().closeDashboard();
+            });
     } else {
         App::instance().fgItem.setSettings(&localFlowGraph, {});
     }
 }
 
-void Dashboard::doLoad(const std::string &desc) {
-    YAML::Node tree    = YAML::Load(desc);
+void Dashboard::doLoad(const std::string& desc) {
+    YAML::Node tree = YAML::Load(desc);
 
-    auto       path    = std::filesystem::path(m_desc->source->path) / m_desc->filename;
+    auto path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
-    auto       sources = tree["sources"];
-    if (!sources || !sources.IsSequence()) throw std::runtime_error("sources entry invalid");
+    auto sources = tree["sources"];
+    if (!sources || !sources.IsSequence()) {
+        throw std::runtime_error("sources entry invalid");
+    }
 
-    for (const auto &s : sources) {
-        if (!s.IsMap()) throw std::runtime_error("source is no map");
+    for (const auto& s : sources) {
+        if (!s.IsMap()) {
+            throw std::runtime_error("source is no map");
+        }
 
         auto block = s["block"];
         auto port  = s["port"];
         auto name  = s["name"];
         auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) throw std::runtime_error("invalid source color definition");
+        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) {
+            throw std::runtime_error("invalid source color definition");
+        }
 
         auto blockStr = block.as<std::string>();
         auto portNum  = port.as<int>();
         auto nameStr  = name.as<std::string>();
         auto colorNum = color.as<uint32_t>();
 
-        auto source   = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) {
-            return s.name == nameStr;
-        });
+        auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == nameStr; });
         if (source == m_sources.end()) {
             fmt::print("Unable to find the source '{}.{}'\n", blockStr, portNum);
             continue;
@@ -321,34 +310,44 @@ void Dashboard::doLoad(const std::string &desc) {
     }
 
     auto plots = tree["plots"];
-    if (!plots || !plots.IsSequence()) throw std::runtime_error("plots invalid");
+    if (!plots || !plots.IsSequence()) {
+        throw std::runtime_error("plots invalid");
+    }
 
-    for (const auto &p : plots) {
-        if (!p.IsMap()) throw std::runtime_error("plots is not map");
+    for (const auto& p : plots) {
+        if (!p.IsMap()) {
+            throw std::runtime_error("plots is not map");
+        }
 
         auto name        = p["name"];
         auto axes        = p["axes"];
         auto plotSources = p["sources"];
         auto rect        = p["rect"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) throw std::runtime_error("invalid plot definition");
+        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) {
+            throw std::runtime_error("invalid plot definition");
+        }
 
         m_plots.emplace_back();
-        auto &plot = m_plots.back();
+        auto& plot = m_plots.back();
         plot.name  = name.as<std::string>();
 
-        for (const auto &a : axes) {
-            if (!a.IsMap()) throw std::runtime_error("axes is no map");
+        for (const auto& a : axes) {
+            if (!a.IsMap()) {
+                throw std::runtime_error("axes is no map");
+            }
 
             auto axis = a["axis"];
             auto min  = a["min"];
             auto max  = a["max"];
 
-            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) throw std::runtime_error("invalid axis definition");
+            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) {
+                throw std::runtime_error("invalid axis definition");
+            }
 
             plot.axes.push_back({});
-            auto &ax      = plot.axes.back();
+            auto& ax = plot.axes.back();
 
-            auto  axisStr = axis.as<std::string>();
+            auto axisStr = axis.as<std::string>();
 
             if (axisStr == "X") {
                 ax.axis = Plot::Axis::X;
@@ -363,8 +362,10 @@ void Dashboard::doLoad(const std::string &desc) {
             ax.max = max.as<double>();
         }
 
-        for (const auto &s : plotSources) {
-            if (!s.IsScalar()) throw std::runtime_error("plot source is no scalar");
+        for (const auto& s : plotSources) {
+            if (!s.IsScalar()) {
+                throw std::runtime_error("plot source is no scalar");
+            }
 
             auto str = s.as<std::string>();
             plot.sourceNames.push_back(str);
@@ -405,7 +406,7 @@ void Dashboard::save() {
         root.write("sources", [&]() {
             YamlSeq sources(dashboardOut);
 
-            for (auto &s : m_sources) {
+            for (auto& s : m_sources) {
                 YamlMap source(dashboardOut);
                 source.write("name", s.name);
 
@@ -417,13 +418,13 @@ void Dashboard::save() {
         root.write("plots", [&]() {
             YamlSeq plots(dashboardOut);
 
-            for (auto &p : m_plots) {
+            for (auto& p : m_plots) {
                 YamlMap plot(dashboardOut);
                 plot.write("name", p.name);
                 plot.write("axes", [&]() {
                     YamlSeq axes(dashboardOut);
 
-                    for (const auto &axis : p.axes) {
+                    for (const auto& axis : p.axes) {
                         YamlMap a(dashboardOut);
                         a.write("axis", axis.axis == Plot::Axis::X ? "X" : "Y");
                         a.write("min", axis.min);
@@ -433,7 +434,7 @@ void Dashboard::save() {
                 plot.write("sources", [&]() {
                     YamlSeq sources(dashboardOut);
 
-                    for (auto &s : p.sources) {
+                    for (auto& s : p.sources) {
                         dashboardOut << s->name;
                     }
                 });
@@ -454,7 +455,7 @@ void Dashboard::save() {
         opencmw::client::RestClient client;
         auto                        path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
-        opencmw::client::Command    hcommand;
+        opencmw::client::Command hcommand;
         hcommand.command = opencmw::mdp::Command::Set;
         hcommand.data.put(std::string_view(headerOut.c_str(), headerOut.size()));
         hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
@@ -476,7 +477,7 @@ void Dashboard::save() {
 
     } else {
 #ifndef EMSCRIPTEN
-        auto          path = std::filesystem::path(m_desc->source->path);
+        auto path = std::filesystem::path(m_desc->source->path);
 
         std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
         if (!stream.is_open()) {
@@ -488,10 +489,10 @@ void Dashboard::save() {
         uint32_t headerSize     = headerOut.size();
         uint32_t dashboardStart = headerStart + headerSize + 1;
         uint32_t dashboardSize  = dashboardOut.size();
-        stream.write(reinterpret_cast<char *>(&headerStart), 4);
-        stream.write(reinterpret_cast<char *>(&headerSize), 4);
-        stream.write(reinterpret_cast<char *>(&dashboardStart), 4);
-        stream.write(reinterpret_cast<char *>(&dashboardSize), 4);
+        stream.write(reinterpret_cast<char*>(&headerStart), 4);
+        stream.write(reinterpret_cast<char*>(&headerSize), 4);
+        stream.write(reinterpret_cast<char*>(&dashboardStart), 4);
+        stream.write(reinterpret_cast<char*>(&dashboardSize), 4);
 
         stream.seekp(headerStart);
         stream << headerOut.c_str() << '\n';
@@ -499,8 +500,8 @@ void Dashboard::save() {
         uint32_t flowgraphStart = stream.tellp();
         uint32_t flowgraphSize  = localFlowGraph.save(stream);
         stream.seekp(16);
-        stream.write(reinterpret_cast<char *>(&flowgraphStart), 4);
-        stream.write(reinterpret_cast<char *>(&flowgraphSize), 4);
+        stream.write(reinterpret_cast<char*>(&flowgraphStart), 4);
+        stream.write(reinterpret_cast<char*>(&flowgraphSize), 4);
         stream << '\n';
 #endif
     }
@@ -508,30 +509,30 @@ void Dashboard::save() {
 
 void Dashboard::newPlot(int x, int y, int w, int h) {
     m_plots.push_back({});
-    auto &p = m_plots.back();
-    p.axes.push_back({ Plot::Axis::X });
-    p.axes.push_back({ Plot::Axis::Y });
-    p.rect = { x, y, w, h };
+    auto& p = m_plots.back();
+    p.axes.push_back({Plot::Axis::X});
+    p.axes.push_back({Plot::Axis::Y});
+    p.rect = {x, y, w, h};
 }
 
-void Dashboard::deletePlot(Plot *plot) {
-    auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot &p) { return plot == &p; });
+void Dashboard::deletePlot(Plot* plot) {
+    auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot& p) { return plot == &p; });
     m_plots.erase(it);
 }
 
 void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
-    for (auto &plot : m_plots) {
+    for (auto& plot : m_plots) {
         std::erase(plot.sourceNames, std::string(sinkName));
     }
-    std::erase_if(m_plots, [](const Plot &p) { return p.sourceNames.empty(); });
+    std::erase_if(m_plots, [](const Plot& p) { return p.sourceNames.empty(); });
 }
 
 void Dashboard::loadPlotSources() {
-    for (auto &plot : m_plots) {
+    for (auto& plot : m_plots) {
         plot.sources.clear();
 
-        for (const auto &name : plot.sourceNames) {
-            auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto &s) { return s.name == name; });
+        for (const auto& name : plot.sourceNames) {
+            auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == name; });
             if (source == m_sources.end()) {
                 fmt::print("Unable to find source {}\n", name);
                 continue;
@@ -545,7 +546,7 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::string_vi
     const auto uri = [&] -> std::optional<opencmw::URI<>> {
         try {
             return opencmw::URI<>(std::string(uri_));
-        } catch (const std::exception &e) {
+        } catch (const std::exception& e) {
             fmt::println(std::cerr, "remote_source of '{}' is not a valid URI '{}': {}\n", blockName, uri_, e.what());
             return {};
         }
@@ -556,32 +557,32 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::string_vi
     }
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
-    m_flowgraphUriByRemoteSource.insert({ std::string{ blockName }, flowgraphUri });
+    m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
-    const auto it = std::ranges::find_if(m_services, [&](const auto &s) { return s.uri == flowgraphUri; });
+    const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
         fmt::println("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
-        auto &s = *m_services.emplace(flowgraphUri, flowgraphUri);
+        auto& s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
     }
     removeUnusedRemoteServices();
 }
 
 void Dashboard::unregisterRemoteService(std::string_view blockName) {
-    m_flowgraphUriByRemoteSource.erase(std::string{ blockName });
+    m_flowgraphUriByRemoteSource.erase(std::string{blockName});
     removeUnusedRemoteServices();
 }
 
 void Dashboard::removeUnusedRemoteServices() {
-    std::erase_if(m_services, [&](const auto &s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto &uri) { return uri == s.uri; }); });
+    std::erase_if(m_services, [&](const auto& s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
 }
 
 void Dashboard::Service::reload() {
     opencmw::client::Command command;
     command.command  = opencmw::mdp::Command::Get;
     command.topic    = opencmw::URI<>(uri);
-    command.callback = [&](const opencmw::mdp::Message &rep) {
-        auto             buf = rep.data;
+    command.callback = [&](const opencmw::mdp::Message& rep) {
+        auto buf = rep.data;
 
         FlowgraphMessage reply;
         opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
@@ -607,7 +608,7 @@ void Dashboard::Service::execute() {
     opencmw::serialise<opencmw::Json>(command.data, reply);
 
     command.topic    = opencmw::URI<>(uri);
-    command.callback = [&](const opencmw::mdp::Message &rep) {
+    command.callback = [&](const opencmw::mdp::Message& rep) {
         if (!rep.error.empty()) {
             fmt::print("{}\n", rep.error);
         }
@@ -615,7 +616,7 @@ void Dashboard::Service::execute() {
     client.request(command);
 }
 
-void Dashboard::saveRemoteServiceFlowgraph(Service *s) {
+void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
     std::stringstream stream;
     s->flowGraph.save(stream);
 
@@ -630,45 +631,32 @@ void Dashboard::saveRemoteServiceFlowgraph(Service *s) {
     s->client.request(command);
 }
 
-void DashboardDescription::load(const std::shared_ptr<DashboardSource> &source, const std::string &name,
-        const std::function<void(std::shared_ptr<DashboardDescription> &&)> &cb) {
+void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
     fetch(
-            source, name, { What::Header },
-            [cb, name, source](std::array<std::string, 1> &&desc) {
-                YAML::Node tree     = YAML::Load(desc[0]);
+        source, name, {What::Header},
+        [cb, name, source](std::array<std::string, 1>&& desc) {
+            YAML::Node tree = YAML::Load(desc[0]);
 
-                auto       favorite = tree["favorite"];
-                auto       lastUsed = tree["lastUsed"];
+            auto favorite = tree["favorite"];
+            auto lastUsed = tree["lastUsed"];
 
-                auto       getDate  = [](const auto &str) -> decltype(DashboardDescription::lastUsed) {
-                    if (str.size() < 10) {
-                        return {};
-                    }
-                    int                         year  = std::atoi(str.data());
-                    unsigned                    month = std::atoi(str.c_str() + 5);
-                    unsigned                    day   = std::atoi(str.c_str() + 8);
+            auto getDate = [](const auto& str) -> decltype(DashboardDescription::lastUsed) {
+                if (str.size() < 10) {
+                    return {};
+                }
+                int      year  = std::atoi(str.data());
+                unsigned month = std::atoi(str.c_str() + 5);
+                unsigned day   = std::atoi(str.c_str() + 8);
 
-                    std::chrono::year_month_day date{ std::chrono::year{ year }, std::chrono::month{ month }, std::chrono::day{ day } };
-                    return std::chrono::sys_days(date);
-                };
+                std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
+                return std::chrono::sys_days(date);
+            };
 
-                // fmt::print("aa {} {}\n",(bool)callback,(void*)callback.target());
-                cb(std::make_shared<DashboardDescription>(DashboardDescription{
-                        .name       = std::filesystem::path(name).stem().native(),
-                        .source     = source,
-                        .filename   = name,
-                        .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false,
-                        .lastUsed   = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt }));
-            },
-            [cb]() { cb({}); });
+            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .source = source, .filename = name, .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false, .lastUsed = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt}));
+        },
+        [cb]() { cb({}); });
 }
 
-std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string &name) {
-    return std::make_shared<DashboardDescription>(DashboardDescription{
-            .name       = name,
-            .source     = unsavedSource(),
-            .isFavorite = false,
-            .lastUsed   = std::nullopt });
-}
+std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .source = unsavedSource(), .isFavorite = false, .lastUsed = std::nullopt}); }
 
 } // namespace DigitizerUi

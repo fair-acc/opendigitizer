@@ -145,7 +145,7 @@ public:
 
 public:
     App() {
-        BlockType::registry().addBlockTypesFromPluginLoader(*pluginLoader);
+        BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*pluginLoader);
         setStyle(LookAndFeel::Style::Dark);
     }
 

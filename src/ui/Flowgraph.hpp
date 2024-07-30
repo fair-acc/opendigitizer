@@ -152,7 +152,7 @@ private:
     Id m_id = Id::Untyped;
 };
 
-class BlockType {
+class BlockInstantiationDefinition {
 public:
     struct PortDefinition {
         std::string type;
@@ -184,18 +184,9 @@ public:
         std::variant<EnumParameter, NumberParameter<int>, NumberParameter<float>, StringParameter> impl;
     };
 
-    explicit BlockType(std::string_view name_, std::string_view label = {}, std::string_view cat = {});
-
-    std::unique_ptr<Block> createBlock(std::string_view name) const;
-
-    const std::string           name;
-    const std::string           label;
-    std::vector<Parameter>      parameters;
     std::vector<PortDefinition> inputs;
     std::vector<PortDefinition> outputs;
-    std::vector<DataType>       availableBaseTypes;
-    const std::string           category;
-    gr::property_map            defaultParameters;
+    std::vector<Parameter>      settings;
 
     auto data_inputs() {
         return inputs | std::views::filter([](const PortDefinition& p) { return p.type != "message"; });
@@ -209,23 +200,40 @@ public:
     auto message_outputs() {
         return outputs | std::views::filter([](const PortDefinition& p) { return p.type == "message"; });
     }
+};
 
-    bool isSource() const { return inputs.empty() && !outputs.empty(); }
+struct BlockDefinition {
+    const std::string     name;
+    const std::string     label;
+    std::vector<DataType> availableParametrizations;
+    const std::string     category;
+    gr::property_map      defaultSettings;
 
-    bool isSink() const { return !inputs.empty() && outputs.empty(); }
+    // We are going to assume that source/sink doesn't depend on
+    // template parametrization
+    bool isSource = false;
+    bool isSink   = false;
+
+    std::unordered_map<std::string, BlockInstantiationDefinition> instantiations;
+
+    explicit BlockDefinition(std::string_view name_, std::string_view label = {}, std::string_view category = {});
+
+    const BlockInstantiationDefinition& defaultInstantiation() const { return instantiations.cbegin()->second; }
+
+    std::unique_ptr<Block> createBlock(std::string_view name) const;
 
     bool isPlotSink() const {
         // TODO make this smarter once metaInformation() is statically available
         return name == "opendigitizer::ImPlotSink";
     }
+
+    // TODO: Move to a separate class
     struct Registry {
-        void loadBlockDefinitions(const std::filesystem::path& dir);
+        void addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader);
 
-        void addBlockTypesFromPluginLoader(gr::PluginLoader& pluginLoader);
+        void addBlockDefinition(std::unique_ptr<BlockDefinition>&& t);
 
-        void addBlockType(std::unique_ptr<BlockType>&& t);
-
-        const BlockType* get(std::string_view id) const;
+        const BlockDefinition* get(std::string_view id) const;
 
         inline const auto& types() const { return m_types; }
 
@@ -239,7 +247,7 @@ public:
 
         using transparent_string_hash = transparent_hash<std::string, std::string_view, const char*, char*>;
 
-        std::unordered_map<std::string, std::unique_ptr<BlockType>, transparent_string_hash, std::equal_to<>> m_types;
+        std::unordered_map<std::string, std::unique_ptr<BlockDefinition>, transparent_string_hash, std::equal_to<>> m_types;
     };
 
     static Registry& registry();
@@ -249,25 +257,25 @@ class Block {
 public:
     class Port {
     public:
-        enum class Kind {
+        enum class Direction {
             Input,
             Output,
         };
 
-        Block*            block;
-        const std::string m_rawType;
-        bool              dataset;
-        const Kind        kind;
+        Block*            owningUiBlock;
+        const std::string rawPortType;
+        bool              isDataset;
+        const Direction   portDirection;
 
-        DataType                 type;
-        std::vector<Connection*> connections;
+        DataType                 portDataType;
+        std::vector<Connection*> portConnections;
     };
 
     class OutputPort : public Port {};
 
     struct EnumParameter {
-        const BlockType::EnumParameter& definition;
-        int                             optionIndex;
+        const BlockInstantiationDefinition::EnumParameter& definition;
+        int                                                optionIndex;
 
         std::string toString() const;
 
@@ -291,29 +299,32 @@ public:
         std::string toString() const;
     };
 
-    explicit Block(std::string_view name, const BlockType* type, gr::property_map settings = {});
+    explicit Block(std::string_view name, const BlockDefinition* type, gr::property_map settings = {});
 
-    const BlockType& type() const { return *m_type; }
+    const BlockDefinition&              type() const { return *m_type; }
+    const std::string&                  currentInstantiationName() const { return m_currentInstantiation; }
+    const BlockInstantiationDefinition& currentInstantiation() const { return m_type->instantiations.at(m_currentInstantiation); }
+    void                                setCurrentInstantiation(const std::string& type);
 
     std::string_view typeName() const { return m_type->name; }
 
     const auto& inputs() const { return m_inputs; }
     const auto& outputs() const { return m_outputs; }
     auto        dataInputs() const {
-        return m_inputs | std::views::filter([](const Port& p) { return p.type != DataType::AsyncMessage; });
+        return m_inputs | std::views::filter([](const Port& p) { return p.portDataType != DataType::AsyncMessage; });
     }
     auto dataOutputs() const {
-        return m_outputs | std::views::filter([](const Port& p) { return p.type != DataType::AsyncMessage; });
+        return m_outputs | std::views::filter([](const Port& p) { return p.portDataType != DataType::AsyncMessage; });
     }
     auto messageInputs() const {
-        return m_inputs | std::views::filter([](const Port& p) { return p.type == DataType::AsyncMessage; });
+        return m_inputs | std::views::filter([](const Port& p) { return p.portDataType == DataType::AsyncMessage; });
     }
     auto messageOutputs() const {
-        return m_outputs | std::views::filter([](const Port& p) { return p.type == DataType::AsyncMessage; });
+        return m_outputs | std::views::filter([](const Port& p) { return p.portDataType == DataType::AsyncMessage; });
     }
 
-    void        setParameter(const std::string& name, const pmtv::pmt& par);
-    const auto& parameters() const { return m_parameters; }
+    void        setSetting(const std::string& name, const pmtv::pmt& par);
+    const auto& settings() const { return m_settings; }
 
     void update();
 
@@ -327,19 +338,16 @@ public:
     void                    updateSettings(const gr::property_map& settings);
     const gr::property_map& metaInformation() const { return m_metaInformation; }
 
-    [[nodiscard]] DataType datatype() const;
-    void                   setDatatype(DataType type);
-
 protected:
-    DataType          m_datatype{DataType::Float32};
-    std::vector<Port> m_inputs;
-    std::vector<Port> m_outputs;
-    gr::property_map  m_parameters;
-    bool              m_updated   = false;
-    FlowGraph*        m_flowGraph = nullptr;
-    const BlockType*  m_type;
-    std::string       m_uniqueName;
-    gr::property_map  m_metaInformation;
+    std::vector<Port>      m_inputs;
+    std::vector<Port>      m_outputs;
+    gr::property_map       m_settings;
+    bool                   m_updated   = false;
+    FlowGraph*             m_flowGraph = nullptr;
+    const BlockDefinition* m_type;
+    std::string            m_currentInstantiation = "float";
+    std::string            m_uniqueName;
+    gr::property_map       m_metaInformation;
     friend FlowGraph;
 };
 
@@ -355,7 +363,7 @@ concept is_creatable = requires {
 class Connection {
 public:
     struct {
-        Block*      block;
+        Block*      uiBlock;
         std::size_t index;
     } src, dst;
 
@@ -423,7 +431,7 @@ public:
         return nullptr;
     }
 
-    void changeBlockType(Block* block, DataType type);
+    void changeBlockDefinition(Block* block, const std::string& type);
 
 private:
     std::shared_ptr<gr::PluginLoader>                _pluginLoader;

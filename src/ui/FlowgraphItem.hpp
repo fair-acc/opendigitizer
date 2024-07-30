@@ -45,9 +45,9 @@ private:
 
     Block*                        m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
-    BlockType*                    m_selectedBlockType = nullptr;
-    ImVec2                        m_mouseDrag         = {0, 0};
-    bool                          m_createNewBlock    = false;
+    const BlockDefinition*        m_selectedBlockDefinition = nullptr;
+    ImVec2                        m_mouseDrag               = {0, 0};
+    bool                          m_createNewBlock          = false;
     ImVec2                        m_contextMenuPosition;
     std::vector<const Block*>     m_nodesToArrange;
 
