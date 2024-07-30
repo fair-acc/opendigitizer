@@ -22,18 +22,18 @@ inline std::vector<const Block*> topologicalSort(const std::vector<const Block*>
     std::vector<const Block*> sortedBlocks;
     std::set<const Block*>    visited;
 
-    std::function<void(const Block*)> visit = [&](const Block* block) -> void {
-        if (visited.find(block) == visited.end()) {
-            visited.insert(block);
+    std::function<void(const Block*)> visit = [&](const Block* uiBlock) -> void {
+        if (visited.find(uiBlock) == visited.end()) {
+            visited.insert(uiBlock);
 
             // Visit connected blocks
             for (const auto& connection : connections) {
-                if (connection.src.block == block) {
-                    visit(connection.dst.block);
+                if (connection.src.uiBlock == uiBlock) {
+                    visit(connection.dst.uiBlock);
                 }
             }
 
-            sortedBlocks.push_back(block);
+            sortedBlocks.push_back(uiBlock);
         }
     };
 
@@ -263,8 +263,8 @@ static bool blockInTreeHelper(const Block* block, const Block* start) {
     }
 
     for (const auto& port : GetPorts(start)) {
-        for (auto* c : port.connections) {
-            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, (c->*ConnectionEnd).block)) {
+        for (auto* c : port.portConnections) {
+            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, (c->*ConnectionEnd).uiBlock)) {
                 return true;
             }
         }
@@ -317,7 +317,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
             if (alignment == Alignment::Right) {
                 float       width = 80;
                 std::string value;
-                for (const auto& val : b.parameters()) {
+                for (const auto& val : b.settings()) {
                     valToString(val.second, value);
                     float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
                     width   = std::max(width, w);
@@ -342,7 +342,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
         auto         yMax{minSize.y}; // we have to keep track of the Node Size ourselves
 
         std::string value;
-        for (const auto& val : b.parameters()) {
+        for (const auto& val : b.settings()) {
             const auto metaKey = val.first + "::visible";
             const auto it      = b.metaInformation().find(metaKey);
             if (it != b.metaInformation().end()) {
@@ -363,7 +363,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
         ImVec2 pos          = {curScreenPos.x - padding.x, curScreenPos.y};
 
         for (std::size_t i = 0; i < inputs.size(); ++i) {
-            inputWidths[i] = ImGui::CalcTextSize(b.type().inputs[i].name.c_str()).x + textMargin * 2;
+            inputWidths[i] = ImGui::CalcTextSize(b.currentInstantiation().inputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
                 addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, {inputWidths[i], rectHeight});
             }
@@ -377,7 +377,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
         auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
         pos                      = {curPos.x - padding.x + s.x, curPos.y};
         for (std::size_t i = 0; i < outputs.size(); ++i) {
-            outputWidths[i] = ImGui::CalcTextSize(b.type().outputs[i].name.c_str()).x + textMargin * 2;
+            outputWidths[i] = ImGui::CalcTextSize(b.currentInstantiation().outputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
                 addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, {outputWidths[i], rectHeight});
             }
@@ -424,7 +424,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
             const auto& in = inputs[i];
 
             ImGui::SetCursorPosX(leftPos - inputWidths[i]);
-            drawPin(drawList, {inputWidths[i], rectHeight}, rectsSpacing, textMargin, b.type().inputs[i].name, in.type);
+            drawPin(drawList, {inputWidths[i], rectHeight}, rectsSpacing, textMargin, b.currentInstantiation().inputs[i].name, in.portDataType);
         }
 
         ImGui::SetCursorScreenPos(curPos);
@@ -433,7 +433,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
 
             auto s = ax::NodeEditor::GetNodeSize(nodeId);
             ImGui::SetCursorPosX(leftPos + s.x);
-            drawPin(drawList, {outputWidths[i], rectHeight}, rectsSpacing, textMargin, b.type().outputs[i].name, out.type);
+            drawPin(drawList, {outputWidths[i], rectHeight}, rectsSpacing, textMargin, b.currentInstantiation().outputs[i].name, out.portDataType);
         }
 
         ImGui::SetCursorScreenPos(curPos);
@@ -484,7 +484,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     }
 
     if (m_createNewBlock) {
-        auto b = m_selectedBlockType->createBlock(m_selectedBlockType->name);
+        auto b = m_selectedBlockDefinition->createBlock("New Block");
         ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
         fg->addBlock(std::move(b));
         m_createNewBlock = false;
@@ -492,7 +492,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
     for (auto& c : fg->connections()) {
-        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.block->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.block->inputs()[c.dst.index]), linkColor);
+        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.uiBlock->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.uiBlock->inputs()[c.dst.index]), linkColor);
     }
 
     // Handle creation action, returns true if editor want to create new object (node or link)
@@ -516,13 +516,15 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
                 auto inputPort  = inputPinId.AsPointer<Block::Port>();
                 auto outputPort = outputPinId.AsPointer<Block::Port>();
 
-                if (inputPort->kind == outputPort->kind) {
+                if (inputPort->portDirection == outputPort->portDirection) {
                     ax::NodeEditor::RejectNewItem();
                 } else {
-                    bool compatibleTypes = inputPort->type == outputPort->type || inputPort->type == DataType::Wildcard || outputPort->type == DataType::Wildcard;
+                    bool compatibleTypes = inputPort->portDataType == outputPort->portDataType || inputPort->portDataType == DataType::Wildcard || outputPort->portDataType == DataType::Wildcard;
                     if (!compatibleTypes) {
+                        // TODO Show error message
+                        fmt::print("wrong types '{} {}' '{} {}'\n", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
                         ax::NodeEditor::RejectNewItem();
-                    } else if (inputPort->connections.empty() && ax::NodeEditor::AcceptNewItem()) {
+                    } else if (inputPort->portConnections.empty() && ax::NodeEditor::AcceptNewItem()) {
                         // AcceptNewItem() return true when user release mouse button.
                         fg->connect(inputPort, outputPort);
                     }
@@ -570,7 +572,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = n.AsPointer<Block>();
         if (block) {
-            ImGui::OpenPopup("Block parameters");
+            ImGui::OpenPopup("Block settings");
             m_selectedBlock = block;
             // m_parameters.clear();
             // for (auto &p : block->parameters()) {
@@ -606,10 +608,10 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         if (ImGui::MenuItem("Delete")) {
             fg->deleteBlock(m_selectedBlock);
         }
-        for (auto t : m_selectedBlock->type().availableBaseTypes) {
-            auto name = std::string{"Change Type to "} + DataType::name(t).data();
+        for (auto [instantiationName, _] : m_selectedBlock->type().instantiations) {
+            auto name = std::string{"Change Type to "} + instantiationName;
             if (ImGui::MenuItem(name.c_str())) {
-                fg->changeBlockType(m_selectedBlock, t);
+                fg->changeBlockDefinition(m_selectedBlock, instantiationName);
             }
         }
     }
@@ -672,16 +674,23 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
     ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
     if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
-        auto ret            = components::FilteredListBox("blocks", BlockType::registry().types(), [](auto& it) -> std::pair<BlockType*, std::string> {
-            if (it.second->isSource()) {
+        auto ret = components::FilteredListBox("blocks", BlockDefinition::registry().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
+            if (it.second->isSource) {
                 return {};
             }
             return std::pair{it.second.get(), it.first};
         });
-        m_selectedBlockType = ret ? ret.value().first : nullptr;
+
+        if (ret) {
+            const auto& selected      = ret.value().first;
+            m_selectedBlockDefinition = selected;
+
+        } else {
+            m_selectedBlockDefinition = nullptr;
+        }
 
         if (components::DialogButtons() == components::DialogButton::Ok) {
-            if (m_selectedBlockType) {
+            if (m_selectedBlockDefinition) {
                 m_createNewBlock = true;
             }
         }
@@ -692,7 +701,7 @@ void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& bl
     // first take out all unconnected nodes, they will be added later
     std::vector<const Block*> connectedBlocks, unconnectedBlocks;
     std::ranges::for_each(blocks, [&connectedBlocks, &unconnectedBlocks](const Block* b) {
-        auto hasNoConnection = [](const Block::Port& p) { return p.connections.empty(); };
+        auto hasNoConnection = [](const Block::Port& p) { return p.portConnections.empty(); };
         if (std::ranges::all_of(b->inputs(), hasNoConnection) && std::ranges::all_of(b->outputs(), hasNoConnection)) {
             unconnectedBlocks.push_back(b);
         } else {
@@ -720,7 +729,7 @@ void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& bl
         auto   id = ax::NodeEditor::NodeId(b);
         ImVec2 position;
 
-        if (b->inputs().empty() || std::ranges::all_of(b->inputs(), [](const Block::Port& p) { return p.connections.empty(); })) {
+        if (b->inputs().empty() || std::ranges::all_of(b->inputs(), [](const Block::Port& p) { return p.portConnections.empty(); })) {
             lvl = levels.begin();
         } else {
             // move back until we find the latest block we are connected to
@@ -729,9 +738,9 @@ void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& bl
 
             do {
                 for (const Block::Port& p : b->inputs()) {
-                    auto f = std::ranges::find_if(p.connections, [back, b](Connection* c) { return c->src.block == *back; });
-                    if (f != p.connections.end()) {
-                        auto* lastBlock = (*f)->src.block;
+                    auto f = std::ranges::find_if(p.portConnections, [back, b](Connection* c) { return c->src.uiBlock == *back; });
+                    if (f != p.portConnections.end()) {
+                        auto* lastBlock = (*f)->src.uiBlock;
 
                         lvl = std::ranges::find_if(levels, [lastBlock](Level& l) { return std::ranges::find(l.blocks, lastBlock) != l.blocks.end(); });
                         assert(lvl != levels.end());

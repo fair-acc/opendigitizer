@@ -274,6 +274,13 @@ public:
                     sig.frontend          = "TEST frontend";
                     sig.quantity          = "1";
 
+                    {
+                        SignalData internal = sig;
+                        internal.signalName = "test";
+                        internal.device     = "internal " + internal.device;
+                        m_signals.push_back(internal);
+                    }
+
                     for (auto i = 0; i < 8000; ++i) {
                         // simulate a lot of devices for the UI
                         SignalData dup  = sig;
@@ -319,14 +326,14 @@ public:
 
     void drawSourceBlocksChooser(FlowGraph* fg) {
         struct Cat {
-            std::string             name;
-            std::vector<BlockType*> types;
+            std::string                   name;
+            std::vector<BlockDefinition*> types;
         };
         static std::vector<Cat> cats;
         cats.clear();
         cats.push_back({"Remote signals", {}});
-        for (const auto& t : BlockType::registry().types()) {
-            if (t.second->isSource() && !t.second->category.empty()) {
+        for (const auto& t : BlockDefinition::registry().types()) {
+            if (t.second->isSource && !t.second->category.empty()) {
                 auto it = std::find_if(cats.begin(), cats.end(), [&](const auto& c) { return c.name == t.second->category; });
                 if (it == cats.end()) {
                     cats.push_back({t.second->category, {t.second.get()}});
@@ -444,7 +451,7 @@ public:
             drawSignalSelector(fg);
 
 #if 0
-            static BlockType* sel = nullptr;
+            static BlockDefinition* sel = nullptr;
             if (auto child = IMW::ChildWithId(1, ImVec2{0, ImGui::GetContentRegionAvail().y - 50}, 0, 0)) {
                 cats.push_back({"Query signals", {}});
 
