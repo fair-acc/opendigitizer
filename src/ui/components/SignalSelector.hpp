@@ -344,10 +344,12 @@ public:
         }
     }
 
-    void drawElement(const SignalData& entry, int idx, FlowGraph* fg) {
+    void drawElement(const SignalData& entry, int idx, FlowGraph* fg, ImGuiSelectionBasicStorage& selection) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        ImGui::TextUnformatted(entry.device.c_str());
+        const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));
+        ImGui::SetNextItemSelectionUserData(idx);
+        ImGui::Selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(entry.signalName.c_str());
         ImGui::TableNextColumn();
@@ -358,11 +360,6 @@ public:
         ImGui::TextUnformatted(entry.frontend.c_str());
         ImGui::TableNextColumn();
         ImGui::Text(entry.comment.c_str());
-        ImGui::TableNextColumn();
-        if (ImGui::Button(("+##" + std::to_string(idx)).c_str())) {
-            const auto uri = opencmw::URI<>::UriFactory().scheme(entry.protocol).hostName(entry.hostname).port(static_cast<uint16_t>(entry.port)).path(entry.serviceName).addQueryParameter("channelNameFilter", entry.signalName).build();
-            fg->addRemoteSource(uri.str());
-        }
     }
 
     void drawSignalSelector(FlowGraph* fg) {
@@ -381,7 +378,6 @@ public:
             } else {
                 m_selectedFilters.addLabel({item->title, item, colorForCategory(item->category)});
             }
-
             filtersChanged = true;
         }
 
@@ -409,26 +405,58 @@ public:
             while (loadMoreItems()) {
             }
         }
-
         ImGui::Separator();
         ImGui::SetNextWindowSize(ImGui::GetContentRegionAvail(), ImGuiCond_Once);
-        IMW::Child signals("Signals", ImVec2(0, 0), 0, 0);
+        static ImGuiSelectionBasicStorage selection;
+        {
+            IMW::Child signals("Signals", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing()), 0, 0);
+            if (auto table = DigitizerUi::IMW::Table("Signals", 6, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
+                // allow multi-selection
+                ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_BoxSelect1d | ImGuiMultiSelectFlags_ClearOnClickVoid;
+                auto*                 ms_io = ImGui::BeginMultiSelect(flags, selection.Size, m_filteredItems.size());
+                selection.ApplyRequests(ms_io);
 
-        if (auto table = DigitizerUi::IMW::Table("Signals", 7, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
-            ImGui::TableHeader("SignalsHeader");
-            ImGui::TableSetupColumn("Device");
-            ImGui::TableSetupColumn("Name");
-            ImGui::TableSetupColumn("Quantity");
-            ImGui::TableSetupColumn("Unit");
-            ImGui::TableSetupColumn("DAQ-M");
-            ImGui::TableSetupColumn("Comment");
-            ImGui::TableSetupColumn("Add Signal");
-            ImGui::TableHeadersRow();
-            {
-                std::for_each(m_filteredItems.begin(), m_filteredItems.end(), [this, fg, idx = 0](const auto& e) mutable { drawElement(*e, idx++, fg); });
+                ImGui::TableHeader("SignalsHeader");
+                ImGui::TableSetupColumn("Device");
+                ImGui::TableSetupColumn("Name");
+                ImGui::TableSetupColumn("Quantity");
+                ImGui::TableSetupColumn("Unit");
+                ImGui::TableSetupColumn("DAQ-M");
+                ImGui::TableSetupColumn("Comment");
+                ImGui::TableHeadersRow();
+
+                // clip list for better performance
+                ImGuiListClipper clipper;
+                clipper.Begin(m_filteredItems.size());
+                if (ms_io->RangeSrcItem != -1) {
+                    clipper.IncludeItemByIndex(static_cast<int>(ms_io->RangeSrcItem)); // do not clip RangeSrcItem
+                }
+
+                while (clipper.Step()) {
+                    for (auto n = clipper.DisplayStart; n < clipper.DisplayEnd; ++n) {
+                        drawElement(*m_filteredItems[n], n, fg, selection);
+                    }
+                }
+
+                ms_io = ImGui::EndMultiSelect();
+                selection.ApplyRequests(ms_io);
             }
         }
 
+        if (ImGui::Button("Add Signal")) {
+            std::vector<SignalData> entries;
+            void*                   it = nullptr;
+            ImGuiID                 id = 0;
+            while (selection.GetNextSelectedItem(&it, &id)) {
+                entries.push_back(*m_filteredItems[id]);
+            }
+
+            for (const auto& e : entries) {
+                const auto uri = opencmw::URI<>::UriFactory().scheme(e.protocol).hostName(e.hostname).port(static_cast<uint16_t>(e.port)).path(e.serviceName).addQueryParameter("channelNameFilter", e.signalName).build();
+                fg->addRemoteSource(uri.str());
+            }
+        }
+        ImGui::SameLine();
         if (ImGui::Button("Refresh")) {
             m_signalList.update();
         }
