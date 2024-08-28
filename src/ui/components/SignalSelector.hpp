@@ -22,9 +22,10 @@ namespace DigitizerUi {
 
 class SignalSelector {
 private:
-    std::string            m_windowName = "Add Device Signals";
-    QueryFilterElementList m_querySignalFilters;
-    SignalList             m_signalList{m_querySignalFilters};
+    std::string                 m_windowName = "Add Device Signals";
+    QueryFilterElementList      m_querySignalFilters;
+    SignalList                  m_signalList{m_querySignalFilters};
+    std::function<void(Block*)> m_addSignalCallback;
 
     enum class Category { Domain = 0, DeviceType = 1, DAQ_M = 2, Status = 3, Quantity = 4 };
     static constexpr std::size_t CategoriesCount = 5;
@@ -295,7 +296,6 @@ public:
 
             m_forceRefresh = true;
             buildIndex();
-            fmt::println("Listing {} signals", m_signals.size());
         };
 
         buildIndex();
@@ -452,8 +452,11 @@ public:
             }
 
             for (const auto& e : entries) {
-                const auto uri = opencmw::URI<>::UriFactory().scheme(e.protocol).hostName(e.hostname).port(static_cast<uint16_t>(e.port)).path(e.serviceName).addQueryParameter("channelNameFilter", e.signalName).build();
-                fg->addRemoteSource(uri.str());
+                const auto uri   = opencmw::URI<>::UriFactory().scheme(e.protocol).hostName(e.hostname).port(static_cast<uint16_t>(e.port)).path(e.serviceName).addQueryParameter("channelNameFilter", e.signalName).build();
+                auto*      block = fg->addRemoteSource(uri.str());
+                if (m_addSignalCallback) {
+                    m_addSignalCallback(block);
+                }
             }
         }
         ImGui::SameLine();
@@ -477,47 +480,10 @@ public:
             // fg->addBlock(sel->createBlock({}));
 
             drawSignalSelector(fg);
-
-#if 0
-            static BlockDefinition* sel = nullptr;
-            if (auto child = IMW::ChildWithId(1, ImVec2{0, ImGui::GetContentRegionAvail().y - 50}, 0, 0)) {
-                cats.push_back({"Query signals", {}});
-
-                for (const auto& c : cats) {
-                    const bool isRemote = c.name == "Remote signals";
-                    if (ImGui::TreeNode(c.name.c_str())) {
-                        for (auto* t : c.types) {
-                            if (ImGui::Selectable(t->label.c_str(), sel == t, ImGuiSelectableFlags_DontClosePopups)) {
-                                sel = t;
-                            }
-                        }
-
-                        if (c.name == "Query signals") {
-                        }
-
-                        if (isRemote) {
-                            if (!m_addRemoteSignal) {
-                                if (ImGui::Button("Add remote signal")) {
-                                    m_addRemoteSignal             = true;
-                                    m_addRemoteSignalDialogOpened = true;
-                                    m_addRemoteSignalUri          = {};
-                                }
-                            } else {
-                            }
-                        }
-                        ImGui::TreePop();
-                    } else if (isRemote) {
-                        m_addRemoteSignal = false;
-                    }
-                }
-            }
-
-            if (components::DialogButtons(sel) == components::DialogButton::Ok) {
-                fg->addBlock(sel->createBlock({}));
-            }
-#endif
         }
     }
+
+    void setAddSignalCallback(std::function<void(Block*)> callback) { m_addSignalCallback = callback; }
 };
 } // namespace DigitizerUi
 

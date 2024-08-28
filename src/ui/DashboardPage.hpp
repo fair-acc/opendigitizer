@@ -8,6 +8,7 @@
 #include "common/ImguiWrap.hpp"
 
 #include "components/Block.hpp"
+#include "components/SignalSelector.hpp"
 
 #include "GridLayout.hpp"
 
@@ -45,8 +46,11 @@ private:
     void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
     static void drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot& plot) noexcept;
 
+    void addSignalCallback(Dashboard& dashboard, Block* block);
+
     //
     components::BlockControlsPanelContext m_editPane;
+    SignalSelector                        m_signalSelector;
 };
 
 } // namespace DigitizerUi

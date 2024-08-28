@@ -404,8 +404,8 @@ public:
 
     const std::string& grc() const { return m_grc; }
 
-    int  save(std::ostream& stream);
-    void addRemoteSource(std::string_view uri);
+    int    save(std::ostream& stream);
+    Block* addRemoteSource(std::string_view uri);
 
     void handleMessage(const gr::Message& msg);
 
