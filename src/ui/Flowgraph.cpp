@@ -486,10 +486,12 @@ void FlowGraph::disconnect(Connection* c) {
     m_graphChanged = true;
 }
 
-void FlowGraph::addRemoteSource(std::string_view uri) {
+Block* FlowGraph::addRemoteSource(std::string_view uri) {
     auto block = BlockDefinition::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
     block->updateSettings({{"remote_uri", std::string(uri)}});
+    auto res = block.get();
     addBlock(std::move(block));
+    return res;
 }
 
 namespace {

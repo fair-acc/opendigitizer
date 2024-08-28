@@ -373,8 +373,11 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
                 ImGui::SameLine();
                 if (plotButton("\uf067", "add signal")) { // plus
                     // add new signal
+                    m_signalSelector.open();
                 }
             }
+            m_signalSelector.setAddSignalCallback([&](Block* block) { addSignalCallback(dashboard, block); });
+            m_signalSelector.draw(&dashboard.localFlowGraph);
 
             if (LookAndFeel::instance().prototypeMode) {
                 ImGui::SameLine();
@@ -678,6 +681,16 @@ void DashboardPage::newPlot(Dashboard& dashboard) {
     if (findRectangle(x, y, w, h)) {
         dashboard.newPlot(x, y, w, h);
     }
+}
+
+void DashboardPage::addSignalCallback(Dashboard& dashboard, Block* block) {
+    ImGui::CloseCurrentPopup();
+    auto* newsink = dashboard.createSink();
+    // newPlot(dashboard);
+    dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
+    newPlot(dashboard);
+    auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
+    dashboard.plots().back().sourceNames.push_back(source->name);
 }
 
 } // namespace DigitizerUi
