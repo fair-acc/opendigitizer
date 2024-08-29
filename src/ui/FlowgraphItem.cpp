@@ -553,10 +553,11 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     }
     ax::NodeEditor::EndDelete();
 
+    const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
     ax::NodeEditor::End();
 
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
         auto block = n.AsPointer<Block>();
 
@@ -589,11 +590,10 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     }
 
     bool openNewBlockDialog = false;
-    if (backgroundClicked == ImGuiMouseButton_Right && std::abs(m_mouseDrag.x) < 10 && std::abs(m_mouseDrag.y) < 10) {
+    if (backgroundClicked == ImGuiMouseButton_Right && mouseDrag < 200) {
         ImGui::OpenPopup("ctx_menu");
         m_contextMenuPosition = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     }
-    m_mouseDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
 
     if (auto menu = IMW::Popup("ctx_menu", 0)) {
         if (ImGui::MenuItem("New block")) {
