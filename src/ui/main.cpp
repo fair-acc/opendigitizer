@@ -12,9 +12,9 @@
 
 #include <fmt/format.h>
 
+#include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
-#include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
 #include "common/Events.hpp"
@@ -58,7 +58,7 @@ CMRC_DECLARE(fonts);
 namespace DigitizerUi {
 
 struct SDLState {
-    SDL_Window   *window    = nullptr;
+    SDL_Window*   window    = nullptr;
     SDL_GLContext glContext = nullptr;
 };
 
@@ -66,65 +66,60 @@ struct SDLState {
 
 using namespace DigitizerUi;
 
-static void main_loop(void *);
+static void main_loop(void*);
 
-static void loadFonts(App &app) {
+static void loadFonts(App& app) {
     static const ImWchar fullRange[] = {
         0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
         // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
         // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
     };
-    static const std::vector<ImWchar> rangeLatin = {
-        0x0020, 0x0080, // Basic Latin
-        0, 0
-    };
-    static const std::vector<ImWchar> rangeLatinExtended     = { 0x80, 0xFFFF, 0 }; // Latin-1 Supplement
-    static const std::vector<ImWchar> rangeLatinPlusExtended = {
-        0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
-        0, 0
-    };
-    static const ImWchar glyphRanges[] = { // pick individual glyphs and specific sub-ranges rather than full range
-        0XF005, 0XF2ED,                    // 0xf005 is "", 0xf2ed is "trash can"
-        0X2B, 0X2B,                        // plus
-        0XF055, 0XF055,                    // circle-plus
-        0XF201, 0XF83E,                    // fa-chart-line, fa-wave-square
-        0xF58D, 0xF58D,                    // grid layout
-        0XF7A5, 0XF7A5,                    // horizontal layout,
-        0xF248, 0xF248,                    // free layout,
-        0XF7A4, 0XF7A4,                    // vertical layout
-        0, 0
-    };
+    static const std::vector<ImWchar> rangeLatin             = {0x0020, 0x0080, // Basic Latin
+                    0, 0};
+    static const std::vector<ImWchar> rangeLatinExtended     = {0x80, 0xFFFF, 0}; // Latin-1 Supplement
+    static const std::vector<ImWchar> rangeLatinPlusExtended = {0x0020, 0x00FF,   // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
+        0, 0};
+    static const ImWchar              glyphRanges[]          = {// pick individual glyphs and specific sub-ranges rather than full range
+        0XF005, 0XF2ED,                   // 0xf005 is "", 0xf2ed is "trash can"
+        0X2B, 0X2B,                       // plus
+        0XF055, 0XF055,                   // circle-plus
+        0XF201, 0XF83E,                   // fa-chart-line, fa-wave-square
+        0xF58D, 0xF58D,                   // grid layout
+        0XF7A5, 0XF7A5,                   // horizontal layout,
+        0xF248, 0xF248,                   // free layout,
+        0XF7A4, 0XF7A4,                   // vertical layout
+        0, 0};
 
     static const auto fontSize = []() -> std::array<float, 4> {
         if (std::abs(LookAndFeel::instance().verticalDPI - LookAndFeel::instance().defaultDPI) < 8.f) {
-            return { 20, 24, 28, 46 }; // 28" monitor
+            return {20, 24, 28, 46}; // 28" monitor
         } else if (LookAndFeel::instance().verticalDPI > 200) {
-            return { 16, 22, 23, 38 }; // likely mobile monitor
+            return {16, 22, 23, 38}; // likely mobile monitor
         } else if (std::abs(LookAndFeel::instance().defaultDPI - LookAndFeel::instance().verticalDPI) >= 8.f) {
-            return { 22, 26, 30, 46 }; // likely large fixed display monitor
+            return {22, 26, 30, 46}; // likely large fixed display monitor
         }
-        return { 18, 24, 26, 46 }; // default
+        return {18, 24, 26, 46}; // default
     }();
 
     static ImFontConfig config;
-    // high oversample to have better looking text when zooming in on the flow graph
-    config.OversampleH          = 4;
-    config.OversampleV          = 4;
+    // Originally oversampling of 4 was used to ensure good looking text for all zoom levels, but this led to huge texture atlas sizes, which did not work on mobile
+    config.OversampleH          = 2;
+    config.OversampleV          = 2;
     config.PixelSnapH           = true;
     config.FontDataOwnedByAtlas = false;
 
-    auto loadDefaultFont        = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar> &ranges = {}) {
+    auto loadDefaultFont = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar>& ranges = {}) {
         auto loadFont = [&primaryFont, &secondaryFont, &ranges](float fontSize) {
-            const auto loadFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(primaryFont.begin()), int(primaryFont.size()), fontSize, &config);
+            const auto loadFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), int(primaryFont.size()), fontSize, &config);
             if (!ranges.empty()) {
                 config.MergeMode = true;
-                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(secondaryFont.begin()), int(secondaryFont.size()), fontSize, &config, ranges.data());
+                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), int(secondaryFont.size()), fontSize, &config, ranges.data());
                 config.MergeMode = false;
             }
             return loadFont;
         };
 
-        auto &lookAndFeel             = LookAndFeel::mutableInstance();
+        auto& lookAndFeel             = LookAndFeel::mutableInstance();
         lookAndFeel.fontNormal[index] = loadFont(fontSize[0]);
         lookAndFeel.fontBig[index]    = loadFont(fontSize[1]);
         lookAndFeel.fontBigger[index] = loadFont(fontSize[2]);
@@ -135,12 +130,12 @@ static void loadFonts(App &app) {
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
     ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
 
-    auto loadIconsFont         = [](auto name, float fontSize) {
+    auto loadIconsFont = [](auto name, float fontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);
-        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char *>(file.begin()), static_cast<int>(file.size()), fontSize, &config, glyphRanges); // alt: fullRange
+        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), fontSize, &config, glyphRanges); // alt: fullRange
     };
 
-    auto &lookAndFeel               = LookAndFeel::mutableInstance();
+    auto& lookAndFeel               = LookAndFeel::mutableInstance();
     lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
     lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 18);
     lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 36);
@@ -149,7 +144,7 @@ static void loadFonts(App &app) {
     lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 36);
 }
 
-void setWindowMode(SDL_Window *window, const WindowMode &state) {
+void setWindowMode(SDL_Window* window, const WindowMode& state) {
     using enum WindowMode;
     const Uint32 flags        = SDL_GetWindowFlags(window);
     const bool   isMaximised  = (flags & SDL_WINDOW_MAXIMIZED) != 0;
@@ -159,9 +154,7 @@ void setWindowMode(SDL_Window *window, const WindowMode &state) {
         return;
     }
     switch (state) {
-    case FULLSCREEN:
-        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-        return;
+    case FULLSCREEN: SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP); return;
     case MAXIMISED:
         SDL_SetWindowFullscreen(window, 0);
         SDL_MaximizeWindow(window);
@@ -170,13 +163,11 @@ void setWindowMode(SDL_Window *window, const WindowMode &state) {
         SDL_SetWindowFullscreen(window, 0);
         SDL_MinimizeWindow(window);
         return;
-    case RESTORED:
-        SDL_SetWindowFullscreen(window, 0);
-        SDL_RestoreWindow(window);
+    case RESTORED: SDL_SetWindowFullscreen(window, 0); SDL_RestoreWindow(window);
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         printf("Error: %s\n", SDL_GetError());
@@ -189,7 +180,7 @@ int main(int argc, char **argv) {
     // It is very likely the generated file won't work in many browsers.
     // Firefox is the only sure bet, but I have successfully run this code on
     // Chrome for Android for example.
-    const char *glsl_version = "#version 100";
+    const char* glsl_version = "#version 100";
     // const char* glsl_version = "#version 300 es";
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -215,7 +206,7 @@ int main(int argc, char **argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImPlot::CreateContext();
-    ImGuiIO &io                  = ImGui::GetIO();
+    ImGuiIO& io                  = ImGui::GetIO();
     ImPlot::GetInputMap().Select = ImGuiPopupFlags_MouseButtonLeft;
     ImPlot::GetInputMap().Pan    = ImGuiPopupFlags_MouseButtonMiddle;
 
@@ -228,13 +219,11 @@ int main(int argc, char **argv) {
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    auto &app = App::instance();
+    auto& app = App::instance();
 
     // Init openDashboardPage
-    app.openDashboardPage.requestCloseDashboard = [&] {
-        app.closeDashboard();
-    };
-    app.openDashboardPage.requestLoadDashboard = [&](const auto &desc) {
+    app.openDashboardPage.requestCloseDashboard = [&] { app.closeDashboard(); };
+    app.openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
         if (!desc) {
             app.loadEmptyDashboard();
         } else {
@@ -249,17 +238,17 @@ int main(int argc, char **argv) {
 #else
     app.executable = argv[0];
 #endif
-    app.sdlState                         = &sdlState;
+    app.sdlState = &sdlState;
 
-    app.fgItem.requestBlockControlsPanel = [&](components::BlockControlsPanelContext &panelContext, const ImVec2 &pos, const ImVec2 &size, bool horizontalSplit) {
-        auto &dashboard     = app.dashboard;
-        auto &dashboardPage = app.dashboardPage;
+    app.fgItem.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
+        auto& dashboard     = app.dashboard;
+        auto& dashboardPage = app.dashboardPage;
         components::BlockControlsPanel(*dashboard, dashboardPage, panelContext, pos, size, horizontalSplit);
     };
-    app.fgItem.newSinkCallback = [&](FlowGraph *) mutable {
+    app.fgItem.newSinkCallback = [&](FlowGraph*) mutable {
         auto newSink = app.dashboard->createSink();
         app.dashboardPage.newPlot(*app.dashboard);
-        auto &plot = app.dashboard->plots().back();
+        auto& plot = app.dashboard->plots().back();
         plot.sourceNames.push_back(newSink->name);
         return newSink;
     };
@@ -278,19 +267,13 @@ int main(int argc, char **argv) {
     loadFonts(app);
 
     // Init header
-    app.header.requestApplicationSwitchMode = [&app](ViewMode mode) {
-        app.mainViewMode = mode;
-    };
-    app.header.requestApplicationSwitchTheme = [&app](LookAndFeel::Style style) {
-        app.setStyle(style);
-    };
-    app.header.requestApplicationStop = [&app] {
-        app.running = false;
-    };
+    app.header.requestApplicationSwitchMode  = [&app](ViewMode mode) { app.mainViewMode = mode; };
+    app.header.requestApplicationSwitchTheme = [&app](LookAndFeel::Style style) { app.setStyle(style); };
+    app.header.requestApplicationStop        = [&app] { app.running = false; };
     app.header.loadAssets();
 
     if (argc > 1) { // load dashboard if specified on the command line/query parameter
-        const char *url = argv[1];
+        const char* url = argv[1];
         if (strlen(url) > 0) {
             fmt::print("Loading dashboard from '{}'\n", url);
             app.loadDashboard(url);
@@ -327,10 +310,10 @@ std::string localFlowgraphGrc = {};
 
 }
 
-static void main_loop(void *arg) {
+static void main_loop(void* arg) {
     const auto startLoop = std::chrono::high_resolution_clock::now();
-    auto      *app       = static_cast<App *>(arg);
-    ImGuiIO   &io        = ImGui::GetIO();
+    auto*      app       = static_cast<App*>(arg);
+    ImGuiIO&   io        = ImGui::GetIO();
 
     EventLoop::instance().fireCallbacks();
 
@@ -353,15 +336,13 @@ static void main_loop(void *arg) {
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         switch (event.type) {
-        case SDL_QUIT:
-            app->running = false;
-            break;
+        case SDL_QUIT: app->running = false; break;
         case SDL_WINDOWEVENT:
             if (event.window.windowID != SDL_GetWindowID(app->sdlState->window)) {
                 // break // TODO: why was this aborted here?
             } else {
-                const int width            = event.window.data1;
-                const int height           = event.window.data2;
+                const int width  = event.window.data1;
+                const int height = event.window.data2;
 
                 ImGui::GetIO().DisplaySize = ImVec2(float(width), float(height));
                 glViewport(0, 0, width, height);
@@ -369,20 +350,11 @@ static void main_loop(void *arg) {
                 ImGui::SetNextWindowSize(ImVec2(float(width), float(height)));
             }
             switch (event.window.event) {
-            case SDL_WINDOWEVENT_CLOSE:
-                app->running = false;
-                break;
-            case SDL_WINDOWEVENT_RESTORED:
-                LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED;
-                break;
-            case SDL_WINDOWEVENT_MINIMIZED:
-                LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED;
-                break;
-            case SDL_WINDOWEVENT_MAXIMIZED:
-                LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED;
-                break;
-            case SDL_WINDOWEVENT_SIZE_CHANGED:
-                break;
+            case SDL_WINDOWEVENT_CLOSE: app->running = false; break;
+            case SDL_WINDOWEVENT_RESTORED: LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED; break;
+            case SDL_WINDOWEVENT_MINIMIZED: LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED; break;
+            case SDL_WINDOWEVENT_MAXIMIZED: LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED; break;
+            case SDL_WINDOWEVENT_SIZE_CHANGED: break;
             }
             break;
         }
@@ -396,18 +368,17 @@ static void main_loop(void *arg) {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::SetNextWindowPos({ 0, 0 });
+    ImGui::SetNextWindowPos({0, 0});
     int width, height;
     SDL_GetWindowSize(app->sdlState->window, &width, &height);
-    ImGui::SetNextWindowSize({ float(width), float(height) });
+    ImGui::SetNextWindowSize({float(width), float(height)});
     TouchHandler<>::applyToImGui();
 
     {
         IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-        const char *title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
-        app->header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode],
-                LookAndFeel::instance().style);
+        const char* title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
+        app->header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
 
         IMW::Disabled disabled(app->dashboard == nullptr);
 
@@ -444,10 +415,10 @@ static void main_loop(void *arg) {
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Apply")) {
-                        auto sinkNames = [](const auto &blocks) {
+                        auto sinkNames = [](const auto& blocks) {
                             using namespace std;
-                            auto isPlotSink = [](const auto &b) { return b->type().isPlotSink(); };
-                            auto getName    = [](const auto &b) { return b->name; };
+                            auto isPlotSink = [](const auto& b) { return b->type().isPlotSink(); };
+                            auto getName    = [](const auto& b) { return b->name; };
                             auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
                             auto names      = std::vector(namesView.begin(), namesView.end());
                             ranges::sort(names);
@@ -464,14 +435,14 @@ static void main_loop(void *arg) {
                             std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
                             std::vector<std::string> toAdd;
                             std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                            for (const auto &name : toRemove) {
+                            for (const auto& name : toRemove) {
                                 app->dashboard->removeSinkFromPlots(name);
                             }
-                            for (const auto &newName : toAdd) {
+                            for (const auto& newName : toAdd) {
                                 app->dashboardPage.newPlot(*app->dashboard);
                                 app->dashboard->plots().back().sourceNames.push_back(newName);
                             }
-                        } catch (const std::exception &e) {
+                        } catch (const std::exception& e) {
                             // TODO show error message
                             fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
                         }
@@ -480,7 +451,7 @@ static void main_loop(void *arg) {
                     ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
                 }
 
-                for (auto &s : app->dashboard->remoteServices()) {
+                for (auto& s : app->dashboard->remoteServices()) {
                     if (auto item = IMW::TabItem(s.name.c_str(), nullptr, 0)) {
                         if (ImGui::Button("Reload from service")) {
                             s.reload();
