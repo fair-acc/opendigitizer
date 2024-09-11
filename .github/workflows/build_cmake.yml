@@ -107,26 +107,29 @@ jobs:
       run: cmake --build . --target opendigitizer_coverage
 
     - name: Setup Pages
-      uses: actions/configure-pages@v3
+      if: matrix.cmake-build-type == 'Release'
+      uses: actions/configure-pages@v5
     - name: "Fetch cors header workaround" # we're unable to set custom headers on github pages, workaround according to: https://stackoverflow.com/a/68675301
+      if: matrix.cmake-build-type == 'Release'
       run: |
         npm i --save coi-serviceworker
         cp node_modules/coi-serviceworker/coi-serviceworker.js ../build/CMakeExternals/Build/ui-wasm/web/
         sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i ../build/CMakeExternals/Build/ui-wasm/web/index.html
     - name: Upload artifact
-      uses: actions/upload-pages-artifact@v1
+      if: matrix.cmake-build-type == 'Release'
+      uses: actions/upload-pages-artifact@v3
       with:
         path: '../build/CMakeExternals/Build/ui-wasm/web/'
 
   deploy_pages:
     name: Deploy to GitHub Pages
-    if: ${{ github.ref_name == 'main' && github.event_name == 'push' }}
+    if: ${{ (github.ref_name == 'main' || github.ref_name == 'fixOnlineDemo') && github.event_name == 'push' }}
     environment: github-pages
     runs-on: ubuntu-latest
     needs: build
     steps:
     - name: "Setup Pages"
-      uses: actions/configure-pages@v3
+      uses: actions/configure-pages@v5
     - name: "Deploy to pages"
       id: deployment
-      uses: actions/deploy-pages@v2
+      uses: actions/deploy-pages@v4
