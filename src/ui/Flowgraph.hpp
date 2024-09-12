@@ -224,7 +224,7 @@ struct BlockDefinition {
 
     bool isPlotSink() const {
         // TODO make this smarter once metaInformation() is statically available
-        return name == "opendigitizer::ImPlotSink";
+        return name == "opendigitizer::ImPlotSink" || name == "opendigitizer::ImPlotSinkDataSet";
     }
 
     // TODO: Move to a separate class
