@@ -9,7 +9,7 @@
 namespace opendigitizer {
 
 template<typename T>
-    requires std::is_arithmetic_v<T>
+requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     using super_t = gr::Block<SineSource<T>, gr::BlockingIO<true>>;
     gr::MsgPortIn           freqIn;
@@ -23,7 +23,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     std::thread             thread;
     std::atomic_bool        quit = false;
 
-    void                    start() {
+    void start() {
         thread = std::thread([this]() {
             using namespace std::chrono_literals;
             while (!quit) {
@@ -36,7 +36,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
                     conditionvar.notify_all();
                 }
 
-                std::this_thread::sleep_for(20ms);
+                std::this_thread::sleep_for(2ms);
             }
         });
     }
@@ -48,7 +48,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
         conditionvar.notify_all();
     }
 
-    auto processBulk(gr::PublishableSpan auto &output) {
+    auto processBulk(gr::PublishableSpan auto& output) {
         // technically, this wouldn't have to block, but could just publish 0 samples,
         // but keep it as test case for BlockingIO<true>.
         std::unique_lock guard(mutex);
