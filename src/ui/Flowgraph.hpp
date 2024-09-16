@@ -263,6 +263,7 @@ public:
         };
 
         Block*            owningUiBlock;
+        const std::string name;
         const std::string rawPortType;
         bool              isDataset;
         const Direction   portDirection;

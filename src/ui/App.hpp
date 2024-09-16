@@ -11,6 +11,7 @@
 #include "FlowgraphItem.hpp"
 #include "OpenDashboardPage.hpp"
 
+#include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
@@ -117,7 +118,8 @@ public:
             std::string_view uniqueName() const override { return _scheduler.unique_name; }
 
             void sendMessage(const gr::Message& msg) final {
-                _toScheduler.streamWriter().publish([&](auto& output) { output[0] = msg; }, 1);
+                auto output = _toScheduler.streamWriter().reserve<gr::SpanReleasePolicy::ProcessAll>(1UZ);
+                output[0]   = msg;
             }
 
             void handleMessages(FlowGraph& fg) final {
@@ -200,7 +202,7 @@ public:
 
     template<typename Graph>
     void assignScheduler(Graph&& graph) {
-        using Scheduler = gr::scheduler::Simple<gr::scheduler::multiThreaded>;
+        using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
 
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
     }
