@@ -314,7 +314,7 @@ private:
                         }
                         _updateSignalEntriesCallback(std::move(entries));
                     }
-                    auto sched          = std::make_unique<scheduler::Simple<scheduler::multiThreaded>>(std::move(*pendingFlowGraph));
+                    auto sched          = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
                     toScheduler         = std::make_unique<MsgPortOut>();
                     fromScheduler       = std::make_unique<MsgPortIn>();
                     std::ignore         = toScheduler->connect(sched->msgIn);
@@ -417,8 +417,8 @@ private:
 
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
-            auto matcher = [trigger_name = context.triggerNameFilter](const gr::Tag& tag) {
-                using enum gr::basic::TriggerMatchResult;
+            auto matcher = [trigger_name = context.triggerNameFilter](std::string_view, const gr::Tag& tag, const gr::property_map&) {
+                using enum gr::trigger::MatchResult;
                 const auto v = tag.get(gr::tag::TRIGGER_NAME);
                 if (trigger_name.empty()) {
                     return v ? Matching : Ignore;

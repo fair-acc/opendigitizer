@@ -3,14 +3,14 @@ include(FetchContent)
 FetchContent_Declare(
         gnuradio4
         GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-        GIT_TAG c51a5d5253bdd2ce7bbc785970b7ec4bbe2878dc # main as of 2024-06-14
+        GIT_TAG d2584d0afe2b9f4f952513a28a60576ed5bd6416 # main as of 2024-10-04
         SYSTEM
 )
 
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG 0fb3758c3ffe7707aa5e0bd2ad25f9e8fb19f79d # main as of 2024-04-26
+        GIT_TAG b10bf280023775a6a65cd9f6138ed004e8140dc6 # main as of 2024-10-02
         SYSTEM
 )
 

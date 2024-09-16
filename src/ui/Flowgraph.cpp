@@ -280,10 +280,10 @@ void Block::setCurrentInstantiation(const std::string& newInstantiation) {
     m_outputs.reserve(instantiation.outputs.size());
     m_inputs.reserve(instantiation.inputs.size());
     for (auto& o : instantiation.outputs) {
-        m_outputs.push_back({this, o.type, o.dataset, Port::Direction::Output});
+        m_outputs.push_back({this, o.name, o.type, o.dataset, Port::Direction::Output});
     }
     for (auto& o : instantiation.inputs) {
-        m_inputs.push_back({this, o.type, o.dataset, Port::Direction::Input});
+        m_inputs.push_back({this, o.name, o.type, o.dataset, Port::Direction::Input});
     }
 }
 
@@ -337,22 +337,55 @@ void FlowGraph::parse(const std::string& str) {
         return it == m_blocks.end() ? nullptr : it->get();
     };
 
+    auto findPort = [&](const auto& portDefinition, auto& ports) {
+        return std::visit(gr::meta::overloaded(
+                              [&](const gr::PortDefinition::IndexBased& definition) {
+                                  if (definition.topLevel >= ports.size()) {
+                                      fmt::println(std::cerr, "Cannot connect, index {} is not valid (only {} ports available)", definition.topLevel, ports.size());
+                                  }
+                                  // TODO check subIndex once we support port collections
+                                  return std::pair{ports.begin() + definition.topLevel, definition.subIndex};
+                              },
+                              [&](const gr::PortDefinition::StringBased& definition) {
+                                  auto       split    = std::string_view(definition.name) | std::ranges::views::split('#');
+                                  const auto segs     = std::vector(split.begin(), split.end());
+                                  const auto name     = std::string_view(segs[0].data(), segs[0].size());
+                                  const auto subIndex = [&] {
+                                      if (segs.size() < 2) {
+                                          return 0UZ;
+                                      }
+                                      auto index          = 0UZ;
+                                      const auto& [_, ec] = std::from_chars(segs[1].begin(), segs[1].end(), index);
+                                      if (ec != std::errc{}) {
+                                          throw std::runtime_error(fmt::format("Invalid subindex in '{}'", definition.name));
+                                      }
+                                      return index;
+                                  }();
+                                  const auto it = std::ranges::find_if(ports, [&name](const auto& port) { return port.name == name; });
+                                  if (it == ports.end()) {
+                                      fmt::println(std::cerr, "Cannot connect, no port with name '{}'", name);
+                                  }
+
+                                  // TODO check subIndex once we support port collections
+
+                                  return std::pair{it, subIndex};
+                              }),
+            portDefinition.definition);
+    };
+
     graph.forEachEdge([&](const auto& edge) {
         auto srcBlock = findBlock(edge._sourceBlock->uniqueName());
         assert(srcBlock);
-        const auto sourcePort = edge._sourcePortDefinition.topLevel;
-        auto       dstBlock   = findBlock(edge._destinationBlock->uniqueName());
+        // TODO do not ignore subindexes
+        const auto& [srcPort, srcIndex] = findPort(edge.sourcePortDefinition(), srcBlock->m_outputs);
+        auto dstBlock                   = findBlock(edge._destinationBlock->uniqueName());
         assert(dstBlock);
-        const auto destinationPort = edge._destinationPortDefinition.topLevel;
-        // TODO support port collections
+        const auto& [dstPort, dstIndex] = findPort(edge.destinationPortDefinition(), dstBlock->m_inputs);
 
-        if (sourcePort >= srcBlock->m_outputs.size()) {
-            fmt::print("ERROR: Cannot connect, no output port with index {} in {}, have only {} ports\n", sourcePort, srcBlock->m_uniqueName, srcBlock->m_outputs.size());
-        } else if (destinationPort >= dstBlock->m_inputs.size()) {
-            fmt::print("ERROR: Cannot connect, no input port with index {} in {}, have only {} ports\n", destinationPort, dstBlock->m_uniqueName, dstBlock->m_inputs.size());
-        } else {
-            connect(&srcBlock->m_outputs[sourcePort], &dstBlock->m_inputs[destinationPort]);
+        if (srcPort == srcBlock->m_outputs.end() || dstPort == dstBlock->m_inputs.end()) {
+            return;
         }
+        connect(&*srcPort, &*dstPort);
     });
 
     m_graphChanged = true;
