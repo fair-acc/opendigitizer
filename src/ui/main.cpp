@@ -465,7 +465,7 @@ static void main_loop(void* arg) {
                 }
             }
         } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
-            app->openDashboardPage.draw(app->dashboard.get());
+            app->openDashboardPage.draw(app->dashboard);
         } else {
             fmt::print("unknown view mode {}\n", static_cast<int>(app->mainViewMode));
         }

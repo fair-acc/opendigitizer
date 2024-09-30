@@ -108,8 +108,8 @@ public:
 
     inline auto& plots() { return m_plots; }
 
-    void                         setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
-    inline DashboardDescription* description() const { return m_desc.get(); }
+    void                                         setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
+    inline std::shared_ptr<DashboardDescription> description() const { return m_desc; }
 
     struct Service {
         Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
