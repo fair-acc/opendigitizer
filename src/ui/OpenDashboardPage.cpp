@@ -110,7 +110,7 @@ void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource>
 static constexpr float indent = 20;
 
 //
-void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
+void OpenDashboardPage::dashboardControls(const std::shared_ptr<Dashboard>& optionalDashboard) {
     IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
 
     if (optionalDashboard) {
@@ -144,7 +144,7 @@ void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     }
 }
 
-void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
+void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard) {
     ImGui::Spacing();
 
     dashboardControls(optionalDashboard);
@@ -292,7 +292,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
 
             const auto& name              = item.first->name;
             const auto& source            = item.first->source;
-            bool        isDashboardActive = optionalDashboard && name == optionalDashboard->description()->name && source == optionalDashboard->description()->source;
+            bool        isDashboardActive = optionalDashboard && optionalDashboard->description() && name == optionalDashboard->description()->name && source == optionalDashboard->description()->source;
 
             {
                 IMW::Font font(isDashboardActive ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
