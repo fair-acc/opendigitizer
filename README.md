@@ -54,8 +54,8 @@ export DIGITIZER_CHECK_CERTIFICATES=0                   # to disable certificate
 export DIGITIZER_HOSTNAME=localhost           # set a custom host
 export OPENCMW_REST_CERT_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-cert.pem
 export OPENCMW_REST_PRIVATE_KEY_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-key.pem
-build/service/opendigitizer-service &         # launches the service
-build/ui/opendigitizer_ui &                   # launches the native digitizer UI
+build/src/service/opendigitizer &              # launches the service
+build/src/ui/opendigitizer-ui &                # launches the native digitizer UI
 xdg-open https://localhost:8080/web/index.html # launches the webassembly UI
 xdg-open https://localhost:8080/flowchart      # launches the html based web ui for the flowgraph property
 xdg-open https://localhost:8080/acquisition    # launches the html based web ui for the acquisition property
