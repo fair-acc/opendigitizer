@@ -22,6 +22,13 @@ set(SERVING_DIR ${ROOT_BUILD_DIR}/ui-wasm)
 configure_file(build_configuration.hpp.in ${CMAKE_BINARY_DIR}/build_configuration.hpp @ONLY)
 include_directories(${CMAKE_BINARY_DIR})
 
+option(USE_DWARF4 "Use DWARF-4 instead of DWARF-5 for better LLDB compatibility" OFF)
+if(USE_DWARF4)
+  # LLDB doesn't seem to like bleeding edge gcc debug info. Enable this if your LLDB isn't showing source. Reproduced
+  # with LLDB v18, 19 and 20 against gcc 14.2.1
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gdwarf-4")
+endif()
+
 include(cmake/Dependencies.cmake)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
