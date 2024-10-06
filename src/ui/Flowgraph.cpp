@@ -93,7 +93,8 @@ void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLo
 
             auto prototype = pluginLoader.instantiate(typeName, parametrization);
             if (!prototype) {
-                fmt::println(std::cerr, "Could not instantiate block of type '{}<{}>'", typeName, parametrization);
+                auto msg = fmt::format("Could not instantiate block of type '{}<{}>'", typeName, parametrization);
+                components::Notification::error(msg);
                 continue;
             }
 
@@ -294,7 +295,9 @@ static std::string_view strview(auto&& s) { return {s.data(), s.size()}; }
 static void readFile(const std::filesystem::path& file, std::string& str) {
     std::ifstream stream(file);
     if (!stream.is_open()) {
-        throw std::runtime_error(fmt::format("Cannot open file '{}'", file.native()));
+        auto msg = fmt::format("Cannot open file '{}'", file.native());
+        components::Notification::error(msg);
+        throw std::runtime_error(msg);
     }
 
     stream.seekg(0, std::ios::end);
@@ -322,7 +325,9 @@ void FlowGraph::parse(const std::string& str) {
         typeName      = std::string_view(typeName.begin(), typeName.find('<'));
         auto type     = BlockDefinition::registry().get(typeName);
         if (!type) {
-            throw std::runtime_error(fmt::format("Block type '{}' is unknown.", typeName));
+            auto msg = fmt::format("Block type '{}' is unknown.", typeName);
+            components::Notification::error(msg);
+            throw std::runtime_error(msg);
         }
 
         auto block               = type->createBlock(grBlock.name());
@@ -341,7 +346,8 @@ void FlowGraph::parse(const std::string& str) {
         return std::visit(gr::meta::overloaded(
                               [&](const gr::PortDefinition::IndexBased& definition) {
                                   if (definition.topLevel >= ports.size()) {
-                                      fmt::println(std::cerr, "Cannot connect, index {} is not valid (only {} ports available)", definition.topLevel, ports.size());
+                                      auto msg = fmt::format("Cannot connect, index {} is not valid (only {} ports available)", definition.topLevel, ports.size());
+                                      components::Notification::error(msg);
                                   }
                                   // TODO check subIndex once we support port collections
                                   return std::pair{ports.begin() + definition.topLevel, definition.subIndex};
@@ -357,13 +363,16 @@ void FlowGraph::parse(const std::string& str) {
                                       auto index          = 0UZ;
                                       const auto& [_, ec] = std::from_chars(segs[1].begin(), segs[1].end(), index);
                                       if (ec != std::errc{}) {
-                                          throw std::runtime_error(fmt::format("Invalid subindex in '{}'", definition.name));
+                                          auto msg = fmt::format("Invalid subindex in '{}'", definition.name);
+                                          components::Notification::error(msg);
+                                          throw std::runtime_error(msg);
                                       }
                                       return index;
                                   }();
                                   const auto it = std::ranges::find_if(ports, [&name](const auto& port) { return port.name == name; });
                                   if (it == ports.end()) {
-                                      fmt::println(std::cerr, "Cannot connect, no port with name '{}'", name);
+                                      auto msg = fmt::format("Cannot connect, no port with name '{}'", name);
+                                      components::Notification::error(msg);
                                   }
 
                                   // TODO check subIndex once we support port collections
@@ -546,7 +555,8 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, c
     auto grBlock                  = loader.instantiate(block.typeName(), instantiationName);
 
     if (!grBlock) {
-        fmt::println(std::cerr, "Could not create GR Block for {} ({}<{}>)\n", block.name, block.typeName(), instantiationName);
+        auto msg = fmt::format("Could not create GR Block for {} ({}<{}>)", block.name, block.typeName(), instantiationName);
+        components::Notification::error(msg);
         return nullptr;
     }
 
@@ -603,11 +613,13 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
     if (msg.serviceName != App::instance().schedulerUniqueName() && msg.endpoint == gr::block::property::kSetting) {
         const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
         if (it == m_blocks.end()) {
-            fmt::println(std::cerr, "Received settings for unknown block '{}'", msg.serviceName);
+            auto error = fmt::format("Received settings for unknown block '{}'", msg.serviceName);
+            components::Notification::error(error);
             return;
         }
         if (!msg.data) {
-            fmt::println(std::cerr, "Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+            auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+            components::Notification::error(error);
             return;
         }
         if (it->get()->typeName() == "opendigitizer::RemoteSource") {

@@ -13,6 +13,7 @@
 
 #include "components/Dialog.hpp"
 #include "components/ListBox.hpp"
+#include "components/Notification.hpp"
 #include "components/Splitter.hpp"
 
 namespace DigitizerUi {
@@ -521,8 +522,8 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
                 } else {
                     bool compatibleTypes = inputPort->portDataType == outputPort->portDataType || inputPort->portDataType == DataType::Wildcard || outputPort->portDataType == DataType::Wildcard;
                     if (!compatibleTypes) {
-                        // TODO Show error message
-                        fmt::print("wrong types '{} {}' '{} {}'\n", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
+                        auto msg = fmt::format("wrong types '{} {}' '{} {}'", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
+                        components::Notification::error(msg);
                         ax::NodeEditor::RejectNewItem();
                     } else if (inputPort->portConnections.empty() && ax::NodeEditor::AcceptNewItem()) {
                         // AcceptNewItem() return true when user release mouse button.
