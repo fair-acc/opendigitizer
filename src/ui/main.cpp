@@ -20,6 +20,7 @@
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
+#include "components/Notification.hpp"
 
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
@@ -88,6 +89,11 @@ static void loadFonts(App& app) {
         0XF7A5, 0XF7A5,                   // horizontal layout,
         0xF248, 0xF248,                   // free layout,
         0XF7A4, 0XF7A4,                   // vertical layout
+        0XEF808D, 0XEF808D,               // notification ICON_FA_XMARK
+        0XEF8198, 0XEF8198,               // notification ICON_FA_CIRCLE_CHECK
+        0XEF81B1, 0XEF81B1,               // notification ICON_FA_TRIANGLE_EXCLAMATION
+        0XEF81AA, 0XEF81AA,               // notification ICON_FA_CIRCLE_EXCLAMATION
+        0XEF819A, 0XEF819A,               // notification ICON_FA_CIRCLE_INFO
         0, 0};
 
     static const auto fontSize = []() -> std::array<float, 4> {
@@ -258,7 +264,8 @@ int main(int argc, char** argv) {
         float horizontalDPI = diagonalDPI;
         float verticalDPI   = diagonalDPI;
         if (SDL_GetDisplayDPI(0, &diagonalDPI, &horizontalDPI, &verticalDPI) != 0) {
-            fmt::print("Failed to obtain DPI information for display 0: {}\n", SDL_GetError());
+            auto msg = fmt::format("Failed to obtain DPI information for display 0: {}", SDL_GetError());
+            components::Notification::error(msg);
             return LookAndFeel::instance().defaultDPI;
         }
         return verticalDPI;
@@ -444,7 +451,8 @@ static void main_loop(void* arg) {
                             }
                         } catch (const std::exception& e) {
                             // TODO show error message
-                            fmt::print(std::cerr, "Error parsing YAML: {}\n", e.what());
+                            auto msg = fmt::format("Error parsing YAML: {}", e.what());
+                            components::Notification::error(msg);
                         }
                     }
 
@@ -467,9 +475,12 @@ static void main_loop(void* arg) {
         } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
             app->openDashboardPage.draw(app->dashboard);
         } else {
-            fmt::print("unknown view mode {}\n", static_cast<int>(app->mainViewMode));
+            auto msg = fmt::format("unknown view mode {}", static_cast<int>(app->mainViewMode));
+            components::Notification::warning(msg);
         }
     }
+
+    components::Notification::render();
 
     // Rendering
     ImGui::Render();

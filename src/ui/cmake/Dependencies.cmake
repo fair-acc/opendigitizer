@@ -1,5 +1,8 @@
 include(FetchContent)
 
+# Enable Unicode planes for icons used in notifications
+add_compile_definitions(IMGUI_USE_WCHAR32)
+
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
