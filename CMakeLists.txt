@@ -54,6 +54,11 @@ add_library(project_warnings INTERFACE) # Link this 'library' to use the warning
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
+# personal
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-ld=lld")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fuse-ld=lld")
+set(LINK_FLAGS "${LINK_FLAGS} -fuse-ld=lld")
+
 add_subdirectory(src/acquisition)
 add_subdirectory(src/utils)
 add_subdirectory(src/ui)
