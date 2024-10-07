@@ -2,8 +2,11 @@
 #define OPENDIGITIZER_UI_COMPONENTS_POPUP_MENU_HPP_
 
 #include <cmath>
+#include <fmt/format.h>
 #include <functional>
+#include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "../common/ImguiWrap.hpp"
