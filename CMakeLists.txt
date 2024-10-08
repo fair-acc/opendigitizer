@@ -29,6 +29,24 @@ if(USE_DWARF4)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gdwarf-4")
 endif()
 
+option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
+
+# Set proper default for ENABLE_IMGUI_TEST_ENGINE, the idea is:
+
+# * Release people shouldn't enable it by mistake, as it instrumentalizes ImGui
+# * Developers shouldn't skip it by mistake
+# * All other people should explicitly pass -DOPENDIGITIZER_ENABLE_TESTING= with their intention
+if(OPENDIGITIZER_ENABLE_TESTING)
+  enable_testing()
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(DEFAULT_ENABLE_IMGUI_TEST_ENGINE ON)
+  endif()
+else()
+  set(DEFAULT_ENABLE_IMGUI_TEST_ENGINE OFF)
+endif()
+
+option(ENABLE_IMGUI_TEST_ENGINE, "Enable ImGui Test Engine" ${DEFAULT_ENABLE_IMGUI_TEST_ENGINE})
+
 include(cmake/Dependencies.cmake)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
@@ -71,11 +89,6 @@ if(NOT DISABLE_WASM_BUILD)
       ${CMAKE_COMMAND} -E make_directory ${ROOT_BUILD_DIR}/ui-wasm/web && ${CMAKE_COMMAND} -E copy
       ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.worker.js
       ${WASM_BUILD_DIR}/web/index.wasm ${ROOT_BUILD_DIR}/ui-wasm/web)
-endif()
-
-option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
-if(OPENDIGITIZER_ENABLE_TESTING)
-  enable_testing()
 endif()
 
 add_subdirectory(src/service)
