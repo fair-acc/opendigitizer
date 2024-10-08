@@ -1,0 +1,57 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "cacheVariables": {
+                "ENABLE_COVERAGE": "OFF",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "DISABLE_WASM_BUILD": "ON",
+                "OPENDIGITIZER_ENABLE_TESTING": "ON",
+                "USE_DWARF4": "ON"
+            }
+        },
+        {
+            "name": "dev",
+            "description": "dev",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build-dev",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENABLE_IMGUI_TEST_ENGINE": "ON"
+            }
+        },
+        {
+            "name": "dev-asan",
+            "description": "dev-asan",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build-dev-asan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "OPENDIGITIZER_ENABLE_ASAN": "ON",
+                "ENABLE_IMGUI_TEST_ENGINE": "ON"
+            }
+        },
+        {
+            "name": "rel",
+            "description": "rel",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build-rel",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "dev-full",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build-dev-full",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "DISABLE_WASM_BUILD": "OFF",
+                "ENABLE_IMGUI_TEST_ENGINE": "ON"
+            }
+        }
+    ]
+}

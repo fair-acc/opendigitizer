@@ -10,6 +10,11 @@ set(EMCMAKE_COMMAND
     "emcmake"
     CACHE FILEPATH "Path to the emcmake command")
 
+if(OPENDIGITIZER_ENABLE_ASAN)
+  add_compile_options(-fsanitize=address)
+  add_link_options(-fsanitize=address)
+endif()
+
 include(ExternalProject)
 
 set(ROOT_BUILD_DIR ${CMAKE_BINARY_DIR})
@@ -53,6 +58,11 @@ add_library(project_warnings INTERFACE) # Link this 'library' to use the warning
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
+
+# personal
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-ld=lld")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fuse-ld=lld")
+set(LINK_FLAGS "${LINK_FLAGS} -fuse-ld=lld")
 
 add_subdirectory(src/acquisition)
 add_subdirectory(src/utils)
