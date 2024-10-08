@@ -85,7 +85,7 @@ jobs:
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
-        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DEMCMAKE_COMMAND=`which emcmake`
+        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_IMGUI_TEST_ENGINE=ON -DEMCMAKE_COMMAND=`which emcmake`
 
     - name: Build
       shell: bash
