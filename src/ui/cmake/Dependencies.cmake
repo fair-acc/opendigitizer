@@ -70,22 +70,63 @@ if(NOT EMSCRIPTEN)
   FetchContent_MakeAvailable(sdl2)
 endif()
 
+set(IMGUI_SRCS
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp)
+
+if(ENABLE_IMGUI_TEST_ENGINE)
+  # Test engine requires a special build of ImGui with special code for testing, should not be used in production
+  if(NOT OPENDIGITIZER_ENABLE_TESTING)
+    message(FATAL_ERROR "ENABLE_IMGUI_TEST_ENGINE does not make sense without OPENDIGITIZER_ENABLE_TESTING")
+  endif()
+
+  FetchContent_Declare(
+    imgui_test_engine
+    GIT_REPOSITORY https://github.com/ocornut/imgui_test_engine.git
+    GIT_TAG v1.91.0 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
+    SYSTEM)
+
+  FetchContent_MakeAvailable(imgui_test_engine)
+
+  # The recommended way to build the test engine is to bake it inside imgui, instead of a separate target as there's a
+  # bidirectional dependency between imgui and the test engine Hence this is guarded by ENABLE_IMGUI_TEST_ENGINE, not to
+  # be enabled in production.
+  set(IMGUI_SRCS
+      ${IMGUI_SRCS}
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_capture_tool.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_context.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_coroutine.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_engine.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_exporters.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_perftool.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_ui.cpp
+      ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_utils.cpp
+      ${imgui_test_engine_SOURCE_DIR}/shared/imgui_app.cpp)
+else()
+  # Only link the backends if we're not building imgui_test_engine, as it already builds them
+  set(IMGUI_SRCS ${IMGUI_SRCS} ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+                 ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp)
+endif()
+
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
-add_library(
-  imgui OBJECT
-  ${imgui_SOURCE_DIR}/imgui_demo.cpp
-  ${imgui_SOURCE_DIR}/imgui_draw.cpp
-  ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-  ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
-  ${imgui_SOURCE_DIR}/imgui_tables.cpp
-  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-  ${imgui_SOURCE_DIR}/imgui.cpp
-  ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp)
+add_library(imgui OBJECT ${IMGUI_SRCS})
+
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
   target_link_libraries(imgui PUBLIC SDL2::SDL2 OpenGL::GL)
 endif()
 
 target_include_directories(imgui SYSTEM BEFORE PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+
+if(ENABLE_IMGUI_TEST_ENGINE)
+  target_compile_definitions(imgui PUBLIC IMGUI_ENABLE_TEST_ENGINE IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
+                                          IMGUI_APP_SDL2_GL3)
+
+  target_include_directories(imgui PUBLIC ${imgui_test_engine_SOURCE_DIR})
+endif()
 
 add_library(implot OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_DIR}/implot_items.cpp
                           ${implot_SOURCE_DIR}/implot.cpp)

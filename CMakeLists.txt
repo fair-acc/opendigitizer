@@ -44,6 +44,7 @@ add_subdirectory(src/utils)
 add_subdirectory(src/ui)
 
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
+option(ENABLE_IMGUI_TEST_ENGINE, "Enable ImGui Test Engine" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
   ExternalProject_Add(
