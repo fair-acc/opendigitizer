@@ -98,18 +98,11 @@ bool ImGuiTestApp::runTests() {
         ImGuiTestEngine_PostSwap(_engine);
     }
 
-    bool success = false;
+    int count_tested  = 0;
+    int count_success = 0;
+    ImGuiTestEngine_GetResult(engine(), count_tested, count_success);
 
-    {
-        // Print results. This is optional, as we also have boost::ut asserting
-        int count_tested  = 0;
-        int count_success = 0;
-        ImGuiTestEngine_GetResult(engine(), count_tested, count_success);
-        ImGuiTestEngine_PrintResultSummary(engine());
-        success = count_tested == count_success;
-    }
-
-    return success;
+    return count_tested == count_success;
 }
 
 ImGuiTestEngine* ImGuiTestApp::engine() const { return _engine; }
