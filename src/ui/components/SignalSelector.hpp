@@ -305,7 +305,7 @@ public:
 
     void drawRemoteSignalsInput(FlowGraph* fg) {
         ImGui::AlignTextToFramePadding();
-        ImGui::Text("URI:");
+        ImGui::TextUnformatted("URI:");
         ImGui::SameLine();
         if (m_addRemoteSignalDialogOpened) {
             ImGui::SetKeyboardFocusHere();
@@ -359,7 +359,7 @@ public:
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(entry.frontend.c_str());
         ImGui::TableNextColumn();
-        ImGui::Text(entry.comment.c_str());
+        ImGui::TextUnformatted(entry.comment.c_str());
     }
 
     void drawSignalSelector(FlowGraph* fg) {
