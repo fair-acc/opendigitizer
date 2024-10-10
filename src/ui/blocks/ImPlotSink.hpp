@@ -24,10 +24,12 @@ struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::S
     float         signal_min = std::numeric_limits<float>::lowest();
     float         signal_max = std::numeric_limits<float>::max();
 
+    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, signal_name, signal_unit, signal_min, signal_max);
+
 public:
     gr::HistoryBuffer<T> data = gr::HistoryBuffer<T>{65536};
 
-    gr::work::Status processBulk(gr::ConsumableSpan auto& input) noexcept {
+    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         data.push_back_bulk(input);
         std::ignore = input.consume(input.size());
         return gr::work::Status::OK;
@@ -62,10 +64,12 @@ struct ImPlotSinkDataSet : public gr::Block<ImPlotSinkDataSet<T>, gr::BlockingIO
     float                      signal_max    = std::numeric_limits<float>::max();
     gr::Size_t                 dataset_index = std::numeric_limits<gr::Size_t>::max();
 
+    GR_MAKE_REFLECTABLE(ImPlotSinkDataSet, in, color, signal_name, signal_unit, signal_min, signal_max, dataset_index);
+
 public:
     gr::DataSet<T> data{};
 
-    gr::work::Status processBulk(gr::ConsumableSpan auto& input) noexcept {
+    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         data        = input.back();
         std::ignore = input.consume(input.size());
         return gr::work::Status::OK;
@@ -92,9 +96,6 @@ public:
 };
 
 } // namespace opendigitizer
-
-ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (opendigitizer::ImPlotSink<T>), in, color, signal_name, signal_unit, signal_min, signal_max);
-ENABLE_REFLECTION_FOR_TEMPLATE_FULL((typename T), (opendigitizer::ImPlotSinkDataSet<T>), in, color, signal_name, signal_unit, signal_min, signal_max, dataset_index);
 
 auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, double>(gr::globalBlockRegistry());
 auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float, double>(gr::globalBlockRegistry());

@@ -112,11 +112,11 @@ void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLo
 
             for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
                 const auto& port = prototype->dynamicInputPort(index);
-                instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+                instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
             }
             for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
                 const auto& port = prototype->dynamicOutputPort(index);
-                instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), port.name, false);
+                instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
             }
 
             if (first) {
@@ -126,7 +126,7 @@ void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLo
                 first                 = false;
             }
 
-            type->instantiations[parametrization] = std::move(instantiationType);
+            type->instantiations[std::string(parametrization)] = std::move(instantiationType);
         }
         addBlockDefinition(std::move(type));
     }

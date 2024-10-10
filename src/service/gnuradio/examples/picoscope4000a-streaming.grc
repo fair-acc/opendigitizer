@@ -1,6 +1,7 @@
 blocks:
-  - name: fair::picoscope::Picoscope4000a<double>
+  - name: fair::picoscope::Picoscope4000a<float>
     id: fair::picoscope::Picoscope4000a
+    template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
     parameters:
       acquisition_mode: Streaming
       auto_arm: true
@@ -15,7 +16,7 @@ blocks:
         - C
         - D
       channel_names:
-        - signal A
+        - test
         - signal B
         - signal C
         - signal D
@@ -29,19 +30,23 @@ blocks:
         - Test unit B
         - Test unit C
         - Test unit D
-      name: fair::picoscope::Picoscope4000a<double>
+      name: fair::picoscope::Picoscope4000a<float>
       sample_rate: 80000
       streaming_mode_poll_rate: 0.000010
   - name: sinkA
     id: gr::basic::DataSink
+    template_args: float
   - name: sinkB
     id: gr::basic::DataSink
+    template_args: float
   - name: sinkC
     id: gr::basic::DataSink
+    template_args: float
   - name: sinkD
     id: gr::basic::DataSink
+    template_args: float
 connections:
-  - [fair::picoscope::Picoscope4000a<double>, [0, 0], sinkA, 0]
-  - [fair::picoscope::Picoscope4000a<double>, [0, 1], sinkB, 0]
-  - [fair::picoscope::Picoscope4000a<double>, [0, 2], sinkC, 0]
-  - [fair::picoscope::Picoscope4000a<double>, [0, 3], sinkD, 0]
+  - [fair::picoscope::Picoscope4000a<float>, [0, 0], sinkA, 0]
+  - [fair::picoscope::Picoscope4000a<float>, [0, 1], sinkB, 0]
+  - [fair::picoscope::Picoscope4000a<float>, [0, 2], sinkC, 0]
+  - [fair::picoscope::Picoscope4000a<float>, [0, 3], sinkD, 0]

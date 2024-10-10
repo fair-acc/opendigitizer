@@ -7,14 +7,14 @@
 
 #include <IoSerialiserYaS.hpp>
 #include <MdpMessage.hpp>
-#include <opencmw.hpp>
 #include <RestClient.hpp>
+#include <opencmw.hpp>
 #include <type_traits>
 
 namespace opendigitizer {
 
 template<typename T>
-    requires std::is_floating_point_v<T>
+requires std::is_floating_point_v<T>
 struct RemoteSource : public gr::Block<RemoteSource<T>> {
     gr::PortOut<T>              out;
     std::string                 remote_uri;
@@ -23,6 +23,8 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
     float                       signal_min;
     float                       signal_max;
     opencmw::client::RestClient _client;
+
+    GR_MAKE_REFLECTABLE(RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max);
 
     struct Data {
         opendigitizer::acq::Acquisition acq;
@@ -36,17 +38,17 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    void                   updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition &acq) {
+    void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
-            this->settings().set({ { "signal_name", acq.channelName.value() }, { "signal_unit", acq.channelUnit.value() }, { "signal_min", acq.channelRangeMin.value() }, { "signal_max", acq.channelRangeMax.value() } });
+            this->settings().set({{"signal_name", acq.channelName.value()}, {"signal_unit", acq.channelUnit.value()}, {"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
         }
     }
 
-    auto processBulk(gr::PublishableSpan auto &output) noexcept {
+    auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
-            auto &d = _queue->data.front();
+            auto& d = _queue->data.front();
             updateSettingsFromAcquisition(d.acq);
             auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
             in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
@@ -66,8 +68,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
         return gr::work::Status::OK;
     }
 
-    void
-    settingsChanged(const gr::property_map &old_settings, const gr::property_map & /*new_settings*/) {
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         const auto oldValue = old_settings.find("remote_uri");
         if (oldValue != old_settings.end()) {
             const auto oldUri = std::get<std::string>(oldValue->second);
@@ -76,7 +77,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
                 opencmw::client::Command command;
                 command.command  = opencmw::mdp::Command::Unsubscribe;
                 command.topic    = opencmw::URI<>(remote_uri);
-                command.callback = [oldUri](const opencmw::mdp::Message &) {
+                command.callback = [oldUri](const opencmw::mdp::Message&) {
                     // TODO: Add cleanup once openCMW starts calling the callback
                     // on successful unsubscribe
                     fmt::print("Unsubscribed from {} successfully\n", oldUri);
@@ -91,7 +92,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 
         std::weak_ptr maybeQueue = _queue;
 
-        command.callback         = [maybeQueue](const opencmw::mdp::Message &rep) {
+        command.callback = [maybeQueue](const opencmw::mdp::Message& rep) {
             if (rep.data.empty()) {
                 return;
             }
@@ -104,8 +105,8 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
                 std::lock_guard lock(queue->mutex);
-                queue->data.push_back({ std::move(acq), 0 });
-            } catch (opencmw::ProtocolException &e) {
+                queue->data.push_back({std::move(acq), 0});
+            } catch (opencmw::ProtocolException& e) {
                 fmt::print(std::cerr, "{}\n", e.what());
                 return;
             }
@@ -115,8 +116,6 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 };
 
 } // namespace opendigitizer
-
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max)
 
 auto registerRemoteSource = gr::registerBlock<opendigitizer::RemoteSource, float, double>(gr::globalBlockRegistry());
 

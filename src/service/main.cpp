@@ -14,13 +14,10 @@
 #include "rest/fileserverRestBackend.hpp"
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
+#include <Picoscope4000a.hpp>
 #include <gnuradio-4.0/basic/Selector.hpp>
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.hpp>
-
-#ifndef __EMSCRIPTEN__
-#include <Picoscope4000a.hpp>
-#endif
 
 #include "build_configuration.hpp"
 #include "settings.hpp"
@@ -36,9 +33,11 @@ struct TestSource : public gr::Block<TestSource<T>> {
     std::size_t               _produced   = 0;
     std::optional<time_point> _start;
 
+    GR_MAKE_REFLECTABLE(TestSource, out, sample_rate);
+
     void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) { _produced = 0; }
 
-    gr::work::Status processBulk(gr::PublishableSpan auto& output) noexcept {
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
         using enum gr::work::Status;
         auto       n   = output.size();
         const auto now = clock::now();
@@ -73,8 +72,6 @@ struct TestSource : public gr::Block<TestSource<T>> {
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE(TestSource, out, sample_rate);
-
 namespace {
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
@@ -82,10 +79,11 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<TestSource, double, float>(registry);
     gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
-#ifndef __EMSCRIPTEN__
-    // TODO: Current implementation of Picoscope4000a does not satisfy the new block API
-    // gr::registerBlock<fair::picoscope::Picoscope4000a, double, float, std::int16_t>(registry);
-#endif
+    gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float, std::int16_t>(registry); // ommitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
+    fmt::print("providedBlocks:\n");
+    for (auto& blockName : registry.providedBlocks()) {
+        fmt::print("  - {}: {}\n", blockName, registry.knownBlockParameterizations(blockName));
+    }
 #pragma GCC diagnostic pop
 }
 } // namespace

@@ -6,17 +6,18 @@
 namespace opendigitizer {
 
 template<typename T>
-    requires std::is_arithmetic_v<T>
+requires std::is_arithmetic_v<T>
 struct Arithmetic : public gr::Block<Arithmetic<T>> {
-    gr::PortIn<T>                           in1;
-    gr::PortIn<T>                           in2;
+    gr::PortIn<T> in1;
+    gr::PortIn<T> in2;
 
-    gr::PortOut<T>                          out;
+    gr::PortOut<T> out;
 
     gr::Annotated<std::string, "operation"> operation = std::string("+");
 
-    constexpr T
-    processOne(T a, T b) {
+    GR_MAKE_REFLECTABLE(Arithmetic, in1, in2, out, operation);
+
+    constexpr T processOne(T a, T b) {
         auto setting = this->settings().get("operation");
         if (setting.has_value()) {
             auto op = setting.value();
@@ -35,8 +36,6 @@ struct Arithmetic : public gr::Block<Arithmetic<T>> {
 };
 
 } // namespace opendigitizer
-
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::Arithmetic, in1, in2, out, operation)
 
 auto registerArithmetic = gr::registerBlock<opendigitizer::Arithmetic, float, double>(gr::globalBlockRegistry());
 
