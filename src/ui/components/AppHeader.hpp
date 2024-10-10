@@ -10,6 +10,7 @@
 
 #include "../common/AppDefinitions.hpp"
 #include "../common/ImguiWrap.hpp"
+#include "../components/Notification.hpp"
 
 #include <SDL_opengl.h>
 #include <stb_image.h>
@@ -35,17 +36,18 @@ inline void TextRight(const std::string_view text) {
     ImGui::Text("%s", text.data());
 }
 
-inline bool LoadTextureFromFile(const char *filename, GLuint *out_texture, ImVec2 &textureSize) {
+inline bool LoadTextureFromFile(const char* filename, GLuint* out_texture, ImVec2& textureSize) {
     // Load from file
-    int            image_width  = 0;
-    int            image_height = 0;
+    int image_width  = 0;
+    int image_height = 0;
 
-    auto           fs           = cmrc::ui_assets::get_filesystem();
-    auto           file         = fs.open(filename);
+    auto fs   = cmrc::ui_assets::get_filesystem();
+    auto file = fs.open(filename);
 
-    unsigned char *image_data   = stbi_load_from_memory(reinterpret_cast<const unsigned char *>(file.begin()), file.size(), &image_width, &image_height, nullptr, 4);
-    if (image_data == NULL)
+    unsigned char* image_data = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), file.size(), &image_width, &image_height, nullptr, 4);
+    if (image_data == NULL) {
         return false;
+    }
 
     // Create a OpenGL texture identifier
     GLuint image_texture;
@@ -79,28 +81,26 @@ public:
     std::function<void(ViewMode)>           requestApplicationSwitchMode;
     std::function<void(LookAndFeel::Style)> requestApplicationSwitchTheme;
 
-    ImVec2                                  logoSize{ 0.f, 0.f };
-    GLuint                                  imgFairLogo     = 0;
-    GLuint                                  imgFairLogoDark = 0;
+    ImVec2 logoSize{0.f, 0.f};
+    GLuint imgFairLogo     = 0;
+    GLuint imgFairLogoDark = 0;
 
-    void                                    loadAssets() {
-        [[maybe_unused]] bool ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png",
-                                                   &imgFairLogo, logoSize);
+    void loadAssets() {
+        [[maybe_unused]] bool ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi.png", &imgFairLogo, logoSize);
         IM_ASSERT(ret);
 
-        ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png",
-                                                   &imgFairLogoDark, logoSize);
+        ret = detail::LoadTextureFromFile("assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png", &imgFairLogoDark, logoSize);
         IM_ASSERT(ret);
     }
 
-    void draw(std::string_view title, ImFont *title_font, LookAndFeel::Style style) {
+    void draw(std::string_view title, ImFont* title_font, LookAndFeel::Style style) {
         using namespace detail;
         // localtime
         const auto clock         = std::chrono::system_clock::now();
         const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (LOC)}", std::chrono::round<std::chrono::seconds>(clock));
         const auto utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
-        const auto topLeft       = ImGui::GetCursorPos();
+        const auto topLeft = ImGui::GetCursorPos();
         // draw title
         ImVec2 localLogoSize;
         {
@@ -152,28 +152,12 @@ public:
             const bool wasAlreadyOpen = leftMenu.isOpen();
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ 126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f }); // green
-                leftMenu.addButton(
-                        "\uF201", [this]() {
-                            requestApplicationSwitchMode(ViewMode::VIEW);
-                        },
-                        LookAndFeel::instance().fontIconsSolidLarge, "switch to view mode");
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f}); // green
+                leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::VIEW); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to view mode");
 
-                leftMenu.addButton(
-                        "\uF248", [this]() {
-                            requestApplicationSwitchMode(ViewMode::LAYOUT);
-                        },
-                        LookAndFeel::instance().fontIconsSolidLarge, "switch to layout mode");
-                leftMenu.addButton(
-                        "\uF542", [this]() {
-                            requestApplicationSwitchMode(ViewMode::FLOWGRAPH);
-                        },
-                        LookAndFeel::instance().fontIconsSolidLarge, "click to edit flow-graph");
-                leftMenu.addButton(
-                        "", [this]() {
-                            requestApplicationSwitchMode(ViewMode::OPEN_SAVE_DASHBOARD);
-                        },
-                        LookAndFeel::instance().fontIconsSolidLarge, "click to open/save new dashboards");
+                leftMenu.addButton("\uF248", [this]() { requestApplicationSwitchMode(ViewMode::LAYOUT); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to layout mode");
+                leftMenu.addButton("\uF542", [this]() { requestApplicationSwitchMode(ViewMode::FLOWGRAPH); }, LookAndFeel::instance().fontIconsSolidLarge, "click to edit flow-graph");
+                leftMenu.addButton("", [this]() { requestApplicationSwitchMode(ViewMode::OPEN_SAVE_DASHBOARD); }, LookAndFeel::instance().fontIconsSolidLarge, "click to open/save new dashboards");
             }
 
             if (wasAlreadyOpen && !ImGui::IsItemHovered()) {
@@ -184,7 +168,7 @@ public:
 
         // draw fair logo
         ImGui::SameLine(0.f, 0.f);
-        const ImTextureID imgLogo = (void *) (intptr_t) (style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+        const ImTextureID imgLogo = (void*)(intptr_t)(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
         if (ImGui::ImageButton(imgLogo, localLogoSize)) {
             // call url to project site
         }
@@ -210,75 +194,80 @@ public:
             using enum DigitizerUi::WindowMode;
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ .3f, .3f, 1.0f, 1.f }); // blue
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
                 rightMenu.addButton(
-                        LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065", [&rightMenu](MenuButton &button) {
-                            LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
-                            button.label                              = LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065";
-                            rightMenu.forceClose();
-                        },
-                        LookAndFeel::instance().fontIconsSolidLarge, "toggle between fullscreen and windowed mode");
+                    LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065",
+                    [&rightMenu](MenuButton& button) {
+                        LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == FULLSCREEN ? RESTORED : FULLSCREEN;
+                        button.label                              = LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065";
+                        rightMenu.forceClose();
+                    },
+                    LookAndFeel::instance().fontIconsSolidLarge, "toggle between fullscreen and windowed mode");
             }
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ .3f, .3f, 1.0f, 1.f }); // blue
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
                 using enum LookAndFeel::Style;
-                rightMenu.addButton((LookAndFeel::instance().style == Light) ? "" : "", [this](MenuButton &button) {
-                    const bool isDarkMode = LookAndFeel::instance().style == Dark;
-                    requestApplicationSwitchTheme(isDarkMode ? Light : Dark);
-                    button.label   = isDarkMode ? "" : "";
-                    button.toolTip = isDarkMode ? "switch to dark mode" : "switch to light mode";
-                },
-                        LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().style == Dark ? "switch to light mode" : "switch to dark mode");
+                rightMenu.addButton((LookAndFeel::instance().style == Light) ? "" : "",
+                    [this](MenuButton& button) {
+                        const bool isDarkMode = LookAndFeel::instance().style == Dark;
+                        requestApplicationSwitchTheme(isDarkMode ? Light : Dark);
+                        button.label   = isDarkMode ? "" : "";
+                        button.toolTip = isDarkMode ? "switch to dark mode" : "switch to light mode";
+                    },
+                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().style == Dark ? "switch to light mode" : "switch to dark mode");
 
                 rightMenu.addButton(
-                        LookAndFeel::instance().prototypeMode ? "" : "", [](MenuButton &button) {
-                            LookAndFeel::mutableInstance().prototypeMode = !LookAndFeel::instance().prototypeMode;
-                            button.label                                 = LookAndFeel::instance().prototypeMode ? "" : "";
-                            ImGui::GetIO().FontDefault                   = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
-                        },
-                        LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode");
+                    LookAndFeel::instance().prototypeMode ? "" : "",
+                    [](MenuButton& button) {
+                        LookAndFeel::mutableInstance().prototypeMode = !LookAndFeel::instance().prototypeMode;
+                        button.label                                 = LookAndFeel::instance().prototypeMode ? "" : "";
+                        ImGui::GetIO().FontDefault                   = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
+                    },
+                    LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode");
             }
 
             if (LookAndFeel::instance().isDesktop) {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ .3f, .3f, 1.0f, 1.f }); // blue
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
+                rightMenu.addButton("", []() { LookAndFeel::mutableInstance().windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window");
                 rightMenu.addButton(
-                        "", []() { LookAndFeel::mutableInstance().windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window");
-                rightMenu.addButton(
-                        LookAndFeel::instance().windowMode == RESTORED ? "" : "", [&rightMenu](MenuButton &button) {
-                            LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == MAXIMISED ? RESTORED : MAXIMISED;
-                            button.label                              = LookAndFeel::instance().windowMode == RESTORED ? "" : "";
-                            button.toolTip                            = LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window";
-                            rightMenu.forceClose();
-                        },
-                        LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window");
+                    LookAndFeel::instance().windowMode == RESTORED ? "" : "",
+                    [&rightMenu](MenuButton& button) {
+                        LookAndFeel::mutableInstance().windowMode = LookAndFeel::instance().windowMode == MAXIMISED ? RESTORED : MAXIMISED;
+                        button.label                              = LookAndFeel::instance().windowMode == RESTORED ? "" : "";
+                        button.toolTip                            = LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window";
+                        rightMenu.forceClose();
+                    },
+                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window");
             }
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ .3f, .3f, 1.0f, 1.f }); // blue
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
 #ifdef __EMSCRIPTEN__
                 constexpr bool newLine = false;
 #else
                 constexpr bool newLine = true;
 #endif
                 rightMenu.addButton<false, newLine>(
-                        "", [](MenuButton &button) {
-                            LookAndFeel::mutableInstance().touchDiagnostics = !LookAndFeel::instance().touchDiagnostics;
-                            button.font                                     = LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig;
-                            button.toolTip                                  = LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
-                        },
-                        LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
+                    "",
+                    [](MenuButton& button) {
+                        LookAndFeel::mutableInstance().touchDiagnostics = !LookAndFeel::instance().touchDiagnostics;
+                        button.font                                     = LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig;
+                        button.toolTip                                  = LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
+                    },
+                    LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
             }
 
             if (LookAndFeel::instance().isDesktop) {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{ 1.0f, 0.0f, 0.0f, 1.0f }); // red
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{1.0f, 0.0f, 0.0f, 1.0f}); // red
                 rightMenu.addButton(
-                        "", [this, &rightMenu]() {
-                            fmt::print("requesting exit\n");
-                            requestApplicationStop();
-                            rightMenu.forceClose();
-                        },
-                        LookAndFeel::instance().fontIconsBig, "close app");
+                    "",
+                    [this, &rightMenu]() {
+                        fmt::print("requesting exit\n");
+                        requestApplicationStop();
+                        rightMenu.forceClose();
+                    },
+                    LookAndFeel::instance().fontIconsBig, "close app");
             }
         }
 

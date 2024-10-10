@@ -15,13 +15,32 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 set(DIGITIZER_UI_SRCS
     main.cpp
     Flowgraph.cpp
+    Flowgraph.hpp
     FlowgraphItem.cpp
+    FlowgraphItem.hpp
     Dashboard.cpp
+    Dashboard.hpp
     DashboardPage.cpp
+    DashboardPage.hpp
     OpenDashboardPage.cpp
+    OpenDashboardPage.hpp
     RemoteSignalSources.cpp
+    RemoteSignalSources.hpp
+    components/AppHeader.hpp
     components/Block.cpp
+    components/Block.hpp
+    components/Dialog.hpp
+    components/FilterComboBoxes.hpp
+    components/Keypad.hpp
+    components/ListBox.hpp
+    components/Notification.cpp
+    components/Notification.hpp
+    components/PopupMenu.hpp
+    components/SelectedLabelsView.hpp
+    components/SignalSelector.hpp
     components/Splitter.cpp
+    components/Splitter.hpp
+    components/Toolbar.hpp
     utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
 )
 
@@ -144,7 +163,13 @@ if(EMSCRIPTEN)
 else() # native build
 
   set(target_name "opendigitizer-ui")
-  add_executable(${target_name} common/TouchHandler.hpp)
+  add_executable(
+    ${target_name}
+    common/AppDefinitions.hpp
+    common/Events.hpp
+    common/ImguiWrap.hpp
+    common/LookAndFeel.hpp
+    common/TouchHandler.hpp)
 
   target_sources(${target_name} PRIVATE ${DIGITIZER_UI_SRCS})
 

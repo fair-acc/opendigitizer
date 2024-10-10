@@ -153,7 +153,8 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
             stream.seekg(0);
 
 #define ERR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
-    fmt::print("Cannot load dashboard from '{}'. File is corrupted.\n", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \
+    auto msg = fmt::format("Cannot load dashboard from '{}'. File is corrupted.", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
+    components::Notification::warning(msg);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
     errCb();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \
     return;
 
@@ -256,14 +257,14 @@ void Dashboard::load() {
                     // Load is called after parsing the flowgraph so that we already have the list of sources
                     _this->doLoad(data[1]);
                 } catch (const std::exception& e) {
-                    // TODO show error message
-                    fmt::println(std::cerr, "Error: {}", e.what());
+                    components::Notification::error(fmt::format("Error: {}", e.what()));
                     App::instance().closeDashboard();
                 }
             },
             [_this = shared()]() {
-                // TODO show error message
-                fmt::print(std::cerr, "Invalid flowgraph for dashboard {}/{}\n", _this->m_desc->source->path, _this->m_desc->filename);
+                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->source->path, _this->m_desc->filename);
+                components::Notification::error(error);
+
                 App::instance().closeDashboard();
             });
     } else {
@@ -301,7 +302,8 @@ void Dashboard::doLoad(const std::string& desc) {
 
         auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == nameStr; });
         if (source == m_sources.end()) {
-            fmt::print("Unable to find the source '{}.{}'\n", blockStr, portNum);
+            auto msg = fmt::format("Unable to find the source '{}.{}'", blockStr, portNum);
+            components::Notification::warning(msg);
             continue;
         }
 
@@ -354,7 +356,8 @@ void Dashboard::doLoad(const std::string& desc) {
             } else if (axisStr == "Y") {
                 ax.axis = Plot::Axis::Y;
             } else {
-                fmt::print("Unknown axis {}\n", axisStr);
+                auto msg = fmt::format("Unknown axis {}", axisStr);
+                components::Notification::warning(msg);
                 return;
             }
 
@@ -481,7 +484,8 @@ void Dashboard::save() {
 
         std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
         if (!stream.is_open()) {
-            fmt::print("can't open file for writing\n");
+            auto msg = fmt::format("can't open file for writing");
+            components::Notification::warning(msg);
             return;
         }
 
@@ -534,7 +538,8 @@ void Dashboard::loadPlotSources() {
         for (const auto& name : plot.sourceNames) {
             auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == name; });
             if (source == m_sources.end()) {
-                fmt::print("Unable to find source {}\n", name);
+                auto msg = fmt::format("Unable to find source {}", name);
+                components::Notification::warning(msg);
                 continue;
             }
             plot.sources.push_back(&*source);
@@ -547,7 +552,8 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::string_vi
         try {
             return opencmw::URI<>(std::string(uri_));
         } catch (const std::exception& e) {
-            fmt::println(std::cerr, "remote_source of '{}' is not a valid URI '{}': {}\n", blockName, uri_, e.what());
+            auto msg = fmt::format("remote_source of '{}' is not a valid URI '{}': {}", blockName, uri_, e.what());
+            components::Notification::error(msg);
             return {};
         }
     }();
@@ -561,7 +567,8 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::string_vi
 
     const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
-        fmt::println("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
+        auto msg = fmt::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
+        components::Notification::warning(msg);
         auto& s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
     }
@@ -610,7 +617,7 @@ void Dashboard::Service::execute() {
     command.topic    = opencmw::URI<>(uri);
     command.callback = [&](const opencmw::mdp::Message& rep) {
         if (!rep.error.empty()) {
-            fmt::print("{}\n", rep.error);
+            components::Notification::warning(rep.error);
         }
     };
     client.request(command);
