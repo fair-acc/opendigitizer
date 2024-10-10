@@ -17,17 +17,16 @@ template<typename T>
 struct ForeverSource : public gr::Block<ForeverSource<T>> {
     gr::PortOut<T> out;
 
-    gr::work::Status
-    processBulk(gr::PublishableSpan auto &output) noexcept {
+    GR_MAKE_REFLECTABLE(ForeverSource, out);
+
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
         output.publish(output.size());
         return gr::work::Status::OK;
     }
 };
 
-ENABLE_REFLECTION_FOR_TEMPLATE(ForeverSource, out)
-
 template<typename Registry>
-void                   registerTestBlocks(Registry &registry) {
+void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<CountSource, double>(registry);
@@ -52,10 +51,10 @@ std::vector<float> getIota(std::size_t n, float first = 0.f) {
     return v;
 }
 
-client::ClientContext makeClient(zmq::Context &ctx) {
+client::ClientContext makeClient(zmq::Context& ctx) {
     std::vector<std::unique_ptr<client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<client::MDClientCtx>(ctx, 20ms, ""));
-    return client::ClientContext{ std::move(clients) };
+    return client::ClientContext{std::move(clients)};
 }
 
 void waitWhile(auto condition) {
@@ -65,7 +64,9 @@ void waitWhile(auto condition) {
     constexpr auto kSleepInterval = 100ms;
     auto           elapsed        = 0ms;
     while (elapsed < kTimeout) {
-        if (!condition()) return;
+        if (!condition()) {
+            return;
+        }
         std::this_thread::sleep_for(kSleepInterval);
         elapsed += kSleepInterval;
     }
@@ -75,9 +76,13 @@ void waitWhile(auto condition) {
 } // namespace
 
 struct TestSetup {
-    using AcqWorker                    = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
-    using FgWorker                     = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
-    gr::BlockRegistry     registry     = [] { gr::BlockRegistry r; registerTestBlocks(r); return r; }();
+    using AcqWorker            = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
+    using FgWorker             = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
+    gr::BlockRegistry registry = [] {
+        gr::BlockRegistry r;
+        registerTestBlocks(r);
+        return r;
+    }();
     gr::PluginLoader      pluginLoader = gr::PluginLoader(registry, {});
     majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
     AcqWorker             acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
@@ -102,8 +107,8 @@ struct TestSetup {
         std::this_thread::sleep_for(100ms);
     }
 
-    void subscribeClient(const URI<> &uri, std::function<void(const Acquisition &)> &&handlerFnc) {
-        client.subscribe(uri, [handler = std::move(handlerFnc)](const mdp::Message &update) {
+    void subscribeClient(const URI<>& uri, std::function<void(const Acquisition&)>&& handlerFnc) {
+        client.subscribe(uri, [handler = std::move(handlerFnc)](const mdp::Message& update) {
             fmt::println("Client 'received message from service '{}' for topic '{}'", update.serviceName, update.topic.str());
             Acquisition acq;
             IoBuffer    buffer(update.data);
@@ -113,7 +118,7 @@ struct TestSetup {
                     throw result.exceptions.front();
                 }
                 handler(acq);
-            } catch (const ProtocolException &e) {
+            } catch (const ProtocolException& e) {
                 fmt::println(std::cerr, "Parsing failed: {}", e.what());
                 throw;
             }
@@ -121,7 +126,7 @@ struct TestSetup {
     }
 
     void setGrc(std::string_view grc, auto callback) {
-        opendigitizer::flowgraph::Flowgraph fg{ std::string(grc), {} };
+        opendigitizer::flowgraph::Flowgraph fg{std::string(grc), {}};
         IoBuffer                            buffer;
         serialise<Json>(buffer, fg);
         client.set(URI("mdp://127.0.0.1:12346/GnuRadio/FlowGraph"), std::move(callback), std::move(buffer));
@@ -129,7 +134,11 @@ struct TestSetup {
 
     void setGrc(std::string_view grc) {
         std::atomic<bool> receivedReply = false;
-        setGrc(grc, [&](const auto &reply) { expect(eq(reply.error, std::string{})); expect(!reply.data.empty()); receivedReply = true; });
+        setGrc(grc, [&](const auto& reply) {
+            expect(eq(reply.error, std::string{}));
+            expect(!reply.data.empty());
+            receivedReply = true;
+        });
         waitWhile([&receivedReply] { return !receivedReply.load(); });
     }
 
@@ -191,15 +200,15 @@ connections:
             }
         });
 
-        constexpr std::size_t      kExpectedSamples = 100;
-        const std::vector<float>   expectedUpData   = getIota(kExpectedSamples);
-        auto                       expectedDownData = expectedUpData;
+        constexpr std::size_t    kExpectedSamples = 100;
+        const std::vector<float> expectedUpData   = getIota(kExpectedSamples);
+        auto                     expectedDownData = expectedUpData;
         std::reverse(expectedDownData.begin(), expectedDownData.end());
 
         std::vector<float>       receivedUpData;
         std::atomic<std::size_t> receivedUpCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
             expect(acq.channelUnit.value() == "up unit"sv);
             expect(acq.channelRangeMin == 0.f);
             expect(acq.channelRangeMax == 99.f);
@@ -210,7 +219,7 @@ connections:
         std::vector<float>       receivedDownData;
         std::atomic<std::size_t> receivedDownCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
             expect(acq.channelUnit.value() == "down unit"sv);
             expect(acq.channelRangeMin == 0.f);
             expect(acq.channelRangeMax == 99.f);
@@ -277,17 +286,17 @@ connections:
   - [delay, 0, test_sink_down, 0]
 )";
 
-        TestSetup                  test;
+        TestSetup test;
 
-        constexpr std::size_t      kExpectedSamples = 100;
-        const std::vector<float>   expectedUpData   = getIota(kExpectedSamples);
-        auto                       expectedDownData = expectedUpData;
+        constexpr std::size_t    kExpectedSamples = 100;
+        const std::vector<float> expectedUpData   = getIota(kExpectedSamples);
+        auto                     expectedDownData = expectedUpData;
         std::reverse(expectedDownData.begin(), expectedDownData.end());
 
         std::vector<float>       receivedUpData;
         std::atomic<std::size_t> receivedUpCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
             receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedUpCount = receivedUpData.size();
         });
@@ -295,7 +304,7 @@ connections:
         std::vector<float>       receivedDownData;
         std::atomic<std::size_t> receivedDownCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
             receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedDownCount = receivedDownData.size();
         });
@@ -337,24 +346,20 @@ connections:
   - [source, 0, test_sink, 0]
 )";
 
-        std::mutex                 dnsMutex;
-        std::vector<SignalEntry>   lastDnsEntries;
-        TestSetup                  test([&lastDnsEntries, &dnsMutex](auto entries) {
+        std::mutex               dnsMutex;
+        std::vector<SignalEntry> lastDnsEntries;
+        TestSetup                test([&lastDnsEntries, &dnsMutex](auto entries) {
             if (!entries.empty()) {
                 std::lock_guard lock(dnsMutex);
                 lastDnsEntries = std::move(entries);
             }
         });
 
-        std::atomic<std::size_t>   receivedCount1 = 0;
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test1"), [&receivedCount1](const auto &acq) {
-            receivedCount1 += acq.channelValue.size();
-        });
+        std::atomic<std::size_t> receivedCount1 = 0;
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test1"), [&receivedCount1](const auto& acq) { receivedCount1 += acq.channelValue.size(); });
 
         std::atomic<std::size_t> receivedCount2 = 0;
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test2"), [&receivedCount2](const auto &acq) {
-            receivedCount2 += acq.channelValue.size();
-        });
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test2"), [&receivedCount2](const auto& acq) { receivedCount2 += acq.channelValue.size(); });
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
@@ -402,10 +407,10 @@ connections:
 )";
         TestSetup                  test;
 
-        std::vector<float>         receivedData;
-        std::atomic<std::size_t>   receivedCount = 0;
+        std::vector<float>       receivedData;
+        std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
             expect(acq.acqTriggerName.value() == "hello");
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
@@ -445,10 +450,10 @@ connections:
 )";
         TestSetup                  test;
 
-        std::vector<float>         receivedData;
-        std::atomic<std::size_t>   receivedCount = 0;
+        std::vector<float>       receivedData;
+        std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
             expect(acq.acqTriggerName.value() == "hello");
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
@@ -494,10 +499,10 @@ connections:
             }
         });
 
-        std::vector<float>         receivedData;
-        std::atomic<std::size_t>   receivedCount = 0;
+        std::vector<float>       receivedData;
+        std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=multiplexed&triggerNameFilter=start"), [&receivedData, &receivedCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=multiplexed&triggerNameFilter=start"), [&receivedData, &receivedCount](const auto& acq) {
             expect(acq.acqTriggerName.value() == "start");
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
@@ -546,16 +551,16 @@ connections:
 )";
         std::vector<SignalEntry>   lastDnsEntries;
 
-        TestSetup                  test([&lastDnsEntries](auto entries) {
+        TestSetup test([&lastDnsEntries](auto entries) {
             if (!entries.empty()) {
                 lastDnsEntries = std::move(entries);
             }
         });
 
-        std::vector<float>         receivedData;
-        std::atomic<std::size_t>   receivedCount = 0;
+        std::vector<float>       receivedData;
+        std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=snapshot&triggerNameFilter=shoot&snapshotDelay=3000000000"), [&receivedData, &receivedCount](const auto &acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=snapshot&triggerNameFilter=shoot&snapshotDelay=3000000000"), [&receivedData, &receivedCount](const auto& acq) {
             expect(eq(acq.acqTriggerName.value(), "shoot"sv));
             expect(eq(acq.channelUnit.value(), "A unit"sv));
             expect(eq(acq.channelRangeMin, -42.f));
@@ -570,7 +575,7 @@ connections:
         waitWhile([&] { return receivedCount == 0; });
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
-        expect(eq(receivedData, std::vector{ 80.f }));
+        expect(eq(receivedData, std::vector{80.f}));
         expect(eq(lastDnsEntries.size(), 1UZ));
         if (!lastDnsEntries.empty()) {
             expect(eq(lastDnsEntries[0].name, "count"sv));
@@ -598,8 +603,8 @@ connections:
 )";
         TestSetup                  test;
 
-        std::atomic<bool>          receivedReply = false;
-        test.setGrc(grc, [&receivedReply](const auto &reply) {
+        std::atomic<bool> receivedReply = false;
+        test.setGrc(grc, [&receivedReply](const auto& reply) {
             expect(eq(reply.data.asString(), std::string{}));
             expect(neq(reply.error, std::string{}));
             receivedReply = true;
@@ -651,14 +656,14 @@ connections:
                 }
             });
 
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpCount](const Acquisition &acq) {
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpCount](const Acquisition& acq) {
                 expect(eq(acq.channelName.value(), "count_up"sv));
                 expect(eq(acq.channelUnit.value(), "Test unit A"sv));
                 expect(eq(acq.channelRangeMin, -42.f));
                 expect(eq(acq.channelRangeMax, 42.f));
                 receivedUpCount += acq.channelValue.size();
             });
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownCount](const Acquisition &acq) {
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownCount](const Acquisition& acq) {
                 expect(eq(acq.channelName.value(), "count_down"sv));
                 expect(eq(acq.channelUnit.value(), "Test unit B"sv));
                 expect(eq(acq.channelRangeMin, 0.f));
@@ -682,5 +687,4 @@ connections:
     };
 };
 
-int main() { /* not needed for ut */
-}
+int main() { /* not needed for ut */ }
