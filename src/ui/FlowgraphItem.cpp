@@ -12,8 +12,8 @@
 #include "common/LookAndFeel.hpp"
 
 #include "components/Dialog.hpp"
+#include "components/ImGuiNotify.hpp"
 #include "components/ListBox.hpp"
-#include "components/Notification.hpp"
 #include "components/Splitter.hpp"
 
 namespace DigitizerUi {

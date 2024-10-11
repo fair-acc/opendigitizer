@@ -20,7 +20,7 @@
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
-#include "components/Notification.hpp"
+#include "components/ImGuiNotify.hpp"
 
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>

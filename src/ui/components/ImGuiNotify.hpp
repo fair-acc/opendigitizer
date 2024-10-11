@@ -22,6 +22,9 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
+
 #define ICON_FA_XMARK                "\xef\x80\x8d" // U+f00d
 #define ICON_FA_CIRCLE_CHECK         "\xef\x81\x98" // U+f058
 #define ICON_FA_TRIANGLE_EXCLAMATION "\xef\x81\xb1" // U+f071
@@ -117,9 +120,9 @@ public:
      *
      * @param type The type of the toast notification.
      */
-    inline void setType(const ImGuiToastType& type) {
-        IM_ASSERT(type < ImGuiToastType::COUNT);
-        this->type = type;
+    inline void setType(const ImGuiToastType& _type) {
+        IM_ASSERT(_type < ImGuiToastType::COUNT);
+        this->type = _type;
     }
 
     /**
@@ -127,7 +130,7 @@ public:
      *
      * @param flags ImGui window flags to set.
      */
-    inline void setWindowFlags(const ImGuiWindowFlags& flags) { this->flags = flags; }
+    inline void setWindowFlags(const ImGuiWindowFlags& _flags) { this->flags = _flags; }
 
     /**
      * @brief Set the function to run on the button click in the notification.
@@ -527,5 +530,42 @@ inline void RenderNotifications() {
     }
 }
 } // namespace ImGui
+
+namespace DigitizerUi::components {
+
+struct Notification {
+    std::string               text;
+    std::chrono::milliseconds dismissTime{5000};
+
+    inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), text.c_str()}); }
+
+    inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), text.c_str()}); }
+
+    inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), text.c_str()}); }
+
+    inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), text.c_str()}); }
+
+    inline static void render() {
+        // Notifications style setup
+        IMW::StyleFloatVar _(ImGuiStyleVar_WindowRounding, 0.5f);  // round borders
+        IMW::StyleFloatVar _(ImGuiStyleVar_WindowBorderSize, 1.f); // visible borders
+
+        // Notifications color setup
+        if (LookAndFeel::instance().style == LookAndFeel::Style::Dark) {
+            IMW::StyleColor _(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
+        } else {
+            IMW::StyleColor _(ImGuiCol_WindowBg, ImVec4(1.00f, 1.00f, 1.00f, 1.00f)); // White background
+        }
+
+        // Main rendering function
+        ImGui::RenderNotifications();
+    }
+};
+
+} // namespace DigitizerUi::components
 
 #endif
