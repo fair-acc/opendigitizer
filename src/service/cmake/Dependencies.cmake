@@ -5,7 +5,7 @@ include(FetchContent)
 FetchContent_Declare(
         gr-digitizers
         GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
-        GIT_TAG 0ad25d0d2947aac288cf76b1626816a5044b753e # dev-prototype as of 2024-04-25
+        GIT_TAG bumpGR4 # TODO: remove this before merging # ba28ef2be685b84d917843b8c790e9156ca5e5e6 # dev-prototype as of 2024-10-11
         SYSTEM
 )
 
