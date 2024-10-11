@@ -33,8 +33,7 @@ set(DIGITIZER_UI_SRCS
     components/FilterComboBoxes.hpp
     components/Keypad.hpp
     components/ListBox.hpp
-    components/Notification.cpp
-    components/Notification.hpp
+    components/ImGuiNotify.hpp
     components/PopupMenu.hpp
     components/SelectedLabelsView.hpp
     components/SignalSelector.hpp

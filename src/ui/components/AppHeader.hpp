@@ -10,7 +10,7 @@
 
 #include "../common/AppDefinitions.hpp"
 #include "../common/ImguiWrap.hpp"
-#include "../components/Notification.hpp"
+#include "../components/ImGuiNotify.hpp"
 
 #include <SDL_opengl.h>
 #include <stb_image.h>
