@@ -7,7 +7,21 @@
 
 using namespace DigitizerUi::test;
 
-ImGuiTestApp::ImGuiTestApp(const TestOptions& options) : _options(options) {}
+namespace {
+
+// For internal usage only. No need for now to expose singleton API.
+// Many of ImGuiTestEngine's callbacks don't accept lambda captures, which
+// makes it hard to access ImGuiTestApp. ImGui's suggested way is to pass in its "void *userData"
+// member, but let's rather be explicit and store it in a typed variable.
+
+ImGuiTestApp* g_testApp = nullptr;
+
+} // namespace
+
+ImGuiTestApp::ImGuiTestApp(const TestOptions& options) : _options(options) {
+    assert(g_testApp == nullptr);
+    g_testApp = this;
+}
 
 ImGuiTestApp::~ImGuiTestApp() {
     ImGuiTestEngine_Stop(_engine);
@@ -18,6 +32,8 @@ ImGuiTestApp::~ImGuiTestApp() {
     ImGuiTestEngine_DestroyContext(_engine);
 
     _app->Destroy(_app);
+
+    g_testApp = nullptr;
 }
 
 void ImGuiTestApp::initImGui() {
@@ -41,6 +57,7 @@ void ImGuiTestApp::initImGui() {
     test_io.ConfigRunSpeed            = _options.speedMode;
     test_io.ScreenCaptureFunc         = ImGuiApp_ScreenCaptureFunc;
     test_io.ScreenCaptureUserData     = _app;
+    test_io.ConfigCaptureOnError      = true;
     test_io.ConfigLogToTTY            = true;
     // Optional: save test output in junit-compatible XML format.
     // test_io.ExportResultsFile = "./results.xml";
@@ -106,3 +123,19 @@ bool ImGuiTestApp::runTests() {
 }
 
 ImGuiTestEngine* ImGuiTestApp::engine() const { return _engine; }
+
+/** static */
+void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
+    ctx.CaptureReset();
+
+    { // choose a nice name for the output file
+        auto*      args          = ctx.CaptureArgs;
+        static int suffixCounter = 0;
+        suffixCounter++;
+
+        ImFormatString(args->InOutputFile, IM_ARRAYSIZE(args->InOutputFile), "captures/%s_%04d%s", g_testApp->_options.screenshotPrefix, suffixCounter, ".png");
+    }
+
+    ctx.CaptureAddWindow(ref);
+    ctx.CaptureScreenshot(captureFlags);
+}

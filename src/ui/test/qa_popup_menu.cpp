@@ -59,6 +59,8 @@ private:
             ut::test("my test") = [ctx] {
                 ctx->SetRef("Test Window");
                 const ImGuiID popupId = ctx->PopupGetWindowID("MenuPopup_1");
+                captureScreenshot(*ctx);
+
                 ctx->SetRef(popupId);
                 ctx->ItemClick("button");
 
@@ -70,6 +72,6 @@ private:
 };
 
 int main(int, char**) {
-    TestApp app({.useInteractiveMode = false});
+    TestApp app({.useInteractiveMode = false, .screenshotPrefix = "popup_menu"});
     return app.runTests() ? 0 : 1;
 }

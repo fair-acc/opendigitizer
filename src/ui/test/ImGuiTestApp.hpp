@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 #define OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 
+#include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 
 class ImGuiApp;
@@ -16,6 +17,9 @@ struct TestOptions {
 
     // If cursor should teleport or move at human speed
     ImGuiTestRunSpeed speedMode = ImGuiTestRunSpeed::ImGuiTestRunSpeed_Fast;
+
+    // Screenshot filenames can be prefixed with something. For instance, your test name
+    const char* screenshotPrefix = "";
 };
 
 /**
@@ -38,6 +42,19 @@ public:
 
     // Runs the gui tests and returns true on success
     bool runTests();
+
+    /**
+      Captures a screenshot.
+
+      Image is saved to disk.
+      This signature is identical to ImGuiTestContext::CaptureScreenshotWindowm but we have our
+      own implementation, so we can control where the images are actually stored.
+
+      @param ctx test context
+      @param ref An ImGuiID or a char* path that identifies the widget to be captured. Captures the window by default
+      @param captureFlags See ImGui's ImGuiCaptureFlags_ enum
+     */
+    static void captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref = "/", int captureFlags = ImGuiCaptureFlags_StitchAll | ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_IncludeTooltipsAndPopups | ImGuiCaptureFlags_IncludeOtherWindows);
 
 protected:
     virtual void registerTests() = 0;

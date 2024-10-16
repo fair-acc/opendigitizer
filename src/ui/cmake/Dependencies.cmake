@@ -126,7 +126,7 @@ target_include_directories(imgui SYSTEM BEFORE PUBLIC ${imgui_SOURCE_DIR} ${imgu
 
 if(ENABLE_IMGUI_TEST_ENGINE)
   target_compile_definitions(imgui PUBLIC IMGUI_ENABLE_TEST_ENGINE IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
-                                          IMGUI_APP_SDL2_GL3)
+                                          IMGUI_APP_SDL2_GL3 IMGUI_TEST_ENGINE_ENABLE_CAPTURE)
 
   target_include_directories(imgui PUBLIC ${imgui_test_engine_SOURCE_DIR})
 endif()
