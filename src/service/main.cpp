@@ -36,9 +36,11 @@ struct TestSource : public gr::Block<TestSource<T>> {
     std::size_t               _produced   = 0;
     std::optional<time_point> _start;
 
+    GR_MAKE_REFLECTABLE(TestSource, out, sample_rate);
+
     void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) { _produced = 0; }
 
-    gr::work::Status processBulk(gr::PublishableSpan auto& output) noexcept {
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
         using enum gr::work::Status;
         auto       n   = output.size();
         const auto now = clock::now();
@@ -72,8 +74,6 @@ struct TestSource : public gr::Block<TestSource<T>> {
         return gr::work::Status::OK;
     }
 };
-
-ENABLE_REFLECTION_FOR_TEMPLATE(TestSource, out, sample_rate);
 
 namespace {
 template<typename Registry>

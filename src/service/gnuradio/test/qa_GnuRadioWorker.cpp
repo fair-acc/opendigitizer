@@ -17,14 +17,14 @@ template<typename T>
 struct ForeverSource : public gr::Block<ForeverSource<T>> {
     gr::PortOut<T> out;
 
+    GR_MAKE_REFLECTABLE(ForeverSource, out);
+
     gr::work::Status
-    processBulk(gr::PublishableSpan auto &output) noexcept {
+    processBulk(gr::OutputSpanLike auto &output) noexcept {
         output.publish(output.size());
         return gr::work::Status::OK;
     }
 };
-
-ENABLE_REFLECTION_FOR_TEMPLATE(ForeverSource, out)
 
 template<typename Registry>
 void                   registerTestBlocks(Registry &registry) {
