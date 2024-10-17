@@ -255,6 +255,11 @@ struct BlockDefinition {
 
 class Block {
 public:
+    struct ContextTime {
+        std::string   context;
+        std::uint64_t time = 0;
+    };
+
     class Port {
     public:
         enum class Direction {
@@ -302,6 +307,16 @@ public:
 
     explicit Block(std::string_view name, const BlockDefinition* type, gr::property_map settings = {});
 
+    const auto& contexts() const { return m_contexts; }
+    void        getAllContexts();
+
+    const auto& activeContext() const { return m_activeContext; }
+    void        setActiveContext(const ContextTime& contextTime);
+    void        getActiveContext();
+
+    void addContext(const ContextTime& contextTime);
+    void removeContext(const ContextTime& contextTime);
+
     const BlockDefinition&              type() const { return *m_type; }
     const std::string&                  currentInstantiationName() const { return m_currentInstantiation; }
     const BlockInstantiationDefinition& currentInstantiation() const { return m_type->instantiations.at(m_currentInstantiation); }
@@ -340,6 +355,9 @@ public:
     const gr::property_map& metaInformation() const { return m_metaInformation; }
 
 protected:
+    ContextTime              m_activeContext;
+    std::vector<ContextTime> m_contexts;
+
     std::vector<Port>      m_inputs;
     std::vector<Port>      m_outputs;
     gr::property_map       m_settings;

@@ -11,6 +11,9 @@
 
 namespace DigitizerUi::components {
 
+constexpr const char* addContextPopupId    = "Add Context";
+constexpr const char* removeContextPopupId = "Remove Context";
+
 void setItemTooltip(const char* fmt, auto&&... args) {
     if (ImGui::IsItemHovered()) {
         if constexpr (sizeof...(args) == 0) {
@@ -19,6 +22,38 @@ void setItemTooltip(const char* fmt, auto&&... args) {
             ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
         }
     }
+}
+
+void drawAddContextPopup(DigitizerUi::Block* block) {
+    ImGui::SetNextWindowSize({600, 120}, ImGuiCond_Once);
+    if (auto popup = IMW::ModalPopup(addContextPopupId, nullptr, 0)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Name:");
+        ImGui::SameLine();
+        static std::string name;
+        if (ImGui::IsWindowAppearing()) {
+            name = {};
+        }
+        ImGui::InputText("##contextName", &name);
+
+        const bool okEnabled = !name.empty();
+
+        if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
+            block->addContext(DigitizerUi::Block::ContextTime{
+                .context = name,
+            });
+        }
+    }
+}
+
+bool drawRemoveContextPopup(const std::string& context) {
+    ImGui::SetNextWindowSize({600, 100}, ImGuiCond_Once);
+    if (auto popup = IMW::ModalPopup(removeContextPopupId, nullptr, 0)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Do you wanto to remove '%s' context?", context.c_str());
+        return components::DialogButtons() == components::DialogButton::Ok;
+    }
+    return false;
 }
 
 void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
@@ -254,6 +289,47 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(context.block->name.c_str());
         std::string_view typeName = context.block->typeName();
+
+        const auto& activeContext = context.block->activeContext();
+
+        const std::string activeContextLabel = activeContext.context == "" ? "Default" : activeContext.context;
+        if (ImGui::BeginCombo("##contextNameCombo", activeContextLabel.c_str())) {
+            for (const auto& contextNameAndTime : context.block->contexts()) {
+                const bool        selected = activeContext.context == contextNameAndTime.context;
+                const std::string label    = contextNameAndTime.context == "" ? "Default" : contextNameAndTime.context;
+                if (ImGui::Selectable(label.c_str(), selected)) {
+                    context.block->setActiveContext(contextNameAndTime);
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        {
+            ImGui::SameLine();
+            IMW::Disabled disableDueDefaultAction(activeContext.context == "");
+            IMW::Font     _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button("\uf146")) {
+                ImGui::OpenPopup(removeContextPopupId);
+            }
+        }
+        setItemTooltip("%s", "Remove context");
+
+        {
+            ImGui::SameLine();
+            IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button("\uf0fe")) {
+                ImGui::OpenPopup(addContextPopupId);
+            }
+        }
+        setItemTooltip("%s", "Add new context");
+
+        drawAddContextPopup(context.block);
+        if (drawRemoveContextPopup(activeContext.context)) {
+            context.block->removeContext(activeContext);
+        }
 
         ImGui::TextUnformatted("<");
         ImGui::SameLine();

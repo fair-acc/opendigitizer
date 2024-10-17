@@ -140,6 +140,57 @@ Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map s
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
 }
 
+void Block::getActiveContext() {
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Get,
+        .serviceName     = m_uniqueName,
+        .clientRequestID = "active",
+        .endpoint        = gr::block::property::kActiveContext,
+    });
+}
+
+void Block::setActiveContext(const ContextTime& contextAndTime) {
+    const auto& [context, time] = contextAndTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Set,
+        .serviceName     = m_uniqueName,
+        .clientRequestID = "activate",
+        .endpoint        = gr::block::property::kActiveContext,
+        .data            = gr::property_map{{"context", context}, {"time", time}},
+    });
+}
+
+void Block::addContext(const ContextTime& contextTime) {
+    const auto& [context, time] = contextTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Set,
+        .serviceName     = m_uniqueName,
+        .clientRequestID = "add",
+        .endpoint        = gr::block::property::kSettingsCtx,
+        .data            = gr::property_map{{"context", context}, {"time", 1ULL}},
+    });
+}
+
+void Block::removeContext(const ContextTime& contextTime) {
+    const auto& [context, time] = contextTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Disconnect,
+        .serviceName     = m_uniqueName,
+        .clientRequestID = "rm",
+        .endpoint        = gr::block::property::kSettingsCtx,
+        .data            = gr::property_map{{"context", context}, {"time", 1ULL}},
+    });
+}
+
+void Block::getAllContexts() {
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Get,
+        .serviceName     = m_uniqueName,
+        .clientRequestID = "all",
+        .endpoint        = gr::block::property::kSettingsContexts,
+    });
+}
+
 void Block::setSetting(const std::string& settingName, const pmtv::pmt& p) {
     m_settings[settingName] = p;
 
@@ -154,6 +205,8 @@ void Block::updateSettings(const gr::property_map& settings) {
     for (const auto& [k, v] : settings) {
         m_settings[k] = v;
     }
+    getAllContexts();
+    getActiveContext();
 }
 
 void Block::update() {
@@ -630,13 +683,18 @@ ExecutionContext FlowGraph::createExecutionContext() {
 }
 
 void FlowGraph::handleMessage(const gr::Message& msg) {
-    if (msg.serviceName != App::instance().schedulerUniqueName() && msg.endpoint == gr::block::property::kSetting) {
-        const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
-        if (it == m_blocks.end()) {
-            auto error = fmt::format("Received settings for unknown block '{}'", msg.serviceName);
-            components::Notification::error(error);
-            return;
-        }
+    if (msg.serviceName == App::instance().schedulerUniqueName()) {
+        return;
+    }
+
+    const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
+    if (it == m_blocks.end()) {
+        auto error = fmt::format("Received settings for unknown block '{}'", msg.serviceName);
+        components::Notification::error(error);
+        return;
+    }
+
+    if (msg.endpoint == gr::block::property::kSetting) {
         if (!msg.data) {
             auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
             components::Notification::error(error);
@@ -648,6 +706,47 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
             }
         }
         (*it)->updateSettings(msg.data.value());
+    } else if (msg.endpoint == gr::block::property::kActiveContext) {
+        if (!msg.data) {
+            auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+            components::Notification::error(error);
+            return;
+        }
+
+        const gr::property_map& map = msg.data.value();
+
+        const auto ctx             = std::get<std::string>(map.at("context"));
+        it->get()->m_activeContext = Block::ContextTime{ctx};
+    } else if (msg.endpoint == gr::block::property::kSettingsContexts) {
+        if (msg.clientRequestID == "all") {
+            if (!msg.data) {
+                auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+                components::Notification::error(error);
+                return;
+            }
+
+            const gr::property_map&         map = msg.data.value();
+            std::vector<Block::ContextTime> contextAndTimes;
+
+            auto contexts = std::get<std::vector<std::string>>(map.at("contexts"));
+            auto times    = std::get<std::vector<std::uint64_t>>(map.at("times"));
+
+            for (int i = 0; i < contexts.size(); ++i) {
+                contextAndTimes.emplace_back(Block::ContextTime{contexts[i], times[i]});
+            }
+            it->get()->m_contexts = contextAndTimes;
+        }
+    } else if (msg.endpoint == gr::block::property::kSettingsCtx) {
+        if (msg.clientRequestID == "add" || msg.clientRequestID == "rm") {
+            if (!msg.data) {
+                auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
+                components::Notification::error(error);
+                return;
+            }
+
+            it->get()->getAllContexts();
+            it->get()->getActiveContext();
+        }
     }
 }
 
