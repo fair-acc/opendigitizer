@@ -632,15 +632,24 @@ ExecutionContext FlowGraph::createExecutionContext() {
 }
 
 void FlowGraph::handleMessage(const gr::Message& msg) {
-    graphModel.processMessage(msg);
+    const bool consumed = graphModel.processMessage(msg);
 
-    if (msg.serviceName != App::instance().schedulerUniqueName() && msg.endpoint == gr::block::property::kSetting) {
-        const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
-        if (it == m_blocks.end()) {
-            auto error = fmt::format("Received settings for unknown block '{}'", msg.serviceName);
-            components::Notification::error(error);
+    if (msg.serviceName == App::instance().schedulerUniqueName()) {
+        return;
+    }
+
+    const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
+    if (it == m_blocks.end()) {
+        if (consumed) {
             return;
         }
+
+        auto error = fmt::format("Received settings for unknown block '{}'", msg.serviceName);
+        components::Notification::error(error);
+        return;
+    }
+
+    if (msg.endpoint == gr::block::property::kSetting) {
         if (!msg.data) {
             auto error = fmt::format("Received settings error for block '{}': {}", msg.serviceName, msg.data.error());
             components::Notification::error(error);

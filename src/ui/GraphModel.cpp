@@ -39,13 +39,13 @@ void updateFieldFrom(FieldType& field, const auto& data, const std::string& fiel
 };
 } // namespace
 
-void UiGraphModel::processMessage(const gr::Message& message) {
+bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph = gr::graph::property;
     namespace block = gr::block::property;
 
     if (!message.data) {
         DigitizerUi::components::Notification::error(fmt::format("Received an error: {}\n", message.data.error().message));
-        return;
+        return false;
     }
 
     const auto& data = *message.data;
@@ -92,13 +92,27 @@ void UiGraphModel::processMessage(const gr::Message& message) {
     } else if (message.endpoint == "LifecycleState") {
         // Nothing to do for lifecycle state changes
 
+    } else if (message.endpoint == block::kActiveContext) {
+        handleBlockActiveContext(message.serviceName, data);
+
+    } else if (message.endpoint == block::kSettingsContexts) {
+        if (message.clientRequestID == "all") {
+            handleBlockAllContexts(message.serviceName, data);
+        }
+    } else if (message.endpoint == block::kSettingsCtx) {
+        if (message.clientRequestID == "add" || message.clientRequestID == "rm") {
+            handleBlockAddOrRemoveContext(message.serviceName, data);
+        }
     } else {
-        fmt::print("Not processed: {} data: {}\n", message.endpoint, message.data.error());
         if (!message.data) {
+            fmt::print("Not processed: {} data: {}\n", message.endpoint, message.data.error());
             auto msg = fmt::format("Error: {}\n", message.data.error().message);
             DigitizerUi::components::Notification::error(msg);
         }
+        return false;
     }
+
+    return true;
     //
 }
 
@@ -169,6 +183,53 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
 }
 
 void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
+
+void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data) {
+    auto [blockIt, found] = findBlockByName(uniqueName);
+    if (!found) {
+        requestGraphUpdate();
+        return;
+    }
+
+    const auto ctx  = std::get<std::string>(data.at("context"));
+    auto       time = std::get<std::uint64_t>(data.at("time"));
+
+    blockIt->activeContext = UiGraphBlock::ContextTime{
+        .context = ctx,
+        .time    = time,
+    };
+}
+
+void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
+    auto [blockIt, found] = findBlockByName(uniqueName);
+    if (!found) {
+        requestGraphUpdate();
+        return;
+    }
+
+    auto contexts = std::get<std::vector<std::string>>(data.at("contexts"));
+    auto times    = std::get<std::vector<std::uint64_t>>(data.at("times"));
+
+    std::vector<UiGraphBlock::ContextTime> contextAndTimes;
+    for (int i = 0; i < contexts.size(); ++i) {
+        contextAndTimes.emplace_back(UiGraphBlock::ContextTime{
+            .context = contexts[i],
+            .time    = times[i],
+        });
+    }
+    blockIt->contexts = contextAndTimes;
+}
+
+void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& data) {
+    auto [blockIt, found] = findBlockByName(uniqueName);
+    if (!found) {
+        requestGraphUpdate();
+        return;
+    }
+
+    blockIt->getAllContexts();
+    blockIt->getActiveContext();
+}
 
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     UiGraphEdge edge(this);
@@ -260,6 +321,9 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
         processPorts(block.outputPorts, "outputPorts"s, gr::PortDirection::OUTPUT);
         block.inputPortWidths.clear();
         block.outputPortWidths.clear();
+
+        block.getAllContexts();
+        block.getActiveContext();
     }
 
     // TODO: When adding support for nested graphs, need to process
@@ -338,5 +402,56 @@ void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
     std::erase_if(_edges, [blockPtr = std::addressof(block)](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
+    });
+}
+
+void UiGraphBlock::getAllContexts() {
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Get,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "all",
+        .endpoint        = gr::block::property::kSettingsContexts,
+    });
+}
+
+void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
+    const auto& [context, time] = contextTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Set,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "activate",
+        .endpoint        = gr::block::property::kActiveContext,
+        .data            = gr::property_map{{"context", context}, {"time", time}},
+    });
+}
+
+void UiGraphBlock::getActiveContext() {
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Get,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "active",
+        .endpoint        = gr::block::property::kActiveContext,
+    });
+}
+
+void UiGraphBlock::addContext(const ContextTime& contextTime) {
+    const auto& [context, time] = contextTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Set,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "add",
+        .endpoint        = gr::block::property::kSettingsCtx,
+        .data            = gr::property_map{{"context", context}, {"time", time}},
+    });
+}
+
+void UiGraphBlock::removeContext(const ContextTime& contextTime) {
+    const auto& [context, time] = contextTime;
+    App::instance().sendMessage(gr::Message{
+        .cmd             = gr::Message::Disconnect,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "rm",
+        .endpoint        = gr::block::property::kSettingsCtx,
+        .data            = gr::property_map{{"context", context}, {"time", time}},
     });
 }
