@@ -26,6 +26,13 @@ struct UiGraphPort {
 struct UiGraphBlock {
     UiGraphModel* ownerGraph = nullptr;
 
+    struct ContextTime {
+        std::string   context;
+        std::uint64_t time = 1;
+    };
+    ContextTime              activeContext;
+    std::vector<ContextTime> contexts;
+
     std::string blockUniqueName;
     std::string blockName;
     std::string blockTypeName;
@@ -57,6 +64,14 @@ struct UiGraphBlock {
     // std::vector<UiGraphEdge> edges
 
     UiGraphBlock(UiGraphModel* owner) : ownerGraph(owner) {}
+
+    void getAllContexts();
+
+    void setActiveContext(const ContextTime& contextTime);
+    void getActiveContext();
+
+    void addContext(const ContextTime& contextTime);
+    void removeContext(const ContextTime& contextTime);
 };
 
 struct UiGraphEdge {
@@ -108,7 +123,10 @@ public:
     const auto& edges() const { return _edges; }
     auto&       edges() { return _edges; }
 
-    void processMessage(const gr::Message& message);
+    /**
+     * @return true if consumed the message
+     */
+    bool processMessage(const gr::Message& message);
 
     void requestGraphUpdate();
 
@@ -126,6 +144,9 @@ private:
     void handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData);
     void handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data);
     void handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data);
+    void handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data);
+    void handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data);
+    void handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& data);
     void handleEdgeEmplaced(const gr::property_map& data);
     void handleEdgeRemoved(const gr::property_map& data);
     void handleGraphRedefined(const gr::property_map& data);
