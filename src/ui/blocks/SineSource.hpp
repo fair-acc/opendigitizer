@@ -23,6 +23,8 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     std::thread             thread;
     std::atomic_bool        quit = false;
 
+    GR_MAKE_REFLECTABLE(SineSource, out, freqIn, freqOut, frequency);
+
     void start() {
         thread = std::thread([this]() {
             using namespace std::chrono_literals;
@@ -48,7 +50,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
         conditionvar.notify_all();
     }
 
-    auto processBulk(gr::PublishableSpan auto& output) {
+    auto processBulk(gr::OutputSpanLike auto& output) {
         // technically, this wouldn't have to block, but could just publish 0 samples,
         // but keep it as test case for BlockingIO<true>.
         std::unique_lock guard(mutex);
@@ -70,8 +72,6 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 };
 
 } // namespace opendigitizer
-
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::SineSource, out, freqIn, freqOut, frequency)
 
 auto registerSineSource = gr::registerBlock<opendigitizer::SineSource, float, double>(gr::globalBlockRegistry());
 

@@ -154,6 +154,8 @@ struct PlayStopToolbarBlock
     using enum play_stop::State;
     gr::MsgPortOut ctrlOut;
 
+    GR_MAKE_REFLECTABLE(PlayStopToolbarBlock, ctrlOut);
+
     gr::work::Status
     draw() noexcept {
         const gr::work::Status status = gr::work::Status::OK; // this->invokeWork(); // calls work(...) -> processOne(...) (all in the same thread as this 'draw()'
@@ -220,6 +222,8 @@ struct LabelToolbarBlock
     gr::MsgPortIn ctrlIn;
     std::string   message = "<no message>";
 
+    GR_MAKE_REFLECTABLE(LabelToolbarBlock, ctrlIn, message);
+
     void
     processMessages(auto &, std::span<const gr::Message> messages) {
         using namespace gr::message;
@@ -243,8 +247,5 @@ struct LabelToolbarBlock
 };
 
 } // namespace DigitizerUi
-
-ENABLE_REFLECTION_FOR_TEMPLATE(DigitizerUi::PlayStopToolbarBlock, ctrlOut)
-ENABLE_REFLECTION_FOR_TEMPLATE(DigitizerUi::LabelToolbarBlock, ctrlIn, message)
 
 #endif

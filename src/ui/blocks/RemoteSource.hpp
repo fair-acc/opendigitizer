@@ -24,6 +24,8 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
     float                       signal_max;
     opencmw::client::RestClient _client;
 
+    GR_MAKE_REFLECTABLE(RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max);
+
     struct Data {
         opendigitizer::acq::Acquisition acq;
         std::size_t                     read = 0;
@@ -42,7 +44,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
         }
     }
 
-    auto processBulk(gr::PublishableSpan auto &output) noexcept {
+    auto processBulk(gr::OutputSpanLike auto &output) noexcept {
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
@@ -115,8 +117,6 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
 };
 
 } // namespace opendigitizer
-
-ENABLE_REFLECTION_FOR_TEMPLATE(opendigitizer::RemoteSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max)
 
 auto registerRemoteSource = gr::registerBlock<opendigitizer::RemoteSource, float, double>(gr::globalBlockRegistry());
 
