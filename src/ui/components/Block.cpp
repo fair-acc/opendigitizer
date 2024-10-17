@@ -11,6 +11,9 @@
 
 namespace DigitizerUi::components {
 
+constexpr const char* addContextPopupId    = "Add Context";
+constexpr const char* removeContextPopupId = "Remove Context";
+
 void setItemTooltip(const char* fmt, auto&&... args) {
     if (ImGui::IsItemHovered()) {
         if constexpr (sizeof...(args) == 0) {
@@ -19,6 +22,36 @@ void setItemTooltip(const char* fmt, auto&&... args) {
             ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
         }
     }
+}
+
+void drawAddContextPopup() {
+    ImGui::SetNextWindowSize({600, 120}, ImGuiCond_Once);
+    if (auto popup = IMW::ModalPopup(addContextPopupId, nullptr, 0)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Name:");
+        ImGui::SameLine();
+        static std::string name;
+        if (ImGui::IsWindowAppearing()) {
+            name = {};
+        }
+        ImGui::InputText("##contextName", &name);
+
+        const bool okEnabled = !name.empty();
+
+        if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
+            // addSource(path);
+        }
+    }
+}
+
+bool drawRemoveContextPopup(const std::string& context) {
+    ImGui::SetNextWindowSize({600, 100}, ImGuiCond_Once);
+    if (auto popup = IMW::ModalPopup(removeContextPopupId, nullptr, 0)) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Do you wanto to remove '%s' context?", context.c_str());
+        return components::DialogButtons() == components::DialogButton::Ok;
+    }
+    return false;
 }
 
 void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
@@ -254,6 +287,40 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(context.block->name.c_str());
         std::string_view typeName = context.block->typeName();
+
+        if (ImGui::BeginCombo("##contextNameCombo", context.block->currentInstantiationName().c_str())) {
+            for (const auto& [instantiationName, _] : context.block->type().instantiations) {
+                if (ImGui::Selectable(instantiationName.c_str(), typeName == instantiationName)) {
+                    context.block->flowGraph()->changeBlockDefinition(context.block, instantiationName);
+                }
+                if (typeName == instantiationName) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        {
+            ImGui::SameLine();
+            IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button("\uf146")) {
+                ImGui::OpenPopup(removeContextPopupId);
+            }
+        }
+        setItemTooltip("%s", "Remove context");
+
+        {
+            ImGui::SameLine();
+            IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button("\uf0fe")) {
+                ImGui::OpenPopup(addContextPopupId);
+            }
+        }
+        setItemTooltip("%s", "Add new context");
+
+        drawAddContextPopup();
+        if (drawRemoveContextPopup("Default")) {
+        }
 
         ImGui::TextUnformatted("<");
         ImGui::SameLine();
