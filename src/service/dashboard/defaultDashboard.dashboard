@@ -11,10 +11,6 @@ sources:
     block: sink 2
     port: 0
     color: 4284318450
-  - name: sink 4
-    block: sink 4
-    port: 0
-    color: 4293501622
 plots:
   - name: Plot 1
     axes:

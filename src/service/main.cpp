@@ -8,6 +8,9 @@
 #include <fstream>
 #include <thread>
 
+#include <fmt/core.h>
+#include <fmt/ranges.h>
+
 #include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioWorker.hpp"
@@ -15,6 +18,7 @@
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include <gnuradio-4.0/basic/Selector.hpp>
+#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/basic/function_generator.hpp>
 
@@ -82,10 +86,12 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<TestSource, double, float>(registry);
     gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
-#ifndef __EMSCRIPTEN__
-    // TODO: Current implementation of Picoscope4000a does not satisfy the new block API
-    // gr::registerBlock<fair::picoscope::Picoscope4000a, double, float, std::int16_t>(registry);
-#endif
+    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
+    gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float, std::int16_t>(registry); // ommitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
+    fmt::print("providedBlocks:\n");
+    for (auto& blockName : registry.providedBlocks()) {
+        fmt::print("  - {}: {}\n", blockName, registry.knownBlockParameterizations(blockName));
+    }
 #pragma GCC diagnostic pop
 }
 } // namespace
@@ -165,6 +171,7 @@ connections:
 
     std::vector<SignalEntry> registeredSignals;
     grAcqWorker.setUpdateSignalEntriesCallback([&registeredSignals, &dns_client, &restUrl](std::vector<SignalEntry> signals) {
+        fmt::print("Update Available Signals for GNURadio Worker: {}\n", signals | std::views::transform([](SignalEntry& entry) {return entry.name;}));
         if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
             size_t x = 0;
             for (auto& i : fair::testDeviceNames) {
