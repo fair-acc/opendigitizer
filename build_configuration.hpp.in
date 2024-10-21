@@ -1,2 +1,0 @@
-#cmakedefine ROOT_BUILD_DIR "@ROOT_BUILD_DIR@"
-#cmakedefine SERVING_DIR "@SERVING_DIR@"

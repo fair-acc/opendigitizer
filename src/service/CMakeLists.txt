@@ -4,14 +4,30 @@ set(CMAKE_CXX_STANDARD 23)
 # Mainly for FMT
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-include(cmake/Dependencies.cmake)
-
 project(opendigitizer-service CXX)
 include(GNUInstallDirs)
+
+include(cmake/Dependencies.cmake)
+
+if(NOT TARGET od_acquisition)
+  add_subdirectory(../acquisition acquisition)
+endif()
+if(NOT TARGET digitizer_settings)
+  add_subdirectory(../utils utils)
+endif()
 
 option(WASM_BUILD_DIR
        "The directory containing the build output of the emscripten ui build to be bundled into the assets"
        ${CMAKE_CURRENT_SOURCE_DIR}/../ui/build-wasm)
+
+if(NOT WASM_BUILD_DIR)
+  set(SERVING_DIR ${ROOT_BUILD_DIR}/ui-wasm)
+else()
+  set(SERVING_DIR ${CMAKE_BINARY_DIR}/${WASM_BUILD_DIR})
+endif()
+
+configure_file(build_configuration.hpp.in ${CMAKE_BINARY_DIR}/build_configuration.hpp @ONLY)
+include_directories(${CMAKE_BINARY_DIR})
 
 # Check for supported compiler versions
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -111,7 +127,6 @@ target_link_libraries(
           services
           client
           project_options
-          project_warnings
           assets::rest
           digitizer_settings)
 if(NOT EMSCRIPTEN)

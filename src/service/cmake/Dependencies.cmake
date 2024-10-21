@@ -1,7 +1,17 @@
 include(FetchContent)
 
-# TODO this should be a gnuradio4 dependency only, as gr-digitizer blocks
-# (e.g. PicoScope) would be loaded via plugins, at runtime
+FetchContent_Declare(
+        opencmw-cpp
+        GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
+        GIT_TAG bb8996babab2000a4ae3612ea146a551a96e59c4 # main as of 2024-10-18
+        SYSTEM)
+
+FetchContent_Declare(
+        gnuradio4
+        GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
+        GIT_TAG 5e7ecc561dfb35a6a8fd357f50d12efd09303c4f # main as of 2024-10-18
+        SYSTEM)
+
 FetchContent_Declare(
         gr-digitizers
         GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
@@ -9,4 +19,4 @@ FetchContent_Declare(
         SYSTEM
 )
 
-FetchContent_MakeAvailable(gr-digitizers)
+FetchContent_MakeAvailable(opencmw-cpp gr-digitizers gnuradio4)
