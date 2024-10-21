@@ -12,44 +12,12 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 # Mainly for FMT
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-set(DIGITIZER_UI_SRCS
-    main.cpp
-    Flowgraph.cpp
-    Flowgraph.hpp
-    FlowgraphItem.cpp
-    FlowgraphItem.hpp
-    Dashboard.cpp
-    Dashboard.hpp
-    DashboardPage.cpp
-    DashboardPage.hpp
-    OpenDashboardPage.cpp
-    OpenDashboardPage.hpp
-    RemoteSignalSources.cpp
-    RemoteSignalSources.hpp
-    components/AppHeader.hpp
-    components/Block.cpp
-    components/Block.hpp
-    components/Dialog.hpp
-    components/FilterComboBoxes.hpp
-    components/Keypad.hpp
-    components/ListBox.hpp
-    components/ImGuiNotify.hpp
-    components/PopupMenu.hpp
-    components/SelectedLabelsView.hpp
-    components/SignalSelector.hpp
-    components/Splitter.cpp
-    components/Splitter.hpp
-    components/Toolbar.hpp
-    utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
-)
-
-set(GNURADIO_PREFIX
-    "/usr/"
-    CACHE FILEPATH "Prefix of the GNURadio installation")
-
 if(EMSCRIPTEN)
-  message(STATUS "Detected emscripten webassembly build")
-
+  # locate the "executable" output in the build/web directory
+  set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
+  # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
+  # can execute it with the webserver)
+  set(CMAKE_EXECUTABLE_SUFFIX ".html")
   # CAUTION: The "SHELL:" before some compile/link options has to be used to explicitly tell CMake to not sum up options
   # (e.g. -option A -option B => -option A B)(CMake default behaviour), but instead keep them separated (needed for
   # proper operation of emscripten)
@@ -62,7 +30,6 @@ if(EMSCRIPTEN)
     -fwasm-exceptions
     "SHELL:-s USE_SDL=2"
     -pthread)
-
   add_link_options(
     "SHELL:-s WASM=1"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
@@ -81,6 +48,13 @@ endif()
 # dependencies
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
+
+if(NOT TARGET od_acquisition)
+  add_subdirectory(../acquisition acquisition)
+endif()
+if(NOT TARGET raii_wrapper)
+  add_subdirectory(../utils utils)
+endif()
 
 cmrc_add_resource_library(
   ui_assets
@@ -109,87 +83,19 @@ cmrc_add_resource_library(
   assets/sampleDashboards/DemoDashboard.yml)
 
 if(EMSCRIPTEN)
-  # locate the "executable" output in the build/web directory
-  set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
-
-  # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
-  # can execute it with the webserver)
-  set(CMAKE_EXECUTABLE_SUFFIX ".html")
-
-  set(outputFileName "index")
-  add_executable(${outputFileName})
-
-  target_sources(index PRIVATE ${DIGITIZER_UI_SRCS})
+  message(STATUS "Detected emscripten webassembly build")
   set(target_name "index")
-
-  # link the executable
-  target_link_libraries(
-    ${outputFileName}
-    PRIVATE implot
-            plf_colony
-            ui_assets
-            sample_dashboards
-            stb
-            fonts
-            core
-            client
-            services
-            imgui-node-editor
-            yaml-cpp::yaml-cpp)
+  add_executable(${target_name})
 
   add_custom_target(
     serve
-    python3
-    -m
-    http.server
-    -d
-    ${EXECUTABLE_OUTPUT_PATH}
-    8000
-    COMMENT start
-    a
-    python
-    server
-    serving
-    the
-    webassembly
-    app
-    DEPENDS ${outputFileName})
-
-  # TODO should be pulled via linking the targets, but they're outside the source folder (src/ui) for the ui-wasm build
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../acquisition) # for daq_api.hpp
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../utils/include)
-
+    "python3 -m http.server -d ${EXECUTABLE_OUTPUT_PATH} 8000"
+    COMMENT "start a python server serving the webassembly app"
+    DEPENDS ${target_name})
 else() # native build
-
   set(target_name "opendigitizer-ui")
-  add_executable(
-    ${target_name}
-    common/AppDefinitions.hpp
-    common/Events.hpp
-    common/ImguiWrap.hpp
-    common/LookAndFeel.hpp
-    common/TouchHandler.hpp)
-
-  target_sources(${target_name} PRIVATE ${DIGITIZER_UI_SRCS})
-
-  # link the executable
-  target_link_libraries(
-    ${target_name}
-    PRIVATE od_acquisition
-            SDL2
-            implot
-            imgui-node-editor
-            plf_colony
-            yaml-cpp::yaml-cpp
-            core
-            client
-            services
-            stb
-            ui_assets
-            sample_dashboards
-            digitizer_settings
-            fonts)
-  target_compile_definitions(${target_name} PRIVATE BLOCKS_DIR="${GNURADIO_PREFIX}/share/gnuradio/grc/blocks/")
+  add_executable(${target_name})
+  target_link_libraries(${target_name} PRIVATE SDL2) # for emscripten SDL is already included in the build
 
   if(OPENDIGITIZER_ENABLE_ASAN)
     target_compile_options(${target_name} PRIVATE -fsanitize=address)
@@ -197,18 +103,67 @@ else() # native build
   endif()
 endif()
 
+target_sources(
+  ${target_name}
+  PRIVATE main.cpp
+          Flowgraph.cpp
+          Flowgraph.hpp
+          FlowgraphItem.cpp
+          FlowgraphItem.hpp
+          Dashboard.cpp
+          Dashboard.hpp
+          DashboardPage.cpp
+          DashboardPage.hpp
+          OpenDashboardPage.cpp
+          OpenDashboardPage.hpp
+          RemoteSignalSources.cpp
+          RemoteSignalSources.hpp
+          components/AppHeader.hpp
+          components/Block.cpp
+          components/Block.hpp
+          components/Dialog.hpp
+          components/FilterComboBoxes.hpp
+          components/Keypad.hpp
+          components/ListBox.hpp
+          components/ImGuiNotify.hpp
+          components/PopupMenu.hpp
+          components/SelectedLabelsView.hpp
+          components/SignalSelector.hpp
+          components/Splitter.cpp
+          components/Splitter.hpp
+          components/Toolbar.hpp
+          utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
+          common/AppDefinitions.hpp
+          common/Events.hpp
+          common/ImguiWrap.hpp
+          common/LookAndFeel.hpp
+          common/TouchHandler.hpp)
+
 target_link_libraries(
   ${target_name}
-  PRIVATE gnuradio-core
+  PRIVATE implot
+          imgui-node-editor
+          od_acquisition
+          services
+          plf_colony
+          ui_assets
+          yaml-cpp::yaml-cpp
+          core
+          client
+          stb
+          sample_dashboards
+          fonts
+          digitizer_settings
+          gnuradio-core
           gnuradio-meta
           gnuradio-algorithm
           gr-basic
           gr-fourier
+          raii_wrapper
           gr-testing
           fftw
           vir
           pmtv)
-target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../service/acquisition) # for daq_api.hpp
 target_compile_options(${target_name} PRIVATE "-Wfatal-errors")
 
 if(OPENDIGITIZER_ENABLE_TESTING)

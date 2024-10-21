@@ -7,7 +7,6 @@ target_link_libraries(
             disruptor
             gr-basic
             yaml-cpp::yaml-cpp
-            project_options
-            project_warnings)
+            project_options)
 
 add_subdirectory(test)

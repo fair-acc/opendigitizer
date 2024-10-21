@@ -17,9 +17,4 @@ cmrc_add_resource_library(
 
 add_library(od_rest INTERFACE fileserverRestBackend.hpp)
 target_include_directories(od_rest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/.)
-target_link_libraries(
-  od_rest
-  INTERFACE majordomo
-            project_options
-            project_warnings
-            assets::rest)
+target_link_libraries(od_rest INTERFACE majordomo project_options assets::rest)

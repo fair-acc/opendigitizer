@@ -15,5 +15,4 @@ target_link_libraries(
   INTERFACE majordomo
             core
             project_options
-            project_warnings
             assets::dashboard)

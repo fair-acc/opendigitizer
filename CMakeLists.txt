@@ -16,11 +16,6 @@ set(ROOT_BUILD_DIR ${CMAKE_BINARY_DIR})
 set(PREFIX_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Prefix)
 set(BUILD_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Build)
 set(INSTALL_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Install)
-set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
-set(SERVING_DIR ${ROOT_BUILD_DIR}/ui-wasm)
-
-configure_file(build_configuration.hpp.in ${CMAKE_BINARY_DIR}/build_configuration.hpp @ONLY)
-include_directories(${CMAKE_BINARY_DIR})
 
 option(USE_DWARF4 "Use DWARF-4 instead of DWARF-5 for better LLDB compatibility" OFF)
 if(USE_DWARF4)
