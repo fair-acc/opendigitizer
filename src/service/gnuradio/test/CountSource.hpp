@@ -43,7 +43,6 @@ struct CountSource : public gr::Block<CountSource<T>> {
     }
 
     gr::work::Status processBulk(gr::OutputSpanLike auto& output) noexcept {
-        // From the first processBulk() call, wait some time to give the test clients time to subscribe
         auto n = output.size();
         if (n_samples > 0) {
             const auto samplesLeft = static_cast<std::size_t>(n_samples) - _produced;
@@ -62,6 +61,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
                 n = std::min(n, static_cast<std::size_t>(tagIt->index) - _produced);
             }
         }
+
         if (!_pending_tags.empty() && _pending_tags[0].index == static_cast<gr::Tag::signed_index_type>(_produced)) {
             this->publishTag(_pending_tags[0].map, 0);
             _pending_tags.pop_front();
