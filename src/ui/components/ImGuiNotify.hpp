@@ -538,21 +538,25 @@ struct Notification {
     std::chrono::milliseconds dismissTime{5000};
 
     inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+
     inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), text.c_str()}); }
 
     inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+
     inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), text.c_str()}); }
 
     inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+
     inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), text.c_str()}); }
 
     inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+
     inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), text.c_str()}); }
 
     inline static void render() {
         // Notifications style setup
-        IMW::StyleFloatVar _(ImGuiStyleVar_WindowRounding, 0.5f);  // round borders
-        IMW::StyleFloatVar _(ImGuiStyleVar_WindowBorderSize, 1.f); // visible borders
+        IMW::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, 0.5f);    // round borders
+        IMW::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, 1.f); // visible borders
 
         // Notifications color setup
         if (LookAndFeel::instance().style == LookAndFeel::Style::Dark) {
