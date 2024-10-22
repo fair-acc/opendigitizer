@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2023 Klarälvdalens Datakonsult AB, a KDAB Group company <info@kdab.com>
+# SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only
+
+# When a PR gets merged, this workflow uploads the new reference screen captures
+# If test_screen_captures/PRXXXX-all-captures.tgz does not exist, then it means the PR
+# didn't produce any diff captures
+
+name: Upload reference screen captures
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
+
+jobs:
+  upload:
+    runs-on: ubuntu-22.04
+
+    if: github.event.pull_request.merged == true
+    steps:
+    - name: Download reference captures from current PR
+      run: |
+        wget https://github.com/${{ github.repository }}/releases/download/test_screen_captures/${{ github.event.pull_request.number }}-all-captures.tgz || exit 0
+        mkdir captures
+        tar xvf ${{ github.event.pull_request.number }}-all-captures.tgz -C captures --strip-components=1
+
+    - name: Upload reference captures
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ -d captures ]; then
+          # Delete/recreate release, as there's no easy API to just rsync new pngs
+          gh release delete reference_screen_captures-main --repo ${{ github.repository }} -y
+          gh release create reference_screen_captures-main --notes "Reference screen captures" --repo ${{ github.repository }}
+
+          # upload new captures
+          gh release upload reference_screen_captures-main captures/*.png --clobber --repo ${{ github.repository }}
+
+          gh release delete-asset test_screen_captures ${{ github.event.pull_request.number }}-all-captures.tgz --repo ${{ github.repository }}
+        fi
