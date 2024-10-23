@@ -33,6 +33,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
   target_link_libraries(imgui_tests_common PUBLIC fmt ut imgui-node-editor)
+  target_compile_definitions(imgui_tests_common PUBLIC OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
 
   function(add_imgui_test NAME)
     add_executable(${NAME} ${NAME}.cpp)
