@@ -8,6 +8,9 @@
 #include <fstream>
 #include <thread>
 
+#include <fmt/core.h>
+#include <fmt/ranges.h>
+
 #include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioAcquisitionWorker.hpp"
