@@ -1,16 +1,14 @@
 name: CMake
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
-permissions:
-  contents: read
-  pages: write
-  packages: read
-  id-token: write
+# permissions:
+#   contents: read
+#   pages: write
+#   packages: read
+#   id-token: write
 
 jobs:
   build:
@@ -23,7 +21,7 @@ jobs:
         configurations:
           - name: Ubuntu gcc 14
             compiler: gcc-14
-        cmake-build-type: [ Release, Debug ]
+        cmake-build-type: [ Release ]
 
     steps:
     - uses: actions/checkout@v4
@@ -97,15 +95,15 @@ jobs:
       if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: ctest --output-on-failure
+      run: ctest  -V
 
     - name: compare captures
-      if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type == 'Debug' }}
+      if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type != 'Debug' }}
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
-        ./compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ ${{ github.workspace }}/build/captures/
+        ./compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ ${{ runner.workspace }}/build/captures/
 
     - name: execute tests with coverage
       if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'

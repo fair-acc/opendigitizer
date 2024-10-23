@@ -43,6 +43,9 @@ images_with_differences=()
 new_images_in_pr=()
 images_missing_in_pr=()
 
+ls  /home/runner/work/opendigitizer/build/captures/
+echo ${PR_CAPTURES_DIR}
+
 for i in ${PR_CAPTURES_DIR}/*.png ; do
     image_name=$(basename "$i")
     reference_image=$REFERENCE_CAPTURES_DIR/$image_name

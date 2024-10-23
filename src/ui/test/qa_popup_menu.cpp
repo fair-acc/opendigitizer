@@ -41,7 +41,7 @@ private:
         t->GuiFunc = [](ImGuiTestContext* ctx) {
             ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(500, 500));
+            ImGui::SetWindowSize(ImVec2(500, 602));
 
             DigitizerUi::VerticalPopupMenu<1> menu;
 
