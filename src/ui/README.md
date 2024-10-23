@@ -9,13 +9,13 @@ This is the UI part of the opendigitizer project.
 Install the emscripten compiler according to the documentation and build this subproject part of the repository like so
 
 ```shell
-emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Debug && (cd build-wasm && EM_CACHE="$TMP" emmake make -j)
+emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Debug && cmake --build build-wasm -j
 ```
-Note: `cmake --build` is broken with em(c)make, hence the cd + make call.
 
 To test, launch a python http server and navigate your browser to http://localhost:8000;
+
 ```shell
-(cd build-wasm/ && make serve)
+cmake --build build-wasm --target serve
 ```
 
 ## Building for native
@@ -28,6 +28,7 @@ cmake -S . -B build-native -DCMAKE_BUILD_TYPE=Debug && cmake --build build-nativ
 ```
 
 The application can then be launched via
+
 ```shell
 ./build-native/opendigitizer-ui
 ```

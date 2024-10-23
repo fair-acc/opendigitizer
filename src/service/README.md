@@ -7,7 +7,7 @@ as a HTTP interface to these properties and a WebAssembly based visualisation cl
 ## Building
 
 ```shell
-cmake -S . -B build -DWASM_BUILD_DIR=../ui/build-wasm && cmake --build build
+cmake -S . -B build -DWASM_BUILD_DIR=`pwd`/../ui/build-wasm && cmake --build build
 ```
 
 See the top-level README on how to use the resulting binary.
