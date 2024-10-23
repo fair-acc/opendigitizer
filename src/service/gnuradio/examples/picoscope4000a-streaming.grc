@@ -1,15 +1,15 @@
 blocks:
-  - name: fair::picoscope::Picoscope4000a<float>
+  - name: picoscope
     id: fair::picoscope::Picoscope4000a
     template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
     parameters:
       acquisition_mode: Streaming
       auto_arm: true
       channel_couplings:
-        - AC_1M
-        - AC_1M
-        - AC_1M
-        - AC_1M
+        - DC_1M
+        - DC_1M
+        - DC_1M
+        - DC_1M
       channel_ids:
         - A
         - B
@@ -30,23 +30,38 @@ blocks:
         - Test unit B
         - Test unit C
         - Test unit D
-      name: fair::picoscope::Picoscope4000a<float>
-      sample_rate: 80000
+      sample_rate: 10000
       streaming_mode_poll_rate: 0.000010
+  - name: convertA
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: convertB
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: convertC
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: convertD
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
   - name: sinkA
     id: gr::basic::DataSink
-    template_args: float
+    template_args: double
   - name: sinkB
     id: gr::basic::DataSink
-    template_args: float
+    template_args: double
   - name: sinkC
     id: gr::basic::DataSink
-    template_args: float
+    template_args: double
   - name: sinkD
     id: gr::basic::DataSink
-    template_args: float
+    template_args: double
 connections:
-  - [fair::picoscope::Picoscope4000a<float>, [0, 0], sinkA, 0]
-  - [fair::picoscope::Picoscope4000a<float>, [0, 1], sinkB, 0]
-  - [fair::picoscope::Picoscope4000a<float>, [0, 2], sinkC, 0]
-  - [fair::picoscope::Picoscope4000a<float>, [0, 3], sinkD, 0]
+  - [picoscope,  [0, 0], convertA, 0]
+  - [convertA, 0, sinkA, 0]
+  - [picoscope,  [0, 1], convertB, 0]
+  - [convertB, 0, sinkB, 0]
+  - [picoscope,  [0, 2], convertC, 0]
+  - [convertC, 0, sinkC, 0]
+  - [picoscope,  [0, 3], convertD, 0]
+  - [convertD, 0, sinkD, 0]
