@@ -17,6 +17,7 @@ namespace opendigitizer {
 template<typename T>
 requires std::is_floating_point_v<T>
 struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
+    using Parent = gr::Block<RemoteStreamSource<T>>;
     gr::PortOut<T>              out;
     std::string                 remote_uri;
     std::string                 signal_name;
@@ -37,7 +38,9 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         std::mutex       mutex;
     };
 
-    std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
+    std::shared_ptr<Queue> _queue            = std::make_shared<Queue>();
+    std::size_t            samples_received  = 0;
+    std::size_t            samples_published = 0;
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
@@ -59,41 +62,61 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             } else {
                 std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
             }
+            for (const auto& [idx, trigger, timestamp] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value())) {
+                auto map = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}};
+                output.publishTag(map, idx - d.read);
+            }
             written += in.size();
             d.read += in.size();
+            samples_published += in.size();
             if (d.read == d.acq.channelValue.size()) {
                 _queue->data.pop_front();
             }
+            fmt::print("remoteSource received/published: {}/{}\n", samples_received, samples_published);
         }
         output.publish(written);
         return gr::work::Status::OK;
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
-        const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty()) {
-                fmt::print("Unsubscribing from {}\n", oldUri);
-                opencmw::client::Command command;
-                command.command  = opencmw::mdp::Command::Unsubscribe;
-                command.topic    = opencmw::URI<>(remote_uri);
-                command.callback = [oldUri](const opencmw::mdp::Message&) {
-                    // TODO: Add cleanup once openCMW starts calling the callback
-                    // on successful unsubscribe
-                    fmt::print("Unsubscribed from {} successfully\n", oldUri);
-                };
-            }
-        }
+    void stopSubscription(const std::string uri) {
+        fmt::print("Unsubscribing from {}\n", uri);
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Unsubscribe;
+        command.topic    = opencmw::URI<>(remote_uri);
+        command.callback = [uri](const opencmw::mdp::Message&) {
+            // TODO: Add cleanup once openCMW starts calling the callback on successful unsubscribe
+            fmt::print("Unsubscribed from {} successfully\n", uri);
+        };
+        _client.request(command);
+        fmt::print("Unsubscribed from {}\n", uri);
+    }
 
+    void startSubscription(const std::string uri) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Subscribe;
-        command.topic   = opencmw::URI<>(remote_uri);
-        fmt::print("Subscribing to {}\n", remote_uri);
+        command.topic   = opencmw::URI<>(uri);
+        fmt::print("Subscribing to {}\n", uri);
 
         std::weak_ptr maybeQueue = _queue;
 
-        command.callback = [maybeQueue](const opencmw::mdp::Message& rep) {
+        command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
+            if (!rep.error.empty()) {
+                stopSubscription(remote_uri);
+                fmt::print("Error in subscription: restarting {}\n", remote_uri);
+                startSubscription(remote_uri);
+                auto queue = maybeQueue.lock();
+                if (!queue) {
+                    return;
+                }
+                opendigitizer::acq::Acquisition acq;
+                acq.channelValue.value()      = {0, -5, 5, -5, 5, 0}; // TODO: remove this once the UI supports showing tags and correct time axes
+                acq.triggerEventNames.value() = {"SubscriptionInterrupted"};
+                acq.triggerIndices.value()    = {0};
+                acq.triggerTimestamps.value() = {0};
+                std::lock_guard lock(queue->mutex);
+                queue->data.push_back({std::move(acq), 0});
+                return;
+            }
             if (rep.data.empty()) {
                 return;
             }
@@ -102,23 +125,57 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                 if (!queue) {
                     return;
                 }
-                auto                            buf = rep.data;
                 opendigitizer::acq::Acquisition acq;
+                auto                            buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+                samples_received += acq.channelValue.size();
+                fmt::print("remoteSource queue-length: {}, samples received: {}\n", queue->data.size(), samples_received);
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
-                fmt::print(std::cerr, "{}\n", e.what());
+                fmt::print(std::cerr, "Error in subscription for {}: {}\n", uri, e.what());
+                // restart subscription
                 return;
             }
         };
         _client.request(command);
+        fmt::print("Subscribed to {}\n", uri);
+    }
+
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+        if (Parent::state() != gr::lifecycle::State::RUNNING) {
+            return; // early return, only apply settings for the running flowgraph
+        }
+        const auto oldValue = old_settings.find("remote_uri");
+        if (oldValue != old_settings.end()) {
+            const auto oldUri = std::get<std::string>(oldValue->second);
+            if (!oldUri.empty()) {
+                stopSubscription(oldUri);
+            }
+        }
+        startSubscription(remote_uri);
+    }
+
+    void start() {
+        if (!remote_uri.empty()) {
+            startSubscription(remote_uri);
+            std::this_thread::sleep_for(50ms);
+            stopSubscription(remote_uri);
+            startSubscription(remote_uri);
+        }
+    }
+
+    void stop() {
+        if (!remote_uri.empty()) {
+            stopSubscription(remote_uri);
+        }
     }
 };
 
 template<typename T>
 requires std::is_floating_point_v<T>
 struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
+    using Parent = gr::Block<RemoteDataSetSource<T>>;
     gr::PortOut<gr::DataSet<T>> out;
     std::string                 remote_uri;
     opencmw::client::RestClient _client;
@@ -129,7 +186,9 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         std::mutex                 mutex;
     };
 
-    std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
+    std::shared_ptr<Queue> _queue            = std::make_shared<Queue>();
+    std::size_t            samples_received  = 0;
+    std::size_t            samples_published = 0;
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         std::lock_guard           lock(_queue->mutex);
@@ -143,31 +202,27 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         return gr::work::Status::OK;
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
-        const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty()) {
-                fmt::print("Unsubscribing from {}\n", oldUri);
-                opencmw::client::Command command;
-                command.command  = opencmw::mdp::Command::Unsubscribe;
-                command.topic    = opencmw::URI<>(remote_uri);
-                command.callback = [oldUri](const opencmw::mdp::Message&) {
-                    // TODO: Add cleanup once openCMW starts calling the callback
-                    // on successful unsubscribe
-                    fmt::print("Unsubscribed from {} successfully\n", oldUri);
-                };
-            }
-        }
+    void stopSubscription(const std::string uri) {
+        fmt::print("Unsubscribing(settings change) from {}\n", uri);
+        opencmw::client::Command command;
+        command.command  = opencmw::mdp::Command::Unsubscribe;
+        command.topic    = opencmw::URI<>(remote_uri);
+        command.callback = [uri](const opencmw::mdp::Message&) {
+            // TODO: Add cleanup once openCMW starts calling the callback on successful unsubscribe
+            fmt::print("Unsubscribed from {} successfully\n", uri);
+        };
+        _client.request(command);
+    }
 
+    void startSubscription(const std::string uri) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Subscribe;
-        command.topic   = opencmw::URI<>(remote_uri);
-        fmt::print("Subscribing to {}\n", remote_uri);
+        command.topic   = opencmw::URI<>(uri);
+        fmt::print("Subscribing to {}\n", uri);
 
         std::weak_ptr maybeQueue = _queue;
 
-        command.callback = [maybeQueue](const opencmw::mdp::Message& rep) {
+        command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
             if (rep.data.empty()) {
                 return;
             }
@@ -193,10 +248,39 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
                 queue->data.push_back(std::move(ds));
             } catch (opencmw::ProtocolException& e) {
                 fmt::print(std::cerr, "{}\n", e.what());
+                // restart subscription
+                stopSubscription(remote_uri);
+                startSubscription(remote_uri);
                 return;
             }
         };
         _client.request(command);
+    }
+
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+        if (Parent::state() != gr::lifecycle::State::RUNNING) {
+            return; // early return, only apply settings for the running flowgraph
+        }
+        const auto oldValue = old_settings.find("remote_uri");
+        if (oldValue != old_settings.end()) {
+            const auto oldUri = std::get<std::string>(oldValue->second);
+            if (!oldUri.empty()) {
+                stopSubscription(oldUri);
+            }
+        }
+        startSubscription(remote_uri);
+    }
+
+    void start() {
+        if (!remote_uri.empty()) {
+            startSubscription(remote_uri);
+        }
+    }
+
+    void stop() {
+        if (!remote_uri.empty()) {
+            stopSubscription(remote_uri);
+        }
     }
 };
 
