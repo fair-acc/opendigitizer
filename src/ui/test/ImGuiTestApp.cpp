@@ -133,7 +133,7 @@ void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, in
         static int suffixCounter = 0;
         suffixCounter++;
 
-        ImFormatString(args->InOutputFile, IM_ARRAYSIZE(args->InOutputFile), "captures/%s_%04d%s", g_testApp->_options.screenshotPrefix, suffixCounter, ".png");
+        ImFormatString(args->InOutputFile, IM_ARRAYSIZE(args->InOutputFile), OPENDIGITIZER_BUILD_DIRECTORY "/captures/%s_%04d%s", g_testApp->_options.screenshotPrefix, suffixCounter, ".png");
     }
 
     ctx.CaptureAddWindow(ref);

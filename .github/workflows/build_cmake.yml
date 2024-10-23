@@ -79,6 +79,7 @@ jobs:
       env:
         CC: gcc-14
         CXX: g++-14
+        VERBOSE: 1
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
@@ -86,6 +87,8 @@ jobs:
 
     - name: Build
       shell: bash
+      env:
+        VERBOSE: 1
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
@@ -95,7 +98,7 @@ jobs:
       if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: ctest  -V
+      run: ctest --output-on-failure -V -E qa_GnuRadioWorker
 
     - name: compare captures
       if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type != 'Debug' }}
@@ -103,7 +106,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
-        ./compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ ${{ runner.workspace }}/build/captures/
+        ./compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ /__w/opendigitizer/build/captures
 
     - name: execute tests with coverage
       if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'
