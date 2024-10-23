@@ -78,8 +78,7 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
                 command.command  = opencmw::mdp::Command::Unsubscribe;
                 command.topic    = opencmw::URI<>(remote_uri);
                 command.callback = [oldUri](const opencmw::mdp::Message&) {
-                    // TODO: Add cleanup once openCMW starts calling the callback
-                    // on successful unsubscribe
+                    // TODO: Add cleanup once openCMW starts calling the callback on successful unsubscribe
                     fmt::print("Unsubscribed from {} successfully\n", oldUri);
                 };
             }
@@ -112,6 +111,23 @@ struct RemoteSource : public gr::Block<RemoteSource<T>> {
             }
         };
         _client.request(command);
+    }
+
+    void stop() {
+        if (!remote_uri.empty()) {
+            fmt::print("Unsubscribing from {}\n", remote_uri);
+            opencmw::client::Command command;
+            command.command  = opencmw::mdp::Command::Unsubscribe;
+            command.topic    = opencmw::URI<>(remote_uri);
+            command.callback = [this](const opencmw::mdp::Message &) {
+                // TODO: Add cleanup once openCMW starts calling the callback on successful unsubscribe
+                fmt::print("Unsubscribed from {} successfully\n", remote_uri);
+            };
+        }
+
+        opencmw::client::Command command;
+        command.command = opencmw::mdp::Command::Subscribe;
+        command.topic   = opencmw::URI<>(remote_uri);
     }
 };
 
