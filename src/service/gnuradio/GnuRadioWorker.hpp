@@ -38,12 +38,26 @@ inline float doubleToFloat(double v) { return static_cast<float>(v); }
 
 inline std::string findTriggerName(std::span<const gr::Tag> tags) {
     for (const auto& tag : tags) {
-        const auto v = tag.get(std::string(gr::tag::TRIGGER_NAME.key()));
-        if (!v) {
+        const auto n = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        if (!n) {
             continue;
         }
-        return std::get<std::string>(v->get());
+        const auto name = std::get<std::string>(n->get());
+
+        const auto m = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        if (m) {
+            const auto meta      = std::get<gr::property_map>(m->get());
+            const auto contextIt = meta.find(gr::tag::CONTEXT.shortKey());
+            if (contextIt != meta.end()) {
+                const auto context = std::get<std::string>(contextIt->second);
+                if (!context.empty()) {
+                    return name + "/" + context;
+                }
+            }
+        }
+        return name;
     }
+
     return {};
 }
 
@@ -98,7 +112,6 @@ struct PollerKey {
     std::size_t              post_samples        = 0;                           // Trigger
     std::size_t              maximum_window_size = 0;                           // Multiplexed
     std::chrono::nanoseconds snapshot_delay      = std::chrono::nanoseconds(0); // Snapshot
-    std::string              trigger_name        = {};                          // Trigger, Multiplexed, Snapshot
 
     auto operator<=>(const PollerKey&) const noexcept = default;
 };
@@ -161,6 +174,11 @@ std::vector<SignalEntry> entriesFromSettings(const std::optional<std::vector<std
     }
     return entries;
 }
+
+struct Matcher {
+    std::string          filterDefinition;
+    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) { return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState); }
+};
 
 } // namespace detail
 
@@ -273,7 +291,7 @@ private:
                             } else {
                                 // Assume DataSink
                                 entries.resize(1);
-                                auto&      entry       = entries[0];
+                                auto& entry            = entries[0];
                                 entry.type             = SignalType::Plain;
                                 const auto signal_name = detail::get<std::string>(*settings, "signal_name");
                                 const auto signal_unit = detail::get<std::string>(*settings, "signal_unit");
@@ -418,7 +436,7 @@ private:
             return true;
         }
 
-        auto&       pollerEntry = pollerIt->second;
+        auto& pollerEntry = pollerIt->second;
 
         if (!pollerEntry.poller) {
             return true;
@@ -454,34 +472,19 @@ private:
     }
 
     auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
-        const auto key = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay), .trigger_name = context.triggerNameFilter};
+        const auto key = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
 
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
-            auto matcher = [trigger_name = context.triggerNameFilter](std::string_view, const gr::Tag& tag, const gr::property_map&) {
-                using enum gr::trigger::MatchResult;
-                const auto v = tag.get(gr::tag::TRIGGER_NAME);
-                if (trigger_name.empty()) {
-                    return v ? Matching : Ignore;
-                }
-                try {
-                    if (!v) {
-                        return Ignore;
-                    }
-                    return std::get<std::string>(v->get()) == trigger_name ? Matching : NotMatching;
-                } catch (...) {
-                    return NotMatching;
-                }
-            };
             const auto query = basic::DataSinkQuery::signalName(signalName);
             // TODO for triggered/multiplexed subscriptions that only differ in preSamples/postSamples/maximumWindowSize, we could use a single poller for the encompassing range
             // and send snippets from their datasets to the individual subscribers
             if (mode == AcquisitionMode::Triggered) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<double>(query, std::move(matcher), key.pre_samples, key.post_samples)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.pre_samples, key.post_samples)).first;
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<double>(query, std::move(matcher), key.snapshot_delay)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.snapshot_delay)).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<double>(query, std::move(matcher), key.maximum_window_size)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.maximum_window_size)).first;
             } else if (mode == AcquisitionMode::DataSet) {
                 pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getDataSetPoller<double>(query)).first;
             }
@@ -503,7 +506,7 @@ private:
         }
         Acquisition reply;
         auto        processData = [&reply, &key, signalName, &pollerEntry](std::span<const gr::DataSet<double>> dataSets) {
-            const auto& dataSet = dataSets[0];
+            const auto& dataSet  = dataSets[0];
             const auto  signalIt = std::ranges::find(dataSet.signal_names, signalName);
             if (key.mode == AcquisitionMode::DataSet && signalIt == dataSet.signal_names.end()) {
                 return;

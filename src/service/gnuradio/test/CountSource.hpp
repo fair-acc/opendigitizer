@@ -25,6 +25,8 @@ struct CountSource : public gr::Block<CountSource<T>> {
         _produced = 0;
         _pending_tags.clear();
 
+        auto genTrigger = [](gr::Tag::signed_index_type index, std::string triggerName, std::string triggerCtx = {}) { return gr::Tag{index, {{gr::tag::TRIGGER_NAME.shortKey(), triggerName}, {gr::tag::TRIGGER_TIME.shortKey(), std::uint64_t(0)}, {gr::tag::TRIGGER_OFFSET.shortKey(), 0.f}, {gr::tag::TRIGGER_META_INFO.shortKey(), gr::property_map{{gr::tag::CONTEXT.shortKey(), triggerCtx}}}}}; };
+
         for (const auto& tagStr : timing_tags) {
             auto       view = tagStr | std::ranges::views::split(',');
             const auto segs = std::vector(view.begin(), view.end());
@@ -38,7 +40,12 @@ struct CountSource : public gr::Block<CountSource<T>> {
                 fmt::println(std::cerr, "Invalid tag index '{}'", segs[0]);
                 continue;
             }
-            _pending_tags.emplace_back(index, gr::property_map{{std::string{gr::tag::TRIGGER_NAME.key()}, std::string{segs[1].begin(), segs[1].end()}}});
+            std::string           name;
+            [[maybe_unused]] bool nameEnds;
+            std::string           context;
+            [[maybe_unused]] bool contextEnds;
+            gr::trigger::detail::parse(std::string_view(segs[1].begin(), segs[1].end()), name, nameEnds, context, contextEnds);
+            _pending_tags.push_back(genTrigger(index, name, context));
         }
     }
 

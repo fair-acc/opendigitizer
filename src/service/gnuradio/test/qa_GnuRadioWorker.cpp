@@ -429,7 +429,7 @@ connections:
         std::atomic<std::size_t> receivedCount = 0;
 
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(acq.acqTriggerName.value() == "hello");
+            expect(eq(acq.acqTriggerName.value(), "hello"sv));
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
         });
@@ -472,7 +472,7 @@ connections:
         std::atomic<std::size_t> receivedCount = 0;
 
         test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(acq.acqTriggerName.value() == "hello");
+            expect(eq(acq.acqTriggerName.value(), "hello"sv));
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
         });
@@ -495,9 +495,10 @@ blocks:
       signal_unit: A unit
       sample_rate: 10
       timing_tags:
-        - 30,hello
-        - 50,start
-        - 70,hello
+        - 30,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
+        - 50,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
+        - 70,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+        - 80,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
   - name: delay
     id: gr::testing::Delay
     parameters:
@@ -520,8 +521,9 @@ connections:
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=multiplexed&triggerNameFilter=start"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(acq.acqTriggerName.value() == "start");
+        // filter "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3]" => samples [50..69]
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D3%5D"), [&receivedData, &receivedCount](const auto& acq) {
+            expect(eq(acq.acqTriggerName.value(), "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"sv));
             receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
             receivedCount = receivedData.size();
         });
