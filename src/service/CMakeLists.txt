@@ -16,12 +16,12 @@ if(NOT TARGET digitizer_settings)
   add_subdirectory(../utils utils)
 endif()
 
-if(NOT WASM_BUILD_DIR)
-  option(
-    WASM_BUILD_DIR
-    "The absolute path to a directory containing the build output of the emscripten ui build to be bundled into the assets"
-    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/build-wasm)
-endif()
+set(WASM_BUILD_DIR
+    "${CMAKE_BINARY_DIR}/build-wasm"
+    CACHE
+      FILEPATH
+      "The absolute path to a directory containing the build output of the emscripten ui build to be bundled into the assets"
+)
 
 set(SERVING_DIR ${WASM_BUILD_DIR})
 configure_file(build_configuration.hpp.in ${CMAKE_BINARY_DIR}/build_configuration.hpp @ONLY)
