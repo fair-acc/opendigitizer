@@ -86,7 +86,7 @@ done
 
 if [[ ${#images_with_differences[@]} -eq 0 && ${#new_images_in_pr[@]} -eq 0 && ${#images_missing_in_pr[@]} -eq 0 ]]; then
     # Still useful to show a comment on success, in case PR has previous diff comments
-    gh pr comment "$PR_NUMBER" --edit-last --body "✅ No screencapture diffs to report!"
+    gh pr comment "$PR_NUMBER" --edit-last --body "✅ No screencapture diffs to report!" || gh pr comment "$PR_NUMBER" --body "✅ No screencapture diffs to report!"
 
     # All is good now, when we merge, do not upload anything to reference_screen_captures
     gh release delete-asset test_screen_captures "${PR_NUMBER}"-all-captures.tgz
@@ -160,5 +160,5 @@ else
     echo "Creating PR comment with content"
     echo -e "$formatted_text"
 
-    gh pr comment "$PR_NUMBER" --body "$formatted_text"
+    gh pr comment --edit-last "$PR_NUMBER" --body "$formatted_text" || gh pr comment "$PR_NUMBER" --body "$formatted_text"
 fi
