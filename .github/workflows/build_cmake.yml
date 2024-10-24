@@ -7,10 +7,11 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   packages: read
   id-token: write
+  pull-requests: write
 
 jobs:
   build:
@@ -99,19 +100,20 @@ jobs:
       shell: bash
       run: ctest --output-on-failure
 
-    - name: compare captures
-      if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type == 'Debug' }}
-      env:
-        GH_TOKEN: ${{ github.token }}
-      shell: bash
-      run: |
-        ./compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ ${{ github.workspace }}/build/captures/
-
     - name: execute tests with coverage
       if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'
       working-directory: ${{runner.workspace}}/build
       shell: bash
       run: cmake --build . --target opendigitizer_coverage
+
+    # only for Release, as this might generate PR comments (which we don't want to duplicate)
+    - name: compare captures
+      if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type != 'Debug' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ /__w/opendigitizer/build/captures
 
     - name: Setup Pages
       if: matrix.cmake-build-type == 'Release'
