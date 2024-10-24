@@ -11,3 +11,11 @@ repos:
   rev: v18.1.8
   hooks:
   - id: clang-format
+- repo: local
+  hooks:
+  - id: check-signed-off
+    name: Check Signed-off-by
+    # don't bother signing local merges
+    entry: bash -c 'grep -q "Merge" "$1" || { grep -q "Signed-off-by" "$1" || { echo "Error Commit message must contain a Signed-off-by line."; exit 1; }; }' --
+    language: system
+    stages: [commit-msg]
