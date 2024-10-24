@@ -13,6 +13,11 @@
 # We're using 2 dummy releases to store assets: 'reference_screen_captures-main' and 'test_screen_captures'
 # , the latter stores diffs, so they can be linked from in PR comments.
 
+if [ -z "$GITHUB_EVENT_NAME" ]; then
+    echo "Error: this script is expected to only run under GitHub actions";
+    exit 1
+fi
+
 if [ "$#" -ne 4 ] ; then
     echo "Usage: compare_captures.sh <PR_NUMBER> <REPO_NAME> <reference_capture_dir> <current_capture_dir>"
     exit 1
@@ -24,7 +29,7 @@ REFERENCE_CAPTURES_DIR=$3
 PR_CAPTURES_DIR=$4
 DIFF_DIR=$PR_CAPTURES_DIR/../diffs/
 DIFFS_RELEASE_NAME=test_screen_captures
-REFERENCE_RELEASE_NAME=reference_screen_captures-main # TODO we'll want more than one branch ?
+REFERENCE_RELEASE_NAME=reference_screen_captures-main
 
 mkdir "$DIFF_DIR" &> /dev/null
 
@@ -81,7 +86,7 @@ done
 
 if [[ ${#images_with_differences[@]} -eq 0 && ${#new_images_in_pr[@]} -eq 0 && ${#images_missing_in_pr[@]} -eq 0 ]]; then
     # Still useful to show a comment on success, in case PR has previous diff comments
-    gh pr comment "$PR_NUMBER" --body "✅ No screencapture diffs to report!"
+    gh pr comment "$PR_NUMBER" --edit-last --body "✅ No screencapture diffs to report!"
 
     # All is good now, when we merge, do not upload anything to reference_screen_captures
     gh release delete-asset test_screen_captures "${PR_NUMBER}"-all-captures.tgz
