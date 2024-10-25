@@ -31,7 +31,6 @@ blocks:
         - Test unit C
         - Test unit D
       sample_rate: 10000
-      streaming_mode_poll_rate: 0.000010
   - name: convertA
     id: gr::blocks::type::converter::Convert
     template_args: "float,double"
