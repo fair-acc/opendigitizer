@@ -52,6 +52,13 @@ FetchContent_Declare(
   GIT_TAG 2465afbdafc1bd98bb8a0aa232134893bb19991a # main as of 2024-10-28
   SYSTEM)
 
+FetchContent_Declare(
+        gr-digitizers
+        GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
+        GIT_TAG 749394c12285887eb8840ac4cd0c46f1d21b46b4 # dev-prototype as of 2024-11-06
+        SYSTEM
+)
+
 FetchContent_MakeAvailable(
   imgui
   implot
@@ -70,7 +77,7 @@ if(NOT EMSCRIPTEN)
     GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
     GIT_TAG release-2.30.8
     SYSTEM)
-  FetchContent_MakeAvailable(sdl2)
+  FetchContent_MakeAvailable(gr-digitizers sdl2)
 endif()
 
 set(IMGUI_SRCS

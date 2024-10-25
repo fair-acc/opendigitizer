@@ -1,0 +1,66 @@
+blocks:
+  - name: picoscope
+    id: fair::picoscope::Picoscope4000a
+    template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
+    parameters:
+      acquisition_mode: Streaming
+      auto_arm: true
+      channel_couplings:
+        - DC_1M
+        - DC_1M
+        - DC_1M
+        - DC_1M
+      channel_ids:
+        - A
+        - B
+        - C
+        - D
+      channel_names:
+        - test
+        - signal B
+        - signal C
+        - signal D
+      channel_ranges:
+        - 5
+        - 5
+        - 5
+        - 5
+      channel_units:
+        - Test unit A
+        - Test unit B
+        - Test unit C
+        - Test unit D
+      sample_rate: 1000
+  - name: sum sigs
+    id: opendigitizer::Arithmetic
+  - name: FFT
+    id: gr::blocks::fft::FFT
+  - name: sine source 3
+    id: opendigitizer::SineSource
+    parameters:
+      frequency: 5.00000
+  - name: sink 1
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: 0xff0000
+  - name: sink 2
+    id: opendigitizer::ImPlotSinkDataSet
+    parameters:
+      color: 0x00ff00
+      dataset_index: 3
+  - name: sink 3
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: 0x0000ff
+  - name: sink 4
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: 0xffff00
+connections:
+  - [picoscope,  [0, 0], sum sigs, 0]
+  - [sine source 3, 0, sum sigs, 1]
+  - [sum sigs, 0, FFT, 0]
+  - [sum sigs, 0, sink 1, 0]
+  - [FFT, 0, sink 2, 0]
+  - [picoscope, [0, 0], sink 3, 0]
+  - [sine source 3, 0, sink 4, 0]

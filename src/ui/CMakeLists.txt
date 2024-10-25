@@ -80,7 +80,9 @@ cmrc_add_resource_library(
   assets/sampleDashboards/ExtendedDemoDashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.yml
   assets/sampleDashboards/DemoDashboard.grc
-  assets/sampleDashboards/DemoDashboard.yml)
+  assets/sampleDashboards/DemoDashboard.yml
+  assets/sampleDashboards/PicoscopeDashboard.grc
+  assets/sampleDashboards/PicoscopeDashboard.yml)
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
@@ -167,6 +169,9 @@ target_link_libraries(
          fftw
          vir
          pmtv)
+if (NOT EMSCRIPTEN)
+  target_link_libraries(${target_name}lib PUBLIC fair-picoscope)
+endif ()
 target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_link_libraries(${target_name} PRIVATE ${target_name}lib)
 

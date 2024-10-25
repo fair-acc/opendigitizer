@@ -21,6 +21,17 @@
 
 #include "App.hpp"
 
+#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
+#include <gnuradio-4.0/basic/SignalGenerator.hpp>
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
+
+#if not defined(EMSCRIPTEN)
+#include <Picoscope4000a.hpp>
+// TODO: this should be done inside of gr-digitizers
+auto registerPicoscope       = gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float>(gr::globalBlockRegistry());
+auto registerConverterBlocks = gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(gr::globalBlockRegistry());
+#endif
+
 using namespace std::string_literals;
 
 namespace DigitizerUi {
@@ -113,12 +124,26 @@ void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLo
             }
 
             for (auto index = 0UZ; index < prototype->dynamicInputPortsSize(); index++) {
-                const auto& port = prototype->dynamicInputPort(index);
-                instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                if (const auto nDyn = prototype->dynamicInputPortsSize(index); nDyn == gr::meta::invalid_index){ // single port
+                    const auto& port = prototype->dynamicInputPort(index);
+                    instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                } else { // port collection
+                    for (auto subIndex = 0UZ; subIndex < nDyn; subIndex++) {
+                        const auto& port = prototype->dynamicInputPort(index, subIndex);
+                        instantiationType.inputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                    }
+                }
             }
             for (auto index = 0UZ; index < prototype->dynamicOutputPortsSize(); index++) {
-                const auto& port = prototype->dynamicOutputPort(index);
-                instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                if (const auto nDyn = prototype->dynamicOutputPortsSize(index); nDyn == gr::meta::invalid_index){ // single port
+                    const auto& port = prototype->dynamicOutputPort(index);
+                    instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                } else { // port collection
+                    for (auto subIndex = 0UZ; subIndex < nDyn; subIndex++) {
+                        const auto& port = prototype->dynamicOutputPort(index, subIndex);
+                        instantiationType.outputs.emplace_back(port.type() == gr::PortType::MESSAGE ? "message"s : valueTypeName(port), std::string(port.name), false);
+                    }
+                }
             }
 
             if (first) {
