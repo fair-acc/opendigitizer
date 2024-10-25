@@ -37,7 +37,7 @@ public:
     template<typename BrokerType>
     explicit DashboardWorker(const BrokerType &broker)
         : super_t(broker, {}) {
-        super_t::setHandler([this](RequestContext &ctx) {
+        super_t::setHandler([this](RequestContext& ctx) {
             auto whatParam = [&]() {
                 const auto &params = ctx.request.topic.queryParamMap();
                 auto        it     = params.find("what");
@@ -163,25 +163,27 @@ public:
                 }
             }
         });
-        auto      fs        = cmrc::dashboardFilesystem::get_filesystem();
-        auto      header    = fs.open("defaultDashboard.header");
-        auto      dashboard = fs.open("defaultDashboard.dashboard");
-        auto      flowgraph = fs.open("defaultDashboard.flowgraph");
 
-        Dashboard ds;
-        ds.header.resize(header.size());
-        std::copy(header.begin(), header.end(), ds.header.begin());
-        ds.dashboard.resize(dashboard.size());
-        std::copy(dashboard.begin(), dashboard.end(), ds.dashboard.begin());
-        ds.flowgraph.resize(flowgraph.size());
-        std::copy(flowgraph.begin(), flowgraph.end(), ds.flowgraph.begin());
+        auto readDefaultDashboard = [](std::string_view name) {
+            auto fs        = cmrc::dashboardFilesystem::get_filesystem();
+            auto header    = fs.open(fmt::format("defaultDashboards/{}/header", name));
+            auto dashboard = fs.open(fmt::format("defaultDashboards/{}/dashboard", name));
+            auto flowgraph = fs.open(fmt::format("defaultDashboards/{}/flowgraph", name));
 
-        names.push_back("dashboard1");
-        dashboards.push_back(ds);
-        names.push_back("dashboard2");
-        dashboards.push_back(ds);
-        names.push_back("dashboard3");
-        dashboards.push_back(ds);
+            Dashboard ds;
+            ds.header.resize(header.size());
+            std::ranges::copy(header, ds.header.begin());
+            ds.dashboard.resize(dashboard.size());
+            std::ranges::copy(dashboard, ds.dashboard.begin());
+            ds.flowgraph.resize(flowgraph.size());
+            std::ranges::copy(flowgraph, ds.flowgraph.begin());
+            return ds;
+        };
+
+        for (const auto& name : {"RemoteStream", "RemoteDataSet"}) {
+            names.push_back(name);
+            dashboards.push_back(readDefaultDashboard(name));
+        }
     }
 
 private:

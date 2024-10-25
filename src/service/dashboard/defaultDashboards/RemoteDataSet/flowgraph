@@ -1,0 +1,29 @@
+blocks:
+  - name: remote stream
+    id: opendigitizer::RemoteStreamSource
+    parameters:
+      remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+  - name: remote triggered
+    id: opendigitizer::RemoteDataSetSource
+    parameters:
+      remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
+  - name: remote multiplexed
+    id: opendigitizer::RemoteDataSetSource
+    parameters:
+      remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
+  - name: stream sink
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: 0xff0000
+  - name: triggered sink
+    id: opendigitizer::ImPlotSinkDataSet
+    parameters:
+      color: 0x00ff00
+  - name: multiplexed sink
+    id: opendigitizer::ImPlotSinkDataSet
+    parameters:
+      color: 0x0000ff
+connections:
+  - [remote stream, 0, stream sink, 0]
+  - [remote triggered, 0, triggered sink, 0]
+  - [remote multiplexed, 0, multiplexed sink, 0]

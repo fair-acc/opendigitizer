@@ -177,7 +177,21 @@ std::vector<SignalEntry> entriesFromSettings(const std::optional<std::vector<std
 
 struct Matcher {
     std::string          filterDefinition;
-    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) { return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState); }
+    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) {
+        const auto  maybeName = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        const auto  name      = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
+        const auto  maybeMeta = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        std::string context   = "<undefined>";
+        if (maybeMeta) {
+            const auto m  = std::get<gr::property_map>(maybeMeta->get());
+            auto       it = m.find(gr::tag::CONTEXT.shortKey());
+            if (it != m.end()) {
+                context = std::get<std::string>(it->second);
+            }
+        }
+        fmt::println("Matching {} against '{}' / '{}'", filterDefinition, name, context);
+        return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
+    }
 };
 
 } // namespace detail
@@ -472,10 +486,10 @@ private:
     }
 
     auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
-        const auto key = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
-
+        const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
+            fmt::println("Register {}, '{}'", magic_enum::enum_name(mode), context.triggerNameFilter);
             const auto query = basic::DataSinkQuery::signalName(signalName);
             // TODO for triggered/multiplexed subscriptions that only differ in preSamples/postSamples/maximumWindowSize, we could use a single poller for the encompassing range
             // and send snippets from their datasets to the individual subscribers
@@ -547,6 +561,7 @@ private:
 
         const auto wasFinished = pollerEntry.poller->finished.load();
         while (pollerEntry.poller->process(processData, 1)) {
+            fmt::println("Pushing a data set with {} samples to {}", reply.channelValue.size(), context.triggerNameFilter);
             super_t::notify(context, reply);
         }
 

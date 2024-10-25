@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         gnuradio4
         GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-        GIT_TAG frank/datasetsink-followup
+        GIT_TAG 2465afbdafc1bd98bb8a0aa232134893bb19991a # main as of 2024-10-28
         SYSTEM
 )
 

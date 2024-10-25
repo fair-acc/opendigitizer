@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_map>
 
@@ -319,7 +320,14 @@ void FlowGraph::parse(const std::filesystem::path& file) {
 
 void FlowGraph::parse(const std::string& str) {
     clear();
-    auto graph = gr::loadGrc(*_pluginLoader, str);
+
+    auto graph = [this, &str]() {
+        try {
+            return gr::loadGrc(*_pluginLoader, str);
+        } catch (const std::string& e) {
+            throw std::runtime_error(e);
+        }
+    }();
 
     graph.forEachBlock([&](const auto& grBlock) {
         auto typeName = grBlock.typeName();
