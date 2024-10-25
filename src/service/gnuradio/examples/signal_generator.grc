@@ -1,0 +1,50 @@
+blocks:
+  - name: ClockSource
+    id: gr::basic::ClockSource
+    template_args: "float"
+    parameters:
+      chunk_size: 100
+      do_zero_order_hold: true
+      n_samples_max: 100000000
+      sample_rate: 4096.000000
+      verbose_console: false
+  - name: SignalGenerator1
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      frequency: 0.12500000
+      amplitude: 20.000000
+      offset: 0.000000
+      phase: 0.000000
+      sample_rate: 4096.000000
+      signal_type: Triangle
+  - name: SignalGenerator2
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      frequency: 1.00000
+      amplitude: 5.000000
+      offset: 0.000000
+      phase: 0.000000
+      sample_rate: 4096.000000
+      signal_type: Sine
+  - name: Sum
+    id: MultiAdder
+    template_args: "float"
+    parameters:
+      n_inputs: 2
+  - name: convertFloatDouble
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: DataSink
+    id: gr::basic::DataSink
+    template_args: double
+    parameters:
+      signal_name: test
+connections:
+  - [ClockSource, 0, SignalGenerator1, 0]
+  - [ClockSource, 0, SignalGenerator2, 0]
+  - [SignalGenerator1, 0, Sum, [0, 0]]
+  - [SignalGenerator2, 0, Sum, [0, 1]]
+  - [Sum, 0, convertFloatDouble, 0]
+  - [convertFloatDouble, 0, DataSink, 0]
