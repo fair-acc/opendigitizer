@@ -77,7 +77,7 @@ public:
       @param ref An ImGuiID or a char* path that identifies the widget to be captured. Captures the window by default
       @param captureFlags See ImGui's ImGuiCaptureFlags_ enum
      */
-    static void captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref = "/", int captureFlags = ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_IncludeTooltipsAndPopups | ImGuiCaptureFlags_IncludeOtherWindows);
+    static void captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref = "/", int captureFlags = ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_IncludePopups | ImGuiCaptureFlags_IncludeOtherWindows);
 
     // Prints the existing window ids, for debugging purposes
     static void printWindows();
