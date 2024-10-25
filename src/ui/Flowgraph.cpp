@@ -1,5 +1,6 @@
 #include "Flowgraph.hpp"
 
+#include <URI.hpp>
 #include <cassert>
 
 #include <algorithm>
@@ -528,14 +529,6 @@ void FlowGraph::disconnect(Connection* c) {
     m_graphChanged = true;
 }
 
-Block* FlowGraph::addRemoteSource(std::string_view uri) {
-    auto block = BlockDefinition::registry().get("opendigitizer::RemoteSource")->createBlock("Remote Source");
-    block->updateSettings({{"remote_uri", std::string(uri)}});
-    auto res = block.get();
-    addBlock(std::move(block));
-    return res;
-}
-
 namespace {
 
 static bool isDrawable(const gr::property_map& meta, std::string_view category) {
@@ -564,7 +557,26 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, c
     grBlock->settings().applyStagedParameters();
     return grBlock;
 }
+
+std::string_view sourceTypeForURI(std::string_view uriStr) {
+    opencmw::URI<opencmw::RELAXED> uri{std::string(uriStr)};
+    const auto                     params  = uri.queryParamMap();
+    const auto                     acqMode = params.find("acquisitionModeFilter");
+    if (acqMode != params.end() && acqMode->second && acqMode->second != "streaming") {
+        return "opendigitizer::RemoteDataSetSource";
+    }
+    return "opendigitizer::RemoteStreamSource";
+}
+
 } // namespace
+
+Block* FlowGraph::addRemoteSource(std::string_view uriStr) {
+    auto block = BlockDefinition::registry().get(sourceTypeForURI(uriStr))->createBlock("Remote Source");
+    block->updateSettings({{"remote_uri", std::string(uriStr)}});
+    auto res = block.get();
+    addBlock(std::move(block));
+    return res;
+}
 
 ExecutionContext FlowGraph::createExecutionContext() {
     ExecutionContext context;
@@ -622,7 +634,7 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
             components::Notification::error(error);
             return;
         }
-        if (it->get()->typeName() == "opendigitizer::RemoteSource") {
+        if (it->get()->typeName() == "opendigitizer::RemoteStreamSource" || it->get()->typeName() == "opendigitizer::RemoteDataSetSource") {
             if (const auto remoteUri = std::get_if<std::string>(&msg.data.value().at("remote_uri"))) {
                 App::instance().dashboard->registerRemoteService(it->get()->name, *remoteUri);
             }
