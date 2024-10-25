@@ -168,8 +168,8 @@ public:
 
         // draw fair logo
         ImGui::SameLine(0.f, 0.f);
-        const ImTextureID imgLogo = (void*)(intptr_t)(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
-        if (ImGui::ImageButton(imgLogo, localLogoSize)) {
+        const auto imgLogo = static_cast<ImTextureID>(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+        if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
             // call url to project site
         }
 

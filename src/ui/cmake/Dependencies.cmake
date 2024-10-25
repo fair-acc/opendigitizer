@@ -6,7 +6,7 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.0 # latest as of 2024-08-15
+  GIT_TAG v1.91.4 # latest as of 2024-10-23
   SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
@@ -15,7 +15,7 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
-  GIT_TAG v0.16 # latest as of 2023-12-19
+  GIT_TAG v0.16 # latest as of 2024-10-23
   SYSTEM)
 
 FetchContent_Declare(
@@ -68,7 +68,7 @@ if(NOT EMSCRIPTEN)
     sdl2
     OVERRIDE_FIND_PACKAGE
     GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
-    GIT_TAG release-2.28.2
+    GIT_TAG release-2.30.8
     SYSTEM)
   FetchContent_MakeAvailable(sdl2)
 endif()
@@ -90,7 +90,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   FetchContent_Declare(
     imgui_test_engine
     GIT_REPOSITORY https://github.com/ocornut/imgui_test_engine.git
-    GIT_TAG v1.91.0 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
+    GIT_TAG v1.91.4 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
     SYSTEM)
 
   FetchContent_MakeAvailable(imgui_test_engine)
