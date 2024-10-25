@@ -31,6 +31,7 @@ DIFF_DIR=$PR_CAPTURES_DIR/../diffs/
 DIFFS_RELEASE_NAME=test_screen_captures
 REFERENCE_RELEASE_NAME=reference_screen_captures-main
 
+echo "Creating directory ${DIFF_DIR}"
 mkdir "$DIFF_DIR" &> /dev/null
 
 # make *.png expand to empty if there's no png file
@@ -39,6 +40,7 @@ setopt nullglob  &> /dev/null # zsh
 shopt -s nullglob &> /dev/null # bash
 
 # Download reference captures
+echo "Downloading release to ${REFERENCE_CAPTURES_DIR}"
 gh release download $REFERENCE_RELEASE_NAME -p "*.png" -D "$REFERENCE_CAPTURES_DIR"
 
 # Let's accumulate the results in these arrays
