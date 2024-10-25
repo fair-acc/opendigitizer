@@ -113,7 +113,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
-        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/reference_captures/ /__w/opendigitizer/build/captures
+        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} /__w/opendigitizer/build/reference_captures /__w/opendigitizer/build/captures
 
     - name: Setup Pages
       if: matrix.cmake-build-type == 'Release'
