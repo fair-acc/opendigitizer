@@ -6,6 +6,7 @@ target_link_libraries(
             majordomo
             disruptor
             gr-basic
+            gr-testing
             yaml-cpp::yaml-cpp
             project_options)
 

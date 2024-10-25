@@ -126,6 +126,8 @@ target_link_libraries(
           client
           project_options
           assets::rest
+          gr-testing
+          gr-basic
           digitizer_settings)
 if(NOT EMSCRIPTEN)
   target_link_libraries(opendigitizer PRIVATE fair-picoscope)
