@@ -1,11 +1,17 @@
 #include "ImGuiTestApp.hpp"
 
+#include "App.hpp"
 #include "imgui_test_engine/imgui_te_exporters.h"
 #include "imgui_test_engine/imgui_te_internal.h"
 #include "imgui_test_engine/imgui_te_ui.h"
+#include "implot.h"
 #include "shared/imgui_app.h"
 
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
+
 #include <algorithm>
+#include <filesystem>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <span>
@@ -34,6 +40,7 @@ ImGuiTestApp::~ImGuiTestApp() {
     _app->ShutdownBackends(_app);
     _app->ShutdownCloseWindow(_app);
     ImGui::DestroyContext();
+    ImPlot::DestroyContext();
 
     ImGuiTestEngine_DestroyContext(_engine);
 
@@ -46,6 +53,7 @@ void ImGuiTestApp::initImGui() {
     _app = ImGuiApp_ImplSdlGL3_Create();
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
 
     // Setup application. Values copied from upstream examples.
     // If some are interesting to change, consider adding them to our TestOptions struct
@@ -73,6 +81,8 @@ void ImGuiTestApp::initImGui() {
     // Start test engine
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
+
+    App::setImGuiStyle(kDefaultStyle);
 
     registerTests();
 }
@@ -189,3 +199,9 @@ void ImGuiTestApp::printWindows() {
 }
 
 ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
+
+std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
+    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
+    BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*loader);
+    return loader;
+}

@@ -30,23 +30,36 @@ add_test(NAME qa_play_stop_bar COMMAND qa_play_stop_bar)
 
 if(ENABLE_IMGUI_TEST_ENGINE)
 
+  cmrc_add_resource_library(
+    ui_test_assets
+    NAMESPACE
+    ui_test_assets
+    examples/fg_dipole_intensity_ramp.grc)
+
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
-  target_link_libraries(imgui_tests_common PUBLIC fmt ut imgui-node-editor)
-  target_compile_definitions(imgui_tests_common PUBLIC OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
+  target_link_libraries(
+    imgui_tests_common
+    PUBLIC opendigitizer-uilib
+           raii_wrapper
+           ui_assets
+           ui_test_assets)
+
+  target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
+                                                       OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
+
+  target_include_directories(imgui_tests_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
   function(add_imgui_test NAME)
     add_executable(${NAME} ${NAME}.cpp)
-    target_link_libraries(
-      ${NAME}
-      PRIVATE fmt
-              ut
-              imgui-node-editor
-              imgui_tests_common)
+    target_link_libraries(${NAME} PRIVATE opendigitizer-uilib ut imgui_tests_common)
     add_test(NAME ${NAME} COMMAND ${NAME})
   endfunction()
 
   add_imgui_test(qa_popup_menu)
-  target_include_directories(qa_popup_menu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
-                                                   ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
+  add_imgui_test(qa_dialog)
+  add_imgui_test(qa_filtercomboboxes)
+  add_imgui_test(qa_keypad)
+  add_imgui_test(qa_chart)
+
 endif()

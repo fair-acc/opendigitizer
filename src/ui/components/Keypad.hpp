@@ -1,12 +1,16 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_HEYPAD_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_HEYPAD_HPP_
 
+#include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 
+#include <any>
 #include <charconv>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <fmt/format.h>
 
 namespace DigitizerUi::components {
 
