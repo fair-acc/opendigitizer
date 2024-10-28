@@ -5,6 +5,13 @@
 #include "imgui_test_engine/imgui_te_ui.h"
 #include "shared/imgui_app.h"
 
+#include <algorithm>
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <iostream>
+#include <span>
+#include <string_view>
+
 using namespace DigitizerUi::test;
 
 namespace {
@@ -55,6 +62,7 @@ void ImGuiTestApp::initImGui() {
     test_io.ConfigVerboseLevel        = ImGuiTestVerboseLevel_Info;
     test_io.ConfigVerboseLevelOnError = ImGuiTestVerboseLevel_Debug;
     test_io.ConfigRunSpeed            = _options.speedMode;
+    test_io.ConfigKeepGuiFunc         = _options.keepGui;
     test_io.ScreenCaptureFunc         = ImGuiApp_ScreenCaptureFunc;
     test_io.ScreenCaptureUserData     = _app;
     test_io.ConfigCaptureOnError      = true;
@@ -138,4 +146,19 @@ void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, in
 
     ctx.CaptureAddWindow(ref);
     ctx.CaptureScreenshot(captureFlags);
+}
+
+TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
+    std::span args(argv + 1, argc - 1);
+    auto      hasArgument = [args](std::string_view arg) { return std::any_of(args.cbegin(), args.cend(), [arg](const char* v) { return arg == v; }); };
+
+    if (hasArgument("--help") || hasArgument("-h")) {
+        fmt::println(stdout, "Usage: {} [--keep-gui][--interactive]", argv[0]);
+    }
+
+    TestOptions options;
+    options.keepGui            = hasArgument("--keep-gui");
+    options.useInteractiveMode = hasArgument("--interactive");
+
+    return options;
 }

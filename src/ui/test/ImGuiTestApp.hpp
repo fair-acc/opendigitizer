@@ -15,11 +15,18 @@ struct TestOptions {
     // mostly used for debugging a test
     bool useInteractiveMode = false;
 
+    // Runs GuiFunc in a loop instead of quiting the application
+    // Use this for visually debug your test.
+    bool keepGui = false;
+
     // If cursor should teleport or move at human speed
     ImGuiTestRunSpeed speedMode = ImGuiTestRunSpeed::ImGuiTestRunSpeed_Fast;
 
     // Screenshot filenames can be prefixed with something. For instance, your test name
     const char* screenshotPrefix = "";
+
+    // Returns a good default for TestOptions but influenced by program arguments
+    static TestOptions fromArgs(int argc, char** argv);
 };
 
 /**
