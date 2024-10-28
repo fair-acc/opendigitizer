@@ -3,11 +3,7 @@
 
 namespace DigitizerUi::components {
 
-enum class DialogButton {
-    None,
-    Ok,
-    Cancel
-};
+enum class DialogButton { None, Ok, Cancel };
 
 inline DialogButton DialogButtons(bool okEnabled = true) {
     float y = ImGui::GetContentRegionAvail().y;
