@@ -1,6 +1,9 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_DIALOG_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_DIALOG_HPP_
 
+#include "../common/ImguiWrap.hpp"
+#include <imgui.h>
+
 namespace DigitizerUi::components {
 
 enum class DialogButton { None, Ok, Cancel };
