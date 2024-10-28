@@ -44,9 +44,11 @@ if(ENABLE_IMGUI_TEST_ENGINE)
               imgui-node-editor
               imgui_tests_common)
     add_test(NAME ${NAME} COMMAND ${NAME})
+    target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
+                                               ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
   endfunction()
 
   add_imgui_test(qa_popup_menu)
-  target_include_directories(qa_popup_menu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
-                                                   ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
+  add_imgui_test(qa_dialog)
+
 endif()
