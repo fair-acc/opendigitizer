@@ -487,7 +487,7 @@ private:
 
     auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
         const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
-        auto pollerIt = pollers.find(key);
+        auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             fmt::println("Register {}, '{}'", magic_enum::enum_name(mode), context.triggerNameFilter);
             const auto query = basic::DataSinkQuery::signalName(signalName);
