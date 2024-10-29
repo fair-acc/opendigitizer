@@ -33,7 +33,8 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
   target_link_libraries(imgui_tests_common PUBLIC fmt ut imgui-node-editor)
-  target_compile_definitions(imgui_tests_common PUBLIC OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
+  target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
+                                                       OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
 
   function(add_imgui_test NAME)
     add_executable(${NAME} ${NAME}.cpp)
@@ -41,6 +42,11 @@ if(ENABLE_IMGUI_TEST_ENGINE)
       ${NAME}
       PRIVATE fmt
               ut
+              plf_colony
+              gnuradio-core
+              client
+              services
+              stb
               imgui-node-editor
               imgui_tests_common)
     add_test(NAME ${NAME} COMMAND ${NAME})
@@ -50,5 +56,6 @@ if(ENABLE_IMGUI_TEST_ENGINE)
 
   add_imgui_test(qa_popup_menu)
   add_imgui_test(qa_dialog)
+  add_imgui_test(qa_filtercomboboxes)
 
 endif()
