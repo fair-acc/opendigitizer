@@ -1,15 +1,16 @@
 #ifndef DIGITIZER_TOOLBAR_H
 #define DIGITIZER_TOOLBAR_H
 
+#include "../blocks/ToolbarBlock.hpp"
 #include "../common/ImguiWrap.hpp"
 
-#include "../blocks/ToolbarBlock.hpp"
+#include <gnuradio-4.0/BlockModel.hpp>
 
 namespace DigitizerUi::components {
 namespace detail {
 struct ToolbarRAII {
     bool valid = false;
-    inline explicit ToolbarRAII(const char *id) {
+    inline explicit ToolbarRAII(const char* id) {
         const ImVec2   size   = ImGui::GetContentRegionAvail();
         const auto     width  = size.x;
         constexpr auto height = 36;
@@ -33,14 +34,14 @@ struct ToolbarRAII {
 
 } // namespace detail
 
-inline void Toolbar(const std::vector<gr::BlockModel *> &blocks) {
+inline void Toolbar(const std::vector<gr::BlockModel*>& blocks) {
     if (blocks.empty()) {
         return;
     }
 
     detail::ToolbarRAII toolbar("##Toolbar");
     if (toolbar.valid) {
-        for (const auto &b : blocks) {
+        for (const auto& b : blocks) {
             // TODO: if (b->isToolbarBlock()) {
             b->draw();
             ImGui::SameLine();
