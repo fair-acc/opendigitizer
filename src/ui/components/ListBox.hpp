@@ -4,6 +4,9 @@
 #include "../common/ImguiWrap.hpp"
 #include <misc/cpp/imgui_stdlib.h>
 
+#include <optional>
+#include <vector>
+
 namespace DigitizerUi::components {
 
 namespace detail {
