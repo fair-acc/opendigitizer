@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 
 namespace DigitizerUi {
 

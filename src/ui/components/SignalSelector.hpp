@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_SIGNAL_SELECTOR_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_SIGNAL_SELECTOR_HPP_
 
+#include <algorithm>
 #include <deque>
 #include <string>
 #include <vector>
