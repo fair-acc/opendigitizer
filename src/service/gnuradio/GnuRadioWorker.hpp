@@ -38,12 +38,26 @@ inline float doubleToFloat(double v) { return static_cast<float>(v); }
 
 inline std::string findTriggerName(std::span<const gr::Tag> tags) {
     for (const auto& tag : tags) {
-        const auto v = tag.get(std::string(gr::tag::TRIGGER_NAME.key()));
-        if (!v) {
+        const auto n = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        if (!n) {
             continue;
         }
-        return std::get<std::string>(v->get());
+        const auto name = std::get<std::string>(n->get());
+
+        const auto m = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        if (m) {
+            const auto meta      = std::get<gr::property_map>(m->get());
+            const auto contextIt = meta.find(gr::tag::CONTEXT.shortKey());
+            if (contextIt != meta.end()) {
+                const auto context = std::get<std::string>(contextIt->second);
+                if (!context.empty()) {
+                    return name + "/" + context;
+                }
+            }
+        }
+        return name;
     }
+
     return {};
 }
 
@@ -69,9 +83,9 @@ using enum gr::message::Command;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
-enum class AcquisitionMode { Continuous, Triggered, Multiplexed, Snapshot };
+enum class AcquisitionMode { Continuous, Triggered, Multiplexed, Snapshot, DataSet };
 
-constexpr inline AcquisitionMode parseAcquisitionMode(std::string_view v) {
+constexpr AcquisitionMode parseAcquisitionMode(std::string_view v) {
     using enum AcquisitionMode;
     if (v == "continuous") {
         return Continuous;
@@ -85,6 +99,9 @@ constexpr inline AcquisitionMode parseAcquisitionMode(std::string_view v) {
     if (v == "snapshot") {
         return Snapshot;
     }
+    if (v == "dataset") {
+        return DataSet;
+    }
     throw std::invalid_argument(fmt::format("Invalid acquisition mode '{}'", v));
 }
 
@@ -95,21 +112,20 @@ struct PollerKey {
     std::size_t              post_samples        = 0;                           // Trigger
     std::size_t              maximum_window_size = 0;                           // Multiplexed
     std::chrono::nanoseconds snapshot_delay      = std::chrono::nanoseconds(0); // Snapshot
-    std::string              trigger_name        = {};                          // Trigger, Multiplexed, Snapshot
 
     auto operator<=>(const PollerKey&) const noexcept = default;
 };
 
 struct StreamingPollerEntry {
-    using SampleType                                                = double;
-    bool                                                     in_use = true;
-    std::shared_ptr<gr::basic::DataSink<SampleType>::Poller> poller;
-    std::optional<std::string>                               signal_name;
-    std::optional<std::string>                               signal_unit;
-    std::optional<float>                                     signal_min;
-    std::optional<float>                                     signal_max;
+    using SampleType                                               = double;
+    bool                                                    in_use = true;
+    std::shared_ptr<gr::basic::StreamingPoller<SampleType>> poller;
+    std::optional<std::string>                              signal_name;
+    std::optional<std::string>                              signal_unit;
+    std::optional<float>                                    signal_min;
+    std::optional<float>                                    signal_max;
 
-    explicit StreamingPollerEntry(std::shared_ptr<basic::DataSink<SampleType>::Poller> p) : poller{p} {}
+    explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
     void populateFromTags(std::span<const gr::Tag>& tags) {
         for (const auto& tag : tags) {
@@ -129,18 +145,61 @@ struct StreamingPollerEntry {
     }
 };
 
+enum class SignalType {
+    DataSet, ///< DataSet stream, only allows acquisition mode "dataset"
+    Plain    ///< Plain data, allows all acquisition modes other than "dataset"
+};
+
 struct SignalEntry {
     std::string name;
     std::string unit;
     float       sample_rate;
+    SignalType  type;
 
     auto operator<=>(const SignalEntry&) const noexcept = default;
 };
 
+namespace detail {
+std::vector<SignalEntry> entriesFromSettings(const std::optional<std::vector<std::string>>& names, const std::optional<std::vector<std::string>>& units) {
+    if (!names || !units) {
+        return {};
+    }
+    const auto               n = std::min(names->size(), units->size());
+    std::vector<SignalEntry> entries{n};
+    for (auto i = 0UZ; i < n; ++i) {
+        entries[i].type        = SignalType::DataSet;
+        entries[i].name        = names.value()[i];
+        entries[i].unit        = units.value()[i];
+        entries[i].sample_rate = 1.f; // no sample rate information available for data sets
+    }
+    return entries;
+}
+
+struct Matcher {
+    std::string          filterDefinition;
+    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) {
+        const auto  maybeName = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        const auto  name      = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
+        const auto  maybeMeta = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        std::string context   = "<undefined>";
+        if (maybeMeta) {
+            const auto m  = std::get<gr::property_map>(maybeMeta->get());
+            auto       it = m.find(gr::tag::CONTEXT.shortKey());
+            if (it != m.end()) {
+                context = std::get<std::string>(it->second);
+            }
+        }
+        fmt::println("Matching {} against '{}' / '{}'", filterDefinition, name, context);
+        return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
+    }
+};
+
+} // namespace detail
+
 struct DataSetPollerEntry {
     using SampleType = double;
-    std::shared_ptr<gr::basic::DataSink<SampleType>::DataSetPoller> poller;
-    bool                                                            in_use = false;
+    std::shared_ptr<gr::basic::DataSetPoller<SampleType>> poller;
+    bool                                                  in_use = false;
 };
 
 template<units::basic_fixed_string serviceName, typename... Meta>
@@ -186,13 +245,13 @@ private:
             auto update = std::chrono::system_clock::now();
             // TODO: current load_grc creates Foo<double> types no matter what the original type was
             // when supporting more types, we need some type erasure here
-            std::map<PollerKey, StreamingPollerEntry> streamingPollers;
-            std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
-            std::jthread                              schedulerThread;
-            std::string                               schedulerUniqueName;
-            std::map<std::string, SignalEntry>        signalEntryBySink;
-            std::unique_ptr<MsgPortOut>               toScheduler;
-            std::unique_ptr<MsgPortIn>                fromScheduler;
+            std::map<PollerKey, StreamingPollerEntry>       streamingPollers;
+            std::map<PollerKey, DataSetPollerEntry>         dataSetPollers;
+            std::jthread                                    schedulerThread;
+            std::string                                     schedulerUniqueName;
+            std::map<std::string, std::vector<SignalEntry>> signalEntriesBySink;
+            std::unique_ptr<MsgPortOut>                     toScheduler;
+            std::unique_ptr<MsgPortIn>                      fromScheduler;
 
             bool finished = false;
 
@@ -224,30 +283,45 @@ private:
                                 continue;
                             }
                         } else if (message.endpoint == block::property::kSetting) {
-                            auto sinkIt = signalEntryBySink.find(message.serviceName);
-                            if (sinkIt == signalEntryBySink.end()) {
+                            auto sinkIt = signalEntriesBySink.find(message.serviceName);
+                            if (sinkIt == signalEntriesBySink.end()) {
                                 continue;
                             }
                             const auto& settings = message.data;
                             if (!settings) {
                                 continue;
                             }
-                            auto& entry = sinkIt->second;
+                            auto& entries = sinkIt->second;
 
-                            const auto signal_name = detail::get<std::string>(*settings, "signal_name");
-                            const auto signal_unit = detail::get<std::string>(*settings, "signal_unit");
-                            const auto sample_rate = detail::get<float>(*settings, "sample_rate");
-                            if (signal_name && signal_name != entry.name) {
-                                entry.name        = *signal_name;
-                                signalInfoChanged = true;
-                            }
-                            if (signal_unit && signal_unit != entry.unit) {
-                                entry.unit        = *signal_unit;
-                                signalInfoChanged = true;
-                            }
-                            if (sample_rate && sample_rate != entry.sample_rate) {
-                                entry.sample_rate = *sample_rate;
-                                signalInfoChanged = true;
+                            const auto signalNames = detail::get<std::vector<std::string>>(*settings, "signal_names");
+                            const auto signalUnits = detail::get<std::vector<std::string>>(*settings, "signal_units");
+                            if (signalNames && signalUnits) {
+                                // assume DataSetSink
+                                auto newEntries = detail::entriesFromSettings(signalNames, signalUnits);
+                                if (entries != newEntries) {
+                                    entries           = std::move(newEntries);
+                                    signalInfoChanged = true;
+                                }
+                            } else {
+                                // Assume DataSink
+                                entries.resize(1);
+                                auto& entry            = entries[0];
+                                entry.type             = SignalType::Plain;
+                                const auto signal_name = detail::get<std::string>(*settings, "signal_name");
+                                const auto signal_unit = detail::get<std::string>(*settings, "signal_unit");
+                                const auto sample_rate = detail::get<float>(*settings, "sample_rate");
+                                if (signal_name && signal_name != entry.name) {
+                                    entry.name        = *signal_name;
+                                    signalInfoChanged = true;
+                                }
+                                if (signal_unit && signal_unit != entry.unit) {
+                                    entry.unit        = *signal_unit;
+                                    signalInfoChanged = true;
+                                }
+                                if (sample_rate && sample_rate != entry.sample_rate) {
+                                    entry.sample_rate = *sample_rate;
+                                    signalInfoChanged = true;
+                                }
                             }
                         }
                     }
@@ -255,12 +329,8 @@ private:
                     std::ignore = messages.consume(messages.size());
 
                     if (signalInfoChanged && _updateSignalEntriesCallback) {
-                        std::vector<SignalEntry> entries;
-                        entries.reserve(signalEntryBySink.size());
-                        for (const auto& [_, entry] : signalEntryBySink) {
-                            entries.push_back(entry);
-                        }
-                        _updateSignalEntriesCallback(std::move(entries));
+                        auto flattened = signalEntriesBySink | std::views::values | std::views::join;
+                        _updateSignalEntriesCallback(std::vector(flattened.begin(), flattened.end()));
                     }
 
                     bool pollersFinished = true;
@@ -283,7 +353,7 @@ private:
                     if (_updateSignalEntriesCallback) {
                         _updateSignalEntriesCallback({});
                     }
-                    signalEntryBySink.clear();
+                    signalEntriesBySink.clear();
                     streamingPollers.clear();
                     dataSetPollers.clear();
                     fromScheduler.reset();
@@ -298,21 +368,25 @@ private:
                 }
 
                 if (pendingFlowGraph) {
-                    pendingFlowGraph->forEachBlock([&signalEntryBySink](const auto& block) {
+                    pendingFlowGraph->forEachBlock([&signalEntriesBySink](const auto& block) {
                         if (block.typeName().starts_with("gr::basic::DataSink")) {
-                            auto& entry       = signalEntryBySink[std::string(block.uniqueName())];
+                            auto& entries = signalEntriesBySink[std::string(block.uniqueName())];
+                            entries.resize(1);
+                            auto& entry       = entries[0];
+                            entry.type        = SignalType::Plain;
                             entry.name        = detail::getSetting<std::string>(block, "signal_name").value_or("");
                             entry.unit        = detail::getSetting<std::string>(block, "signal_unit").value_or("");
                             entry.sample_rate = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
+                        } else if (block.typeName().starts_with("gr::basic::DataSetSink")) {
+                            auto&      entries = signalEntriesBySink[std::string(block.uniqueName())];
+                            const auto names   = detail::getSetting<std::vector<std::string>>(block, "signal_names");
+                            const auto units   = detail::getSetting<std::vector<std::string>>(block, "signal_units");
+                            entries            = detail::entriesFromSettings(names, units);
                         }
                     });
                     if (_updateSignalEntriesCallback) {
-                        std::vector<SignalEntry> entries;
-                        entries.reserve(signalEntryBySink.size());
-                        for (const auto& [_, entry] : signalEntryBySink) {
-                            entries.push_back(entry);
-                        }
-                        _updateSignalEntriesCallback(std::move(entries));
+                        auto flattened = signalEntriesBySink | std::views::values | std::views::join;
+                        _updateSignalEntriesCallback(std::vector(flattened.begin(), flattened.end()));
                     }
                     auto sched          = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
                     toScheduler         = std::make_unique<MsgPortOut>();
@@ -341,7 +415,7 @@ private:
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
             try {
                 const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
-                for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), std::ranges::distance(r)}; })) {
+                for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), static_cast<std::size_t>(std::ranges::distance(r))}; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
                         if (!handleStreamingSubscription(streamingPollers, filterIn, signalName)) {
                             pollersFinished = false;
@@ -376,8 +450,7 @@ private:
             return true;
         }
 
-        const auto& key         = pollerIt->first;
-        auto&       pollerEntry = pollerIt->second;
+        auto& pollerEntry = pollerIt->second;
 
         if (!pollerEntry.poller) {
             return true;
@@ -398,8 +471,8 @@ private:
             reply.channelValue.resize(data.size());
             reply.channelError.resize(data.size());
             reply.channelTimeBase.resize(data.size());
-            std::transform(data.begin(), data.end(), reply.channelValue.begin(), detail::doubleToFloat);
-            std::copy(data.begin(), data.end(), reply.channelValue.begin());
+            std::ranges::transform(data, reply.channelValue.begin(), detail::doubleToFloat);
+            std::ranges::copy(data, reply.channelValue.begin());
             std::fill(reply.channelError.begin(), reply.channelError.end(), 0.f);     // TODO
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
         };
@@ -413,34 +486,21 @@ private:
     }
 
     auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
-        const auto key = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay), .trigger_name = context.triggerNameFilter};
-
-        auto pollerIt = pollers.find(key);
+        const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
+        auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
-            auto matcher = [trigger_name = context.triggerNameFilter](std::string_view, const gr::Tag& tag, const gr::property_map&) {
-                using enum gr::trigger::MatchResult;
-                const auto v = tag.get(gr::tag::TRIGGER_NAME);
-                if (trigger_name.empty()) {
-                    return v ? Matching : Ignore;
-                }
-                try {
-                    if (!v) {
-                        return Ignore;
-                    }
-                    return std::get<std::string>(v->get()) == trigger_name ? Matching : NotMatching;
-                } catch (...) {
-                    return NotMatching;
-                }
-            };
+            fmt::println("Register {}, '{}'", magic_enum::enum_name(mode), context.triggerNameFilter);
             const auto query = basic::DataSinkQuery::signalName(signalName);
             // TODO for triggered/multiplexed subscriptions that only differ in preSamples/postSamples/maximumWindowSize, we could use a single poller for the encompassing range
             // and send snippets from their datasets to the individual subscribers
             if (mode == AcquisitionMode::Triggered) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<double>(query, std::move(matcher), key.pre_samples, key.post_samples)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.pre_samples, key.post_samples)).first;
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<double>(query, std::move(matcher), key.snapshot_delay)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.snapshot_delay)).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<double>(query, std::move(matcher), key.maximum_window_size)).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, key.maximum_window_size)).first;
+            } else if (mode == AcquisitionMode::DataSet) {
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getDataSetPoller<double>(query)).first;
             }
         }
         return pollerIt;
@@ -460,30 +520,48 @@ private:
         }
         Acquisition reply;
         auto        processData = [&reply, &key, signalName, &pollerEntry](std::span<const gr::DataSet<double>> dataSets) {
-            const auto& dataSet = dataSets[0];
-            if (!dataSet.timing_events.empty()) {
-                reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
+            const auto& dataSet  = dataSets[0];
+            const auto  signalIt = std::ranges::find(dataSet.signal_names, signalName);
+            if (key.mode == AcquisitionMode::DataSet && signalIt == dataSet.signal_names.end()) {
+                return;
             }
-            reply.channelName = dataSet.signal_names.empty() ? std::string(signalName) : dataSet.signal_names[0];
-            reply.channelUnit = dataSet.signal_units.empty() ? "N/A" : dataSet.signal_units[0];
-            if (!dataSet.signal_ranges.empty() && dataSet.signal_ranges[0].size() == 2) {
+            const auto signalIndex = signalIt == dataSet.signal_names.end() ? 0UZ : static_cast<std::size_t>(std::distance(dataSet.signal_names.begin(), signalIt));
+            if (!dataSet.timing_events.empty()) {
+                reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[signalIndex]);
+            }
+            reply.channelName = (dataSet.signal_names.size() <= signalIndex) ? std::string(signalName) : dataSet.signal_names[signalIndex];
+            reply.channelUnit = (dataSet.signal_units.size() <= signalIndex) ? "N/A" : dataSet.signal_units[signalIndex];
+            if ((dataSet.signal_ranges.size() > signalIndex) && dataSet.signal_ranges[signalIndex].size() == 2) {
                 // Workaround for Annotated, see above
-                const typename decltype(reply.channelRangeMin)::R rangeMin = dataSet.signal_ranges[0][0];
-                const typename decltype(reply.channelRangeMax)::R rangeMax = dataSet.signal_ranges[0][1];
+                const typename decltype(reply.channelRangeMin)::R rangeMin = dataSet.signal_ranges[signalIndex][0];
+                const typename decltype(reply.channelRangeMax)::R rangeMax = dataSet.signal_ranges[signalIndex][1];
                 reply.channelRangeMin                                      = rangeMin;
                 reply.channelRangeMax                                      = rangeMax;
             }
-            reply.channelValue.resize(dataSet.signal_values.size());
-            std::transform(dataSet.signal_values.begin(), dataSet.signal_values.end(), reply.channelValue.begin(), detail::doubleToFloat);
-            reply.channelError.resize(dataSet.signal_errors.size());
-            std::transform(dataSet.signal_errors.begin(), dataSet.signal_errors.end(), reply.channelError.begin(), detail::doubleToFloat);
-            reply.channelTimeBase.resize(dataSet.signal_values.size());
+            auto values = std::span(dataSet.signal_values);
+            auto errors = std::span(dataSet.signal_errors);
+
+            if (key.mode == AcquisitionMode::DataSet) {
+                const auto samples = static_cast<std::size_t>(dataSet.extents[1]);
+                const auto offset  = signalIndex * samples;
+                const auto nValues = offset + samples <= values.size() ? samples : 0;
+                const auto nErrors = offset + samples <= errors.size() ? samples : 0;
+                values             = values.subspan(offset, nValues);
+                errors             = errors.subspan(offset, nErrors);
+            }
+
+            reply.channelValue.resize(values.size());
+            std::ranges::transform(values, reply.channelValue.begin(), detail::doubleToFloat);
+            reply.channelError.resize(errors.size());
+            std::ranges::transform(errors, reply.channelError.begin(), detail::doubleToFloat);
+            reply.channelTimeBase.resize(values.size());
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
         };
         pollerEntry.in_use = true;
 
         const auto wasFinished = pollerEntry.poller->finished.load();
         while (pollerEntry.poller->process(processData, 1)) {
+            fmt::println("Pushing a data set with {} samples to {}", reply.channelValue.size(), context.triggerNameFilter);
             super_t::notify(context, reply);
         }
 

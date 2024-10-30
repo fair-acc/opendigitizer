@@ -6,7 +6,7 @@ blocks:
     parameters:
       frequency: 0.100000
   - name: remote source 1
-    id: opendigitizer::RemoteSource
+    id: opendigitizer::RemoteStreamSource
     parameters:
       remote_uri: https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
   - name: sink 1

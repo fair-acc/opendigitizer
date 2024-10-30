@@ -224,7 +224,7 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& de
         for (auto& p : m_plots) {
             std::erase_if(p.sources, [&blockName](const auto& s) { return s->blockName == blockName; });
         }
-        if (b->typeName() == "opendigitizer::RemoteSource") {
+        if (b->typeName() == "opendigitizer::RemoteStreamSource" || b->typeName() == "opendigitizer::RemoteDataSetSource") {
             unregisterRemoteService(b->name);
         }
         std::erase_if(m_sources, [&blockName](const auto& s) { return s.blockName == blockName; });

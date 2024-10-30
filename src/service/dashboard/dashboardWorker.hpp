@@ -1,8 +1,8 @@
-#include <majordomo/base64pp.hpp>
+#include <URI.hpp>
 #include <majordomo/Broker.hpp>
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
-#include <URI.hpp>
+#include <majordomo/base64pp.hpp>
 
 #include <atomic>
 #include <cmath>
@@ -35,16 +35,15 @@ public:
     using super_t = BasicWorker<serviceName, Meta...>;
 
     template<typename BrokerType>
-    explicit DashboardWorker(const BrokerType &broker)
-        : super_t(broker, {}) {
-        super_t::setHandler([this](RequestContext &ctx) {
+    explicit DashboardWorker(const BrokerType& broker) : super_t(broker, {}) {
+        super_t::setHandler([this](RequestContext& ctx) {
             auto whatParam = [&]() {
-                const auto &params = ctx.request.topic.queryParamMap();
+                const auto& params = ctx.request.topic.queryParamMap();
                 auto        it     = params.find("what");
                 return it != params.end() && it->second.has_value() ? it->second.value() : std::string{};
             };
 
-            auto getDashboard = [&](std::string_view name) -> Dashboard * {
+            auto getDashboard = [&](std::string_view name) -> Dashboard* {
                 auto it = std::find(names.begin(), names.end(), name);
                 if (it != names.end()) {
                     std::string what = whatParam();
@@ -55,7 +54,7 @@ public:
             };
 
             auto topicPath = ctx.request.topic.path().value_or("/");
-            auto pathView  = std::string_view{ topicPath };
+            auto pathView  = std::string_view{topicPath};
             if (!pathView.starts_with(DashboardWorker::name)) {
                 throw std::invalid_argument(fmt::format("Unexpected service name in topic ('{}'), must start with '{}'", topicPath, DashboardWorker::name));
             }
@@ -65,7 +64,7 @@ public:
             std::filesystem::path         path(pathView);
             std::vector<std::string_view> parts;
 
-            for (const auto &p : path) {
+            for (const auto& p : path) {
                 parts.push_back(p.native());
             }
             if (parts.empty()) {
@@ -80,7 +79,7 @@ public:
                     opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);
                     ctx.reply.data = std::move(buffer);
                 } else if (parts.size() == 2) {
-                    if (auto *ds = getDashboard(parts[1])) {
+                    if (auto* ds = getDashboard(parts[1])) {
                         std::string      what = whatParam();
                         std::string_view view(what);
                         std::string      body;
@@ -119,7 +118,7 @@ public:
                 if (parts.size() == 1) {
                     ctx.reply.error = "invalid request: dashboard not specified";
                 } else if (parts.size() == 2) {
-                    auto *ds           = getDashboard(parts[1]);
+                    auto* ds           = getDashboard(parts[1]);
                     bool  newDashboard = false;
                     if (!ds) { // if we couldn't find a dashboard make a new one
                         names.push_back(std::string(parts[1]));
@@ -133,7 +132,7 @@ public:
                     // The first 4 bytes contain the size of the string, including the terminating null byte
                     int32_t size;
                     memcpy(&size, body.data(), 4);
-                    std::string data = std::string(reinterpret_cast<char *>(body.data()) + 4, std::size_t(size - 1));
+                    std::string data = std::string(reinterpret_cast<char*>(body.data()) + 4, std::size_t(size - 1));
 
                     if (what == "dashboard") {
                         ds->dashboard = std::move(data);
@@ -163,25 +162,27 @@ public:
                 }
             }
         });
-        auto      fs        = cmrc::dashboardFilesystem::get_filesystem();
-        auto      header    = fs.open("defaultDashboard.header");
-        auto      dashboard = fs.open("defaultDashboard.dashboard");
-        auto      flowgraph = fs.open("defaultDashboard.flowgraph");
 
-        Dashboard ds;
-        ds.header.resize(header.size());
-        std::copy(header.begin(), header.end(), ds.header.begin());
-        ds.dashboard.resize(dashboard.size());
-        std::copy(dashboard.begin(), dashboard.end(), ds.dashboard.begin());
-        ds.flowgraph.resize(flowgraph.size());
-        std::copy(flowgraph.begin(), flowgraph.end(), ds.flowgraph.begin());
+        auto readDefaultDashboard = [](std::string_view name) {
+            auto fs        = cmrc::dashboardFilesystem::get_filesystem();
+            auto header    = fs.open(fmt::format("defaultDashboards/{}/header", name));
+            auto dashboard = fs.open(fmt::format("defaultDashboards/{}/dashboard", name));
+            auto flowgraph = fs.open(fmt::format("defaultDashboards/{}/flowgraph", name));
 
-        names.push_back("dashboard1");
-        dashboards.push_back(ds);
-        names.push_back("dashboard2");
-        dashboards.push_back(ds);
-        names.push_back("dashboard3");
-        dashboards.push_back(ds);
+            Dashboard ds;
+            ds.header.resize(header.size());
+            std::ranges::copy(header, ds.header.begin());
+            ds.dashboard.resize(dashboard.size());
+            std::ranges::copy(dashboard, ds.dashboard.begin());
+            ds.flowgraph.resize(flowgraph.size());
+            std::ranges::copy(flowgraph, ds.flowgraph.begin());
+            return ds;
+        };
+
+        for (const auto& name : {"RemoteStream", "RemoteDataSet"}) {
+            names.push_back(name);
+            dashboards.push_back(readDefaultDashboard(name));
+        }
     }
 
 private:
