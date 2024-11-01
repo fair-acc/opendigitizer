@@ -30,6 +30,12 @@ add_test(NAME qa_play_stop_bar COMMAND qa_play_stop_bar)
 
 if(ENABLE_IMGUI_TEST_ENGINE)
 
+  cmrc_add_resource_library(
+          ui_test_assets
+          NAMESPACE
+          ui_test_assets
+          examples/fg_dipole_intensity_ramp.grc)
+
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
   target_link_libraries(imgui_tests_common PUBLIC fmt ut imgui-node-editor)
@@ -42,11 +48,29 @@ if(ENABLE_IMGUI_TEST_ENGINE)
       PRIVATE fmt
               ut
               imgui-node-editor
-              imgui_tests_common)
+              imgui_tests_common
+              implot
+              core
+              client
+              gnuradio-core
+              gnuradio-meta
+              gnuradio-algorithm
+              gr-basic
+              gr-fourier
+              gr-testing
+              od_acquisition
+              plf_colony
+              raii_wrapper
+              ui_assets
+              ui_test_assets)
     add_test(NAME ${NAME} COMMAND ${NAME})
   endfunction()
 
   add_imgui_test(qa_popup_menu)
   target_include_directories(qa_popup_menu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
                                                    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
+
+  add_imgui_test(qa_Chart ../Dashboard.cpp)
+  target_include_directories(qa_Chart PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
 endif()
