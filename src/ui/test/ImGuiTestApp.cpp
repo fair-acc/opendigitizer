@@ -185,3 +185,5 @@ void ImGuiTestApp::printWindows() {
         fmt::println("    popup name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
     }
 }
+
+ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
