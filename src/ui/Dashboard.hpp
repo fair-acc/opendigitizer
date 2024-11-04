@@ -122,6 +122,7 @@ public:
 
         void reload();
         void execute();
+        void emplaceBlock(std::string type, std::string params);
     };
     void registerRemoteService(std::string_view blockName, std::string_view uri);
     void unregisterRemoteService(std::string_view blockName);

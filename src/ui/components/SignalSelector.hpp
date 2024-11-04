@@ -262,7 +262,7 @@ public:
                 sig.port        = s.port;
                 sig.hostname    = s.hostname;
                 sig.unit        = s.signal_unit;
-                sig.sampleRate  = s.signal_rate;
+                sig.sampleRate  = std::to_string(s.signal_rate);
 
                 if (::getenv("OPENDIGITIZER_LOAD_TEST_SIGNALS")) {
                     const auto info       = fair::getDeviceInfo(s.signal_name);
@@ -324,7 +324,7 @@ public:
         }
     }
 
-    void drawSourceBlocksChooser(FlowGraph* fg) {
+    void drawSourceBlocksChooser(FlowGraph* /*fg*/) {
         struct Cat {
             std::string                   name;
             std::vector<BlockDefinition*> types;
@@ -344,7 +344,7 @@ public:
         }
     }
 
-    void drawElement(const SignalData& entry, int idx, FlowGraph* fg, ImGuiSelectionBasicStorage& selection) {
+    void drawElement(const SignalData& entry, int idx, FlowGraph* /*fg*/, ImGuiSelectionBasicStorage& selection) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));

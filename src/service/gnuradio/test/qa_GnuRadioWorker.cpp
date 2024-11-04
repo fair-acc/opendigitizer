@@ -7,10 +7,12 @@
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
-#include <GnuRadioWorker.hpp>
 #include <boost/ut.hpp>
 #include <fmt/format.h>
 #include <magic_enum_format.hpp>
+
+#include "GnuRadioAcquisitionWorker.hpp"
+#include "GnuRadioFlowgraphWorker.hpp"
 
 #include "CountSource.hpp"
 
@@ -40,18 +42,18 @@ void registerTestBlocks(Registry& registry) {
 }
 
 namespace magic_enum::customize {
-template<typename opendigitizer::acq::SignalType>
+template<typename opendigitizer::gnuradio::SignalType>
 constexpr bool enum_format_enabled() noexcept {
     return true;
 }
 } // namespace magic_enum::customize
 
-namespace opendigitizer::acq {
-constexpr std::ostream& operator<<(std::ostream& os, const opendigitizer::acq::SignalType& t) { return os << std::format("{}", t); }
-} // namespace opendigitizer::acq
+namespace opendigitizer::gnuradio {
+constexpr std::ostream& operator<<(std::ostream& os, const opendigitizer::gnuradio::SignalType& t) { return os << std::format("{}", t); }
+} // namespace opendigitizer::gnuradio
 
 using namespace opencmw;
-using namespace opendigitizer::acq;
+using namespace opendigitizer::gnuradio;
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 using namespace boost::ut;
@@ -141,8 +143,14 @@ struct TestSetup {
 
     void setGrc(std::string_view grc, auto callback) {
         opendigitizer::flowgraph::Flowgraph fg{std::string(grc), {}};
-        IoBuffer                            buffer;
-        serialise<Json>(buffer, fg);
+        gr::Message                         message;
+        message.endpoint = "ReplaceGraphGRC";
+        opendigitizer::flowgraph::storeFlowgraphToMessage(fg, message);
+
+        const auto serialised = serialiseMessage(message);
+        IoBuffer   buffer(serialised.data(), serialised.size());
+
+        fmt::print("Sending ReplaceGraphGRC message to the service\n");
         client.set(URI("mdp://127.0.0.1:12346/GnuRadio/FlowGraph"), std::move(callback), std::move(buffer));
     }
 

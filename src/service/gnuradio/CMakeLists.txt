@@ -1,4 +1,8 @@
-add_library(od_gnuradio_worker INTERFACE GnuRadioWorker.hpp)
+add_library(
+  od_gnuradio_worker
+  INTERFACE
+  GnuRadioAcquisitionWorker.hpp
+  GnuRadioFlowgraphWorker.hpp)
 target_include_directories(od_gnuradio_worker INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/.)
 target_link_libraries(
   od_gnuradio_worker

@@ -14,6 +14,7 @@
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
+#include <daq_api.hpp>
 #include <opencmw.hpp>
 
 #include "App.hpp"
@@ -591,16 +592,48 @@ void Dashboard::Service::reload() {
     command.callback = [&](const opencmw::mdp::Message& rep) {
         auto buf = rep.data;
 
-        FlowgraphMessage reply;
-        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, reply);
+        opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage;
+        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, serialisedMessage);
 
-        grc    = reply.flowgraph;
-        layout = reply.layout;
+        gr::Message message      = opendigitizer::gnuradio::deserialiseMessage(serialisedMessage.data);
+        auto        newFlowgraph = opendigitizer::flowgraph::getFlowgraphFromMessage(message);
+
+        if (newFlowgraph) {
+            grc    = newFlowgraph->serialisedFlowgraph;
+            layout = newFlowgraph->serialisedUiLayout;
 
 #if 0 // TODO this crashes on e.g. unknown blocks
-        s.flowGraph.parse(reply.flowgraph);
+            s.flowGraph.parse(reply.flowgraph);
 #endif
-        App::instance().fgItem.setSettings(&flowGraph, reply.layout);
+            App::instance().fgItem.setSettings(&flowGraph, newFlowgraph->serialisedUiLayout);
+        } else {
+            components::Notification::warning("Error reading flowgraph from the service reply");
+        }
+    };
+    client.request(command);
+}
+
+void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
+    gr::Message message;
+    message.cmd      = gr::message::Command::Set;
+    message.endpoint = gr::graph::property::kEmplaceBlock;
+    message.data     = gr::property_map{
+            {"type"s, std::move(type)},        //
+            {"parameters"s, std::move(params)} //
+    };
+
+    opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage{opendigitizer::gnuradio::serialiseMessage(message)};
+
+    opencmw::client::Command command;
+    command.command = opencmw::mdp::Command::Set;
+
+    opencmw::serialise<opencmw::Json>(command.data, serialisedMessage);
+
+    command.topic    = opencmw::URI<>(uri);
+    command.callback = [&](const opencmw::mdp::Message& rep) {
+        if (!rep.error.empty()) {
+            components::Notification::warning(rep.error);
+        }
     };
     client.request(command);
 }
@@ -609,10 +642,10 @@ void Dashboard::Service::execute() {
     opencmw::client::Command command;
     command.command = opencmw::mdp::Command::Set;
 
-    FlowgraphMessage reply;
-    reply.flowgraph = grc;
-    reply.layout    = layout;
-    opencmw::serialise<opencmw::Json>(command.data, reply);
+    FlowgraphMessage request;
+    request.flowgraph = grc;
+    request.layout    = layout;
+    opencmw::serialise<opencmw::Json>(command.data, request);
 
     command.topic    = opencmw::URI<>(uri);
     command.callback = [&](const opencmw::mdp::Message& rep) {

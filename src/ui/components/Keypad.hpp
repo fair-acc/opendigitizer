@@ -451,7 +451,7 @@ class InputKeypad {
             static ImVec2 lastClickPos{-1, -1};
             const double  time                    = ImGui::GetTime();
             const ImVec2  clickPos                = ImGui::GetMousePos();
-            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && time - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
+            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && static_cast<float>(time) - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
             const auto    isDoubleClick           = [&]() { return (lastClickPos.x != -1 && std::hypot(clickPos.x - lastClickPos.x, clickPos.y - lastClickPos.y) <= ImGui::GetIO().MouseDoubleClickMaxDist); };
             bool          doubleClicked           = false;
             if (isWithinDoubleClickTime && isDoubleClick()) {
