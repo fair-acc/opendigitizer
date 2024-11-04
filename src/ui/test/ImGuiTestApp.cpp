@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <fmt/core.h>
 #include <fmt/format.h>
-#include <iostream>
 #include <span>
 #include <string_view>
 
@@ -161,4 +160,28 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     options.useInteractiveMode = hasArgument("--interactive");
 
     return options;
+}
+
+void ImGuiTestApp::printWindows() {
+    ImGuiContext& g = *GImGui;
+    fmt::println("printWindows:");
+    fmt::println("    popupLevel={}", g.BeginPopupStack.size());
+    fmt::println("    openPopups={}", g.OpenPopupStack.size());
+
+    auto flagsString = [](ImGuiWindowFlags flags) -> std::string {
+        return fmt::format("ChildWindow={}, ToolTip={}, Popup={}, Modal={}, ChildMenu={}", //
+            flags & ImGuiWindowFlags_ChildWindow,                                          //
+            flags & ImGuiWindowFlags_Tooltip,                                              //
+            flags & ImGuiWindowFlags_Popup,                                                //
+            flags & ImGuiWindowFlags_Modal,                                                //
+            flags & ImGuiWindowFlags_ChildMenu);
+    };
+
+    for (const ImGuiWindowStackData& data : g.CurrentWindowStack) {
+        fmt::println("    window name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
+    }
+
+    for (const ImGuiPopupData& data : g.OpenPopupStack) {
+        fmt::println("    popup name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
+    }
 }
