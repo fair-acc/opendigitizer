@@ -50,6 +50,8 @@ public:
     // Runs the gui tests and returns true on success
     bool runTests();
 
+    ImGuiTestContext* testContext() const;
+
     /**
       Captures a screenshot.
 
