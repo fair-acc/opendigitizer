@@ -63,6 +63,9 @@ public:
      */
     static void captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref = "/", int captureFlags = ImGuiCaptureFlags_StitchAll | ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_IncludeTooltipsAndPopups | ImGuiCaptureFlags_IncludeOtherWindows);
 
+    // Prints the existing window ids, for debugging purposes
+    static void printWindows();
+
 protected:
     virtual void registerTests() = 0;
 
