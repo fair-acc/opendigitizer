@@ -103,68 +103,72 @@ else() # native build
   endif()
 endif()
 
-target_sources(
-  ${target_name}
-  PRIVATE main.cpp
-          Flowgraph.cpp
-          Flowgraph.hpp
-          FlowgraphItem.cpp
-          FlowgraphItem.hpp
-          Dashboard.cpp
-          Dashboard.hpp
-          DashboardPage.cpp
-          DashboardPage.hpp
-          OpenDashboardPage.cpp
-          OpenDashboardPage.hpp
-          RemoteSignalSources.cpp
-          RemoteSignalSources.hpp
-          components/AppHeader.hpp
-          components/Block.cpp
-          components/Block.hpp
-          components/Dialog.hpp
-          components/FilterComboBoxes.hpp
-          components/Keypad.hpp
-          components/ListBox.hpp
-          components/ImGuiNotify.hpp
-          components/PopupMenu.hpp
-          components/SelectedLabelsView.hpp
-          components/SignalSelector.hpp
-          components/Splitter.cpp
-          components/Splitter.hpp
-          components/Toolbar.hpp
-          utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
-          common/AppDefinitions.hpp
-          common/Events.hpp
-          common/ImguiWrap.hpp
-          common/LookAndFeel.hpp
-          common/TouchHandler.hpp)
+# All ui/ translation-units (except main.cpp) are built by ${target_name}lib static lib just so they can be shared by
+# the tests and not build N times
+add_library(
+  ${target_name}lib STATIC
+  Flowgraph.cpp
+  Flowgraph.hpp
+  FlowgraphItem.cpp
+  FlowgraphItem.hpp
+  Dashboard.cpp
+  Dashboard.hpp
+  DashboardPage.cpp
+  DashboardPage.hpp
+  OpenDashboardPage.cpp
+  OpenDashboardPage.hpp
+  RemoteSignalSources.cpp
+  RemoteSignalSources.hpp
+  components/AppHeader.hpp
+  components/Block.cpp
+  components/Block.hpp
+  components/Dialog.hpp
+  components/FilterComboBoxes.hpp
+  components/Keypad.hpp
+  components/ListBox.hpp
+  components/ImGuiNotify.hpp
+  components/PopupMenu.hpp
+  components/SelectedLabelsView.hpp
+  components/SignalSelector.hpp
+  components/Splitter.cpp
+  components/Splitter.hpp
+  components/Toolbar.hpp
+  utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
+  common/AppDefinitions.hpp
+  common/Events.hpp
+  common/ImguiWrap.hpp
+  common/LookAndFeel.hpp
+  common/TouchHandler.hpp)
+
+target_sources(${target_name} PRIVATE main.cpp)
 
 target_link_libraries(
-  ${target_name}
-  PRIVATE implot
-          imgui-node-editor
-          od_acquisition
-          services
-          plf_colony
-          ui_assets
-          yaml-cpp::yaml-cpp
-          core
-          client
-          stb
-          sample_dashboards
-          fonts
-          digitizer_settings
-          gnuradio-core
-          gnuradio-meta
-          gnuradio-algorithm
-          gr-basic
-          gr-fourier
-          raii_wrapper
-          gr-testing
-          fftw
-          vir
-          pmtv)
-target_compile_options(${target_name} PRIVATE "-Wfatal-errors")
+  ${target_name}lib
+  PUBLIC implot
+         imgui-node-editor
+         od_acquisition
+         services
+         plf_colony
+         ui_assets
+         yaml-cpp::yaml-cpp
+         core
+         client
+         stb
+         sample_dashboards
+         fonts
+         digitizer_settings
+         gnuradio-core
+         gnuradio-meta
+         gnuradio-algorithm
+         gr-basic
+         gr-fourier
+         raii_wrapper
+         gr-testing
+         fftw
+         vir
+         pmtv)
+target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
+target_link_libraries(${target_name} PRIVATE ${target_name}lib)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)
