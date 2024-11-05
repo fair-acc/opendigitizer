@@ -477,7 +477,8 @@ private:
         }
         Acquisition reply;
 
-        auto processData = [&reply, signalName, &pollerEntry](std::span<const double> data, std::span<const gr::Tag> tags) {
+        auto key         = pollerIt->first;
+        auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const double> data, std::span<const gr::Tag> tags) {
             pollerEntry.populateFromTags(tags);
             reply.acqTriggerName = "STREAMING";
             reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
@@ -495,6 +496,26 @@ private:
             std::ranges::copy(data, reply.channelValue.begin());
             std::fill(reply.channelError.begin(), reply.channelError.end(), 0.f);     // TODO
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
+            // preallocate trigger vectors to number of tags
+            reply.triggerIndices.reserve(tags.size());
+            reply.triggerEventNames.reserve(tags.size());
+            reply.triggerTimestamps.reserve(tags.size());
+            for (auto& [idx, tagMap] : tags) {
+                if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
+                    if (std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)) == "systemtime") {
+                        reply.acqLocalTimeStamp  = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME));
+                        auto       dataTimestamp = std::chrono::nanoseconds(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME)));
+                        const auto now           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+                        auto       latency       = (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
+                    }
+                    reply.triggerIndices.push_back(idx);
+                    reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
+                    reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
+                }
+            }
+            reply.triggerIndices.shrink_to_fit();
+            reply.triggerEventNames.shrink_to_fit();
+            reply.triggerTimestamps.shrink_to_fit();
         };
         pollerEntry.in_use = true;
 
@@ -509,7 +530,6 @@ private:
         const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
         auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
-            fmt::println("Register {}, '{}'", magic_enum::enum_name(mode), context.triggerNameFilter);
             const auto query = basic::DataSinkQuery::signalName(signalName);
             // TODO for triggered/multiplexed subscriptions that only differ in preSamples/postSamples/maximumWindowSize, we could use a single poller for the encompassing range
             // and send snippets from their datasets to the individual subscribers
