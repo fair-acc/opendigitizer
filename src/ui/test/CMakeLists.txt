@@ -57,5 +57,6 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_popup_menu)
   add_imgui_test(qa_dialog)
   add_imgui_test(qa_filtercomboboxes)
+  add_imgui_test(qa_keypad)
 
 endif()
