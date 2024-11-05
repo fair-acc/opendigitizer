@@ -7,6 +7,7 @@
 #include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
 #include <vector>
+#include <MIME.hpp>
 
 namespace opendigitizer::flowgraph {
 

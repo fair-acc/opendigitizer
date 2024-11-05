@@ -11,3 +11,6 @@ target_link_libraries(
             project_options)
 
 add_subdirectory(test)
+
+add_executable(cli-signal-subscribe cli-signal-subscribe.cpp)
+target_link_libraries(cli-signal-subscribe PRIVATE core client od_acquisition fmt::fmt project_options)
