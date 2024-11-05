@@ -475,6 +475,27 @@ private:
             std::ranges::copy(data, reply.channelValue.begin());
             std::fill(reply.channelError.begin(), reply.channelError.end(), 0.f);     // TODO
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
+            // preallocate trigger vectors to number of tags
+            reply.triggerIndices.reserve(tags.size());
+            reply.triggerEventNames.reserve(tags.size());
+            reply.triggerTimestamps.reserve(tags.size());
+            for (auto & [idx, tagMap] : tags) {
+                if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
+                    if (std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)) == "systemtime") {
+                        reply.acqLocalTimeStamp = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME));
+                        auto dataTimestamp =  std::chrono::nanoseconds(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME)));
+                        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+                        auto latency =  (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
+                        fmt::print("latency: {}\n", latency);
+                    }
+                    reply.triggerIndices.push_back(idx);
+                    reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
+                    reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
+                }
+            }
+            reply.triggerIndices.shrink_to_fit();
+            reply.triggerEventNames.shrink_to_fit();
+            reply.triggerTimestamps.shrink_to_fit();
         };
         pollerEntry.in_use = true;
 

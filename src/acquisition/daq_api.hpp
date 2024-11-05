@@ -53,6 +53,9 @@ struct Acquisition {
     Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMin;
     Annotated<float, opencmw::NoUnit, "maximum expected value for channel/signal">               channelRangeMax;
     Annotated<float, opencmw::NoUnit, "temperature of the measurement device">                   temperature;
+    Annotated<std::vector<int64_t>, opencmw::NoUnit, "indices of trigger tags">                  triggerIndices;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "event names of trigger tags">          triggerEventNames;
+    Annotated<std::vector<int64_t>, si::time<nanosecond>, "timestamps of trigger tags">          triggerTimestamps;
 };
 
 /**
