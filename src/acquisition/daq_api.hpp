@@ -6,6 +6,7 @@
 
 #include <MultiArray.hpp>
 #include <opencmw.hpp>
+#include <MIME.hpp>
 
 #include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
