@@ -69,6 +69,10 @@ jobs:
         make
         sudo make install
 
+    - name: Install image comparing tools
+      shell: bash
+      run: sudo apt-get -y install imagemagick
+
     - name: Install picoscope libraries
       run: |
         # https://www.picotech.com/downloads/linux
