@@ -265,6 +265,7 @@ private:
             // TODO: current load_grc creates Foo<double> types no matter what the original type was
             // when supporting more types, we need some type erasure here
             std::map<PollerKey, StreamingPollerEntry>       streamingPollers;
+            std::map<PollerKey, std::size_t>                tmpDiag;
             std::map<PollerKey, DataSetPollerEntry>         dataSetPollers;
             std::jthread                                    schedulerThread;
             std::string                                     schedulerUniqueName;
@@ -361,7 +362,7 @@ private:
                         for (auto& [_, pollerEntry] : dataSetPollers) {
                             pollerEntry.in_use = false;
                         }
-                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers);
+                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers, tmpDiag);
                         // drop pollers of old subscriptions to avoid the sinks from blocking
                         std::erase_if(streamingPollers, [](const auto& item) { return !item.second.in_use; });
                         std::erase_if(dataSetPollers, [](const auto& item) { return !item.second.in_use; });
@@ -432,7 +433,7 @@ private:
         });
     }
 
-    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers) {
+    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers, auto& tmpDiag) {
         bool pollersFinished = true;
         for (const auto& subscription : super_t::activeSubscriptions()) {
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
@@ -440,7 +441,7 @@ private:
                 const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
                 for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), static_cast<std::size_t>(std::ranges::distance(r))}; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
-                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName)) {
+                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName, tmpDiag)) {
                             pollersFinished = false;
                         }
                     } else {
@@ -467,7 +468,7 @@ private:
         return pollerIt;
     }
 
-    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const TimeDomainContext& context, std::string_view signalName) {
+    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const TimeDomainContext& context, std::string_view signalName, auto& tmpDiag) {
         auto pollerIt = getStreamingPoller(pollers, signalName);
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
@@ -480,7 +481,8 @@ private:
         }
         Acquisition reply;
 
-        auto processData = [&reply, signalName, &pollerEntry](std::span<const double> data, std::span<const gr::Tag> tags) {
+        auto key         = pollerIt->first;
+        auto processData = [&reply, signalName, &pollerEntry, &key, &tmpDiag](std::span<const double> data, std::span<const gr::Tag> tags) {
             pollerEntry.populateFromTags(tags);
             reply.acqTriggerName = "STREAMING";
             reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
@@ -502,13 +504,13 @@ private:
             reply.triggerIndices.reserve(tags.size());
             reply.triggerEventNames.reserve(tags.size());
             reply.triggerTimestamps.reserve(tags.size());
-            for (auto & [idx, tagMap] : tags) {
+            for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
                     if (std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)) == "systemtime") {
-                        reply.acqLocalTimeStamp = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME));
-                        auto dataTimestamp =  std::chrono::nanoseconds(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME)));
-                        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-                        auto latency =  (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
+                        reply.acqLocalTimeStamp  = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME));
+                        auto       dataTimestamp = std::chrono::nanoseconds(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME)));
+                        const auto now           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+                        auto       latency       = (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
                         fmt::print("latency: {}\n", latency);
                     }
                     reply.triggerIndices.push_back(idx);
@@ -519,6 +521,8 @@ private:
             reply.triggerIndices.shrink_to_fit();
             reply.triggerEventNames.shrink_to_fit();
             reply.triggerTimestamps.shrink_to_fit();
+            tmpDiag[key] += data.size();
+            fmt::print("Poller handled {} samples\n", tmpDiag[key]);
         };
         pollerEntry.in_use = true;
 
