@@ -53,6 +53,14 @@ public:
     ImGuiTestContext* testContext() const;
 
     /**
+      Initializes ImGui context and graphics
+
+      Calling this is optional, as it's implicitly called by runTests().
+      It's public in case you need to initialize ImGui earlier.
+     */
+    void initImGui();
+
+    /**
       Captures a screenshot.
 
       Image is saved to disk.
@@ -74,8 +82,6 @@ protected:
     ImGuiTestEngine* engine() const;
 
 private:
-    void initImGui();
-
     ImGuiTestApp(const ImGuiTestApp&)            = delete;
     ImGuiTestApp& operator=(const ImGuiTestApp&) = delete;
 };

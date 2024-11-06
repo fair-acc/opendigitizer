@@ -78,7 +78,9 @@ void ImGuiTestApp::initImGui() {
 }
 
 bool ImGuiTestApp::runTests() {
-    initImGui();
+    if (!_app) {
+        initImGui();
+    }
 
     bool aborted = false;
 
