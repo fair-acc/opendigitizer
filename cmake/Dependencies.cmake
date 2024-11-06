@@ -10,7 +10,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG bb8996babab2000a4ae3612ea146a551a96e59c4 # main as of 2024-10-18
+        GIT_TAG restClientLongPollingIdx # bb8996babab2000a4ae3612ea146a551a96e59c4 # main as of 2024-10-18
         SYSTEM
 )
 
