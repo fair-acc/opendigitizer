@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         opencmw-cpp
         GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-        GIT_TAG bb8996babab2000a4ae3612ea146a551a96e59c4 # main as of 2024-10-18
+        GIT_TAG e3cb6f9d275836a1bd5d644f6573bbd6f871078c # main as of 2024-11-13
         SYSTEM)
 
 FetchContent_Declare(
@@ -15,7 +15,7 @@ FetchContent_Declare(
 FetchContent_Declare(
         gr-digitizers
         GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
-        GIT_TAG b5df25c9552b473b32c47b80cca3b6379b79a6da # dev-prototype as of 2024-10-18
+        GIT_TAG 749394c12285887eb8840ac4cd0c46f1d21b46b4 # dev-prototype as of 2024-11-06
         SYSTEM
 )
 
