@@ -39,6 +39,9 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     };
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
+    std::size_t samples_received = 0;
+    std::size_t samples_published = 0;
+
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
@@ -62,9 +65,11 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             }
             written += in.size();
             d.read += in.size();
+            samples_published += in.size();
             if (d.read == d.acq.channelValue.size()) {
                 _queue->data.pop_front();
             }
+            fmt::print("remoteSource received/published: {}/{}\n", samples_received, samples_published);
         }
         output.publish(written);
         return gr::work::Status::OK;
@@ -111,6 +116,8 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 auto buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+                samples_received += acq.channelValue.size();
+                fmt::print("remoteSource queue-length: {}, samples received: {}\n", queue->data.size(), samples_received);
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
@@ -143,6 +150,8 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                     opendigitizer::acq::Acquisition acq;
                     auto buf = rep.data;
                     opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+                    samples_received += acq.channelValue.size();
+                    fmt::print("remoteSource queue-length: {}, samples received: {}\n", queue->data.size(), samples_received);
                     std::lock_guard lock(queue->mutex);
                     queue->data.push_back({std::move(acq), 0});
                 } catch (opencmw::ProtocolException& e) {
