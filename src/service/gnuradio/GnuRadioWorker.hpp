@@ -246,6 +246,7 @@ private:
             // TODO: current load_grc creates Foo<double> types no matter what the original type was
             // when supporting more types, we need some type erasure here
             std::map<PollerKey, StreamingPollerEntry>       streamingPollers;
+            std::map<PollerKey, std::size_t>                tmpDiag;
             std::map<PollerKey, DataSetPollerEntry>         dataSetPollers;
             std::jthread                                    schedulerThread;
             std::string                                     schedulerUniqueName;
@@ -342,7 +343,7 @@ private:
                         for (auto& [_, pollerEntry] : dataSetPollers) {
                             pollerEntry.in_use = false;
                         }
-                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers);
+                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers, tmpDiag);
                         // drop pollers of old subscriptions to avoid the sinks from blocking
                         std::erase_if(streamingPollers, [](const auto& item) { return !item.second.in_use; });
                         std::erase_if(dataSetPollers, [](const auto& item) { return !item.second.in_use; });
@@ -409,7 +410,7 @@ private:
         });
     }
 
-    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers) {
+    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers, auto &tmpDiag) {
         bool pollersFinished = true;
         for (const auto& subscription : super_t::activeSubscriptions()) {
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
@@ -417,7 +418,7 @@ private:
                 const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
                 for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), static_cast<std::size_t>(std::ranges::distance(r))}; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
-                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName)) {
+                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName, tmpDiag)) {
                             pollersFinished = false;
                         }
                     } else {
@@ -444,7 +445,7 @@ private:
         return pollerIt;
     }
 
-    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const TimeDomainContext& context, std::string_view signalName) {
+    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const TimeDomainContext& context, std::string_view signalName, auto& tmpDiag) {
         auto pollerIt = getStreamingPoller(pollers, signalName);
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
@@ -457,7 +458,8 @@ private:
         }
         Acquisition reply;
 
-        auto processData = [&reply, signalName, &pollerEntry](std::span<const double> data, std::span<const gr::Tag> tags) {
+        auto key = pollerIt->first;
+        auto processData = [&reply, signalName, &pollerEntry, &key, &tmpDiag](std::span<const double> data, std::span<const gr::Tag> tags) {
             pollerEntry.populateFromTags(tags);
             reply.acqTriggerName = "STREAMING";
             reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
@@ -496,6 +498,8 @@ private:
             reply.triggerIndices.shrink_to_fit();
             reply.triggerEventNames.shrink_to_fit();
             reply.triggerTimestamps.shrink_to_fit();
+            tmpDiag[key] += data.size();
+            fmt::print("Poller handled {} samples\n", tmpDiag[key]);
         };
         pollerEntry.in_use = true;
 
