@@ -173,7 +173,7 @@ public:
 
     void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
         fgItem.clear();
-        dashboard = Dashboard::create(desc);
+        dashboard = Dashboard::create(&fgItem, desc);
         dashboard->setPluginLoader(pluginLoader);
         dashboard->load();
     }
