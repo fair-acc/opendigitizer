@@ -12,6 +12,8 @@
 
 #include "GridLayout.hpp"
 
+struct TestApp;
+
 namespace DigitizerUi {
 
 class DashboardPage {
@@ -41,6 +43,7 @@ public:
     void newPlot(Dashboard& dashboard);
 
 private:
+    friend struct ::TestApp;
     void        drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::Mode mode);
     void        drawGrid(float w, float h);
     void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
