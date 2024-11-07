@@ -30,9 +30,21 @@ add_test(NAME qa_play_stop_bar COMMAND qa_play_stop_bar)
 
 if(ENABLE_IMGUI_TEST_ENGINE)
 
+  cmrc_add_resource_library(
+    ui_test_assets
+    NAMESPACE
+    ui_test_assets
+    examples/fg_dipole_intensity_ramp.grc)
+
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
-  target_link_libraries(imgui_tests_common PUBLIC opendigitizer-uilib raii_wrapper)
+  target_link_libraries(imgui_tests_common PUBLIC
+    opendigitizer-uilib
+    raii_wrapper
+    ui_assets
+    ui_test_assets
+  )
+
   target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
                                                        OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
 
@@ -48,5 +60,6 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_dialog)
   add_imgui_test(qa_filtercomboboxes)
   add_imgui_test(qa_keypad)
+  add_imgui_test(qa_chart)
 
 endif()
