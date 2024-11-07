@@ -11,6 +11,8 @@
 #include "FlowgraphItem.hpp"
 #include "OpenDashboardPage.hpp"
 
+#include <implot.h>
+
 #include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -197,6 +199,11 @@ public:
         case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
         }
         LookAndFeel::mutableInstance().style = style;
+
+        // with the dark style the plot frame would have the same color as a button. make it have the
+        // same color as the window background instead.
+        ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+
         fgItem.setStyle(style);
     }
 

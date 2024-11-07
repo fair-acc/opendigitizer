@@ -423,10 +423,6 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
 
     Dashboard::Plot* toDelete = nullptr;
 
-    // with the dark style the plot frame would have the same color as a button. make it have the
-    // same color as the window background instead.
-    ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-
     plot_layout.ArrangePlots(dashboard.plots());
 
     for (auto& plot : dashboard.plots()) {
