@@ -24,6 +24,7 @@ namespace DigitizerUi {
 
 class Block;
 class FlowGraph;
+class FlowGraphItem;
 struct DashboardDescription;
 struct DashboardSource {
     ~DashboardSource() noexcept;
@@ -88,9 +89,9 @@ private:
     class PrivateTag {};
 
 public:
-    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc);
+    explicit Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc);
 
-    static std::shared_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription>& desc);
+    static std::shared_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
 
     ~Dashboard();
 
@@ -145,6 +146,7 @@ private:
     plf::colony<Source>                          m_sources;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
+    FlowGraphItem*                               m_fgItem = nullptr;
 };
 
 } // namespace DigitizerUi

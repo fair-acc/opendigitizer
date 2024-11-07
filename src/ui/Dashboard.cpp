@@ -212,7 +212,7 @@ Dashboard::Plot::Plot() {
     name         = fmt::format("Plot {}", n++);
 }
 
-Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc) {
+Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block* b) {
@@ -234,7 +234,7 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& de
 
 Dashboard::~Dashboard() {}
 
-std::shared_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription>& desc) { return std::make_shared<Dashboard>(PrivateTag{}, desc); }
+std::shared_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) { return std::make_shared<Dashboard>(PrivateTag{}, fgItem, desc); }
 
 Block* Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto& b) { return b->type().isPlotSink(); });
@@ -268,8 +268,8 @@ void Dashboard::load() {
 
                 App::instance().closeDashboard();
             });
-    } else {
-        App::instance().fgItem.setSettings(&localFlowGraph, {});
+    } else if (m_fgItem) {
+        m_fgItem->setSettings(&localFlowGraph, {});
     }
 }
 
@@ -381,8 +381,10 @@ void Dashboard::doLoad(const std::string& desc) {
         plot.rect.h = rect[3].as<int>();
     }
 
-    auto fgLayout = tree["flowgraphLayout"];
-    App::instance().fgItem.setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+    if (m_fgItem) {
+        auto fgLayout = tree["flowgraphLayout"];
+        m_fgItem->setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+    }
 
     loadPlotSources();
 }
@@ -452,7 +454,9 @@ void Dashboard::save() {
             }
         });
 
-        root.write("flowgraphLayout", App::instance().fgItem.settings(&localFlowGraph));
+        if (m_fgItem) {
+            root.write("flowgraphLayout", m_fgItem->settings(&localFlowGraph));
+        }
     }
 
     if (m_desc->source->path.starts_with("http://") || m_desc->source->path.starts_with("https://")) {
@@ -666,7 +670,9 @@ void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
 
     FlowgraphMessage msg;
     msg.flowgraph = std::move(stream).str();
-    msg.layout    = App::instance().fgItem.settings(&s->flowGraph);
+    if (m_fgItem) {
+        msg.layout = m_fgItem->settings(&s->flowGraph);
+    }
     opencmw::serialise<opencmw::Json>(command.data, msg);
     s->client.request(command);
 }
