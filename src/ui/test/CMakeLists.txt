@@ -32,26 +32,16 @@ if(ENABLE_IMGUI_TEST_ENGINE)
 
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
-  target_link_libraries(imgui_tests_common PUBLIC fmt ut imgui-node-editor)
+  target_link_libraries(imgui_tests_common PUBLIC opendigitizer-uilib raii_wrapper)
   target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
                                                        OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
 
+  target_include_directories(imgui_tests_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
   function(add_imgui_test NAME)
     add_executable(${NAME} ${NAME}.cpp)
-    target_link_libraries(
-      ${NAME}
-      PRIVATE fmt
-              ut
-              plf_colony
-              gnuradio-core
-              client
-              services
-              stb
-              imgui-node-editor
-              imgui_tests_common)
+    target_link_libraries(${NAME} PRIVATE opendigitizer-uilib ut imgui_tests_common)
     add_test(NAME ${NAME} COMMAND ${NAME})
-    target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
-                                               ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
   endfunction()
 
   add_imgui_test(qa_popup_menu)
