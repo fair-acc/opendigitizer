@@ -39,12 +39,12 @@ if(ENABLE_IMGUI_TEST_ENGINE)
 
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
-  target_link_libraries(imgui_tests_common PUBLIC
-    opendigitizer-uilib
-    raii_wrapper
-    ui_assets
-    ui_test_assets
-  )
+  target_link_libraries(
+    imgui_tests_common
+    PUBLIC opendigitizer-uilib
+           raii_wrapper
+           ui_assets
+           ui_test_assets)
 
   target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
                                                        OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
