@@ -10,6 +10,11 @@ set(EMCMAKE_COMMAND
     "emcmake"
     CACHE FILEPATH "Path to the emcmake command")
 
+if(OPENDIGITIZER_ENABLE_ASAN)
+  add_compile_options(-fsanitize=address)
+  add_link_options(-fsanitize=address)
+endif()
+
 include(ExternalProject)
 
 set(ROOT_BUILD_DIR ${CMAKE_BINARY_DIR})
