@@ -4,9 +4,15 @@
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 
+#include <memory>
+
 class ImGuiApp;
 class ImGuiTestEngine;
 class ImGuiTestEngineIO;
+
+namespace gr {
+class PluginLoader;
+}
 
 namespace DigitizerUi::test {
 
@@ -75,6 +81,10 @@ public:
 
     // Prints the existing window ids, for debugging purposes
     static void printWindows();
+
+    // Creates a plugin loader and registers block definitions
+    // Call this if your test uses gr blocks
+    static std::shared_ptr<gr::PluginLoader> createPluginLoader();
 
 protected:
     virtual void registerTests() = 0;
