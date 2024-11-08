@@ -29,6 +29,8 @@ namespace DigitizerUi {
 
 struct SDLState;
 
+static constexpr LookAndFeel::Style kDefaultStyle = LookAndFeel::Style::Dark;
+
 class App {
 public:
     std::string                       executable;
@@ -150,7 +152,7 @@ public:
 public:
     App() {
         BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*pluginLoader);
-        setStyle(LookAndFeel::Style::Dark);
+        setStyle(kDefaultStyle);
     }
 
     static App& instance() {
@@ -193,7 +195,7 @@ public:
 
     void closeDashboard() { dashboard = {}; }
 
-    void setStyle(LookAndFeel::Style style) {
+    static void setImGuiStyle(LookAndFeel::Style style) {
         switch (style) {
         case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
         case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
@@ -203,7 +205,10 @@ public:
         // with the dark style the plot frame would have the same color as a button. make it have the
         // same color as the window background instead.
         ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+    }
 
+    void setStyle(LookAndFeel::Style style) {
+        setImGuiStyle(style);
         fgItem.setStyle(style);
     }
 
