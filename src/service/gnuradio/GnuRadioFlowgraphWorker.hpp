@@ -118,8 +118,11 @@ private:
 
     void handleGetRequest(flowgraph::Flowgraph& out) {
         std::lock_guard lockGuard(_flowgraphLock);
-        out                     = _flowgraph;
-        out.serialisedFlowgraph = _acquisitionWorker.withGraph([](const auto& graph) { return gr::saveGrc(graph); });
+        out = _flowgraph;
+
+        auto serialisedFlowgraph = _acquisitionWorker.withGraph([](const auto& graph) { return gr::saveGrc(graph); });
+
+        out.serialisedFlowgraph = serialisedFlowgraph.value_or("");
     }
 
     void replaceGraphGRC(const flowgraph::Flowgraph& in, flowgraph::Flowgraph& out) {

@@ -246,10 +246,14 @@ public:
 
     void setUpdateSignalEntriesCallback(std::function<void(std::vector<SignalEntry>)> callback) { _updateSignalEntriesCallback = std::move(callback); }
 
-    template<typename Fn>
-    auto withGraph(Fn fn) {
+    template<typename Fn, typename Ret = std::invoke_result_t<Fn, gr::Graph&>>
+    std::optional<Ret> withGraph(Fn fn) {
         std::lock_guard lg{_graphChangeMutex};
-        return fn(_scheduler->graph());
+        if (!_scheduler) {
+            return {};
+        } else {
+            return {fn(_scheduler->graph())};
+        }
     }
 
 private:

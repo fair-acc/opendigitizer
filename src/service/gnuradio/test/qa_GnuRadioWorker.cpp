@@ -147,10 +147,15 @@ struct TestSetup {
         message.endpoint = "ReplaceGraphGRC";
         opendigitizer::flowgraph::storeFlowgraphToMessage(fg, message);
 
-        const auto serialised = serialiseMessage(message);
-        IoBuffer   buffer(serialised.data(), serialised.size());
+        const auto serialisedMessage = serialiseMessage(message);
 
-        fmt::print("Sending ReplaceGraphGRC message to the service\n");
+        opendigitizer::flowgraph::SerialisedFlowgraphMessage serialised;
+        serialised.data = serialisedMessage;
+
+        IoBuffer buffer;
+        opencmw::serialise<opencmw::Json>(buffer, serialised);
+
+        fmt::print("Sending ReplaceGraphGRC message to the service {}\n", buffer);
         client.set(URI("mdp://127.0.0.1:12346/GnuRadio/FlowGraph"), std::move(callback), std::move(buffer));
     }
 
