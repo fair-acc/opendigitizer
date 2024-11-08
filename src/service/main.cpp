@@ -10,7 +10,8 @@
 
 #include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
-#include "gnuradio/GnuRadioWorker.hpp"
+#include "gnuradio/GnuRadioAcquisitionWorker.hpp"
+#include "gnuradio/GnuRadioFlowgraphWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
@@ -100,6 +101,7 @@ using namespace opencmw::majordomo;
 int main(int argc, char** argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
+    using namespace opendigitizer::gnuradio;
     using namespace opencmw::majordomo;
     using namespace opencmw::service;
     using namespace std::chrono_literals;

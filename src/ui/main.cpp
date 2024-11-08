@@ -460,7 +460,8 @@ static void main_loop(void* arg) {
                 }
 
                 for (auto& s : app->dashboard->remoteServices()) {
-                    if (auto item = IMW::TabItem(s.name.c_str(), nullptr, 0)) {
+                    std::string title = "Remote YAML for " + s.name;
+                    if (auto item = IMW::TabItem(title.c_str(), nullptr, 0)) {
                         if (ImGui::Button("Reload from service")) {
                             s.reload();
                         }
@@ -468,6 +469,16 @@ static void main_loop(void* arg) {
                         if (ImGui::Button("Execute on service")) {
                             s.execute();
                         }
+
+                        // TODO: For demonstration purposes only, remove
+                        // once we have a proper server-side graph editor
+                        // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
+                        ImGui::SameLine();
+                        if (ImGui::Button("Create a block")) {
+                            s.emplaceBlock("gr::basic::DataSink", "float");
+                        }
+                        // }
+
                         ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
                     }
                 }

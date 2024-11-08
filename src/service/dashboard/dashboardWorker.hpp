@@ -72,8 +72,6 @@ public:
             }
 
             if (ctx.request.command == opencmw::mdp::Command::Get) {
-                fmt::print("worker received 'get' request\n");
-
                 if (parts.size() == 1) {
                     opencmw::IoBuffer buffer;
                     opencmw::IoSerialiser<opencmw::Json, decltype(names)>::serialise(buffer, opencmw::FieldDescriptionShort{}, names);

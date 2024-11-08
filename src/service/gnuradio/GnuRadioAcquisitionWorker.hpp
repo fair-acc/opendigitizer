@@ -1,5 +1,5 @@
-#ifndef OPENDIGITIZER_SERVICE_GNURADIOWORKER_H
-#define OPENDIGITIZER_SERVICE_GNURADIOWORKER_H
+#ifndef OPENDIGITIZER_SERVICE_GNURADIOACQUISITIONWORKER_H
+#define OPENDIGITIZER_SERVICE_GNURADIOACQUISITIONWORKER_H
 
 #include "gnuradio-4.0/Message.hpp"
 #include <daq_api.hpp>
@@ -17,7 +17,9 @@
 #include <string_view>
 #include <utility>
 
-namespace opendigitizer::acq {
+namespace opendigitizer::gnuradio {
+
+using namespace opendigitizer::acq;
 
 namespace detail {
 template<typename T>
@@ -204,22 +206,26 @@ struct DataSetPollerEntry {
 
 template<units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...> {
-    gr::PluginLoader*                             _plugin_loader;
+    gr::PluginLoader*                             _pluginLoader;
     std::jthread                                  _notifyThread;
-    std::unique_ptr<gr::Graph>                    _pending_flow_graph;
-    std::mutex                                    _flow_graph_mutex;
     std::function<void(std::vector<SignalEntry>)> _updateSignalEntriesCallback;
+    std::unique_ptr<MsgPortOut>                   _messagesToScheduler;
+    std::unique_ptr<MsgPortIn>                    _messagesFromScheduler;
+
+    std::unique_ptr<gr::Graph>                                                    _pendingFlowGraph;
+    std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>> _scheduler;
+    std::mutex                                                                    _graphChangeMutex;
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
 
-    explicit GnuRadioAcquisitionWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context& context, gr::PluginLoader* pluginLoader, std::chrono::milliseconds rate, Settings settings = {}) : super_t(std::move(brokerAddress), {}, context, std::move(settings)), _plugin_loader(pluginLoader) {
+    explicit GnuRadioAcquisitionWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context& context, gr::PluginLoader* pluginLoader, std::chrono::milliseconds rate, Settings settings = {}) : super_t(std::move(brokerAddress), {}, context, std::move(settings)), _pluginLoader(pluginLoader) {
         // TODO would be useful if one can check if the external broker knows TimeDomainContext and throw an error if not
         init(rate);
     }
 
     template<typename BrokerType>
-    explicit GnuRadioAcquisitionWorker(BrokerType& broker, gr::PluginLoader* pluginLoader, std::chrono::milliseconds rate) : super_t(broker, {}), _plugin_loader(pluginLoader) {
+    explicit GnuRadioAcquisitionWorker(BrokerType& broker, gr::PluginLoader* pluginLoader, std::chrono::milliseconds rate) : super_t(broker, {}), _pluginLoader(pluginLoader) {
         // this makes sure the subscriptions are filtered correctly
         opencmw::query::registerTypes(TimeDomainContext(), broker);
         init(rate);
@@ -230,12 +236,25 @@ public:
         _notifyThread.join();
     }
 
-    void setGraph(std::unique_ptr<gr::Graph> fg) {
-        std::lock_guard lg{_flow_graph_mutex};
-        _pending_flow_graph = std::move(fg);
+    void scheduleGraphChange(std::unique_ptr<gr::Graph> fg) {
+        std::lock_guard lg{_graphChangeMutex};
+        _pendingFlowGraph = std::move(fg);
     }
 
+    gr::MsgPortOut& messagesToScheduler() { return *_messagesToScheduler; }
+    gr::MsgPortIn&  messagesFromScheduler() { return *_messagesFromScheduler; }
+
     void setUpdateSignalEntriesCallback(std::function<void(std::vector<SignalEntry>)> callback) { _updateSignalEntriesCallback = std::move(callback); }
+
+    template<typename Fn, typename Ret = std::invoke_result_t<Fn, gr::Graph&>>
+    std::optional<Ret> withGraph(Fn fn) {
+        std::lock_guard lg{_graphChangeMutex};
+        if (!_scheduler) {
+            return {};
+        } else {
+            return {fn(_scheduler->graph())};
+        }
+    }
 
 private:
     void init(std::chrono::milliseconds rate) {
@@ -258,20 +277,20 @@ private:
             while (!finished) {
                 const auto aboutToFinish    = stoken.stop_requested();
                 auto       pendingFlowGraph = [this]() {
-                    std::lock_guard lg{_flow_graph_mutex};
-                    return std::exchange(_pending_flow_graph, {});
+                    std::lock_guard lg{_graphChangeMutex};
+                    return std::exchange(_pendingFlowGraph, {});
                 }();
                 const auto hasScheduler      = schedulerThread.joinable();
                 const bool stopScheduler     = hasScheduler && (aboutToFinish || pendingFlowGraph);
                 bool       schedulerFinished = false;
 
                 if (stopScheduler) {
-                    sendMessage<Set>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP))}}, "");
+                    sendMessage<Set>(*_messagesToScheduler, schedulerUniqueName, block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP))}}, "");
                 }
 
                 if (hasScheduler) {
                     bool signalInfoChanged = false;
-                    auto messages          = fromScheduler->streamReader().get(fromScheduler->streamReader().available());
+                    auto messages          = _messagesFromScheduler->streamReader().get(_messagesFromScheduler->streamReader().available());
                     for (const auto& message : messages) {
                         if (message.endpoint == block::property::kLifeCycleState) {
                             if (!message.data) {
@@ -356,8 +375,8 @@ private:
                     signalEntriesBySink.clear();
                     streamingPollers.clear();
                     dataSetPollers.clear();
-                    fromScheduler.reset();
-                    toScheduler.reset();
+                    _messagesFromScheduler.reset();
+                    _messagesToScheduler.reset();
                     schedulerUniqueName.clear();
                     schedulerThread.join();
                 }
@@ -388,15 +407,19 @@ private:
                         auto flattened = signalEntriesBySink | std::views::values | std::views::join;
                         _updateSignalEntriesCallback(std::vector(flattened.begin(), flattened.end()));
                     }
-                    auto sched          = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
-                    toScheduler         = std::make_unique<MsgPortOut>();
-                    fromScheduler       = std::make_unique<MsgPortIn>();
-                    std::ignore         = toScheduler->connect(sched->msgIn);
-                    std::ignore         = sched->msgOut.connect(*fromScheduler);
-                    schedulerUniqueName = sched->unique_name;
-                    sendMessage<Subscribe>(*toScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
-                    sendMessage<Subscribe>(*toScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");
-                    schedulerThread = std::jthread([s = std::move(sched)] { s->runAndWait(); });
+                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
+                    _messagesToScheduler   = std::make_unique<MsgPortOut>();
+                    _messagesFromScheduler = std::make_unique<MsgPortIn>();
+                    std::ignore            = _messagesToScheduler->connect(_scheduler->msgIn);
+                    std::ignore            = _scheduler->msgOut.connect(*_messagesFromScheduler);
+                    schedulerUniqueName    = _scheduler->unique_name;
+                    sendMessage<Subscribe>(*_messagesToScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
+                    sendMessage<Subscribe>(*_messagesToScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");
+
+                    {
+                        std::lock_guard lg{_graphChangeMutex};
+                        schedulerThread = std::jthread([scheduler = _scheduler.get()] { scheduler->runAndWait(); });
+                    }
                 }
 
                 const auto next_update = update + rate;
@@ -569,79 +592,6 @@ private:
     }
 };
 
-template<typename TAcquisitionWorker, units::basic_fixed_string serviceName, typename... Meta>
-class GnuRadioFlowGraphWorker : public Worker<serviceName, flowgraph::FilterContext, flowgraph::Flowgraph, flowgraph::Flowgraph, Meta...> {
-    gr::PluginLoader*    _plugin_loader;
-    TAcquisitionWorker&  _acquisition_worker;
-    std::mutex           _flow_graph_lock;
-    flowgraph::Flowgraph _flow_graph;
-
-public:
-    using super_t = Worker<serviceName, flowgraph::FilterContext, flowgraph::Flowgraph, flowgraph::Flowgraph, Meta...>;
-
-    explicit GnuRadioFlowGraphWorker(opencmw::URI<opencmw::STRICT> brokerAddress, const opencmw::zmq::Context& context, gr::PluginLoader* pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker& acquisitionWorker, Settings settings = {}) : super_t(std::move(brokerAddress), {}, context, std::move(settings)), _plugin_loader(pluginLoader), _acquisition_worker(acquisitionWorker) { init(std::move(initialFlowGraph)); }
-
-    template<typename BrokerType>
-    explicit GnuRadioFlowGraphWorker(const BrokerType& broker, gr::PluginLoader* pluginLoader, flowgraph::Flowgraph initialFlowGraph, TAcquisitionWorker& acquisitionWorker) : super_t(broker, {}), _plugin_loader(pluginLoader), _acquisition_worker(acquisitionWorker) {
-        init(std::move(initialFlowGraph));
-    }
-
-private:
-    void init(flowgraph::Flowgraph initialFlowGraph) {
-        super_t::setCallback([this](const RequestContext& rawCtx, const flowgraph::FilterContext& filterIn, const flowgraph::Flowgraph& in, flowgraph::FilterContext& filterOut, flowgraph::Flowgraph& out) {
-            if (rawCtx.request.command == opencmw::mdp::Command::Get) {
-                handleGetRequest(filterIn, filterOut, out);
-            } else if (rawCtx.request.command == opencmw::mdp::Command::Set) {
-                handleSetRequest(filterIn, filterOut, in, out);
-            }
-        });
-
-        if (initialFlowGraph.flowgraph.empty()) {
-            return;
-        }
-
-        try {
-            std::lock_guard lockGuard(_flow_graph_lock);
-            auto            grGraph = std::make_unique<gr::Graph>(gr::loadGrc(*_plugin_loader, initialFlowGraph.flowgraph));
-            _flow_graph             = std::move(initialFlowGraph);
-            _acquisition_worker.setGraph(std::move(grGraph));
-        } catch (const std::string& e) {
-            throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
-        }
-    }
-
-    void handleGetRequest(const flowgraph::FilterContext& /*filterIn*/, flowgraph::FilterContext& /*filterOut*/, flowgraph::Flowgraph& out) {
-        std::lock_guard lockGuard(_flow_graph_lock);
-        out = _flow_graph;
-    }
-
-    void handleSetRequest(const flowgraph::FilterContext& /*filterIn*/, flowgraph::FilterContext& /*filterOut*/, const flowgraph::Flowgraph& in, flowgraph::Flowgraph& out) {
-        {
-            std::lock_guard lockGuard(_flow_graph_lock);
-            try {
-                auto grGraph = std::make_unique<gr::Graph>(gr::loadGrc(*_plugin_loader, in.flowgraph));
-                _flow_graph  = in;
-                out          = in;
-                _acquisition_worker.setGraph(std::move(grGraph));
-            } catch (const std::string& e) {
-                throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
-            }
-        }
-        notifyUpdate();
-    }
-
-    void notifyUpdate() {
-        for (auto subTopic : super_t::activeSubscriptions()) {
-            const auto           queryMap  = subTopic.params();
-            const auto           filterIn  = opencmw::query::deserialise<flowgraph::FilterContext>(queryMap);
-            auto                 filterOut = filterIn;
-            flowgraph::Flowgraph subscriptionReply;
-            handleGetRequest(filterIn, filterOut, subscriptionReply);
-            super_t::notify(filterOut, subscriptionReply);
-        }
-    }
-};
-
-} // namespace opendigitizer::acq
+} // namespace opendigitizer::gnuradio
 
 #endif // OPENDIGITIZER_SERVICE_GNURADIOWORKER_H

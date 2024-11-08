@@ -1,12 +1,21 @@
 #ifndef OPENDIGITIZER_ACQUISITION_DAQ_API_H
 #define OPENDIGITIZER_ACQUISITION_DAQ_API_H
 
+#include <string>
+#include <vector>
+
 #include <MultiArray.hpp>
 #include <opencmw.hpp>
-#include <string>
+
 #include <units/isq/si/frequency.h>
 #include <units/isq/si/time.h>
-#include <vector>
+
+#include "gnuradio-4.0/Message.hpp"
+
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <yaml-cpp/yaml.h>
+
+using namespace std::string_literals;
 
 namespace opendigitizer::flowgraph {
 
@@ -15,14 +24,108 @@ struct FilterContext {
 };
 
 struct Flowgraph {
-    std::string flowgraph;
-    std::string layout;
+    std::string serialisedFlowgraph;
+    std::string serialisedUiLayout;
 };
+
+struct SerialisedFlowgraphMessage {
+    std::string data;
+};
+
+inline void storeFlowgraphToMessage(const flowgraph::Flowgraph& outFlowgraph, gr::Message& message) {
+    message.data = gr::property_map{
+        {"serialisedFlowgraph"s, outFlowgraph.serialisedFlowgraph}, //
+        {"serialisedUiLayout"s, outFlowgraph.serialisedUiLayout}    //
+    };
+}
+
+inline std::expected<flowgraph::Flowgraph, std::string> getFlowgraphFromMessage(const gr::Message& message) {
+    const auto& dataMap = *message.data;
+    auto        it      = dataMap.find("serialisedFlowgraph"s);
+    if (it == dataMap.end()) {
+        return std::unexpected("serialisedFlowgraph field not specified"s);
+    }
+
+    const auto* source = std::get_if<std::string>(&it->second);
+    if (!source) {
+        return std::unexpected("serialisedFlowgraph field is not a string"s);
+    }
+
+    std::string serialisedUiLayout;
+    it = dataMap.find("serialisedUiLayout"s);
+    if (it != dataMap.end()) {
+        if (const auto* uiLayout = std::get_if<std::string>(&it->second); uiLayout) {
+            serialisedUiLayout = *uiLayout;
+        }
+    }
+
+    return flowgraph::Flowgraph{.serialisedFlowgraph = *source, .serialisedUiLayout = serialisedUiLayout};
+}
 
 } // namespace opendigitizer::flowgraph
 
 ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::FilterContext, contentType)
-ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::Flowgraph, flowgraph, layout)
+ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::Flowgraph, serialisedFlowgraph, serialisedUiLayout)
+ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::SerialisedFlowgraphMessage, data);
+
+namespace opendigitizer::gnuradio {
+// Yaml to gr::message and back, TODO should be moved to GR
+inline std::string serialiseMessage(const gr::Message& message) {
+    YAML::Emitter       out;
+    gr::detail::YamlMap root(out);
+    root.write("cmd", std::string(magic_enum::enum_name(message.cmd)));
+    root.write("protocol", message.protocol);
+    root.write("serviceName", message.serviceName);
+    root.write("clientRequestID", message.clientRequestID);
+    root.write("endpoint", message.endpoint);
+    root.write("rbac", message.rbac);
+
+    if (message.data) {
+        root.writeFn("data", [&] {
+            gr::detail::YamlMap yamlData(out);
+            for (const auto& [key, value] : *message.data) {
+                std::visit(gr::meta::overloaded{//
+                               [&](const std::string& data) { yamlData.write(key.data(), data); },
+                               [&](const auto&) {
+                                   // Ignore other types for the time being, TODO
+                               }},
+                    value);
+            }
+        });
+    } else {
+        root.write("dataError", message.data.error());
+    }
+
+    return out.c_str();
+}
+
+inline gr::Message deserialiseMessage(const std::string& messageYaml) {
+    auto tree = YAML::Load(messageYaml);
+
+    gr::Message message;
+    auto        optionalCmd = magic_enum::enum_cast<gr::message::Command>(tree["cmd"].as<std::string>());
+    if (optionalCmd) {
+        message.cmd = *optionalCmd;
+    }
+
+    message.protocol        = tree["protocol"].as<std::string>();
+    message.serviceName     = tree["serviceName"].as<std::string>();
+    message.clientRequestID = tree["clientRequestID"].as<std::string>();
+    message.endpoint        = tree["endpoint"].as<std::string>();
+    message.rbac            = tree["rbac"].as<std::string>();
+
+    if (const auto& data = tree["data"]; data && data.IsMap()) {
+        message.data = gr::property_map{};
+        for (const auto& kv : data) {
+            (*message.data)[kv.first.as<std::string>()] = kv.second.as<std::string>();
+        }
+    } else {
+        message.data = std::unexpected(gr::Error(tree["dataError"].as<std::string>()));
+    }
+
+    return message;
+}
+} // namespace opendigitizer::gnuradio
 
 namespace opendigitizer::acq {
 
@@ -37,9 +140,9 @@ using namespace std::literals;
  */
 // clang-format: OFF
 struct Acquisition {
-    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                        // specified as Enum + String
-    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = { "STREAMING" }; // specified as ENUM
-    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;               // specified as type WR timestamp
+    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                      // specified as Enum + String
+    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = {"STREAMING"}; // specified as ENUM
+    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;             // specified as type WR timestamp
     Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
     Annotated<std::vector<::int32_t>, si::time<second>, "time scale">                            channelTimeBase; // todo either nanosecond or float
     Annotated<float, si::time<second>, "user-defined delay">                                     channelUserDelay   = 0.0f;
@@ -60,9 +163,9 @@ struct Acquisition {
  */
 // clang-format: OFF
 struct AcquisitionSpectra {
-    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                        // specified as Enum + String
-    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = { "STREAMING" }; // specified as ENUM
-    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;               // specified as type WR timestamp
+    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                      // specified as Enum + String
+    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = {"STREAMING"}; // specified as ENUM
+    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;             // specified as type WR timestamp
     Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
     Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
     Annotated<std::vector<float>, opencmw::NoUnit, "magnitude spectra of signals">               channelMagnitude;

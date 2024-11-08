@@ -140,13 +140,13 @@ Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map s
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
 }
 
-void Block::setSetting(const std::string& name, const pmtv::pmt& p) {
-    m_settings[name] = p;
+void Block::setSetting(const std::string& settingName, const pmtv::pmt& p) {
+    m_settings[settingName] = p;
 
     gr::Message msg;
     msg.serviceName = m_uniqueName;
     msg.endpoint    = gr::block::property::kStagedSetting;
-    msg.data        = gr::property_map{{name, p}};
+    msg.data        = gr::property_map{{settingName, p}};
     App::instance().sendMessage(msg);
 }
 

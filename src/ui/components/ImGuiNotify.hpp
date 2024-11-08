@@ -155,14 +155,14 @@ public:
      *
      * @return const char* The title of the toast notification.
      */
-    inline const char* getTitle() { return this->title; }
+    inline const char* getTitle() const { return this->title; }
 
     /**
      * @brief Get the default title of the toast notification based on its type.
      *
      * @return const char* The default title of the toast notification.
      */
-    inline const char* getDefaultTitle() {
+    inline const char* getDefaultTitle() const {
         if (!strlen(this->title)) {
             switch (this->type) {
             case ImGuiToastType::None: return nullptr;
@@ -182,14 +182,14 @@ public:
      *
      * @return ImGuiToastType The type of the toast notification.
      */
-    inline ImGuiToastType getType() { return this->type; }
+    inline ImGuiToastType getType() const { return this->type; }
 
     /**
      * @brief Get the color of the toast notification based on its type.
      *
      * @return ImVec4 The color of the toast notification.
      */
-    inline ImVec4 getColor() {
+    inline ImVec4 getColor() const {
         switch (this->type) {
         case ImGuiToastType::None: return {255, 255, 255, 255};  // White
         case ImGuiToastType::Success: return {0, 255, 0, 255};   // Green
@@ -205,7 +205,7 @@ public:
      *
      * @return const char* The icon of the toast notification.
      */
-    inline const char* getIcon() {
+    inline const char* getIcon() const {
         switch (this->type) {
         case ImGuiToastType::None: return nullptr;
         case ImGuiToastType::Success: return ICON_FA_CIRCLE_CHECK;         // Font Awesome 6
@@ -221,7 +221,7 @@ public:
      *
      * @return char* The content of the toast notification.
      */
-    inline char* getContent() { return this->content; };
+    inline const char* getContent() const { return this->content; };
 
     /**
      * @brief Get the elapsed time in milliseconds since the creation of the object.
