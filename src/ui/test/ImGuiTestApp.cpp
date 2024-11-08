@@ -7,7 +7,11 @@
 #include "implot.h"
 #include "shared/imgui_app.h"
 
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
+
 #include <algorithm>
+#include <filesystem>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <span>
@@ -195,3 +199,9 @@ void ImGuiTestApp::printWindows() {
 }
 
 ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
+
+std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
+    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
+    BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*loader);
+    return loader;
+}
