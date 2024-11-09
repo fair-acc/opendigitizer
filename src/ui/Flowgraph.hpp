@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GraphModel.hpp"
 #include <filesystem>
 #include <functional>
 #include <string_view>
@@ -272,8 +273,6 @@ public:
         std::vector<Connection*> portConnections;
     };
 
-    class OutputPort : public Port {};
-
     struct EnumParameter {
         const BlockInstantiationDefinition::EnumParameter& definition;
         int                                                optionIndex;
@@ -375,7 +374,7 @@ private:
 };
 
 struct ExecutionContext {
-    gr::Graph                                        graph;
+    gr::Graph                                        grGraph;
     std::unordered_map<std::string, gr::BlockModel*> plotSinkGrBlocks;
     std::vector<gr::BlockModel*>                     toolbarBlocks;
 };
@@ -441,6 +440,10 @@ private:
     plf::colony<Connection>                          m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
     bool                                             m_graphChanged = true;
     std::string                                      m_grc;
+
+    // TODO this will replace the whole flowgraph, for the time being, we
+    // are just testing the model
+    UiGraphModel graphModel;
 
     // TODO add remote sources here?
 };

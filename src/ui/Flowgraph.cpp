@@ -602,12 +602,12 @@ ExecutionContext FlowGraph::createExecutionContext() {
         if (isDrawable(block->metaInformation(), "ChartPane")) {
             context.plotSinkGrBlocks.insert({block->name, grBlock.get()});
         }
-        context.graph.addBlock(std::move(grBlock));
+        context.grGraph.addBlock(std::move(grBlock));
     }
 
     auto findBlock = [&](std::string_view name) -> gr::BlockModel* {
-        const auto it = std::ranges::find_if(context.graph.blocks(), [&](auto& b) { return b->uniqueName() == name; });
-        return it == context.graph.blocks().end() ? nullptr : it->get();
+        const auto it = std::ranges::find_if(context.grGraph.blocks(), [&](auto& b) { return b->uniqueName() == name; });
+        return it == context.grGraph.blocks().end() ? nullptr : it->get();
     };
 
     for (auto& c : m_connections) {
@@ -617,7 +617,7 @@ ExecutionContext FlowGraph::createExecutionContext() {
             continue;
         }
 
-        context.graph.connect(*src, c.src.index, *dst, c.dst.index);
+        context.grGraph.connect(*src, c.src.index, *dst, c.dst.index);
     }
 
     m_graphChanged = false;
@@ -630,6 +630,8 @@ ExecutionContext FlowGraph::createExecutionContext() {
 }
 
 void FlowGraph::handleMessage(const gr::Message& msg) {
+    graphModel.processMessage(msg);
+
     if (msg.serviceName != App::instance().schedulerUniqueName() && msg.endpoint == gr::block::property::kSetting) {
         const auto it = std::ranges::find_if(m_blocks, [&](const auto& b) { return b->m_uniqueName == msg.serviceName; });
         if (it == m_blocks.end()) {

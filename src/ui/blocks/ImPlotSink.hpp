@@ -2,8 +2,10 @@
 #define OPENDIGITIZER_IMPLOTSINK_HPP
 
 #include <limits>
+#include <unordered_map>
 
 #include <gnuradio-4.0/Block.hpp>
+#include <gnuradio-4.0/BlockModel.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 
@@ -15,8 +17,54 @@
 
 namespace opendigitizer {
 
+struct ImPlotSinkManager {
+private:
+    ImPlotSinkManager() {}
+    ImPlotSinkManager(const ImPlotSinkManager&)            = delete;
+    ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
+
+    struct SinkModel {
+        std::string uniqueName;
+        SinkModel(std::string uniqueName) : uniqueName(std::move(uniqueName)) {}
+
+        virtual ~SinkModel() {}
+        virtual gr::work::Status draw() noexcept = 0;
+    };
+
+    std::unordered_map<std::string, std::unique_ptr<SinkModel>> m_knownSinks;
+
+    template<typename Block>
+    struct SinkWrapper : SinkModel {
+        SinkWrapper(Block* block) : SinkModel(block->unique_name) {}
+        gr::work::Status draw() noexcept override { return block->draw(); }
+
+        Block* block;
+    };
+
+public:
+    static ImPlotSinkManager& instance() {
+        static ImPlotSinkManager s_instance;
+        return s_instance;
+    }
+
+    template<typename TBlock>
+    void registerPlotSink(TBlock* block) {
+        fmt::print("\u001b[36m>> registerPlotSink {}\n\u001b[0m", block->unique_name);
+        m_knownSinks[block->unique_name] = std::make_unique<SinkWrapper<TBlock>>(block);
+    }
+
+    template<typename TBlock>
+    void unregisterPlotSink(TBlock* block) {
+        fmt::print("\u001b[36m>> unregisterPlotSink {}\n\u001b[0m", block->unique_name);
+        m_knownSinks.erase(block->unique_name);
+    }
+};
+
+template<typename TBlock>
+using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">>;
+
 template<typename T>
-struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
+struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     gr::PortIn<T> in;
     uint32_t      color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
     std::string   signal_name;
@@ -27,6 +75,10 @@ struct ImPlotSink : public gr::Block<ImPlotSink<T>, gr::BlockingIO<false>, gr::S
     GR_MAKE_REFLECTABLE(ImPlotSink, in, color, signal_name, signal_unit, signal_min, signal_max);
 
 public:
+    ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
+
+    ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
+
     gr::HistoryBuffer<T> data = gr::HistoryBuffer<T>{65536};
 
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
@@ -55,7 +107,7 @@ public:
 };
 
 template<typename T>
-struct ImPlotSinkDataSet : public gr::Block<ImPlotSinkDataSet<T>, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">> {
+struct ImPlotSinkDataSet : public ImPlotSinkBase<ImPlotSinkDataSet<T>> {
     gr::PortIn<gr::DataSet<T>> in;
     uint32_t                   color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
     std::string                signal_name;
@@ -67,6 +119,10 @@ struct ImPlotSinkDataSet : public gr::Block<ImPlotSinkDataSet<T>, gr::BlockingIO
     GR_MAKE_REFLECTABLE(ImPlotSinkDataSet, in, color, signal_name, signal_unit, signal_min, signal_max, dataset_index);
 
 public:
+    ImPlotSinkDataSet(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSinkDataSet<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
+
+    ~ImPlotSinkDataSet() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
+
     gr::DataSet<T> data{};
 
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {

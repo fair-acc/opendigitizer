@@ -49,6 +49,7 @@ private:
     void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
     static void drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot& plot) noexcept;
 
+    // TODO: Block pointer
     void addSignalCallback(Dashboard& dashboard, Block* block);
 
     //

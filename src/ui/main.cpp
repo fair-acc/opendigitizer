@@ -345,7 +345,7 @@ static void main_loop(void* arg) {
         app->dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
         app->toolbarBlocks = std::move(execution.toolbarBlocks);
         app->dashboard->loadPlotSources();
-        app->assignScheduler(std::move(execution.graph));
+        app->assignScheduler(std::move(execution.grGraph));
         localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
     }
 

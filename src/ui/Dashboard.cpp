@@ -19,6 +19,7 @@
 
 #include "App.hpp"
 #include "Flowgraph.hpp"
+#include "GraphModel.hpp"
 
 #include "utils/Yaml.hpp"
 
@@ -215,6 +216,7 @@ Dashboard::Plot::Plot() {
 Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
+    // TODO: Block pointer
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block* b) {
         const auto color = std::get_if<uint32_t>(&b->settings().at("color"));
         assert(color);

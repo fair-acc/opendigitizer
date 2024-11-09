@@ -16,6 +16,8 @@
 #include "components/ListBox.hpp"
 #include "components/Splitter.hpp"
 
+#include "App.hpp"
+
 namespace DigitizerUi {
 
 // Function to perform topological sort on the graph
@@ -602,6 +604,25 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
             sortNodes(fg, blocks);
+        }
+        if (ImGui::MenuItem("Send a block creation message")) {
+            gr::Message message;
+            std::string type   = "gr::testing::Delay";
+            std::string params = "float";
+            message.cmd        = gr::message::Command::Set;
+            message.endpoint   = gr::graph::property::kEmplaceBlock;
+            message.data       = gr::property_map{
+                      {"type"s, std::move(type)},        //
+                      {"parameters"s, std::move(params)} //
+            };
+            App::instance().sendMessage(message);
+        }
+        if (ImGui::MenuItem("Send a graph inspection message")) {
+            gr::Message message;
+            message.cmd      = gr::message::Command::Set;
+            message.endpoint = gr::graph::property::kGraphInspect;
+            message.data     = gr::property_map{};
+            App::instance().sendMessage(message);
         }
     }
 
