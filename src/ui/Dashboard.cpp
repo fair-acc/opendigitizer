@@ -251,17 +251,7 @@ void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& d
 void Dashboard::load() {
     if (m_desc->source != unsavedSource()) {
         fetch(
-            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard},
-            [_this = shared()](std::array<std::string, 2>&& data) {
-                try {
-                    _this->localFlowGraph.parse(std::move(data[0]));
-                    // Load is called after parsing the flowgraph so that we already have the list of sources
-                    _this->doLoad(data[1]);
-                } catch (const std::exception& e) {
-                    components::Notification::error(fmt::format("Error: {}", e.what()));
-                    App::instance().closeDashboard();
-                }
-            },
+            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard}, [_this = shared()](std::array<std::string, 2>&& data) { _this->load(std::move(data[0]), std::move(data[1])); },
             [_this = shared()]() {
                 auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->source->path, _this->m_desc->filename);
                 components::Notification::error(error);
@@ -270,6 +260,17 @@ void Dashboard::load() {
             });
     } else if (m_fgItem) {
         m_fgItem->setSettings(&localFlowGraph, {});
+    }
+}
+
+void Dashboard::load(const std::string& grcData, const std::string& dashboardData) {
+    try {
+        localFlowGraph.parse(grcData);
+        // Load is called after parsing the flowgraph so that we already have the list of sources
+        doLoad(dashboardData);
+    } catch (const std::exception& e) {
+        components::Notification::error(fmt::format("Error: {}", e.what()));
+        App::instance().closeDashboard();
     }
 }
 

@@ -98,6 +98,7 @@ public:
     void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) { localFlowGraph.setPluginLoader(std::move(loader)); }
 
     void load();
+    void load(const std::string& grcData, const std::string& dashboardData);
     void save();
 
     void newPlot(int x, int y, int w, int h);
