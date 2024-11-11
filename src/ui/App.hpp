@@ -107,7 +107,6 @@ public:
                         // TODO: handle error return message
                     }
                     while (!stopRequested && _scheduler.isProcessing()) {
-                        _scheduler.processScheduledMessages();
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     }
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
