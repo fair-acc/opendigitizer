@@ -74,6 +74,9 @@ void ImGuiTestApp::initImGui() {
     test_io.ScreenCaptureUserData     = _app;
     test_io.ConfigCaptureOnError      = true;
     test_io.ConfigLogToTTY            = true;
+    test_io.ConfigWatchdogWarning     = 60.0f;  // 1 minutes until a we get a warning that a test is taking too long
+    test_io.ConfigWatchdogKillTest    = 180.0f; // 3 minutes until a test gets killed
+
     // Optional: save test output in junit-compatible XML format.
     // test_io.ExportResultsFile = "./results.xml";
     // test_io.ExportResultsFormat = ImGuiTestEngineExportFormat_JUnitXml;
