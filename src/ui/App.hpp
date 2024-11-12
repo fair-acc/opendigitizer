@@ -80,9 +80,7 @@ public:
 
         template<typename TScheduler>
         struct HandlerImpl : Handler {
-            TScheduler        _scheduler;
-            std::thread       _thread;
-            std::atomic<bool> stopRequested = false;
+            TScheduler _scheduler;
 
             gr::MsgPortIn  _fromScheduler;
             gr::MsgPortOut _toScheduler;
@@ -99,23 +97,14 @@ public:
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
                 gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
-                _thread = std::thread([this]() {
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                        // TODO: handle error return message
-                    }
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                        // TODO: handle error return message
-                    }
-                    while (!stopRequested && _scheduler.isProcessing()) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    }
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
-                        // TODO: handle error return message
-                    }
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
-                        // TODO: handle error return message
-                    }
-                });
+                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
+                    fmt::print("Error initializíng scheduler: {}\n", e.error().message);
+                    // TODO: handle error return message
+                }
+                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                    fmt::print("Error starting scheduler: {}\n", e.error().message);
+                    // TODO: handle error return message
+                }
             }
 
             std::string_view uniqueName() const override { return _scheduler.unique_name; }
@@ -138,8 +127,12 @@ public:
             }
 
             ~HandlerImpl() {
-                stopRequested = true;
-                _thread.join();
+                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
+                    // TODO: handle error return message
+                }
+                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
+                    // TODO: handle error return message
+                }
             }
         };
 
