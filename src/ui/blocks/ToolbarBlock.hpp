@@ -130,7 +130,7 @@ struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBloc
 
     GR_MAKE_REFLECTABLE(PlayStopToolbarBlock, ctrlOut);
 
-    gr::work::Status draw() noexcept {
+    gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const gr::work::Status status = gr::work::Status::OK; // this->invokeWork(); // calls work(...) -> processOne(...) (all in the same thread as this 'draw()'
         using namespace gr::message;
 

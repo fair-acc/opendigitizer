@@ -44,6 +44,7 @@ option(ENABLE_IMGUI_TEST_ENGINE "Enable ImGui Test Engine" ${DEFAULT_ENABLE_IMGU
 message("OPENDIGITIZER_ENABLE_TESTING : ${OPENDIGITIZER_ENABLE_TESTING}")
 message("ENABLE_IMGUI_TEST_ENGINE     : ${ENABLE_IMGUI_TEST_ENGINE}")
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(cmake/Dependencies.cmake)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
@@ -73,6 +74,7 @@ if(NOT DISABLE_WASM_BUILD)
     BUILD_ALWAYS 1
     INSTALL_COMMAND "" # skip install
     CMAKE_ARGS -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
+               -DCMAKE_MODULE_PATH="${CMAKE_SOURCE_DIR}/cmake"
     BUILD_BYPRODUCTS
       ${WASM_BUILD_DIR}/web/index.html
       ${WASM_BUILD_DIR}/web/index.js

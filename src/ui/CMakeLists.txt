@@ -46,6 +46,7 @@ if(EMSCRIPTEN)
 endif()
 
 # dependencies
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
 
