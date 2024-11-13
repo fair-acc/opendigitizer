@@ -103,7 +103,21 @@ public:
                         throw fmt::format("Failed to initialize flowgraph");
                     }
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                        // <<<<<<< HEAD
                         throw fmt::format("Failed to start flowgraph processing");
+                        // =======
+                        //                         // TODO: handle error return message
+                        //                     }
+                        //                     while (!stopRequested && _scheduler.isProcessing()) {
+                        //                         // _scheduler.processScheduledMessages();
+                        //                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        //                     }
+                        //                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
+                        //                         // TODO: handle error return message
+                        //                     }
+                        //                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
+                        //                         // TODO: handle error return message
+                        // >>>>>>> 1cb433c (Initial integration in the UI)
                     }
                     // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
                     // We once have to directly change the state to running, after this, all further state updates are performed via the msg API

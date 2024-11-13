@@ -446,7 +446,64 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
     ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
 }
 
+void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+    //
+    IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
+    const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
+
+    {
+        struct BoundingBox {
+            // TODO: proper initial min max values
+            float minX = 0, minY = 0, maxX = 0, maxY = 0;
+
+            void addRectangle(ImVec2 position, ImVec2 size) {
+                minX = std::min(minX, position[0]);
+                minY = std::min(minY, position[1]);
+                maxX = std::min(maxX, position[0] + size[0]);
+                maxY = std::min(maxY, position[1] + size[1]);
+            }
+        };
+
+        BoundingBox boundingBox;
+
+        // We need to pass all blocks in order for NodeEditor to calculate
+        // the sizes. Then, we can arrange those that are newly created
+        for (auto& block : graphModel.blocks()) {
+            auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
+
+            IMW::NodeEditor::Node node(blockId);
+
+            auto name = "NW:"s + block.blockName;
+            ImGui::TextUnformatted(name.c_str());
+            auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+
+            if (block.view.has_value()) {
+                auto position = ax::NodeEditor::GetNodePosition(blockId);
+                block.view->x = position[0];
+                block.view->y = position[1];
+                boundingBox.addRectangle(position, blockSize);
+            }
+        }
+
+        for (auto& block : graphModel.blocks()) {
+            if (!block.view.has_value()) {
+                auto blockId   = ax::NodeEditor::NodeId(std::addressof(block));
+                auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+                block.view     = UiGraphBlock::ViewData{//
+                        .x      = boundingBox.minX,     //
+                        .y      = boundingBox.maxY,     //
+                        .width  = blockSize[0],         //
+                        .height = blockSize[1]};
+                fmt::print(">>>>>>>>>> new position/layout for {} x{} y{} w{} h{}\n", block.blockUniqueName, block.view->x, block.view->y, block.view->width, block.view->height);
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
+                boundingBox.minX += blockSize[0] + padding.x;
+            }
+        }
+    }
+}
+
 void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
+
     auto& c = m_editors[fg];
     if (!c.editor) {
         return;
@@ -467,98 +524,103 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    ax::NodeEditor::Begin("My Editor", {size.x, size.y}); // ImGui::GetContentRegionAvail());
+    drawGraph(fg->graphModel, size);
 
+    /*
     std::vector<const Block*> blocks;
     std::ranges::transform(fg->blocks(), std::back_inserter(blocks), [](auto& b) { return b.get(); });
 
-    for (auto& b : blocks) {
-        if (b) {
-            addBlock(*b);
+    auto [mouseDrag, backgroundClicked] = [&] {
+        IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
+
+        for (auto& b : blocks) {
+            if (b) {
+                addBlock(*b);
+            }
         }
-    }
-    if (m_layoutGraph) {
-        sortNodes(fg, blocks);
-        m_layoutGraph = false;
-    }
-    if (!m_nodesToArrange.empty()) {
-        arrangeUnconnectedNodes(fg, m_nodesToArrange);
-        m_nodesToArrange.clear();
-    }
+        if (m_layoutGraph) {
+            sortNodes(fg, blocks);
+            m_layoutGraph = false;
+        }
+        if (!m_nodesToArrange.empty()) {
+            arrangeUnconnectedNodes(fg, m_nodesToArrange);
+            m_nodesToArrange.clear();
+        }
 
-    if (m_createNewBlock) {
-        auto b = m_selectedBlockDefinition->createBlock("New Block");
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
-        fg->addBlock(std::move(b));
-        m_createNewBlock = false;
-    }
+        if (m_createNewBlock) {
+            auto b = m_selectedBlockDefinition->createBlock("New Block");
+            ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
+            fg->addBlock(std::move(b));
+            m_createNewBlock = false;
+        }
 
-    const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
-    for (auto& c : fg->connections()) {
-        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.uiBlock->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.uiBlock->inputs()[c.dst.index]), linkColor);
-    }
+        const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+        for (auto& c : fg->connections()) {
+            ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.uiBlock->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.uiBlock->inputs()[c.dst.index]), linkColor);
+        }
 
-    // Handle creation action, returns true if editor want to create new object (node or link)
-    if (ax::NodeEditor::BeginCreate(linkColor)) {
-        ax::NodeEditor::PinId inputPinId, outputPinId;
-        if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
-            // QueryNewLink returns true if editor want to create new link between pins.
-            //
-            // Link can be created only for two valid pins, it is up to you to
-            // validate if connection make sense. Editor is happy to make any.
-            //
-            // Link always goes from input to output. User may choose to drag
-            // link from output pin or input pin. This determines which pin ids
-            // are valid and which are not:
-            //   * input valid, output invalid - user started to drag new link from input pin
-            //   * input invalid, output valid - user started to drag new link from output pin
-            //   * input valid, output valid   - user dragged link over other pin, can be validated
+        // Handle creation action, returns true if editor want to create new object (node or link)
+        if (auto creation = IMW::NodeEditor::Creation(linkColor)) {
+            ax::NodeEditor::PinId inputPinId, outputPinId;
+            if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
+                // QueryNewLink returns true if editor want to create new link between pins.
+                //
+                // Link can be created only for two valid pins, it is up to you to
+                // validate if connection make sense. Editor is happy to make any.
+                //
+                // Link always goes from input to output. User may choose to drag
+                // link from output pin or input pin. This determines which pin ids
+                // are valid and which are not:
+                //   * input valid, output invalid - user started to drag new link from input pin
+                //   * input invalid, output valid - user started to drag new link from output pin
+                //   * input valid, output valid   - user dragged link over other pin, can be validated
 
-            if (inputPinId && outputPinId) // both are valid, let's accept link
-            {
-                auto inputPort  = inputPinId.AsPointer<Block::Port>();
-                auto outputPort = outputPinId.AsPointer<Block::Port>();
+                if (inputPinId && outputPinId) // both are valid, let's accept link
+                {
+                    auto inputPort  = inputPinId.AsPointer<Block::Port>();
+                    auto outputPort = outputPinId.AsPointer<Block::Port>();
 
-                if (inputPort->portDirection == outputPort->portDirection) {
-                    ax::NodeEditor::RejectNewItem();
-                } else {
-                    bool compatibleTypes = inputPort->portDataType == outputPort->portDataType || inputPort->portDataType == DataType::Wildcard || outputPort->portDataType == DataType::Wildcard;
-                    if (!compatibleTypes) {
-                        auto msg = fmt::format("wrong types '{} {}' '{} {}'", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
-                        components::Notification::error(msg);
+                    if (inputPort->portDirection == outputPort->portDirection) {
                         ax::NodeEditor::RejectNewItem();
-                    } else if (inputPort->portConnections.empty() && ax::NodeEditor::AcceptNewItem()) {
-                        // AcceptNewItem() return true when user release mouse button.
-                        fg->connect(inputPort, outputPort);
+                    } else {
+                        bool compatibleTypes = inputPort->portDataType == outputPort->portDataType || inputPort->portDataType == DataType::Wildcard || outputPort->portDataType == DataType::Wildcard;
+                        if (!compatibleTypes) {
+                            auto msg = fmt::format("wrong types '{} {}' '{} {}'", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
+                            components::Notification::error(msg);
+                            ax::NodeEditor::RejectNewItem();
+                        } else if (inputPort->portConnections.empty() && ax::NodeEditor::AcceptNewItem()) {
+                            // AcceptNewItem() return true when user release mouse button.
+                            fg->connect(inputPort, outputPort);
+                        }
                     }
                 }
             }
         }
-    }
-    ax::NodeEditor::EndCreate(); // Wraps up object creation action handling.
 
-    if (ax::NodeEditor::BeginDelete()) {
-        ax::NodeEditor::NodeId nodeId;
-        ax::NodeEditor::LinkId linkId;
-        ax::NodeEditor::PinId  pinId1, pinId2;
-        if (ax::NodeEditor::QueryDeletedNode(&nodeId)) {
-            ax::NodeEditor::AcceptDeletedItem(true);
-            auto* b = nodeId.AsPointer<Block>();
-            fg->deleteBlock(b);
-            if (m_filterBlock == b) {
-                m_filterBlock = nullptr;
+        if (auto deletion = IMW::NodeEditor::Deletion()) {
+            ax::NodeEditor::NodeId nodeId;
+            ax::NodeEditor::LinkId linkId;
+            ax::NodeEditor::PinId  pinId1, pinId2;
+            if (ax::NodeEditor::QueryDeletedNode(&nodeId)) {
+                ax::NodeEditor::AcceptDeletedItem(true);
+                auto* b = nodeId.AsPointer<Block>();
+                fg->deleteBlock(b);
+                if (m_filterBlock == b) {
+                    m_filterBlock = nullptr;
+                }
+            } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
+                ax::NodeEditor::AcceptDeletedItem(true);
+                auto* c = linkId.AsPointer<Connection>();
+                fg->disconnect(c);
             }
-        } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
-            ax::NodeEditor::AcceptDeletedItem(true);
-            auto* c = linkId.AsPointer<Connection>();
-            fg->disconnect(c);
         }
-    }
-    ax::NodeEditor::EndDelete();
 
-    const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
-    const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
-    ax::NodeEditor::End();
+        return std::make_pair(
+            ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right)),
+            ax::NodeEditor::GetBackgroundClickButtonIndex());
+    }(); */
+    auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
+    auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
@@ -603,7 +665,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             openNewBlockDialog = true;
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
-            sortNodes(fg, blocks);
+            // sortNodes(fg, blocks);
         }
         if (ImGui::MenuItem("Send a block creation message")) {
             gr::Message message;

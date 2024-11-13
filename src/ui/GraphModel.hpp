@@ -60,6 +60,14 @@ struct UiGraphBlock {
 
     bool blockIsBlocking = false;
 
+    struct ViewData {
+        float x      = 0;
+        float y      = 0;
+        float width  = 0;
+        float height = 0;
+    };
+    std::optional<ViewData> view;
+
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
@@ -108,6 +116,9 @@ public:
     void parse(const std::filesystem::path& file);
     void parse(const std::string& str);
     void clear();
+
+    const auto& blocks() const { return m_blocks; }
+    auto&       blocks() { return m_blocks; }
 
     void processMessage(const gr::Message& message) {
         fmt::print("\u001b[32m>> GraphModel got {} for {}\n\u001b[0m", message.endpoint, message.serviceName);
@@ -193,8 +204,14 @@ private:
     }
 
     void handleBlockEmplaced(const gr::property_map& blockData) {
-        auto& newBlock = m_blocks.emplace_back(/*owner*/ this);
-        setBlockData(newBlock, blockData);
+        const auto uniqueName  = getProperty<std::string>(blockData, "uniqueName"s);
+        const auto [it, found] = findBlockByName(uniqueName);
+        if (found) {
+            setBlockData(*it, blockData);
+        } else {
+            auto& newBlock = m_blocks.emplace_back(/*owner*/ this);
+            setBlockData(newBlock, blockData);
+        }
     }
 
     void handleBlockDataUpdated(std::string uniqueName, const gr::property_map& blockData) {

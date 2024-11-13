@@ -433,6 +433,10 @@ public:
 
     void changeBlockDefinition(Block* block, const std::string& type);
 
+    // TODO this will replace the whole flowgraph, for the time being, we
+    // are just testing the model
+    UiGraphModel graphModel;
+
 private:
     std::shared_ptr<gr::PluginLoader>                _pluginLoader;
     std::vector<std::unique_ptr<Block>>              m_blocks;
@@ -440,10 +444,6 @@ private:
     plf::colony<Connection>                          m_connections; // We're using plf::colony because it guarantees pointer/iterator stability
     bool                                             m_graphChanged = true;
     std::string                                      m_grc;
-
-    // TODO this will replace the whole flowgraph, for the time being, we
-    // are just testing the model
-    UiGraphModel graphModel;
 
     // TODO add remote sources here?
 };
