@@ -38,26 +38,23 @@ inline std::optional<T> get(const gr::property_map& m, const std::string_view& k
 }
 inline float doubleToFloat(double v) { return static_cast<float>(v); }
 
-inline std::string findTriggerName(std::span<const gr::Tag> tags) {
-    for (const auto& tag : tags) {
-        const auto n = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
-        if (!n) {
-            continue;
-        }
-        const auto name = std::get<std::string>(n->get());
+inline std::string findTriggerName(std::vector<std::pair<std::ptrdiff_t, gr::property_map>> tags) {
+    for (const auto& [diff, map] : tags) {
+        if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
+            const auto name = std::get<std::string>(triggerNameIt->second);
 
-        const auto m = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
-        if (m) {
-            const auto meta      = std::get<gr::property_map>(m->get());
-            const auto contextIt = meta.find(gr::tag::CONTEXT.shortKey());
-            if (contextIt != meta.end()) {
-                const auto context = std::get<std::string>(contextIt->second);
-                if (!context.empty()) {
-                    return name + "/" + context;
+            if (auto triggerMetaInfoIt = map.find(std::string(gr::tag::TRIGGER_META_INFO.shortKey())); triggerMetaInfoIt != map.end()) {
+                const auto meta = std::get<gr::property_map>(triggerMetaInfoIt->second);
+                if (auto contextIt = meta.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != meta.end()) {
+                    const auto context = std::get<std::string>(contextIt->second);
+                    if (!context.empty()) {
+                        return name + "/" + context;
+                    }
                 }
             }
+
+            return name;
         }
-        return name;
     }
 
     return {};

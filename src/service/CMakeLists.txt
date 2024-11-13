@@ -7,6 +7,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 project(opendigitizer-service CXX)
 include(GNUInstallDirs)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(cmake/Dependencies.cmake)
 
 if(NOT TARGET od_acquisition)

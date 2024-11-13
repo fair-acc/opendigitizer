@@ -25,7 +25,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
         _produced = 0;
         _pending_tags.clear();
 
-        auto genTrigger = [](gr::Tag::signed_index_type index, std::string triggerName, std::string triggerCtx = {}) { return gr::Tag{index, {{gr::tag::TRIGGER_NAME.shortKey(), triggerName}, {gr::tag::TRIGGER_TIME.shortKey(), std::uint64_t(0)}, {gr::tag::TRIGGER_OFFSET.shortKey(), 0.f}, {gr::tag::TRIGGER_META_INFO.shortKey(), gr::property_map{{gr::tag::CONTEXT.shortKey(), triggerCtx}}}}}; };
+        auto genTrigger = [](std::size_t index, std::string triggerName, std::string triggerCtx = {}) { return gr::Tag{index, {{gr::tag::TRIGGER_NAME.shortKey(), triggerName}, {gr::tag::TRIGGER_TIME.shortKey(), std::uint64_t(0)}, {gr::tag::TRIGGER_OFFSET.shortKey(), 0.f}, {gr::tag::TRIGGER_META_INFO.shortKey(), gr::property_map{{gr::tag::CONTEXT.shortKey(), triggerCtx}}}}}; };
 
         for (const auto& tagStr : timing_tags) {
             auto       view = tagStr | std::ranges::views::split(',');
@@ -34,8 +34,8 @@ struct CountSource : public gr::Block<CountSource<T>> {
                 fmt::println(std::cerr, "Invalid tag: '{}'", tagStr);
                 continue;
             }
-            const auto                 indexStr = std::string_view(segs[0].begin(), segs[0].end());
-            gr::Tag::signed_index_type index    = 0;
+            const auto  indexStr = std::string_view(segs[0].begin(), segs[0].end());
+            std::size_t index    = 0;
             if (const auto& [_, ec] = std::from_chars(indexStr.begin(), indexStr.end(), index); ec != std::errc{}) {
                 fmt::println(std::cerr, "Invalid tag index '{}'", segs[0]);
                 continue;
@@ -69,7 +69,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
             }
         }
 
-        if (!_pending_tags.empty() && _pending_tags[0].index == static_cast<gr::Tag::signed_index_type>(_produced)) {
+        if (!_pending_tags.empty() && _pending_tags[0].index == _produced) {
             this->publishTag(_pending_tags[0].map, 0);
             _pending_tags.pop_front();
         }

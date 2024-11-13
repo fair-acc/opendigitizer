@@ -1,4 +1,5 @@
 include(FetchContent)
+include(DependenciesSHAs)
 
 # Enable Unicode planes for icons used in notifications
 add_compile_definitions(IMGUI_USE_WCHAR32)
@@ -43,13 +44,13 @@ FetchContent_Declare(
 FetchContent_Declare(
   opencmw-cpp
   GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
-  GIT_TAG bb8996babab2000a4ae3612ea146a551a96e59c4 # main as of 2024-10-18
+  GIT_TAG ${GIT_SHA_OPENCMW_CPP}
   SYSTEM)
 
 FetchContent_Declare(
   gnuradio4
   GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-  GIT_TAG 2465afbdafc1bd98bb8a0aa232134893bb19991a # main as of 2024-10-28
+  GIT_TAG ${GIT_SHA_GNURADIO4}
   SYSTEM)
 
 FetchContent_MakeAvailable(
