@@ -41,41 +41,12 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     std::shared_ptr<Queue> _queue            = std::make_shared<Queue>();
     std::size_t            samples_received  = 0;
     std::size_t            samples_published = 0;
+    std::string            subscribed_uri    = "";
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
             this->settings().set({{"signal_name", acq.channelName.value()}, {"signal_unit", acq.channelUnit.value()}, {"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
         }
-    }
-
-    auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::size_t     written = 0;
-        std::lock_guard lock(_queue->mutex);
-        while (written < output.size() && !_queue->data.empty()) {
-            auto& d = _queue->data.front();
-            updateSettingsFromAcquisition(d.acq);
-            auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
-            in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
-
-            if constexpr (std::is_same_v<T, float>) {
-                std::ranges::copy(in, output.begin() + written);
-            } else {
-                std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
-            }
-            for (const auto& [idx, trigger, timestamp] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value())) {
-                auto map = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}};
-                output.publishTag(map, idx - d.read);
-            }
-            written += in.size();
-            d.read += in.size();
-            samples_published += in.size();
-            if (d.read == d.acq.channelValue.size()) {
-                _queue->data.pop_front();
-            }
-            fmt::print("remoteSource received/published: {}/{}\n", samples_received, samples_published);
-        }
-        output.publish(written);
-        return gr::work::Status::OK;
     }
 
     void stopSubscription(const std::string uri) {
@@ -100,6 +71,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         std::weak_ptr maybeQueue = _queue;
 
         command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
+            fmt::print("RemoteSource: begin callback\n");
             if (!rep.error.empty()) {
                 stopSubscription(remote_uri);
                 fmt::print("Error in subscription: restarting {}\n", remote_uri);
@@ -142,32 +114,63 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         fmt::print("Subscribed to {}\n", uri);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
-        if (Parent::state() != gr::lifecycle::State::RUNNING) {
-            return; // early return, only apply settings for the running flowgraph
-        }
-        const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty()) {
-                stopSubscription(oldUri);
+    auto processBulk(gr::OutputSpanLike auto& output) noexcept {
+        // update subscription if necessary
+        if (subscribed_uri != remote_uri) {
+            if (!subscribed_uri.empty()) {
+                fmt::print("RemoteSource: stop subscription: {}\n", subscribed_uri);
+                stopSubscription(subscribed_uri);
+                fmt::print("RemoteSource: stoped subscription: {}\n", subscribed_uri);
             }
+            if (!remote_uri.empty()) {
+                fmt::print("RemoteSource: start subscription: {}\n", remote_uri);
+                startSubscription(remote_uri);
+                fmt::print("RemoteSource: started subscription: {}\n", remote_uri);
+            }
+            subscribed_uri = remote_uri;
         }
-        startSubscription(remote_uri);
-    }
 
-    void start() {
-        if (!remote_uri.empty()) {
-            startSubscription(remote_uri);
-            std::this_thread::sleep_for(50ms);
-            stopSubscription(remote_uri);
-            startSubscription(remote_uri);
+#ifdef EMSCRIPTEN
+        fmt::print("RemoteSource: handling callbacks in thread: {}\n", std::this_thread::get_id());
+        emscripten_sleep(20); // allow for emscripten_fetch callbacks to be executed
+        fmt::print("RemoteSource: handled callbacks\n");
+#endif
+
+        // copy data into block TODO: check if this could be done directly in callback
+        // emscripten: callback is run on same thread, native: callback is run on dedicated httplib thread
+        std::size_t     written = 0;
+        std::lock_guard lock(_queue->mutex);
+        while (written < output.size() && !_queue->data.empty()) {
+            auto& d = _queue->data.front();
+            updateSettingsFromAcquisition(d.acq);
+            auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
+            in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
+
+            if constexpr (std::is_same_v<T, float>) {
+                std::ranges::copy(in, output.begin() + written);
+            } else {
+                std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
+            }
+            //for (const auto& [idx, trigger, timestamp] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value())) {
+            //    auto map = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}};
+            //    output.publishTag(map, idx - d.read);
+            //}
+            written += in.size();
+            d.read += in.size();
+            samples_published += in.size();
+            if (d.read == d.acq.channelValue.size()) {
+                _queue->data.pop_front();
+            }
+            fmt::print("remoteSource received/published: {}/{}\n", samples_received, samples_published);
         }
+        output.publish(written);
+        return gr::work::Status::OK;
     }
 
     void stop() {
-        if (!remote_uri.empty()) {
+        if (!subscribed_uri.empty()) {
             stopSubscription(remote_uri);
+            subscribed_uri.clear();
         }
     }
 };
@@ -189,18 +192,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     std::shared_ptr<Queue> _queue            = std::make_shared<Queue>();
     std::size_t            samples_received  = 0;
     std::size_t            samples_published = 0;
-
-    auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::lock_guard           lock(_queue->mutex);
-        const auto                n   = std::min(_queue->data.size(), output.size());
-        std::span<gr::DataSet<T>> out = output;
-        for (auto i = 0UZ; i < n; ++i) {
-            out[i] = std::move(_queue->data.front());
-            _queue->data.pop_front();
-        }
-        output.publish(n);
-        return gr::work::Status::OK;
-    }
+    std::string            subscribed_uri    = "";
 
     void stopSubscription(const std::string uri) {
         fmt::print("Unsubscribing(settings change) from {}\n", uri);
@@ -257,29 +249,45 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         _client.request(command);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
-        if (Parent::state() != gr::lifecycle::State::RUNNING) {
-            return; // early return, only apply settings for the running flowgraph
-        }
-        const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty()) {
-                stopSubscription(oldUri);
+    auto processBulk(gr::OutputSpanLike auto& output) noexcept {
+        // update subscription if necessary
+        if (subscribed_uri != remote_uri) {
+            if (!subscribed_uri.empty()) {
+                fmt::print("RemoteSource: stop subscription: {}\n", subscribed_uri);
+                stopSubscription(subscribed_uri);
+                fmt::print("RemoteSource: stoped subscription: {}\n", subscribed_uri);
             }
+            if (!remote_uri.empty()) {
+                fmt::print("RemoteSource: start subscription: {}\n", remote_uri);
+                startSubscription(remote_uri);
+                fmt::print("RemoteSource: started subscription: {}\n", remote_uri);
+            }
+            subscribed_uri = remote_uri;
         }
-        startSubscription(remote_uri);
-    }
 
-    void start() {
-        if (!remote_uri.empty()) {
-            startSubscription(remote_uri);
+#ifdef EMSCRIPTEN
+        fmt::print("RemoteSource: handling callbacks\n");
+        emscripten_sleep(1); // allow for emscripten_fetch callbacks to be executed
+        fmt::print("RemoteSource: handled callbacks\n");
+#endif
+
+        // copy data into block TODO: check if this could be done directly in callback
+        // emscripten: callback is run on same thread, native: callback is run on dedicated httplib thread
+        std::lock_guard           lock(_queue->mutex);
+        const auto                n   = std::min(_queue->data.size(), output.size());
+        std::span<gr::DataSet<T>> out = output;
+        for (auto i = 0UZ; i < n; ++i) {
+            out[i] = std::move(_queue->data.front());
+            _queue->data.pop_front();
         }
+        output.publish(n);
+        return gr::work::Status::OK;
     }
 
     void stop() {
-        if (!remote_uri.empty()) {
+        if (!subscribed_uri.empty()) {
             stopSubscription(remote_uri);
+            subscribed_uri.clear();
         }
     }
 };

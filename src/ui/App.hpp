@@ -54,8 +54,8 @@ public:
 
     components::AppHeader header;
 
-    // The thread limit here is mainly for emscripten
-    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 4, 4);
+    // The thread limit here is mainly for emscripten becaue the default thread pool will exhaust the browser's limits and be recreated for every new scheduler
+    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 1, 1);
 
     struct SchedWrapper {
         template<typename T, typename... Args>
@@ -80,7 +80,8 @@ public:
 
         template<typename TScheduler>
         struct HandlerImpl : Handler {
-            TScheduler _scheduler;
+            TScheduler        _scheduler;
+            std::thread       _thread;
 
             gr::MsgPortIn  _fromScheduler;
             gr::MsgPortOut _toScheduler;
@@ -97,14 +98,19 @@ public:
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
                 gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                    fmt::print("Error initializíng scheduler: {}\n", e.error().message);
-                    // TODO: handle error return message
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                    fmt::print("Error starting scheduler: {}\n", e.error().message);
-                    // TODO: handle error return message
-                }
+                fmt::print("App: starting flowgraph processing thread on main thread: {}\n", std::this_thread::get_id());
+                _thread = std::thread([this]() {
+                    fmt::print("App: starting flowgraph processing thread: {}\n", std::this_thread::get_id());
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
+                        // TODO: handle error return message
+                    }
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                        // TODO: handle error return message
+                    }
+                    // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
+                    // We once have to directly change the state to running, after this, all further state updates are performed via the msg API
+                    fmt::print("App: stopping flowgraph processing thread: {}\n", std::this_thread::get_id());
+                });
             }
 
             std::string_view uniqueName() const override { return _scheduler.unique_name; }
@@ -127,12 +133,8 @@ public:
             }
 
             ~HandlerImpl() {
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); !e) {
-                    // TODO: handle error return message
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::STOPPED); !e) {
-                    // TODO: handle error return message
-                }
+                gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, { { "state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP)) } }, "UI");
+                _thread.join();
             }
         };
 
@@ -206,8 +208,7 @@ public:
 
     template<typename Graph>
     void assignScheduler(Graph&& graph) {
-        using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-
+        using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
         _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
     }
 

@@ -25,6 +25,10 @@ public:
             response.set_content("", "text/plain");
         });
 
+        _svr.Post("/favicon.ico", [](const httplib::Request & /*request*/, httplib::Response &response) {
+            response.status = 404;
+        });
+
         auto contentTypeForFilename = [](const auto &path) {
             std::string contentType;
             if (path.ends_with(".js")) {
