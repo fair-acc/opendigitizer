@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 23)
 # Mainly for FMT
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-project(opendigitizer-service CXX)
+project(opendigitizer-service LANGUAGES CXX)
 include(GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
