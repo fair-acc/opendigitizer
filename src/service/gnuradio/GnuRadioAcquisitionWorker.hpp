@@ -38,7 +38,7 @@ inline std::optional<T> get(const gr::property_map& m, const std::string_view& k
 }
 inline float doubleToFloat(double v) { return static_cast<float>(v); }
 
-inline std::string findTriggerName(std::vector<std::pair<std::ptrdiff_t, gr::property_map>> tags) {
+inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, gr::property_map>>& tags) {
     for (const auto& [diff, map] : tags) {
         if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
             const auto name = std::get<std::string>(triggerNameIt->second);
