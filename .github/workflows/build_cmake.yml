@@ -100,12 +100,14 @@ jobs:
 
     - name: execute tests
       if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
+      timeout-minutes: 10
       working-directory: ${{runner.workspace}}/build
       shell: bash
       run: ctest --output-on-failure
 
     - name: execute tests with coverage
       if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'
+      timeout-minutes: 10
       working-directory: ${{runner.workspace}}/build
       shell: bash
       run: cmake --build . --target opendigitizer_coverage
