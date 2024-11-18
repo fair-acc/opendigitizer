@@ -7,7 +7,7 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.4 # latest as of 2024-10-23
+  GIT_TAG v1.91.4-docking # latest as of 2024-10-23
   SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
