@@ -62,7 +62,5 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_filtercomboboxes)
   add_imgui_test(qa_keypad)
   add_imgui_test(qa_chart)
-
-  # Currently asserting due to unknown output port type add_imgui_test(qa_chart_fgdipole)
-
+  add_imgui_test(qa_docking)
 endif()

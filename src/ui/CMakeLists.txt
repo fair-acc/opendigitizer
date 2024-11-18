@@ -126,6 +126,8 @@ add_library(
   components/Block.cpp
   components/Block.hpp
   components/Dialog.hpp
+  components/Docking.cpp
+  components/Docking.hpp
   components/FilterComboBoxes.hpp
   components/Keypad.hpp
   components/ListBox.hpp
