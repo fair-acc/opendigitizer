@@ -77,6 +77,10 @@ void ImGuiTestApp::initImGui() {
     test_io.ConfigWatchdogWarning     = 60.0f;  // 1 minutes until a we get a warning that a test is taking too long
     test_io.ConfigWatchdogKillTest    = 180.0f; // 3 minutes until a test gets killed
 
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
     // Optional: save test output in junit-compatible XML format.
     // test_io.ExportResultsFile = "./results.xml";
     // test_io.ExportResultsFormat = ImGuiTestEngineExportFormat_JUnitXml;
