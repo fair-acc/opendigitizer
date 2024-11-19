@@ -52,7 +52,6 @@ struct TestState {
     }
 
     void stopScheduler() {
-        dashboard = {};
         scheduler->stop();
         schedulerThread.join();
     }
@@ -100,13 +99,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto implotSink     = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(plotBlockModel->raw());
 
                 const int maxSamples = 1400;
-                while (g_state.dashboard && implotSink->data.size() < maxSamples) {
+                while (implotSink->data.size() < maxSamples) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 
-                captureScreenshot(*ctx);
-
                 g_state.stopScheduler();
+                captureScreenshot(*ctx);
             };
         };
     }
