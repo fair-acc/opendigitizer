@@ -236,6 +236,9 @@ int main(int argc, char** argv) {
     // LoadIniSettingsFromMemory() to load settings from your own storage.
     io.IniFilename = nullptr;
 
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(sdlState.window, sdlState.glContext);
     ImGui_ImplOpenGL3_Init(glsl_version);
