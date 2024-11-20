@@ -70,16 +70,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(500, 500));
+            ImGui::SetWindowSize(ImVec2(800, 800));
 
             if (g_state.dashboard) {
+                DigitizerUi::DashboardPage page;
+                page.draw(*g_state.dashboard);
                 ut::expect(!g_state.dashboard->plots().empty());
-                auto plot = g_state.dashboard->plots()[0];
-
-                if (ImPlot::BeginPlot("Line Plot")) {
-                    DigitizerUi::DashboardPage::drawPlot(*g_state.dashboard, plot);
-                    ImPlot::EndPlot();
-                }
             }
 
             ImGui::End();

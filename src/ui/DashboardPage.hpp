@@ -12,7 +12,7 @@
 
 #include "GridLayout.hpp"
 
-struct TestApp;
+#include <memory.h>
 
 namespace DigitizerUi {
 
@@ -39,11 +39,20 @@ public:
     };
 
 public:
+    DashboardPage()
+#ifndef OPENDIGITIZER_TEST
+        // SignalSelector triggers RemoteSignalSources which uses opencmw::client::ClientContext
+        // making self-contained tests difficult to write. Everything is tightly coupled and
+        // this is the best place to break the dependency.
+        : m_signalSelector(std::make_unique<SignalSelector>())
+#endif
+    {
+    }
+
     void draw(Dashboard& dashboard, Mode mode = Mode::View) noexcept;
     void newPlot(Dashboard& dashboard);
 
 private:
-    friend struct ::TestApp;
     void        drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::Mode mode);
     void        drawGrid(float w, float h);
     void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
@@ -53,7 +62,7 @@ private:
 
     //
     components::BlockControlsPanelContext m_editPane;
-    SignalSelector                        m_signalSelector;
+    std::unique_ptr<SignalSelector>       m_signalSelector;
 };
 
 } // namespace DigitizerUi
