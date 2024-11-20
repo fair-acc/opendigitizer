@@ -46,7 +46,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
            ui_assets
            ui_test_assets)
 
-  target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS
+  target_compile_definitions(imgui_tests_common PUBLIC IMGUI_DEFINE_MATH_OPERATORS OPENDIGITIZER_TEST
                                                        OPENDIGITIZER_BUILD_DIRECTORY="${CMAKE_BINARY_DIR}")
 
   target_include_directories(imgui_tests_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

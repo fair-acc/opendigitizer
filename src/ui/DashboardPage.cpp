@@ -371,13 +371,16 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
             // Post button strip
             if (mode == Mode::Layout) {
                 ImGui::SameLine();
-                if (plotButton("\uf067", "add signal")) { // plus
+                if (plotButton("\uf067", "add signal") && m_signalSelector) { // plus
                     // add new signal
-                    m_signalSelector.open();
+                    m_signalSelector->open();
                 }
             }
-            m_signalSelector.setAddSignalCallback([&](Block* block) { addSignalCallback(dashboard, block); });
-            m_signalSelector.draw(&dashboard.localFlowGraph);
+
+            if (m_signalSelector) {
+                m_signalSelector->setAddSignalCallback([&](Block* block) { addSignalCallback(dashboard, block); });
+                m_signalSelector->draw(&dashboard.localFlowGraph);
+            }
 
             if (LookAndFeel::instance().prototypeMode) {
                 ImGui::SameLine();
