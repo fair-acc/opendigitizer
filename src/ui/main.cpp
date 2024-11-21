@@ -1,7 +1,3 @@
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
