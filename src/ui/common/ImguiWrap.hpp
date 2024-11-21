@@ -1,10 +1,6 @@
 #ifndef OPENDIGITIZER_IMGUI_WRAPPER_HPP
 #define OPENDIGITIZER_IMGUI_WRAPPER_HPP
 
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#define IMGUI_DEFINE_MATH_OPERATORS true
-#endif
-
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <imgui_node_editor.h>
