@@ -246,6 +246,16 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
+static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, DataType type) {
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
+
+    auto y = pinPosition.y;
+    ImGui::SetCursorPosX(pinPosition.x + textMargin);
+    ImGui::SetCursorPosY(pinPosition.y - spacing);
+    ImGui::TextUnformatted(name.c_str());
+};
+
 static void drawPin(ImDrawList* drawList, ImVec2 rectSize, float spacing, float textMargin, const std::string& name, DataType type) {
     auto p = ImGui::GetCursorScreenPos();
     drawList->AddRectFilled(p, p + rectSize, colorForDataType(type));
@@ -446,7 +456,7 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
     ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
 }
 
-void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     //
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
@@ -466,22 +476,117 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
         BoundingBox boundingBox;
 
+        // TODO: Move to the theme definition
+        const int    pinHeight  = 14;
+        const int    pinSpacing = 5;
+        const int    textMargin = 2;
+        const ImVec2 minimumBlockSize{80.0f, 0.0f};
+
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphModel.blocks()) {
             auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
 
-            IMW::NodeEditor::Node node(blockId);
+            const auto& inputPorts       = block.inputPorts;
+            const auto& outputPorts      = block.outputPorts;
+            auto&       inputPortWidths  = block.inputPortWidths;
+            auto&       outputPortWidths = block.outputPortWidths;
 
-            auto name = "NW:"s + block.blockName;
-            ImGui::TextUnformatted(name.c_str());
-            auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+            auto blockPosition = [&] {
+                IMW::NodeEditor::Node node(blockId);
 
-            if (block.view.has_value()) {
-                auto position = ax::NodeEditor::GetNodePosition(blockId);
-                block.view->x = position[0];
-                block.view->y = position[1];
-                boundingBox.addRectangle(position, blockSize);
+                const auto blockScreenPosition = ImGui::GetCursorScreenPos();
+                auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
+
+                // Draw block title
+                auto name = "NW:"s + block.blockName; // TODO(NOW) remove NW
+                ImGui::TextUnformatted(name.c_str());
+                auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+
+                // Draw block properties
+                std::string value;
+                for (const auto& [propertyKey, propertyValue] : block.blockMetaInformation) {
+                    const auto metaKey = propertyKey + "::visible";
+                    const auto it      = block.blockMetaInformation.find(metaKey);
+                    if (it == block.blockMetaInformation.end()) {
+                        continue;
+                    }
+
+                    if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                        continue;
+                    }
+
+                    valToString(propertyValue, value);
+                    ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                }
+
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                // Update bounding box
+                if (block.view.has_value()) {
+                    auto position = ax::NodeEditor::GetNodePosition(blockId);
+                    block.view->x = position[0];
+                    block.view->y = position[1];
+                    boundingBox.addRectangle(position, blockSize);
+                }
+
+                // Register ports with node editor, actual drawing comes later
+                auto registerPins = [&padding, &pinHeight, &blockId](auto& ports, auto& widths, auto position, auto pinType) {
+                    widths.resize(ports.size());
+                    if (pinType == ax::NodeEditor::PinKind::Output) {
+                        auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+                        position.x += blockSize.x - padding.x;
+                    }
+
+                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                        widths[i] = ImGui::CalcTextSize(ports[i].portName.c_str()).x + textMargin * 2;
+                        // if (!filteredOut) { TODO(NOW)
+                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
+                        // }
+                        position.y += pinHeight + pinSpacing;
+                    }
+                };
+
+                ImVec2 position = {blockScreenPosition.x - padding.x, blockScreenPosition.y};
+                registerPins(inputPorts, inputPortWidths, position, ax::NodeEditor::PinKind::Input);
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                registerPins(outputPorts, outputPortWidths, blockScreenPosition, ax::NodeEditor::PinKind::Output);
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                ImGui::SetCursorScreenPos({position.x, blockBottomY});
+
+                struct result {
+                    ImVec2 topLeft;
+                    float  bottomY;
+                };
+                return result{position, blockBottomY};
+            }();
+
+            // The input/output pins are drawn after ending the node because otherwise
+            // drawing them would increase the node size, which we need to know to correctly place the
+            // output pins, and that would cause the nodes to continuously grow in width
+            {
+                const auto originalScreenPosition = ImGui::GetCursorScreenPos();
+                const auto blockSize              = ax::NodeEditor::GetNodeSize(blockId);
+                // const auto blockPosition          = ax::NodeEditor::GetNodePosition(blockId);
+
+                auto leftPos = blockPosition.topLeft.x - padding.x;
+
+                ImGui::SetCursorScreenPos(blockPosition.topLeft);
+                auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
+
+                auto drawPorts = [&](auto& ports, auto& widths, auto leftPos, bool rightAlign) {
+                    auto pinPositionY = blockPosition.topLeft.y;
+                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                        auto pinPositionX = leftPos + (rightAlign ? (-widths[i]) : padding.x);
+                        newDrawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, {} /* TODO in.portType */);
+                        pinPositionY += pinHeight + pinSpacing;
+                    }
+                };
+
+                drawPorts(inputPorts, inputPortWidths, leftPos, true);
+                drawPorts(outputPorts, outputPortWidths, leftPos + blockSize.x, false);
             }
         }
 
@@ -524,7 +629,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    drawGraph(fg->graphModel, size);
+    newDrawGraph(fg->graphModel, size);
 
     /*
     std::vector<const Block*> blocks;

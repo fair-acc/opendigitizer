@@ -74,6 +74,10 @@ struct UiGraphBlock {
     std::vector<UiGraphPort> inputPorts;
     std::vector<UiGraphPort> outputPorts;
 
+    // Rendering-related members
+    std::vector<float> inputPortWidths;
+    std::vector<float> outputPortWidths;
+
     // TODO when nested graphs support gets here
     // std::vector<UiGraphBlock> children
     // std::vector<UiGraphEdge> edges
@@ -383,6 +387,8 @@ private:
 
             processPorts(block.inputPorts, "inputPorts"s, gr::PortDirection::INPUT);
             processPorts(block.outputPorts, "outputPorts"s, gr::PortDirection::OUTPUT);
+            block.inputPortWidths.clear();
+            block.outputPortWidths.clear();
         }
 
         // TODO: When adding support for nested graphs, need to process
