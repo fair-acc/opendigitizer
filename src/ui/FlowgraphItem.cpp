@@ -604,6 +604,14 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 boundingBox.minX += blockSize[0] + padding.x;
             }
         }
+
+        const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+        for (auto& edge : graphModel.edges()) {
+            fmt::print("Edge {} -> {}\n", (void*)edge.edgeSourcePort, (void*)edge.edgeDestinationPort);
+            ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
+                ax::NodeEditor::PinId(edge.edgeSourcePort),     //
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+        }
     }
 }
 

@@ -109,6 +109,12 @@ struct UiGraphEdge {
 };
 
 class UiGraphModel {
+private:
+    // We often search by name, but as we don't expect graphs with
+    // a large $n$ of blocks, linear search will be fine
+    std::vector<UiGraphBlock> m_blocks;
+    std::vector<UiGraphEdge>  m_edges;
+
 public:
     UiGraphModel() {}
 
@@ -123,6 +129,9 @@ public:
 
     const auto& blocks() const { return m_blocks; }
     auto&       blocks() { return m_blocks; }
+
+    const auto& edges() const { return m_edges; }
+    auto&       edges() { return m_edges; }
 
     void processMessage(const gr::Message& message) {
         fmt::print("\u001b[32m>> GraphModel got {} for {}\n\u001b[0m", message.endpoint, message.serviceName);
@@ -404,11 +413,6 @@ private:
     }
 
     // void handleEdgeRemoved()
-
-    // We often search by name, but as we don't expect graphs with
-    // a large $n$ of blocks, linear search will be fine
-    std::vector<UiGraphBlock> m_blocks;
-    std::vector<UiGraphEdge>  m_edges;
 };
 
 #endif // include guard
