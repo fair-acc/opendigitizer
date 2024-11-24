@@ -825,7 +825,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
             m_editPaneContext.block = nullptr;

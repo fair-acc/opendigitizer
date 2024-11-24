@@ -6,6 +6,7 @@
 
 #include "../common/LookAndFeel.hpp"
 
+#include "../App.hpp"
 #include "../Dashboard.hpp"
 #include "../DashboardPage.hpp"
 
@@ -71,6 +72,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
     size        = ImGui::GetContentRegionAvail();
 
     int outputsCount = 0;
+#ifdef TODO_PORT
     {
         const char* prevString = verticalLayout ? "\uf062" : "\uf060";
         for (const auto& out : context.block->outputs()) {
@@ -109,7 +111,9 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
     if (!verticalLayout) {
         ImGui::SameLine();
     }
+#endif
 
+#ifdef TODO_PORT
     {
         // Draw the two add block buttons
         {
@@ -189,7 +193,9 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
             ImGui::SameLine();
         }
     }
+#endif
 
+#ifdef TODO_PORT
     if (context.mode != BlockControlsPanelContext::Mode::None) {
         {
             IMW::Group group;
@@ -210,7 +216,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
                 IMW::Disabled dg(!ret.has_value());
                 if (ImGui::Button("Ok")) {
                     BlockDefinition* selected = ret->first;
-                    auto             name     = fmt::format("{}({})", selected->name, context.block->name);
+                    auto             name     = fmt::format("{}({})", selected->name, context.block->blockName);
 
                     auto block = selected->createBlock(name);
 
@@ -249,11 +255,12 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
             ImGui::SameLine();
         }
     }
+#endif
 
     {
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::TextUnformatted(context.block->name.c_str());
-        std::string_view typeName = context.block->typeName();
+        ImGui::TextUnformatted(context.block->blockName.c_str());
+        std::string_view typeName = context.block->blockTypeName;
 
         ImGui::TextUnformatted("<");
         ImGui::SameLine();
@@ -261,6 +268,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
         // auto                     types = context.block->type().availableBaseTypes;
         // std::vector<std::string> typeNames{types.size()};
         // std::ranges::transform(types, typeNames.begin(), [](auto t) { return DataType::name(t); });
+#ifdef TODO_PORT
         if (ImGui::BeginCombo("##baseTypeCombo", context.block->currentInstantiationName().c_str())) {
             for (const auto& [instantiationName, _] : context.block->type().instantiations) {
                 if (ImGui::Selectable(instantiationName.c_str(), typeName == instantiationName)) {
@@ -272,6 +280,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
             }
             ImGui::EndCombo();
         }
+#endif
 
         ImGui::SameLine();
         ImGui::TextUnformatted(">");
@@ -285,10 +294,11 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
 
     ImGui::SetCursorPos(minpos);
 
+#ifdef TODO_PORT
     // draw the button(s) that go to the previous block(s).
     const char* nextString = verticalLayout ? "\uf063" : "\uf061";
     IMW::Font   font(LookAndFeel::instance().fontIconsSolid);
-    if (context.block->inputs().empty()) {
+    if (context.block->inputsPorts.empty()) {
         auto buttonSize = calcButtonSize(1);
         if (verticalLayout) {
             ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
@@ -324,6 +334,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
             }
         }
     }
+#endif
 }
 
 namespace {
@@ -335,7 +346,7 @@ template<typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 } // namespace
 
-void BlockSettingsControls(DigitizerUi::Block* b, bool verticalLayout, const ImVec2& size) {
+void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& size) {
     const auto availableSize = ImGui::GetContentRegionAvail();
 
     auto             storage = ImGui::GetStateStorage();
@@ -346,7 +357,7 @@ void BlockSettingsControls(DigitizerUi::Block* b, bool verticalLayout, const ImV
     const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
 
     int i = 0;
-    for (const auto& p : b->settings()) {
+    for (const auto& p : block->blockSettings) {
         auto id = ImGui::GetID(p.first.c_str());
         ImGui::PushID(int(id));
         auto* enabled = storage->GetBoolRef(id, true);
@@ -362,36 +373,47 @@ void BlockSettingsControls(DigitizerUi::Block* b, bool verticalLayout, const ImV
                     char label[64];
                     snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                    const bool controlDrawn = std::visit(overloaded{[&](float val) {
-                                                                        ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                                        ImGui::SetNextItemWidth(100);
-                                                                        if (InputKeypad<>::edit(label, &val)) {
-                                                                            b->setSetting(p.first, val);
-                                                                            b->update();
-                                                                        }
-                                                                        return true;
-                                                                    },
-                                                             [&](auto&& val) {
-                                                                 using T = std::decay_t<decltype(val)>;
-                                                                 if constexpr (std::integral<T>) {
-                                                                     auto v = int(val);
-                                                                     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                                     ImGui::SetNextItemWidth(100);
-                                                                     if (InputKeypad<>::edit(label, &v)) {
-                                                                         b->setSetting(p.first, v);
-                                                                         b->update();
-                                                                     }
-                                                                     return true;
-                                                                 } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                                                     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                                                     std::string str(val);
-                                                                     if (ImGui::InputText("##in", &str)) {
-                                                                         b->setSetting(p.first, std::move(str));
-                                                                     }
-                                                                     return true;
-                                                                 }
-                                                                 return false;
-                                                             }},
+                    auto sendSetSettingMessage = [](auto blockUniqueName, auto key, auto value) {
+                        gr::Message message;
+                        message.serviceName = blockUniqueName;
+                        message.endpoint    = gr::block::property::kSetting;
+                        message.cmd         = gr::message::Command::Set;
+                        message.data        = gr::property_map{{key, value}};
+                        App::instance().sendMessage(std::move(message));
+                    };
+
+                    const bool controlDrawn = std::visit( //
+                        overloaded{                       //
+                            [&](float val) {
+                                ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                ImGui::SetNextItemWidth(100);
+                                if (InputKeypad<>::edit(label, &val)) {
+                                    fmt::print("Sending set settings message {} {} {}\n", block->blockUniqueName, p.first, val);
+                                    sendSetSettingMessage(block->blockUniqueName, p.first, val);
+                                }
+                                return true;
+                            },
+                            [&](auto&& val) {
+                                using T = std::decay_t<decltype(val)>;
+                                if constexpr (std::integral<T>) {
+                                    auto v = int(val);
+                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                    ImGui::SetNextItemWidth(100);
+                                    if (InputKeypad<>::edit(label, &v)) {
+                                        fmt::print("Sending set settings message {} {} {}\n", block->blockUniqueName, p.first, val);
+                                        sendSetSettingMessage(block->blockUniqueName, p.first, v);
+                                    }
+                                    return true;
+                                } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
+                                    std::string str(val);
+                                    if (ImGui::InputText("##in", &str)) {
+                                        sendSetSettingMessage(block->blockUniqueName, p.first, std::move(str));
+                                    }
+                                    return true;
+                                }
+                                return false;
+                            }},
                         p.second);
 
                     if (!controlDrawn) {

@@ -164,17 +164,12 @@ void UiGraphModel::handleBlockSettingsChanged(std::string uniqueName, const gr::
         return;
     }
     fmt::print("\u001b[32mNew settings for {} are {}\n\u001b[0m", uniqueName, data);
+    for (const auto& [key, value] : data) {
+        blockIt->blockSettings.insert_or_assign(key, value);
+    }
 }
 
-void UiGraphModel::handleBlockSettingsStaged(std::string uniqueName, const gr::property_map& data) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
-    if (!found) {
-        // TODO warning
-        fmt::print("\u001b[32mWARNING: Settings staged for an unknown block {} -> {}\n\u001b[0m", uniqueName, data);
-        return;
-    }
-    fmt::print("\u001b[32mNew settings for {} are {}\n\u001b[0m", uniqueName, data);
-}
+void UiGraphModel::handleBlockSettingsStaged(std::string uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
 
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     UiGraphEdge edge(this);

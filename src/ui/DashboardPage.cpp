@@ -499,7 +499,8 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                             plotItemHovered = true;
 
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                                m_editPane.block     = dashboard.localFlowGraph.findBlock(s->blockName);
+                                // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
+                                m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(s->blockName);
                                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                             }
 
@@ -548,6 +549,7 @@ void DashboardPage::drawGrid(float w, float h) {
 }
 
 void DashboardPage::drawLegend(Dashboard& dashboard, const DashboardPage::Mode& mode) noexcept {
+#ifdef TODO_PORT
     alignForWidth(std::max(10.f, legend_box.x), 0.5f);
     legend_box.x = 0.f;
     {
@@ -612,6 +614,7 @@ void DashboardPage::drawLegend(Dashboard& dashboard, const DashboardPage::Mode& 
         }
     }
     // end draw legend
+#endif
 }
 
 void DashboardPage::newPlot(Dashboard& dashboard) {
@@ -682,7 +685,6 @@ void DashboardPage::newPlot(Dashboard& dashboard) {
 void DashboardPage::addSignalCallback(Dashboard& dashboard, Block* block) {
     ImGui::CloseCurrentPopup();
     auto* newsink = dashboard.createSink();
-    // newPlot(dashboard);
     dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
     newPlot(dashboard);
     auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });

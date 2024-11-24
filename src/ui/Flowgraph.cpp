@@ -319,9 +319,10 @@ void FlowGraph::parse(const std::filesystem::path& file) {
 }
 
 void FlowGraph::parse(const std::string& str) {
+    fmt::print("FlowGraph::parse {}\n", str);
     clear();
 
-    auto graph = [this, &str]() {
+    auto grGraph = [this, &str]() {
         try {
             return gr::loadGrc(*_pluginLoader, str);
         } catch (const std::string& e) {
@@ -329,7 +330,9 @@ void FlowGraph::parse(const std::string& str) {
         }
     }();
 
-    graph.forEachBlock([&](const auto& grBlock) {
+    fmt::print("Number of blocks {}, number of edges {}\n", grGraph.blocks().size(), grGraph.edges().size());
+
+    grGraph.forEachBlock([&](const auto& grBlock) {
         auto typeName = grBlock.typeName();
         typeName      = std::string_view(typeName.begin(), typeName.find('<'));
         auto type     = BlockDefinition::registry().get(typeName);
@@ -391,7 +394,7 @@ void FlowGraph::parse(const std::string& str) {
             portDefinition.definition);
     };
 
-    graph.forEachEdge([&](const auto& edge) {
+    grGraph.forEachEdge([&](const auto& edge) {
         auto srcBlock = findBlock(edge._sourceBlock->uniqueName());
         assert(srcBlock);
         // TODO do not ignore subindexes
@@ -403,6 +406,7 @@ void FlowGraph::parse(const std::string& str) {
         if (srcPort == srcBlock->m_outputs.end() || dstPort == dstBlock->m_inputs.end()) {
             return;
         }
+
         connect(&*srcPort, &*dstPort);
     });
 
