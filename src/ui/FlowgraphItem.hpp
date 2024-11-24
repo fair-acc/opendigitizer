@@ -40,7 +40,7 @@ private:
 
     void addBlock(const Block& b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
     void drawNewBlockDialog(FlowGraph* fg);
-    void sortNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
+    void sortNodes(FlowGraph* fg);
     void arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
 
     Block*                        m_selectedBlock = nullptr;

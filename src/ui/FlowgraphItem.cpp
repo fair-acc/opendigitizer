@@ -20,30 +20,59 @@
 
 namespace DigitizerUi {
 
-// Function to perform topological sort on the graph
-inline std::vector<const Block*> topologicalSort(const std::vector<const Block*>& blocks, const plf::colony<Connection>& connections) {
-    std::vector<const Block*> sortedBlocks;
-    std::set<const Block*>    visited;
-
-    std::function<void(const Block*)> visit = [&](const Block* uiBlock) -> void {
-        if (visited.find(uiBlock) == visited.end()) {
-            visited.insert(uiBlock);
-
-            // Visit connected blocks
-            for (const auto& connection : connections) {
-                if (connection.src.uiBlock == uiBlock) {
-                    visit(connection.dst.uiBlock);
-                }
-            }
-
-            sortedBlocks.push_back(uiBlock);
-        }
+inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::vector<UiGraphEdge>& edges) {
+    struct SortLevel {
+        std::vector<const UiGraphBlock*> blocks;
     };
 
-    std::ranges::for_each(blocks, visit);
+    struct BlockConnections {
+        std::unordered_set<const UiGraphBlock*> parents;
+        std::unordered_set<const UiGraphBlock*> children;
+    };
 
-    std::reverse(sortedBlocks.begin(), sortedBlocks.end());
-    return sortedBlocks;
+    std::unordered_map<const UiGraphBlock*, BlockConnections> graphConnections;
+    std::vector<SortLevel>                                    result;
+
+    for (const auto& block : blocks) {
+        graphConnections[std::addressof(block)];
+    }
+
+    for (const auto& edge : edges) {
+        graphConnections[edge.edgeSourcePort->ownerBlock].children.insert(edge.edgeDestinationPort->ownerBlock);
+        graphConnections[edge.edgeDestinationPort->ownerBlock].parents.insert(edge.edgeSourcePort->ownerBlock);
+    }
+
+    while (!graphConnections.empty()) {
+        SortLevel newLevel;
+        for (const auto& [block, connections] : graphConnections) {
+            if (connections.parents.empty()) {
+                newLevel.blocks.push_back(block);
+            }
+        }
+
+        for (const auto* block : newLevel.blocks) {
+            graphConnections.erase(block);
+            for (auto& [_, connections] : graphConnections) {
+                connections.parents.erase(block);
+                // TODO(NOW) Proper top sort would use this to initialize the next level blocks
+            }
+        }
+
+        if (newLevel.blocks.empty()) {
+            break;
+        }
+
+        result.push_back(std::move(newLevel));
+    }
+
+    // If there are blocks in graphConnections, we have at lease one cycle,
+    // those blocks will not be sorted. Put them in the last level.
+    if (!graphConnections.empty()) {
+        SortLevel newLevel;
+        std::ranges::transform(graphConnections, std::back_inserter(newLevel.blocks), [](const auto& kvp) { return kvp.first; });
+    }
+
+    return result;
 }
 
 FlowGraphItem::FlowGraphItem() {}
@@ -691,6 +720,11 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
+    if (m_layoutGraph) {
+        m_layoutGraph = false;
+        sortNodes(fg);
+    }
+
     newDrawGraph(fg->graphModel, size);
 
     /*
@@ -832,19 +866,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             openNewBlockDialog = true;
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
-            // sortNodes(fg, blocks);
-        }
-        if (ImGui::MenuItem("Send a block creation message")) {
-            gr::Message message;
-            std::string type   = "gr::testing::Delay";
-            std::string params = "float";
-            message.cmd        = gr::message::Command::Set;
-            message.endpoint   = gr::graph::property::kEmplaceBlock;
-            message.data       = gr::property_map{
-                      {"type"s, std::move(type)},        //
-                      {"parameters"s, std::move(params)} //
-            };
-            App::instance().sendMessage(message);
+            sortNodes(fg);
         }
         if (ImGui::MenuItem("Refresh graph")) {
             fg->graphModel.requestGraphUpdate();
@@ -938,54 +960,94 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
 
         if (components::DialogButtons() == components::DialogButton::Ok) {
             if (m_selectedBlockDefinition) {
+                // TODO kill m_createNewBlock
                 m_createNewBlock = true;
+                // sendMessage
+                gr::Message message;
+                std::string type   = m_selectedBlockDefinition->name;
+                std::string params = "float";
+                message.cmd        = gr::message::Command::Set;
+                message.endpoint   = gr::graph::property::kEmplaceBlock;
+                message.data       = gr::property_map{
+                          {"type"s, std::move(type)},        //
+                          {"parameters"s, std::move(params)} //
+                };
+                App::instance().sendMessage(message);
             }
         }
     }
 }
 
-void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& blocks) {
-    // first take out all unconnected nodes, they will be added later
-    std::vector<const Block*> connectedBlocks, unconnectedBlocks;
-    std::ranges::for_each(blocks, [&connectedBlocks, &unconnectedBlocks](const Block* b) {
-        auto hasNoConnection = [](const Block::Port& p) { return p.portConnections.empty(); };
-        if (std::ranges::all_of(b->inputs(), hasNoConnection) && std::ranges::all_of(b->outputs(), hasNoConnection)) {
-            unconnectedBlocks.push_back(b);
-        } else {
-            connectedBlocks.push_back(b);
+void FlowGraphItem::sortNodes(FlowGraph* fg) {
+    auto blockLevels = topologicalSort(fg->graphModel.blocks(), fg->graphModel.edges());
+
+    constexpr float ySpacing = 32;
+    constexpr float xSpacing = 200;
+
+    float x = 0;
+    for (const auto& level : blockLevels) {
+        float y          = 0;
+        float levelWidth = 0;
+
+        for (const auto& block : level.blocks) {
+            auto blockId = ax::NodeEditor::NodeId(block);
+            ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
+            auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+            y += blockSize.y + ySpacing;
+            levelWidth = std::max(levelWidth, blockSize.x);
         }
-    });
 
-    auto res = topologicalSort(connectedBlocks, fg->connections());
+        x += levelWidth + xSpacing;
+    }
 
+    // first take out all unconnected nodes, they will be added later
+    /*
+    std::unordered_set<const UiGraphBlock*> connectedBlocks_, unconnectedBlocks;
+    for (const auto& block : fg->graphModel.blocks()) {
+        unconnectedBlocks.insert(std::addressof(block));
+    }
+
+    for (const auto& edge : fg->graphModel.edges()) {
+        auto registerConnected = [&](const UiGraphBlock* block) {
+            unconnectedBlocks.erase(block);
+            connectedBlocks_.insert(block);
+        };
+        registerConnected(edge.edgeSourcePort->ownerBlock);
+        registerConnected(edge.edgeDestinationPort->ownerBlock);
+    }
+
+    std::vector<const UiGraphBlock*> connectedBlocks(connectedBlocks_.size());
+    std::ranges::copy(connectedBlocks_, connectedBlocks.begin());
+    auto sortedBlocks = topologicalSort(connectedBlocks, fg->graphModel.edges());
     struct Level {
-        float                     y_min{0}, x_min{0};
-        float                     y_max{0}, x_max{0}; // how much does our biggest elements extent into x/y
-        std::vector<const Block*> blocks;
+        float                            y_min{0}, x_min{0};
+        float                            y_max{0}, x_max{0}; // how much does our biggest elements extent into x/y
+        std::vector<const UiGraphBlock*> blocks;
     };
     std::vector<Level> levels;
     levels.emplace_back();
+
     auto          lvl       = levels.begin();
     constexpr int y_padding = 50, x_padding = 50, lvl_padding_x = 150;
 
-    for (auto bi = res.begin(); bi != res.end(); ++bi) {
-        auto* b = *bi;
-        if (!b) {
+    for (auto blockIt = sortedBlocks.begin(); blockIt != sortedBlocks.end(); ++blockIt) {
+        auto* block = *blockIt;
+        if (!block) {
             continue; // the last block is nullptr
         }
-        auto   id = ax::NodeEditor::NodeId(b);
+        auto   id = ax::NodeEditor::NodeId(block);
         ImVec2 position;
 
-        if (b->inputs().empty() || std::ranges::all_of(b->inputs(), [](const Block::Port& p) { return p.portConnections.empty(); })) {
+        if (block->inputPorts().empty() || std::ranges::all_of(block->inputs(), [](const Block::Port& p) { return p.portConnections.empty(); })) {
             lvl = levels.begin();
         } else {
             // move back until we find the latest block we are connected to
-            auto back = bi - 1;
+            auto back = blockIt - 1;
             bool lvlFound{false};
 
             do {
-                for (const Block::Port& p : b->inputs()) {
-                    auto f = std::ranges::find_if(p.portConnections, [back, b](Connection* c) { return c->src.uiBlock == *back; });
+                for (const Block::Port& p : block->inputs()) {
+                    auto f = std::ranges::find_if(p.portConnections, [back, block](Connection* c) { return c->src.uiBlock == *back; });
                     if (f != p.portConnections.end()) {
                         auto* lastBlock = (*f)->src.uiBlock;
 
@@ -1008,14 +1070,15 @@ void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& bl
         position.x = lvl->x_min + x_padding;
         position.y = lvl->y_max + y_padding;
 
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b), position);
-        auto size  = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(b));
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), position);
+        auto size  = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(block));
         lvl->x_max = std::max(lvl->x_min + size.x, lvl->x_max);
         lvl->y_max += size.y + y_padding;
-        lvl->blocks.push_back(b);
+        lvl->blocks.push_back(block);
     }
 
-    arrangeUnconnectedNodes(fg, unconnectedBlocks);
+    // arrangeUnconnectedNodes(fg, unconnectedBlocks);
+*/
 }
 
 void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks) {
