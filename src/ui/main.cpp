@@ -424,6 +424,10 @@ static void main_loop(void* arg) {
                 app->dashboardPage.draw(*app->dashboard, DashboardPage::Mode::Layout);
             }
         } else if (app->mainViewMode == ViewMode::FLOWGRAPH) {
+            if (app->previousViewMode != ViewMode::FLOWGRAPH) {
+                app->dashboard->localFlowGraph.graphModel.requestGraphUpdate();
+            }
+
             if (app->dashboard != nullptr) {
                 // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
                 IMW::TabBar tabBar("maintabbar", 0);
@@ -505,6 +509,8 @@ static void main_loop(void* arg) {
             components::Notification::warning(msg);
         }
     }
+
+    app->previousViewMode = app->mainViewMode;
 
     components::Notification::render();
 

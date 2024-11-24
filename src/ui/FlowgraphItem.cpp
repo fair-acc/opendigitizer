@@ -579,7 +579,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 auto drawPorts = [&](auto& ports, auto& widths, auto leftPos, bool rightAlign) {
                     auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        auto pinPositionX = leftPos + (rightAlign ? (-widths[i]) : padding.x);
+                        auto pinPositionX = leftPos + padding.x - (rightAlign ? widths[i] : 0);
                         newDrawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, {} /* TODO in.portType */);
                         pinPositionY += pinHeight + pinSpacing;
                     }
@@ -607,12 +607,66 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
         const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
         for (auto& edge : graphModel.edges()) {
-            fmt::print("Edge {} -> {}\n", (void*)edge.edgeSourcePort, (void*)edge.edgeDestinationPort);
             ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
                 ax::NodeEditor::PinId(edge.edgeSourcePort),     //
                 ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
         }
+
+        // Handle creation action, returns true if editor want to create new object (node or link)
+        if (auto creation = IMW::NodeEditor::Creation(linkColor)) {
+            ax::NodeEditor::PinId inputPinId, outputPinId;
+            if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
+                // QueryNewLink returns true if editor wants to create new link between pins.
+                //
+                // Link can be created only for two valid pins, it is up to you to
+                // validate if connection make sense. Editor is happy to make any.
+                //
+                // Link always goes from input to output. User may choose to drag
+                // link from output pin or input pin. This determines which pin ids
+                // are valid and which are not:
+                //   * input valid, output invalid - user started to drag new link from input pin
+                //   * input invalid, output valid - user started to drag new link from output pin
+                //   * input valid, output valid   - user dragged link over other pin, can be validated
+
+                if (inputPinId && outputPinId) // both are valid, let's accept link
+                {
+                    auto* inputPort  = inputPinId.AsPointer<UiGraphPort>();
+                    auto* outputPort = outputPinId.AsPointer<UiGraphPort>();
+
+                    if (inputPort->portDirection == outputPort->portDirection) {
+                        ax::NodeEditor::RejectNewItem();
+
+                    } else {
+                        // bool compatibleTypes = inputPort->portType == outputPort->portType;
+                        // if (!compatibleTypes) {
+                        //     fmt::print("wrong types '{}' '{}'", inputPort->portType, outputPort->portType);
+                        //     // components::Notification::error(msg);
+                        //     ax::NodeEditor::RejectNewItem();
+                        //
+                        // } else
+                        if (/*inputPort->portConnections.empty() &&*/ ax::NodeEditor::AcceptNewItem()) {
+                            // AcceptNewItem() return true when user release mouse button.
+                            fmt::print("Send the connect message\n");
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kEmplaceEdge;
+                            message.data     = gr::property_map{                                   //
+                                {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
+                                {"sourcePort"s, outputPort->portName},                         //
+                                {"destinationBlock"s, inputPort->ownerBlock->blockUniqueName}, //
+                                {"destinationPort"s, inputPort->portName},                     //
+                                {"minBufferSize"s, gr::Size_t(4096)},                          //
+                                {"weight"s, std::int32_t(1)},                                  //
+                                {"edgeName"s, std::string()}};
+                            App::instance().sendMessage(message);
+                        }
+                    }
+                }
+            }
+        }
     }
+    // TODO(NOW) Sometimes getting bad_alloc in rva variant here
+    // variant<std::string&, void, void, std::string, void>(std::string&)
 }
 
 void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
@@ -792,12 +846,8 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             };
             App::instance().sendMessage(message);
         }
-        if (ImGui::MenuItem("Send a graph inspection message")) {
-            gr::Message message;
-            message.cmd      = gr::message::Command::Set;
-            message.endpoint = gr::graph::property::kGraphInspect;
-            message.data     = gr::property_map{};
-            App::instance().sendMessage(message);
+        if (ImGui::MenuItem("Refresh graph")) {
+            fg->graphModel.requestGraphUpdate();
         }
     }
 

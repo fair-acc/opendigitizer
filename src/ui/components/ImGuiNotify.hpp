@@ -12,8 +12,6 @@
 #ifndef IMGUI_NOTIFY
 #define IMGUI_NOTIFY
 
-#pragma once
-
 #include <chrono>     // For the notifications timed dissmiss
 #include <functional> // For storing the code, which executest on the button click in the notification
 #include <string>

@@ -47,9 +47,10 @@ public:
     DashboardPage                dashboardPage;
     std::shared_ptr<Dashboard>   dashboard;
     OpenDashboardPage            openDashboardPage;
-    SDLState*                    sdlState     = nullptr;
-    bool                         running      = true;
-    ViewMode                     mainViewMode = ViewMode::VIEW;
+    SDLState*                    sdlState         = nullptr;
+    bool                         running          = true;
+    ViewMode                     mainViewMode     = ViewMode::VIEW;
+    ViewMode                     previousViewMode = ViewMode::VIEW;
     std::vector<gr::BlockModel*> toolbarBlocks;
 
     components::AppHeader header;
