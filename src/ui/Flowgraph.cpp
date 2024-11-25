@@ -74,23 +74,24 @@ std::unique_ptr<Block> BlockDefinition::createBlock(std::string_view name) const
     return std::make_unique<Block>(name, this, std::move(params));
 }
 
-BlockDefinition::Registry& BlockDefinition::registry() {
-    static Registry r;
+BlockRegistry& BlockRegistry::instance() {
+    static BlockRegistry r;
     return r;
 }
 
-const BlockDefinition* BlockDefinition::Registry::get(std::string_view id) const {
+const BlockDefinition* BlockRegistry::get(std::string_view id) const {
     auto it = m_types.find(id);
     return it == m_types.end() ? nullptr : it->second.get();
 }
 
-void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader) {
+void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader) {
     for (const auto& typeName : pluginLoader.knownBlocks()) {
-        const auto availableParametrizations = pluginLoader.knownBlockParameterizations(typeName);
-        auto       type                      = std::make_unique<BlockDefinition>(typeName, typeName, "TODO category");
-        bool       first                     = true;
+        auto type  = std::make_unique<BlockDefinition>(typeName, typeName, "TODO category");
+        bool first = true;
 
-        for (const auto& parametrization : availableParametrizations) {
+        std::ranges::transform(pluginLoader.knownBlockParameterizations(typeName), std::back_inserter(type->availableParametrizations), [](std::string_view in) { return std::string(in); });
+
+        for (const auto& parametrization : type->availableParametrizations) {
             BlockInstantiationDefinition instantiationType;
 
             auto prototype = pluginLoader.instantiate(typeName, parametrization);
@@ -134,7 +135,7 @@ void BlockDefinition::Registry::addBlockDefinitionsFromPluginLoader(gr::PluginLo
     }
 }
 
-void BlockDefinition::Registry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { m_types.insert({t->name, std::move(t)}); }
+void BlockRegistry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { m_types.insert({t->name, std::move(t)}); }
 
 Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) { //
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
@@ -335,7 +336,7 @@ void FlowGraph::parse(const std::string& str) {
     grGraph.forEachBlock([&](const auto& grBlock) {
         auto typeName = grBlock.typeName();
         typeName      = std::string_view(typeName.begin(), typeName.find('<'));
-        auto type     = BlockDefinition::registry().get(typeName);
+        auto type     = BlockRegistry::instance().get(typeName);
         if (!type) {
             auto msg = fmt::format("Block type '{}' is unknown.", typeName);
             components::Notification::error(msg);
@@ -583,7 +584,7 @@ std::string_view sourceTypeForURI(std::string_view uriStr) {
 } // namespace
 
 Block* FlowGraph::addRemoteSource(std::string_view uriStr) {
-    auto block = BlockDefinition::registry().get(sourceTypeForURI(uriStr))->createBlock("Remote Source");
+    auto block = BlockRegistry::instance().get(sourceTypeForURI(uriStr))->createBlock("Remote Source");
     block->updateSettings({{"remote_uri", std::string(uriStr)}});
     auto res = block.get();
     addBlock(std::move(block));

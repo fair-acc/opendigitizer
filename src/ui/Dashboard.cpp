@@ -241,7 +241,7 @@ std::shared_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::s
 Block* Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto& b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto       sink      = BlockDefinition::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
+    auto       sink      = BlockRegistry::instance().get("opendigitizer::ImPlotSink")->createBlock(name);
     sink->updateSettings({{"color", randomColor()}});
     auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));

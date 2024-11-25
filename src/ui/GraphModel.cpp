@@ -50,7 +50,7 @@ void UiGraphModel::processMessage(const gr::Message& message) {
     const auto& data = *message.data;
 
     auto uniqueName = [&data](std::string key = "uniqueName"s) {
-        auto it = data.find("uniqueName"s);
+        auto it = data.find(key);
         if (it == data.end()) {
             return std::string();
         }
@@ -65,6 +65,7 @@ void UiGraphModel::processMessage(const gr::Message& message) {
         handleBlockRemoved(uniqueName());
 
     } else if (message.endpoint == graph::kBlockReplaced) {
+        fmt::print("Block replaced: {} with {}\n", uniqueName("replacedBlockUniqueName"), data);
         handleBlockRemoved(uniqueName("replacedBlockUniqueName"));
         handleBlockEmplaced(data);
 

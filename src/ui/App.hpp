@@ -157,7 +157,7 @@ public:
 
 public:
     App() {
-        BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*pluginLoader);
+        BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*pluginLoader);
         setStyle(kDefaultStyle);
     }
 

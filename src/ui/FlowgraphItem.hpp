@@ -43,7 +43,7 @@ private:
     void sortNodes(FlowGraph* fg);
     void arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
 
-    Block*                        m_selectedBlock = nullptr;
+    UiGraphBlock*                 m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
     const BlockDefinition*        m_selectedBlockDefinition = nullptr;
     bool                          m_createNewBlock          = false;

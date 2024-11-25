@@ -534,15 +534,17 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
                 // Draw block properties
                 std::string value;
-                for (const auto& [propertyKey, propertyValue] : block.blockMetaInformation) {
-                    const auto metaKey = propertyKey + "::visible";
-                    const auto it      = block.blockMetaInformation.find(metaKey);
-                    if (it == block.blockMetaInformation.end()) {
+                for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                    if (propertyKey == "description" || propertyKey.contains("::")) {
                         continue;
                     }
 
-                    if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
-                        continue;
+                    const auto metaKey = propertyKey + "::visible";
+                    const auto it      = block.blockMetaInformation.find(metaKey);
+                    if (it != block.blockMetaInformation.end()) {
+                        if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                            continue;
+                        }
                     }
 
                     valToString(propertyValue, value);
@@ -837,7 +839,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
         if (block) {
             ImGui::OpenPopup("Block settings");
             m_selectedBlock = block;
@@ -848,7 +850,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
         if (block) {
             ImGui::OpenPopup("block_ctx_menu");
             m_selectedBlock = block;
@@ -875,12 +877,38 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (ImGui::MenuItem("Delete")) {
-            fg->deleteBlock(m_selectedBlock);
+            // Send message to delete block
+            gr::Message message;
+            message.endpoint = gr::graph::property::kRemoveBlock;
+            message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
+            App::instance().sendMessage(std::move(message));
         }
-        for (auto [instantiationName, _] : m_selectedBlock->type().instantiations) {
-            auto name = std::string{"Change Type to "} + instantiationName;
-            if (ImGui::MenuItem(name.c_str())) {
-                fg->changeBlockDefinition(m_selectedBlock, instantiationName);
+
+        std::string_view blockType         = m_selectedBlock->blockTypeName;
+        auto             blockTypeSplitter = std::ranges::find(blockType, '<');
+        if (blockTypeSplitter != blockType) {
+            const auto& types = BlockRegistry::instance().types();
+
+            const auto currentBlockBaseType            = std::string(blockType.cbegin(), blockTypeSplitter);
+            const auto currentBlockParametrizationType = std::string(blockTypeSplitter + 1, blockType.cend() - 1);
+            const auto currentBlockBaseTypeInfoIt      = types.find(currentBlockBaseType);
+            if (currentBlockBaseTypeInfoIt != types.cend()) {
+                for (const auto& availableParametrization : currentBlockBaseTypeInfoIt->second->availableParametrizations) {
+                    if (availableParametrization != currentBlockParametrizationType) {
+                        auto name = std::string{"Change Type to "} + availableParametrization;
+                        if (ImGui::MenuItem(name.c_str())) {
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kReplaceBlock;
+                            message.data     = gr::property_map{
+                                    {"uniqueName"s, m_selectedBlock->blockUniqueName}, //
+                                    {"type"s, std::move(currentBlockBaseType)},        //
+                                    {"parameters"s, availableParametrization}          //
+                            };
+                            App::instance().sendMessage(message);
+                        }
+                    }
+                }
             }
         }
     }
@@ -943,7 +971,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
     ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
     if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
-        auto ret = components::FilteredListBox("blocks", BlockDefinition::registry().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
+        auto ret = components::FilteredListBox("blocks", BlockRegistry::instance().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
             if (it.second->isSource) {
                 return {};
             }
