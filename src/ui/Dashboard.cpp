@@ -213,6 +213,7 @@ std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {
 Dashboard::Plot::Plot() {
     static int n = 1;
     name         = fmt::format("Plot {}", n++);
+    window       = std::make_shared<DockSpace::Window>(name);
 }
 
 Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
@@ -380,10 +381,11 @@ void Dashboard::doLoad(const std::string& desc) {
             plot.sourceNames.push_back(str);
         }
 
-        plot.rect.x = rect[0].as<int>();
-        plot.rect.y = rect[1].as<int>();
-        plot.rect.w = rect[2].as<int>();
-        plot.rect.h = rect[3].as<int>();
+        // Load from disk:
+        plot.window->x      = rect[0].as<int>();
+        plot.window->y      = rect[1].as<int>();
+        plot.window->width  = rect[2].as<int>();
+        plot.window->height = rect[3].as<int>();
     }
 
     if (m_fgItem) {
@@ -451,10 +453,10 @@ void Dashboard::save() {
                 });
                 plot.write("rect", [&]() {
                     YamlSeq rect(dashboardOut);
-                    dashboardOut << p.rect.x;
-                    dashboardOut << p.rect.y;
-                    dashboardOut << p.rect.w;
-                    dashboardOut << p.rect.h;
+                    dashboardOut << p.window->x;
+                    dashboardOut << p.window->y;
+                    dashboardOut << p.window->width;
+                    dashboardOut << p.window->height;
                 });
             }
         });
@@ -526,7 +528,7 @@ void Dashboard::newPlot(int x, int y, int w, int h) {
     auto& p = m_plots.back();
     p.axes.push_back({Plot::Axis::X});
     p.axes.push_back({Plot::Axis::Y});
-    p.rect = {x, y, w, h};
+    p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
 }
 
 void Dashboard::deletePlot(Plot* plot) {

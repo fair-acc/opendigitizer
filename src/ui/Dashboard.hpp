@@ -19,6 +19,7 @@ CMRC_DECLARE(sample_dashboards);
 #include <plf_colony.h>
 
 #include "Flowgraph.hpp"
+#include "components/Docking.hpp"
 
 namespace DigitizerUi {
 
@@ -79,10 +80,7 @@ public:
         };
         std::vector<AxisData> axes;
 
-        struct GridRect {
-            int x = 0, y = 0, w = 5, h = 5;
-        };
-        GridRect rect;
+        std::shared_ptr<DockSpace::Window> window;
     };
 
 private:

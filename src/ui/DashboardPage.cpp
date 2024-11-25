@@ -3,210 +3,22 @@
 #include <fmt/format.h>
 #include <implot.h>
 
-#include "Flowgraph.hpp"
-
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 #include "common/TouchHandler.hpp"
 
 #include "components/Splitter.hpp"
 
+#include "Flowgraph.hpp"
+
 namespace DigitizerUi {
 
 namespace {
 
-struct ActionParameters {
-    bool            frameHovered;
-    bool            hoveredInTitleArea;
-    ImVec2          screenOrigin;
-    ImVec2          plotPos;
-    ImVec2          plotSize;
-    GridArrangement arrangement;
-};
+constexpr static inline auto kMaxPlots   = 16u;
+constexpr static inline auto kGridWidth  = 16u;
+constexpr static inline auto kGridHeight = 16u;
 
-void updateFinalPlotSize(Dashboard::Plot* plot, DashboardPage::Action action, float cellW, float cellH) {
-    auto drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-
-    int dx = std::round(drag.x / cellW);
-    int dy = std::round(drag.y / cellH);
-    switch (action) {
-    case DashboardPage::Action::None: break;
-    case DashboardPage::Action::Move:
-        plot->rect.x += dx;
-        plot->rect.y += dy;
-        break;
-    case DashboardPage::Action::ResizeLeft:
-        plot->rect.x += dx;
-        plot->rect.w -= dx;
-        break;
-    case DashboardPage::Action::ResizeRight: plot->rect.w += dx; break;
-    case DashboardPage::Action::ResizeTop:
-        plot->rect.y += dy;
-        plot->rect.h -= dy;
-        break;
-    case DashboardPage::Action::ResizeBottom: plot->rect.h += dy; break;
-    case DashboardPage::Action::ResizeTopLeft:
-        plot->rect.y += dy;
-        plot->rect.h -= dy;
-        plot->rect.x += dx;
-        plot->rect.w -= dx;
-        break;
-    case DashboardPage::Action::ResizeTopRight:
-        plot->rect.y += dy;
-        plot->rect.h -= dy;
-        plot->rect.w += dx;
-        break;
-    case DashboardPage::Action::ResizeBottomLeft:
-        plot->rect.h += dy;
-        plot->rect.x += dx;
-        plot->rect.w -= dx;
-        break;
-    case DashboardPage::Action::ResizeBottomRight:
-        plot->rect.h += dy;
-        plot->rect.w += dx;
-        break;
-    }
-}
-
-void updatePlotSize(DashboardPage::Action action, ImVec2& plotPos, ImVec2& plotSize) {
-    auto drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-    switch (action) {
-    case DashboardPage::Action::None: break;
-    case DashboardPage::Action::Move:
-        plotPos.x += drag.x;
-        plotPos.y += drag.y;
-        break;
-    case DashboardPage::Action::ResizeLeft:
-        plotPos.x += drag.x;
-        plotSize.x -= drag.x;
-        break;
-    case DashboardPage::Action::ResizeRight: plotSize.x += drag.x; break;
-    case DashboardPage::Action::ResizeTop:
-        plotPos.y += drag.y;
-        plotSize.y -= drag.y;
-        break;
-    case DashboardPage::Action::ResizeBottom: plotSize.y += drag.y; break;
-    case DashboardPage::Action::ResizeTopLeft:
-        plotPos.x += drag.x;
-        plotSize.x -= drag.x;
-        plotPos.y += drag.y;
-        plotSize.y -= drag.y;
-        break;
-    case DashboardPage::Action::ResizeTopRight:
-        plotPos.y += drag.y;
-        plotSize.y -= drag.y;
-        plotSize.x += drag.x;
-        break;
-    case DashboardPage::Action::ResizeBottomLeft:
-        plotPos.x += drag.x;
-        plotSize.x -= drag.x;
-        plotSize.y += drag.y;
-        break;
-    case DashboardPage::Action::ResizeBottomRight:
-        plotSize.x += drag.x;
-        plotSize.y += drag.y;
-        break;
-    }
-}
-
-enum Edges { Left = 1, Right = 2, Top = 4, Bottom = 8 };
-
-static inline Edges GetHoveredEdges(const ActionParameters& parameters) noexcept {
-    auto pos   = ImGui::GetMousePos() - parameters.screenOrigin;
-    int  edges = 0;
-
-    bool include_horizontal = parameters.arrangement != GridArrangement::Vertical;
-    bool include_vertical   = parameters.arrangement != GridArrangement::Horizontal;
-
-    if (pos.x < parameters.plotPos.x + 10) {
-        edges |= Left * include_horizontal;
-    } else if (pos.x > parameters.plotPos.x + parameters.plotSize.x - 10) {
-        edges |= Right * include_horizontal;
-    }
-    if (pos.y < parameters.plotPos.y + 10) {
-        edges |= Top * include_vertical;
-    } else if (pos.y > parameters.plotPos.y + parameters.plotSize.y - 10) {
-        edges |= Bottom * include_vertical;
-    }
-    return Edges(edges);
-}
-
-DashboardPage::Action getAction(const ActionParameters& parameters) {
-    DashboardPage::Action finalAction = DashboardPage::Action::None;
-    if (ImGui::IsItemHovered() && parameters.hoveredInTitleArea) {
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            finalAction = DashboardPage::Action::Move;
-        }
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-
-    if (parameters.frameHovered && parameters.hoveredInTitleArea) {
-        auto edges = GetHoveredEdges(parameters);
-
-        ImGuiMouseCursor      cursor = ImGuiMouseCursor_Hand;
-        DashboardPage::Action action = DashboardPage::Action::Move;
-        switch (edges) {
-        case Left:
-            cursor = ImGuiMouseCursor_ResizeEW;
-            action = DashboardPage::Action::ResizeLeft;
-            break;
-        case Right:
-            cursor = ImGuiMouseCursor_ResizeEW;
-            action = DashboardPage::Action::ResizeRight;
-            break;
-        case Top:
-            cursor = ImGuiMouseCursor_ResizeNS;
-            action = DashboardPage::Action::ResizeTop;
-            break;
-        case Bottom:
-            cursor = ImGuiMouseCursor_ResizeNS;
-            action = DashboardPage::Action::ResizeBottom;
-            break;
-        case Left | Top:
-            cursor = ImGuiMouseCursor_ResizeNWSE;
-            action = DashboardPage::Action::ResizeTopLeft;
-            break;
-        case Right | Bottom:
-            cursor = ImGuiMouseCursor_ResizeNWSE;
-            action = DashboardPage::Action::ResizeBottomRight;
-            break;
-        case Left | Bottom:
-            cursor = ImGuiMouseCursor_ResizeNESW;
-            action = DashboardPage::Action::ResizeBottomLeft;
-            break;
-        case Right | Top:
-            cursor = ImGuiMouseCursor_ResizeNESW;
-            action = DashboardPage::Action::ResizeTopRight;
-            break;
-        default: break;
-        }
-        ImGui::SetMouseCursor(cursor);
-
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            finalAction = action;
-        }
-    }
-
-    if (finalAction != DashboardPage::Action::None) {
-        ImGui::SetMouseCursor([&]() {
-            using enum DashboardPage::Action;
-            switch (finalAction) {
-            case None: break;
-            case Move: return ImGuiMouseCursor_Hand;
-            case ResizeLeft:
-            case ResizeRight: return ImGuiMouseCursor_ResizeEW;
-            case ResizeTop:
-            case ResizeBottom: return ImGuiMouseCursor_ResizeNS;
-            case ResizeTopLeft:
-            case ResizeBottomRight: return ImGuiMouseCursor_ResizeNWSE;
-            case ResizeTopRight:
-            case ResizeBottomLeft: return ImGuiMouseCursor_ResizeNESW;
-            }
-            return ImGuiMouseCursor_Arrow;
-        }());
-    }
-    return finalAction;
-}
 } // namespace
 
 static bool plotButton(const char* glyph, const char* tooltip) noexcept {
@@ -349,19 +161,19 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
                 }
                 ImGui::SameLine();
                 if (plotButton("\uF7A5", "change to the horizontal layout")) {
-                    plot_layout.SetArrangement(GridArrangement::Horizontal);
+                    m_dockSpace.setLayoutType(DockingLayoutType::Row);
                 }
                 ImGui::SameLine();
                 if (plotButton("\uF7A4", "change to the vertical layout")) {
-                    plot_layout.SetArrangement(GridArrangement::Vertical);
+                    m_dockSpace.setLayoutType(DockingLayoutType::Column);
                 }
                 ImGui::SameLine();
                 if (plotButton("\uF58D", "change to the grid layout")) {
-                    plot_layout.SetArrangement(GridArrangement::Tiles);
+                    m_dockSpace.setLayoutType(DockingLayoutType::Grid);
                 }
                 ImGui::SameLine();
                 if (plotButton("\uF248", "change to the free layout")) {
-                    plot_layout.SetArrangement(GridArrangement::Free);
+                    m_dockSpace.setLayoutType(DockingLayoutType::Free);
                 }
                 ImGui::SameLine();
             }
@@ -408,8 +220,8 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
     pane_size = ImGui::GetContentRegionAvail();
     pane_size.y -= legend_box.y;
 
-    float w = pane_size.x / float(GridLayout::grid_width);  // Grid width
-    float h = pane_size.y / float(GridLayout::grid_height); // Grid height
+    const float w = pane_size.x / float(kGridWidth);
+    const float h = pane_size.y / float(kGridHeight);
 
     if (mode == Mode::Layout) {
         drawGrid(w, h);
@@ -418,122 +230,80 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
     auto pos       = ImGui::GetCursorPos();
     auto screenPos = ImGui::GetCursorScreenPos();
 
-    if (mode == Mode::Layout && clicked_plot && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        updateFinalPlotSize(clicked_plot, clicked_action, w, h);
-        clicked_plot   = nullptr;
-        clicked_action = DashboardPage::Action::None;
-    }
-
     Dashboard::Plot* toDelete = nullptr;
 
-    plot_layout.ArrangePlots(dashboard.plots());
+    DockSpace::Windows windows;
+    auto&              plots = dashboard.plots();
+    windows.reserve(plots.size());
 
-    for (auto& plot : dashboard.plots()) {
-        const float offset = mode == Mode::Layout ? 5 : 0;
+    for (auto& plot : plots) {
+        windows.push_back(plot.window);
+        plot.window->renderFunc = [this, &dashboard, &plot, &toDelete, mode] {
+            const float offset = mode == Mode::Layout ? 5 : 0;
 
-        auto plotPos  = ImVec2(w * plot.rect.x, h * plot.rect.y);
-        auto plotSize = ImVec2{plot.rect.w * w, plot.rect.h * h};
+            const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
+            ImPlotFlags plotFlags = ImPlotFlags_NoChild;
+            plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
+            plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
-        bool frameHovered = [&]() {
-            if (mode != Mode::Layout) {
-                return false;
-            }
+            ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0}); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
+            ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
+            auto plotSize = ImGui::GetContentRegionAvail();
+            if (TouchHandler<>::BeginZoomablePlot(plot.name, plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
+                drawPlot(dashboard, plot);
 
-            if (clicked_plot == &plot && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-                updatePlotSize(clicked_action, plotPos, plotSize);
-            }
+                // allow the main plot area to be a DND target
+                if (ImPlot::BeginDragDropTargetPlot()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
+                        auto* dnd = static_cast<DndItem*>(payload->Data);
+                        plot.sources.push_back(dnd->source);
+                        if (auto* plot = dnd->plotSource) {
+                            plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
+                        }
+                    }
+                    ImPlot::EndDragDropTarget();
+                }
 
-            ImGui::SetCursorPos(pos + plotPos);
-            ImGui::InvisibleButton("##ss", plotSize);
-            ImGui::SetItemAllowOverlap(); // this is needed to make the remove button work
-
-            bool frameHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-
-            ImVec2         p1    = screenPos + plotPos;
-            ImVec2         p2    = p1 + plotSize;
-            const uint32_t color = ImGui::GetColorU32(frameHovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
-            ImGui::GetWindowDrawList()->AddRectFilled(p1, p2, color);
-
-            return frameHovered;
-        }();
-
-        ImGui::SetCursorPos(pos + plotPos + ImVec2(offset, offset));
-        const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
-        ImPlotFlags plotFlags = ImPlotFlags_NoChild;
-        plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
-        plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
-
-        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0}); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
-        ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
-        if (TouchHandler<>::BeginZoomablePlot(plot.name, plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
-            drawPlot(dashboard, plot);
-
-            // allow the main plot area to be a DND target
-            if (ImPlot::BeginDragDropTargetPlot()) {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
-                    auto* dnd = static_cast<DndItem*>(payload->Data);
-                    plot.sources.push_back(dnd->source);
-                    if (auto* plot = dnd->plotSource) {
-                        plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
+                auto rect = ImPlot::GetPlotLimits();
+                for (auto& a : plot.axes) {
+                    if (a.axis == Dashboard::Plot::Axis::X) {
+                        a.min = rect.X.Min;
+                        a.max = rect.X.Max;
+                    } else {
+                        a.min = rect.Y.Min;
+                        a.max = rect.Y.Max;
                     }
                 }
-                ImPlot::EndDragDropTarget();
-            }
 
-            auto rect = ImPlot::GetPlotLimits();
-            for (auto& a : plot.axes) {
-                if (a.axis == Dashboard::Plot::Axis::X) {
-                    a.min = rect.X.Min;
-                    a.max = rect.X.Max;
-                } else {
-                    a.min = rect.Y.Min;
-                    a.max = rect.Y.Max;
-                }
-            }
+                if (mode == Mode::Layout) {
+                    bool plotItemHovered = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
+                    if (!plotItemHovered) {
+                        // Unfortunaetly there is no function that returns whether the entire legend is hovered,
+                        // we need to check one entry at a time
+                        for (const auto& s : plot.sources) {
+                            if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
+                                plotItemHovered = true;
 
-            bool plotItemHovered = false;
-            if (mode == Mode::Layout) {
-                plotItemHovered = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
-                if (!plotItemHovered) {
-                    // Unfortunaetly there is no function that returns whether the entire legend is hovered,
-                    // we need to check one entry at a time
-                    for (const auto& s : plot.sources) {
-                        if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
-                            plotItemHovered = true;
+                                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                                    // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
+                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(s->blockName);
+                                    m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+                                }
 
-                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                                // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
-                                m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(s->blockName);
-                                m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+                                break;
                             }
-
-                            break;
                         }
                     }
                 }
-            }
 
-            TouchHandler<>::EndZoomablePlot();
-            ImPlot::PopStyleVar(2);
-
-            if (mode == Mode::Layout) {
-                if (frameHovered) {
-                    IMW::Font font(LookAndFeel::instance().fontIcons);
-                    ImGui::SetCursorPos(pos + plotPos + ImVec2(plotSize.x, 0) - ImVec2(30, -15)); // TODO: magic numbers
-                    IMW::ChangeStrId newId(plot.name.c_str());
-                    if (ImGui::Button("\uf2ed")) {
-                        toDelete = &plot;
-                    }
-                }
-
-                auto action = getAction({frameHovered, !plotItemHovered, screenPos, plotPos, plotSize, plot_layout.Arrangement()});
-                if (action != DashboardPage::Action::None) {
-                    clicked_action = action;
-                    clicked_plot   = &plot;
-                }
-            }
-        } // if (ImPlot::BeginPlot() {...} TODO: method/branch is too long
+                TouchHandler<>::EndZoomablePlot();
+                ImPlot::PopStyleVar(2);
+            } // if (ImPlot::BeginPlot() {...} TODO: method/branch is too long
+        };
     }
+
+    m_dockSpace.render(windows, pane_size);
+
     if (toDelete) {
         dashboard.deletePlot(toDelete);
     }
@@ -621,67 +391,9 @@ void DashboardPage::drawLegend(Dashboard& dashboard, const DashboardPage::Mode& 
 }
 
 void DashboardPage::newPlot(Dashboard& dashboard) {
-    if (plot_layout.Arrangement() != GridArrangement::Free && dashboard.plots().size() < GridLayout::max_plots) {
-        plot_layout.Invalidate();
-        return dashboard.newPlot(0, 0, 1, 1); // Plot will get adjusted by the layout automatically
-    }
-
-    bool grid[GridLayout::grid_width][GridLayout::grid_height];
-    memset(grid, 0, sizeof(grid));
-
-    for (auto& p : dashboard.plots()) {
-        for (int x = p.rect.x; x < p.rect.x + p.rect.w; ++x) {
-            for (int y = p.rect.y; y < p.rect.y + p.rect.h; ++y) {
-                grid[x][y] = true;
-            }
-        }
-    }
-
-    // This algorithm to find a free spot in the grid is really dumb and not optimized,
-    // however the grid is so small and it runs so unfrequently that it doesn't really matter.
-    auto rectangleFree = [&](int x, int y, int w, int h) {
-        for (int y2 = y; y2 < y + h; ++y2) {
-            for (int x2 = x; x2 < x + w; ++x2) {
-                if (x2 == GridLayout::grid_width || y2 == GridLayout::grid_height || grid[x2][y2]) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    };
-
-    auto findRectangle = [&](int& rx, int& ry, int& rw, int& rh) {
-        int i = 0;
-        while (true) {
-            for (int y = 0; y < GridLayout::grid_height; ++y) {
-                for (int x = 0; x < GridLayout::grid_width; ++x) {
-                    if (rectangleFree(x, y, rw, rh)) {
-                        rx = x;
-                        ry = y;
-                        return true;
-                    }
-                }
-            }
-            if (rw == 1 || rh == 1) {
-                break;
-            }
-
-            if (i % 2 == 0) {
-                rw -= 1;
-            } else {
-                rh -= 1;
-            }
-            ++i;
-        }
-        return false;
-    };
-
-    int w = GridLayout::grid_width / 2;
-    int h = w * 6. / 8.;
-
-    int x, y;
-    if (findRectangle(x, y, w, h)) {
-        dashboard.newPlot(x, y, w, h);
+    if (dashboard.plots().size() < kMaxPlots) {
+        // Plot will get adjusted by the layout automatically
+        return dashboard.newPlot(0, 0, 1, 1);
     }
 }
 
@@ -693,5 +405,7 @@ void DashboardPage::addSignalCallback(Dashboard& dashboard, Block* block) {
     auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
     dashboard.plots().back().sourceNames.push_back(source->name);
 }
+
+void DashboardPage::setLayoutType(DockingLayoutType type) { m_dockSpace.setLayoutType(type); }
 
 } // namespace DigitizerUi
