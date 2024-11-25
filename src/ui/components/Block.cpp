@@ -202,7 +202,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
 
             auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
             auto ret      = FilteredListBox(
-                "blocks", BlockDefinition::registry().types(),
+                "blocks", BlockRegistry::instance().types(),
                 [](auto& it) -> std::pair<BlockDefinition*, std::string> {
                     auto anyInstantiation = it.second->defaultInstantiation();
                     if (anyInstantiation.inputs.size() != 1 || anyInstantiation.outputs.size() != 1) {
