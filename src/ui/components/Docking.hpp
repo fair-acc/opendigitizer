@@ -33,10 +33,7 @@ class DockSpace {
 
 public:
     struct Window;
-    using Windows                            = std::vector<std::shared_ptr<Window>>;
-    constexpr static inline auto max_plots   = 16u;
-    constexpr static inline auto grid_width  = 16u;
-    constexpr static inline auto grid_height = 16u;
+    using Windows = std::vector<std::shared_ptr<Window>>;
 
     DockingLayoutType layoutType() const;
     bool              isFreeLayout() const;

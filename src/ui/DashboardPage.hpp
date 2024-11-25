@@ -5,12 +5,11 @@
 #include <string>
 #include <vector>
 
+#include "Dashboard.hpp"
 #include "common/ImguiWrap.hpp"
-
 #include "components/Block.hpp"
+#include "components/Docking.hpp"
 #include "components/SignalSelector.hpp"
-
-#include "GridLayout.hpp"
 
 #include <memory.h>
 
@@ -18,15 +17,11 @@ namespace DigitizerUi {
 
 class DashboardPage {
 public:
-    enum class Action { None, Move, ResizeLeft, ResizeRight, ResizeTop, ResizeBottom, ResizeTopLeft, ResizeTopRight, ResizeBottomLeft, ResizeBottomRight };
-
 private:
-    ImVec2     pane_size{0, 0};     // updated by drawPlots(...)
-    ImVec2     legend_box{500, 40}; // updated by drawLegend(...)
-    GridLayout plot_layout;
+    ImVec2 pane_size{0, 0};     // updated by drawPlots(...)
+    ImVec2 legend_box{500, 40}; // updated by drawLegend(...)
 
-    Dashboard::Plot* clicked_plot   = nullptr;
-    Action           clicked_action = Action::None;
+    Dashboard::Plot* clicked_plot = nullptr;
 
 private:
     static constexpr inline auto* dnd_type = "DND_SOURCE";
@@ -51,6 +46,7 @@ public:
 
     void draw(Dashboard& dashboard, Mode mode = Mode::View) noexcept;
     void newPlot(Dashboard& dashboard);
+    void setLayoutType(DockingLayoutType);
 
 private:
     void        drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::Mode mode);
@@ -60,7 +56,7 @@ private:
 
     void addSignalCallback(Dashboard& dashboard, Block* block);
 
-    //
+    DockSpace                             m_dockSpace;
     components::BlockControlsPanelContext m_editPane;
     std::unique_ptr<SignalSelector>       m_signalSelector;
 };
