@@ -18,6 +18,8 @@
 
 #include "App.hpp"
 
+using namespace std::string_literals;
+
 namespace DigitizerUi {
 
 inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::vector<UiGraphEdge>& edges) {
@@ -528,7 +530,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
                 // Draw block title
-                auto name = "NW:"s + block.blockName; // TODO(NOW) remove NW
+                auto name = block.blockName;
                 ImGui::TextUnformatted(name.c_str());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
@@ -644,7 +646,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         }
 
         // Handle creation action, returns true if editor want to create new object (node or link)
-        if (auto creation = IMW::NodeEditor::Creation(linkColor)) {
+        if (auto creation = IMW::NodeEditor::Creation(linkColor, 1.0f)) {
             ax::NodeEditor::PinId inputPinId, outputPinId;
             if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
                 // QueryNewLink returns true if editor wants to create new link between pins.
@@ -696,8 +698,6 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
             }
         }
     }
-    // TODO(NOW) Sometimes getting bad_alloc in rva variant here
-    // variant<std::string&, void, void, std::string, void>(std::string&)
 }
 
 void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {

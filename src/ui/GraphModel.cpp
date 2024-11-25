@@ -11,6 +11,8 @@
 
 #include "App.hpp"
 
+using namespace std::string_literals;
+
 namespace {
 template<typename T>
 std::optional<T> getOptionalProperty(const gr::property_map& data, std::string key) {
@@ -49,7 +51,7 @@ void UiGraphModel::processMessage(const gr::Message& message) {
 
     const auto& data = *message.data;
 
-    auto uniqueName = [&data](std::string key = "uniqueName"s) {
+    auto uniqueName = [&data](const std::string& key = "uniqueName"s) {
         auto it = data.find(key);
         if (it == data.end()) {
             return std::string();
@@ -146,7 +148,7 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
     }
 }
 
-void UiGraphModel::handleBlockDataUpdated(std::string uniqueName, const gr::property_map& blockData) {
+void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
         // TODO warning
@@ -157,7 +159,7 @@ void UiGraphModel::handleBlockDataUpdated(std::string uniqueName, const gr::prop
     setBlockData(*blockIt, blockData);
 }
 
-void UiGraphModel::handleBlockSettingsChanged(std::string uniqueName, const gr::property_map& data) {
+void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
         // TODO warning
@@ -170,7 +172,7 @@ void UiGraphModel::handleBlockSettingsChanged(std::string uniqueName, const gr::
     }
 }
 
-void UiGraphModel::handleBlockSettingsStaged(std::string uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
+void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
 
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     UiGraphEdge edge(this);
@@ -272,7 +274,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     updateFieldFrom(edge.edgeSourceBlockName, edgeData, "sourceBlock"s);
     updateFieldFrom(edge.edgeDestinationBlockName, edgeData, "destinationBlock"s);
 
-    auto portDefinition = [&edgeData](std::string key) -> gr::PortDefinition {
+    auto portDefinition = [&edgeData](const std::string& key) -> gr::PortDefinition {
         auto stringPortDefinition = getOptionalProperty<std::string>(edgeData, key);
         if (stringPortDefinition) {
             return gr::PortDefinition(*stringPortDefinition);

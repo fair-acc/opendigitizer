@@ -23,6 +23,8 @@
 
 #include "utils/Yaml.hpp"
 
+using namespace std::string_literals;
+
 struct FlowgraphMessage {
     std::string flowgraph;
     std::string layout;

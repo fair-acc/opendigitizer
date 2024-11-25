@@ -79,7 +79,7 @@ struct UiGraphEdge {
     std::string  edgeState;
     std::string  edgeType;
 
-    UiGraphEdge(UiGraphModel* owner) : ownerGraph(owner), edgeSourcePortDefinition(""s), edgeDestinationPortDefinition(""s) {}
+    UiGraphEdge(UiGraphModel* owner) : ownerGraph(owner), edgeSourcePortDefinition(std::string()), edgeDestinationPortDefinition(std::string()) {}
 };
 
 class UiGraphModel {
@@ -122,16 +122,16 @@ private:
 
     bool handleBlockRemoved(const std::string& uniqueName);
     void handleBlockEmplaced(const gr::property_map& blockData);
-    void handleBlockDataUpdated(std::string uniqueName, const gr::property_map& blockData);
-    void handleBlockSettingsChanged(std::string uniqueName, const gr::property_map& data);
-    void handleBlockSettingsStaged(std::string uniqueName, const gr::property_map& data);
+    void handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData);
+    void handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data);
+    void handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data);
     void handleEdgeEmplaced(const gr::property_map& data);
     void handleEdgeRemoved(const gr::property_map& data);
     void handleGraphRedefined(const gr::property_map& data);
 
-    void setBlockData(auto& block, const gr::property_map& blockData);
+    void               setBlockData(auto& block, const gr::property_map& blockData);
     [[nodiscard]] bool setEdgeData(auto& edge, const gr::property_map& edgeData);
-    void removeEdgesForBlock(UiGraphBlock& block);
+    void               removeEdgesForBlock(UiGraphBlock& block);
 };
 
 #endif // include guard
