@@ -86,8 +86,9 @@ class UiGraphModel {
 private:
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
-    std::vector<UiGraphBlock> m_blocks;
-    std::vector<UiGraphEdge>  m_edges;
+    std::vector<UiGraphBlock> _blocks;
+    std::vector<UiGraphEdge>  _edges;
+    bool                      _newGraphDataBeingSet = false;
 
 public:
     UiGraphModel() {}
@@ -101,11 +102,11 @@ public:
     // void parse(const std::string& str);
     // void clear();
 
-    const auto& blocks() const { return m_blocks; }
-    auto&       blocks() { return m_blocks; }
+    const auto& blocks() const { return _blocks; }
+    auto&       blocks() { return _blocks; }
 
-    const auto& edges() const { return m_edges; }
-    auto&       edges() { return m_edges; }
+    const auto& edges() const { return _edges; }
+    auto&       edges() { return _edges; }
 
     void processMessage(const gr::Message& message);
 

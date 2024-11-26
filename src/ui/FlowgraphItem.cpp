@@ -322,18 +322,8 @@ static bool blockInTree(const Block* block, const Block* start) {
     return blockInTreeHelper<inputs, &Connection::src>(block, start) || blockInTreeHelper<outputs, &Connection::dst>(block, start);
 }
 
-namespace {
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-template<typename... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
-} // namespace
-
 void valToString(const pmtv::pmt& val, std::string& str) {
-    std::visit(overloaded{
+    std::visit(gr::meta::overloaded{
                    [&](const std::string& s) { str = s; },
                    [&](const auto& a) { str = "na"; },
                },
@@ -573,7 +563,8 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         widths[i] = ImGui::CalcTextSize(ports[i].portName.c_str()).x + textMargin * 2;
-                        // if (!filteredOut) { TODO(NOW)
+                        // TODO Reimplement block visual filtering
+                        // if (!filteredOut) {
                         addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
                         // }
                         position.y += pinHeight + pinSpacing;
@@ -632,7 +623,6 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                         .y      = boundingBox.maxY,     //
                         .width  = blockSize[0],         //
                         .height = blockSize[1]};
-                fmt::print(">>>>>>>>>> new position/layout for {} x{} y{} w{} h{}\n", block.blockUniqueName, block.view->x, block.view->y, block.view->width, block.view->height);
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
             }
@@ -672,7 +662,6 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                     } else {
                         if (ax::NodeEditor::AcceptNewItem()) {
                             // AcceptNewItem() return true when user release mouse button.
-                            fmt::print("Send the connect message\n");
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::graph::property::kEmplaceEdge;

@@ -38,15 +38,14 @@ void updateFieldFrom(FieldType& field, const auto& data, const std::string& fiel
     field = getProperty<FieldType>(data, fieldName);
 };
 } // namespace
-  //
 
 void UiGraphModel::processMessage(const gr::Message& message) {
-    fmt::print("\u001b[32m>> GraphModel got {} for {}\n\u001b[0m", message.endpoint, message.serviceName);
     namespace graph = gr::graph::property;
     namespace block = gr::block::property;
 
     if (!message.data) {
-        // TODO report error
+        DigitizerUi::components::Notification::error(fmt::format("Received an error: {}\n", message.data.error().message));
+        return;
     }
 
     const auto& data = *message.data;
@@ -67,7 +66,6 @@ void UiGraphModel::processMessage(const gr::Message& message) {
         handleBlockRemoved(uniqueName());
 
     } else if (message.endpoint == graph::kBlockReplaced) {
-        fmt::print("Block replaced: {} with {}\n", uniqueName("replacedBlockUniqueName"), data);
         handleBlockRemoved(uniqueName("replacedBlockUniqueName"));
         handleBlockEmplaced(data);
 
@@ -80,7 +78,6 @@ void UiGraphModel::processMessage(const gr::Message& message) {
 
     } else if (message.endpoint == block::kStagedSetting) {
         // serviceNames is used for block's unique name in settings messages
-        fmt::print("\u001b[32mStaged settings: {}\n\u001b[0m", data);
         handleBlockSettingsStaged(message.serviceName, data);
 
     } else if (message.endpoint == graph::kEdgeEmplaced) {
@@ -93,10 +90,10 @@ void UiGraphModel::processMessage(const gr::Message& message) {
         handleGraphRedefined(data);
 
     } else if (message.endpoint == "LifecycleState") {
-        fmt::print("\u001b[32mNew state {}\n\u001b[0m", data);
+        // Nothing to do for lifecycle state changes
 
     } else {
-        fmt::print("\u001b[32mNot processed: {} data: {}\n\u001b[0m", message.endpoint, message.data.error());
+        fmt::print("Not processed: {} data: {}\n", message.endpoint, message.data.error());
         if (!message.data) {
             auto msg = fmt::format("Error: {}\n", message.data.error().message);
             DigitizerUi::components::Notification::error(msg);
@@ -106,6 +103,9 @@ void UiGraphModel::processMessage(const gr::Message& message) {
 }
 
 void UiGraphModel::requestGraphUpdate() {
+    if (_newGraphDataBeingSet) {
+        return;
+    }
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::graph::property::kGraphInspect;
@@ -114,8 +114,8 @@ void UiGraphModel::requestGraphUpdate() {
 }
 
 auto UiGraphModel::findBlockByName(const std::string& uniqueName) {
-    auto it = std::ranges::find_if(m_blocks, [&](const auto& block) { return block.blockUniqueName == uniqueName; });
-    return std::make_pair(it, it != m_blocks.end());
+    auto it = std::ranges::find_if(_blocks, [&](const auto& block) { return block.blockUniqueName == uniqueName; });
+    return std::make_pair(it, it != _blocks.end());
 }
 
 auto UiGraphModel::findPortByName(auto& ports, const std::string& portName) {
@@ -126,14 +126,13 @@ auto UiGraphModel::findPortByName(auto& ports, const std::string& portName) {
 bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
-        // TODO warning
-        fmt::print("\u001b[32mWARNING: Unknown block removed {}\n\u001b[0m", uniqueName);
+        requestGraphUpdate();
         return false;
     }
 
     // Delete edges for the removed block
     removeEdgesForBlock(*blockIt);
-    m_blocks.erase(blockIt);
+    _blocks.erase(blockIt);
     return true;
 }
 
@@ -143,7 +142,7 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
     if (found) {
         setBlockData(*it, blockData);
     } else {
-        auto& newBlock = m_blocks.emplace_back(/*owner*/ this);
+        auto& newBlock = _blocks.emplace_back(/*owner*/ this);
         setBlockData(newBlock, blockData);
     }
 }
@@ -151,8 +150,7 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
 void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
-        // TODO warning
-        fmt::print("\u001b[32mWARNING: Data updated for an unknown block {}\n\u001b[0m", uniqueName);
+        requestGraphUpdate();
         return;
     }
 
@@ -162,11 +160,9 @@ void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const g
 void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
-        // TODO warning
-        fmt::print("\u001b[32mWARNING: Settings updated for an unknown block {} -> {}\n\u001b[0m", uniqueName, data);
+        requestGraphUpdate();
         return;
     }
-    fmt::print("\u001b[32mNew settings for {} are {}\n\u001b[0m", uniqueName, data);
     for (const auto& [key, value] : data) {
         blockIt->blockSettings.insert_or_assign(key, value);
     }
@@ -177,17 +173,23 @@ void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, cons
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     UiGraphEdge edge(this);
     if (setEdgeData(edge, data)) {
-        m_edges.emplace_back(std::move(edge));
+        _edges.emplace_back(std::move(edge));
     } else {
         // Failed to read edge data
-        fmt::print("Failed to read edge data {}\n", data);
         requestGraphUpdate();
     }
 }
 
-void UiGraphModel::handleEdgeRemoved(const gr::property_map& data) { fmt::print("handleEdgeRemoved {}\n", data); }
+void UiGraphModel::handleEdgeRemoved(const gr::property_map& data) {}
 
 void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
+    _newGraphDataBeingSet = true;
+    struct scope_guard {
+        ~scope_guard() { flag = false; }
+        bool& flag;
+    };
+    scope_guard resetDataBeingSet(_newGraphDataBeingSet);
+
     // Strictly speaking, UiGraphModel is not a block even if
     // gr::Graph is a gr::Block, but we can set some basic
     // properties like this
@@ -196,13 +198,10 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Update or create blocks that GR knows
     const auto& children = getProperty<gr::property_map>(data, "children");
     for (const auto& [blockUniqueName, blockData] : children) {
-        fmt::print("\u001b[32mGraph contains child {}\n\u001b[0m", blockUniqueName);
         const auto [blockIt, found] = findBlockByName(blockUniqueName);
         if (found) {
-            fmt::print("\u001b[32mBlock {} exists, updating...\n\u001b[0m", blockUniqueName);
             setBlockData(*blockIt, std::get<gr::property_map>(blockData));
         } else {
-            fmt::print("\u001b[32mBlock {} does not exist, creating...\n\u001b[0m", blockUniqueName);
             handleBlockEmplaced(std::get<gr::property_map>(blockData));
         }
     }
@@ -210,24 +209,23 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Delete blocks that GR doesn't know about.
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
-    auto toRemove = std::partition(m_blocks.begin(), m_blocks.end(), [&children](const auto& block) { //
+    auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& block) { //
         return children.contains(block.blockUniqueName);
     });
-    for (; toRemove != m_blocks.end(); ++toRemove) {
-        fmt::print("\u001b[32mBlock {} no longer exists, removing...\n\u001b[0m", toRemove->blockUniqueName);
+    for (; toRemove != _blocks.end(); ++toRemove) {
         removeEdgesForBlock(*toRemove);
     }
-    m_blocks.erase(toRemove, m_blocks.end());
+    _blocks.erase(toRemove, _blocks.end());
 
     // Establish new edges
-    m_edges.clear();
+    _edges.clear();
     const auto& edges = getProperty<gr::property_map>(data, "edges");
     for (const auto& [index, edgeData_] : edges) {
         const auto edgeData = std::get<gr::property_map>(edgeData_);
 
         UiGraphEdge edge(this);
         if (setEdgeData(edge, edgeData)) {
-            m_edges.emplace_back(std::move(edge));
+            _edges.emplace_back(std::move(edge));
         } else {
             components::Notification::error("Invalid edge ignored");
         }
@@ -251,11 +249,10 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
             portsCollection.clear();
             for (const auto& [portName, portData_] : getProperty<gr::property_map>(blockData, portsField)) {
                 const auto& portData = std::get<gr::property_map>(portData_);
-                fmt::print("\u001b[32mEncoded input port: {} {}\n\u001b[0m", portName, portData);
-                auto& port         = portsCollection.emplace_back(/*owner*/ std::addressof(block));
-                port.portName      = portName;
-                port.portType      = getProperty<std::string>(portData, "type"s);
-                port.portDirection = direction;
+                auto&       port     = portsCollection.emplace_back(/*owner*/ std::addressof(block));
+                port.portName        = portName;
+                port.portType        = getProperty<std::string>(portData, "type"s);
+                port.portDirection   = direction;
             }
         };
 
@@ -291,8 +288,6 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition) -> UiGraphPort* {
         auto [it, found] = findBlockByName(currentBlockName);
         if (!found) {
-            // TODO report error
-            fmt::print("\u001b[32mGot an unknown block in a connection {}\n\u001b[0m", currentBlockName);
             return nullptr;
         }
 
@@ -304,7 +299,6 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
                                   // TODO: sub-index for ports -- when we add UI support for
                                   // port arrays
                                   if (indexBasedDefinition.topLevel >= ports.size()) {
-                                      fmt::print("\u001b[32mPort {} not found in in block while trying to connect\n\u001b[0m", indexBasedDefinition.topLevel);
                                       return nullptr;
                                   }
 
@@ -315,7 +309,6 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
                                       return port.portName == stringBasedDefinition.name;
                                   });
                                   if (portIt == ports.end()) {
-                                      fmt::print("\u001b[32mPort {} not found in in block while trying to connect\n\u001b[0m", stringBasedDefinition.name);
                                       return nullptr;
                                   }
                                   return std::addressof(*portIt);
@@ -342,7 +335,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
 }
 
 void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
-    std::erase_if(m_edges, [blockPtr = std::addressof(block)](const auto& edge) {
+    std::erase_if(_edges, [blockPtr = std::addressof(block)](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
     });

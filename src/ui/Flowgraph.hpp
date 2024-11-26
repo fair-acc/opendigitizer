@@ -237,12 +237,12 @@ struct BlockRegistry {
 
     const BlockDefinition* get(std::string_view id) const;
 
-    inline const auto& types() const { return m_types; }
+    inline const auto& types() const { return _types; }
 
     static BlockRegistry& instance();
 
 private:
-    // This stuff is to enable looking up in the m_types map with string_view
+    // This stuff is to enable looking up in the _types map with string_view
     template<typename... Keys>
     struct transparent_hash : std::hash<Keys>... {
         using is_transparent = void;
@@ -251,7 +251,7 @@ private:
 
     using transparent_string_hash = transparent_hash<std::string, std::string_view, const char*, char*>;
 
-    std::unordered_map<std::string, std::unique_ptr<BlockDefinition>, transparent_string_hash, std::equal_to<>> m_types;
+    std::unordered_map<std::string, std::unique_ptr<BlockDefinition>, transparent_string_hash, std::equal_to<>> _types;
 };
 
 class Block {
@@ -433,8 +433,6 @@ public:
 
     void changeBlockDefinition(Block* block, const std::string& type);
 
-    // TODO this will replace the whole flowgraph, for the time being, we
-    // are just testing the model
     UiGraphModel graphModel;
 
 private:

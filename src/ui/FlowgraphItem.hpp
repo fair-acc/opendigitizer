@@ -28,7 +28,6 @@ public:
     void        clear();
     void        setStyle(LookAndFeel::Style style);
 
-    // TODO: Block pointer
     std::function<Block*(FlowGraph*)>                                                               newSinkCallback;
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
@@ -53,7 +52,6 @@ private:
     SignalSelector m_signalSelector;
 
     // new block dialog data
-    // TODO: Block pointer
     const Block* m_filterBlock = nullptr;
     struct Context {
         Context();

@@ -31,7 +31,7 @@ private:
         virtual gr::work::Status draw() noexcept = 0;
     };
 
-    std::unordered_map<std::string, std::unique_ptr<SinkModel>> m_knownSinks;
+    std::unordered_map<std::string, std::unique_ptr<SinkModel>> _knownSinks;
 
     template<typename Block>
     struct SinkWrapper : SinkModel {
@@ -49,14 +49,12 @@ public:
 
     template<typename TBlock>
     void registerPlotSink(TBlock* block) {
-        fmt::print("\u001b[36m>> registerPlotSink {}\n\u001b[0m", block->unique_name);
-        m_knownSinks[block->unique_name] = std::make_unique<SinkWrapper<TBlock>>(block);
+        _knownSinks[block->unique_name] = std::make_unique<SinkWrapper<TBlock>>(block);
     }
 
     template<typename TBlock>
     void unregisterPlotSink(TBlock* block) {
-        fmt::print("\u001b[36m>> unregisterPlotSink {}\n\u001b[0m", block->unique_name);
-        m_knownSinks.erase(block->unique_name);
+        _knownSinks.erase(block->unique_name);
     }
 };
 

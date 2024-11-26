@@ -80,8 +80,8 @@ BlockRegistry& BlockRegistry::instance() {
 }
 
 const BlockDefinition* BlockRegistry::get(std::string_view id) const {
-    auto it = m_types.find(id);
-    return it == m_types.end() ? nullptr : it->second.get();
+    auto it = _types.find(id);
+    return it == _types.end() ? nullptr : it->second.get();
 }
 
 void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader) {
@@ -135,7 +135,7 @@ void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& plugin
     }
 }
 
-void BlockRegistry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { m_types.insert({t->name, std::move(t)}); }
+void BlockRegistry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { _types.insert({t->name, std::move(t)}); }
 
 Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) { //
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
@@ -320,7 +320,6 @@ void FlowGraph::parse(const std::filesystem::path& file) {
 }
 
 void FlowGraph::parse(const std::string& str) {
-    fmt::print("FlowGraph::parse {}\n", str);
     clear();
 
     auto grGraph = [this, &str]() {
@@ -330,8 +329,6 @@ void FlowGraph::parse(const std::string& str) {
             throw std::runtime_error(e);
         }
     }();
-
-    fmt::print("Number of blocks {}, number of edges {}\n", grGraph.blocks().size(), grGraph.edges().size());
 
     grGraph.forEachBlock([&](const auto& grBlock) {
         auto typeName = grBlock.typeName();

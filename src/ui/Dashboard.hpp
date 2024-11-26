@@ -134,7 +134,6 @@ public:
 
     inline auto& remoteServices() { return m_services; }
 
-    // TODO: Block pointer
     Block* createSink();
     void   loadPlotSources();
 

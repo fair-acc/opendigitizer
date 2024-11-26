@@ -298,7 +298,7 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
     // draw the button(s) that go to the previous block(s).
     const char* nextString = verticalLayout ? "\uf063" : "\uf061";
     IMW::Font   font(LookAndFeel::instance().fontIconsSolid);
-    if (context.block->inputsPorts.empty()) {
+    if (context.block->inputPorts.empty()) {
         auto buttonSize = calcButtonSize(1);
         if (verticalLayout) {
             ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
@@ -388,7 +388,6 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
                                 ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                 ImGui::SetNextItemWidth(100);
                                 if (InputKeypad<>::edit(label, &val)) {
-                                    fmt::print("Sending set settings message {} {} {}\n", block->blockUniqueName, p.first, val);
                                     sendSetSettingMessage(block->blockUniqueName, p.first, val);
                                 }
                                 return true;
@@ -400,7 +399,6 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
                                     ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                     ImGui::SetNextItemWidth(100);
                                     if (InputKeypad<>::edit(label, &v)) {
-                                        fmt::print("Sending set settings message {} {} {}\n", block->blockUniqueName, p.first, val);
                                         sendSetSettingMessage(block->blockUniqueName, p.first, v);
                                     }
                                     return true;
