@@ -16,32 +16,65 @@
 #include "components/ListBox.hpp"
 #include "components/Splitter.hpp"
 
+#include "App.hpp"
+
+using namespace std::string_literals;
+
 namespace DigitizerUi {
 
-// Function to perform topological sort on the graph
-inline std::vector<const Block*> topologicalSort(const std::vector<const Block*>& blocks, const plf::colony<Connection>& connections) {
-    std::vector<const Block*> sortedBlocks;
-    std::set<const Block*>    visited;
-
-    std::function<void(const Block*)> visit = [&](const Block* uiBlock) -> void {
-        if (visited.find(uiBlock) == visited.end()) {
-            visited.insert(uiBlock);
-
-            // Visit connected blocks
-            for (const auto& connection : connections) {
-                if (connection.src.uiBlock == uiBlock) {
-                    visit(connection.dst.uiBlock);
-                }
-            }
-
-            sortedBlocks.push_back(uiBlock);
-        }
+inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::vector<UiGraphEdge>& edges) {
+    struct SortLevel {
+        std::vector<const UiGraphBlock*> blocks;
     };
 
-    std::ranges::for_each(blocks, visit);
+    struct BlockConnections {
+        std::unordered_set<const UiGraphBlock*> parents;
+        std::unordered_set<const UiGraphBlock*> children;
+    };
 
-    std::reverse(sortedBlocks.begin(), sortedBlocks.end());
-    return sortedBlocks;
+    std::unordered_map<const UiGraphBlock*, BlockConnections> graphConnections;
+    std::vector<SortLevel>                                    result;
+
+    for (const auto& block : blocks) {
+        graphConnections[std::addressof(block)];
+    }
+
+    for (const auto& edge : edges) {
+        graphConnections[edge.edgeSourcePort->ownerBlock].children.insert(edge.edgeDestinationPort->ownerBlock);
+        graphConnections[edge.edgeDestinationPort->ownerBlock].parents.insert(edge.edgeSourcePort->ownerBlock);
+    }
+
+    while (!graphConnections.empty()) {
+        SortLevel newLevel;
+        for (const auto& [block, connections] : graphConnections) {
+            if (connections.parents.empty()) {
+                newLevel.blocks.push_back(block);
+            }
+        }
+
+        for (const auto* block : newLevel.blocks) {
+            graphConnections.erase(block);
+            for (auto& [_, connections] : graphConnections) {
+                connections.parents.erase(block);
+                // TODO(NOW) Proper top sort would use this to initialize the next level blocks
+            }
+        }
+
+        if (newLevel.blocks.empty()) {
+            break;
+        }
+
+        result.push_back(std::move(newLevel));
+    }
+
+    // If there are blocks in graphConnections, we have at lease one cycle,
+    // those blocks will not be sorted. Put them in the last level.
+    if (!graphConnections.empty()) {
+        SortLevel newLevel;
+        std::ranges::transform(graphConnections, std::back_inserter(newLevel.blocks), [](const auto& kvp) { return kvp.first; });
+    }
+
+    return result;
 }
 
 FlowGraphItem::FlowGraphItem() {}
@@ -244,6 +277,16 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
+static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, DataType type) {
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
+
+    auto y = pinPosition.y;
+    ImGui::SetCursorPosX(pinPosition.x + textMargin);
+    ImGui::SetCursorPosY(pinPosition.y - spacing);
+    ImGui::TextUnformatted(name.c_str());
+};
+
 static void drawPin(ImDrawList* drawList, ImVec2 rectSize, float spacing, float textMargin, const std::string& name, DataType type) {
     auto p = ImGui::GetCursorScreenPos();
     drawList->AddRectFilled(p, p + rectSize, colorForDataType(type));
@@ -279,18 +322,8 @@ static bool blockInTree(const Block* block, const Block* start) {
     return blockInTreeHelper<inputs, &Connection::src>(block, start) || blockInTreeHelper<outputs, &Connection::dst>(block, start);
 }
 
-namespace {
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-template<typename... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
-} // namespace
-
 void valToString(const pmtv::pmt& val, std::string& str) {
-    std::visit(overloaded{
+    std::visit(gr::meta::overloaded{
                    [&](const std::string& s) { str = s; },
                    [&](const auto& a) { str = "na"; },
                },
@@ -444,7 +477,213 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
     ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
 }
 
+void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+    //
+    IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
+    const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
+
+    {
+        struct BoundingBox {
+            // TODO: proper initial min max values
+            float minX = 0, minY = 0, maxX = 0, maxY = 0;
+
+            void addRectangle(ImVec2 position, ImVec2 size) {
+                minX = std::min(minX, position[0]);
+                minY = std::min(minY, position[1]);
+                maxX = std::min(maxX, position[0] + size[0]);
+                maxY = std::min(maxY, position[1] + size[1]);
+            }
+        };
+
+        BoundingBox boundingBox;
+
+        // TODO: Move to the theme definition
+        const int    pinHeight  = 14;
+        const int    pinSpacing = 5;
+        const int    textMargin = 2;
+        const ImVec2 minimumBlockSize{80.0f, 0.0f};
+
+        // We need to pass all blocks in order for NodeEditor to calculate
+        // the sizes. Then, we can arrange those that are newly created
+        for (auto& block : graphModel.blocks()) {
+            auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
+
+            const auto& inputPorts       = block.inputPorts;
+            const auto& outputPorts      = block.outputPorts;
+            auto&       inputPortWidths  = block.inputPortWidths;
+            auto&       outputPortWidths = block.outputPortWidths;
+
+            auto blockPosition = [&] {
+                IMW::NodeEditor::Node node(blockId);
+
+                const auto blockScreenPosition = ImGui::GetCursorScreenPos();
+                auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
+
+                // Draw block title
+                auto name = block.blockName;
+                ImGui::TextUnformatted(name.c_str());
+                auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+
+                // Draw block properties
+                std::string value;
+                for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                    if (propertyKey == "description" || propertyKey.contains("::")) {
+                        continue;
+                    }
+
+                    const auto metaKey = propertyKey + "::visible";
+                    const auto it      = block.blockMetaInformation.find(metaKey);
+                    if (it != block.blockMetaInformation.end()) {
+                        if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                            continue;
+                        }
+                    }
+
+                    valToString(propertyValue, value);
+                    ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                }
+
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                // Update bounding box
+                if (block.view.has_value()) {
+                    auto position = ax::NodeEditor::GetNodePosition(blockId);
+                    block.view->x = position[0];
+                    block.view->y = position[1];
+                    boundingBox.addRectangle(position, blockSize);
+                }
+
+                // Register ports with node editor, actual drawing comes later
+                auto registerPins = [&padding, &pinHeight, &blockId](auto& ports, auto& widths, auto position, auto pinType) {
+                    widths.resize(ports.size());
+                    if (pinType == ax::NodeEditor::PinKind::Output) {
+                        auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+                        position.x += blockSize.x - padding.x;
+                    }
+
+                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                        widths[i] = ImGui::CalcTextSize(ports[i].portName.c_str()).x + textMargin * 2;
+                        // TODO Reimplement block visual filtering
+                        // if (!filteredOut) {
+                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
+                        // }
+                        position.y += pinHeight + pinSpacing;
+                    }
+                };
+
+                ImVec2 position = {blockScreenPosition.x - padding.x, blockScreenPosition.y};
+                registerPins(inputPorts, inputPortWidths, position, ax::NodeEditor::PinKind::Input);
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                registerPins(outputPorts, outputPortWidths, blockScreenPosition, ax::NodeEditor::PinKind::Output);
+                blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+
+                ImGui::SetCursorScreenPos({position.x, blockBottomY});
+
+                struct result {
+                    ImVec2 topLeft;
+                    float  bottomY;
+                };
+                return result{position, blockBottomY};
+            }();
+
+            // The input/output pins are drawn after ending the node because otherwise
+            // drawing them would increase the node size, which we need to know to correctly place the
+            // output pins, and that would cause the nodes to continuously grow in width
+            {
+                const auto originalScreenPosition = ImGui::GetCursorScreenPos();
+                const auto blockSize              = ax::NodeEditor::GetNodeSize(blockId);
+                // const auto blockPosition          = ax::NodeEditor::GetNodePosition(blockId);
+
+                auto leftPos = blockPosition.topLeft.x - padding.x;
+
+                ImGui::SetCursorScreenPos(blockPosition.topLeft);
+                auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
+
+                auto drawPorts = [&](auto& ports, auto& widths, auto leftPos, bool rightAlign) {
+                    auto pinPositionY = blockPosition.topLeft.y;
+                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                        auto pinPositionX = leftPos + padding.x - (rightAlign ? widths[i] : 0);
+                        newDrawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, {} /* TODO in.portType */);
+                        pinPositionY += pinHeight + pinSpacing;
+                    }
+                };
+
+                drawPorts(inputPorts, inputPortWidths, leftPos, true);
+                drawPorts(outputPorts, outputPortWidths, leftPos + blockSize.x, false);
+            }
+        }
+
+        for (auto& block : graphModel.blocks()) {
+            if (!block.view.has_value()) {
+                auto blockId   = ax::NodeEditor::NodeId(std::addressof(block));
+                auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+                block.view     = UiGraphBlock::ViewData{//
+                        .x      = boundingBox.minX,     //
+                        .y      = boundingBox.maxY,     //
+                        .width  = blockSize[0],         //
+                        .height = blockSize[1]};
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
+                boundingBox.minX += blockSize[0] + padding.x;
+            }
+        }
+
+        const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+        for (auto& edge : graphModel.edges()) {
+            ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
+                ax::NodeEditor::PinId(edge.edgeSourcePort),     //
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+        }
+
+        // Handle creation action, returns true if editor want to create new object (node or link)
+        if (auto creation = IMW::NodeEditor::Creation(linkColor, 1.0f)) {
+            ax::NodeEditor::PinId inputPinId, outputPinId;
+            if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
+                // QueryNewLink returns true if editor wants to create new link between pins.
+                //
+                // Link can be created only for two valid pins, it is up to you to
+                // validate if connection make sense. Editor is happy to make any.
+                //
+                // Link always goes from input to output. User may choose to drag
+                // link from output pin or input pin. This determines which pin ids
+                // are valid and which are not:
+                //   * input valid, output invalid - user started to drag new link from input pin
+                //   * input invalid, output valid - user started to drag new link from output pin
+                //   * input valid, output valid   - user dragged link over other pin, can be validated
+
+                if (inputPinId && outputPinId) // both are valid, let's accept link
+                {
+                    auto* inputPort  = inputPinId.AsPointer<UiGraphPort>();
+                    auto* outputPort = outputPinId.AsPointer<UiGraphPort>();
+
+                    if (inputPort->portDirection == outputPort->portDirection) {
+                        ax::NodeEditor::RejectNewItem();
+
+                    } else {
+                        if (ax::NodeEditor::AcceptNewItem()) {
+                            // AcceptNewItem() return true when user release mouse button.
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kEmplaceEdge;
+                            message.data     = gr::property_map{                                   //
+                                {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
+                                {"sourcePort"s, outputPort->portName},                         //
+                                {"destinationBlock"s, inputPort->ownerBlock->blockUniqueName}, //
+                                {"destinationPort"s, inputPort->portName},                     //
+                                {"minBufferSize"s, gr::Size_t(4096)},                          //
+                                {"weight"s, std::int32_t(1)},                                  //
+                                {"edgeName"s, std::string()}};
+                            App::instance().sendMessage(message);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
+
     auto& c = m_editors[fg];
     if (!c.editor) {
         return;
@@ -465,102 +704,19 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    ax::NodeEditor::Begin("My Editor", {size.x, size.y}); // ImGui::GetContentRegionAvail());
-
-    std::vector<const Block*> blocks;
-    std::ranges::transform(fg->blocks(), std::back_inserter(blocks), [](auto& b) { return b.get(); });
-
-    for (auto& b : blocks) {
-        if (b) {
-            addBlock(*b);
-        }
-    }
     if (m_layoutGraph) {
-        sortNodes(fg, blocks);
         m_layoutGraph = false;
-    }
-    if (!m_nodesToArrange.empty()) {
-        arrangeUnconnectedNodes(fg, m_nodesToArrange);
-        m_nodesToArrange.clear();
+        sortNodes(fg);
     }
 
-    if (m_createNewBlock) {
-        auto b = m_selectedBlockDefinition->createBlock("New Block");
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b.get()), m_contextMenuPosition);
-        fg->addBlock(std::move(b));
-        m_createNewBlock = false;
-    }
+    newDrawGraph(fg->graphModel, size);
 
-    const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
-    for (auto& c : fg->connections()) {
-        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&c), ax::NodeEditor::PinId(&c.src.uiBlock->outputs()[c.src.index]), ax::NodeEditor::PinId(&c.dst.uiBlock->inputs()[c.dst.index]), linkColor);
-    }
-
-    // Handle creation action, returns true if editor want to create new object (node or link)
-    if (ax::NodeEditor::BeginCreate(linkColor)) {
-        ax::NodeEditor::PinId inputPinId, outputPinId;
-        if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
-            // QueryNewLink returns true if editor want to create new link between pins.
-            //
-            // Link can be created only for two valid pins, it is up to you to
-            // validate if connection make sense. Editor is happy to make any.
-            //
-            // Link always goes from input to output. User may choose to drag
-            // link from output pin or input pin. This determines which pin ids
-            // are valid and which are not:
-            //   * input valid, output invalid - user started to drag new link from input pin
-            //   * input invalid, output valid - user started to drag new link from output pin
-            //   * input valid, output valid   - user dragged link over other pin, can be validated
-
-            if (inputPinId && outputPinId) // both are valid, let's accept link
-            {
-                auto inputPort  = inputPinId.AsPointer<Block::Port>();
-                auto outputPort = outputPinId.AsPointer<Block::Port>();
-
-                if (inputPort->portDirection == outputPort->portDirection) {
-                    ax::NodeEditor::RejectNewItem();
-                } else {
-                    bool compatibleTypes = inputPort->portDataType == outputPort->portDataType || inputPort->portDataType == DataType::Wildcard || outputPort->portDataType == DataType::Wildcard;
-                    if (!compatibleTypes) {
-                        auto msg = fmt::format("wrong types '{} {}' '{} {}'", inputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(inputPort->portDataType)), outputPort->portDataType.toString(), magic_enum::enum_name(static_cast<DataType::Id>(outputPort->portDataType)));
-                        components::Notification::error(msg);
-                        ax::NodeEditor::RejectNewItem();
-                    } else if (inputPort->portConnections.empty() && ax::NodeEditor::AcceptNewItem()) {
-                        // AcceptNewItem() return true when user release mouse button.
-                        fg->connect(inputPort, outputPort);
-                    }
-                }
-            }
-        }
-    }
-    ax::NodeEditor::EndCreate(); // Wraps up object creation action handling.
-
-    if (ax::NodeEditor::BeginDelete()) {
-        ax::NodeEditor::NodeId nodeId;
-        ax::NodeEditor::LinkId linkId;
-        ax::NodeEditor::PinId  pinId1, pinId2;
-        if (ax::NodeEditor::QueryDeletedNode(&nodeId)) {
-            ax::NodeEditor::AcceptDeletedItem(true);
-            auto* b = nodeId.AsPointer<Block>();
-            fg->deleteBlock(b);
-            if (m_filterBlock == b) {
-                m_filterBlock = nullptr;
-            }
-        } else if (ax::NodeEditor::QueryDeletedLink(&linkId, &pinId1, &pinId2)) {
-            ax::NodeEditor::AcceptDeletedItem(true);
-            auto* c = linkId.AsPointer<Connection>();
-            fg->disconnect(c);
-        }
-    }
-    ax::NodeEditor::EndDelete();
-
-    const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
-    const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
-    ax::NodeEditor::End();
+    auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
+    auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
             m_editPaneContext.block = nullptr;
@@ -572,7 +728,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
         if (block) {
             ImGui::OpenPopup("Block settings");
             m_selectedBlock = block;
@@ -583,7 +739,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
-        auto block = n.AsPointer<Block>();
+        auto block = n.AsPointer<UiGraphBlock>();
         if (block) {
             ImGui::OpenPopup("block_ctx_menu");
             m_selectedBlock = block;
@@ -601,18 +757,47 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             openNewBlockDialog = true;
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
-            sortNodes(fg, blocks);
+            sortNodes(fg);
+        }
+        if (ImGui::MenuItem("Refresh graph")) {
+            fg->graphModel.requestGraphUpdate();
         }
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (ImGui::MenuItem("Delete")) {
-            fg->deleteBlock(m_selectedBlock);
+            // Send message to delete block
+            gr::Message message;
+            message.endpoint = gr::graph::property::kRemoveBlock;
+            message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
+            App::instance().sendMessage(std::move(message));
         }
-        for (auto [instantiationName, _] : m_selectedBlock->type().instantiations) {
-            auto name = std::string{"Change Type to "} + instantiationName;
-            if (ImGui::MenuItem(name.c_str())) {
-                fg->changeBlockDefinition(m_selectedBlock, instantiationName);
+
+        std::string_view blockType         = m_selectedBlock->blockTypeName;
+        auto             blockTypeSplitter = std::ranges::find(blockType, '<');
+        if (blockTypeSplitter != blockType) {
+            const auto& types = BlockRegistry::instance().types();
+
+            const auto currentBlockBaseType            = std::string(blockType.cbegin(), blockTypeSplitter);
+            const auto currentBlockParametrizationType = std::string(blockTypeSplitter + 1, blockType.cend() - 1);
+            const auto currentBlockBaseTypeInfoIt      = types.find(currentBlockBaseType);
+            if (currentBlockBaseTypeInfoIt != types.cend()) {
+                for (const auto& availableParametrization : currentBlockBaseTypeInfoIt->second->availableParametrizations) {
+                    if (availableParametrization != currentBlockParametrizationType) {
+                        auto name = std::string{"Change Type to "} + availableParametrization;
+                        if (ImGui::MenuItem(name.c_str())) {
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kReplaceBlock;
+                            message.data     = gr::property_map{
+                                    {"uniqueName"s, m_selectedBlock->blockUniqueName}, //
+                                    {"type"s, std::move(currentBlockBaseType)},        //
+                                    {"parameters"s, availableParametrization}          //
+                            };
+                            App::instance().sendMessage(message);
+                        }
+                    }
+                }
             }
         }
     }
@@ -675,7 +860,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
     ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
     if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
-        auto ret = components::FilteredListBox("blocks", BlockDefinition::registry().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
+        auto ret = components::FilteredListBox("blocks", BlockRegistry::instance().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
             if (it.second->isSource) {
                 return {};
             }
@@ -692,84 +877,45 @@ void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
 
         if (components::DialogButtons() == components::DialogButton::Ok) {
             if (m_selectedBlockDefinition) {
+                // TODO kill m_createNewBlock
                 m_createNewBlock = true;
+                // sendMessage
+                gr::Message message;
+                std::string type   = m_selectedBlockDefinition->name;
+                std::string params = "float";
+                message.cmd        = gr::message::Command::Set;
+                message.endpoint   = gr::graph::property::kEmplaceBlock;
+                message.data       = gr::property_map{
+                          {"type"s, std::move(type)},        //
+                          {"parameters"s, std::move(params)} //
+                };
+                App::instance().sendMessage(message);
             }
         }
     }
 }
 
-void FlowGraphItem::sortNodes(FlowGraph* fg, const std::vector<const Block*>& blocks) {
-    // first take out all unconnected nodes, they will be added later
-    std::vector<const Block*> connectedBlocks, unconnectedBlocks;
-    std::ranges::for_each(blocks, [&connectedBlocks, &unconnectedBlocks](const Block* b) {
-        auto hasNoConnection = [](const Block::Port& p) { return p.portConnections.empty(); };
-        if (std::ranges::all_of(b->inputs(), hasNoConnection) && std::ranges::all_of(b->outputs(), hasNoConnection)) {
-            unconnectedBlocks.push_back(b);
-        } else {
-            connectedBlocks.push_back(b);
+void FlowGraphItem::sortNodes(FlowGraph* fg) {
+    auto blockLevels = topologicalSort(fg->graphModel.blocks(), fg->graphModel.edges());
+
+    constexpr float ySpacing = 32;
+    constexpr float xSpacing = 200;
+
+    float x = 0;
+    for (const auto& level : blockLevels) {
+        float y          = 0;
+        float levelWidth = 0;
+
+        for (const auto& block : level.blocks) {
+            auto blockId = ax::NodeEditor::NodeId(block);
+            ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
+            auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+            y += blockSize.y + ySpacing;
+            levelWidth = std::max(levelWidth, blockSize.x);
         }
-    });
 
-    auto res = topologicalSort(connectedBlocks, fg->connections());
-
-    struct Level {
-        float                     y_min{0}, x_min{0};
-        float                     y_max{0}, x_max{0}; // how much does our biggest elements extent into x/y
-        std::vector<const Block*> blocks;
-    };
-    std::vector<Level> levels;
-    levels.emplace_back();
-    auto          lvl       = levels.begin();
-    constexpr int y_padding = 50, x_padding = 50, lvl_padding_x = 150;
-
-    for (auto bi = res.begin(); bi != res.end(); ++bi) {
-        auto* b = *bi;
-        if (!b) {
-            continue; // the last block is nullptr
-        }
-        auto   id = ax::NodeEditor::NodeId(b);
-        ImVec2 position;
-
-        if (b->inputs().empty() || std::ranges::all_of(b->inputs(), [](const Block::Port& p) { return p.portConnections.empty(); })) {
-            lvl = levels.begin();
-        } else {
-            // move back until we find the latest block we are connected to
-            auto back = bi - 1;
-            bool lvlFound{false};
-
-            do {
-                for (const Block::Port& p : b->inputs()) {
-                    auto f = std::ranges::find_if(p.portConnections, [back, b](Connection* c) { return c->src.uiBlock == *back; });
-                    if (f != p.portConnections.end()) {
-                        auto* lastBlock = (*f)->src.uiBlock;
-
-                        lvl = std::ranges::find_if(levels, [lastBlock](Level& l) { return std::ranges::find(l.blocks, lastBlock) != l.blocks.end(); });
-                        assert(lvl != levels.end());
-                        if (lvl + 1 == levels.end()) { // check if last block is current lvl, because then we start a new lvl
-                            auto new_min = lvl->x_max + lvl_padding_x;
-                            levels.push_back({lvl->y_min, new_min});
-                            lvl = levels.end() - 1;
-                        } else {
-                            ++lvl;
-                        }
-                        lvlFound = true;
-                        break;
-                    }
-                }
-                --back;
-            } while (!lvlFound);
-        }
-        position.x = lvl->x_min + x_padding;
-        position.y = lvl->y_max + y_padding;
-
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(b), position);
-        auto size  = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(b));
-        lvl->x_max = std::max(lvl->x_min + size.x, lvl->x_max);
-        lvl->y_max += size.y + y_padding;
-        lvl->blocks.push_back(b);
+        x += levelWidth + xSpacing;
     }
-
-    arrangeUnconnectedNodes(fg, unconnectedBlocks);
 }
 
 void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks) {

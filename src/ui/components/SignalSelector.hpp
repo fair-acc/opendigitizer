@@ -333,7 +333,7 @@ public:
         static std::vector<Cat> cats;
         cats.clear();
         cats.push_back({"Remote signals", {}});
-        for (const auto& t : BlockDefinition::registry().types()) {
+        for (const auto& t : BlockRegistry::instance().types()) {
             if (t.second->isSource && !t.second->category.empty()) {
                 auto it = std::find_if(cats.begin(), cats.end(), [&](const auto& c) { return c.name == t.second->category; });
                 if (it == cats.end()) {

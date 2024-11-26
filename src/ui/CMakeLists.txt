@@ -112,6 +112,8 @@ add_library(
   Flowgraph.hpp
   FlowgraphItem.cpp
   FlowgraphItem.hpp
+  GraphModel.cpp
+  GraphModel.hpp
   Dashboard.cpp
   Dashboard.hpp
   DashboardPage.cpp

@@ -28,7 +28,6 @@ public:
     void        clear();
     void        setStyle(LookAndFeel::Style style);
 
-    //
     std::function<Block*(FlowGraph*)>                                                               newSinkCallback;
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
@@ -40,10 +39,10 @@ private:
 
     void addBlock(const Block& b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
     void drawNewBlockDialog(FlowGraph* fg);
-    void sortNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
+    void sortNodes(FlowGraph* fg);
     void arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
 
-    Block*                        m_selectedBlock = nullptr;
+    UiGraphBlock*                 m_selectedBlock = nullptr;
     std::vector<Block::Parameter> m_parameters;
     const BlockDefinition*        m_selectedBlockDefinition = nullptr;
     bool                          m_createNewBlock          = false;

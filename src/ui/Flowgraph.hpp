@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GraphModel.hpp"
 #include <filesystem>
 #include <functional>
 #include <string_view>
@@ -203,11 +204,11 @@ public:
 };
 
 struct BlockDefinition {
-    const std::string     name;
-    const std::string     label;
-    std::vector<DataType> availableParametrizations;
-    const std::string     category;
-    gr::property_map      defaultSettings;
+    const std::string        name;
+    const std::string        label;
+    std::vector<std::string> availableParametrizations;
+    const std::string        category;
+    gr::property_map         defaultSettings;
 
     // We are going to assume that source/sink doesn't depend on
     // template parametrization
@@ -226,31 +227,31 @@ struct BlockDefinition {
         // TODO make this smarter once metaInformation() is statically available
         return name == "opendigitizer::ImPlotSink" || name == "opendigitizer::ImPlotSinkDataSet";
     }
+};
 
-    // TODO: Move to a separate class
-    struct Registry {
-        void addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader);
+// TODO: Remove once we have message-based registry queries
+struct BlockRegistry {
+    void addBlockDefinitionsFromPluginLoader(gr::PluginLoader& pluginLoader);
 
-        void addBlockDefinition(std::unique_ptr<BlockDefinition>&& t);
+    void addBlockDefinition(std::unique_ptr<BlockDefinition>&& t);
 
-        const BlockDefinition* get(std::string_view id) const;
+    const BlockDefinition* get(std::string_view id) const;
 
-        inline const auto& types() const { return m_types; }
+    inline const auto& types() const { return _types; }
 
-    private:
-        // This stuff is to enable looking up in the m_types map with string_view
-        template<typename... Keys>
-        struct transparent_hash : std::hash<Keys>... {
-            using is_transparent = void;
-            using std::hash<Keys>::operator()...;
-        };
+    static BlockRegistry& instance();
 
-        using transparent_string_hash = transparent_hash<std::string, std::string_view, const char*, char*>;
-
-        std::unordered_map<std::string, std::unique_ptr<BlockDefinition>, transparent_string_hash, std::equal_to<>> m_types;
+private:
+    // This stuff is to enable looking up in the _types map with string_view
+    template<typename... Keys>
+    struct transparent_hash : std::hash<Keys>... {
+        using is_transparent = void;
+        using std::hash<Keys>::operator()...;
     };
 
-    static Registry& registry();
+    using transparent_string_hash = transparent_hash<std::string, std::string_view, const char*, char*>;
+
+    std::unordered_map<std::string, std::unique_ptr<BlockDefinition>, transparent_string_hash, std::equal_to<>> _types;
 };
 
 class Block {
@@ -271,8 +272,6 @@ public:
         DataType                 portDataType;
         std::vector<Connection*> portConnections;
     };
-
-    class OutputPort : public Port {};
 
     struct EnumParameter {
         const BlockInstantiationDefinition::EnumParameter& definition;
@@ -375,7 +374,7 @@ private:
 };
 
 struct ExecutionContext {
-    gr::Graph                                        graph;
+    gr::Graph                                        grGraph;
     std::unordered_map<std::string, gr::BlockModel*> plotSinkGrBlocks;
     std::vector<gr::BlockModel*>                     toolbarBlocks;
 };
@@ -433,6 +432,8 @@ public:
     }
 
     void changeBlockDefinition(Block* block, const std::string& type);
+
+    UiGraphModel graphModel;
 
 private:
     std::shared_ptr<gr::PluginLoader>                _pluginLoader;

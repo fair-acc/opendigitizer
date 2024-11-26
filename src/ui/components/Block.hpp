@@ -13,17 +13,20 @@ class DashboardPage;
 namespace DigitizerUi::components {
 
 struct BlockControlsPanelContext {
-    DigitizerUi::Block* block = {};
+    UiGraphBlock* block = nullptr;
     enum class Mode { None, Insert, AddAndBranch };
-    Mode                                               mode            = Mode::None;
-    DigitizerUi::Block::Port*                          insertBefore    = nullptr;
-    DigitizerUi::Block::Port*                          insertFrom      = nullptr;
-    DigitizerUi::Connection*                           breakConnection = nullptr;
+
+    Mode mode = Mode::None;
+
+    // DigitizerUi::Block::Port* insertBefore    = nullptr;
+    // DigitizerUi::Block::Port* insertFrom      = nullptr;
+    // DigitizerUi::Connection*  breakConnection = nullptr;
+
     std::chrono::time_point<std::chrono::system_clock> closeTime;
 };
 
 void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout);
-void BlockSettingsControls(DigitizerUi::Block* b, bool verticalLayout, const ImVec2& size = {0.f, 0.f});
+void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& size = {0.f, 0.f});
 
 } // namespace DigitizerUi::components
 

@@ -205,6 +205,6 @@ ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->
 
 std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
     auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
-    BlockDefinition::registry().addBlockDefinitionsFromPluginLoader(*loader);
+    BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*loader);
     return loader;
 }

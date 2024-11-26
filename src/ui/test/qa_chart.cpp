@@ -136,7 +136,7 @@ int main(int argc, char* argv[]) {
     auto execution = g_state.dashboard->localFlowGraph.createExecutionContext();
     g_state.dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
 
-    g_state.startScheduler(std::move(execution.graph));
+    g_state.startScheduler(std::move(execution.grGraph));
 
     return app.runTests() ? 0 : 1;
 }

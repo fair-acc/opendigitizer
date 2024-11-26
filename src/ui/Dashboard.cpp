@@ -19,8 +19,11 @@
 
 #include "App.hpp"
 #include "Flowgraph.hpp"
+#include "GraphModel.hpp"
 
 #include "utils/Yaml.hpp"
+
+using namespace std::string_literals;
 
 struct FlowgraphMessage {
     std::string flowgraph;
@@ -239,7 +242,7 @@ std::shared_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::s
 Block* Dashboard::createSink() {
     const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto& b) { return b->type().isPlotSink(); });
     auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto       sink      = BlockDefinition::registry().get("opendigitizer::ImPlotSink")->createBlock(name);
+    auto       sink      = BlockRegistry::instance().get("opendigitizer::ImPlotSink")->createBlock(name);
     sink->updateSettings({{"color", randomColor()}});
     auto sinkptr = sink.get();
     localFlowGraph.addBlock(std::move(sink));
@@ -251,7 +254,8 @@ void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& d
 void Dashboard::load() {
     if (m_desc->source != unsavedSource()) {
         fetch(
-            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard}, [_this = shared()](std::array<std::string, 2>&& data) { _this->load(std::move(data[0]), std::move(data[1])); },
+            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
+            [_this = shared()](std::array<std::string, 2>&& data) { _this->load(std::move(data[0]), std::move(data[1])); },
             [_this = shared()]() {
                 auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->source->path, _this->m_desc->filename);
                 components::Notification::error(error);
