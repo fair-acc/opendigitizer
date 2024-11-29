@@ -407,18 +407,11 @@ static void main_loop(void* arg) {
             components::Toolbar(app->toolbarBlocks);
         }
 
-        ImGuiID viewId = 0;
         if (app->mainViewMode == ViewMode::VIEW) {
             if (app->dashboard != nullptr) {
                 app->dashboardPage.draw(*app->dashboard);
             }
         } else if (app->mainViewMode == ViewMode::LAYOUT) {
-            // The ID of this tab is different from the ID of the view tab. That means that the plots in the two tabs
-            // are considered to be different plots, so changing e.g. the zoom level of a plot in the view tab would
-            // not reflect in the layout tab.
-            // To fix that we use the PushOverrideID() function to force the ID of this tab to be the same as the ID
-            // of the view tab.
-            IMW::OverrideId overrideId(viewId);
             if (app->dashboard != nullptr) {
                 app->dashboardPage.draw(*app->dashboard, DashboardPage::Mode::Layout);
             }
