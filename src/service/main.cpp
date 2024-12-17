@@ -27,6 +27,7 @@
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/basic/common_blocks.hpp>
+#include <gnuradio-4.0/testing/TagMonitors.hpp>
 
 // TODO use built-in GR blocks
 

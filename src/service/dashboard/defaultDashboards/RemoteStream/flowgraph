@@ -4,7 +4,7 @@ blocks:
   - name: sine source 1
     id: opendigitizer::SineSource
     parameters:
-      frequency: 0.100000
+      frequency: !!float32 0.100000
   - name: remote source 1
     id: opendigitizer::RemoteStreamSource
     parameters:
@@ -12,15 +12,15 @@ blocks:
   - name: sink 1
     id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      color: 0xff0000
+      color: !!uint32 0xff0000
   - name: sink 2
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0x0000ff
+      color: !!uint32 0x0000ff
   - name: sink 3
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0xffff00
+      color: !!uint32 0xffff00
 connections:
   - [sine source 1, 0, FFT, 0]
   - [FFT, 0, sink 1, 0]

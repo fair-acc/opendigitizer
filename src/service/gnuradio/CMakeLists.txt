@@ -11,7 +11,6 @@ target_link_libraries(
             disruptor
             gr-basic
             gr-testing
-            yaml-cpp::yaml-cpp
             project_options)
 
 add_subdirectory(test)

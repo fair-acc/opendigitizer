@@ -17,8 +17,6 @@
 #include <string_view>
 #include <utility>
 
-#include <yaml-cpp/yaml.h>
-
 namespace opendigitizer::gnuradio {
 
 using namespace gr;
