@@ -1,0 +1,51 @@
+blocks:
+  - name: !!str SimpleTagSource
+    id: !!str opendigitizer::SimpleTagSource
+    template_args: !!str "float"
+    parameters:
+      n_samples_max: !!uint32 0
+      sample_rate: !!float32 100.
+      tag_indices: !!uint32
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50
+        - 60
+        - 70
+        - 80
+        - 90
+        - 100
+      tag_keys: !!str
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+        - "tag_id"
+      tag_values: !!str
+        - "10"
+        - "20"
+        - "30"
+        - "40"
+        - "50"
+        - "60"
+        - "70"
+        - "80"
+        - "90"
+        - "100"
+  - name: !!str convertFloatDouble
+    id: !!str gr::blocks::type::converter::Convert
+    template_args: !!str "float,double"
+  - name: !!str DataSink
+    id: !!str gr::basic::DataSink
+    template_args: !!str double
+    parameters:
+      signal_name: !!str test
+connections:
+  - [SimpleTagSource, 0, convertFloatDouble, 0]
+  - [convertFloatDouble, 0, DataSink, 0]

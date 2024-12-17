@@ -1,50 +1,50 @@
 blocks:
-  - name: sum sigs1
-    id: opendigitizer::Arithmetic
-  - name: sum sigs2
-    id: opendigitizer::Arithmetic
-  - name: sum sigs3
-    id: opendigitizer::Arithmetic
-  - name: FFT
-    id: gr::blocks::fft::FFT
-  - name: sine source 3
-    id: opendigitizer::SineSource
+  - name: !!str sum sigs1
+    id: !!str opendigitizer::Arithmetic
+  - name: !!str sum sigs2
+    id: !!str opendigitizer::Arithmetic
+  - name: !!str sum sigs3
+    id: !!str opendigitizer::Arithmetic
+  - name: !!str FFT
+    id: !!str gr::blocks::fft::FFT
+  - name: !!str sine source 3
+    id: !!str opendigitizer::SineSource
     parameters:
       frequency: !!float32 0.100000
-  - name: sine source 4
-    id: opendigitizer::SineSource
+  - name: !!str sine source 4
+    id: !!str opendigitizer::SineSource
     parameters:
       frequency: !!float32 0.200000
-  - name: sine source 5
-    id: opendigitizer::SineSource
+  - name: !!str sine source 5
+    id: !!str opendigitizer::SineSource
     parameters:
       frequency: !!float32 0.300000
-  - name: sine source 6
-    id: opendigitizer::SineSource
+  - name: !!str sine source 6
+    id: !!str opendigitizer::SineSource
     parameters:
       frequency: !!float32 0.400000
-  - name: sink 1
-    id: opendigitizer::ImPlotSink
+  - name: !!str sink 1
+    id: !!str opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0xff0000
-  - name: sink 2
-    id: opendigitizer::ImPlotSink
+  - name: !!str sink 2
+    id: !!str opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0x00ff00
-  - name: sink 3
-    id: opendigitizer::ImPlotSink
+  - name: !!str sink 3
+    id: !!str opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0x0000ff
-  - name: sink 4
+  - name: !!str sink 4
     id: opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0xffff00
-  - name: sink 5
+  - name: !!str sink 5
     id: opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0x00ffff
-  - name: sink 6
-    id: opendigitizer::ImPlotSink
+  - name: !!str sink 6
+    id: !!str opendigitizer::ImPlotSink
     parameters:
       color: !!uint32 0xff00ff
 connections:

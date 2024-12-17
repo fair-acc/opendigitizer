@@ -60,17 +60,21 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             } else {
                 std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
             }
-            {
-                const auto  now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-                auto        latency = now - std::chrono::nanoseconds(d.acq.acqLocalTimeStamp.value());
-                std::size_t idx     = written + in.size() - 1;
-                auto        map     = gr::property_map{{gr::tag::TRIGGER_NAME, {"CHUNK_END"}}, {gr::tag::TRIGGER_TIME, {d.acq.acqLocalTimeStamp.value()}}, {"REMOTE_SOURCE_LATENCY", {latency.count()}}};
-                output.publishTag(map, idx - d.read);
-            }
-            for (const auto& [idx, trigger, timestamp] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value())) {
+
+            for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
                 const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                 auto       latency = now - std::chrono::nanoseconds(timestamp);
-                auto       map     = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}, {"REMOTE_SOURCE_LATENCY", {latency.count()}}};
+                auto       map     = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}, {gr::tag::TRIGGER_OFFSET, {offset}}, {"REMOTE_SOURCE_LATENCY", {latency.count()}}};
+
+                const auto yamlMap = pmtv::yaml::deserialize(yaml);
+                if (yamlMap) {
+                    const gr::property_map& rootMap = yamlMap.value();
+                    // Ignore duplicates (do not overwrite)
+                    map.insert(rootMap.begin(), rootMap.end());
+                } else {
+                    // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
+                }
+
                 output.publishTag(map, idx - d.read);
             }
             written += in.size();
@@ -108,10 +112,12 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                     return;
                 }
                 opendigitizer::acq::Acquisition acq;
-                acq.channelValue.value()      = {0, -5, 5, -5, 5, 0}; // TODO: remove this once the UI supports showing tags and correct time axes
-                acq.triggerEventNames.value() = {"SubscriptionInterrupted"};
-                acq.triggerIndices.value()    = {0};
-                acq.triggerTimestamps.value() = {0};
+                acq.channelValue.value()            = {0, -5, 5, -5, 5, 0}; // TODO: remove this once the UI supports showing tags and correct time axes
+                acq.triggerEventNames.value()       = {"SubscriptionInterrupted"};
+                acq.triggerIndices.value()          = {0};
+                acq.triggerTimestamps.value()       = {0};
+                acq.triggerOffsets.value()          = {0.f};
+                acq.triggerYamlPropertyMaps.value() = {};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
                 return;

@@ -1,0 +1,21 @@
+blocks:
+  - name: !!str RemoteStreamSource1
+    id: !!str opendigitizer::RemoteStreamSource
+    parameters:
+      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+  - name: !!str TagToSample1
+    id: !!str opendigitizer::TagToSample
+    parameters:
+      key_filter: !!str "tag_id"
+  - name: !!str ImPlotSink1
+    id: !!str opendigitizer::ImPlotSink
+    parameters:
+      color: !!uint32 0xff0000
+  - name: !!str ImPlotSink2
+    id: !!str opendigitizer::ImPlotSink
+    parameters:
+      color: !!uint32 0xffff00
+connections:
+  - [RemoteStreamSource1, 0, TagToSample1, 0]
+  - [TagToSample1, 0, ImPlotSink1, 0]
+  - [RemoteStreamSource1, 0, ImPlotSink2, 0]

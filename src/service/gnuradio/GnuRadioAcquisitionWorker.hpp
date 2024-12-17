@@ -500,6 +500,8 @@ private:
             reply.triggerIndices.reserve(tags.size());
             reply.triggerEventNames.reserve(tags.size());
             reply.triggerTimestamps.reserve(tags.size());
+            reply.triggerOffsets.reserve(tags.size());
+            reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
                     if (std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)) == "systemtime") {
@@ -511,11 +513,21 @@ private:
                     reply.triggerIndices.push_back(idx);
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
                     reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
+                    reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET)));
+                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
+                } else {
+                    reply.triggerIndices.push_back(idx);
+                    reply.triggerEventNames.push_back("");
+                    reply.triggerTimestamps.push_back(0ULL);
+                    reply.triggerOffsets.push_back(0.f);
+                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
                 }
             }
             reply.triggerIndices.shrink_to_fit();
             reply.triggerEventNames.shrink_to_fit();
             reply.triggerTimestamps.shrink_to_fit();
+            reply.triggerOffsets.shrink_to_fit();
+            reply.triggerYamlPropertyMaps.shrink_to_fit();
         };
         pollerEntry.in_use = true;
 

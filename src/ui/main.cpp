@@ -48,6 +48,7 @@
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
+#include "blocks/TagToSample.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
