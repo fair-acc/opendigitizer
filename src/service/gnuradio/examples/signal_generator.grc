@@ -3,36 +3,35 @@ blocks:
     id: gr::basic::ClockSource
     template_args: "float"
     parameters:
-      chunk_size: 100
       do_zero_order_hold: true
-      n_samples_max: 100000000
-      sample_rate: 4096.000000
+      n_samples_max: !!uint32 100000000
+      sample_rate: !!float32 4096.000000
       verbose_console: false
   - name: SignalGenerator1
     id: gr::basic::SignalGenerator
     template_args: "float"
     parameters:
-      frequency: 0.12500000
-      amplitude: 20.000000
-      offset: 0.000000
-      phase: 0.000000
-      sample_rate: 4096.000000
+      frequency: !!float32 0.12500000
+      amplitude: !!float32 20.000000
+      offset: !!float32 0.000000
+      phase: !!float32 0.000000
+      sample_rate: !!float32 4096.000000
       signal_type: Triangle
   - name: SignalGenerator2
     id: gr::basic::SignalGenerator
     template_args: "float"
     parameters:
-      frequency: 1.00000
-      amplitude: 5.000000
-      offset: 0.000000
-      phase: 0.000000
-      sample_rate: 4096.000000
+      frequency: !!float32 1.00000
+      amplitude: !!float32 5.000000
+      offset: !!float32 0.000000
+      phase: !!float32 0.000000
+      sample_rate: !!float32 4096.000000
       signal_type: Sine
   - name: Sum
     id: MultiAdder
     template_args: "float"
     parameters:
-      n_inputs: 2
+      n_inputs: !!uint32 2
   - name: convertFloatDouble
     id: gr::blocks::type::converter::Convert
     template_args: "float,double"

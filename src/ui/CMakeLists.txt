@@ -155,7 +155,6 @@ target_link_libraries(
          services
          plf_colony
          ui_assets
-         yaml-cpp::yaml-cpp
          core
          client
          stb

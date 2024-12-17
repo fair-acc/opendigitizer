@@ -14,7 +14,7 @@
 #include "gnuradio-4.0/Message.hpp"
 
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
-#include <yaml-cpp/yaml.h>
+#include <gnuradio-4.0/YamlPmt.hpp>
 
 using namespace std::string_literals;
 
@@ -72,56 +72,49 @@ ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::SerialisedFlowgraphMessage, data
 namespace opendigitizer::gnuradio {
 // Yaml to gr::message and back, TODO should be moved to GR
 inline std::string serialiseMessage(const gr::Message& message) {
-    YAML::Emitter       out;
-    gr::detail::YamlMap root(out);
-    root.write("cmd", std::string(magic_enum::enum_name(message.cmd)));
-    root.write("protocol", message.protocol);
-    root.write("serviceName", message.serviceName);
-    root.write("clientRequestID", message.clientRequestID);
-    root.write("endpoint", message.endpoint);
-    root.write("rbac", message.rbac);
+    using namespace gr;
+    property_map yaml;
+    yaml["cmd"]             = std::string(magic_enum::enum_name(message.cmd));
+    yaml["protocol"]        = message.protocol;
+    yaml["serviceName"]     = message.serviceName;
+    yaml["clientRequestID"] = message.clientRequestID;
+    yaml["endpoint"]        = message.endpoint;
+    yaml["rbac"]            = message.rbac;
 
     if (message.data) {
-        root.writeFn("data", [&] {
-            gr::detail::YamlMap yamlData(out);
-            for (const auto& [key, value] : *message.data) {
-                std::visit(gr::meta::overloaded{//
-                               [&](const std::string& data) { yamlData.write(key.data(), data); },
-                               [&](const auto&) {
-                                   // Ignore other types for the time being, TODO
-                               }},
-                    value);
-            }
-        });
+        yaml["data"] = message.data.value();
     } else {
-        root.write("dataError", message.data.error());
+        yaml["dataError"] = message.data.error().message;
     }
 
-    return out.c_str();
+    return pmtv::yaml::serialize(yaml);
 }
 
 inline gr::Message deserialiseMessage(const std::string& messageYaml) {
-    auto tree = YAML::Load(messageYaml);
+    using namespace gr;
+    const auto yaml = pmtv::yaml::deserialize(messageYaml);
+    if (!yaml) {
+        throw gr::exception(fmt::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, messageYaml));
+    }
+
+    const property_map& rootMap = yaml.value();
 
     gr::Message message;
-    auto        optionalCmd = magic_enum::enum_cast<gr::message::Command>(tree["cmd"].as<std::string>());
+    auto        optionalCmd = magic_enum::enum_cast<gr::message::Command>(std::get<std::string>(rootMap.at("cmd")));
     if (optionalCmd) {
         message.cmd = *optionalCmd;
     }
 
-    message.protocol        = tree["protocol"].as<std::string>();
-    message.serviceName     = tree["serviceName"].as<std::string>();
-    message.clientRequestID = tree["clientRequestID"].as<std::string>();
-    message.endpoint        = tree["endpoint"].as<std::string>();
-    message.rbac            = tree["rbac"].as<std::string>();
+    message.protocol        = std::get<std::string>(rootMap.at("protocol"));
+    message.serviceName     = std::get<std::string>(rootMap.at("serviceName"));
+    message.clientRequestID = std::get<std::string>(rootMap.at("clientRequestID"));
+    message.endpoint        = std::get<std::string>(rootMap.at("endpoint"));
+    message.rbac            = std::get<std::string>(rootMap.at("rbac"));
 
-    if (const auto& data = tree["data"]; data && data.IsMap()) {
-        message.data = gr::property_map{};
-        for (const auto& kv : data) {
-            (*message.data)[kv.first.as<std::string>()] = kv.second.as<std::string>();
-        }
-    } else {
-        message.data = std::unexpected(gr::Error(tree["dataError"].as<std::string>()));
+    if (rootMap.contains("data") && std::holds_alternative<property_map>(rootMap.at("data"))) {
+        message.data = std::get<property_map>(rootMap.at("data"));
+    } else if (rootMap.contains("dataError")) {
+        message.data = std::unexpected(gr::Error(std::get<std::string>(rootMap.at("dataError"))));
     }
 
     return message;

@@ -21,8 +21,6 @@
 #include "Flowgraph.hpp"
 #include "GraphModel.hpp"
 
-#include "utils/Yaml.hpp"
-
 using namespace std::string_literals;
 
 struct FlowgraphMessage {
@@ -280,190 +278,182 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
 }
 
 void Dashboard::doLoad(const std::string& desc) {
-    YAML::Node tree = YAML::Load(desc);
+    using namespace gr;
+    const auto yaml = pmtv::yaml::deserialize(desc);
+    if (!yaml) {
+        throw gr::exception(fmt::format("Could not parse yaml for Dashboard: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+    }
+
+    const property_map& rootMap = yaml.value();
 
     auto path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
-    auto sources = tree["sources"];
-    if (!sources || !sources.IsSequence()) {
-        throw std::runtime_error("sources entry invalid");
+    if (!rootMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("sources"))) {
+        throw gr::exception("sources entry invalid");
     }
+    auto sources = std::get<std::vector<pmtv::pmt>>(rootMap.at("sources"));
 
-    for (const auto& s : sources) {
-        if (!s.IsMap()) {
-            throw std::runtime_error("source is no map");
+    for (const auto& src : sources) {
+        if (!std::holds_alternative<property_map>(src)) {
+            throw gr::exception("source is not a property_map");
         }
+        const property_map srcMap = std::get<property_map>(src);
 
-        auto block = s["block"];
-        auto port  = s["port"];
-        auto name  = s["name"];
-        auto color = s["color"];
-        if (!block || !block.IsScalar() || !port || !port.IsScalar() || !name || !name.IsScalar() || !color || !color.IsScalar()) {
+        if (!srcMap.contains("block") || !std::holds_alternative<std::string>(srcMap.at("block"))  //
+            || !srcMap.contains("name") || !std::holds_alternative<std::string>(srcMap.at("name")) //
+            || !srcMap.contains("color")) {
             throw std::runtime_error("invalid source color definition");
         }
+        auto block = std::get<std::string>(srcMap.at("block"));
+        auto name  = std::get<std::string>(srcMap.at("name"));
+        auto color = pmtv::cast<std::uint32_t>(srcMap.at("color"));
 
-        auto blockStr = block.as<std::string>();
-        auto portNum  = port.as<int>();
-        auto nameStr  = name.as<std::string>();
-        auto colorNum = color.as<uint32_t>();
-
-        auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == nameStr; });
+        auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == name; });
         if (source == m_sources.end()) {
-            auto msg = fmt::format("Unable to find the source '{}.{}'", blockStr, portNum);
+            auto msg = fmt::format("Unable to find the source '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        source->name  = nameStr;
-        source->color = colorNum;
+        source->name      = name;
+        source->color     = color;
+        source->blockName = block;
     }
 
-    auto plots = tree["plots"];
-    if (!plots || !plots.IsSequence()) {
-        throw std::runtime_error("plots invalid");
+    if (!rootMap.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("plots"))) {
+        throw gr::exception("plots entry invalid");
     }
+    auto plots = std::get<std::vector<pmtv::pmt>>(rootMap.at("plots"));
 
-    for (const auto& p : plots) {
-        if (!p.IsMap()) {
-            throw std::runtime_error("plots is not map");
+    for (const auto& plotPmt : plots) {
+        if (!std::holds_alternative<property_map>(plotPmt)) {
+            throw gr::exception("plot is not a property_map");
+        }
+        const property_map plotMap = std::get<property_map>(plotPmt);
+
+        if (!plotMap.contains("name") || !std::holds_alternative<std::string>(plotMap.at("name"))                     //
+            || !plotMap.contains("axes") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))       //
+            || !plotMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("sources")) //
+            || !plotMap.contains("rect") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("rect"))) {
+            throw gr::exception("invalid plot definition");
         }
 
-        auto name        = p["name"];
-        auto axes        = p["axes"];
-        auto plotSources = p["sources"];
-        auto rect        = p["rect"];
-        if (!name || !name.IsScalar() || !axes || !axes.IsSequence() || !plotSources || !plotSources.IsSequence() || !rect || !rect.IsSequence() || rect.size() != 4) {
-            throw std::runtime_error("invalid plot definition");
+        auto name        = std::get<std::string>(plotMap.at("name"));
+        auto axes        = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
+        auto plotSources = std::get<std::vector<pmtv::pmt>>(plotMap.at("sources"));
+        auto rect        = std::get<std::vector<pmtv::pmt>>(plotMap.at("rect"));
+        if (rect.size() != 4) {
+            throw gr::exception("invalid plot definition rect.size() != 4");
         }
 
         m_plots.emplace_back();
         auto& plot = m_plots.back();
-        plot.name  = name.as<std::string>();
+        plot.name  = name;
 
-        for (const auto& a : axes) {
-            if (!a.IsMap()) {
-                throw std::runtime_error("axes is no map");
+        for (const auto& axisPmt : axes) {
+            if (!std::holds_alternative<property_map>(axisPmt)) {
+                throw gr::exception("axis is not a property_map");
             }
+            const property_map axisMap = std::get<property_map>(axisPmt);
 
-            auto axis = a["axis"];
-            auto min  = a["min"];
-            auto max  = a["max"];
-
-            if (!axis || !axis.IsScalar() || !min || !min.IsScalar() || !max || !max.IsScalar()) {
-                throw std::runtime_error("invalid axis definition");
+            if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis")) //
+                || !axisMap.contains("min") || !axisMap.contains("max")) {
+                throw gr::exception("invalid axis definition");
             }
 
             plot.axes.push_back({});
-            auto& ax = plot.axes.back();
+            auto& axisData = plot.axes.back();
 
-            auto axisStr = axis.as<std::string>();
-
-            if (axisStr == "X") {
-                ax.axis = Plot::Axis::X;
-            } else if (axisStr == "Y") {
-                ax.axis = Plot::Axis::Y;
+            auto axis = std::get<std::string>(axisMap.at("axis"));
+            if (axis == "X") {
+                axisData.axis = Plot::Axis::X;
+            } else if (axis == "Y") {
+                axisData.axis = Plot::Axis::Y;
             } else {
-                auto msg = fmt::format("Unknown axis {}", axisStr);
+                auto msg = fmt::format("Unknown axis {}", axis);
                 components::Notification::warning(msg);
                 return;
             }
 
-            ax.min = min.as<double>();
-            ax.max = max.as<double>();
+            axisData.min = pmtv::cast<float>(axisMap.at("min"));
+            axisData.max = pmtv::cast<float>(axisMap.at("max"));
         }
 
-        for (const auto& s : plotSources) {
-            if (!s.IsScalar()) {
-                throw std::runtime_error("plot source is no scalar");
-            }
-
-            auto str = s.as<std::string>();
-            plot.sourceNames.push_back(str);
-        }
-
-        // Load from disk:
-        plot.window->x      = rect[0].as<int>();
-        plot.window->y      = rect[1].as<int>();
-        plot.window->width  = rect[2].as<int>();
-        plot.window->height = rect[3].as<int>();
+        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
+        plot.window->x      = pmtv::cast<int>(rect[0]);
+        plot.window->y      = pmtv::cast<int>(rect[1]);
+        plot.window->width  = pmtv::cast<int>(rect[2]);
+        plot.window->height = pmtv::cast<int>(rect[3]);
     }
 
     if (m_fgItem) {
-        auto fgLayout = tree["flowgraphLayout"];
-        m_fgItem->setSettings(&localFlowGraph, fgLayout && fgLayout.IsScalar() ? fgLayout.as<std::string>() : std::string{});
+        const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
+        m_fgItem->setSettings(&localFlowGraph, isGoodString ? std::get<std::string>(rootMap.at("flowgraphLayout")) : std::string{});
     }
 
     loadPlotSources();
 }
 
 void Dashboard::save() {
+    using namespace gr;
+
     if (!m_desc->source->isValid) {
         return;
     }
 
-    YAML::Emitter headerOut;
-    {
-        YamlMap root(headerOut);
+    property_map headerYaml;
+    headerYaml["favorite"] = m_desc->isFavorite;
+    std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
+    char                        lastUsed[11];
+    fmt::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+    headerYaml["lastUsed"] = std::string(lastUsed);
 
-        root.write("favorite", m_desc->isFavorite);
-        std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
-        char                        lastUsed[11];
-        fmt::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
-        root.write("lastUsed", lastUsed);
+    property_map dashboardYaml;
+
+    std::vector<pmtv::pmt> sources;
+    for (auto& src : m_sources) {
+        property_map map;
+        map["name"]  = src.name;
+        map["block"] = src.blockName;
+        map["color"] = src.color;
+        sources.emplace_back(std::move(map));
     }
+    dashboardYaml["sources"] = sources;
 
-    YAML::Emitter dashboardOut;
-    {
-        YamlMap root(dashboardOut);
+    std::vector<pmtv::pmt> plots;
+    for (auto& p : m_plots) {
+        property_map plotMap;
+        plotMap["name"] = p.name;
 
-        root.write("sources", [&]() {
-            YamlSeq sources(dashboardOut);
-
-            for (auto& s : m_sources) {
-                YamlMap source(dashboardOut);
-                source.write("name", s.name);
-
-                source.write("block", s.blockName);
-                source.write("color", s.color);
-            }
-        });
-
-        root.write("plots", [&]() {
-            YamlSeq plots(dashboardOut);
-
-            for (auto& p : m_plots) {
-                YamlMap plot(dashboardOut);
-                plot.write("name", p.name);
-                plot.write("axes", [&]() {
-                    YamlSeq axes(dashboardOut);
-
-                    for (const auto& axis : p.axes) {
-                        YamlMap a(dashboardOut);
-                        a.write("axis", axis.axis == Plot::Axis::X ? "X" : "Y");
-                        a.write("min", axis.min);
-                        a.write("max", axis.max);
-                    }
-                });
-                plot.write("sources", [&]() {
-                    YamlSeq sources(dashboardOut);
-
-                    for (auto& s : p.sources) {
-                        dashboardOut << s->name;
-                    }
-                });
-                plot.write("rect", [&]() {
-                    YamlSeq rect(dashboardOut);
-                    dashboardOut << p.window->x;
-                    dashboardOut << p.window->y;
-                    dashboardOut << p.window->width;
-                    dashboardOut << p.window->height;
-                });
-            }
-        });
-
-        if (m_fgItem) {
-            root.write("flowgraphLayout", m_fgItem->settings(&localFlowGraph));
+        std::vector<pmtv::pmt> plotAxes;
+        for (const auto& axis : p.axes) {
+            property_map axisMap;
+            axisMap["axis"] = axis.axis == Plot::Axis::X ? "X" : "Y";
+            axisMap["min"]  = axis.min;
+            axisMap["max"]  = axis.max;
+            plotAxes.emplace_back(std::move(axisMap));
         }
+        plotMap["axes"] = plotAxes;
+
+        std::vector<pmtv::pmt> plotSources;
+        for (auto& s : p.sources) {
+            plotSources.emplace_back(s->name);
+        }
+        plotMap["sources"] = plotSources;
+
+        std::vector<int> plotRect;
+        plotRect.emplace_back(p.window->x);
+        plotRect.emplace_back(p.window->y);
+        plotRect.emplace_back(p.window->width);
+        plotRect.emplace_back(p.window->height);
+        plotMap["rect"] = plotRect;
+
+        plots.emplace_back(plotMap);
+    }
+    dashboardYaml["plots"] = plots;
+
+    if (m_fgItem) {
+        dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
     }
 
     if (m_desc->source->path.starts_with("http://") || m_desc->source->path.starts_with("https://")) {
@@ -471,14 +461,16 @@ void Dashboard::save() {
         auto                        path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
 
         opencmw::client::Command hcommand;
-        hcommand.command = opencmw::mdp::Command::Set;
-        hcommand.data.put(std::string_view(headerOut.c_str(), headerOut.size()));
+        hcommand.command          = opencmw::mdp::Command::Set;
+        std::string headerYamlStr = pmtv::yaml::serialize(headerYaml);
+        hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
         hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
         client.request(hcommand);
 
         opencmw::client::Command dcommand;
-        dcommand.command = opencmw::mdp::Command::Set;
-        dcommand.data.put(std::string_view(dashboardOut.c_str(), dashboardOut.size()));
+        dcommand.command             = opencmw::mdp::Command::Set;
+        std::string dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
+        dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
         dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
         client.request(dcommand);
 
@@ -501,20 +493,22 @@ void Dashboard::save() {
             return;
         }
 
-        uint32_t headerStart    = 32;
-        uint32_t headerSize     = headerOut.size();
-        uint32_t dashboardStart = headerStart + headerSize + 1;
-        uint32_t dashboardSize  = dashboardOut.size();
+        uint32_t      headerStart      = 32;
+        std::string   headerYamlStr    = pmtv::yaml::serialize(headerYaml);
+        std::string   dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
+        std::uint32_t headerSize       = static_cast<uint32_t>(headerYamlStr.size());
+        std::uint32_t dashboardStart   = headerStart + headerSize + 1;
+        std::uint32_t dashboardSize    = static_cast<uint32_t>(dashboardYamlStr.size());
         stream.write(reinterpret_cast<char*>(&headerStart), 4);
         stream.write(reinterpret_cast<char*>(&headerSize), 4);
         stream.write(reinterpret_cast<char*>(&dashboardStart), 4);
         stream.write(reinterpret_cast<char*>(&dashboardSize), 4);
 
         stream.seekp(headerStart);
-        stream << headerOut.c_str() << '\n';
-        stream << dashboardOut.c_str() << '\n';
-        uint32_t flowgraphStart = stream.tellp();
-        uint32_t flowgraphSize  = localFlowGraph.save(stream);
+        stream << headerYamlStr.c_str() << '\n';
+        stream << dashboardYamlStr.c_str() << '\n';
+        std::uint32_t flowgraphStart = stream.tellp();
+        std::uint32_t flowgraphSize  = localFlowGraph.save(stream);
         stream.seekp(16);
         stream.write(reinterpret_cast<char*>(&flowgraphStart), 4);
         stream.write(reinterpret_cast<char*>(&flowgraphSize), 4);
@@ -685,15 +679,18 @@ void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
 }
 
 void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
+    using namespace gr;
     fetch(
         source, name, {What::Header},
         [cb, name, source](std::array<std::string, 1>&& desc) {
-            YAML::Node tree = YAML::Load(desc[0]);
+            const auto yaml = pmtv::yaml::deserialize(desc[0]);
+            if (!yaml) {
+                throw gr::exception(fmt::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+            }
+            const property_map& rootMap  = yaml.value();
+            bool                favorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
 
-            auto favorite = tree["favorite"];
-            auto lastUsed = tree["lastUsed"];
-
-            auto getDate = [](const auto& str) -> decltype(DashboardDescription::lastUsed) {
+            auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
                 if (str.size() < 10) {
                     return {};
                 }
@@ -705,7 +702,9 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
                 return std::chrono::sys_days(date);
             };
 
-            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .source = source, .filename = name, .isFavorite = favorite.IsScalar() ? favorite.as<bool>() : false, .lastUsed = lastUsed.IsScalar() ? getDate(lastUsed.as<std::string>()) : std::nullopt}));
+            auto lastUsed = rootMap.contains("lastUsed") && std::holds_alternative<bool>(rootMap.at("lastUsed")) ? getDate(std::get<std::string>(rootMap.at("lastUsed"))) : std::nullopt;
+
+            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .source = source, .filename = name, .isFavorite = favorite, .lastUsed = lastUsed}));
         },
         [cb]() { cb({}); });
 }

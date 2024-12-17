@@ -3,7 +3,6 @@ blocks:
     id: gr::basic::ClockSource
     template_args: "float"
     parameters:
-      chunk_size: 100
       do_zero_order_hold: true
       n_samples_max: 100000000
       repeat_period: 2000000000

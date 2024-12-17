@@ -15,9 +15,9 @@
 #include <fmt/format.h>
 
 #include "gnuradio-4.0/Tag.hpp"
-#include "utils/Yaml.hpp"
 
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <gnuradio-4.0/YamlPmt.hpp>
 
 #include "App.hpp"
 
@@ -425,48 +425,41 @@ void FlowGraph::clear() {
 }
 
 int FlowGraph::save(std::ostream& stream) {
-    YAML::Emitter out;
-    {
-        YamlMap root(out);
-        root.write("blocks", [&]() {
-            YamlSeq blocks(out);
+    using namespace gr;
+    property_map           yaml;
+    std::vector<pmtv::pmt> blocks;
 
-            auto emitBlock = [&](auto&& b) {
-                YamlMap map(out);
-                map.write("name", b->name);
-                map.write("id", b->typeName());
+    for (auto& b : m_blocks) {
+        property_map blockMap;
+        blockMap["name"] = b->name;
+        blockMap["id"]   = std::string(b->typeName());
 
-                const auto& settings = b->settings();
-                if (!settings.empty()) {
-                    map.write("parameters", [&]() {
-                        YamlMap pars(out);
-                        for (const auto& [settingsKey, settingsValue] : settings) {
-                            std::visit([&]<typename T>(const T& value) { pars.write(settingsKey, value); }, settingsValue);
-                        }
-                    });
-                }
-            };
+        const auto& settings = b->settings();
+        if (!settings.empty()) {
+            blockMap["parameters"] = settings;
+        }
+        blocks.emplace_back(std::move(blockMap));
+    }
 
-            for (auto& b : m_blocks) {
-                emitBlock(b);
-            }
-        });
+    yaml["blocks"] = blocks;
 
-        if (!m_connections.empty()) {
-            root.write("connections", [&]() {
-                YamlSeq connections(out);
-                for (const auto& c : m_connections) {
-                    out << YAML::Flow;
-                    YamlSeq seq(out);
-                    out << c.src.uiBlock->name << c.src.index;
-                    out << c.dst.uiBlock->name << c.dst.index;
-                }
-            });
+    std::vector<pmtv::pmt> connections;
+    if (!m_connections.empty()) {
+        for (const auto& connection : m_connections) {
+            std::vector<pmtv::pmt> pmtConnection;
+            pmtConnection.emplace_back(connection.src.uiBlock->name);
+            pmtConnection.emplace_back(std::int64_t(connection.src.index));
+            pmtConnection.emplace_back(connection.dst.uiBlock->name);
+            pmtConnection.emplace_back(std::int64_t(connection.dst.index));
+            connections.emplace_back(std::move(pmtConnection));
         }
     }
 
-    stream << out.c_str();
-    return int(out.size());
+    yaml["connections"] = connections;
+
+    std::string outYaml = pmtv::yaml::serialize(yaml);
+    stream << outYaml;
+    return int(outYaml.size());
 }
 
 Block* FlowGraph::findBlock(std::string_view name) const {

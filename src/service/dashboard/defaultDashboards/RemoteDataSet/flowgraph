@@ -14,15 +14,15 @@ blocks:
   - name: stream sink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0xff0000
+      color: !!uint32 0xff0000
   - name: triggered sink
     id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      color: 0x00ff00
+      color: !!uint32 0x00ff00
   - name: multiplexed sink
     id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      color: 0x0000ff
+      color: !!uint32 0x0000ff
 connections:
   - [remote stream, 0, stream sink, 0]
   - [remote triggered, 0, triggered sink, 0]
