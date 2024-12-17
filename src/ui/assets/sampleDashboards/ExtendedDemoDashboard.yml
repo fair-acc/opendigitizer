@@ -1,22 +1,22 @@
 sources:
   - name: sink 3
     block: sink 3
-    color: 4279072064
+    color: !!uint32 0xff0000
   - name: sink 4
     block: sink 4
-    color: 4285507928
+    color: !!uint32 0x00ff00
   - name: sink 5
     block: sink 5
-    color: 4291210500
+    color: !!uint32 0x0000ff
   - name: sink 6
     block: sink 6
-    color: 4285336815
+    color: !!uint32 0xffff00
   - name: sink 1
     block: sink 1
-    color: 4285977777
+    color: !!uint32 0x00ffff
   - name: sink 2
     block: sink 2
-    color: 4286162635
+    color: !!uint32 0xff00ff
 plots:
   - name: Plot 4
     axes:
@@ -24,8 +24,8 @@ plots:
         min: 0
         max: 100
       - axis: Y
-        min: -0.99999994039535522
-        max: 0.99999994039535522
+        min: -1
+        max: 1
     sources:
       - sink 3
     rect:
@@ -39,8 +39,8 @@ plots:
         min: 0
         max: 100
       - axis: Y
-        min: -3.2323789596557617
-        max: 3.2323942184448242
+        min: -3.5
+        max: 3.5
     sources:
       - sink 1
     rect:
@@ -84,8 +84,8 @@ plots:
         min: 0
         max: 100
       - axis: Y
-        min: -0.99999994039535522
-        max: 0.99999994039535522
+        min: -1
+        max: 1
     sources:
       - sink 5
     rect:
@@ -100,7 +100,7 @@ plots:
         max: 100
       - axis: Y
         min: -1
-        max: 0.99999940395355225
+        max: 1
     sources:
       - sink 6
     rect:
