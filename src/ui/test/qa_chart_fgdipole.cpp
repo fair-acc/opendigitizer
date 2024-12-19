@@ -73,7 +73,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(800, 800));
+            ImGui::SetWindowSize(ImVec2(1200, 400));
 
             if (g_state.dashboard) {
                 DigitizerUi::DashboardPage page;
