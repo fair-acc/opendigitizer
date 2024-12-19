@@ -32,19 +32,28 @@ auto typeToName() {
 }
 
 std::string valueTypeName(auto& port) {
-    static const std::map<std::string, std::string> mangledToName{{typeToName<float>(), "float"s}, {typeToName<double>(), "double"s},
-
-        {typeToName<std::complex<float>>(), "std::complex<float>"s}, {typeToName<std::complex<double>>(), "std::complex<double>"s},
-
-        {typeToName<gr::DataSet<float>>(), "gr::DataSet<float>"s}, {typeToName<gr::DataSet<double>>(), "gr::DataSet<double>"s},
-
-        {typeToName<std::int8_t>(), "std::int8_t"s}, {typeToName<std::int16_t>(), "std::int16_t"s}, {typeToName<std::int32_t>(), "std::int32_t"s}, {typeToName<std::int64_t>(), "std::int64_t"s}};
+    static const std::map<std::string, std::string> mangledToName{     //
+        {typeToName<float>(), "float"s},                               //
+        {typeToName<double>(), "double"s},                             //
+        {typeToName<std::complex<float>>(), "std::complex<float>"s},   //
+        {typeToName<std::complex<double>>(), "std::complex<double>"s}, //
+        {typeToName<gr::DataSet<float>>(), "gr::DataSet<float>"s},     //
+        {typeToName<gr::DataSet<double>>(), "gr::DataSet<double>"s},   //
+        {typeToName<std::int8_t>(), "std::int8_t"s},                   //
+        {typeToName<std::int16_t>(), "std::int16_t"s},                 //
+        {typeToName<std::int32_t>(), "std::int32_t"s},                 //
+        {typeToName<std::int64_t>(), "std::int64_t"s},                 //
+        {typeToName<std::uint8_t>(), "std::uint8_t"s},                 //
+        {typeToName<std::uint16_t>(), "std::uint16_t"s},               //
+        {typeToName<std::uint32_t>(), "std::uint32_t"s},               //
+        {typeToName<std::uint64_t>(), "std::uint64_t"s}};              //
 
     if (auto it = mangledToName.find(port.defaultValue().type().name()); it != mangledToName.end()) {
         return it->second;
-    } else {
-        return "unknown_type"s;
     }
+
+    throw gr::exception(fmt::format("valueTypeName(auto& port) - could not identify port data type '{}'", port.defaultValue().type().name()));
+    return "unknown_type"s;
 }
 
 const std::string& DataType::toString() const {
@@ -137,7 +146,8 @@ void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& plugin
 
 void BlockRegistry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { _types.insert({t->name, std::move(t)}); }
 
-Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) { //
+Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) {
+    //
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
 }
 
@@ -151,10 +161,11 @@ void Block::setSetting(const std::string& settingName, const pmtv::pmt& p) {
     App::instance().sendMessage(msg);
 }
 
-void Block::updateSettings(const gr::property_map& settings) {
+void Block::updateSettings(const gr::property_map& settings, const std::map<pmtv::pmt, std::vector<std::pair<gr::SettingsCtx, gr::property_map>>, gr::settings::PMTCompare>& stagedSettings) {
     for (const auto& [k, v] : settings) {
         m_settings[k] = v;
     }
+    _storedSettings = stagedSettings;
 }
 
 void Block::update() {
@@ -210,15 +221,23 @@ void Block::update() {
         if (t == "std::complex<float>") {
             return DataType::ComplexFloat32;
         }
-        // if (t == "std::complex<std::int64_t>") return DataType::ComplexInt64;
-        // if (t == "std::complex<std::int32_t>") return DataType::ComplexInt32;
-        // if (t == "std::complex<std::int16_t>") return DataType::ComplexInt16;
-        // if (t == "std::complex<std::int8_t>") return DataType::ComplexInt8;
         if (t == "double") {
             return dataset ? DataType::DataSetFloat64 : DataType::Float64;
         }
         if (t == "float") {
             return dataset ? DataType::DataSetFloat32 : DataType::Float32;
+        }
+        if (t == "std::uint64_t") {
+            return DataType::UInt64;
+        }
+        if (t == "std::uint32_t" || t == "unsigned int") {
+            return DataType::UInt32;
+        }
+        if (t == "std::uint16_t" || t == "unsigned short") {
+            return DataType::UInt16;
+        }
+        if (t == "std::uint8_t") {
+            return DataType::UInt8;
         }
         if (t == "std::int64_t") {
             return DataType::Int64;
@@ -232,7 +251,6 @@ void Block::update() {
         if (t == "std::int8_t") {
             return DataType::Int8;
         }
-
         if (t == "gr::DataSet<float>") {
             return DataType::DataSetFloat32;
         }
@@ -246,15 +264,14 @@ void Block::update() {
         if (t == "bus") {
             return DataType::BusConnection;
         }
-        if (t == "") {
+        if (t.empty()) {
             return DataType::Wildcard;
         }
         if (t == "untyped") {
             return DataType::Untyped;
         }
 
-        fmt::print("unhandled type {}\n", t);
-        assert(0);
+        throw gr::exception(fmt::format("unhandled data type: '{}'\n", t));
         return DataType::Untyped;
     };
     auto getType = [&](const std::string& t, bool dataset) {
@@ -322,28 +339,32 @@ void FlowGraph::parse(const std::filesystem::path& file) {
 void FlowGraph::parse(const std::string& str) {
     clear();
 
-    auto grGraph = [this, &str]() {
+    gr::Graph grGraph = [this, &str]() -> gr::Graph {
         try {
             return gr::loadGrc(*_pluginLoader, str);
+        } catch (const gr::exception&) {
+            throw;
         } catch (const std::string& e) {
-            throw std::runtime_error(e);
+            throw gr::exception(e);
+        } catch (...) {
+            throw std::current_exception();
         }
     }();
 
     grGraph.forEachBlock([&](const auto& grBlock) {
-        auto typeName = grBlock.typeName();
-        typeName      = std::string_view(typeName.begin(), typeName.find('<'));
-        auto type     = BlockRegistry::instance().get(typeName);
+        auto typeName               = grBlock.typeName();
+        typeName                    = std::string_view(typeName.begin(), typeName.find('<'));
+        const BlockDefinition* type = BlockRegistry::instance().get(typeName);
         if (!type) {
             auto msg = fmt::format("Block type '{}' is unknown.", typeName);
             components::Notification::error(msg);
-            throw std::runtime_error(msg);
+            throw gr::exception(msg);
         }
 
         auto block               = type->createBlock(grBlock.name());
         block->m_uniqueName      = grBlock.uniqueName();
         block->m_metaInformation = grBlock.metaInformation();
-        block->updateSettings(grBlock.settings().get());
+        block->updateSettings(grBlock.settings().get(), grBlock.settings().getStoredAll());
         addBlock(std::move(block));
     });
 
@@ -358,6 +379,9 @@ void FlowGraph::parse(const std::string& str) {
                                   if (definition.topLevel >= ports.size()) {
                                       auto msg = fmt::format("Cannot connect, index {} is not valid (only {} ports available)", definition.topLevel, ports.size());
                                       components::Notification::error(msg);
+#ifndef NDEBUG
+                                      throw std::runtime_error(msg);
+#endif
                                   }
                                   // TODO check subIndex once we support port collections
                                   return std::pair{ports.begin() + definition.topLevel, definition.subIndex};
@@ -507,10 +531,15 @@ Connection* FlowGraph::connect(Block::Port* a, Block::Port* b) {
         std::swap(a, b);
     }
 
-    auto ain = std::size_t(a - a->owningUiBlock->outputs().data());
-    auto bin = std::size_t(b - b->owningUiBlock->inputs().data());
+    const auto ain = std::size_t(a - a->owningUiBlock->outputs().data());
+    const auto bin = std::size_t(b - b->owningUiBlock->inputs().data());
 
-    fmt::print("connect {}.{} to {}.{}\n", a->owningUiBlock->name, ain, b->owningUiBlock->name, bin);
+    if (a->rawPortType != b->rawPortType) {
+        fmt::println("incompatible block connection: {}.{}({}) to {}.{}({})", //
+            a->owningUiBlock->name, ain, a->rawPortType, b->owningUiBlock->name, bin, b->rawPortType);
+    } else {
+        fmt::println("connect {}.{}({}) to {}.{}({})", a->owningUiBlock->name, ain, a->rawPortType, b->owningUiBlock->name, bin, b->rawPortType);
+    }
 
     auto it = m_connections.insert(Connection(a->owningUiBlock, ain, b->owningUiBlock, bin));
     a->portConnections.push_back(&(*it));
@@ -557,6 +586,13 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, c
     }
 
     grBlock->settings().set(params);
+    // using StoredSettingsType = std::map<pmtv::pmt, std::vector<std::pair<gr::SettingsCtx, gr::property_map>>, gr::settings::PMTCompare>;
+    for (const auto& [_, vec] : block.storedSettings()) {
+        for (const auto& [ctx, map] : vec) {
+            std::ignore = grBlock->settings().set(map, ctx);
+        }
+    }
+
     grBlock->settings().applyStagedParameters();
     return grBlock;
 }

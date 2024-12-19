@@ -271,7 +271,16 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
         localFlowGraph.parse(grcData);
         // Load is called after parsing the flowgraph so that we already have the list of sources
         doLoad(dashboardData);
+    } catch (const gr::exception& e) {
+#ifndef NDEBUG
+        fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
+#endif
+        components::Notification::error(fmt::format("Error: {}", e.what()));
+        App::instance().closeDashboard();
     } catch (const std::exception& e) {
+#ifndef NDEBUG
+        fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e.what());
+#endif
         components::Notification::error(fmt::format("Error: {}", e.what()));
         App::instance().closeDashboard();
     }

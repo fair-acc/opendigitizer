@@ -1,7 +1,7 @@
 blocks:
   - name: !!str ClockSource
     id: !!str gr::basic::ClockSource
-    template_args: !!str "float"
+    template_args: !!str "unsigned char"
     parameters:
       do_zero_order_hold: !!bool true
       n_samples_max: !!uint32 0

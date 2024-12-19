@@ -38,6 +38,10 @@ struct DataType {
         Float32,
         DataSetFloat32,
         DataSetFloat64,
+        UInt64,
+        UInt32,
+        UInt16,
+        UInt8,
         Int64,
         Int32,
         Int16,
@@ -143,6 +147,7 @@ struct DataType {
     }
 
     constexpr inline DataType() {}
+
     constexpr inline DataType(Id id) : m_id(id) {}
 
     const std::string& toString() const;
@@ -171,14 +176,18 @@ public:
 
         std::string defaultValue;
     };
+
     template<typename T>
     struct NumberParameter {
         inline explicit NumberParameter(T v) : defaultValue(v) {}
+
         T defaultValue;
     };
+
     struct StringParameter {
         std::string defaultValue;
     };
+
     struct Parameter {
         std::string                                                                                id;
         std::string                                                                                label;
@@ -192,12 +201,15 @@ public:
     auto data_inputs() {
         return inputs | std::views::filter([](const PortDefinition& p) { return p.type != "message"; });
     }
+
     auto message_inputs() {
         return inputs | std::views::filter([](const PortDefinition& p) { return p.type == "message"; });
     }
+
     auto data_outputs() {
         return outputs | std::views::filter([](const PortDefinition& p) { return p.type != "message"; });
     }
+
     auto message_outputs() {
         return outputs | std::views::filter([](const PortDefinition& p) { return p.type == "message"; });
     }
@@ -256,6 +268,8 @@ private:
 
 class Block {
 public:
+    using StoredSettingsType = std::map<pmtv::pmt, std::vector<std::pair<gr::SettingsCtx, gr::property_map>>, gr::settings::PMTCompare>;
+
     class Port {
     public:
         enum class Direction {
@@ -263,14 +277,14 @@ public:
             Output,
         };
 
-        Block*            owningUiBlock;
-        const std::string name;
-        const std::string rawPortType;
-        bool              isDataset;
-        const Direction   portDirection;
+        Block*            owningUiBlock = nullptr;
+        const std::string name{};
+        const std::string rawPortType{};
+        bool              isDataset = false;
+        const Direction   portDirection{};
 
-        DataType                 portDataType;
-        std::vector<Connection*> portConnections;
+        DataType                 portDataType{};
+        std::vector<Connection*> portConnections{};
     };
 
     struct EnumParameter {
@@ -284,10 +298,12 @@ public:
             return *this;
         }
     };
+
     template<typename T>
     struct NumberParameter {
         T value;
     };
+
     struct RawParameter {
         std::string value;
     };
@@ -310,21 +326,26 @@ public:
 
     const auto& inputs() const { return m_inputs; }
     const auto& outputs() const { return m_outputs; }
-    auto        dataInputs() const {
+
+    auto dataInputs() const {
         return m_inputs | std::views::filter([](const Port& p) { return p.portDataType != DataType::AsyncMessage; });
     }
+
     auto dataOutputs() const {
         return m_outputs | std::views::filter([](const Port& p) { return p.portDataType != DataType::AsyncMessage; });
     }
+
     auto messageInputs() const {
         return m_inputs | std::views::filter([](const Port& p) { return p.portDataType == DataType::AsyncMessage; });
     }
+
     auto messageOutputs() const {
         return m_outputs | std::views::filter([](const Port& p) { return p.portDataType == DataType::AsyncMessage; });
     }
 
-    void        setSetting(const std::string& name, const pmtv::pmt& par);
-    const auto& settings() const { return m_settings; }
+    void                      setSetting(const std::string& name, const pmtv::pmt& par);
+    const auto&               settings() const { return m_settings; }
+    const StoredSettingsType& storedSettings() const { return _storedSettings; }
 
     void update();
 
@@ -335,13 +356,14 @@ public:
     auto& inputs() { return m_inputs; }
     auto& outputs() { return m_outputs; }
 
-    void                    updateSettings(const gr::property_map& settings);
+    void                    updateSettings(const gr::property_map& settings, const StoredSettingsType& stagedSettings = {});
     const gr::property_map& metaInformation() const { return m_metaInformation; }
 
 protected:
     std::vector<Port>      m_inputs;
     std::vector<Port>      m_outputs;
     gr::property_map       m_settings;
+    StoredSettingsType     _storedSettings{};
     bool                   m_updated   = false;
     FlowGraph*             m_flowGraph = nullptr;
     const BlockDefinition* m_type;
