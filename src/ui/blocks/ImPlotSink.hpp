@@ -16,18 +16,76 @@
 #include "meta.hpp"
 
 namespace opendigitizer {
+struct TagData {
+    double           timestamp;
+    gr::property_map map;
+};
+
+inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, const ImVec4& color) {
+    std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
+
+    if (tagValues.empty()) {
+        return;
+    }
+
+    auto getStringOrDefault = [](const gr::property_map& map, const std::string& key, const std::string& defaultValue) -> std::string {
+        if (auto it = map.find(key); it != map.end()) {
+            if (auto strPtr = std::get_if<std::string>(&it->second)) {
+                return *strPtr;
+            }
+        }
+        return defaultValue;
+    };
+
+    const float  fontHeight = ImGui::GetFontSize();
+    const double yMax       = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO).Y.Max;
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    float lastTextPixelX = -std::numeric_limits<float>::infinity();
+    for (const auto& tag : tagValues) {
+        const double x         = tag.timestamp;
+        const float  xPixelPos = ImPlot::PlotToPixels(x, 0.0f).x;
+
+        ImPlot::SetNextLineStyle(color);
+        ImPlot::PlotInfLines("TagLines", &x, 1, ImPlotInfLinesFlags_None);
+
+        // suppress tag labels if it is too close to the previous one
+        if (xPixelPos - lastTextPixelX > 2.0f * fontHeight || lastTextPixelX == -std::numeric_limits<float>::infinity()) {
+            const std::string triggerLabel     = getStringOrDefault(tag.map, "trigger_name", "TRIGGER");
+            const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
+
+            ImPlot::PlotText(triggerLabel.c_str(), x, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+
+            if (auto metaInfo = tag.map.find("trigger_meta_info"); metaInfo != tag.map.end()) {
+                if (auto mapPtr = std::get_if<gr::property_map>(&metaInfo->second)) {
+                    auto              extractCtx = [](const std::string& s) { return s.substr(s.rfind('/') + 1); };
+                    const std::string triggerCtx = extractCtx(getStringOrDefault(*mapPtr, "context", ""));
+                    if (!triggerCtx.empty()) {
+                        const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
+                        ImPlot::PlotText(triggerCtx.c_str(), x, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
+                    }
+                }
+            }
+
+            lastTextPixelX = xPixelPos;
+        }
+    }
+    ImGui::PopStyleColor();
+}
 
 struct ImPlotSinkManager {
 private:
     ImPlotSinkManager() {}
+
     ImPlotSinkManager(const ImPlotSinkManager&)            = delete;
     ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
 
     struct SinkModel {
         std::string uniqueName;
+
         SinkModel(std::string uniqueName) : uniqueName(std::move(uniqueName)) {}
 
         virtual ~SinkModel() {}
+
         virtual gr::work::Status draw() noexcept = 0;
     };
 
@@ -36,6 +94,7 @@ private:
     template<typename Block>
     struct SinkWrapper : SinkModel {
         SinkWrapper(Block* block) : SinkModel(block->unique_name) {}
+
         gr::work::Status draw() noexcept override { return block->draw(); }
 
         Block* block;
@@ -59,45 +118,62 @@ public:
 };
 
 template<typename TBlock>
-using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "Dear ImGui">>;
+using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>;
 
 template<typename T>
 struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     gr::PortIn<T> in;
-    uint32_t      color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
-    std::string   signal_name;
-    std::string   signal_unit;
-    float         signal_min = std::numeric_limits<float>::lowest();
-    float         signal_max = std::numeric_limits<float>::max();
+    uint32_t      color = 0xff0000;
+    ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
+    std::string signal_name;
+    std::string signal_quantity;
+    std::string signal_unit;
+    float       signal_min  = std::numeric_limits<float>::lowest();
+    float       signal_max  = std::numeric_limits<float>::max();
+    float       sample_rate = 1000.0f;
 
-    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, signal_name, signal_unit, signal_min, signal_max);
+    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate);
 
-public:
+    gr::HistoryBuffer<double> _xValues{65536UZ};
+    gr::HistoryBuffer<double> data{65536UZ}; // TODO: rename to _yValues
+    std::deque<TagData>       _tagValues{};
+
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    gr::HistoryBuffer<T> data = gr::HistoryBuffer<T>{65536};
+    constexpr void processOne(const T& input) noexcept {
+        if constexpr (std::is_arithmetic_v<T>) {
+            in.max_samples  = static_cast<std::size_t>(2.f * sample_rate / 25.f);
+            const double Ts = 1.0 / static_cast<double>(sample_rate);
+            _xValues.push_back(_xValues[1] + 2 * Ts);
+        }
+        data.push_back(input);
 
-    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
-        data.push_back_bulk(input);
-        std::ignore = input.consume(input.size());
-        return gr::work::Status::OK;
+        if (this->inputTagsPresent()) {
+            // received tag
+            _tagValues.push_back({_xValues[0], this->mergedInputTag().map});
+            this->_mergedInputTag.map.clear(); // TODO: provide proper API for clearing tags
+        }
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
         const auto&                             label  = signal_name.empty() ? this->name.value : signal_name;
         if (data.empty()) {
-            // Plot one single dummy value so that the sink shows up in the plot legend
-            T v = {};
+            // plot one single dummy value so that the sink shows up in the plot legend
+            double v = {};
             ImPlot::PlotLine(label.c_str(), &v, 1);
         } else {
-            // ImPlot::SetNextLineStyle(ImGui::ColorConvertU32ToFloat4((color << 8) | 0xff));
-            // ImPlot::HideNextItem(false, ImPlotCond_Always);
-            const auto span = std::span(data.begin(), data.end());
-            //  TODO should we limit this to the last N (N might be UI-dependent) samples?
-            ImPlot::PlotLine(label.c_str(), span.data(), static_cast<int>(span.size()));
+            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4((color << 8) | 0xff);
+            // TODO: remove reverse workaround ... newest value (time > 0) should be always on the right
+            std::vector reversedX(_xValues.rbegin(), _xValues.rend());
+            std::vector reversedY(data.rbegin(), data.rend());
+
+            ImPlot::SetNextLineStyle(lineColor);
+            ImPlot::PlotLine(label.c_str(), reversedX.data(), reversedY.data(), static_cast<int>(reversedY.size()));
+            lineColor.w *= 0.75f; // semi-transparent tags
+            drawAndPruneTags(_tagValues, reversedX.front(), reversedX.back(), lineColor);
         }
 
         return gr::work::Status::OK;
