@@ -46,27 +46,49 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
     }
 }
 
-static void SetupAxes(const Dashboard::Plot& plot) {
+inline void SetupAxes(const Dashboard::Plot& plot) {
+    using Axis = Dashboard::Plot::Axis;
     for (const auto& a : plot.axes) {
-        const bool is_horizontal = a.axis == Dashboard::Plot::Axis::X;
-        const auto axis          = is_horizontal ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multiple axis support (-> see ImPlot demo)
-        // TODO: setup system where the label (essentially units) are derived from the signal units,
-        // e.g. right-aligned '[utc]', 'time since first injection [ms]', `[Hz]`, '[A]', '[A]', '[V]', '[ppp]', '[GeV]', ...
-        const auto axisLabel = is_horizontal ? fmt::format("x-axis [a.u.]") : fmt::format("y-axis [a.u.]");
+        // Determine if this is X or Y
+        const bool   isHorizontal = (a.axis == Axis::X);
+        const ImAxis axisId       = isHorizontal ? ImAxis_X1 : ImAxis_Y1;
+        std::string  axisLabel    = isHorizontal ? "x-axis [a.u.]" : "y-axis [a.u.]";
 
-        ImPlotAxisFlags axisFlags = ImPlotAxisFlags_None;
-        axisFlags |= is_horizontal ? (ImPlotAxisFlags_LockMin) : (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
-
-        const auto estTextSize = ImGui::CalcTextSize(axisLabel.c_str()).x;
-        if (estTextSize >= a.width) {
-            static const auto estDotSize = ImGui::CalcTextSize("...").x;
-            const std::size_t newSize    = a.width / std::max(1.f, estTextSize) * axisLabel.length();
-            ImPlot::SetupAxis(axis, fmt::format("...{}", axisLabel.substr(axisLabel.length() - newSize, axisLabel.length())).c_str(), axisFlags);
-        } else {
-            ImPlot::SetupAxis(axis, axisLabel.c_str(), axisFlags);
+        ImPlotAxisFlags axisFlags   = ImPlotAxisFlags_None;
+        const bool      isFiniteMin = std::isfinite(a.min);
+        const bool      isFiniteMax = std::isfinite(a.max);
+        if (isFiniteMin && !isFiniteMax) {
+            // keep min locked, auto-fit max
+            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+            axisFlags |= ImPlotAxisFlags_LockMin;
+        } else if (!isFiniteMin && isFiniteMax) {
+            // keep max locked, auto-fit min
+            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+            axisFlags |= ImPlotAxisFlags_LockMax;
+        } else if (!isFiniteMin && !isFiniteMax) {
+            // auto-fit min and max
+            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
         }
-        if (is_horizontal && a.min < a.max) {
-            ImPlot::SetupAxisLimits(axis, a.min, a.max);
+
+        // Truncate label if there isn’t enough space
+        const float estTextWidth = ImGui::CalcTextSize(axisLabel.c_str()).x;
+        if (estTextWidth >= a.width) {
+            static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+            if (a.width > ellipsisWidth + 1.0f) {
+                // compute how many characters fit
+                const float scaleFactor   = (a.width - ellipsisWidth) / std::max(1.0f, estTextWidth);
+                const auto  fitCharCount  = static_cast<std::size_t>(std::floor(scaleFactor * axisLabel.size()));
+                const auto  truncatedPart = axisLabel.substr(axisLabel.size() - fitCharCount);
+                ImPlot::SetupAxis(axisId, fmt::format("...{}", truncatedPart).c_str(), axisFlags);
+            } else {
+                ImPlot::SetupAxis(axisId, "...", axisFlags);
+            }
+        } else {
+            ImPlot::SetupAxis(axisId, axisLabel.c_str(), axisFlags);
+        }
+
+        if (isFiniteMin && isFiniteMax) { // set axis limits explicitly if both bounds are valid
+            ImPlot::SetupAxisLimits(axisId, std::min(a.min, a.max), std::max(a.min, a.max));
         }
     }
 }
@@ -79,20 +101,23 @@ void DashboardPage::drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot&
     // compute axis pixel width for H and height for V
     [&plot] {
         const ImPlotRect axisLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
-        const auto       p0         = ImPlot::PlotToPixels(axisLimits.X.Min, axisLimits.Y.Min);
-        const auto       p1         = ImPlot::PlotToPixels(axisLimits.X.Max, axisLimits.Y.Max);
-        const int        xWidth     = static_cast<int>(std::abs(p1.x - p0.x));
-        const int        yHeight    = static_cast<int>(std::abs(p1.y - p0.y));
+        const ImVec2     p0         = ImPlot::PlotToPixels(axisLimits.X.Min, axisLimits.Y.Min);
+        const ImVec2     p1         = ImPlot::PlotToPixels(axisLimits.X.Max, axisLimits.Y.Max);
+        const float      xWidth     = std::round(std::abs(p1.x - p0.x));
+        const float      yHeight    = std::round(std::abs(p1.y - p0.y));
         std::for_each(plot.axes.begin(), plot.axes.end(), [xWidth, yHeight](auto& a) { a.width = (a.axis == Dashboard::Plot::Axis::X) ? xWidth : yHeight; });
     }();
 
+    bool drawTag = true;
     for (const auto& source : plot.sources) {
         auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
         if (!grBlock) {
             continue;
         }
+
         if (source->visible) {
-            grBlock->draw();
+            grBlock->draw({{"draw_tag", drawTag}} /* pass plot specific rendering options, axes, ...*/);
+            drawTag = false;
         } else {
             // Consume data to not block the flowgraph
             std::ignore = grBlock->work(std::numeric_limits<std::size_t>::max());
@@ -227,9 +252,6 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
         drawGrid(w, h);
     }
 
-    auto pos       = ImGui::GetCursorPos();
-    auto screenPos = ImGui::GetCursorScreenPos();
-
     Dashboard::Plot* toDelete = nullptr;
 
     DockSpace::Windows windows;
@@ -264,14 +286,20 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                     ImPlot::EndDragDropTarget();
                 }
 
-                auto rect = ImPlot::GetPlotLimits();
+                ImPlotRect rect = ImPlot::GetPlotLimits();
                 for (auto& a : plot.axes) {
-                    if (a.axis == Dashboard::Plot::Axis::X) {
-                        a.min = rect.X.Min;
-                        a.max = rect.X.Max;
-                    } else {
-                        a.min = rect.Y.Min;
-                        a.max = rect.Y.Max;
+                    const ImAxis    axisId           = (a.axis == Dashboard::Plot::Axis::X) ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multi-axes
+                    ImPlotAxisFlags axisFlags        = ImPlot::GetCurrentPlot()->Axes[axisId].Flags;
+                    const bool      isAutoOrRangeFit = (axisFlags & (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit)) != 0;
+
+                    if (!isAutoOrRangeFit) { // update a.min/a.max if the axis is *not* auto-fitting
+                        if (a.axis == Dashboard::Plot::Axis::X) {
+                            a.min = static_cast<float>(rect.X.Min);
+                            a.max = static_cast<float>(rect.X.Max);
+                        } else {
+                            a.min = static_cast<float>(rect.Y.Min);
+                            a.max = static_cast<float>(rect.Y.Max);
+                        }
                     }
                 }
 
@@ -321,8 +349,8 @@ void DashboardPage::drawGrid(float w, float h) {
     }
 }
 
-void DashboardPage::drawLegend(Dashboard& dashboard, const DashboardPage::Mode& mode) noexcept {
-#ifdef TODO_PORT
+void DashboardPage::drawLegend([[maybe_unused]] Dashboard& dashboard, [[maybe_unused]] const DashboardPage::Mode& mode) noexcept {
+#ifdef TODO_PORT // TODO: revisit this!!!
     alignForWidth(std::max(10.f, legend_box.x), 0.5f);
     legend_box.x = 0.f;
     {

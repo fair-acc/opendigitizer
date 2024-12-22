@@ -37,7 +37,7 @@
 #define NOTIFY_PADDING_X          20.f  // Bottom-left X padding
 #define NOTIFY_PADDING_Y          20.f  // Bottom-left Y padding
 #define NOTIFY_PADDING_MESSAGE_Y  10.f  // Padding Y between each message
-#define NOTIFY_FADE_IN_OUT_TIME   150   // Fade in and out duration
+#define NOTIFY_FADE_IN_OUT_TIME   150.f // Fade in and out duration
 #define NOTIFY_DEFAULT_DISMISS    3000  // Auto dismiss after X ms (default, applied only of no data provided in constructors)
 #define NOTIFY_OPACITY            0.95f // 0-1 Toast opacity
 #define NOTIFY_USE_SEPARATOR      false // If true, a separator will be rendered between the title and the content
@@ -261,9 +261,9 @@ public:
         const int64_t         elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(getElapsedTime()).count();
 
         if (phase == ImGuiToastPhase::FadeIn) {
-            return ((float)elapsed / (float)NOTIFY_FADE_IN_OUT_TIME) * NOTIFY_OPACITY;
+            return (static_cast<float>(elapsed) / NOTIFY_FADE_IN_OUT_TIME) * NOTIFY_OPACITY;
         } else if (phase == ImGuiToastPhase::FadeOut) {
-            return (1.f - (((float)elapsed - (float)NOTIFY_FADE_IN_OUT_TIME - (float)this->dismissTime) / (float)NOTIFY_FADE_IN_OUT_TIME)) * NOTIFY_OPACITY;
+            return (1.f - ((static_cast<float>(elapsed) - NOTIFY_FADE_IN_OUT_TIME - static_cast<float>(this->dismissTime)) / static_cast<float>(NOTIFY_FADE_IN_OUT_TIME))) * NOTIFY_OPACITY;
         }
 
         return 1.f * NOTIFY_OPACITY;
@@ -356,7 +356,7 @@ inline void InsertNotification(const ImGuiToast& toast) { notifications.push_bac
  *
  * @param index The index of the notification to remove.
  */
-inline void RemoveNotification(int index) { notifications.erase(notifications.begin() + index); }
+inline void RemoveNotification(std::size_t index) { notifications.erase(std::next(notifications.begin(), index)); }
 
 /**
  * Renders all notifications in the notifications vector.
@@ -368,7 +368,7 @@ inline void RenderNotifications() {
 
     float height = 0.f;
 
-    for (size_t i = 0; i < notifications.size(); ++i) {
+    for (size_t i = 0UZ; i < notifications.size(); ++i) {
         ImGuiToast* currentToast = &notifications[i];
 
         // Remove toast if expired
@@ -399,7 +399,7 @@ inline void RenderNotifications() {
 #ifdef _WIN32
         sprintf_s(windowName, "##TOAST%d", (int)i);
 #elif defined(__linux__) || defined(__EMSCRIPTEN__)
-        std::sprintf(windowName, "##TOAST%d", (int)i);
+        std::sprintf(windowName, "##TOAST%d", static_cast<int>(i));
 #elif defined(__APPLE__)
         std::snprintf(windowName, 50, "##TOAST%d", (int)i);
 #else

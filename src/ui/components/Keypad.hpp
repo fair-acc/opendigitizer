@@ -451,7 +451,7 @@ class InputKeypad {
         }
 
         if (buttonActivated) {
-            static double lastClick = -1.0f;
+            static double lastClick = -1.0;
             static ImVec2 lastClickPos{-1, -1};
             const double  time                    = ImGui::GetTime();
             const ImVec2  clickPos                = ImGui::GetMousePos();

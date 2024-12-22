@@ -167,7 +167,7 @@ public:
     };
 
     struct EnumParameter {
-        const int size;
+        const std::size_t size;
 
         using Options = std::vector<std::string>;
         Options                                  options;
@@ -289,11 +289,11 @@ public:
 
     struct EnumParameter {
         const BlockInstantiationDefinition::EnumParameter& definition;
-        int                                                optionIndex;
+        std::size_t                                        optionIndex;
 
         std::string toString() const;
 
-        inline EnumParameter& operator=(const EnumParameter& p) {
+        EnumParameter& operator=(const EnumParameter& p) noexcept {
             optionIndex = p.optionIndex;
             return *this;
         }

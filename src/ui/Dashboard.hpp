@@ -73,10 +73,10 @@ public:
         std::vector<std::string> sourceNames;
         std::vector<Source*>     sources;
         struct AxisData {
-            Axis  axis;
-            float min;
-            float max;
-            float width = 1e99f;
+            Axis  axis  = Axis::X;
+            float min   = std::numeric_limits<float>::quiet_NaN();
+            float max   = std::numeric_limits<float>::quiet_NaN();
+            float width = std::numeric_limits<float>::max();
         };
         std::vector<AxisData> axes;
 

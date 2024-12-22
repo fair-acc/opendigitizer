@@ -64,12 +64,12 @@ const std::string& DataType::toString() const {
 std::string Block::Parameter::toString() const {
     if (auto* e = std::get_if<Block::EnumParameter>(this)) {
         return e->toString();
-    } else if (auto* r = std::get_if<Block::RawParameter>(this)) {
-        return r->value;
-    } else if (auto* i = std::get_if<Block::NumberParameter<int>>(this)) {
-        return std::to_string(i->value);
-    } else if (auto* i = std::get_if<Block::NumberParameter<float>>(this)) {
-        return std::to_string(i->value);
+    } else if (auto* rawParam = std::get_if<Block::RawParameter>(this)) {
+        return rawParam->value;
+    } else if (auto* intParam = std::get_if<Block::NumberParameter<int>>(this)) {
+        return std::to_string(intParam->value);
+    } else if (auto* floatParam = std::get_if<Block::NumberParameter<float>>(this)) {
+        return std::to_string(floatParam->value);
     }
     assert(0);
     return {};
@@ -77,10 +77,10 @@ std::string Block::Parameter::toString() const {
 
 BlockDefinition::BlockDefinition(std::string_view name_, std::string_view l, std::string_view cat) : name(name_), label(l.empty() ? name_ : l), category(cat) {}
 
-std::unique_ptr<Block> BlockDefinition::createBlock(std::string_view name) const {
+std::unique_ptr<Block> BlockDefinition::createBlock(std::string_view name_) const {
     auto params    = defaultSettings;
-    params["name"] = std::string(name);
-    return std::make_unique<Block>(name, this, std::move(params));
+    params["name"] = std::string(name_);
+    return std::make_unique<Block>(name_, this, std::move(params));
 }
 
 BlockRegistry& BlockRegistry::instance() {
@@ -113,12 +113,12 @@ void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& plugin
             std::ignore          = prototype->settings().applyStagedParameters();
             auto defaultSettings = prototype->settings().get();
             for (const auto& [id, v] : defaultSettings) {
-                if (auto param = std::get_if<int>(&v)) {
-                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<int>{*param});
-                } else if (auto param = std::get_if<float>(&v)) {
-                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<float>{*param});
-                } else if (auto param = std::get_if<std::string>(&v)) {
-                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::StringParameter{*param});
+                if (auto intParam = std::get_if<int>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<int>{*intParam});
+                } else if (auto floatParam = std::get_if<float>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::NumberParameter<float>{*floatParam});
+                } else if (auto stringParam = std::get_if<std::string>(&v)) {
+                    instantiationType.settings.emplace_back(id, id, BlockInstantiationDefinition::StringParameter{*stringParam});
                 }
             }
 
@@ -146,7 +146,7 @@ void BlockRegistry::addBlockDefinitionsFromPluginLoader(gr::PluginLoader& plugin
 
 void BlockRegistry::addBlockDefinition(std::unique_ptr<BlockDefinition>&& t) { _types.insert({t->name, std::move(t)}); }
 
-Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_type(t), m_settings(std::move(settings)) {
+Block::Block(std::string_view name, const BlockDefinition* t, gr::property_map settings) : name(name), m_settings(std::move(settings)), m_type(t) {
     //
     setCurrentInstantiation(m_type->instantiations.cbegin()->first);
 }
@@ -321,7 +321,7 @@ static void readFile(const std::filesystem::path& file, std::string& str) {
     }
 
     stream.seekg(0, std::ios::end);
-    size_t size = stream.tellg();
+    auto size = static_cast<std::size_t>(stream.tellg());
 
     str.resize(size);
     stream.seekg(0);

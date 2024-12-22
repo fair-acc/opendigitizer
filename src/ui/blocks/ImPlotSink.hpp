@@ -125,6 +125,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     gr::PortIn<T> in;
     uint32_t      color = 0xff0000;
     ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
+    gr::Size_t  required_size = 2048U; // TODO: make this a multi-consumer/vector property
     std::string signal_name;
     std::string signal_quantity;
     std::string signal_unit;
@@ -132,15 +133,26 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     float       signal_max  = std::numeric_limits<float>::max();
     float       sample_rate = 1000.0f;
 
-    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate);
+    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate);
 
-    gr::HistoryBuffer<double> _xValues{65536UZ};
-    gr::HistoryBuffer<double> data{65536UZ}; // TODO: rename to _yValues
+    gr::HistoryBuffer<double> _xValues{required_size};
+    gr::HistoryBuffer<double> _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
+
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+        if (_xValues.capacity() != required_size) {
+            _xValues = gr::HistoryBuffer<double>(required_size); // TODO: copy old data to new one
+            _tagValues.clear();
+        }
+        if (_yValues.capacity() != required_size) {
+            _yValues = gr::HistoryBuffer<double>(required_size); // TODO: copy old data to new one
+            _tagValues.clear();
+        }
+    }
 
     constexpr void processOne(const T& input) noexcept {
         if constexpr (std::is_arithmetic_v<T>) {
@@ -148,7 +160,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
             const double Ts = 1.0 / static_cast<double>(sample_rate);
             _xValues.push_back(_xValues[1] + 2 * Ts);
         }
-        data.push_back(input);
+        _yValues.push_back(input);
 
         if (this->inputTagsPresent()) {
             // received tag
@@ -160,20 +172,26 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
         const auto&                             label  = signal_name.empty() ? this->name.value : signal_name;
-        if (data.empty()) {
+        if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
             double v = {};
             ImPlot::PlotLine(label.c_str(), &v, 1);
         } else {
-            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4((color << 8) | 0xff);
+            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
             // TODO: remove reverse workaround ... newest value (time > 0) should be always on the right
             std::vector reversedX(_xValues.rbegin(), _xValues.rend());
-            std::vector reversedY(data.rbegin(), data.rend());
-
+            std::vector reversedY(_yValues.rbegin(), _yValues.rend());
             ImPlot::SetNextLineStyle(lineColor);
             ImPlot::PlotLine(label.c_str(), reversedX.data(), reversedY.data(), static_cast<int>(reversedY.size()));
-            lineColor.w *= 0.75f; // semi-transparent tags
-            drawAndPruneTags(_tagValues, reversedX.front(), reversedX.back(), lineColor);
+
+            if (config.contains("draw_tag")) {
+                const bool* drawTag = std::get_if<bool>(&config.at("draw_tag"));
+                if (!drawTag || !*drawTag) {
+                    return gr::work::Status::OK;
+                }
+                lineColor.w *= 0.75f; // semi-transparent tags
+                drawAndPruneTags(_tagValues, reversedX.front(), reversedX.back(), lineColor);
+            }
         }
 
         return gr::work::Status::OK;
@@ -227,6 +245,6 @@ public:
 
 } // namespace opendigitizer
 
-auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, double>(gr::globalBlockRegistry());
-auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float, double>(gr::globalBlockRegistry());
+inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, double>(gr::globalBlockRegistry());
+inline static auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float, double>(gr::globalBlockRegistry());
 #endif

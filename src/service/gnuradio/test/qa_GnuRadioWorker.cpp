@@ -505,8 +505,8 @@ blocks:
     id: !!str CountSource
     parameters:
       n_samples: !!uint32 100
-      signal_unit: !!str A unit
-      sample_rate: !!float32 10
+      signal_unit: !!str "A unit"
+      sample_rate: !!float32 10.0
       timing_tags: !!str
         - 30,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
         - 50,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
