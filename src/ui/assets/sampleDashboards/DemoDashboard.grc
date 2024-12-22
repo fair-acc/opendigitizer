@@ -23,11 +23,11 @@ blocks:
   - name: !!str sink 3
     id: !!str opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0x0000ff
+      color: !!uint32 0xffff00
   - name: !!str sink 4
     id: !!str opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0xffff00
+      color: !!uint32 0x00ff00
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]

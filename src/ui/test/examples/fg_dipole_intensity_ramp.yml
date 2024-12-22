@@ -2,20 +2,20 @@ sources:
   - name: DipoleCurrentSink
     block: DipoleCurrentSink
     port: 0
-    color: !!uint32 0xFF0000
+    color: !!uint32 0xFF3030
   - name: IntensitySink
     block: IntensitySink
     port: 0
-    color: !!uint32 0x0000FF
+    color: !!uint32 0x3030FF
 plots:
   - name: Plot 1
     axes:
       - axis: X
         min: 0.0
-        max: 11.0
+        max: NaN # auto-range max
       - axis: Y
         min: -0.01
-        max: 32.0
+        max: 50.0
     sources:
       - DipoleCurrentSink
       - IntensitySink

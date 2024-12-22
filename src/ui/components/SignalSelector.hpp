@@ -345,7 +345,7 @@ public:
         }
     }
 
-    void drawElement(const SignalData& entry, int idx, FlowGraph* /*fg*/, ImGuiSelectionBasicStorage& selection) {
+    void drawElement(const SignalData& entry, std::size_t idx, FlowGraph* /*fg*/, const ImGuiSelectionBasicStorage& selection) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));
@@ -389,10 +389,6 @@ public:
             filtersChanged = true;
         }
 
-        auto contentWidth          = ImGui::GetContentRegionAvail().x;
-        auto remainingContentWidth = contentWidth;
-        bool first                 = true;
-
         if (auto removedLabel = m_selectedFilters.draw()) {
             (*removedLabel)->isActive = false;
             filtersChanged            = true;
@@ -434,7 +430,7 @@ public:
                 }
 
                 while (clipper.Step()) {
-                    for (auto n = clipper.DisplayStart; n < clipper.DisplayEnd; ++n) {
+                    for (std::size_t n = clipper.DisplayStart; n < clipper.DisplayEnd; ++n) {
                         drawElement(*m_filteredItems[n], n, fg, selection);
                     }
                 }

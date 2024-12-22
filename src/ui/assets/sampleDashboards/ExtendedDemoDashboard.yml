@@ -19,13 +19,6 @@ sources:
     color: !!uint32 0xff00ff
 plots:
   - name: Plot 4
-    axes:
-      - axis: X
-        min: 0
-        max: 100
-      - axis: Y
-        min: -1
-        max: 1
     sources:
       - sink 3
     rect:
@@ -34,13 +27,6 @@ plots:
       - 8
       - 4
   - name: Plot 5
-    axes:
-      - axis: X
-        min: 0
-        max: 100
-      - axis: Y
-        min: -3.5
-        max: 3.5
     sources:
       - sink 1
     rect:
@@ -49,13 +35,6 @@ plots:
       - 8
       - 8
   - name: Plot 6
-    axes:
-      - axis: X
-        min: 0
-        max: 100
-      - axis: Y
-        min: -1
-        max: 1
     sources:
       - sink 4
     rect:
@@ -64,13 +43,6 @@ plots:
       - 8
       - 4
   - name: Plot 7
-    axes:
-      - axis: X
-        min: 0
-        max: 700
-      - axis: Y
-        min: 0
-        max: 1
     sources:
       - sink 2
     rect:
@@ -79,13 +51,6 @@ plots:
       - 8
       - 8
   - name: Plot 8
-    axes:
-      - axis: X
-        min: 0
-        max: 100
-      - axis: Y
-        min: -1
-        max: 1
     sources:
       - sink 5
     rect:
@@ -94,13 +59,6 @@ plots:
       - 8
       - 4
   - name: Plot 9
-    axes:
-      - axis: X
-        min: 0
-        max: 100
-      - axis: Y
-        min: -1
-        max: 1
     sources:
       - sink 6
     rect:

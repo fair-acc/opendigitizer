@@ -35,7 +35,7 @@ namespace DigitizerUi {
 namespace {
 template<typename T>
 inline T randomRange(T min, T max) {
-    T scale = rand() / (T)RAND_MAX;
+    T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
     return min + scale * (max - min);
 }
 
@@ -69,14 +69,14 @@ struct arrsize<T const (&)[N]> {
     static constexpr auto size = N;
 };
 
-template<int N>
+template<std::size_t N>
 auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
     if (source->path.starts_with("http://") || source->path.starts_with("https://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
         auto        path = std::filesystem::path(source->path) / name;
         std::string whatStr;
-        for (int i = 0; i < N; ++i) {
+        for (std::size_t i = 0UZ; i < N; ++i) {
             if (i > 0) {
                 whatStr += ",";
             }
@@ -98,12 +98,12 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
             const char* s = reinterpret_cast<const char*>(rep.data.data());
             const char* e = reinterpret_cast<const char*>(s + rep.data.size());
             if (rep.data.data()) {
-                for (int i = 0; i < N; ++i) {
+                for (std::size_t i = 0UZ; i < N; ++i) {
                     // the format is: <size>;<content>
                     std::string_view sv(s, e);
                     auto             p = sv.find(';');
                     assert(p != sv.npos);
-                    int size = std::atoi(s);
+                    std::size_t size = std::stoul(s);
                     s += p + 1; // the +1 is for the ';'
 
                     reply[i].resize(size);
@@ -127,7 +127,7 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
     } else if (source->path.starts_with("example://")) {
         std::array<std::string, N> reply;
         auto                       fs = cmrc::sample_dashboards::get_filesystem();
-        for (int i = 0; i < N; ++i) {
+        for (std::size_t i = 0UZ; i < N; ++i) {
             reply[i] = [&]() -> std::string {
                 switch (what[i]) {
                 case What::Dashboard: {
@@ -165,7 +165,7 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
             }
 
             std::array<std::string, N> desc;
-            for (int i = 0; i < N; ++i) {
+            for (std::size_t i = 0UZ; i < N; ++i) {
                 auto w = what[i];
                 stream.seekg(w == What::Header ? 0 : (w == What::Dashboard ? 8 : 16));
 
@@ -341,14 +341,12 @@ void Dashboard::doLoad(const std::string& desc) {
         const property_map plotMap = std::get<property_map>(plotPmt);
 
         if (!plotMap.contains("name") || !std::holds_alternative<std::string>(plotMap.at("name"))                     //
-            || !plotMap.contains("axes") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))       //
             || !plotMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("sources")) //
             || !plotMap.contains("rect") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("rect"))) {
             throw gr::exception("invalid plot definition");
         }
 
         auto name        = std::get<std::string>(plotMap.at("name"));
-        auto axes        = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
         auto plotSources = std::get<std::vector<pmtv::pmt>>(plotMap.at("sources"));
         auto rect        = std::get<std::vector<pmtv::pmt>>(plotMap.at("rect"));
         if (rect.size() != 4) {
@@ -359,33 +357,38 @@ void Dashboard::doLoad(const std::string& desc) {
         auto& plot = m_plots.back();
         plot.name  = name;
 
-        for (const auto& axisPmt : axes) {
-            if (!std::holds_alternative<property_map>(axisPmt)) {
-                throw gr::exception("axis is not a property_map");
+        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
+            auto axes = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
+            for (const auto& axisPmt : axes) {
+                if (!std::holds_alternative<property_map>(axisPmt)) {
+                    throw gr::exception("axis is not a property_map");
+                }
+                const property_map axisMap = std::get<property_map>(axisPmt);
+
+                if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis")) //
+                    || !axisMap.contains("min") || !axisMap.contains("max")) {
+                    throw gr::exception("invalid axis definition");
+                }
+
+                plot.axes.push_back({});
+                auto& axisData = plot.axes.back();
+
+                auto axis = std::get<std::string>(axisMap.at("axis"));
+                if (axis == "X") {
+                    axisData.axis = Plot::Axis::X;
+                } else if (axis == "Y") {
+                    axisData.axis = Plot::Axis::Y;
+                } else {
+                    components::Notification::warning(fmt::format("Unknown axis {}", axis));
+                    return;
+                }
+
+                axisData.min = pmtv::cast<float>(axisMap.at("min"));
+                axisData.max = pmtv::cast<float>(axisMap.at("max"));
             }
-            const property_map axisMap = std::get<property_map>(axisPmt);
-
-            if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis")) //
-                || !axisMap.contains("min") || !axisMap.contains("max")) {
-                throw gr::exception("invalid axis definition");
-            }
-
-            plot.axes.push_back({});
-            auto& axisData = plot.axes.back();
-
-            auto axis = std::get<std::string>(axisMap.at("axis"));
-            if (axis == "X") {
-                axisData.axis = Plot::Axis::X;
-            } else if (axis == "Y") {
-                axisData.axis = Plot::Axis::Y;
-            } else {
-                auto msg = fmt::format("Unknown axis {}", axis);
-                components::Notification::warning(msg);
-                return;
-            }
-
-            axisData.min = pmtv::cast<float>(axisMap.at("min"));
-            axisData.max = pmtv::cast<float>(axisMap.at("max"));
+        } else { // add default axes and ranges if not defined
+            plot.axes.push_back({Plot::Axis::X});
+            plot.axes.push_back({Plot::Axis::Y});
         }
 
         std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
@@ -704,8 +707,8 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
                     return {};
                 }
                 int      year  = std::atoi(str.data());
-                unsigned month = std::atoi(str.c_str() + 5);
-                unsigned day   = std::atoi(str.c_str() + 8);
+                unsigned month = std::atoi(str.c_str() + 5UZ);
+                unsigned day   = std::atoi(str.c_str() + 8UZ);
 
                 std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
                 return std::chrono::sys_days(date);

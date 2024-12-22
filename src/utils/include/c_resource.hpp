@@ -124,9 +124,9 @@ private:
     using TConstructReturn = typename detail::function_traits<TConstructor>::return_type;
 
     static_assert(std::is_function_v<std::remove_pointer_t<TConstructor>>, "needs a free-standing C-style constructor function");
-    static_assert(constructFunction != nullptr, "constructFunction must not be null");
+    // static_assert(constructFunction != nullptr, "constructFunction must not be null");
     static_assert(std::is_function_v<std::remove_pointer_t<TDestructor>>, "needs a free-standing C-style destructor function");
-    static_assert(destructFunction != nullptr, "destructFunction must not be null");
+    // static_assert(destructFunction != nullptr, "destructFunction must not be null");
     static_assert(!std::is_pointer_v<T> || (std::is_invocable_v<TDestructor, T> || std::is_invocable_v<TDestructor, T*>), "require either destructFunction(T) or destructFunction(T*)");
 
     constexpr static auto initElement() {

@@ -117,13 +117,6 @@ blocks:
           round_off_time: !!float32 0.000000
           sample_rate: !!float32 1000.000000
           signal_type: Const
-  - name: DipoleCurrentSink
-    id: opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0xAA0000
-      signal_name: !!str dipole current
-      signal_quantity: !!str DipoleCurrent
-      signal_unit: !!str A
   - name: IntensityGenerator
     id: gr::basic::FunctionGenerator
     template_args: !!str float
@@ -181,10 +174,19 @@ blocks:
           round_off_time: !!float32 0.000000
           sample_rate: !!float32 1000.000000
           signal_type: Const
+  - name: DipoleCurrentSink
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: !!uint32 0xAA3030
+      required_size: !!uint32 65536
+      signal_name: !!str dipole current
+      signal_quantity: !!str DipoleCurrent
+      signal_unit: !!str A
   - name: IntensitySink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0x0000AA
+      color: !!uint32 0x3030AA
+      required_size: !!uint32 65536
       signal_name: !!str beam intensity
       signal_quantity: !!str BeamIntensity
       signal_unit: !!str ppp

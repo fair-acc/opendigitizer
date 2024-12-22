@@ -20,7 +20,7 @@ inline auto ColorComboBoxExpectedWidth(const std::string& label) {
 }
 
 template<typename ComboboxItem>
-inline auto ColorComboBox(char* id, const std::string& label, ImColor color, double comboWidth, std::vector<ComboboxItem>& items) {
+inline auto ColorComboBox(char* id, const std::string& label, ImColor color, float comboWidth, std::vector<ComboboxItem>& items) {
     std::optional<ComboboxItem*> result;
 
     ImGui::SetNextItemWidth(comboWidth);
@@ -66,14 +66,14 @@ public:
         auto remainingContentWidth = contentWidth;
         bool first                 = true;
 
-        for (auto& combo : m_comboboxes) {
-            auto desiredWidth = ColorComboBoxExpectedWidth(combo.label.c_str());
-            if (!first && remainingContentWidth > desiredWidth * 1.2) {
+        for (ComboboxDefinition& combo : m_comboboxes) {
+            float desiredWidth = ColorComboBoxExpectedWidth(combo.label.c_str());
+            if (!first && remainingContentWidth > desiredWidth * 1.2f) {
                 ImGui::SameLine();
             } else {
                 remainingContentWidth = contentWidth;
             }
-            remainingContentWidth -= desiredWidth * 1.2;
+            remainingContentWidth -= desiredWidth * 1.2f;
 
             auto currentResult = ColorComboBox(combo.id.data(), combo.label, combo.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1], desiredWidth, combo.items);
             if (currentResult) {

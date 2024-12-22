@@ -118,12 +118,12 @@ public:
 
         for (const auto& label : m_labels) {
             auto desiredWidth = XLabelExpectedWidth(label.display.c_str());
-            if (!first && remainingContentWidth > desiredWidth * 1.2) {
+            if (!first && remainingContentWidth > desiredWidth * 1.2f) {
                 ImGui::SameLine();
             } else {
                 remainingContentWidth = contentWidth;
             }
-            remainingContentWidth -= desiredWidth * 1.2;
+            remainingContentWidth -= desiredWidth * 1.2f;
 
             if (XLabel(label.display.c_str(), label.color[LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0 : 1])) {
                 toRemove = label.data;
