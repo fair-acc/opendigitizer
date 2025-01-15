@@ -107,10 +107,10 @@ constexpr AcquisitionMode parseAcquisitionMode(std::string_view v) {
 struct PollerKey {
     AcquisitionMode          mode;
     std::string              signal_name;
-    std::size_t              pre_samples         = 0;                           // Trigger
-    std::size_t              post_samples        = 0;                           // Trigger
-    std::size_t              maximum_window_size = 0;                           // Multiplexed
-    std::chrono::nanoseconds snapshot_delay      = std::chrono::nanoseconds(0); // Snapshot
+    std::size_t              pre_samples         = 0;   // Trigger
+    std::size_t              post_samples        = 0;   // Trigger
+    std::size_t              maximum_window_size = 0;   // Multiplexed
+    std::chrono::nanoseconds snapshot_delay      = 0ns; // Snapshot
 
     auto operator<=>(const PollerKey&) const noexcept = default;
 };
@@ -583,29 +583,25 @@ private:
             }
             reply.channelName = (dataSet.signal_names.size() <= signalIndex) ? std::string(signalName) : dataSet.signal_names[signalIndex];
             reply.channelUnit = (dataSet.signal_units.size() <= signalIndex) ? "N/A" : dataSet.signal_units[signalIndex];
-            if ((dataSet.signal_ranges.size() > signalIndex) && dataSet.signal_ranges[signalIndex].size() == 2) {
+            if ((dataSet.signal_ranges.size() > signalIndex)) {
                 // Workaround for Annotated, see above
-                const typename decltype(reply.channelRangeMin)::R rangeMin = dataSet.signal_ranges[signalIndex][0];
-                const typename decltype(reply.channelRangeMax)::R rangeMax = dataSet.signal_ranges[signalIndex][1];
+                const typename decltype(reply.channelRangeMin)::R rangeMin = dataSet.signal_ranges[signalIndex].min;
+                const typename decltype(reply.channelRangeMax)::R rangeMax = dataSet.signal_ranges[signalIndex].max;
                 reply.channelRangeMin                                      = rangeMin;
                 reply.channelRangeMax                                      = rangeMax;
             }
             auto values = std::span(dataSet.signal_values);
-            auto errors = std::span(dataSet.signal_errors);
 
             if (key.mode == AcquisitionMode::DataSet) {
                 const auto samples = static_cast<std::size_t>(dataSet.extents[1]);
                 const auto offset  = signalIndex * samples;
                 const auto nValues = offset + samples <= values.size() ? samples : 0;
-                const auto nErrors = offset + samples <= errors.size() ? samples : 0;
                 values             = values.subspan(offset, nValues);
-                errors             = errors.subspan(offset, nErrors);
             }
 
             reply.channelValue.resize(values.size());
             std::ranges::transform(values, reply.channelValue.begin(), detail::doubleToFloat);
-            reply.channelError.resize(errors.size());
-            std::ranges::transform(errors, reply.channelError.begin(), detail::doubleToFloat);
+            reply.channelError.resize(0);
             reply.channelTimeBase.resize(values.size());
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
         };

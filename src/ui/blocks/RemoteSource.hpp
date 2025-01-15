@@ -238,8 +238,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
                 auto convert     = [](float v) { return static_cast<T>(v); };
                 auto values      = acq.channelValue | std::views::transform(convert);
                 ds.signal_values = {values.begin(), values.end()};
-                auto errors      = acq.channelError | std::views::transform(convert);
-                ds.signal_errors = {errors.begin(), errors.end()};
+                // auto errors      = acq.channelError | std::views::transform(convert); // TODO: If type is uncertain value, use values and errors to initialize
                 ds.signal_ranges = {{convert(acq.channelRangeMin.value()), convert(acq.channelRangeMax.value())}};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back(std::move(ds));
