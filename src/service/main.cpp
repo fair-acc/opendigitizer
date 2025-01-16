@@ -65,12 +65,14 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(
 blocks:
-  - name: source
-    id: TestSource
-  - name: sink
-    id: gr::basic::DataSink
+  - name: !!str  source
+    id: !!str opendigitizer::TestSource
+    template_args: !!str "float"
+  - name: !!str sink
+    id: !!str gr::basic::DataSink
     parameters:
-      signal_name: test
+      signal_name: !!str test
+    template_args: !!str "float"
 connections:
   - [source, 0, sink, 0]
 )";

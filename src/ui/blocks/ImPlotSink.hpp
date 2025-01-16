@@ -145,11 +145,11 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         if (_xValues.capacity() != required_size) {
-            _xValues = gr::HistoryBuffer<double>(required_size); // TODO: copy old data to new one
+            _xValues.resize(required_size);
             _tagValues.clear();
         }
         if (_yValues.capacity() != required_size) {
-            _yValues = gr::HistoryBuffer<double>(required_size); // TODO: copy old data to new one
+            _yValues.resize(required_size);
             _tagValues.clear();
         }
     }
@@ -158,7 +158,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
         if constexpr (std::is_arithmetic_v<T>) {
             in.max_samples  = static_cast<std::size_t>(2.f * sample_rate / 25.f);
             const double Ts = 1.0 / static_cast<double>(sample_rate);
-            _xValues.push_back(_xValues[1] + 2 * Ts);
+            _xValues.push_back(_xValues[_xValues.size() - 1] + 2 * Ts);
         }
         _yValues.push_back(input);
 
@@ -178,11 +178,8 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
             ImPlot::PlotLine(label.c_str(), &v, 1);
         } else {
             ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
-            // TODO: remove reverse workaround ... newest value (time > 0) should be always on the right
-            std::vector reversedX(_xValues.rbegin(), _xValues.rend());
-            std::vector reversedY(_yValues.rbegin(), _yValues.rend());
             ImPlot::SetNextLineStyle(lineColor);
-            ImPlot::PlotLine(label.c_str(), reversedX.data(), reversedY.data(), static_cast<int>(reversedY.size()));
+            ImPlot::PlotLine(label.c_str(), _xValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
 
             if (config.contains("draw_tag")) {
                 const bool* drawTag = std::get_if<bool>(&config.at("draw_tag"));
@@ -190,7 +187,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
                     return gr::work::Status::OK;
                 }
                 lineColor.w *= 0.75f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, reversedX.front(), reversedX.back(), lineColor);
+                drawAndPruneTags(_tagValues, _xValues.back(), _xValues.front(), lineColor);
             }
         }
 
