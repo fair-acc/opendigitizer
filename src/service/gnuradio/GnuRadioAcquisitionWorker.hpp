@@ -513,7 +513,11 @@ private:
                     reply.triggerIndices.push_back(idx);
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
                     reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
-                    reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET)));
+                    if (tagMap.contains(gr::tag::TRIGGER_OFFSET)) {
+                        reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET)));
+                    } else {
+                        reply.triggerOffsets.push_back(0.0f);
+                    }
                     reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
                 } else {
                     reply.triggerIndices.push_back(idx);
