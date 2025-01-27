@@ -44,16 +44,18 @@ inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
 }
 
 struct Settings {
-    std::string hostname{ "localhost" };
-    uint16_t    port{ 8080 };
-    bool        disableHttps{ false };
-    bool        checkCertificates{ true };
+    std::string hostname{"localhost"};
+    uint16_t    port{8080};
+    bool        disableHttps{false};
+    bool        checkCertificates{true};
+    std::string wasmServeDir{""};
 
     Settings() {
         disableHttps      = getValueFromEnv("DIGITIZER_DISABLE_HTTPS", disableHttps);           // use http instead of https
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
-        port              = getValueFromEnv("DIGITIZER_PORT", port);                            //  port      ~     ~    ~    ~
+        port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
+        wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
 #ifndef EMSCRIPTEN
         opencmw::client::RestClient::CHECK_CERTIFICATES = checkCertificates;
 #endif
