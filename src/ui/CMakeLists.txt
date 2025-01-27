@@ -36,6 +36,7 @@ if(EMSCRIPTEN)
     "SHELL:-s NO_EXIT_RUNTIME=0"
     "SHELL:-s ASSERTIONS=1"
     "SHELL:-s NO_FILESYSTEM=1"
+    "SHELL:-s INITIAL_MEMORY=300MB"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s PTHREAD_POOL_SIZE=30"
