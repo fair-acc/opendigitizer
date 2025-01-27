@@ -1,11 +1,10 @@
-cope4000a-streaming.grc
 blocks:
   - name: !!str picoscope
     id: !!str fair::picoscope::Picoscope4000a
     template_args: !!str "float,fair::picoscope::AcquisitionMode::Streaming"
     parameters:
       acquisition_mode: !!str Streaming
-      auto_arm: !!str true
+      auto_arm: !!bool true
       channel_couplings: !!str
         - DC_1M
         - DC_1M
@@ -31,7 +30,7 @@ blocks:
         - Test unit B
         - Test unit C
         - Test unit D
-      sample_rate: !!float64 10000
+      sample_rate: !!float32 10000
   - name: !!str convertA
     id: !!str gr::blocks::type::converter::Convert
     template_args: !!str "float,double"
