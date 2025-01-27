@@ -87,11 +87,12 @@ connections:
     }
 
     Digitizer::Settings settings;
-    Broker              broker("/PrimaryBroker");
+    fmt::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
+    Broker broker("/PrimaryBroker");
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
     using RestBackend = FileServerRestBackend<HTTPS, decltype(fs)>;
-    RestBackend rest(broker, fs, SERVING_DIR);
+    RestBackend rest(broker, fs, settings.wasmServeDir != "" ? settings.wasmServeDir : SERVING_DIR, settings.serviceUrl().build());
 
     const auto requestedAddress    = URI<>("mds://127.0.0.1:12345");
     const auto brokerRouterAddress = broker.bind(requestedAddress);
