@@ -59,20 +59,15 @@ public:
                 auto file = super_t::_vfs.open(path);
                 response.set_content(std::string(file.begin(), file.end()), contentType);
 
-            } else if (auto filePath = _serverRoot / trimmedPath; sfs::exists(filePath)) {
-                // file read from filesystem
-                std::ifstream inFile(filePath);
-                std::string   data;
-
-                inFile.seekg(0, std::ios::end);
-                data.reserve(inFile.tellg());
-                inFile.seekg(0, std::ios::beg);
-
+            } else if (auto filePath = _serverRoot / trimmedPath; sfs::exists(filePath)) { // read file from filesystem
+                std::ifstream  file(filePath, std::ios::binary | std::ios::ate);
+                std::string    data;
+                std::streampos filesize = file.tellg();
+                data.resize(static_cast<unsigned long>(filesize));
+                file.seekg(0, std::ios::beg);
+                file.read(data.data(), filesize);
                 response.set_header("Cache-Control", "public, max-age=36000"); // cache all artefacts for 10h
-
-                data.assign(std::istreambuf_iterator<char>(inFile), std::istreambuf_iterator<char>());
                 response.set_content(std::move(data), contentType);
-
             } else {
                 std::cerr << "File not found: " << _serverRoot / request.path << std::endl;
                 response.status = httplib::StatusCode::NotFound_404;
