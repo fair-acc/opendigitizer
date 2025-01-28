@@ -75,12 +75,16 @@ public:
 
             } else {
                 std::cerr << "File not found: " << _serverRoot / request.path << std::endl;
+                response.status = httplib::StatusCode::NotFound_404;
                 response.set_content("Not found", "text/plain");
             }
         };
 
         _svr.Get("/assets/.*", cmrcHandler);
         _svr.Get("/web/.*", cmrcHandler);
+        // catch nonexistent base files. probably this should just redirect to the main site
+        _svr.Get("/", cmrcHandler);
+        _svr.Get("/index.html", cmrcHandler);
 
         // Register default handlers
         super_t::registerHandlers();
