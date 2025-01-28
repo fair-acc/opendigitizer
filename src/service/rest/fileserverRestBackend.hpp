@@ -52,19 +52,23 @@ public:
                     std::ranges::find_if_not(path, [](char c) { return c == '/'; }),
                     path.cend());
 
-            if (super_t::_vfs.is_file(path)) {
+            if (super_t::_vfs.is_file(path)) { // file embedded with cmakerc
                 // headers required for using the SharedArrayBuffer
+                response.set_header("Cache-Control", "public, max-age=36000"); // cache all artefacts for 10h
                 // webworkers and wasm can only be executed if they have the correct mimetype
                 auto file = super_t::_vfs.open(path);
                 response.set_content(std::string(file.begin(), file.end()), contentType);
 
             } else if (auto filePath = _serverRoot / trimmedPath; sfs::exists(filePath)) {
+                // file read from filesystem
                 std::ifstream inFile(filePath);
                 std::string   data;
 
                 inFile.seekg(0, std::ios::end);
                 data.reserve(inFile.tellg());
                 inFile.seekg(0, std::ios::beg);
+
+                response.set_header("Cache-Control", "public, max-age=36000"); // cache all artefacts for 10h
 
                 data.assign(std::istreambuf_iterator<char>(inFile), std::istreambuf_iterator<char>());
                 response.set_content(std::move(data), contentType);
