@@ -55,7 +55,7 @@ public:
 
     components::AppHeader header;
 
-    // The thread limit here is mainly for emscripten becaue the default thread pool will exhaust the browser's limits and be recreated for every new scheduler
+    // The thread limit here is mainly for emscripten because the default thread pool will exhaust the browser's limits and be recreated for every new scheduler
     std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 1, 1);
 
     struct SchedWrapper {
