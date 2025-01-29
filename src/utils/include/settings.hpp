@@ -58,6 +58,20 @@ struct Settings {
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
 #ifndef EMSCRIPTEN
         opencmw::client::RestClient::CHECK_CERTIFICATES = checkCertificates;
+#else
+        auto        finalURLChar = static_cast<char*>(EM_ASM_PTR({
+            var finalURL         = window.location.href;
+            var lengthBytes      = lengthBytesUTF8(finalURL) + 1;
+            var stringOnWasmHeap = _malloc(lengthBytes);
+            stringToUTF8(finalURL, stringOnWasmHeap, lengthBytes);
+            return stringOnWasmHeap;
+               }));
+        std::string finalURL{finalURLChar, strlen(finalURLChar)};
+        EM_ASM({_free($0)}, finalURLChar);
+        auto url     = opencmw::URI<STRICT>(finalURL);
+        port         = url.port().value_or(port);
+        hostname     = url.hostName().value_or(hostname);
+        disableHttps = url.scheme() == "http";
 #endif
     }
 
