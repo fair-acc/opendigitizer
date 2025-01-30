@@ -48,7 +48,7 @@ public:
 
             if (super_t::_vfs.is_file(path)) { // file embedded with cmakerc
                 // headers required for using the SharedArrayBuffer
-                response.set_header("Cache-Control", "public, max-age=36000"); // cache all artefacts for 10h
+                response.set_header("Cache-Control", "public, max-age=3600"); // cache all artefacts for 1h
                 // webworkers and wasm can only be executed if they have the correct mimetype
                 auto file = super_t::_vfs.open(path);
                 response.set_content(std::string(file.begin(), file.end()), contentType);
@@ -60,7 +60,7 @@ public:
                 data.resize(static_cast<unsigned long>(filesize));
                 file.seekg(0, std::ios::beg);
                 file.read(data.data(), filesize);
-                response.set_header("Cache-Control", "public, max-age=36000"); // cache all artefacts for 10h
+                response.set_header("Cache-Control", "public, max-age=3600"); // cache all artefacts for 1h
                 response.set_content(std::move(data), contentType);
             } else {
                 std::cerr << "File not found: " << _serverRoot / request.path << std::endl;
