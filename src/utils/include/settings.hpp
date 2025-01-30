@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Digitizer {
@@ -48,14 +49,20 @@ struct Settings {
     uint16_t    port{8080};
     bool        disableHttps{false};
     bool        checkCertificates{true};
+    bool        darkMode{false};
     std::string wasmServeDir{""};
+    std::string defaultDashboard{"RemoteStreaming"};
 
+private:
     Settings() {
+        using std::operator""sv;
         disableHttps      = getValueFromEnv("DIGITIZER_DISABLE_HTTPS", disableHttps);           // use http instead of https
+        darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enableDarkMode
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
         port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
+        defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
 #ifndef EMSCRIPTEN
         opencmw::client::RestClient::CHECK_CERTIFICATES = checkCertificates;
 #else
@@ -68,11 +75,28 @@ struct Settings {
                }));
         std::string finalURL{finalURLChar, strlen(finalURLChar)};
         EM_ASM({_free($0)}, finalURLChar);
-        auto url     = opencmw::URI<STRICT>(finalURL);
-        port         = url.port().value_or(port);
-        hostname     = url.hostName().value_or(hostname);
+        auto url      = opencmw::URI<STRICT>(finalURL);
+        port          = url.port().value_or(port);
+        hostname      = url.hostName().value_or(hostname);
+        auto fragment = url.fragment().value_or("");
+        for (auto param : std::ranges::split_view(fragment, "&"sv)) {
+            auto sv = std::string_view(param.begin(), param.end());
+            if (sv.starts_with("dashboard=")) {
+                defaultDashboard = sv.substr("dashboard="sv.length());
+            } else if (sv.starts_with("darkMode=")) {
+                darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
+            }
+        }
         disableHttps = url.scheme() == "http";
 #endif
+        fmt::print("settings loaded: disableHttps={}, darkMode={}, checkCertificates={}, hostname={}, port={}, wasmServeDir={}, defaultDashboard={}\n", //
+            disableHttps, darkMode, checkCertificates, hostname, port, wasmServeDir, defaultDashboard);
+    }
+
+public:
+    static Settings& instance() {
+        static Settings settings;
+        return settings;
     }
 
     opencmw::URI<>::UriFactory serviceUrl() { return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port); }

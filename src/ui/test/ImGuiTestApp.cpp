@@ -89,7 +89,7 @@ void ImGuiTestApp::initImGui() {
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
 
-    App::setImGuiStyle(kDefaultStyle);
+    App::setImGuiStyle(LookAndFeel::Style::Dark);
 
     registerTests();
 }

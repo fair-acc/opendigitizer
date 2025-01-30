@@ -86,7 +86,7 @@ connections:
         grc = grcBuffer.str();
     }
 
-    Digitizer::Settings settings;
+    Digitizer::Settings& settings = Digitizer::Settings::instance();
     fmt::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
     Broker broker("/PrimaryBroker");
     // REST backend

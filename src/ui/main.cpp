@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    Digitizer::Settings settings;
+    Digitizer::Settings& settings = Digitizer::Settings::instance();
 
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     // GL ES 2.0 + GLSL 100

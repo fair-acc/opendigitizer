@@ -73,7 +73,7 @@ protected:
 };
 
 class SignalList {
-    Digitizer::Settings            settings;
+    Digitizer::Settings&           settings      = Digitizer::Settings::instance();
     opencmw::client::ClientContext clientContext = []() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
         clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
