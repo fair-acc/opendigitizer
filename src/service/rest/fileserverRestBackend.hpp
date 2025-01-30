@@ -1,5 +1,6 @@
 #include <majordomo/RestBackend.hpp>
 #include <majordomo/base64pp.hpp>
+#include <settings.hpp>
 
 using namespace opencmw::majordomo;
 
@@ -72,7 +73,8 @@ public:
         _svr.Get("/web/.*", cmrcHandler);
 
         auto redirectHandler = [this](const httplib::Request& request, httplib::Response& response) {
-            response.set_redirect("/web/index.html#dashboard=RemoteStream"); // TODO: make default dashboard configurable
+            auto& settings = Digitizer::Settings::instance();
+            response.set_redirect(fmt::format("/web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : ""));
         };
         _svr.Get("/", redirectHandler);
         _svr.Get("/index.html", redirectHandler);

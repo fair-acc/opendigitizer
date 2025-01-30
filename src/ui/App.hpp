@@ -29,8 +29,6 @@ namespace DigitizerUi {
 
 struct SDLState;
 
-static constexpr LookAndFeel::Style kDefaultStyle = LookAndFeel::Style::Dark;
-
 class App {
 public:
     std::string                       executable;
@@ -144,7 +142,7 @@ public:
 public:
     App() {
         BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*pluginLoader);
-        setStyle(kDefaultStyle);
+        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
     }
 
     static App& instance() {
