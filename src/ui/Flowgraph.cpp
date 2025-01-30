@@ -686,8 +686,32 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
             return;
         }
         if (it->get()->typeName() == "opendigitizer::RemoteStreamSource" || it->get()->typeName() == "opendigitizer::RemoteDataSetSource") {
+            Digitizer::Settings& settings = Digitizer::Settings::instance();
+            // add remote flowgraph for remote data sources
             if (const auto remoteUri = std::get_if<std::string>(&msg.data.value().at("remote_uri"))) {
-                App::instance().dashboard->registerRemoteService(it->get()->name, *remoteUri);
+                std::optional<opencmw::URI<>> uri{};
+                try {
+                    uri = opencmw::URI<>(std::string(*remoteUri));
+                    if (uri && (!uri->hostName().has_value() || uri->hostName()->empty())) {
+                        if (!settings.hostname.empty() && settings.port != 0) {
+                            uri = uri->factory().hostName(settings.hostname).port(settings.port).scheme(settings.disableHttps ? "http" : "https").build();
+                        } else {
+                            uri = {};
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    auto msg = fmt::format("remote_source of '{}' is not a valid URI '{}': {}", it->get()->name, *remoteUri, e.what());
+                    components::Notification::error(msg);
+                    uri = {};
+                }
+                App::instance().dashboard->registerRemoteService(it->get()->name, uri);
+            }
+            // add settings for local host
+            const std::string* host = std::get_if<std::string>(&msg.data.value().at("host"));
+            if (!settings.hostname.empty() && settings.port != 0 && (!host || host->empty())) {
+                std::string newHost = fmt::format("{}://{}{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port == 0 ? "" : fmt::format(":{}", settings.port));
+                fmt::print("setting local service settings for remote source({}): {{host: {} }}\n", it->get()->name, newHost);
+                (*it)->setSetting("host", newHost);
             }
         }
         (*it)->updateSettings(msg.data.value());
