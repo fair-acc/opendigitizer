@@ -68,12 +68,14 @@ public:
                 response.set_content("Not found", "text/plain");
             }
         };
-
         _svr.Get("/assets/.*", cmrcHandler);
         _svr.Get("/web/.*", cmrcHandler);
-        // catch nonexistent base files. probably this should just redirect to the main site
-        _svr.Get("/", cmrcHandler);
-        _svr.Get("/index.html", cmrcHandler);
+
+        auto redirectHandler = [this](const httplib::Request& request, httplib::Response& response) {
+            response.set_redirect("/web/index.html#dashboard=RemoteStream"); // TODO: make default dashboard configurable
+        };
+        _svr.Get("/", redirectHandler);
+        _svr.Get("/index.html", redirectHandler);
 
         // Register default handlers
         super_t::registerHandlers();
