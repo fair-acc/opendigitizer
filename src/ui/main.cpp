@@ -300,6 +300,9 @@ int main(int argc, char** argv) {
             fmt::print("Loading dashboard from '{}'\n", url);
             app.loadDashboard(url);
         }
+    } else if (!settings.defaultDashboard.empty()) {
+        // TODO: add subscription to remote dashboard worker if needed
+        app.loadDashboard(settings.defaultDashboard);
     }
     if (auto first_dashboard = app.openDashboardPage.get(0); app.dashboard == nullptr && first_dashboard != nullptr) { // load first dashboard if there is a dashboard available
         app.loadDashboard(first_dashboard);
