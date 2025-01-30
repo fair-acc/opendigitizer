@@ -80,7 +80,7 @@ connections:
         std::ifstream     in(argv[1]);
         std::stringstream grcBuffer;
         if (!(grcBuffer << in.rdbuf())) {
-            fmt::println(std::cerr, "Could not read GRC file: {}", strerror(errno));
+            fmt::println(stderr, "Could not read GRC file: {}", strerror(errno));
             return 1;
         }
         grc = grcBuffer.str();
@@ -117,7 +117,7 @@ connections:
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
     gr::PluginLoader pluginLoader(registry, {});
-    GrAcqWorker      grAcqWorker(broker, &pluginLoader, std::chrono::milliseconds(50));
+    GrAcqWorker      grAcqWorker(broker, &pluginLoader, 50ms);
     GrFgWorker       grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
 
     const opencmw::zmq::Context                               zctx{};
