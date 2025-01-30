@@ -1,5 +1,5 @@
-#include <majordomo/base64pp.hpp>
 #include <majordomo/RestBackend.hpp>
+#include <majordomo/base64pp.hpp>
 
 using namespace opencmw::majordomo;
 
@@ -16,16 +16,12 @@ private:
 public:
     using super_t::RestBackend;
 
-    FileServerRestBackend(Broker<Roles...> &broker, const VirtualFS &vfs, std::filesystem::path serverRoot, opencmw::URI<> restAddress = opencmw::URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build())
-        : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {
-    }
+    FileServerRestBackend(Broker<Roles...>& broker, const VirtualFS& vfs, std::filesystem::path serverRoot, opencmw::URI<> restAddress = opencmw::URI<>::factory().scheme(DEFAULT_REST_SCHEME).hostName("0.0.0.0").port(DEFAULT_REST_PORT).build()) : super_t(broker, vfs, restAddress), _serverRoot(std::move(serverRoot)) {}
 
     void registerHandlers() override {
-        _svr.Post("/stdio.html", [](const httplib::Request & /*request*/, httplib::Response &response) {
-            response.set_content("", "text/plain");
-        });
+        _svr.Post("/stdio.html", [](const httplib::Request& /*request*/, httplib::Response& response) { response.set_content("", "text/plain"); });
 
-        auto contentTypeForFilename = [](const auto &path) {
+        auto contentTypeForFilename = [](const auto& path) {
             std::string contentType;
             if (path.ends_with(".js")) {
                 contentType = "application/javascript";
@@ -37,7 +33,7 @@ public:
             return contentType;
         };
 
-        auto cmrcHandler = [this, contentTypeForFilename](const httplib::Request &request, httplib::Response &response) {
+        auto cmrcHandler = [this, contentTypeForFilename](const httplib::Request& request, httplib::Response& response) {
             response.set_header("Cross-Origin-Opener-Policy", "same-origin");
             response.set_header("Cross-Origin-Embedder-Policy", "require-corp");
 
@@ -48,9 +44,7 @@ public:
                 path = "index.html";
             }
 
-            std::string_view trimmedPath(
-                    std::ranges::find_if_not(path, [](char c) { return c == '/'; }),
-                    path.cend());
+            std::string_view trimmedPath(std::ranges::find_if_not(path, [](char c) { return c == '/'; }), path.cend());
 
             if (super_t::_vfs.is_file(path)) { // file embedded with cmakerc
                 // headers required for using the SharedArrayBuffer

@@ -13,10 +13,10 @@ namespace detail {
 
 template<typename T>
 inline auto toType(std::string string) {
-    return T{ string };
+    return T{string};
 }
 template<typename T>
-    requires std::is_arithmetic_v<T>
+requires std::is_arithmetic_v<T>
 inline T toType(std::string string) {
     return static_cast<T>(std::stod(string.c_str()));
 }
@@ -34,9 +34,9 @@ inline T getValueFromEnv(std::string variableName, T defaultValue) {
 template<>
 inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
     if (auto value = std::getenv(variableName.c_str()); value) {
-        if (std::ranges::any_of(std::vector<std::string>{ "0", "false", "False", "none" }, [value](auto a) { return a == std::string{ value }; })) {
+        if (std::ranges::any_of(std::vector<std::string>{"0", "false", "False", "none"}, [value](auto a) { return a == std::string{value}; })) {
             return false;
-        } else if (std::ranges::any_of(std::vector<std::string>{ "1", "true", "True", "yes" }, [value](auto a) { return a == std::string{ value }; })) {
+        } else if (std::ranges::any_of(std::vector<std::string>{"1", "true", "True", "yes"}, [value](auto a) { return a == std::string{value}; })) {
             return true;
         }
     }
@@ -75,9 +75,7 @@ struct Settings {
 #endif
     }
 
-    opencmw::URI<>::UriFactory serviceUrl() {
-        return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port);
-    }
+    opencmw::URI<>::UriFactory serviceUrl() { return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port); }
 };
 } // namespace Digitizer
 
