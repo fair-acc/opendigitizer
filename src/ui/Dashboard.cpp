@@ -565,22 +565,13 @@ void Dashboard::loadPlotSources() {
     }
 }
 
-void Dashboard::registerRemoteService(std::string_view blockName, std::string_view uri_) {
-    const auto uri = [&] -> std::optional<opencmw::URI<>> {
-        try {
-            return opencmw::URI<>(std::string(uri_));
-        } catch (const std::exception& e) {
-            auto msg = fmt::format("remote_source of '{}' is not a valid URI '{}': {}", blockName, uri_, e.what());
-            components::Notification::error(msg);
-            return {};
-        }
-    }();
-
+void Dashboard::registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri) {
     if (!uri) {
         return;
     }
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
+    fmt::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
     m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
     const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });

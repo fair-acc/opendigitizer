@@ -96,6 +96,9 @@ public:
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
                 gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
                 gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
+                // set block settings for the remote sources to know the address of the service
+                // fmt::print("setting service address to all blocks (which implement the settings): {}://{}:{}\n", (Digitizer::Settings::instance().disableHttps ? "http" : "https"), Digitizer::Settings::instance().hostname, static_cast<int>(Digitizer::Settings::instance().port));
+                // gr::sendMessage<gr::message::Command::Set>(_toScheduler, "", gr::block::property::kSetting, {{"hostname", Digitizer::Settings::instance().hostname}, {"port", static_cast<int>(Digitizer::Settings::instance().port)}, {"scheme", Digitizer::Settings::instance().disableHttps ? "http" : "https"}}, "UI");
 
                 _thread = std::thread([this]() {
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {

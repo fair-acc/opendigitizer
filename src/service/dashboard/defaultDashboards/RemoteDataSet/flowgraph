@@ -2,15 +2,15 @@ blocks:
   - name: !!str remote stream
     id: !!str opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test
   - name: !!str remote triggered
     id: !!str opendigitizer::RemoteDataSetSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
+      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
   - name: !!str remote multiplexed
     id: !!str opendigitizer::RemoteDataSetSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
+      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
   - name: !!str stream sink
     id: !!str opendigitizer::ImPlotSink
     parameters:

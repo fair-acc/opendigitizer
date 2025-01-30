@@ -124,7 +124,7 @@ public:
         void execute();
         void emplaceBlock(std::string type, std::string params);
     };
-    void registerRemoteService(std::string_view blockName, std::string_view uri);
+    void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
     void unregisterRemoteService(std::string_view blockName);
     void removeUnusedRemoteServices();
 

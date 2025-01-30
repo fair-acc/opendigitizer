@@ -2,7 +2,7 @@ blocks:
   - name: !!str RemoteStreamSource1
     id: !!str opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=test
+      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test
   - name: !!str TagToSample1
     id: !!str opendigitizer::TagToSample
     parameters:
