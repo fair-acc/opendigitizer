@@ -67,12 +67,12 @@ int main(int argc, char** argv) {
 blocks:
   - name: !!str  source
     id: !!str opendigitizer::TestSource
-    template_args: !!str "float"
+    template_args: !!str "double"
   - name: !!str sink
     id: !!str gr::basic::DataSink
     parameters:
       signal_name: !!str test
-    template_args: !!str "float"
+    template_args: !!str "double"
 connections:
   - [source, 0, sink, 0]
 )";
