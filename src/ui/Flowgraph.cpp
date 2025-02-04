@@ -155,6 +155,7 @@ void Block::setSetting(const std::string& settingName, const pmtv::pmt& p) {
     m_settings[settingName] = p;
 
     gr::Message msg;
+    msg.cmd         = gr::message::Command::Set;
     msg.serviceName = m_uniqueName;
     msg.endpoint    = gr::block::property::kStagedSetting;
     msg.data        = gr::property_map{{settingName, p}};
