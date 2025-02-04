@@ -349,7 +349,10 @@ inline std::vector<ImGuiToast> notifications;
  * Inserts a new notification into the notification queue.
  * @param toast The notification to be inserted.
  */
-inline void InsertNotification(const ImGuiToast& toast) { notifications.push_back(toast); }
+inline void InsertNotification(const ImGuiToast& toast) {
+    fmt::print("{} - {}\n", toast.getTitle(), toast.getContent());
+    notifications.push_back(toast);
+}
 
 /**
  * @brief Removes a notification from the list of notifications.
