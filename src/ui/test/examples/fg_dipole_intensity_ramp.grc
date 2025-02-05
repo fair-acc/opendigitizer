@@ -134,8 +134,8 @@ blocks:
         time: !!uint64 0
         parameters:
           duration: !!float32 0.000000
-          start_value: !!float32 40.000000
-          final_value: !!float32 40.000000
+          start_value: !!float32 40e9f
+          final_value: !!float32 40e9f
           impulse_time0: !!float32 0.000000
           impulse_time1: !!float32 0.000000
           round_off_time: !!float32 0.000000
@@ -145,8 +145,8 @@ blocks:
         time: !!uint64 0
         parameters:
           duration: !!float32 0.500000
-          start_value: !!float32 40.000000
-          final_value: !!float32 38.000000
+          start_value: !!float32 40e9f
+          final_value: !!float32 38e9f
           impulse_time0: !!float32 0.000000
           impulse_time1: !!float32 0.000000
           round_off_time: !!float32 0.000000
@@ -156,8 +156,8 @@ blocks:
         time: !!uint64 0
         parameters:
           duration: !!float32 2.000000
-          start_value: !!float32 38.000000
-          final_value: !!float32 00.000000
+          start_value: !!float32 38e9f
+          final_value: !!float32 00e9f
           impulse_time0: !!float32 0.000000
           impulse_time1: !!float32 0.000000
           round_off_time: !!float32 0.300000
