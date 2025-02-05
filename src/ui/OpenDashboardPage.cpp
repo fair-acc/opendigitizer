@@ -387,7 +387,6 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
         fmt::format_to(date, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
         if (ImGui::InputTextWithHint("##date", "today", date, 11, ImGuiInputTextFlags_CallbackCharFilter,
                 [](ImGuiInputTextCallbackData* d) -> int {
-                    fmt::print("{}\n", d->BufTextLen);
                     if (d->EventChar == '/' || (d->EventChar >= '0' && d->EventChar <= '9')) {
                         return 0;
                     }
@@ -398,7 +397,6 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
             unsigned                    month = std::atoi(date + 3);
             int                         year  = std::atoi(date + 6);
             std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
-            fmt::print("{} {} {}\n", day, month, year);
             if (date.ok()) {
                 m_date = std::chrono::sys_days(date);
             }

@@ -350,7 +350,9 @@ inline std::vector<ImGuiToast> notifications;
  * @param toast The notification to be inserted.
  */
 inline void InsertNotification(const ImGuiToast& toast) {
+#if !defined(NDEBUG) || defined(PRINT_NOTIFICATIONS) // prints notifications to stdout for debug builds and if specifically requested
     fmt::print("{} - {}\n", toast.getTitle(), toast.getContent());
+#endif
     notifications.push_back(toast);
 }
 
