@@ -302,7 +302,11 @@ int main(int argc, char** argv) {
         }
     } else if (!settings.defaultDashboard.empty()) {
         // TODO: add subscription to remote dashboard worker if needed
-        app.loadDashboard(settings.defaultDashboard);
+        std::string dashboard = settings.defaultDashboard;
+        if (!dashboard.starts_with("http://") and !dashboard.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
+            dashboard = fmt::format("{}://{}:{}/dashboards/{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port, dashboard);
+        }
+        app.loadDashboard(dashboard);
     }
     if (auto first_dashboard = app.openDashboardPage.get(0); app.dashboard == nullptr && first_dashboard != nullptr) { // load first dashboard if there is a dashboard available
         app.loadDashboard(first_dashboard);
