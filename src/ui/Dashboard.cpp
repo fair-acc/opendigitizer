@@ -571,7 +571,6 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::optional<
     }
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
-    fmt::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
     m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
     const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });

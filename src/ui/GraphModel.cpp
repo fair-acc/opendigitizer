@@ -105,9 +105,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         }
     } else {
         if (!message.data) {
-            fmt::print("Not processed: {} data: {}\n", message.endpoint, message.data.error());
-            auto msg = fmt::format("Error: {}\n", message.data.error().message);
-            DigitizerUi::components::Notification::error(msg);
+            DigitizerUi::components::Notification::error(fmt::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
         }
         return false;
     }

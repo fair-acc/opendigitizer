@@ -19,7 +19,6 @@ opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string
     if (!pathUrl.hostName().has_value() || pathUrl.hostName()->empty()) {
         auto baseUrl = opencmw::URI<>(base.empty() ? "https://localhost" : base);
         auto result  = opencmw::URI<>::UriFactory().scheme(baseUrl.scheme().value()).authority(baseUrl.authority().value()).path(pathUrl.path().value_or("")).queryParam(pathUrl.queryParam().value_or("")).fragment(pathUrl.fragment().value_or("")).build();
-        fmt::print("rewrote subscription: {} + {} -> {}\n", remote, base, result.str());
         return result;
     }
     return pathUrl;
@@ -113,7 +112,6 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         command.topic            = resolveRelativeTopic(uri, host);
         std::weak_ptr maybeQueue = _queue;
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
-            fmt::print("remote source: got data back: {}\n", uri);
             if (!rep.error.empty()) {
                 stopSubscription(remote_uri);
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(fmt::format("Error in subscription: re-subscribing{}", remote_uri)));
@@ -144,7 +142,6 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 auto                            buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-                fmt::print("remote source: deserialised {} values for subscription {}\n", acq.channelValue.value().size(), uri);
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
@@ -156,7 +153,6 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
-        fmt::print("remoteSource::settingsChanged: {} -> {}\n", old_settings, new_settings);
         if (Parent::state() != gr::lifecycle::State::RUNNING) {
             return; // early return, only apply settings for the running flowgraph
         }
@@ -269,7 +265,6 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
-        fmt::print("remoteSource::settingsChanged: {} -> {}\n", old_settings, new_settings);
         if (Parent::state() != gr::lifecycle::State::RUNNING) {
             return; // early return, only apply settings for the running flowgraph
         }

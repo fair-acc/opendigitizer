@@ -536,8 +536,8 @@ Connection* FlowGraph::connect(Block::Port* a, Block::Port* b) {
     const auto bin = std::size_t(b - b->owningUiBlock->inputs().data());
 
     if (a->rawPortType != b->rawPortType) {
-        fmt::println("incompatible block connection: {}.{}({}) to {}.{}({})", //
-            a->owningUiBlock->name, ain, a->rawPortType, b->owningUiBlock->name, bin, b->rawPortType);
+        components::Notification::error(fmt::format("incompatible block connection: {}.{}({}) to {}.{}({})", //
+            a->owningUiBlock->name, ain, a->rawPortType, b->owningUiBlock->name, bin, b->rawPortType));
     } else {
         fmt::println("connect {}.{}({}) to {}.{}({})", a->owningUiBlock->name, ain, a->rawPortType, b->owningUiBlock->name, bin, b->rawPortType);
     }
@@ -710,7 +710,6 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
             const std::string* host = std::get_if<std::string>(&msg.data.value().at("host"));
             if (!settings.hostname.empty() && settings.port != 0 && (!host || host->empty())) {
                 std::string newHost = fmt::format("{}://{}{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port == 0 ? "" : fmt::format(":{}", settings.port));
-                fmt::print("setting local service settings for remote source({}): {{host: {} }}\n", it->get()->name, newHost);
                 (*it)->setSetting("host", newHost);
             }
         }

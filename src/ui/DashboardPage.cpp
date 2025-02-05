@@ -381,7 +381,6 @@ void DashboardPage::drawLegend([[maybe_unused]] Dashboard& dashboard, [[maybe_un
             Dashboard::Source& signal = *iter;
             auto               color  = ImGui::ColorConvertU32ToFloat4(signal.color);
             if (legend_item(color, signal.name, signal.visible)) {
-                fmt::print("click\n");
                 m_editPane.block     = dashboard.localFlowGraph.findBlock(signal.blockName);
                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
