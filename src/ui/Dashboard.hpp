@@ -22,11 +22,19 @@ CMRC_DECLARE(sample_dashboards);
 #include "components/Docking.hpp"
 
 namespace DigitizerUi {
-
 class Block;
 class FlowGraph;
 class FlowGraphItem;
 struct DashboardDescription;
+
+enum class AxisScale : uint8_t {
+    Linear = 0U,   /// default linear scale [t0, .., tn]
+    LinearReverse, /// reverse linear scale [t0-tn, ..., 0]
+    Time,          /// date/timescale
+    Log10,         /// base 10 logarithmic scale
+    SymLog,        /// symmetric log scale
+};
+
 struct DashboardSource {
     ~DashboardSource() noexcept;
 
@@ -48,7 +56,8 @@ struct DashboardDescription {
 
     void save();
 
-    static void                                  load(const std::shared_ptr<DashboardSource>& source, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+    static void load(const std::shared_ptr<DashboardSource>& source, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+
     static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
 };
 
@@ -64,23 +73,30 @@ public:
 
         inline bool operator==(const Source& s) const { return s.blockName == blockName; };
     };
-    struct Plot {
-        enum class Axis { X, Y };
 
-        Plot();
+    struct Plot {
+        enum class AxisKind { X = 0, Y };
+
+        struct AxisData {
+            AxisKind  axis  = AxisKind::X;
+            float     min   = std::numeric_limits<float>::quiet_NaN();
+            float     max   = std::numeric_limits<float>::quiet_NaN();
+            AxisScale scale = AxisScale::Linear;
+            float     width = std::numeric_limits<float>::max();
+        };
 
         std::string              name;
         std::vector<std::string> sourceNames;
         std::vector<Source*>     sources;
-        struct AxisData {
-            Axis  axis  = Axis::X;
-            float min   = std::numeric_limits<float>::quiet_NaN();
-            float max   = std::numeric_limits<float>::quiet_NaN();
-            float width = std::numeric_limits<float>::max();
-        };
-        std::vector<AxisData> axes;
+        std::vector<AxisData>    axes;
 
         std::shared_ptr<DockSpace::Window> window;
+
+        Plot() {
+            static int n = 1;
+            name         = fmt::format("Plot {}", n++);
+            window       = std::make_shared<DockSpace::Window>(name);
+        }
     };
 
 private:
@@ -96,11 +112,15 @@ public:
     void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) { localFlowGraph.setPluginLoader(std::move(loader)); }
 
     void load();
+
     void load(const std::string& grcData, const std::string& dashboardData);
+
     void save();
 
     void newPlot(int x, int y, int w, int h);
+
     void deletePlot(Plot* plot);
+
     void removeSinkFromPlots(std::string_view sinkName);
 
     inline const auto& sources() const { return m_sources; }
@@ -108,11 +128,13 @@ public:
 
     inline auto& plots() { return m_plots; }
 
-    void                                         setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
+    void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
+
     inline std::shared_ptr<DashboardDescription> description() const { return m_desc; }
 
     struct Service {
         Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
+
         std::string                 name;
         std::string                 uri;
         std::string                 layout;
@@ -121,11 +143,16 @@ public:
         opencmw::client::RestClient client;
 
         void reload();
+
         void execute();
+
         void emplaceBlock(std::string type, std::string params);
     };
+
     void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
+
     void unregisterRemoteService(std::string_view blockName);
+
     void removeUnusedRemoteServices();
 
     void saveRemoteServiceFlowgraph(Service* s);
@@ -133,7 +160,8 @@ public:
     inline auto& remoteServices() { return m_services; }
 
     Block* createSink();
-    void   loadPlotSources();
+
+    void loadPlotSources();
 
     FlowGraph localFlowGraph;
 
@@ -147,7 +175,6 @@ private:
     plf::colony<Service>                         m_services;
     FlowGraphItem*                               m_fgItem = nullptr;
 };
-
 } // namespace DigitizerUi
 
 #endif

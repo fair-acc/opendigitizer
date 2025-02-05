@@ -7,6 +7,7 @@
 #include "common/LookAndFeel.hpp"
 #include "common/TouchHandler.hpp"
 
+#include "components//ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 
 #include "Flowgraph.hpp"
@@ -14,11 +15,235 @@
 namespace DigitizerUi {
 
 namespace {
+constexpr inline auto kMaxPlots   = 16u;
+constexpr inline auto kGridWidth  = 16u;
+constexpr inline auto kGridHeight = 16u;
 
-constexpr static inline auto kMaxPlots   = 16u;
-constexpr static inline auto kGridWidth  = 16u;
-constexpr static inline auto kGridHeight = 16u;
+// Holds quantity + unit
+struct AxisCategory {
+    std::string quantity;
+    std::string unit;
+    uint32_t    color = 0xAAAAAA;
+    AxisScale   scale = AxisScale::Linear;
+};
 
+int findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
+    for (std::size_t i = 0UZ; i < cats.size(); ++i) {
+        // see if it already exists
+        if (cats[i].has_value()) {
+            const auto& cat = cats[i].value();
+            if (cat.quantity == qStr && cat.unit == uStr) {
+                return i; // found match
+            }
+        }
+    }
+
+    for (std::size_t i = 0UZ; i < cats.size(); ++i) {
+        // else try to open a new slot
+        if (!cats[i].has_value()) {
+            cats[i] = std::move(AxisCategory{.quantity = std::string(qStr), .unit = std::string(uStr), .color = colorDef});
+            return i;
+        }
+    }
+    return -1; // no slot left
+}
+
+void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string_view>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string_view>, 3>& yAxisGroups) {
+    enum class AxisKind { X = 0, Y };
+
+    xCats.fill(std::nullopt);
+    yCats.fill(std::nullopt);
+    for (auto& g : xAxisGroups) {
+        g.clear();
+    }
+    for (auto& g : yAxisGroups) {
+        g.clear();
+    }
+
+    for (const auto& source : plot.sources) {
+        auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
+        if (!grBlock) {
+            continue;
+        }
+
+        // quantity, unit
+        std::string qStr, uStr;
+        if (auto qOpt = grBlock->settings().get("signal_quantity")) {
+            qStr = std::get<std::string>(*qOpt);
+        }
+        if (auto uOpt = grBlock->settings().get("signal_unit")) {
+            uStr = std::get<std::string>(*uOpt);
+        }
+
+        // axis kind = X or Y
+        AxisKind axisKind = AxisKind::Y; // default
+        if (auto axisOpt = grBlock->settings().get("signal_axis")) {
+            std::string axisVal = std::get<std::string>(*axisOpt);
+            if (axisVal == "X") {
+                axisKind = AxisKind::X;
+            }
+        }
+
+        int idx = -1;
+        if (axisKind == AxisKind::X) {
+            idx = findOrCreateCategory(xCats, qStr, uStr, source->color);
+        } else {
+            idx = findOrCreateCategory(yCats, qStr, uStr, source->color);
+        }
+        if (idx == -1) {
+            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name, qStr, uStr));
+            ;
+            continue;
+        }
+
+        if (axisKind == AxisKind::X) {
+            xAxisGroups[idx].push_back(source->name);
+        } else {
+            yAxisGroups[idx].push_back(source->name);
+        }
+    }
+}
+
+std::string buildLabel(const std::optional<AxisCategory>& catOpt, int idx, bool isX) {
+    if (!catOpt.has_value()) {
+        // fallback
+        return isX ? "time" : "y-axis [a.u.]";
+    }
+    const auto& cat = catOpt.value();
+    if (!cat.quantity.empty() && !cat.unit.empty()) {
+        return fmt::format("{} [{}]", cat.quantity, cat.unit);
+    }
+    if (!cat.quantity.empty()) {
+        return cat.quantity;
+    }
+    if (!cat.unit.empty()) {
+        return cat.unit;
+    }
+    return fmt::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1); // fallback if both empty
+}
+
+void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3>& xCats, const std::array<std::optional<AxisCategory>, 3>& yCats) {
+    using Axis = Dashboard::Plot::AxisKind;
+
+    static constexpr ImAxis kXs[3] = {ImAxis_X1, ImAxis_X2, ImAxis_X3};
+    static constexpr ImAxis kYs[3] = {ImAxis_Y1, ImAxis_Y2, ImAxis_Y3};
+
+    auto colorU32toImVec4 = [](uint32_t c) -> ImVec4 {
+        const float r = float((c >> 16) & 0xFF) / 255.f;
+        const float g = float((c >> 8) & 0xFF) / 255.f;
+        const float b = float((c >> 0) & 0xFF) / 255.f;
+        return ImVec4(r, g, b, 1.f);
+    };
+
+    auto truncateLabel = [&](std::string_view original, float availableWidth) -> std::string {
+        // truncate label if it won't fit into the available `width`
+        const float textWidth = ImGui::CalcTextSize(original.data()).x;
+        if (textWidth <= availableWidth) {
+            return std::string(original);
+        }
+
+        static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+        if (availableWidth <= ellipsisWidth + 1.0f) {
+            // not enough space for a partial string
+            return "...";
+        }
+
+        // shrink text to fit and prepend "..."
+        float       scaleFactor  = (availableWidth - ellipsisWidth) / std::max(1.0f, textWidth);
+        std::size_t fitCharCount = static_cast<std::size_t>(std::floor(scaleFactor * original.size()));
+
+        std::string truncated(original);
+        if (fitCharCount < truncated.size()) {
+            truncated = truncated.substr(truncated.size() - fitCharCount);
+        }
+        return fmt::format("...{}", truncated);
+    };
+
+    auto setAxisScale = [](ImAxis axisID, AxisScale scale) {
+        using enum AxisScale;
+        switch (scale) {
+
+        case Log10: ImPlot::SetupAxisScale(axisID, ImPlotScale_Log10); return;
+        case SymLog: ImPlot::SetupAxisScale(axisID, ImPlotScale_SymLog); return;
+        case Time: {
+            ImPlot::SetupAxisScale(axisID, ImPlotScale_Time);
+            ImPlot::GetStyle().UseISO8601     = true;
+            ImPlot::GetStyle().Use24HourClock = true;
+        }
+            return;
+        case Linear:
+        case LinearReverse:
+        default: ImPlot::SetupAxisScale(axisID, ImPlotScale_Linear);
+        }
+    };
+
+    for (auto& [axisType, minVal, maxVal, scale, width] : plot.axes) {
+        const bool   isX    = (axisType == Axis::X);
+        const ImAxis axisId = isX ? ImAxis_X1 : ImAxis_Y1;
+
+        // compute flags
+        ImPlotAxisFlags flags     = ImPlotAxisFlags_None;
+        bool            finiteMin = std::isfinite(minVal);
+        bool            finiteMax = std::isfinite(maxVal);
+        if (finiteMin && !finiteMax) {
+            flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin;
+        } else if (!finiteMin && finiteMax) {
+            flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMax;
+        } else if (!finiteMin && !finiteMax) {
+            flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+        } // else both limits set -> no auto-fit
+
+        if (isX && scale == AxisScale::Time) {
+            flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+        }
+
+        const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0, isX), width);
+
+        if (!isX && yCats[0].has_value()) {
+            ImVec4 col = colorU32toImVec4(yCats[0]->color);
+            // Colour the text & label
+            ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
+            ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
+        }
+
+        ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
+        if (finiteMin && finiteMax) {
+            ImPlot::SetupAxisLimits(axisId, minVal, maxVal);
+        }
+
+        setAxisScale(axisId, scale);
+
+        if (!isX && yCats[0].has_value()) {
+            ImPlot::PopStyleColor(2);
+        }
+    }
+
+    for (std::size_t i = 1UZ; i < xCats.size(); ++i) {
+        // set up X2/X3 from xCats[1..2]
+        if (!xCats[i].has_value()) {
+            continue;
+        }
+        ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on top
+        std::string     lbl   = buildLabel(xCats[i], i, /*isX=*/true);
+        ImPlot::SetupAxis(kXs[i], lbl.c_str(), flags);
+        setAxisScale(kXs[i], xCats[i]->scale);
+    }
+
+    for (std::size_t i = 1UZ; i < yCats.size(); ++i) {
+        // set up Y2/Y3 from yCats[1..2]
+        if (!yCats[i].has_value()) {
+            continue;
+        }
+        ImVec4 col = colorU32toImVec4(yCats[i]->color);
+        ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
+        ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
+        ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on right
+        std::string     lbl   = buildLabel(yCats[i], i, /*isX=*/false);
+        ImPlot::SetupAxis(kYs[i], lbl.c_str(), flags);
+        ImPlot::PopStyleColor(2);
+        setAxisScale(kYs[i], yCats[i]->scale);
+    }
+}
 } // namespace
 
 static bool plotButton(const char* glyph, const char* tooltip) noexcept {
@@ -46,68 +271,33 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
     }
 }
 
-inline void SetupAxes(const Dashboard::Plot& plot) {
-    using Axis = Dashboard::Plot::Axis;
-    for (const auto& a : plot.axes) {
-        // Determine if this is X or Y
-        const bool   isHorizontal = (a.axis == Axis::X);
-        const ImAxis axisId       = isHorizontal ? ImAxis_X1 : ImAxis_Y1;
-        std::string  axisLabel    = isHorizontal ? "x-axis [a.u.]" : "y-axis [a.u.]";
+// Draw the multi-axis plot
+void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexcept {
+    // 1) Build up two sets of categories for X & Y
+    std::array<std::optional<AxisCategory>, 3>   xCats{};
+    std::array<std::vector<std::string_view>, 3> xAxisGroups{};
+    std::array<std::optional<AxisCategory>, 3>   yCats{};
+    std::array<std::vector<std::string_view>, 3> yAxisGroups{};
 
-        ImPlotAxisFlags axisFlags   = ImPlotAxisFlags_None;
-        const bool      isFiniteMin = std::isfinite(a.min);
-        const bool      isFiniteMax = std::isfinite(a.max);
-        if (isFiniteMin && !isFiniteMax) {
-            // keep min locked, auto-fit max
-            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
-            axisFlags |= ImPlotAxisFlags_LockMin;
-        } else if (!isFiniteMin && isFiniteMax) {
-            // keep max locked, auto-fit min
-            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
-            axisFlags |= ImPlotAxisFlags_LockMax;
-        } else if (!isFiniteMin && !isFiniteMax) {
-            // auto-fit min and max
-            axisFlags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
-        }
+    assignSourcesToAxes(plot, dashboard, xCats, xAxisGroups, yCats, yAxisGroups);
 
-        // Truncate label if there isn’t enough space
-        const float estTextWidth = ImGui::CalcTextSize(axisLabel.c_str()).x;
-        if (estTextWidth >= a.width) {
-            static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
-            if (a.width > ellipsisWidth + 1.0f) {
-                // compute how many characters fit
-                const float scaleFactor   = (a.width - ellipsisWidth) / std::max(1.0f, estTextWidth);
-                const auto  fitCharCount  = static_cast<std::size_t>(std::floor(scaleFactor * axisLabel.size()));
-                const auto  truncatedPart = axisLabel.substr(axisLabel.size() - fitCharCount);
-                ImPlot::SetupAxis(axisId, fmt::format("...{}", truncatedPart).c_str(), axisFlags);
-            } else {
-                ImPlot::SetupAxis(axisId, "...", axisFlags);
-            }
-        } else {
-            ImPlot::SetupAxis(axisId, axisLabel.c_str(), axisFlags);
-        }
-
-        if (isFiniteMin && isFiniteMax) { // set axis limits explicitly if both bounds are valid
-            ImPlot::SetupAxisLimits(axisId, std::min(a.min, a.max), std::max(a.min, a.max));
-        }
-    }
-}
-
-void DashboardPage::drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot& plot) noexcept {
-    SetupAxes(plot);
+    // 2) Setup up to 3 X axes & 3 Y axes
+    setupPlotAxes(plot, xCats, yCats);
     ImPlot::SetupFinish();
+
     const auto axisSize = ImPlot::GetPlotSize();
 
-    // compute axis pixel width for H and height for V
-    [&plot] {
+    // compute axis pixel width or height
+    {
         const ImPlotRect axisLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
         const ImVec2     p0         = ImPlot::PlotToPixels(axisLimits.X.Min, axisLimits.Y.Min);
         const ImVec2     p1         = ImPlot::PlotToPixels(axisLimits.X.Max, axisLimits.Y.Max);
         const float      xWidth     = std::round(std::abs(p1.x - p0.x));
         const float      yHeight    = std::round(std::abs(p1.y - p0.y));
-        std::for_each(plot.axes.begin(), plot.axes.end(), [xWidth, yHeight](auto& a) { a.width = (a.axis == Dashboard::Plot::Axis::X) ? xWidth : yHeight; });
-    }();
+        std::ranges::for_each(plot.axes, [xWidth, yHeight](auto& a) { a.width = (a.axis == Dashboard::Plot::AxisKind::X) ? xWidth : yHeight; });
+    }
 
+    // draw each source on the correct axis
     bool drawTag = true;
     for (const auto& source : plot.sources) {
         auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
@@ -115,13 +305,39 @@ void DashboardPage::drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot&
             continue;
         }
 
-        if (source->visible) {
-            grBlock->draw({{"draw_tag", drawTag}} /* pass plot specific rendering options, axes, ...*/);
-            drawTag = false;
-        } else {
-            // Consume data to not block the flowgraph
+        if (!source->visible) {
+            // consume data if hidden
             std::ignore = grBlock->work(std::numeric_limits<std::size_t>::max());
+            continue;
         }
+
+        // figure out which axis group check X first
+        int  axisID = -1;
+        bool isX    = false;
+        for (int i = 0; i < 3 && axisID < 0; ++i) {
+            auto it = std::ranges::find(xAxisGroups[i], source->name);
+            if (it != xAxisGroups[i].end()) {
+                axisID = i;
+                isX    = true;
+            }
+        }
+        // check Y if not found
+        for (int i = 0; i < 3 && axisID < 0; ++i) {
+            auto it = std::ranges::find(yAxisGroups[i], source->name);
+            if (it != yAxisGroups[i].end()) {
+                axisID = i;
+                isX    = false;
+            }
+        }
+
+        // default to Y0 if not found
+        if (axisID < 0) {
+            axisID = 0;
+            isX    = false;
+        }
+
+        std::ignore = grBlock->draw({{"draw_tag", drawTag}, {"axisID", axisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
+        drawTag     = false;
 
         // allow legend item labels to be DND sources
         if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
@@ -129,7 +345,7 @@ void DashboardPage::drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot&
             ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
             const auto color = [&grBlock] {
                 static const auto defaultColor = ImVec4(1, 0, 0, 1);
-                const auto        maybeColor   = grBlock->settings().get("color");
+                auto              maybeColor   = grBlock->settings().get("color");
                 if (!maybeColor) {
                     return defaultColor;
                 }
@@ -181,7 +397,8 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
             IMW::Group group;
             // Button strip
             if (mode == Mode::Layout) {
-                if (plotButton("\uF201", "create new chart")) { // chart-line
+                if (plotButton("\uF201", "create new chart")) {
+                    // chart-line
                     newPlot(dashboard);
                 }
                 ImGui::SameLine();
@@ -208,7 +425,8 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
             // Post button strip
             if (mode == Mode::Layout) {
                 ImGui::SameLine();
-                if (plotButton("\uf067", "add signal") && m_signalSelector) { // plus
+                if (plotButton("\uf067", "add signal") && m_signalSelector) {
+                    // plus
                     // add new signal
                     m_signalSelector->open();
                 }
@@ -261,7 +479,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
     for (auto& plot : plots) {
         windows.push_back(plot.window);
         plot.window->renderFunc = [this, &dashboard, &plot, &toDelete, mode] {
-            const float offset = mode == Mode::Layout ? 5 : 0;
+            const float offset = (mode == Mode::Layout) ? 5.f : 0.f;
 
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
             ImPlotFlags plotFlags = ImPlotFlags_NoChild;
@@ -271,6 +489,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
             ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0}); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
             ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
             auto plotSize = ImGui::GetContentRegionAvail();
+            ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.00f, 0.05f));
             if (TouchHandler<>::BeginZoomablePlot(plot.name, plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
                 drawPlot(dashboard, plot);
 
@@ -286,14 +505,16 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                     ImPlot::EndDragDropTarget();
                 }
 
+                // update plot.axes if auto-fit is not used
                 ImPlotRect rect = ImPlot::GetPlotLimits();
                 for (auto& a : plot.axes) {
-                    const ImAxis    axisId           = (a.axis == Dashboard::Plot::Axis::X) ? ImAxis_X1 : ImAxis_Y1; // TODO: extend for multi-axes
+                    const bool      isX              = (a.axis == Dashboard::Plot::AxisKind::X);
+                    const ImAxis    axisId           = isX ? ImAxis_X1 : ImAxis_Y1; // TODO multi-axis extension
                     ImPlotAxisFlags axisFlags        = ImPlot::GetCurrentPlot()->Axes[axisId].Flags;
-                    const bool      isAutoOrRangeFit = (axisFlags & (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit)) != 0;
-
-                    if (!isAutoOrRangeFit) { // update a.min/a.max if the axis is *not* auto-fitting
-                        if (a.axis == Dashboard::Plot::Axis::X) {
+                    bool            isAutoOrRangeFit = (axisFlags & (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit)) != 0;
+                    if (!isAutoOrRangeFit) {
+                        // store back min/max from the actual final plot region
+                        if (a.axis == Dashboard::Plot::AxisKind::X) {
                             a.min = static_cast<float>(rect.X.Min);
                             a.max = static_cast<float>(rect.X.Max);
                         } else {
@@ -303,6 +524,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                     }
                 }
 
+                // handle hover detection if in layout mode
                 if (mode == Mode::Layout) {
                     bool plotItemHovered = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
                     if (!plotItemHovered) {
@@ -317,7 +539,6 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                                     m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(s->blockName);
                                     m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                                 }
-
                                 break;
                             }
                         }
@@ -325,8 +546,8 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                 }
 
                 TouchHandler<>::EndZoomablePlot();
-                ImPlot::PopStyleVar(2);
-            } // if (ImPlot::BeginPlot() {...} TODO: method/branch is too long
+                ImPlot::PopStyleVar(3);
+            }
         };
     }
 
@@ -430,7 +651,9 @@ void DashboardPage::addSignalCallback(Dashboard& dashboard, Block* block) {
     dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
     newPlot(dashboard);
     auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
-    dashboard.plots().back().sourceNames.push_back(source->name);
+    if (source != dashboard.sources().end()) {
+        dashboard.plots().back().sourceNames.push_back(source->name);
+    }
 }
 
 void DashboardPage::setLayoutType(DockingLayoutType type) { m_dockSpace.setLayoutType(type); }

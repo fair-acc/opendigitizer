@@ -208,14 +208,16 @@ std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {
     return s;
 }
 
-Dashboard::Plot::Plot() {
-    static int n = 1;
-    name         = fmt::format("Plot {}", n++);
-    window       = std::make_shared<DockSpace::Window>(name);
-}
-
 Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+
+    const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
+    switch (style) {
+    case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
+    case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
+    }
+    LookAndFeel::mutableInstance().style         = style;
+    ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
     localFlowGraph.plotSinkBlockAddedCallback = [this](Block* b) {
         const auto color = std::get_if<uint32_t>(&b->settings().at("color"));
@@ -365,8 +367,7 @@ void Dashboard::doLoad(const std::string& desc) {
                 }
                 const property_map axisMap = std::get<property_map>(axisPmt);
 
-                if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis")) //
-                    || !axisMap.contains("min") || !axisMap.contains("max")) {
+                if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis"))) {
                     throw gr::exception("invalid axis definition");
                 }
 
@@ -374,21 +375,29 @@ void Dashboard::doLoad(const std::string& desc) {
                 auto& axisData = plot.axes.back();
 
                 auto axis = std::get<std::string>(axisMap.at("axis"));
-                if (axis == "X") {
-                    axisData.axis = Plot::Axis::X;
-                } else if (axis == "Y") {
-                    axisData.axis = Plot::Axis::Y;
+                if (axis == "X" || axis == "x") {
+                    axisData.axis = Plot::AxisKind::X;
+                } else if (axis == "Y" || axis == "y") {
+                    axisData.axis = Plot::AxisKind::Y;
                 } else {
                     components::Notification::warning(fmt::format("Unknown axis {}", axis));
                     return;
                 }
 
-                axisData.min = pmtv::cast<float>(axisMap.at("min"));
-                axisData.max = pmtv::cast<float>(axisMap.at("max"));
+                axisData.min         = axisMap.contains("min") ? pmtv::cast<float>(axisMap.at("min")) : std::numeric_limits<float>::quiet_NaN();
+                axisData.max         = axisMap.contains("max") ? pmtv::cast<float>(axisMap.at("max")) : std::numeric_limits<float>::quiet_NaN();
+                std::string scaleStr = axisMap.contains("scale") ? std::get<std::string>(axisMap.at("scale")) : "Linear";
+                auto        trim     = [](const std::string& str) {
+                    auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
+                    auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
+                    return (start < end) ? std::string(start, end) : std::string{};
+                };
+                axisData.scale = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
             }
-        } else { // add default axes and ranges if not defined
-            plot.axes.push_back({Plot::Axis::X});
-            plot.axes.push_back({Plot::Axis::Y});
+        } else {
+            // add default axes and ranges if not defined
+            plot.axes.push_back({Plot::AxisKind::X});
+            plot.axes.push_back({Plot::AxisKind::Y});
         }
 
         std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
@@ -440,9 +449,10 @@ void Dashboard::save() {
         std::vector<pmtv::pmt> plotAxes;
         for (const auto& axis : p.axes) {
             property_map axisMap;
-            axisMap["axis"] = axis.axis == Plot::Axis::X ? "X" : "Y";
-            axisMap["min"]  = axis.min;
-            axisMap["max"]  = axis.max;
+            axisMap["axis"]  = axis.axis == Plot::AxisKind::X ? "X" : "Y";
+            axisMap["min"]   = axis.min;
+            axisMap["max"]   = axis.max;
+            axisMap["scale"] = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
             plotAxes.emplace_back(std::move(axisMap));
         }
         plotMap["axes"] = plotAxes;
@@ -493,7 +503,6 @@ void Dashboard::save() {
         fcommand.data.put(stream.str());
         fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         client.request(fcommand);
-
     } else {
 #ifndef EMSCRIPTEN
         auto path = std::filesystem::path(m_desc->source->path);
@@ -532,8 +541,8 @@ void Dashboard::save() {
 void Dashboard::newPlot(int x, int y, int w, int h) {
     m_plots.push_back({});
     auto& p = m_plots.back();
-    p.axes.push_back({Plot::Axis::X});
-    p.axes.push_back({Plot::Axis::Y});
+    p.axes.push_back({Plot::AxisKind::X});
+    p.axes.push_back({Plot::AxisKind::Y});
     p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
 }
 
@@ -571,6 +580,7 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::optional<
     }
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
+    fmt::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
     m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
     const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });
@@ -712,5 +722,4 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
 }
 
 std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .source = unsavedSource(), .isFavorite = false, .lastUsed = std::nullopt}); }
-
 } // namespace DigitizerUi

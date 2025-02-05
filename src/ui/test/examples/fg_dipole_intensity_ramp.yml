@@ -11,16 +11,26 @@ plots:
   - name: Plot 1
     axes:
       - axis: X
-        min: 0.0
+        min: NaN # auto-range min
         max: NaN # auto-range max
+        scale: LinearReverse # options: Linear, LinearReverse, Time, Log10, SymLog
       - axis: Y
-        min: -0.01
-        max: 50.0
+        min: NaN # auto-range min
+        max: NaN # auto-range max
     sources:
-      - DipoleCurrentSink
       - IntensitySink
-    rect:
-      - 8
-      - 0
-      - 8
-      - 8
+      - DipoleCurrentSink
+    rect: [0, 0, 8, 1] # x, y, width, height
+  - name: Plot 2
+    axes:
+      - axis: X
+        min: NaN # auto-range min
+        max: NaN # auto-range max
+        scale: Time # UTC time axis, other options: Linear, LinearReverse, Time, Log10, SymLog
+      - axis: Y
+        min: NaN # auto-range min
+        max: NaN # auto-range max
+    sources:
+      - IntensitySink
+      - DipoleCurrentSink
+    rect: [0, 1, 8, 1] # x, y, width, height
