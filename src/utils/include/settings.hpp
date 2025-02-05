@@ -75,8 +75,18 @@ private:
                }));
         std::string finalURL{finalURLChar, strlen(finalURLChar)};
         EM_ASM({_free($0)}, finalURLChar);
-        auto url      = opencmw::URI<STRICT>(finalURL);
-        port          = url.port().value_or(port);
+        auto url = opencmw::URI<STRICT>(finalURL);
+        if (url.port().has_value()) {
+            port = url.port().value();
+        } else {
+            if (url.scheme().has_value()) {
+                if (url.scheme().value() == "https") {
+                    port = 443;
+                } else if (url.scheme().value() == "http") {
+                    port = 80;
+                }
+            }
+        }
         hostname      = url.hostName().value_or(hostname);
         auto fragment = url.fragment().value_or("");
         for (auto param : std::ranges::split_view(fragment, "&"sv)) {
