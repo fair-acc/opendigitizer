@@ -1,0 +1,98 @@
+sources:
+  - name: PlotU1
+    block: PlotU1
+    color: !!uint32 0xff0000
+  - name: PlotI1
+    block: PlotI1
+    color: !!uint32 0x00ff00
+  - name: PlotDataSetU1
+    block: PlotDataSetU1
+    color: !!uint32 0xff0000
+  - name: PlotDataSetI1
+    block: PlotDataSetI1
+    color: !!uint32 0x00ff00
+  - name: PlotP1
+    block: PlotP1
+    color: !!uint32 0xff0000
+  - name: PlotQ1
+    block: PlotQ1
+    color: !!uint32 0x00ff00
+  - name: PlotS1
+    block: PlotS1
+    color: !!uint32 0x0000ff
+  - name: PlotPowerFactor1
+    block: PlotPowerFactor1
+    color: !!uint32 0x00ff00
+  - name: PlotPhase1
+    block: PlotPhase1
+    color: !!uint32 0x00ffff
+  - name: PlotFrequencyU1
+    block: PlotFrequencyU1
+    color: !!uint32 0xff00ff
+plots:
+  - name: PlotUI
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotU1
+      - PlotI1
+    rect:
+      - 0
+      - 0
+      - 1
+      - 1
+  - name: PlotDataSetUI
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotDataSetU1
+      - PlotDataSetI1
+    rect:
+      - 2
+      - 0
+      - 1
+      - 1
+  - name: PlotPQSPhase
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotP1
+      - PlotQ1
+      - PlotS1
+      - PlotPhase1
+    rect:
+      - 0
+      - 1
+      - 3
+      - 1
+  - name: PlotPowerFactor
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotPowerFactor1
+    rect:
+      - 0
+      - 2
+      - 3
+      - 1
+flowgraphLayout: ""

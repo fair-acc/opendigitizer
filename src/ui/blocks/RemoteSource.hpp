@@ -114,7 +114,8 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
             if (!rep.error.empty()) {
                 stopSubscription(remote_uri);
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(fmt::format("Error in subscription: re-subscribing{}", remote_uri)));
+                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                            gr::Error(fmt::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
                 startSubscription(remote_uri);
                 auto queue = maybeQueue.lock();
                 if (!queue) {
@@ -230,7 +231,8 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
             if (!rep.error.empty()) {
                 stopSubscription(remote_uri);
-                sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(fmt::format("Error in subscription: re-subscribing{}\n", remote_uri)));
+                sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                    gr::Error(fmt::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
                 startSubscription(remote_uri);
                 return;
             }

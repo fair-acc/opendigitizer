@@ -130,4 +130,7 @@ target_link_libraries(
           assets::rest
           gr-testing
           gr-basic
+          gr-math
+          gr-electrical
+          gr-filter
           digitizer_settings)
