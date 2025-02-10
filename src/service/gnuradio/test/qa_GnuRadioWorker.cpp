@@ -354,25 +354,25 @@ connections:
     "Flow graph management non-terminating graphs"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
-  - name: !!str source
+  - name: !!str source1
     id: !!str ForeverSource
-  - name: !!str test_sink
+  - name: !!str test_sink1
     id: !!str gr::basic::DataSink
     parameters:
       signal_name: !!str test1
 connections:
-  - [source, 0, test_sink, 0]
+  - [source1, 0, test_sink1, 0]
 )";
         constexpr std::string_view grc2 = R"(
 blocks:
-  - name: !!str source
+  - name: !!str source2
     id: !!str ForeverSource
-  - name: !!str test_sink
+  - name: !!str test_sink2
     id: !!str gr::basic::DataSink
     parameters:
       signal_name: !!str test2
 connections:
-  - [source, 0, test_sink, 0]
+  - [source2, 0, test_sink2, 0]
 )";
 
         std::mutex               dnsMutex;
@@ -637,8 +637,7 @@ blocks:
   - name: !!str test_sink
     id: !!str gr::basic::DataSetSink
     parameters:
-      signal_names: !!str
-        - Im(FFT(test signal))
+      signal_name: !!str FFTTestSignal
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, fft, 0]
@@ -653,10 +652,10 @@ connections:
 
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Im%28FFT%28test%20signal%29%29&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal::2&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
             expect(eq(acq.channelValue.size(), 512UZ));
             expect(eq(acq.channelError.size(), 0UZ));
-            expect(eq(acq.channelName.value(), "Im(FFT(test signal))"sv));
+            expect(eq(acq.channelName.value(), "FFTTestSignal"sv));
             expect(eq(acq.channelUnit.value(), "itest unit"sv));
             receivedCount++;
         });
@@ -669,28 +668,12 @@ connections:
 
         std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
 
-        expect(eq(lastDnsEntries.size(), 5UZ));
-        if (lastDnsEntries.size() >= 5UZ) {
+        expect(eq(lastDnsEntries.size(), 1UZ));
+        if (!lastDnsEntries.empty()) {
             expect(eq(lastDnsEntries[0].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[0].name, "Im(FFT(test signal))"sv));
-            expect(eq(lastDnsEntries[0].unit, "itest unit"sv));
+            expect(eq(lastDnsEntries[0].name, "FFTTestSignal"sv));
+            expect(eq(lastDnsEntries[0].unit, ""sv));
             expect(eq(lastDnsEntries[0].sample_rate, 1.f));
-            expect(eq(lastDnsEntries[1].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[1].name, "Magnitude(test signal)"sv));
-            expect(eq(lastDnsEntries[1].unit, "test unit/√Hz"sv));
-            expect(eq(lastDnsEntries[1].sample_rate, 1.f));
-            expect(eq(lastDnsEntries[2].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[2].name, "Phase(test signal)"sv));
-            expect(eq(lastDnsEntries[2].unit, "rad"sv));
-            expect(eq(lastDnsEntries[2].sample_rate, 1.f));
-            expect(eq(lastDnsEntries[3].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[3].name, "Re(FFT(test signal))"sv));
-            expect(eq(lastDnsEntries[3].unit, "test unit"sv));
-            expect(eq(lastDnsEntries[3].sample_rate, 1.f));
-            expect(eq(lastDnsEntries[4].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[4].name, "test signal"sv));
-            expect(eq(lastDnsEntries[4].unit, "Hz"sv));
-            expect(eq(lastDnsEntries[4].sample_rate, 1.f));
         }
     };
 
@@ -746,8 +729,12 @@ blocks:
       signal_max: !!float32 100
   - name: !!str test_sink_up
     id: !!str gr::basic::DataSink
+    parameters:
+      signal_name: !!str count_up
   - name: !!str test_sink_down
     id: !!str gr::basic::DataSink
+    parameters:
+      signal_name: !!str count_down
 connections:
   - [count_up, 0, test_sink_up, 0]
   - [count_down, 0, test_sink_down, 0]
