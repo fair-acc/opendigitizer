@@ -50,7 +50,7 @@ struct TestState {
         schedulerThread = std::thread([&] {
             scheduler = std::make_unique<TestScheduler<gr::profiling::null::Profiler>>(std::move(graph));
             auto ret  = scheduler->runAndWait();
-            expect(ret.has_value()) << std::format("TestScheduler returned with: {} in {}:{}", ret.error().message, ret.error().srcLoc(), ret.error().methodName());
+            expect(ret.has_value()) << [&ret]() { return std::format("TestScheduler returned with: {} in {}:{}", ret.error().message, ret.error().srcLoc(), ret.error().methodName()); };
         });
     }
 
