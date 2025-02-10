@@ -11,28 +11,219 @@ blocks:
     id: !!str opendigitizer::SineSource
     parameters:
       frequency: !!float32 5.00000
-  - name: !!str sink 1
+  - name: !!str sinesSink
     id: !!str opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0xff0000
-  - name: !!str sink 2
+      color: !!uint32 0x009900
+      signal_name: !!str value
+      signal_quantity: !!str measuredVoltage
+      signal_unit: !!str V
+  - name: !!str fftSink
     id: !!str opendigitizer::ImPlotSinkDataSet
     parameters:
-      color: !!uint32 0x00ff00
+      color: !!uint32 0x009900
       dataset_index: !!uint32 3
-  - name: !!str sink 3
-    id: !!str opendigitizer::ImPlotSink
+      signal_name: !!str fft
+      signal_quantity: !!str magnitude
+      signal_unit: !!str dB
+  - name: ClockSource
+    id: gr::basic::ClockSource
+    template_args: !!str "unsigned char"
     parameters:
-      color: !!uint32 0xffff00
-  - name: !!str sink 4
-    id: !!str opendigitizer::ImPlotSink
+      chunk_size: !!uint32 100
+      do_zero_order_hold: true
+      n_samples_max: !!uint32 0
+      repeat_period: !!uint64 4000000000
+      sample_rate: !!float32 1000.000000
+      verbose_console: false
+      tag_times: !!uint64
+        -   10000000
+        -  100000000
+        -  200000000
+        -  500000000
+        - 1000000000
+        - 2000000000
+        - 3000000000
+        - 3900000000
+      tag_values: !!str
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5"
+        - "CMD_DIAG_TRIGGER1"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
+  - name: DipoleCurrentGenerator
+    id: gr::basic::FunctionGenerator
+    template_args: !!str float
     parameters:
-      color: !!uint32 0x00ff00
+      duration: !!float32 0.000000
+      final_value: !!float32 0.000000
+      impulse_time0: !!float32 0.000000
+      impulse_time1: !!float32 0.000000
+      round_off_time: !!float32 0.000000
+      sample_rate: !!float32 1000.000000
+      signal_type: !!str Const
+      start_value: !!float32 0.000000
+    ctx_parameters:
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 1.000000
+          final_value: !!float32 1.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str Const
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.100000
+          start_value: !!float32 1.000000
+          final_value: !!float32 5.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.020000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str ParabolicRamp
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 5.000000
+          final_value: !!float32 5.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str Const
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.500000
+          start_value: !!float32  5.000000
+          final_value: !!float32 30.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.200000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str ParabolicRamp
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 30.000000
+          final_value: !!float32 30.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str Const
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.300000
+          start_value: !!float32 30.000000
+          final_value: !!float32  1.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: CubicSpline
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 1.000000
+          final_value: !!float32 1.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: Const
+  - name: IntensityGenerator
+    id: gr::basic::FunctionGenerator
+    template_args: !!str float
+    parameters:
+      duration: !!float32 0.000000
+      final_value: !!float32 0.000000
+      impulse_time0: !!float32 0.000000
+      impulse_time1: !!float32 0.000000
+      round_off_time: !!float32 0.000000
+      sample_rate: !!float32 1000.000000
+      signal_type: !!str Const
+      start_value: !!float32 0.000000
+    ctx_parameters:
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 40e9f
+          final_value: !!float32 40e9f
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str Const
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.500000
+          start_value: !!float32 40e9f
+          final_value: !!float32 38e9f
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str CubicSpline
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 2.000000
+          start_value: !!float32 38e9f
+          final_value: !!float32 00e9f
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.300000
+          sample_rate: !!float32 1000.000000
+          signal_type: !!str ParabolicRamp
+      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+        time: !!uint64 0
+        parameters:
+          duration: !!float32 0.000000
+          start_value: !!float32 0.000000
+          final_value: !!float32 0.000000
+          impulse_time0: !!float32 0.000000
+          impulse_time1: !!float32 0.000000
+          round_off_time: !!float32 0.000000
+          sample_rate: !!float32 1000.000000
+          signal_type: Const
+  - name: DipoleCurrentSink
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: !!uint32 0xFF3030
+      required_size: !!uint32 7000
+      signal_name: !!str dipole current
+      signal_quantity: !!str DipoleCurrent
+      signal_unit: !!str A
+  - name: IntensitySink
+    id: opendigitizer::ImPlotSink
+    parameters:
+      color: !!uint32 0x3030FF
+      required_size: !!uint32 7000
+      signal_name: !!str beam intensity
+      signal_quantity: !!str BeamIntensity
+      signal_unit: !!str ppp
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]
   - [sum sigs, 0, FFT, 0]
-  - [sum sigs, 0, sink 1, 0]
-  - [FFT, 0, sink 2, 0]
-  - [sine source 1, 0, sink 3, 0]
-  - [sine source 3, 0, sink 4, 0]
+  - [sum sigs, 0, sinesSink, 0]
+  - [FFT, 0, fftSink, 0]
+  - [ClockSource, 0, DipoleCurrentGenerator, 0]
+  - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
+  - [ClockSource, 0, IntensityGenerator, 0]
+  - [IntensityGenerator, 0, IntensitySink, 0]

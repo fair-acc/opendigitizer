@@ -10,6 +10,7 @@
 
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/basic/clock_source.hpp>
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
