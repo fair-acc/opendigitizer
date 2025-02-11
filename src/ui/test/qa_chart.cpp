@@ -94,7 +94,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto plotBlockModel = reinterpret_cast<gr::BlockWrapper<opendigitizer::ImPlotSink<float>>*>(blockModel);
                 auto implotSink     = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(plotBlockModel->raw());
 
-                const int maxSamples = 1400;
+                const int maxSamples = 3000;
                 while (implotSink->_yValues.size() < maxSamples) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }

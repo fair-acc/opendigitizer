@@ -1,13 +1,13 @@
 blocks:
   - name: ClockSource
     id: gr::basic::ClockSource
-    template_args: !!str "unsigned char"
+    template_args: "unsigned char"
     parameters:
-      chunk_size: !!uint32 100
+      chunk_size: 40
       do_zero_order_hold: true
-      n_samples_max: !!uint32 10000
-      repeat_period: !!uint64 4000000000
-      sample_rate: !!float32 1000.000000
+      n_samples_max: 10000
+      repeat_period: 4000000000
+      sample_rate: 1000.000000
       verbose_console: false
       tag_times: !!uint64
         -   10000000
@@ -29,167 +29,167 @@ blocks:
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
   - name: DipoleCurrentGenerator
     id: gr::basic::FunctionGenerator
-    template_args: !!str float
+    template_args: float
     parameters:
-      duration: !!float32 0.000000
-      final_value: !!float32 0.000000
-      impulse_time0: !!float32 0.000000
-      impulse_time1: !!float32 0.000000
-      round_off_time: !!float32 0.000000
-      sample_rate: !!float32 1000.000000
-      signal_type: !!str Const
-      start_value: !!float32 0.000000
+      duration: 0.000000
+      final_value: 0.000000
+      impulse_time0: 0.000000
+      impulse_time1: 0.000000
+      round_off_time: 0.000000
+      sample_rate: 1000.000000
+      signal_type: Const
+      start_value: 0.000000
     ctx_parameters:
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 1.000000
-          final_value: !!float32 1.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str Const
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
+          duration: 0.000000
+          start_value: 1.000000
+          final_value: 1.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
+          signal_type: Const
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.100000
-          start_value: !!float32 1.000000
-          final_value: !!float32 5.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.020000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str ParabolicRamp
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+          duration: 0.100000
+          start_value: 1.000000
+          final_value: 5.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.020000
+          sample_rate: 1000.000000
+          signal_type: ParabolicRamp
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 5.000000
-          final_value: !!float32 5.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str Const
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+          duration: 0.000000
+          start_value: 5.000000
+          final_value: 5.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
+          signal_type: Const
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.500000
-          start_value: !!float32  5.000000
-          final_value: !!float32 30.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.200000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str ParabolicRamp
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+          duration: 0.500000
+          start_value:  5.000000
+          final_value: 30.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.200000
+          sample_rate: 1000.000000
+          signal_type: ParabolicRamp
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 30.000000
-          final_value: !!float32 30.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str Const
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+          duration: 0.000000
+          start_value: 30.000000
+          final_value: 30.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
+          signal_type: Const
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.300000
-          start_value: !!float32 30.000000
-          final_value: !!float32  1.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
+          duration: 0.300000
+          start_value: 30.000000
+          final_value:  1.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
           signal_type: CubicSpline
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 1.000000
-          final_value: !!float32 1.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
+          duration: 0.000000
+          start_value: 1.000000
+          final_value: 1.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
           signal_type: Const
   - name: IntensityGenerator
     id: gr::basic::FunctionGenerator
-    template_args: !!str float
+    template_args: float
     parameters:
-      duration: !!float32 0.000000
-      final_value: !!float32 0.000000
-      impulse_time0: !!float32 0.000000
-      impulse_time1: !!float32 0.000000
-      round_off_time: !!float32 0.000000
-      sample_rate: !!float32 1000.000000
-      signal_type: !!str Const
-      start_value: !!float32 0.000000
+      duration: 0.000000
+      final_value: 0.000000
+      impulse_time0: 0.000000
+      impulse_time1: 0.000000
+      round_off_time: 0.000000
+      sample_rate: 1000.000000
+      signal_type: Const
+      start_value: 0.000000
     ctx_parameters:
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 40e9f
-          final_value: !!float32 40e9f
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str Const
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+          duration: 0.000000
+          start_value: 40e9f
+          final_value: 40e9f
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
+          signal_type: Const
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.500000
-          start_value: !!float32 40e9f
-          final_value: !!float32 38e9f
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str CubicSpline
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+          duration: 0.500000
+          start_value: 40e9f
+          final_value: 38e9f
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
+          signal_type: CubicSpline
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
         time: !!uint64 0
         parameters:
-          duration: !!float32 2.000000
-          start_value: !!float32 38e9f
-          final_value: !!float32 00e9f
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.300000
-          sample_rate: !!float32 1000.000000
-          signal_type: !!str ParabolicRamp
-      - context: !!str CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+          duration: 2.000000
+          start_value: 38e9f
+          final_value: 00e9f
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.300000
+          sample_rate: 1000.000000
+          signal_type: ParabolicRamp
+      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
         time: !!uint64 0
         parameters:
-          duration: !!float32 0.000000
-          start_value: !!float32 0.000000
-          final_value: !!float32 0.000000
-          impulse_time0: !!float32 0.000000
-          impulse_time1: !!float32 0.000000
-          round_off_time: !!float32 0.000000
-          sample_rate: !!float32 1000.000000
+          duration: 0.000000
+          start_value: 0.000000
+          final_value: 0.000000
+          impulse_time0: 0.000000
+          impulse_time1: 0.000000
+          round_off_time: 0.000000
+          sample_rate: 1000.000000
           signal_type: Const
   - name: DipoleCurrentSink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0xAA3030
-      required_size: !!uint32 65536
-      signal_name: !!str dipole current
-      signal_quantity: !!str DipoleCurrent
-      signal_unit: !!str A
+      color: 0xAA3030
+      required_size: 65536
+      signal_name: dipole current
+      signal_quantity: DipoleCurrent
+      signal_unit: A
   - name: IntensitySink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0x3030AA
-      required_size: !!uint32 65536
-      signal_name: !!str beam intensity
-      signal_quantity: !!str BeamIntensity
-      signal_unit: !!str ppp
+      color: 0x3030AA
+      required_size: 65536
+      signal_name: beam intensity
+      signal_quantity: BeamIntensity
+      signal_unit: ppp
 connections:
   - [ClockSource, 0, DipoleCurrentGenerator, 0]
   - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
