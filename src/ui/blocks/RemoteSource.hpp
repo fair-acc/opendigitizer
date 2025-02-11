@@ -17,7 +17,7 @@ namespace opendigitizer {
 opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
     auto pathUrl = opencmw::URI<>(remote);
     if (!pathUrl.hostName().has_value() || pathUrl.hostName()->empty()) {
-        auto baseUrl = opencmw::URI<>(base.empty() ? "https://localhost" : base);
+        auto baseUrl = opencmw::URI<>(base.empty() ? "https://localhost:8080" : base);
         auto result  = opencmw::URI<>::UriFactory().scheme(baseUrl.scheme().value()).authority(baseUrl.authority().value()).path(pathUrl.path().value_or("")).queryParam(pathUrl.queryParam().value_or("")).fragment(pathUrl.fragment().value_or("")).build();
         return result;
     }
@@ -36,6 +36,9 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     float                       signal_max;
     std::string                 host;
     opencmw::client::RestClient _client;
+    std::string                 _subscribedUri = "";
+
+    std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
     GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max, host);
 
@@ -58,6 +61,10 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
+        if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
+            startSubscription(remote_uri);
+            _reconnect = std::nullopt;
+        }
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
@@ -98,25 +105,30 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         return gr::work::Status::OK;
     }
 
-    void stopSubscription(const std::string& uri) {
+    void stopSubscription() {
+        if (_subscribedUri.empty()) {
+            return;
+        }
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Unsubscribe;
-        command.topic    = resolveRelativeTopic(uri, host);
-        command.callback = [uri](const opencmw::mdp::Message&) {};
+        command.topic    = opencmw::URI<>(_subscribedUri);
+        command.callback = [](const opencmw::mdp::Message&) {};
         _client.request(command);
+        _subscribedUri = "";
     }
 
     void startSubscription(const std::string& uri) {
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
+        _subscribedUri           = command.topic.str();
         std::weak_ptr maybeQueue = _queue;
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
             if (!rep.error.empty()) {
-                stopSubscription(remote_uri);
+                stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                             gr::Error(fmt::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
-                startSubscription(remote_uri);
+                _reconnect = std::chrono::system_clock::now() + 5s;
                 auto queue = maybeQueue.lock();
                 if (!queue) {
                     return;
@@ -157,32 +169,21 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         if (Parent::state() != gr::lifecycle::State::RUNNING) {
             return; // early return, only apply settings for the running flowgraph
         }
-        const auto old_host    = old_settings.find("host");
-        bool       hostChanged = old_host == old_settings.end() || std::get<std::string>(old_host->second) != host;
-
+        const auto old_host = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty() && (oldUri != remote_uri || hostChanged)) {
-                stopSubscription(oldUri);
-            }
-        }
-        if ((hostChanged || (oldValue != old_settings.end() && std::get<std::string>(oldValue->second) != remote_uri)) && !remote_uri.empty()) {
+        if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+            stopSubscription();
             startSubscription(remote_uri);
         }
     }
 
     void start() {
-        if (!remote_uri.empty()) {
+        if (!remote_uri.empty() && !host.empty()) {
             startSubscription(remote_uri);
         }
     }
 
-    void stop() {
-        if (!remote_uri.empty()) {
-            stopSubscription(remote_uri);
-        }
-    }
+    void stop() { stopSubscription(); }
 };
 
 template<typename T>
@@ -193,6 +194,9 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     std::string                 remote_uri;
     std::string                 host;
     opencmw::client::RestClient _client;
+    std::string                 _subscribedUri = "";
+
+    std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
     GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host);
     struct Queue {
@@ -203,6 +207,10 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
+        if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
+            startSubscription(remote_uri);
+            _reconnect = std::nullopt;
+        }
         std::lock_guard           lock(_queue->mutex);
         const auto                n   = std::min(_queue->data.size(), output.size());
         std::span<gr::DataSet<T>> out = output;
@@ -214,26 +222,31 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         return gr::work::Status::OK;
     }
 
-    void stopSubscription(const std::string& uri) {
+    void stopSubscription() {
+        if (_subscribedUri.empty()) {
+            return;
+        }
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Unsubscribe;
-        command.topic    = resolveRelativeTopic(uri, host);
-        command.callback = [uri](const opencmw::mdp::Message&) {};
+        command.topic    = opencmw::URI<>(_subscribedUri);
+        command.callback = [](const opencmw::mdp::Message&) {};
         _client.request(command);
+        _subscribedUri = "";
     }
 
     void startSubscription(const std::string& uri) {
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
+        _subscribedUri           = command.topic.str();
         std::weak_ptr maybeQueue = _queue;
 
         command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
             if (!rep.error.empty()) {
-                stopSubscription(remote_uri);
+                stopSubscription();
                 sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                     gr::Error(fmt::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
-                startSubscription(remote_uri);
+                _reconnect = std::chrono::system_clock::now() + 5s;
                 return;
             }
             if (rep.data.empty()) {
@@ -270,32 +283,21 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         if (Parent::state() != gr::lifecycle::State::RUNNING) {
             return; // early return, only apply settings for the running flowgraph
         }
-        const auto old_host    = old_settings.find("host");
-        bool       hostChanged = old_host == old_settings.end() || std::get<std::string>(old_host->second) != host;
-
+        const auto old_host = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
-        if (oldValue != old_settings.end()) {
-            const auto oldUri = std::get<std::string>(oldValue->second);
-            if (!oldUri.empty() && (oldUri != remote_uri || hostChanged)) {
-                stopSubscription(oldUri);
-            }
-        }
-        if ((hostChanged || (oldValue != old_settings.end() && std::get<std::string>(oldValue->second) != remote_uri)) && !remote_uri.empty()) {
+        if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+            stopSubscription();
             startSubscription(remote_uri);
         }
     }
 
     void start() {
-        if (!remote_uri.empty()) {
+        if (!remote_uri.empty() && !host.empty()) {
             startSubscription(remote_uri);
         }
     }
 
-    void stop() {
-        if (!remote_uri.empty()) {
-            stopSubscription(remote_uri);
-        }
-    }
+    void stop() { stopSubscription(); }
 };
 
 } // namespace opendigitizer
