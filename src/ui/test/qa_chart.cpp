@@ -89,7 +89,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 // TODO: Once Ivan finishes his new ImPlotSink registry class we can remove these reinterpret_cast.
 
                 auto execution  = g_state.dashboard->localFlowGraph.createExecutionContext();
-                auto blockModel = g_state.dashboard->localFlowGraph.findPlotSinkGrBlock("sink 3");
+                auto blockModel = g_state.dashboard->localFlowGraph.findPlotSinkGrBlock("DipoleCurrentSink");
                 ut::expect(blockModel);
                 auto plotBlockModel = reinterpret_cast<gr::BlockWrapper<opendigitizer::ImPlotSink<float>>*>(blockModel);
                 auto implotSink     = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(plotBlockModel->raw());
