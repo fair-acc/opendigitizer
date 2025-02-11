@@ -177,7 +177,7 @@ public:
             return ds;
         };
 
-        for (const auto& name : {"RemoteStream", "RemoteDataSet", "RemoteTags", "RemotePulsedPowerDemo"}) {
+        for (const auto& name : {"RemoteStream", "RemoteDataSet", "RemoteTags", "RemotePulsedPowerDemo", "RemotePulsedPowerDemo2"}) {
             names.push_back(name);
             dashboards.push_back(readDefaultDashboard(name));
         }

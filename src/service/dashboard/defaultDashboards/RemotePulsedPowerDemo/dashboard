@@ -1,51 +1,36 @@
 sources:
   - name: PlotU1
     block: PlotU1
-    color: !!uint32 0xff0000
+    color: 0x990000
   - name: PlotI1
     block: PlotI1
-    color: !!uint32 0x00ff00
+    color: 0x000099
   - name: PlotDataSetU1
     block: PlotDataSetU1
-    color: !!uint32 0xff0000
+    color: 0x990000
   - name: PlotDataSetI1
     block: PlotDataSetI1
-    color: !!uint32 0x00ff00
-  - name: PlotP1
-    block: PlotP1
-    color: !!uint32 0xff0000
-  - name: PlotQ1
-    block: PlotQ1
-    color: !!uint32 0x00ff00
-  - name: PlotS1
-    block: PlotS1
-    color: !!uint32 0x0000ff
-  - name: PlotPowerFactor1
-    block: PlotPowerFactor1
-    color: !!uint32 0x00ff00
-  - name: PlotPhase1
-    block: PlotPhase1
-    color: !!uint32 0x00ffff
+    color: 0x000099
+  - name: PlotTotalActivePower
+    block: PlotTotalActivePower
+    color: 0x009900
   - name: PlotFrequencyU1
     block: PlotFrequencyU1
-    color: !!uint32 0xff00ff
+    color: 0x009900
 plots:
   - name: PlotUI
     axes:
       - axis: X
         min: inf
         max: inf
+        scale: Time
       - axis: Y
         min: inf
         max: inf
     sources:
       - PlotU1
       - PlotI1
-    rect:
-      - 0
-      - 0
-      - 1
-      - 1
+    rect: [0, 0, 1, 1]
   - name: PlotDataSetUI
     axes:
       - axis: X
@@ -57,42 +42,29 @@ plots:
     sources:
       - PlotDataSetU1
       - PlotDataSetI1
-    rect:
-      - 2
-      - 0
-      - 1
-      - 1
-  - name: PlotPQSPhase
+    rect: [1, 0, 1, 1]
+  - name: PlotActivePower
     axes:
       - axis: X
         min: inf
         max: inf
+        scale: Time
       - axis: Y
         min: inf
         max: inf
     sources:
-      - PlotP1
-      - PlotQ1
-      - PlotS1
-      - PlotPhase1
-    rect:
-      - 0
-      - 1
-      - 3
-      - 1
-  - name: PlotPowerFactor
+      - PlotTotalActivePower
+    rect: [0, 1, 1, 1]
+  - name: PlotFrequencyU1
     axes:
       - axis: X
         min: inf
         max: inf
+        scale: Time
       - axis: Y
         min: inf
         max: inf
     sources:
-      - PlotPowerFactor1
-    rect:
-      - 0
-      - 2
-      - 3
-      - 1
+      - PlotFrequencyU1
+    rect: [1, 1, 1, 1]
 flowgraphLayout: ""

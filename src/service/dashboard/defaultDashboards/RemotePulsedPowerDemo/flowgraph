@@ -1,94 +1,84 @@
 blocks:
-  - name: !!str RemoteU1
-    id: !!str opendigitizer::RemoteStreamSource
+  - name: RemoteU1
+    id: opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=U1
-  - name: !!str RemoteI1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=U1
+  - name: RemoteI1
+    id: opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=I1
-  - name: !!str RemoteP1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=I1
+  - name: RemoteDataSetU1
+    id: opendigitizer::RemoteDataSetSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=P1
-  - name: !!str RemoteQ1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSetU1&acquisitionModeFilter=dataset
+  - name: RemoteDataSetI1
+    id: opendigitizer::RemoteDataSetSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=Q1
-  - name: !!str RemoteS1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSetI1&acquisitionModeFilter=dataset
+  - name: RemoteTotalActivePower
+    id: opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=S1
-  - name: !!str RemotePowerFactor1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=TotalActivePower
+  - name: RemoteFrequencyU1
+    id: opendigitizer::RemoteStreamSource
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=PowerFactor1
-  - name: !!str RemotePhase1
-    id: !!str opendigitizer::RemoteStreamSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=FrequencyU1
+  - name: PlotU1
+    id: opendigitizer::ImPlotSink
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=Phase1
-  - name: !!str RemoteFrequencyU1
-    id: !!str opendigitizer::RemoteStreamSource
+      color: 0x990000
+      signal_name: U1
+      signal_quantity: voltage
+      signal_unit: V
+      sample_rate: 1000
+      required_size: 512
+  - name: PlotI1
+    id: opendigitizer::ImPlotSink
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=FrequencyU1
-  - name: !!str RemoteDataSetU1
-    id: !!str opendigitizer::RemoteDataSetSource
+      color: 0x000099
+      signal_name: I1
+      signal_quantity: current
+      signal_unit: mV
+      sample_rate: 1000
+      required_size: 512
+  - name: PlotDataSetU1
+    id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=DataSetU1&acquisitionModeFilter=dataset
-  - name: !!str RemoteDataSetI1
-    id: !!str opendigitizer::RemoteDataSetSource
+      color: 0x990000
+      signal_name: U1
+      signal_quantity: voltage
+      signal_unit: V
+      dataset_index: 0
+  - name: PlotDataSetI1
+    id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      remote_uri: !!str https://localhost:8080/GnuRadio/Acquisition?channelNameFilter=DataSetI1&acquisitionModeFilter=dataset
-  - name: !!str PlotU1
-    id: !!str opendigitizer::ImPlotSink
+      color: 0x000099
+      signal_name: I1
+      signal_quantity: current
+      signal_unit: mV
+      dataset_index: 0
+  - name: PlotTotalActivePower
+    id: opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0xff0000
-      required_size: 256
-  - name: !!str PlotI1
-    id: !!str opendigitizer::ImPlotSink
+      color: 0x009900
+      signal_name: total active power
+      signal_quantity: watt
+      signal_unit: W
+      sample_rate: 1000
+      required_size: 512
+  - name: PlotFrequencyU1
+    id: opendigitizer::ImPlotSink
     parameters:
-      color: !!uint32 0xff0000
-      required_size: 256
-  - name: !!str PlotP1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0xff0000
-  - name: !!str PlotQ1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0x00ff00
-  - name: !!str PlotS1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0x0000ff
-  - name: !!str PlotPowerFactor1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0x00ff00
-  - name: !!str PlotPhase1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0x0000ff
-  - name: !!str PlotFrequencyU1
-    id: !!str opendigitizer::ImPlotSink
-    parameters:
-      color: !!uint32 0x000ff0
-  - name: !!str PlotDataSetU1
-    id: !!str opendigitizer::ImPlotSinkDataSet
-    parameters:
-      color: !!uint32 0xff0000
-  - name: !!str PlotDataSetI1
-    id: !!str opendigitizer::ImPlotSinkDataSet
-    parameters:
-      color: !!uint32 0xff0000
+      color: 0x009900
+      signal_name: U1 frequency
+      signal_quantity: frequency
+      signal_unit: Hz
+      sample_rate: 1000
+      required_size: 512
 connections:
   - [RemoteU1, 0, PlotU1, 0]
   - [RemoteI1, 0, PlotI1, 0]
   - [RemoteDataSetU1, 0, PlotDataSetU1, 0]
   - [RemoteDataSetI1, 0, PlotDataSetI1, 0]
-  - [RemoteP1, 0, PlotP1, 0]
-  - [RemoteQ1, 0, PlotQ1, 0]
-  - [RemoteS1, 0, PlotS1, 0]
-  - [RemotePowerFactor1, 0, PlotPowerFactor1, 0]
-  - [RemotePhase1, 0, PlotPhase1, 0]
+  - [RemoteTotalActivePower, 0, PlotTotalActivePower, 0]
   - [RemoteFrequencyU1, 0, PlotFrequencyU1, 0]
