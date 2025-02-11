@@ -103,7 +103,7 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
                     std::string_view sv(s, e);
                     auto             p = sv.find(';');
                     assert(p != sv.npos);
-                    std::size_t size = std::stoul(s);
+                    std::size_t size = std::stoul(std::string(s, p));
                     s += p + 1; // the +1 is for the ';'
 
                     reply[i].resize(size);
