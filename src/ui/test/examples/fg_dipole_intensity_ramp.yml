@@ -2,11 +2,11 @@ sources:
   - name: DipoleCurrentSink
     block: DipoleCurrentSink
     port: 0
-    color: !!uint32 0xFF3030
+    color: 0xC80000
   - name: IntensitySink
     block: IntensitySink
     port: 0
-    color: !!uint32 0x3030FF
+    color: 0x0000C8
 plots:
   - name: Plot 1
     axes:

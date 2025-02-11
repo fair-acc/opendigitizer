@@ -144,6 +144,7 @@ struct Acquisition {
     Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
     Annotated<std::vector<float>, opencmw::NoUnit, "value of the channel/signal">                channelValue;
     Annotated<std::vector<float>, opencmw::NoUnit, "r.m.s. error of of the channel/signal">      channelError;
+    Annotated<std::string, opencmw::NoUnit, "S.I. quantity of post-processed signal">            channelQuantity;
     Annotated<std::string, opencmw::NoUnit, "S.I. unit of post-processed signal">                channelUnit;
     Annotated<int64_t, opencmw::NoUnit, "status bit-mask bits for this channel/signal">          status;
     Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMin;
@@ -203,7 +204,7 @@ struct FreqDomainContext {
 
 } // namespace opendigitizer::acq
 
-ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelUnit, status, channelRangeMin, channelRangeMax, temperature, triggerIndices, triggerEventNames, triggerTimestamps, triggerOffsets, triggerYamlPropertyMaps)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelQuantity, channelUnit, status, channelRangeMin, channelRangeMax, temperature, triggerIndices, triggerEventNames, triggerTimestamps, triggerOffsets, triggerYamlPropertyMaps)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, preSamples, postSamples, maximumWindowSize, snapshotDelay, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
