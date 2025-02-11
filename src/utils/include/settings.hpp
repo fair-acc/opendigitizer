@@ -51,7 +51,7 @@ struct Settings {
     bool        checkCertificates{true};
     bool        darkMode{false};
     std::string wasmServeDir{""};
-    std::string defaultDashboard{"RemoteStreaming"};
+    std::string defaultDashboard{"RemoteStream"};
 
 private:
     Settings() {
