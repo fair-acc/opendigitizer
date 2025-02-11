@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::DefaultClockSource
+    id: gr::basic::ClockSource
     template_args: double
   - name: sink
     id: gr::basic::DataSink

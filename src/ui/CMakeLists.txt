@@ -37,6 +37,7 @@ if(EMSCRIPTEN)
     "SHELL:-s ASSERTIONS=1"
     "SHELL:-s NO_FILESYSTEM=1"
     "SHELL:-s INITIAL_MEMORY=300MB"
+    "SHELL:-s STACK_SIZE=5MB"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s PTHREAD_POOL_SIZE=30"
