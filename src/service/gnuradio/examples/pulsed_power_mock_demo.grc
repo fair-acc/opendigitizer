@@ -1,161 +1,292 @@
 blocks:
-  - name: !!str ClockSource
-    id: !!str gr::basic::ClockSource
-    template_args: !!str "unsigned char"
+  - name: ClockSource
+    id: gr::basic::ClockSource
+    template_args: "unsigned char"
     parameters:
-      do_zero_order_hold: !!bool true
-      n_samples_max: !!uint32 0
-      sample_rate: !!float32 1000
-      verbose_console: !!bool false
-      repeat_period: !!uint64 1500000000
+      do_zero_order_hold: true
+      n_samples_max: 0
+      sample_rate: 1000
+      verbose_console: true
+      repeat_period: 1500000000
       tag_times: !!uint64
         - 1000000000
       tag_values: !!str
         - "systemtime"
-  - name: !!str SignalGeneratorA
-    id: !!str gr::basic::SignalGenerator
-    template_args: !!str "float"
+  - name: SignalGeneratorA
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      frequency: !!float32 50
-      amplitude: !!float32 5
-      offset: !!float32 0
-      phase: !!float32 0
-      sample_rate: !!float32 1000
-      signal_type: !!str Sine
-  - name: !!str SignalGeneratorD
-    id: !!str gr::basic::SignalGenerator
-    template_args: !!str "float"
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+  - name: SignalGeneratorB
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      frequency: !!float32 50
-      amplitude: !!float32 5
-      offset: !!float32 0
-      phase: !!float32 0
-      sample_rate: !!float32 1000
-      signal_type: !!str Sine
-  - name: !!str NullSinkB
-    id: !!str gr::testing::NullSink
-    template_args: !!str "float"
-  - name: !!str NullSinkC
-    id: !!str gr::testing::NullSink
-    template_args: !!str "float"
-  - name: !!str NullSinkE
-    id: !!str gr::testing::NullSink
-    template_args: !!str "float"
-  - name: !!str NullSinkF
-    id: !!str gr::testing::NullSink
-    template_args: !!str "float"
-  - name: !!str MultiplyConstA
-    id: !!str gr::blocks::math::MathOpImpl
-    template_args: !!str "float,'*'"
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+      phase: 2.0944
+  - name: SignalGeneratorC
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      value: !!float32 1
-  - name: !!str MultiplyConstD
-    id: !!str gr::blocks::math::MathOpImpl
-    template_args: !!str "float,'*'"
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+      phase: 4.18879
+  - name: SignalGeneratorD
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      value: !!float32 1
-  - name: !!str ConvertA
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str ConvertD
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str SinkA
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+  - name: SignalGeneratorE
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+      phase: 2.0944
+  - name: SignalGeneratorF
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      frequency: 50
+      amplitude: 5
+      signal_type: Sine
+      sample_rate: 1000
+      phase: 4.18879
+  - name: SignalGeneratorG
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      amplitude: 1
+      signal_type: Const
+      sample_rate: 1000
+  - name: SignalGeneratorH
+    id: gr::basic::SignalGenerator
+    template_args: "float"
+    parameters:
+      amplitude: 1
+      signal_type: Const
+      sample_rate: 1000
+  - name: ConvertA
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertB
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertC
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertD
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertE
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertF
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertG
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: ConvertH
+    id: gr::blocks::type::converter::Convert
+    template_args: "float,double"
+  - name: SinkA
+    id: gr::basic::DataSink
+    template_args: "double"
     parameters:
       signal_name: U1
-  - name: !!str SinkD
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+  - name: SinkB
+    id: gr::basic::DataSink
+    template_args: "double"
+    parameters:
+      signal_name: U2
+  - name: SinkC
+    id: gr::basic::DataSink
+    template_args: "double"
+    parameters:
+      signal_name: U3
+  - name: SinkD
+    id: gr::basic::DataSink
+    template_args: double
     parameters:
       signal_name: I1
-  - name: !!str StreamToDataSetA
-    id: !!str gr::basic::StreamFilterImpl
-    template_args: !!str "double"
+  - name: SinkE
+    id: gr::basic::DataSink
+    template_args: double
     parameters:
-      filter: !!str "systemtime"
-      n_pre: !!uint32 50
-      n_post: !!uint32 50
-  - name: !!str StreamToDataSetD
-    id: !!str gr::basic::StreamFilterImpl
-    template_args: !!str "double"
+      signal_name: I2
+  - name: SinkF
+    id: gr::basic::DataSink
+    template_args: "double"
     parameters:
-      filter: !!str systemtime
-      n_pre: !!uint32 50
-      n_post: !!uint32 50
-  - name: !!str SinkDataSetA
-    id: !!str gr::basic::DataSetSink
-    template_args: !!str double
+      signal_name: I3
+  - name: SinkG
+    id: gr::basic::DataSink
+    template_args: "double"
+    parameters:
+      signal_name: PicoG
+  - name: SinkH
+    id: gr::basic::DataSink
+    template_args: "double"
+    parameters:
+      signal_name: TT
+  - name: StreamToDataSetA
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: StreamToDataSetB
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: StreamToDataSetC
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: StreamToDataSetD
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: StreamToDataSetE
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: StreamToDataSetF
+    id: gr::basic::StreamFilterImpl
+    template_args: "double"
+    parameters:
+      filter: "systemtime"
+      n_pre: 10
+      n_post: 50
+  - name: SinkDataSetA
+    id: gr::basic::DataSetSink
+    template_args: "double"
     parameters:
       signal_name: DataSetU1
-  - name: !!str SinkDataSetD
-    id: !!str gr::basic::DataSetSink
-    template_args: !!str double
+  - name: SinkDataSetB
+    id: gr::basic::DataSetSink
+    template_args: "double"
+    parameters:
+      signal_name: DataSetU2
+  - name: SinkDataSetC
+    id: gr::basic::DataSetSink
+    template_args: "double"
+    parameters:
+      signal_name: DataSetU3
+  - name: SinkDataSetD
+    id: gr::basic::DataSetSink
+    template_args: "double"
     parameters:
       signal_name: DataSetI1
-  - name: !!str PowerMetrics
-    id: !!str gr::electrical::PowerMetrics
-    template_args: !!str "double,1"
+  - name: SinkDataSetE
+    id: gr::basic::DataSetSink
+    template_args: "double"
     parameters:
-      decim: !!uint32 1
-  - name: !!str SinkP1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      signal_name: DataSetI2
+  - name: SinkDataSetF
+    id: gr::basic::DataSetSink
+    template_args: "double"
     parameters:
-      signal_name: P1
-  - name: !!str SinkQ1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      signal_name: DataSetI3
+  - name: PowerMetrics
+    id: gr::electrical::PowerMetrics
+    template_args: "double,3"
     parameters:
-      signal_name: Q1
-  - name: !!str SinkS1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      decim: 1
+  - name: SystemUnbalance
+    id: gr::electrical::SystemUnbalance
+    template_args: "double,3"
+  - name: SinkTotalActivePower
+    id: gr::basic::DataSink
+    template_args: "double"
     parameters:
-      signal_name: S1
-  - name: !!str PowerFactor
-    id: !!str gr::electrical::PowerFactor
-    template_args: !!str "double,1"
-  - name: !!str SinkPowerFactor1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
-    parameters:
-      signal_name: PowerFactor1
-  - name: !!str SinkPhase1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
-    parameters:
-      signal_name: Phase1
-  - name: !!str FrequencyEstimatorU1
-    id: !!str gr::filter::FrequencyEstimatorTimeDomain
-    template_args: !!str "double"
-  - name: !!str SinkFrequencyU1
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      signal_name: TotalActivePower
+  - name: FrequencyEstimatorU1
+    id: gr::filter::FrequencyEstimatorTimeDomain
+    template_args: "double"
+  - name: SinkFrequencyU1
+    id: gr::basic::DataSink
+    template_args: "double"
     parameters:
       signal_name: FrequencyU1
 connections:
   - [ClockSource, 0, SignalGeneratorA, 0]
+  - [ClockSource, 0, SignalGeneratorB, 0]
+  - [ClockSource, 0, SignalGeneratorC, 0]
   - [ClockSource, 0, SignalGeneratorD, 0]
-  - [SignalGeneratorA,  0, MultiplyConstA, 0]
-  - [MultiplyConstA, 0, ConvertA, 0]
-  - [ConvertA, 0, StreamToDataSetA, 0]
+  - [ClockSource, 0, SignalGeneratorE, 0]
+  - [ClockSource, 0, SignalGeneratorF, 0]
+  - [ClockSource, 0, SignalGeneratorG, 0]
+  - [ClockSource, 0, SignalGeneratorH, 0]
+  - [SignalGeneratorA,  0, ConvertA, 0]
   - [ConvertA, 0, SinkA, 0]
+  - [ConvertA, 0, StreamToDataSetA, 0]
   - [StreamToDataSetA, 0, SinkDataSetA, 0]
-  - [ConvertA, 0, SinkFrequencyU1, 0]
-  - [FrequencyEstimatorU1, 0, SinkFrequencyU1, 0 ]
-  - [SignalGeneratorD,  0, MultiplyConstD, 0]
-  - [MultiplyConstD, 0, ConvertD, 0]
-  - [ConvertD, 0, StreamToDataSetD, 0]
+  - [ConvertA, 0, FrequencyEstimatorU1, 0]
+  - [FrequencyEstimatorU1, 0, SinkFrequencyU1, 0]
+  - [SignalGeneratorB,  0, ConvertB, 0]
+  - [ConvertB, 0, SinkB, 0]
+  - [ConvertB, 0, StreamToDataSetB, 0]
+  - [StreamToDataSetB, 0, SinkDataSetB, 0]
+  - [SignalGeneratorC,  0, ConvertC, 0]
+  - [ConvertC, 0, SinkC, 0]
+  - [ConvertC, 0, StreamToDataSetC, 0]
+  - [StreamToDataSetC, 0, SinkDataSetC, 0]
+  - [SignalGeneratorD,  0, ConvertD, 0]
   - [ConvertD, 0, SinkD, 0]
+  - [ConvertD, 0, StreamToDataSetD, 0]
   - [StreamToDataSetD, 0, SinkDataSetD, 0]
+  - [SignalGeneratorE, 0, ConvertE, 0]
+  - [ConvertE, 0, SinkE, 0]
+  - [ConvertE, 0, StreamToDataSetE, 0]
+  - [StreamToDataSetE, 0, SinkDataSetE, 0]
+  - [SignalGeneratorF, 0, ConvertF, 0]
+  - [ConvertF, 0, SinkF, 0]
+  - [ConvertF, 0, StreamToDataSetF, 0]
+  - [StreamToDataSetF, 0, SinkDataSetF, 0]
+  - [SignalGeneratorG, 0, ConvertG, 0]
+  - [ConvertG, 0, SinkG, 0]
+  - [SignalGeneratorH, 0, ConvertH, 0]
+  - [ConvertH, 0, SinkH, 0]
   - [ConvertA, 0, PowerMetrics, [0, 0]]
+  - [ConvertB, 0, PowerMetrics, [0, 1]]
+  - [ConvertC, 0, PowerMetrics, [0, 2]]
   - [ConvertD, 0, PowerMetrics, [1, 0]]
-  - [PowerMetrics, [0, 0], SinkP1, 0]
-  - [PowerMetrics, [1, 0], SinkQ1, 0]
-  - [PowerMetrics, [2, 0], SinkS1, 0]
-  - [PowerMetrics, [0, 0], PowerFactor, [0, 0]]
-  - [PowerMetrics, [2, 0], PowerFactor, [1, 0]]
-  - [PowerFactor, [0, 0], SinkPowerFactor1, 0]
-  - [PowerFactor, [1, 0], SinkPhase1, 0]
+  - [ConvertE, 0, PowerMetrics, [1, 1]]
+  - [ConvertF, 0, PowerMetrics, [1, 2]]
+  - [PowerMetrics, [3, 0], SystemUnbalance, [0, 0]]
+  - [PowerMetrics, [3, 1], SystemUnbalance, [0, 1]]
+  - [PowerMetrics, [3, 2], SystemUnbalance, [0, 2]]
+  - [PowerMetrics, [4, 0], SystemUnbalance, [1, 0]]
+  - [PowerMetrics, [4, 1], SystemUnbalance, [1, 1]]
+  - [PowerMetrics, [4, 2], SystemUnbalance, [1, 2]]
+  - [PowerMetrics, [0, 0], SystemUnbalance, [2, 0]]
+  - [PowerMetrics, [0, 1], SystemUnbalance, [2, 1]]
+  - [PowerMetrics, [0, 2], SystemUnbalance, [2, 2]]
+  - [SystemUnbalance, 0, SinkTotalActivePower, 0]

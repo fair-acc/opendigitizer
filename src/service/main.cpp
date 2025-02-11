@@ -38,8 +38,8 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
-    gr::registerBlock<gr::basic::DataSetSink, double, float, std::int16_t>(registry);
+    gr::registerBlock<gr::basic::DataSink, double>(registry);
+    gr::registerBlock<gr::basic::DataSetSink, double>(registry);
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
     gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float, std::int16_t>(registry); // ommitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
@@ -48,9 +48,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<MultiAdder, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, double>(registry);
     gr::registerBlock<gr::blocks::math::MathOpImpl, '*', float>(registry);
-    gr::registerBlock<gr::electrical::PowerMetrics, 1, double>(registry);
     gr::registerBlock<gr::electrical::PowerMetrics, 3, double>(registry);
-    gr::registerBlock<gr::electrical::PowerFactor, 1, double>(registry);
     gr::registerBlock<gr::electrical::PowerFactor, 3, double>(registry);
     gr::registerBlock<gr::electrical::SystemUnbalance, 3, double>(registry);
     gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, double>(registry);

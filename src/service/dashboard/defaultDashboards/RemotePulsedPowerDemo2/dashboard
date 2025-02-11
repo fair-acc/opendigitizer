@@ -1,0 +1,32 @@
+sources:
+  - name: PlotU1
+    block: PlotU1
+    color: 0x990000
+  - name: PlotDataSetU1
+    block: PlotDataSetU1
+    color: 0x990000
+plots:
+  - name: PlotUI
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotU1
+    rect: [0, 0, 1, 1]
+  - name: PlotDataSetUI
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotDataSetU1
+    rect: [1, 0, 1, 1]
+flowgraphLayout: ""
