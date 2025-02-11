@@ -14,14 +14,14 @@ blocks:
   - name: sinesSink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0x009900
+      color: 0x00C800
       signal_name: value
       signal_quantity: measuredVoltage
       signal_unit: V
   - name: fftSink
     id: opendigitizer::ImPlotSinkDataSet
     parameters:
-      color: 0x009900
+      color: 0xFF5500
       dataset_index: 3
       signal_name: fft
       signal_quantity: magnitude
@@ -30,7 +30,7 @@ blocks:
     id: gr::basic::ClockSource
     template_args: "unsigned char"
     parameters:
-      chunk_size: 40
+      chunk_size: 20
       do_zero_order_hold: true
       n_samples_max: 0
       repeat_period: !!uint64 4000000000
@@ -204,16 +204,16 @@ blocks:
   - name: DipoleCurrentSink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0xFF3030
-      required_size: 7000
+      color: 0xC80000
+      required_size: 16384
       signal_name: dipole current
       signal_quantity: DipoleCurrent
       signal_unit: A
   - name: IntensitySink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0x3030FF
-      required_size: 7000
+      color: 0x0000C8
+      required_size: 16384
       signal_name: beam intensity
       signal_quantity: BeamIntensity
       signal_unit: ppp

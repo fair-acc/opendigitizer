@@ -76,7 +76,7 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
                 if (auto mapPtr = std::get_if<gr::property_map>(&metaInfo->second)) {
                     auto              extractCtx = [](const std::string& s) { return s.substr(s.rfind('/') + 1); };
                     const std::string triggerCtx = extractCtx(getValueOrDefault<std::string>(*mapPtr, "context", ""));
-                    if (!triggerCtx.empty()) {
+                    if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                         const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
                         ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
                     }
@@ -181,9 +181,10 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     }
 
     constexpr void processOne(const T& input) noexcept {
-        if constexpr (std::is_arithmetic_v<T>) {
-            in.max_samples = static_cast<std::size_t>(2.f * sample_rate / 25.f);
-        }
+        // todo: check if this can be permanently removed
+        // if constexpr (std::is_arithmetic_v<T>) {
+        //     in.max_samples = static_cast<std::size_t>(2.f * sample_rate / 25.f);
+        // }
         if (this->inputTagsPresent()) { // received tag
             const gr::property_map& tag = this->_mergedInputTag.map;
 
@@ -247,6 +248,12 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
             ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
             ImPlot::SetNextLineStyle(lineColor);
 
+            // draw tags before data (data is drawn on top)
+            if (getValueOrDefault<bool>(config, "draw_tag", false)) {
+                lineColor.w *= 0.35f; // semi-transparent tags
+                drawAndPruneTags(_tagValues, _xUtcValues.front(), _xUtcValues.back(), axisScale, lineColor);
+            }
+
             switch (axisScale) {
             case Time: {
                 ImPlot::PlotLine(label.c_str(), _xUtcValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
@@ -261,21 +268,25 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
                         double y        = self->_yValues[idx];
                         return ImPlotPoint(xShifted, y);
                     },
-                    this,                             // user_data pointer passed to the lambda
-                    static_cast<int>(_xValues.size()) // number of points
+                    this,                                // user_data pointer passed to the lambda
+                    static_cast<int>(_xUtcValues.size()) // number of points
                 );
             } break;
             case Linear:
             default: {
-                ImPlot::PlotLine(label.c_str(), _xValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
+                ImPlot::PlotLineG(
+                    label.c_str(),
+                    [](int idx, void* user_data) -> ImPlotPoint {
+                        auto   self     = static_cast<ImPlotSink<T>*>(user_data);
+                        double xShifted = self->_xUtcValues[idx] - self->_xUtcValues.front();
+                        double y        = self->_yValues[idx];
+                        return ImPlotPoint(xShifted, y);
+                    },
+                    this,                                // user_data pointer passed to the lambda
+                    static_cast<int>(_xUtcValues.size()) // number of points
+                );
+                // ImPlot::PlotLine(label.c_str(), _xValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
             } break;
-            }
-
-            if (getValueOrDefault<bool>(config, "draw_tag", false)) {
-                lineColor.w *= 0.75f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, _xUtcValues.front(), _xUtcValues.back(), axisScale, lineColor);
-            } else {
-                return gr::work::Status::OK;
             }
         }
 

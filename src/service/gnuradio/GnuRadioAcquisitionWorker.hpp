@@ -151,6 +151,7 @@ enum class SignalType {
 
 struct SignalEntry {
     std::string name;
+    std::string quantity;
     std::string unit;
     float       sample_rate;
     SignalType  type;
@@ -352,6 +353,7 @@ private:
                             SignalEntry& entry = signalEntryBySink[std::string(block.uniqueName())];
                             entry.type         = SignalType::Plain;
                             entry.name         = detail::getSetting<std::string>(block, "signal_name").value_or("");
+                            entry.quantity     = detail::getSetting<std::string>(block, "signal_quantity").value_or("");
                             entry.unit         = detail::getSetting<std::string>(block, "signal_unit").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
                         } else if (block.typeName().starts_with("gr::basic::DataSetSink")) {
@@ -573,8 +575,9 @@ private:
             if (!dataSet.timing_events.empty()) {
                 reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
             }
-            reply.channelName = std::string(signalName);
-            reply.channelUnit = dataSet.signal_units.size() > signalIndex ? dataSet.signal_units[signalIndex] : "N/A";
+            reply.channelName     = std::string(signalName);
+            reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";
+            reply.channelUnit     = dataSet.signal_units.size() > signalIndex ? dataSet.signal_units[signalIndex] : "N/A";
 
             if (dataSet.signal_ranges.size() > signalIndex) {
                 // Workaround for Annotated, see above

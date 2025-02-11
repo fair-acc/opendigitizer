@@ -3,7 +3,7 @@ blocks:
     id: gr::basic::ClockSource
     template_args: "unsigned char"
     parameters:
-      chunk_size: 40
+      chunk_size: 20
       do_zero_order_hold: true
       n_samples_max: 10000
       repeat_period: 4000000000
@@ -177,16 +177,16 @@ blocks:
   - name: DipoleCurrentSink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0xAA3030
-      required_size: 65536
+      color: 0xC80000
+      required_size: 8192
       signal_name: dipole current
       signal_quantity: DipoleCurrent
       signal_unit: A
   - name: IntensitySink
     id: opendigitizer::ImPlotSink
     parameters:
-      color: 0x3030AA
-      required_size: 65536
+      color: 0x0000C8
+      required_size: 8192
       signal_name: beam intensity
       signal_quantity: BeamIntensity
       signal_unit: ppp
