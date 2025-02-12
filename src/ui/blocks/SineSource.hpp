@@ -73,6 +73,6 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
 
 } // namespace opendigitizer
 
-auto registerSineSource = gr::registerBlock<opendigitizer::SineSource, float, double>(gr::globalBlockRegistry());
+auto registerSineSource = gr::registerBlock<opendigitizer::SineSource, float>(gr::globalBlockRegistry());
 
 #endif

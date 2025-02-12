@@ -36,7 +36,6 @@ inline std::optional<T> get(const gr::property_map& m, const std::string_view& k
         return {};
     }
 }
-inline float doubleToFloat(double v) { return static_cast<float>(v); }
 
 inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, gr::property_map>>& tags) {
     for (const auto& [diff, map] : tags) {
@@ -116,7 +115,7 @@ struct PollerKey {
 };
 
 struct StreamingPollerEntry {
-    using SampleType                                               = double;
+    using SampleType                                               = float;
     bool                                                    in_use = true;
     std::shared_ptr<gr::basic::StreamingPoller<SampleType>> poller;
     std::optional<std::string>                              signal_name;
@@ -183,7 +182,7 @@ struct Matcher {
 } // namespace detail
 
 struct DataSetPollerEntry {
-    using SampleType = double;
+    using SampleType = float;
     std::shared_ptr<gr::basic::DataSetPoller<SampleType>> poller;
 };
 
@@ -245,9 +244,7 @@ private:
         // TODO instead of a notify thread with polling, we could also use callbacks. This would require
         // the ability to unregister callbacks though (RAII callback "handles" using shared_ptr/weak_ptr like it works for pollers??)
         _notifyThread = std::jthread([this, rate](const std::stop_token& stoken) {
-            auto update = std::chrono::system_clock::now();
-            // TODO: current load_grc creates Foo<double> types no matter what the original type was
-            // when supporting more types, we need some type erasure here
+            auto                                      update = std::chrono::system_clock::now();
             std::map<PollerKey, StreamingPollerEntry> streamingPollers;
             std::map<PollerKey, DataSetPollerEntry>   dataSetPollers;
             std::jthread                              schedulerThread;
@@ -422,7 +419,7 @@ private:
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             const auto query = basic::DataSinkQuery::signalName(signalName);
-            pollerIt         = pollers.emplace(key, basic::DataSinkRegistry::instance().getStreamingPoller<double>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+            pollerIt         = pollers.emplace(key, basic::DataSinkRegistry::instance().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
         }
         return pollerIt;
     }
@@ -441,7 +438,7 @@ private:
         Acquisition reply;
 
         auto key         = pollerIt->first;
-        auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const double> data, std::span<const gr::Tag> tags) {
+        auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
             pollerEntry.populateFromTags(tags);
             reply.acqTriggerName = "STREAMING";
             reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
@@ -455,7 +452,7 @@ private:
             reply.channelValue.resize(data.size());
             reply.channelError.resize(data.size());
             reply.channelTimeBase.resize(data.size());
-            std::ranges::transform(data, reply.channelValue.begin(), detail::doubleToFloat);
+            std::ranges::copy(data, reply.channelValue.begin());
             std::fill(reply.channelError.begin(), reply.channelError.end(), 0.f);     // TODO
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
             // preallocate trigger vectors to number of tags
@@ -507,20 +504,21 @@ private:
         const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
         auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
+            using SampleType = DataSetPollerEntry::SampleType;
             const auto query = basic::DataSinkQuery::signalName(signalName);
             // TODO for triggered/multiplexed subscriptions that only differ in preSamples/postSamples/maximumWindowSize, we could use a single poller for the encompassing range
             // and send snippets from their datasets to the individual subscribers
             if (mode == AcquisitionMode::Triggered) {
                 // clang-format off
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
                                                     {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .preSamples = key.pre_samples, .postSamples = key.post_samples, })).first; //
                 // clang-format on
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .delay = key.snapshot_delay})).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .delay = key.snapshot_delay})).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<double>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .maximumWindowSize = key.maximum_window_size})).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .maximumWindowSize = key.maximum_window_size})).first;
             } else if (mode == AcquisitionMode::DataSet) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getDataSetPoller<double>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getDataSetPoller<SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
             }
         }
         return pollerIt;
@@ -569,7 +567,7 @@ private:
             return true;
         }
         Acquisition reply;
-        auto        processData = [&reply, &key, signalName, &pollerEntry, &signalIndex](std::span<const gr::DataSet<double>> dataSets) {
+        auto        processData = [&reply, &key, signalName, &pollerEntry, &signalIndex](std::span<const gr::DataSet<DataSetPollerEntry::SampleType>> dataSets) {
             const auto& dataSet = dataSets[0];
 
             if (!dataSet.timing_events.empty()) {
@@ -596,7 +594,7 @@ private:
             }
 
             reply.channelValue.resize(values.size());
-            std::ranges::transform(values, reply.channelValue.begin(), detail::doubleToFloat);
+            std::ranges::copy(values, reply.channelValue.begin());
             reply.channelError.resize(0);
             reply.channelTimeBase.resize(values.size());
             std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO

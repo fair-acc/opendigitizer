@@ -1,28 +1,34 @@
 blocks:
-  - name: !!str remote stream
-    id: !!str opendigitizer::RemoteStreamSource
+  - name: remote stream
+    id: opendigitizer::RemoteStreamSource
+    template_args: "float"
     parameters:
-      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test
-  - name: !!str remote triggered
-    id: !!str opendigitizer::RemoteDataSetSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=test
+  - name: remote triggered
+    id: opendigitizer::RemoteDataSetSource
+    template_args: "float"
     parameters:
-      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
-  - name: !!str remote multiplexed
-    id: !!str opendigitizer::RemoteDataSetSource
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
+  - name: remote multiplexed
+    id: opendigitizer::RemoteDataSetSource
+    template_args: "float"
     parameters:
-      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
-  - name: !!str stream sink
-    id: !!str opendigitizer::ImPlotSink
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
+  - name: stream sink
+    id: opendigitizer::ImPlotSink
+    template_args: "float"
     parameters:
-      color: !!uint32 0xff0000
-  - name: !!str triggered sink
-    id: !!str opendigitizer::ImPlotSinkDataSet
+      color: 0xff0000
+  - name: triggered sink
+    id: opendigitizer::ImPlotSinkDataSet
+    template_args: "float"
     parameters:
-      color: !!uint32 0x00ff00
-  - name: !!str multiplexed sink
-    id: !!str opendigitizer::ImPlotSinkDataSet
+      color: 0x00ff00
+  - name: multiplexed sink
+    id: opendigitizer::ImPlotSinkDataSet
+    template_args: "float"
     parameters:
-      color: !!uint32 0x0000ff
+      color: 0x0000ff
 connections:
   - [remote stream, 0, stream sink, 0]
   - [remote triggered, 0, triggered sink, 0]

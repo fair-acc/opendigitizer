@@ -1,10 +1,10 @@
 blocks:
-  - name: !!str picoscope
-    id: !!str fair::picoscope::Picoscope4000a
-    template_args: !!str "float,fair::picoscope::AcquisitionMode::Streaming"
+  - name: picoscope
+    id: fair::picoscope::Picoscope4000a
+    template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
     parameters:
-      acquisition_mode: !!str Streaming
-      auto_arm: !!bool true
+      acquisition_mode: Streaming
+      auto_arm: true
       channel_couplings: !!str
         - DC_1M
         - DC_1M
@@ -30,37 +30,21 @@ blocks:
         - Test unit B
         - Test unit C
         - Test unit D
-      sample_rate: !!float32 10000
-  - name: !!str convertA
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str convertB
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str convertC
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str convertD
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: !!str "float,double"
-  - name: !!str sinkA
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
-  - name: !!str sinkB
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
-  - name: !!str sinkC
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
-  - name: !!str sinkD
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      sample_rate: 10000
+  - name: sinkA
+    id: gr::basic::DataSink
+    template_args: "float"
+  - name: sinkB
+    id: gr::basic::DataSink
+    template_args: "float"
+  - name: sinkC
+    id: gr::basic::DataSink
+    template_args: "float"
+  - name: sinkD
+    id: gr::basic::DataSink
+    template_args: "float"
 connections:
-  - [picoscope,  [0, 0], convertA, 0]
-  - [convertA, 0, sinkA, 0]
-  - [picoscope,  [0, 1], convertB, 0]
-  - [convertB, 0, sinkB, 0]
-  - [picoscope,  [0, 2], convertC, 0]
-  - [convertC, 0, sinkC, 0]
-  - [picoscope,  [0, 3], convertD, 0]
-  - [convertD, 0, sinkD, 0]
+  - [picoscope,  [0, 0], sinkA, 0]
+  - [picoscope,  [0, 1], sinkB, 0]
+  - [picoscope,  [0, 2], sinkC, 0]
+  - [picoscope,  [0, 3], sinkD, 0]

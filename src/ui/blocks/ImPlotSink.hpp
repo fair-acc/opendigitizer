@@ -341,6 +341,6 @@ public:
 };
 } // namespace opendigitizer
 
-inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, double>(gr::globalBlockRegistry());
-inline static auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float, double>(gr::globalBlockRegistry());
+inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float>(gr::globalBlockRegistry());
+inline static auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(gr::globalBlockRegistry());
 #endif

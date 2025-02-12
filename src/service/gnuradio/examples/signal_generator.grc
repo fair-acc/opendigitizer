@@ -1,49 +1,41 @@
 blocks:
-  - name: !!str ClockSource
-    id: !!str gr::basic::ClockSource
-    template_args: !!str "unsigned char"
+  - name: ClockSource
+    id: gr::basic::ClockSource
+    template_args: "unsigned char"
     parameters:
-      do_zero_order_hold: !!bool true
-      n_samples_max: !!uint32 0
-      sample_rate: !!float32 4096.000000
-      verbose_console: !!bool false
-  - name: !!str SignalGenerator1
-    id: !!str gr::basic::SignalGenerator
-    template_args: !!str "float"
+      do_zero_order_hold: true
+      n_samples_max: 0
+      sample_rate: 4096
+      verbose_console: false
+  - name: SignalGenerator1
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      frequency: !!float32 0.12500000
-      amplitude: !!float32 20.000000
-      offset: !!float32 0.000000
-      phase: !!float32 0.000000
-      sample_rate: !!float32 4096.000000
-      signal_type: !!str Triangle
-  - name: !!str SignalGenerator2
-    id: !!str gr::basic::SignalGenerator
-    template_args: !!str "float"
+      frequency: 0.125
+      amplitude: 20
+      sample_rate: 4096
+      signal_type: Triangle
+  - name: SignalGenerator2
+    id: gr::basic::SignalGenerator
+    template_args: "float"
     parameters:
-      frequency: !!float32 1.00000
-      amplitude: !!float32 5.000000
-      offset: !!float32 0.000000
-      phase: !!float32 0.000000
-      sample_rate: !!float32 4096.000000
-      signal_type: !!str Sine
-  - name: !!str Sum
-    id: !!str MultiAdder
-    template_args: !!str "float"
+      frequency: 1
+      amplitude: 5
+      sample_rate: 4096
+      signal_type: Sine
+  - name: Sum
+    id: MultiAdder
+    template_args: "float"
     parameters:
-      n_inputs: !!uint32 2
-  - name: !!str convertFloatDouble
-    id: !!str gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: !!str DataSink
-    id: !!str gr::basic::DataSink
-    template_args: !!str double
+      n_inputs: 2
+  - name: DataSink
+    id: gr::basic::DataSink
+    template_args: "float"
     parameters:
-      signal_name: !!str test
+      signal_name: test
 connections:
   - [ClockSource, 0, SignalGenerator1, 0]
   - [ClockSource, 0, SignalGenerator2, 0]
   - [SignalGenerator1, 0, Sum, [0, 0]]
   - [SignalGenerator2, 0, Sum, [0, 1]]
-  - [Sum, 0, convertFloatDouble, 0]
-  - [convertFloatDouble, 0, DataSink, 0]
+  - [Sum, 0, DataSink, 0]

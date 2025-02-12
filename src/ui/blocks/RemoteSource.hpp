@@ -300,7 +300,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
 
 } // namespace opendigitizer
 
-auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float, double>(gr::globalBlockRegistry());
-auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float, double>(gr::globalBlockRegistry());
+auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float>(gr::globalBlockRegistry());
+auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float>(gr::globalBlockRegistry());
 
 #endif
