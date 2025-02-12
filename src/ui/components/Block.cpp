@@ -58,7 +58,7 @@ bool drawRemoveContextPopup(const std::string& context) {
     return false;
 }
 
-void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
+void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardPage */, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
     if (!context.block) {
         return;
     }
@@ -107,8 +107,8 @@ void BlockControlsPanel(Dashboard& dashboard, DashboardPage& dashboardPage, Bloc
     auto minpos = ImGui::GetCursorPos();
     size        = ImGui::GetContentRegionAvail();
 
-    int outputsCount = 0;
 #ifdef TODO_PORT
+    int outputsCount = 0;
     {
         const char* prevString = verticalLayout ? "\uf062" : "\uf060";
         for (const auto& out : context.block->outputs()) {

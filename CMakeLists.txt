@@ -44,6 +44,9 @@ option(ENABLE_IMGUI_TEST_ENGINE "Enable ImGui Test Engine" ${DEFAULT_ENABLE_IMGU
 message("OPENDIGITIZER_ENABLE_TESTING : ${OPENDIGITIZER_ENABLE_TESTING}")
 message("ENABLE_IMGUI_TEST_ENGINE     : ${ENABLE_IMGUI_TEST_ENGINE}")
 
+set(WITH_DOCS OFF)
+set(SDL_TEST OFF)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(cmake/Dependencies.cmake)
 include(cmake/StandardProjectSettings.cmake)

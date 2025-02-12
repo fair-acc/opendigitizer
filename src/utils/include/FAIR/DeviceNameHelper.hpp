@@ -15,12 +15,12 @@ constexpr inline std::array<std::string_view, 630> testDeviceNames = {"1S00KS2CV
     "GTS4QD31", "GTS4QD32", "GTS4QT11", "GTS4QT12", "GTS4QT13", "GTS5KS1", "GTS5KY1", "GTS5MU1", "GTS5QT11", "GTS5QT12", "GTS5QT13", "GTS6MU1", "GTS6MU1_0", "GTS7KS1", "GTS7KY1", "GTS7KY2", "GTS7MU1", "GTS7MU1_0", "GTS7QD11", "GTS7QD12", "GTT1KX2", "GTT1KY1", "GTT1KY2", "GTT1MU0", "GTT1MU1", "GTT1QD11", "GTT1QD12", "GTT1QD21", "GTT1QD22", "GTT1QD31", "GTT1QD32", "GTV1MU1", "GTV1MU2", "GTV2MU1", "GTV2MU2", "GTV2MU3", "GTV2QD11", "GTV2QD12", "GUCD001", "YR00BE_F", "YR00MH", "YR00QS1", "YR00QS2", "YR01MP1I", "YR02KD", "YR02KH", "YR02KS1", "YR02KS2", "YR02KV", "YR03BG0E", "YR03BG1E", "YR03BG2E", "YR03BG3T", "YR03BG3TS", "YR03BG4T", "YR03BG5T", "YR03BG6T", "YR03BG7T", "YR03BG7TL", "YR03DX1K", "YR03KD1D", "YR03KD2D", "YR03KH1", "YR03KH3G", "YR03KH4K", "YR03KH5C", "YR03KV3G", "YR03KV4K", "YR03KV5C", "YR03KV6G", "YR03KV7K", "YR03MO3C", "YR04KH", "YR04KS1", "YR04KS2", "YR04KV", "YR05BE1", "YR06KH", "YR06KS1", "YR06KS2", "YR07KV", "YR07MP1E", "YR08KH", "YR08KS1", "YR08KS2", "YR08KV", "YR10KH", "YR10KS1", "YR10KS2", "YR10KV", "YR12KH", "YR12KS1", "YR12KS2", "YR12KV", "YRCD001", "YRCD002", "YRCD003", "YRCD004", "YRCD005", "YRT1IN1E", "YRT1IN1K", "YRT1IN1M", "YRT1IQ1H", "YRT1IQ1O", "YRT1IZ1EP", "YRT1KH1", "YRT1KH2", "YRT1KV1", "YRT1KV2", "YRT1LD51H", "YRT1LD51V", "YRT1LD52H", "YRT1LD52V", "YRT1LE1", "YRT1MH1", "YRT1MH2", "YRT1QD61", "YRT1QD62", "YRT1QD71", "YRT1QD72", "ZZCD002"};
 
 struct DeviceInfo {
-    std::string_view name;
-    std::string_view location;
-    std::string_view section;
-    std::string_view deviceFunction;
-    std::string_view sequence;
-    std::string_view devicePosition;
+    std::string_view name{};
+    std::string_view location{};
+    std::string_view section{};
+    std::string_view deviceFunction{};
+    std::string_view sequence{};
+    std::string_view devicePosition{};
 };
 
 /**
@@ -1097,7 +1097,7 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
 
         // append any remaining part of the device name to the function description
         if (deviceName.size() > 9 + sequence.size()) {
-            std::string_view remainingFunction = deviceName.substr(9 + sequence.size());
+            [[maybe_unused]] std::string_view remainingFunction = deviceName.substr(9 + sequence.size());
             // info.function += remainingFunction;
         }
     }

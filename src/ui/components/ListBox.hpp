@@ -36,13 +36,13 @@ std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& ite
         auto* _cbdata = static_cast<CallbackData*>(d->UserData);
         if (d->EventKey == ImGuiKey_Tab) {
             std::vector<std::string> candidates;
-            std::size_t              shortest = -1;
+            std::size_t              shortest = std::numeric_limits<std::size_t>::max();
             for (auto& t : _cbdata->items) {
                 auto [item, name] = _cbdata->getItem(t);
                 if (name.empty()) {
                     continue;
                 }
-                if (name.starts_with(std::string_view(d->Buf, d->BufTextLen))) {
+                if (name.starts_with(std::string_view(d->Buf, static_cast<std::size_t>(d->BufTextLen)))) {
                     candidates.push_back(name);
                     shortest = std::min(shortest, name.size());
                 }

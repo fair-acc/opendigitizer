@@ -128,14 +128,14 @@ public:
      *
      * @param flags ImGui window flags to set.
      */
-    inline void setWindowFlags(const ImGuiWindowFlags& _flags) { this->flags = _flags; }
+    inline void setWindowFlags(const ImGuiWindowFlags& flags_) { this->flags = flags_; }
 
     /**
      * @brief Set the function to run on the button click in the notification.
      *
      * @param onButtonPress std::fuction or lambda expression, which contains the code for execution.
      */
-    inline void setOnButtonPress(const std::function<void()>& onButtonPress) { this->onButtonPress = onButtonPress; }
+    inline void setOnButtonPress(const std::function<void()>& onButtonPress_) { this->onButtonPress = onButtonPress_; }
 
     /**
      * @brief Set the label for the button in the notification.
@@ -293,11 +293,11 @@ public:
      * @param type The type of the toast.
      * @param dismissTime The time in milliseconds after which the toast should be dismissed. Default is NOTIFY_DEFAULT_DISMISS.
      */
-    ImGuiToast(ImGuiToastType type, int dismissTime = NOTIFY_DEFAULT_DISMISS) {
-        IM_ASSERT(type < ImGuiToastType::COUNT);
+    ImGuiToast(ImGuiToastType type_, int dismissTime_ = NOTIFY_DEFAULT_DISMISS) {
+        IM_ASSERT(type_ < ImGuiToastType::COUNT);
 
-        this->type        = type;
-        this->dismissTime = dismissTime;
+        this->type        = type_;
+        this->dismissTime = dismissTime_;
 
         this->creationTime = std::chrono::system_clock::now();
 
@@ -312,7 +312,7 @@ public:
      * @param format The format string for the message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type, const char* format, ...) : ImGuiToast(type) { NOTIFY_FORMAT(this->setContent, format); }
+    ImGuiToast(ImGuiToastType type_, const char* format, ...) : ImGuiToast(type_) { NOTIFY_FORMAT(this->setContent, format); }
 
     /**
      * @brief Constructor for creating a new ImGuiToast object with a specified type, dismiss time, and content format.
@@ -322,7 +322,7 @@ public:
      * @param format The format string for the content of the toast message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type, int dismissTime, const char* format, ...) : ImGuiToast(type, dismissTime) { NOTIFY_FORMAT(this->setContent, format); }
+    ImGuiToast(ImGuiToastType type_, int dismissTime, const char* format, ...) : ImGuiToast(type_, dismissTime) { NOTIFY_FORMAT(this->setContent, format); }
 
     /**
      * @brief Constructor for creating a new ImGuiToast object with a specified type, dismiss time, title format, content format and a button.
@@ -334,7 +334,7 @@ public:
      * @param format The format string for the content of the toast message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type, int dismissTime, const char* buttonLabel, const std::function<void()>& onButtonPress, const char* format, ...) : ImGuiToast(type, dismissTime) {
+    ImGuiToast(ImGuiToastType type_, int dismissTime, const char* buttonLabel, const std::function<void()>& onButtonPress, const char* format, ...) : ImGuiToast(type_, dismissTime) {
         NOTIFY_FORMAT(this->setContent, format);
 
         this->onButtonPress = onButtonPress;
@@ -361,7 +361,7 @@ inline void InsertNotification(const ImGuiToast& toast) {
  *
  * @param index The index of the notification to remove.
  */
-inline void RemoveNotification(std::size_t index) { notifications.erase(std::next(notifications.begin(), index)); }
+inline void RemoveNotification(std::size_t index) { notifications.erase(std::next(notifications.begin(), static_cast<std::ptrdiff_t>(index))); }
 
 /**
  * Renders all notifications in the notifications vector.

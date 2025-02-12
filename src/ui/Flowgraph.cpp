@@ -322,11 +322,11 @@ static void readFile(const std::filesystem::path& file, std::string& str) {
     }
 
     stream.seekg(0, std::ios::end);
-    auto size = static_cast<std::size_t>(stream.tellg());
+    std::size_t size = static_cast<std::size_t>(stream.tellg());
 
     str.resize(size);
     stream.seekg(0);
-    stream.read(str.data(), size);
+    stream.read(str.data(), static_cast<std::streamsize>(size));
 }
 
 FlowGraph::FlowGraph() {}
@@ -385,7 +385,7 @@ void FlowGraph::parse(const std::string& str) {
 #endif
                                   }
                                   // TODO check subIndex once we support port collections
-                                  return std::pair{ports.begin() + definition.topLevel, definition.subIndex};
+                                  return std::pair{ports.begin() + static_cast<std::ptrdiff_t>(definition.topLevel), definition.subIndex};
                               },
                               [&](const gr::PortDefinition::StringBased& definition) {
                                   auto       split    = std::string_view(definition.name) | std::ranges::views::split('#');
@@ -586,7 +586,7 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, c
         return nullptr;
     }
 
-    grBlock->settings().set(params);
+    std::ignore = grBlock->settings().set(params); // TODO needs proper error handling
     // using StoredSettingsType = std::map<pmtv::pmt, std::vector<std::pair<gr::SettingsCtx, gr::property_map>>, gr::settings::PMTCompare>;
     for (const auto& [_, vec] : block.storedSettings()) {
         for (const auto& [ctx, map] : vec) {
@@ -594,7 +594,7 @@ static std::unique_ptr<gr::BlockModel> createGRBlock(gr::PluginLoader& loader, c
         }
     }
 
-    grBlock->settings().applyStagedParameters();
+    std::ignore = grBlock->settings().applyStagedParameters(); // TODO needs proper error handling
     return grBlock;
 }
 
@@ -700,8 +700,8 @@ void FlowGraph::handleMessage(const gr::Message& msg) {
                         }
                     }
                 } catch (const std::exception& e) {
-                    auto msg = fmt::format("remote_source of '{}' is not a valid URI '{}': {}", it->get()->name, *remoteUri, e.what());
-                    components::Notification::error(msg);
+                    std::string errMsg = fmt::format("remote_source of '{}' is not a valid URI '{}': {}", it->get()->name, *remoteUri, e.what());
+                    components::Notification::error(errMsg);
                     uri = {};
                 }
                 App::instance().dashboard->registerRemoteService(it->get()->name, uri);

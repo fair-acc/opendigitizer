@@ -23,3 +23,9 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(opencmw-cpp gnuradio4 ut)
+
+set_target_properties(exprtk_example0 PROPERTIES EXCLUDE_FROM_ALL ON)
+set_target_properties(exprtk_example1 PROPERTIES EXCLUDE_FROM_ALL ON)
+set_target_properties(exprtk_example2 PROPERTIES EXCLUDE_FROM_ALL ON)
+set_target_properties(exprtk_example3 PROPERTIES EXCLUDE_FROM_ALL ON)
+set_target_properties(exprtk_example4 PROPERTIES EXCLUDE_FROM_ALL ON)
