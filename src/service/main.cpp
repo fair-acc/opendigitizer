@@ -50,13 +50,15 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t>(registry);
     gr::registerBlock<MultiAdder, float>(registry);
-    gr::registerBlock<gr::basic::StreamToDataSet, float, double>(registry);
+    gr::registerBlock<gr::basic::StreamToDataSet, double>(registry);
     gr::registerBlock<gr::blocks::math::MathOpImpl, '*', float>(registry);
-    gr::registerBlock<gr::electrical::PowerMetrics, 3, float, double>(registry);
-    gr::registerBlock<gr::electrical::PowerFactor, 3, float, double>(registry);
-    gr::registerBlock<gr::electrical::SystemUnbalance, 3, float, double>(registry);
-    gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, float, double>(registry);
-    gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float, double>(registry);
+    gr::registerBlock<gr::electrical::PowerMetrics, 1, double>(registry);
+    gr::registerBlock<gr::electrical::PowerMetrics, 3, double>(registry);
+    gr::registerBlock<gr::electrical::PowerFactor, 1, double>(registry);
+    gr::registerBlock<gr::electrical::PowerFactor, 3, double>(registry);
+    gr::registerBlock<gr::electrical::SystemUnbalance, 3, double>(registry);
+    gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, double>(registry);
+    gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, double>(registry);
     gr::registerBlock<gr::testing::NullSink, float, double>(registry);
 
     fmt::print("providedBlocks:\n");
