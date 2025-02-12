@@ -18,8 +18,6 @@
 #include "rest/fileserverRestBackend.hpp"
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
-#include "blocks/SimpleTagSource.hpp"
-#include "blocks/TestSource.hpp"
 #include "build_configuration.hpp"
 #include "settings.hpp"
 #include <Picoscope4000a.hpp>
@@ -40,15 +38,13 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<opendigitizer::TestSource, double, float>(registry);
-    gr::registerBlock<opendigitizer::SimpleTagSource, float>(registry);
     gr::registerBlock<gr::basic::DataSink, double, float, std::int16_t>(registry);
     gr::registerBlock<gr::basic::DataSetSink, double, float, std::int16_t>(registry);
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
     gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float, std::int16_t>(registry); // ommitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t>(registry);
+    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, double>(registry);
     gr::registerBlock<MultiAdder, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, double>(registry);
     gr::registerBlock<gr::blocks::math::MathOpImpl, '*', float>(registry);
@@ -79,16 +75,15 @@ int main(int argc, char** argv) {
     using namespace opencmw::service;
     using namespace std::chrono_literals;
 
-    std::string grc = R"(
-blocks:
-  - name: !!str  source
-    id: !!str opendigitizer::TestSource
-    template_args: !!str "double"
-  - name: !!str sink
-    id: !!str gr::basic::DataSink
+    std::string grc = R"(blocks:
+  - name: source
+    id: gr::basic::DefaultClockSource
+    template_args: double
+  - name: sink
+    id: gr::basic::DataSink
     parameters:
-      signal_name: !!str test
-    template_args: !!str "double"
+      signal_name: test
+    template_args: double
 connections:
   - [source, 0, sink, 0]
 )";

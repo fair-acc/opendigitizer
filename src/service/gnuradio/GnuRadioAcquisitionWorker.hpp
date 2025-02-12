@@ -472,7 +472,7 @@ private:
                         const auto now           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                         auto       latency       = (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
                     }
-                    reply.triggerIndices.push_back(idx);
+                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
                     reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
                     if (tagMap.contains(gr::tag::TRIGGER_OFFSET)) {
@@ -482,7 +482,7 @@ private:
                     }
                     reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
                 } else {
-                    reply.triggerIndices.push_back(idx);
+                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
                     reply.triggerEventNames.push_back("");
                     reply.triggerTimestamps.push_back(0ULL);
                     reply.triggerOffsets.push_back(0.f);

@@ -72,7 +72,7 @@ public:
         _svr.Get("/assets/.*", cmrcHandler);
         _svr.Get("/web/.*", cmrcHandler);
 
-        auto redirectHandler = [this](const httplib::Request& request, httplib::Response& response) {
+        auto redirectHandler = [this](const httplib::Request& /* request */, httplib::Response& response) {
             auto& settings = Digitizer::Settings::instance();
             response.set_redirect(fmt::format("/web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : ""));
         };

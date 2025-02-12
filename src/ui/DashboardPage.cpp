@@ -27,7 +27,7 @@ struct AxisCategory {
     AxisScale   scale = AxisScale::Linear;
 };
 
-int findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
+std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
     for (std::size_t i = 0UZ; i < cats.size(); ++i) {
         // see if it already exists
         if (cats[i].has_value()) {
@@ -41,11 +41,11 @@ int findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::
     for (std::size_t i = 0UZ; i < cats.size(); ++i) {
         // else try to open a new slot
         if (!cats[i].has_value()) {
-            cats[i] = std::move(AxisCategory{.quantity = std::string(qStr), .unit = std::string(uStr), .color = colorDef});
+            cats[i] = AxisCategory{.quantity = std::string(qStr), .unit = std::string(uStr), .color = colorDef};
             return i;
         }
     }
-    return -1; // no slot left
+    return std::nullopt; // no slot left
 }
 
 void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string_view>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string_view>, 3>& yAxisGroups) {
@@ -84,27 +84,20 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std:
             }
         }
 
-        int idx = -1;
-        if (axisKind == AxisKind::X) {
-            idx = findOrCreateCategory(xCats, qStr, uStr, source->color);
+        if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, source->color); idx) {
+            if (axisKind == AxisKind::X) {
+                xAxisGroups[idx.value()].push_back(source->name);
+            } else {
+                yAxisGroups[idx.value()].push_back(source->name);
+            }
         } else {
-            idx = findOrCreateCategory(yCats, qStr, uStr, source->color);
-        }
-        if (idx == -1) {
             components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name, qStr, uStr));
-            ;
             continue;
-        }
-
-        if (axisKind == AxisKind::X) {
-            xAxisGroups[idx].push_back(source->name);
-        } else {
-            yAxisGroups[idx].push_back(source->name);
         }
     }
 }
 
-std::string buildLabel(const std::optional<AxisCategory>& catOpt, int idx, bool isX) {
+std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t idx, bool isX) {
     if (!catOpt.has_value()) {
         // fallback
         return isX ? "time" : "y-axis [a.u.]";
@@ -119,7 +112,7 @@ std::string buildLabel(const std::optional<AxisCategory>& catOpt, int idx, bool 
     if (!cat.unit.empty()) {
         return cat.unit;
     }
-    return fmt::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1); // fallback if both empty
+    return fmt::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1UZ); // fallback if both empty
 }
 
 void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3>& xCats, const std::array<std::optional<AxisCategory>, 3>& yCats) {
@@ -197,7 +190,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
         }
 
-        const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0, isX), width);
+        const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
 
         if (!isX && yCats[0].has_value()) {
             ImVec4 col = colorU32toImVec4(yCats[0]->color);
@@ -208,7 +201,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
 
         ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
         if (finiteMin && finiteMax) {
-            ImPlot::SetupAxisLimits(axisId, minVal, maxVal);
+            ImPlot::SetupAxisLimits(axisId, static_cast<double>(minVal), static_cast<double>(maxVal)); // TODO check and change axis range definitions to double
         }
 
         setAxisScale(axisId, scale);
@@ -263,9 +256,8 @@ static bool plotButton(const char* glyph, const char* tooltip) noexcept {
 }
 
 static void alignForWidth(float width, float alignment = 0.5f) noexcept {
-    ImGuiStyle& style = ImGui::GetStyle();
-    float       avail = ImGui::GetContentRegionAvail().x;
-    float       off   = (avail - width) * alignment;
+    float avail = ImGui::GetContentRegionAvail().x;
+    float off   = (avail - width) * alignment;
     if (off > 0.0f) {
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
     }
@@ -284,8 +276,6 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
     // 2) Setup up to 3 X axes & 3 Y axes
     setupPlotAxes(plot, xCats, yCats);
     ImPlot::SetupFinish();
-
-    const auto axisSize = ImPlot::GetPlotSize();
 
     // compute axis pixel width or height
     {
@@ -312,28 +302,24 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
         }
 
         // figure out which axis group check X first
-        int  axisID = -1;
-        bool isX    = false;
-        for (int i = 0; i < 3 && axisID < 0; ++i) {
+        std::size_t axisID = std::numeric_limits<std::size_t>::max();
+        for (std::size_t i = 0UZ; i < 3UZ && axisID == std::numeric_limits<std::size_t>::max(); ++i) {
             auto it = std::ranges::find(xAxisGroups[i], source->name);
             if (it != xAxisGroups[i].end()) {
                 axisID = i;
-                isX    = true;
             }
         }
         // check Y if not found
-        for (int i = 0; i < 3 && axisID < 0; ++i) {
+        for (std::size_t i = 0UZ; i < 3UZ && axisID == std::numeric_limits<std::size_t>::max(); ++i) {
             auto it = std::ranges::find(yAxisGroups[i], source->name);
             if (it != yAxisGroups[i].end()) {
                 axisID = i;
-                isX    = false;
             }
         }
 
         // default to Y0 if not found
-        if (axisID < 0) {
+        if (axisID == std::numeric_limits<std::size_t>::max()) {
             axisID = 0;
-            isX    = false;
         }
 
         std::ignore = grBlock->draw({{"draw_tag", drawTag}, {"axisID", axisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
@@ -478,7 +464,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
 
     for (auto& plot : plots) {
         windows.push_back(plot.window);
-        plot.window->renderFunc = [this, &dashboard, &plot, &toDelete, mode] {
+        plot.window->renderFunc = [this, &dashboard, &plot, mode] {
             const float offset = (mode == Mode::Layout) ? 5.f : 0.f;
 
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
@@ -498,8 +484,8 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
                         auto* dnd = static_cast<DndItem*>(payload->Data);
                         plot.sources.push_back(dnd->source);
-                        if (auto* plot = dnd->plotSource) {
-                            plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
+                        if (Dashboard::Plot* localPlot = dnd->plotSource) {
+                            localPlot->sources.erase(std::ranges::find(localPlot->sources, dnd->source));
                         }
                     }
                     ImPlot::EndDragDropTarget();

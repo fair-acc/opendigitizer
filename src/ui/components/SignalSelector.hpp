@@ -91,6 +91,7 @@ private:
         case Category::Quantity: return signal.quantity;
         case Category::Status: return signal.sampleRate;
         case Category::DeviceType: return signal.deviceClass;
+        default: throw gr::exception(fmt::format("unknown category {} for Signal device: {}", magic_enum::enum_name(category), signal.device));
         }
     }
 
@@ -349,7 +350,7 @@ public:
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));
-        ImGui::SetNextItemSelectionUserData(idx);
+        ImGui::SetNextItemSelectionUserData(static_cast<ImS64>(idx));
         ImGui::Selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(entry.signalName.c_str());
@@ -410,7 +411,7 @@ public:
             if (auto table = DigitizerUi::IMW::Table("Signals", 6, static_cast<ImGuiTableFlags>(ImGuiTableFlags_BordersInnerV), ImVec2(0.0f, 0.0f), 0.0f)) {
                 // allow multi-selection
                 ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_BoxSelect1d | ImGuiMultiSelectFlags_ClearOnClickVoid;
-                auto*                 ms_io = ImGui::BeginMultiSelect(flags, selection.Size, m_filteredItems.size());
+                auto*                 ms_io = ImGui::BeginMultiSelect(flags, selection.Size, static_cast<int>(m_filteredItems.size()));
                 selection.ApplyRequests(ms_io);
 
                 ImGui::TableHeader("SignalsHeader");
@@ -424,13 +425,13 @@ public:
 
                 // clip list for better performance
                 ImGuiListClipper clipper;
-                clipper.Begin(m_filteredItems.size());
+                clipper.Begin(static_cast<int>(m_filteredItems.size()));
                 if (ms_io->RangeSrcItem != -1) {
                     clipper.IncludeItemByIndex(static_cast<int>(ms_io->RangeSrcItem)); // do not clip RangeSrcItem
                 }
 
                 while (clipper.Step()) {
-                    for (std::size_t n = clipper.DisplayStart; n < clipper.DisplayEnd; ++n) {
+                    for (std::size_t n = static_cast<std::size_t>(clipper.DisplayStart); n < static_cast<std::size_t>(clipper.DisplayEnd); ++n) {
                         drawElement(*m_filteredItems[n], n, fg, selection);
                     }
                 }

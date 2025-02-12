@@ -84,7 +84,7 @@ FlowGraphItem::~FlowGraphItem() = default;
 FlowGraphItem::Context::Context() {
     config.SettingsFile = nullptr;
     config.UserPointer  = this;
-    config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags reason, void* userPointer) {
+    config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /* reason */, void* userPointer) {
         auto* c     = static_cast<Context*>(userPointer);
         c->settings = std::string(data, size);
         return true;
@@ -128,14 +128,14 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
 
     switch (s) {
     case LookAndFeel::Style::Dark:
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = {0.1, 0.1, 0.1, 1};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.2, 0.2, 0.2, 1};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.7, 0.7, 0.7, 1};
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = {0.1f, 0.1f, 0.1f, 1.f};
+        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.2f, 0.2f, 0.2f, 1.f};
+        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.7f, 0.7f, 0.7f, 1.f};
         break;
     case LookAndFeel::Style::Light:
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = {1, 1, 1, 1};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.94, 0.92, 1, 1};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.38, 0.38, 0.38, 1};
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = {1.f, 1.f, 1.f, 1.f};
+        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.94f, 0.92f, 1.f, 1.f};
+        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.38f, 0.38f, 0.38f, 1.f};
         break;
     }
 }
@@ -206,6 +206,10 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::Untyped: return 0xffffffff;
         case DataType::DataSetFloat64: return 0xff00BCD4;
         case DataType::DataSetFloat32: return 0xffF57C00;
+        case DataType::UInt64: return 0xffCDDC39; // TODO: cross check which colours to use
+        case DataType::UInt32: return 0xff009688; // TODO: cross check which colours to use
+        case DataType::UInt16: return 0xffFFEB3B; // TODO: cross check which colours to use
+        case DataType::UInt8: return 0xffD500F9;  // TODO: cross check which colours to use
         }
     } else {
         switch (t) {
@@ -228,6 +232,10 @@ static uint32_t colorForDataType(DataType t) {
         case DataType::Untyped: return 0xff000000;
         case DataType::DataSetFloat64: return 0xffff432b;
         case DataType::DataSetFloat32: return 0xff0a83ff;
+        case DataType::UInt64: return 0xffCDDC39; // TODO: cross check which colours to use
+        case DataType::UInt32: return 0xff009688; // TODO: cross check which colours to use
+        case DataType::UInt16: return 0xffFFEB3B; // TODO: cross check which colours to use
+        case DataType::UInt8: return 0xffD500F9;  // TODO: cross check which colours to use
         }
     }
     assert(0);
@@ -281,7 +289,6 @@ static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize,
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
     drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
 
-    auto y = pinPosition.y;
     ImGui::SetCursorPosX(pinPosition.x + textMargin);
     ImGui::SetCursorPosY(pinPosition.y - spacing);
     ImGui::TextUnformatted(name.c_str());
@@ -325,13 +332,13 @@ static bool blockInTree(const Block* block, const Block* start) {
 void valToString(const pmtv::pmt& val, std::string& str) {
     std::visit(gr::meta::overloaded{
                    [&](const std::string& s) { str = s; },
-                   [&](const auto& a) { str = "na"; },
+                   [&](const auto& /* a */) { str = "na"; },
                },
         val);
 }
 
 void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alignment alignment) {
-    auto       nodeId  = ax::NodeEditor::NodeId(&b);
+    const auto nodeId  = ax::NodeEditor::NodeId(&b);
     const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
     const bool filteredOut = [&]() {
@@ -408,8 +415,8 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
 
         const auto& outputs      = b.outputs();
         auto*       outputWidths = static_cast<float*>(alloca(sizeof(float) * outputs.size()));
-        auto        s            = ax::NodeEditor::GetNodeSize(nodeId);
-        pos                      = {curPos.x - padding.x + s.x, curPos.y};
+        ImVec2      nodeSize     = ax::NodeEditor::GetNodeSize(nodeId);
+        pos                      = {curPos.x - padding.x + nodeSize.x, curPos.y};
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             outputWidths[i] = ImGui::CalcTextSize(b.currentInstantiation().outputs[i].name.c_str()).x + textMargin * 2;
             if (!filteredOut) {
@@ -465,8 +472,8 @@ void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alig
         for (std::size_t i = 0; i < outputs.size(); ++i) {
             const auto& out = outputs[i];
 
-            auto s = ax::NodeEditor::GetNodeSize(nodeId);
-            ImGui::SetCursorPosX(leftPos + s.x);
+            nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
+            ImGui::SetCursorPosX(leftPos + nodeSize.x);
             drawPin(drawList, {outputWidths[i], rectHeight}, rectsSpacing, textMargin, b.currentInstantiation().outputs[i].name, out.portDataType);
         }
 
@@ -591,8 +598,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
             // drawing them would increase the node size, which we need to know to correctly place the
             // output pins, and that would cause the nodes to continuously grow in width
             {
-                const auto originalScreenPosition = ImGui::GetCursorScreenPos();
-                const auto blockSize              = ax::NodeEditor::GetNodeSize(blockId);
+                const auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 // const auto blockPosition          = ax::NodeEditor::GetNodePosition(blockId);
 
                 auto leftPos = blockPosition.topLeft.x - padding.x;
@@ -805,12 +811,12 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
     // if we don't put the buttons in this overlay, the click events will go to the editor instead of the buttons
     if (horizontalSplit) {
-        ImGui::SetNextWindowPos({origCursorPos.x, origCursorPos.y + size.y - 37}, ImGuiCond_Always);
+        ImGui::SetNextWindowPos({origCursorPos.x, origCursorPos.y + size.y - 37.f}, ImGuiCond_Always);
     } else {
-        ImGui::SetNextWindowPos({origCursorPos.x, origCursorPos.y + size.y * (1 - ratio) - 39}, ImGuiCond_Always); // on vertical, we need some extra space for the splitter
+        ImGui::SetNextWindowPos({origCursorPos.x, origCursorPos.y + size.y * (1.f - ratio) - 39.f}, ImGuiCond_Always); // on vertical, we need some extra space for the splitter
     }
 
-    ImGui::SetNextWindowSize({size.x * (ratio && horizontalSplit ? 1 - ratio : 1), 37});
+    ImGui::SetNextWindowSize({size.x * ((ratio > 0.f) && horizontalSplit ? 1.f - ratio : 1.f), 37.f});
     {
         IMW::Window overlay("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
         // These Buttons are rendered on top of the Editor, to make them properly readable, take out the opacity
@@ -857,7 +863,7 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::drawNewBlockDialog(FlowGraph* fg) {
+void FlowGraphItem::drawNewBlockDialog(FlowGraph* /* fg */) {
     ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
     if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
         auto ret = components::FilteredListBox("blocks", BlockRegistry::instance().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {

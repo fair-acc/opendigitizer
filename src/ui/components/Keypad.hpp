@@ -452,10 +452,10 @@ class InputKeypad {
 
         if (buttonActivated) {
             static double lastClick = -1.0;
-            static ImVec2 lastClickPos{-1, -1};
+            static ImVec2 lastClickPos{-1.f, -1.f};
             const double  time                    = ImGui::GetTime();
             const ImVec2  clickPos                = ImGui::GetMousePos();
-            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && static_cast<float>(time) - lastClick <= ImGui::GetIO().MouseDoubleClickTime;
+            const bool    isWithinDoubleClickTime = lastClick >= 0.0 && time - lastClick <= static_cast<double>(ImGui::GetIO().MouseDoubleClickTime);
             const auto    isDoubleClick           = [&]() { return (lastClickPos.x != -1 && std::hypot(clickPos.x - lastClickPos.x, clickPos.y - lastClickPos.y) <= ImGui::GetIO().MouseDoubleClickMaxDist); };
             bool          doubleClicked           = false;
             if (isWithinDoubleClickTime && isDoubleClick()) {
@@ -543,7 +543,7 @@ private:
     }
 
     template<typename EdTy>
-    [[nodiscard]] bool editImpl(const char* label, EdTy* value) noexcept {
+    [[nodiscard]] bool editImpl(const char* /* label */, EdTy* value) noexcept {
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             _visible = true;
             ImGui::OpenPopup(keypad_name);
@@ -920,7 +920,7 @@ private:
             if (_lastToken.type == TType::tt_const) {
                 _editBuffer.pop_back();
             } else {
-                _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
+                _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
             }
 
             if (_lastToken.range.data() != _editBuffer.data() && _editBuffer.back() == '-') {
@@ -934,9 +934,9 @@ private:
         case Sign: {
             if (_lastToken.type == TType::tt_const) {
                 if (_lastToken.range.data() != _editBuffer.data() && _lastToken.range.data()[-1] == '-') {
-                    _editBuffer.erase(_editBuffer.end() - _lastToken.range.size() - 1);
+                    _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size() + 1UZ)));
                 } else {
-                    _editBuffer.insert(_editBuffer.end() - _lastToken.range.size(), '-');
+                    _editBuffer.insert(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), '-');
                 }
                 return ReturnState::Change;
             }
@@ -977,7 +977,7 @@ private:
                 if (f < 0.0f) {
                     return ReturnState::None;
                 }
-                _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
+                _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
                 _editBuffer.append(fmt::format("{}", sqrtf(f)));
             }
             return ReturnState::Change;
@@ -991,7 +991,7 @@ private:
                 if (f == 0.0f) {
                     return ReturnState::None;
                 }
-                _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
+                _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
                 _editBuffer.append(fmt::format("{}", 1.0f / f));
             }
             return ReturnState::Change;
@@ -1005,7 +1005,7 @@ private:
                 if (f == 0.0f) {
                     return ReturnState::None;
                 }
-                _editBuffer.erase(_editBuffer.end() - _lastToken.range.size(), _editBuffer.end());
+                _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
                 _editBuffer.append(fmt::format("{}", f / 100.0f));
             }
             return ReturnState::Change;

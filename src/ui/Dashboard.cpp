@@ -34,16 +34,16 @@ namespace DigitizerUi {
 
 namespace {
 template<typename T>
-inline T randomRange(T min, T max) {
+T randomRange(T min, T max) {
     T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
     return min + scale * (max - min);
 }
 
 uint32_t randomColor() {
-    uint8_t x = randomRange(0.0f, 255.0f);
-    uint8_t y = randomRange(0.0f, 255.0f);
-    uint8_t z = randomRange(0.0f, 255.0f);
-    return 0xff000000u | x << 16 | y << 8 | z;
+    const uint8_t x = randomRange<uint8_t>(0, 255);
+    const uint8_t y = randomRange<uint8_t>(0, 255);
+    const uint8_t z = randomRange<uint8_t>(0, 255);
+    return 0xff000000u | x << 16U | y << 8U | z;
 }
 
 std::shared_ptr<DashboardSource> unsavedSource() {
@@ -707,8 +707,8 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
                     return {};
                 }
                 int      year  = std::atoi(str.data());
-                unsigned month = std::atoi(str.c_str() + 5UZ);
-                unsigned day   = std::atoi(str.c_str() + 8UZ);
+                unsigned month = static_cast<unsigned>(std::atoi(str.c_str() + 5UZ));
+                unsigned day   = static_cast<unsigned>(std::atoi(str.c_str() + 8UZ));
 
                 std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
                 return std::chrono::sys_days(date);
@@ -721,5 +721,5 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
         [cb]() { cb({}); });
 }
 
-std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .source = unsavedSource(), .isFavorite = false, .lastUsed = std::nullopt}); }
+std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .source = unsavedSource(), .filename = {}, .isFavorite = false, .lastUsed = std::nullopt}); }
 } // namespace DigitizerUi

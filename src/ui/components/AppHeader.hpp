@@ -44,7 +44,7 @@ inline bool LoadTextureFromFile(const char* filename, GLuint* out_texture, ImVec
     auto fs   = cmrc::ui_assets::get_filesystem();
     auto file = fs.open(filename);
 
-    unsigned char* image_data = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), file.size(), &image_width, &image_height, nullptr, 4);
+    unsigned char* image_data = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(file.begin()), static_cast<int>(file.size()), &image_width, &image_height, nullptr, 4);
     if (image_data == NULL) {
         return false;
     }
@@ -93,7 +93,7 @@ public:
         IM_ASSERT(ret);
     }
 
-    void draw(std::string_view title, ImFont* title_font, LookAndFeel::Style style) {
+    void draw(std::string_view title, ImFont* title_font, LookAndFeel::Style style_) {
         using namespace detail;
         // localtime
         const auto clock         = std::chrono::system_clock::now();
@@ -168,7 +168,7 @@ public:
 
         // draw fair logo
         ImGui::SameLine(0.f, 0.f);
-        const auto imgLogo = static_cast<ImTextureID>(style == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+        const auto imgLogo = static_cast<ImTextureID>(style_ == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
         if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
             // call url to project site
         }

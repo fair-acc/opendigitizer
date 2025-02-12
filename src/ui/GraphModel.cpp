@@ -209,7 +209,7 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
     auto times    = std::get<std::vector<std::uint64_t>>(data.at("times"));
 
     std::vector<UiGraphBlock::ContextTime> contextAndTimes;
-    for (int i = 0; i < contexts.size(); ++i) {
+    for (std::size_t i = 0UZ; i < contexts.size(); ++i) {
         contextAndTimes.emplace_back(UiGraphBlock::ContextTime{
             .context = contexts[i],
             .time    = times[i],
@@ -218,7 +218,7 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
     blockIt->contexts = contextAndTimes;
 }
 
-void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& data) {
+void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
     auto [blockIt, found] = findBlockByName(uniqueName);
     if (!found) {
         requestGraphUpdate();
@@ -239,7 +239,7 @@ void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     }
 }
 
-void UiGraphModel::handleEdgeRemoved(const gr::property_map& data) {}
+void UiGraphModel::handleEdgeRemoved(const gr::property_map& /* data */) {}
 
 void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     _newGraphDataBeingSet = true;
@@ -256,8 +256,8 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
 
     // Update or create blocks that GR knows
     const auto& children = getProperty<gr::property_map>(data, "children");
-    for (const auto& [blockUniqueName, blockData] : children) {
-        const auto [blockIt, found] = findBlockByName(blockUniqueName);
+    for (const auto& [childUniqueName, blockData] : children) {
+        const auto [blockIt, found] = findBlockByName(childUniqueName);
         if (found) {
             setBlockData(*blockIt, std::get<gr::property_map>(blockData));
         } else {
@@ -347,7 +347,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     edge.edgeSourcePortDefinition      = portDefinition("sourcePort"s);
     edge.edgeDestinationPortDefinition = portDefinition("destinationPort"s);
 
-    auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition) -> UiGraphPort* {
+    auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
         auto [it, found] = findBlockByName(currentBlockName);
         if (!found) {
             return nullptr;
@@ -375,7 +375,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
                                   }
                                   return std::addressof(*portIt);
                               }},
-            portDefinition.definition);
+            portDefinition_.definition);
     };
 
     edge.edgeSourcePort      = findPortFor(edge.edgeSourceBlockName, &UiGraphBlock::outputPorts, edge.edgeSourcePortDefinition);
@@ -403,14 +403,7 @@ void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
     });
 }
 
-void UiGraphBlock::getAllContexts() {
-    App::instance().sendMessage(gr::Message{
-        .cmd             = gr::Message::Get,
-        .serviceName     = blockUniqueName,
-        .clientRequestID = "all",
-        .endpoint        = gr::block::property::kSettingsContexts,
-    });
-}
+void UiGraphBlock::getAllContexts() { App::instance().sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "all", .endpoint = gr::block::property::kSettingsContexts, .data = {}}); }
 
 void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
     const auto& [context, time] = contextTime;
@@ -423,14 +416,7 @@ void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
     });
 }
 
-void UiGraphBlock::getActiveContext() {
-    App::instance().sendMessage(gr::Message{
-        .cmd             = gr::Message::Get,
-        .serviceName     = blockUniqueName,
-        .clientRequestID = "active",
-        .endpoint        = gr::block::property::kActiveContext,
-    });
-}
+void UiGraphBlock::getActiveContext() { App::instance().sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "active", .endpoint = gr::block::property::kActiveContext, .data = {}}); }
 
 void UiGraphBlock::addContext(const ContextTime& contextTime) {
     const auto& [context, time] = contextTime;
