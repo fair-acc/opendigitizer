@@ -1,14 +1,17 @@
 blocks:
   - name: RemoteU1
     id: opendigitizer::RemoteStreamSource
+    template_args: "float"
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=U1
   - name: RemoteDataSetU1
     id: opendigitizer::RemoteDataSetSource
+    template_args: "float"
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSetU1&acquisitionModeFilter=dataset
   - name: PlotU1
     id: opendigitizer::ImPlotSink
+    template_args: "float"
     parameters:
       color: 0x990000
       signal_name: U1
@@ -18,6 +21,7 @@ blocks:
       required_size: 512
   - name: PlotDataSetU1
     id: opendigitizer::ImPlotSinkDataSet
+    template_args: "float"
     parameters:
       color: 0x990000
       signal_name: U1

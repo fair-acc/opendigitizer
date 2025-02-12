@@ -37,6 +37,6 @@ struct Arithmetic : public gr::Block<Arithmetic<T>> {
 
 } // namespace opendigitizer
 
-auto registerArithmetic = gr::registerBlock<opendigitizer::Arithmetic, float, double>(gr::globalBlockRegistry());
+auto registerArithmetic = gr::registerBlock<opendigitizer::Arithmetic, float>(gr::globalBlockRegistry());
 
 #endif

@@ -1,26 +1,32 @@
 blocks:
-  - name: !!str FFT
-    id: !!str gr::blocks::fft::FFT
-  - name: !!str sine source 1
-    id: !!str opendigitizer::SineSource
+  - name: FFT
+    id: gr::blocks::fft::FFT
+    template_args: "float"
+  - name: sine source 1
+    id: opendigitizer::SineSource
+    template_args: "float"
     parameters:
-      frequency: !!float32 0.100000
-  - name: !!str remote source 1
-    id: !!str opendigitizer::RemoteStreamSource
+      frequency: 0.1
+  - name: remote source 1
+    id: opendigitizer::RemoteStreamSource
+    template_args: "float"
     parameters:
-      remote_uri: !!str /GnuRadio/Acquisition?channelNameFilter=test
-  - name: !!str sink 1
-    id: !!str opendigitizer::ImPlotSinkDataSet
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=test
+  - name: sink 1
+    id: opendigitizer::ImPlotSinkDataSet
+    template_args: "float"
     parameters:
-      color: !!uint32 0xff0000
-  - name: !!str sink 2
-    id: !!str opendigitizer::ImPlotSink
+      color: 0xff0000
+  - name: sink 2
+    id: opendigitizer::ImPlotSink
+    template_args: "float"
     parameters:
-      color: !!uint32 0x0000ff
-  - name: !!str sink 3
-    id: !!str opendigitizer::ImPlotSink
+      color: 0x0000ff
+  - name: sink 3
+    id: opendigitizer::ImPlotSink
+    template_args: "float"
     parameters:
-      color: !!uint32 0xffff00
+      color: 0xffff00
 connections:
   - [sine source 1, 0, FFT, 0]
   - [FFT, 0, sink 1, 0]

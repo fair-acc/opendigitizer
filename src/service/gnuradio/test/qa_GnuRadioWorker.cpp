@@ -32,12 +32,12 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<CountSource, double>(registry);
-    gr::registerBlock<ForeverSource, double>(registry);
-    gr::registerBlock<gr::basic::DataSetSink, double>(registry);
-    gr::registerBlock<gr::basic::DataSink, double>(registry);
-    gr::registerBlock<gr::blocks::fft::DefaultFFT, double>(registry);
-    gr::registerBlock<gr::testing::Delay, double>(registry);
+    gr::registerBlock<CountSource, float>(registry);
+    gr::registerBlock<ForeverSource, float>(registry);
+    gr::registerBlock<gr::basic::DataSetSink, float>(registry);
+    gr::registerBlock<gr::basic::DataSink, float>(registry);
+    gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
+    gr::registerBlock<gr::testing::Delay, float>(registry);
 #pragma GCC diagnostic pop
 }
 
@@ -184,6 +184,7 @@ const boost::ut::suite GnuRadioWorker_tests = [] {
 blocks:
   - name: count_up
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       signal_unit: up unit
@@ -191,10 +192,12 @@ blocks:
       signal_max: 99
   - name: delay_up
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: count_down
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       initial_value: 99
@@ -204,14 +207,17 @@ blocks:
       signal_max: 99
   - name: delay_down
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink_up
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_up
   - name: test_sink_down
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_down
 connections:
@@ -280,14 +286,17 @@ connections:
 blocks:
   - name: count_up
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink_up
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_up
 connections:
@@ -298,16 +307,19 @@ connections:
 blocks:
   - name: count_down
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       initial_value: 99
       direction: down
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink_down
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_down
 connections:
@@ -356,8 +368,10 @@ connections:
 blocks:
   - name: source1
     id: ForeverSource
+    template_args: "float"
   - name: test_sink1
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: test1
 connections:
@@ -367,8 +381,10 @@ connections:
 blocks:
   - name: source2
     id: ForeverSource
+    template_args: "float"
   - name: test_sink2
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: test2
 connections:
@@ -418,6 +434,7 @@ connections:
 blocks:
   - name: count
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       timing_tags: !!str
@@ -426,10 +443,12 @@ blocks:
         - 60,ignoreme
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count
 connections:
@@ -461,6 +480,7 @@ connections:
 blocks:
   - name: count
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 10000000
       timing_tags: !!str
@@ -469,10 +489,12 @@ blocks:
         - 900000,ignoreme
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count
 connections:
@@ -503,6 +525,7 @@ connections:
 blocks:
   - name: count
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       signal_unit: "A unit"
@@ -514,10 +537,12 @@ blocks:
         - 80,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count
 connections:
@@ -561,6 +586,7 @@ connections:
 blocks:
   - name: count
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100
       sample_rate: 10
@@ -573,10 +599,12 @@ blocks:
         - 60,world
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count
 connections:
@@ -624,18 +652,22 @@ connections:
 blocks:
   - name: count
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 100000
       signal_name: test signal
       signal_unit: test unit
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: fft
     id: gr::blocks::fft::FFT
+    template_args: "float"
   - name: test_sink
     id: gr::basic::DataSetSink
+    template_args: "float"
     parameters:
       signal_name: FFTTestSignal
 connections:
@@ -682,12 +714,15 @@ connections:
 blocks:
   - name: unknown
     id: UnknownBlock
+    template_args: "float"
   - name: delay
     id: gr::testing::Delay
+    template_args: "float"
     parameters:
       delay_ms: 600
   - name: test_sink
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count
 connections:
@@ -712,6 +747,7 @@ connections:
 blocks:
   - name: count_up
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 0
       signal_name: count_up
@@ -720,6 +756,7 @@ blocks:
       signal_max: 42
   - name: count_down
     id: CountSource
+    template_args: "float"
     parameters:
       n_samples: 0
       direction: down
@@ -729,11 +766,13 @@ blocks:
       signal_max: 100
   - name: test_sink_up
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_up
       signal_unit: "Test unit A"
   - name: test_sink_down
     id: gr::basic::DataSink
+    template_args: "float"
     parameters:
       signal_name: count_down
       signal_unit: "Test unit B"

@@ -51,200 +51,168 @@ blocks:
         - a.u
         - a.u
       sample_rate: !!float32 1000
-  - name: ConvertA
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertB
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertC
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertD
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertE
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertF
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertG
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
-  - name: ConvertH
-    id: gr::blocks::type::converter::Convert
-    template_args: "float,double"
   - name: SinkA
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: U1
   - name: SinkB
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: U2
   - name: SinkC
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: U3
   - name: SinkD
     id: gr::basic::DataSink
-    template_args: double
+    template_args: "float"
     parameters:
       signal_name: I1
   - name: SinkE
     id: gr::basic::DataSink
-    template_args: double
+    template_args: "float"
     parameters:
       signal_name: I2
   - name: SinkF
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: I3
   - name: SinkG
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: PicoG
   - name: SinkH
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: TT
   - name: StreamToDataSetA
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetB
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetC
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetD
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetE
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetF
     id: gr::basic::StreamFilterImpl
-    template_args: "double"
+    template_args: "float"
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: SinkDataSetA
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetU1
   - name: SinkDataSetB
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetU2
   - name: SinkDataSetC
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetU3
   - name: SinkDataSetD
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetI1
   - name: SinkDataSetE
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetI2
   - name: SinkDataSetF
     id: gr::basic::DataSetSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: DataSetI3
   - name: PowerMetrics
     id: gr::electrical::PowerMetrics
-    template_args: "double,3"
+    template_args: "float,3"
     parameters:
       decim: 1
   - name: SystemUnbalance
     id: gr::electrical::SystemUnbalance
-    template_args: "double,3"
+    template_args: "float,3"
   - name: SinkTotalActivePower
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: TotalActivePower
   - name: FrequencyEstimatorU1
     id: gr::filter::FrequencyEstimatorTimeDomain
-    template_args: "double"
+    template_args: "float"
   - name: SinkFrequencyU1
     id: gr::basic::DataSink
-    template_args: "double"
+    template_args: "float"
     parameters:
       signal_name: FrequencyU1
 connections:
-  - [Picoscope4000,  [0, 0], ConvertA, 0]
-  - [ConvertA, 0, SinkA, 0]
-  - [ConvertA, 0, StreamToDataSetA, 0]
+  - [Picoscope4000,  [0, 0], SinkA, 0]
+  - [Picoscope4000,  [0, 0], StreamToDataSetA, 0]
   - [StreamToDataSetA, 0, SinkDataSetA, 0]
-  - [ConvertA, 0, FrequencyEstimatorU1, 0]
+  - [Picoscope4000,  [0, 0], FrequencyEstimatorU1, 0]
   - [FrequencyEstimatorU1, 0, SinkFrequencyU1, 0]
-  - [Picoscope4000,  [0, 1], ConvertB, 0]
-  - [ConvertB, 0, SinkB, 0]
-  - [ConvertB, 0, StreamToDataSetB, 0]
+  - [Picoscope4000,  [0, 1], SinkB, 0]
+  - [Picoscope4000,  [0, 1], StreamToDataSetB, 0]
   - [StreamToDataSetB, 0, SinkDataSetB, 0]
-  - [Picoscope4000,  [0, 2], ConvertC, 0]
-  - [ConvertC, 0, SinkC, 0]
-  - [ConvertC, 0, StreamToDataSetC, 0]
+  - [Picoscope4000,  [0, 2], SinkC, 0]
+  - [Picoscope4000,  [0, 2], StreamToDataSetC, 0]
   - [StreamToDataSetC, 0, SinkDataSetC, 0]
-  - [Picoscope4000,  [0, 3], ConvertD, 0]
-  - [ConvertD, 0, SinkD, 0]
-  - [ConvertD, 0, StreamToDataSetD, 0]
+  - [Picoscope4000,  [0, 3], SinkD, 0]
+  - [Picoscope4000,  [0, 3], StreamToDataSetD, 0]
   - [StreamToDataSetD, 0, SinkDataSetD, 0]
-  - [Picoscope4000,  [0, 4], ConvertE, 0]
-  - [ConvertE, 0, SinkE, 0]
-  - [ConvertE, 0, StreamToDataSetE, 0]
+  - [Picoscope4000,  [0, 4], SinkE, 0]
+  - [Picoscope4000,  [0, 4], StreamToDataSetE, 0]
   - [StreamToDataSetE, 0, SinkDataSetE, 0]
-  - [Picoscope4000,  [0, 5], ConvertF, 0]
-  - [ConvertF, 0, SinkF, 0]
-  - [ConvertF, 0, StreamToDataSetF, 0]
+  - [Picoscope4000,  [0, 5], SinkF, 0]
+  - [Picoscope4000,  [0, 5], StreamToDataSetF, 0]
   - [StreamToDataSetF, 0, SinkDataSetF, 0]
-  - [Picoscope4000,  [0, 6], ConvertG, 0]
-  - [ConvertG, 0, SinkG, 0]
-  - [Picoscope4000,  [0, 7], ConvertH, 0]
-  - [ConvertH, 0, SinkH, 0]
-  - [ConvertA, 0, PowerMetrics, [0, 0]]
-  - [ConvertB, 0, PowerMetrics, [0, 1]]
-  - [ConvertC, 0, PowerMetrics, [0, 2]]
-  - [ConvertD, 0, PowerMetrics, [1, 0]]
-  - [ConvertE, 0, PowerMetrics, [1, 1]]
-  - [ConvertF, 0, PowerMetrics, [1, 2]]
+  - [Picoscope4000,  [0, 6], SinkG, 0]
+  - [Picoscope4000,  [0, 7], SinkH, 0]
+  - [Picoscope4000,  [0, 0], PowerMetrics, [0, 0]]
+  - [Picoscope4000,  [0, 1], PowerMetrics, [0, 1]]
+  - [Picoscope4000,  [0, 2], PowerMetrics, [0, 2]]
+  - [Picoscope4000,  [0, 3], PowerMetrics, [1, 0]]
+  - [Picoscope4000,  [0, 4], PowerMetrics, [1, 1]]
+  - [Picoscope4000,  [0, 5], PowerMetrics, [1, 2]]
   - [PowerMetrics, [3, 0], SystemUnbalance, [0, 0]]
   - [PowerMetrics, [3, 1], SystemUnbalance, [0, 1]]
   - [PowerMetrics, [3, 2], SystemUnbalance, [0, 2]]
