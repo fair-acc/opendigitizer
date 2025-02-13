@@ -8,6 +8,12 @@
 
 #include <fmt/format.h>
 
+#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
+#include <gnuradio-4.0/basic/clock_source.hpp>
+#include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/testing/Delay.hpp>
+
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
@@ -28,6 +34,7 @@
 #include "settings.hpp"
 
 #include "App.hpp"
+#include "Dashboard.hpp"
 #include "DashboardPage.hpp"
 #include "Flowgraph.hpp"
 #include "FlowgraphItem.hpp"
@@ -38,7 +45,11 @@
 #include "components/AppHeader.hpp"
 #include "components/Toolbar.hpp"
 
+#include "blocks/Arithmetic.hpp"
+#include "blocks/ImPlotSink.hpp"
+#include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
+#include "blocks/TagToSample.hpp"
 
 CMRC_DECLARE(ui_assets);
 CMRC_DECLARE(fonts);
