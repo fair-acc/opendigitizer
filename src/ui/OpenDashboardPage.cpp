@@ -244,7 +244,7 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
         return {it, it->name};
     };
     int  dashboardCount = 0;
-    auto drawDashboard  = [&](auto&& item, bool selected) {
+    auto drawDashboard  = [&](auto&& item, bool /* selected */) {
         IMW::ChangeStrId outerId(item.first->source->path.c_str());
         IMW::ChangeStrId innerId(item.second.data());
 
@@ -393,12 +393,12 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
                     return 1;
                 }) &&
             strnlen(date, sizeof(date)) == 10) {
-            unsigned                    day   = std::atoi(date);
-            unsigned                    month = std::atoi(date + 3);
+            unsigned                    day   = static_cast<unsigned>(std::atoi(date));
+            unsigned                    month = static_cast<unsigned>(std::atoi(date + 3));
             int                         year  = std::atoi(date + 6);
-            std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
-            if (date.ok()) {
-                m_date = std::chrono::sys_days(date);
+            std::chrono::year_month_day ldate{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
+            if (ldate.ok()) {
+                m_date = std::chrono::sys_days(ldate);
             }
         }
         ImGui::SameLine();

@@ -41,32 +41,31 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
         return;
     }
 
-    const float  fontHeight = ImGui::GetFontSize();
-    const double yMax       = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO).Y.Max;
-    ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float lastTextPixelX = -std::numeric_limits<float>::infinity();
-    for (const auto& tag : tagValues) {
-        double xTagPosition = tag.timestamp;
+    auto transformX = [axisScale, &minX, &maxX](double xPos) -> double {
         switch (axisScale) {
         case Linear:
         case Log10:
-        case SymLog: {
-            xTagPosition -= minX;
-        } break;
-        case LinearReverse: {
-            xTagPosition -= maxX;
-        } break;
+        case SymLog: return xPos - minX;
+        case LinearReverse: return xPos - maxX;
         case Time:
-        default: {
+        default: return xPos;
         }
-        }
-        const float xPixelPos = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
+    };
+
+    const float  fontHeight = ImGui::GetFontSize();
+    const double yMax       = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO).Y.Max;
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x + 2.0f * fontHeight;
+    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(minX, maxX)), 0.0f).x - 2.0f * fontHeight;
+    for (const auto& tag : tagValues) {
+        double      xTagPosition = transformX(tag.timestamp);
+        const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
 
         ImPlot::SetNextLineStyle(color);
         ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
-        // suppress tag labels if it is too close to the previous one
-        if (xPixelPos - lastTextPixelX > 2.0f * fontHeight || lastTextPixelX == -std::numeric_limits<float>::infinity()) {
+        // suppress tag labels if it is too close to the previous one or close to the extremities
+        if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight || (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight || lastTextPixelX == -std::numeric_limits<float>::infinity()) {
             const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, "trigger_name", "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
@@ -89,9 +88,11 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
     ImGui::PopStyleColor();
 }
 
-inline void setYAxisFromConfig(const gr::property_map& config) {
+inline void setAxisFromConfig(const gr::property_map& config) {
+    static constexpr ImAxis xAxes[] = {ImAxis_X1, ImAxis_X2, ImAxis_X3};
     static constexpr ImAxis yAxes[] = {ImAxis_Y1, ImAxis_Y2, ImAxis_Y3};
-    ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<int>(config, "axisID", 0), 0, 2)]);
+    ImPlot::SetAxis(xAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
+    ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
 }
 
 struct ImPlotSinkManager {
@@ -181,10 +182,6 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     }
 
     constexpr void processOne(const T& input) noexcept {
-        // todo: check if this can be permanently removed
-        // if constexpr (std::is_arithmetic_v<T>) {
-        //     in.max_samples = static_cast<std::size_t>(2.f * sample_rate / 25.f);
-        // }
         if (this->inputTagsPresent()) { // received tag
             const gr::property_map& tag = this->_mergedInputTag.map;
 
@@ -231,7 +228,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
         using enum DigitizerUi::AxisScale;
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
 
-        setYAxisFromConfig(config);
+        setAxisFromConfig(config);
         std::string scaleStr = config.contains("scale") ? std::get<std::string>(config.at("scale")) : "Linear";
         auto        trim     = [](const std::string& str) {
             auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
