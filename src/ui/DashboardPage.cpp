@@ -143,7 +143,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
 
         // shrink text to fit and prepend "..."
         float       scaleFactor  = (availableWidth - ellipsisWidth) / std::max(1.0f, textWidth);
-        std::size_t fitCharCount = static_cast<std::size_t>(std::floor(scaleFactor * original.size()));
+        std::size_t fitCharCount = static_cast<std::size_t>(std::floor(scaleFactor * static_cast<float>(original.size())));
 
         std::string truncated(original);
         if (fitCharCount < truncated.size()) {
@@ -302,27 +302,30 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
         }
 
         // figure out which axis group check X first
-        std::size_t axisID = std::numeric_limits<std::size_t>::max();
-        for (std::size_t i = 0UZ; i < 3UZ && axisID == std::numeric_limits<std::size_t>::max(); ++i) {
+        std::size_t xAxisID = std::numeric_limits<std::size_t>::max();
+        for (std::size_t i = 0UZ; i < 3UZ && xAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
             auto it = std::ranges::find(xAxisGroups[i], source->name);
             if (it != xAxisGroups[i].end()) {
-                axisID = i;
+                xAxisID = i;
             }
         }
+        if (xAxisID == std::numeric_limits<std::size_t>::max()) { // default to X0 if not found
+            xAxisID = 0UZ;
+        }
+
         // check Y if not found
-        for (std::size_t i = 0UZ; i < 3UZ && axisID == std::numeric_limits<std::size_t>::max(); ++i) {
+        std::size_t yAxisID = std::numeric_limits<std::size_t>::max();
+        for (std::size_t i = 0UZ; i < 3UZ && yAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
             auto it = std::ranges::find(yAxisGroups[i], source->name);
             if (it != yAxisGroups[i].end()) {
-                axisID = i;
+                yAxisID = i;
             }
         }
-
-        // default to Y0 if not found
-        if (axisID == std::numeric_limits<std::size_t>::max()) {
-            axisID = 0;
+        if (yAxisID == std::numeric_limits<std::size_t>::max()) { // default to Y0 if not found
+            yAxisID = 0;
         }
 
-        std::ignore = grBlock->draw({{"draw_tag", drawTag}, {"axisID", axisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
+        std::ignore = grBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
         drawTag     = false;
 
         // allow legend item labels to be DND sources

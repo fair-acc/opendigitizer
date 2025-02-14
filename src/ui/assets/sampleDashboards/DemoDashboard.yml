@@ -46,7 +46,7 @@ plots:
       - 8
       - 8
       - 8
-  - name: Plot 2
+  - name: Plot 3
     axes:
       - axis: X
         min: NaN # auto-range min
