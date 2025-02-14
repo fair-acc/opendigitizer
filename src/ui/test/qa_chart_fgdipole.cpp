@@ -18,6 +18,7 @@
 #include "imgui_test_engine/imgui_te_internal.h"
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
 
@@ -62,6 +63,18 @@ struct TestState {
 
 TestState g_state;
 
+template<typename Registry>
+void registerTestBlocks(Registry& registry) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
+    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
+    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
+    gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
+    gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
+#pragma GCC diagnostic pop
+}
+
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
@@ -73,7 +86,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(1200, 400));
+            ImGui::SetWindowSize(ImVec2(1200, 600));
 
             if (g_state.dashboard) {
                 DigitizerUi::DashboardPage page;
@@ -109,6 +122,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
+
+    gr::BlockRegistry registry;
+    registerTestBlocks(registry);
+    std::shared_ptr<gr::PluginLoader> pluginLoader = DigitizerUi::test::ImGuiTestApp::createPluginLoader(registry);
+
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_fg_dipole";
 
@@ -118,15 +136,13 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
-
     auto fs            = cmrc::ui_test_assets::get_filesystem();
     auto grcFile       = fs.open("examples/fg_dipole_intensity_ramp.grc");
     auto dashboardFile = fs.open("examples/fg_dipole_intensity_ramp.yml");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
-    g_state.dashboard->setPluginLoader(loader);
+    g_state.dashboard->setPluginLoader(pluginLoader);
     g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()));
 
     auto execution = g_state.dashboard->localFlowGraph.createExecutionContext();

@@ -207,8 +207,8 @@ void ImGuiTestApp::printWindows() {
 
 ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
 
-std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
-    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
+std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader(gr::BlockRegistry& registry) {
+    auto loader = std::make_shared<gr::PluginLoader>(registry, std::span<const std::filesystem::path>());
     BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*loader);
     return loader;
 }

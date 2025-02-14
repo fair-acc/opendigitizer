@@ -3,16 +3,14 @@
 
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
 
 #include <memory>
 
 class ImGuiApp;
 class ImGuiTestEngine;
 class ImGuiTestEngineIO;
-
-namespace gr {
-class PluginLoader;
-}
 
 namespace DigitizerUi::test {
 
@@ -84,7 +82,7 @@ public:
 
     // Creates a plugin loader and registers block definitions
     // Call this if your test uses gr blocks
-    static std::shared_ptr<gr::PluginLoader> createPluginLoader();
+    static std::shared_ptr<gr::PluginLoader> createPluginLoader(gr::BlockRegistry& registry);
 
 protected:
     virtual void registerTests() = 0;
