@@ -55,8 +55,8 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
     const float  fontHeight = ImGui::GetFontSize();
     const double yMax       = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO).Y.Max;
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x + 2.0f * fontHeight;
-    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(minX, maxX)), 0.0f).x - 2.0f * fontHeight;
+    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x;
+    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(minX, maxX)), 0.0f).x;
     for (const auto& tag : tagValues) {
         double      xTagPosition = transformX(tag.timestamp);
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
@@ -65,7 +65,7 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
         ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
-        if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight || (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight || lastTextPixelX == -std::numeric_limits<float>::infinity()) {
+        if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
             const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, "trigger_name", "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
