@@ -8,6 +8,7 @@ blocks:
       sample_rate: 1000
       verbose_console: true
       repeat_period: 1500000000
+      chunk_size: 250
       tag_times: !!uint64
         - 1000000000
       tag_values: !!str
@@ -211,6 +212,54 @@ blocks:
     template_args: "float"
     parameters:
       signal_name: FrequencyU1
+  - name: DummySinkPQS10
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkPQS11
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkPQS12
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkPQS20
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkPQS21
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkPQS22
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkUnbalance1
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
+  - name: DummySinkUnbalance2
+    id: gr::testing::TagSink
+    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    parameters:
+      logTags: false
+      logSamples: false
 connections:
   - [ClockSource, 0, SignalGeneratorA, 0]
   - [ClockSource, 0, SignalGeneratorB, 0]
@@ -257,4 +306,12 @@ connections:
   - [PowerMetrics, [0, 0], SystemUnbalance, [2, 0]]
   - [PowerMetrics, [0, 1], SystemUnbalance, [2, 1]]
   - [PowerMetrics, [0, 2], SystemUnbalance, [2, 2]]
+  - [PowerMetrics, [1, 0], DummySinkPQS10, 0]
+  - [PowerMetrics, [1, 1], DummySinkPQS11, 0]
+  - [PowerMetrics, [1, 2], DummySinkPQS12, 0]
+  - [PowerMetrics, [2, 0], DummySinkPQS20, 0]
+  - [PowerMetrics, [2, 1], DummySinkPQS21, 0]
+  - [PowerMetrics, [2, 2], DummySinkPQS22, 0]
   - [SystemUnbalance, 0, SinkTotalActivePower, 0]
+  - [SystemUnbalance, 1, DummySinkUnbalance1, 0]
+  - [SystemUnbalance, 2, DummySinkUnbalance2, 0]
