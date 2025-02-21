@@ -32,7 +32,7 @@ inline std::optional<T> get(const gr::property_map& m, const std::string_view& k
     try {
         return std::get<T>(it->second);
     } catch (const std::exception& e) {
-        fmt::println(std::cerr, "Unexpected type for tag '{}'", key);
+        fmt::println(stderr, "Unexpected type for tag '{}'", key);
         return {};
     }
 }
