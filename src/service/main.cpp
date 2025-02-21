@@ -27,6 +27,7 @@
 #include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/electrical/PowerEstimators.hpp>
 #include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
+#include <gnuradio-4.0/testing/TagMonitors.hpp>
 // #include <gnuradio-4.0/testing/NullSources.hpp>
 
 namespace {
@@ -47,7 +48,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::electrical::SystemUnbalance, 3, float>(registry);
     gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, float>(registry);
     gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
-    // gr::registerBlock<gr::testing::NullSink, float>(registry);
+    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
