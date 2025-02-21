@@ -23,17 +23,17 @@ using namespace opendigitizer::acq;
 
 namespace detail {
 template<typename T>
-inline std::optional<T> get(const gr::property_map& m, const std::string_view& key) {
+inline std::expected<T, std::string> get(const gr::property_map& m, const std::string_view& key) {
     const auto it = m.find(std::string(key));
     if (it == m.end()) {
         return {};
     }
 
-    try {
-        return std::get<T>(it->second);
-    } catch (const std::exception& e) {
-        fmt::println(stderr, "Unexpected type for tag '{}'", key);
-        return {};
+    auto res = pmtv::convert_safely<T>(it->second);
+    if (res) {
+        return res.value();
+    } else {
+        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& value) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
     }
 }
 
@@ -125,21 +125,31 @@ struct StreamingPollerEntry {
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
-    void populateFromTags(std::span<const gr::Tag>& tags) {
+    std::vector<std::string> populateFromTags(std::span<const gr::Tag>& tags) {
+        std::vector<std::string> errors;
         for (const auto& tag : tags) {
             if (const auto name = detail::get<std::string>(tag.map, tag::SIGNAL_NAME.shortKey())) {
-                signal_name = name;
+                signal_name = name.value();
+            } else {
+                errors.push_back(name.error());
             }
             if (const auto unit = detail::get<std::string>(tag.map, tag::SIGNAL_UNIT.shortKey())) {
-                signal_unit = unit;
+                signal_unit = unit.value();
+            } else {
+                errors.push_back(unit.error());
             }
             if (const auto min = detail::get<float>(tag.map, tag::SIGNAL_MIN.shortKey())) {
-                signal_min = min;
+                signal_min = min.value();
+            } else {
+                errors.push_back(min.error());
             }
             if (const auto max = detail::get<float>(tag.map, tag::SIGNAL_MAX.shortKey())) {
-                signal_max = max;
+                signal_max = max.value();
+            } else {
+                errors.push_back(max.error());
             }
         }
+        return errors;
     }
 };
 
@@ -278,9 +288,13 @@ private:
                                 continue;
                             }
                             const auto state = detail::get<std::string>(*message.data, "state");
-                            if (state == magic_enum::enum_name(lifecycle::State::STOPPED)) {
-                                schedulerFinished = true;
-                                continue;
+                            if (state) {
+                                if (state.value() == magic_enum::enum_name(lifecycle::State::STOPPED)) {
+                                    schedulerFinished = true;
+                                    continue;
+                                }
+                            } else {
+                                // TODO
                             }
                         } else if (message.endpoint == block::property::kSetting) {
                             auto sinkIt = signalEntryBySink.find(message.serviceName);
@@ -295,17 +309,17 @@ private:
 
                             const auto signalName = detail::get<std::string>(*settings, "signal_name");
                             const auto sampleRate = detail::get<float>(*settings, "sample_rate");
-                            if (signalName && signalName != entry.name) {
+                            if (signalName && signalName.value() != entry.name) {
                                 entry.name        = *signalName;
                                 signalInfoChanged = true;
                             }
-                            if (sampleRate && sampleRate != entry.sample_rate) {
+                            if (sampleRate && sampleRate.value() != entry.sample_rate) {
                                 entry.sample_rate = *sampleRate;
                                 signalInfoChanged = true;
                             }
                             if (entry.type != SignalType::DataSet) {
                                 const auto signalUnit = detail::get<std::string>(*settings, "signal_unit");
-                                if (signalUnit && signalUnit != entry.unit) {
+                                if (signalUnit && signalUnit.value() != entry.unit) {
                                     entry.unit        = *signalUnit;
                                     signalInfoChanged = true;
                                 }
@@ -439,10 +453,10 @@ private:
 
         auto key         = pollerIt->first;
         auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
-            pollerEntry.populateFromTags(tags);
-            reply.acqTriggerName = "STREAMING";
-            reply.channelName    = pollerEntry.signal_name.value_or(std::string(signalName));
-            reply.channelUnit    = pollerEntry.signal_unit.value_or("N/A");
+            std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
+            reply.acqTriggerName            = "STREAMING";
+            reply.channelName               = pollerEntry.signal_name.value_or(std::string(signalName));
+            reply.channelUnit               = pollerEntry.signal_unit.value_or("N/A");
             // work around fix the Annotated::operator= ambiguity here (move vs. copy assignment) when creating a temporary unit here
             // Should be fixed in Annotated (templated forwarding assignment operator=?)/or go for gnuradio4's Annotated?
             const typename decltype(reply.channelRangeMin)::R rangeMin = pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest();
@@ -462,18 +476,15 @@ private:
             reply.triggerOffsets.reserve(tags.size());
             reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
-                if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
-                    if (std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)) == "systemtime") {
-                        reply.acqLocalTimeStamp  = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME));
-                        auto       dataTimestamp = std::chrono::nanoseconds(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME)));
-                        const auto now           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-                        auto       latency       = (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
+                if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
+                    if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
+                        reply.acqLocalTimeStamp = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()));
                     }
                     reply.triggerIndices.push_back(static_cast<int64_t>(idx));
-                    reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME)));
-                    reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME))));
-                    if (tagMap.contains(gr::tag::TRIGGER_OFFSET)) {
-                        reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET)));
+                    reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())));
+                    reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))));
+                    if (tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey())) {
+                        reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey())));
                     } else {
                         reply.triggerOffsets.push_back(0.0f);
                     }
@@ -491,6 +502,9 @@ private:
             reply.triggerTimestamps.shrink_to_fit();
             reply.triggerOffsets.shrink_to_fit();
             reply.triggerYamlPropertyMaps.shrink_to_fit();
+            if (!errors.empty()) {
+                reply.acqErrors = std::move(errors);
+            }
         };
 
         const auto wasFinished = pollerEntry.poller->finished.load();
