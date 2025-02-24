@@ -72,11 +72,19 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
+    for (const auto& blockName: registry.knownBlocks()) {
+        fmt::print("AA: Registering block '{}'\n", blockName);
+        for (const auto& blockInstances: registry.knownBlockParameterizations(blockName)) {
+            fmt::print("    instance: '{}'\n", blockInstances);
+        }
+    }
 #pragma GCC diagnostic pop
 }
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
+
+
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_dashboard", "DashboardPage::drawPlot");

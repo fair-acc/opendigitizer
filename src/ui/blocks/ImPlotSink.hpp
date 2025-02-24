@@ -171,14 +171,12 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
-    ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) {
-        fmt::println("register ImplotSink<{}> - name: '{}'", gr::meta::type_name<T>(), this->name);
-        ImPlotSinkManager::instance().registerPlotSink(this);
-    }
+    ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+    void settingsChanged(const gr::property_map& /* oldSettings */ , const gr::property_map& /* newSettings */) {
+        fmt::println("ImPlotSink::settingsChanged(...) - register ImplotSink<{}> - name: '{}'", gr::meta::type_name<T>(), this->name);
         if (_xValues.capacity() != required_size) {
             _xValues.resize(required_size);
             _tagValues.clear();
@@ -329,6 +327,7 @@ public:
             return gr::work::Status::OK;
         }
         const auto n = data.extents[1];
+        fmt::println("plotting: '{}' with {} points", this->unique_name, data.extents[0]);
         if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
             for (std::int32_t i = 0; i < data.extents[0]; ++i) {
                 ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(i)].c_str(), data.signal_values.data() + n * i, n);
