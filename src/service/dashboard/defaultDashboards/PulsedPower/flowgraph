@@ -26,21 +26,21 @@ blocks:
   - name: PlotU1
     id: opendigitizer::ImPlotSink<float32>
     parameters:
-      color: 0x990000
+      color: 0x000099
       signal_name: U1
       signal_quantity: voltage
       signal_unit: V
       sample_rate: 1000
-      required_size: 512
+      required_size: 10000
   - name: PlotI1
     id: opendigitizer::ImPlotSink<float32>
     parameters:
-      color: 0x000099
+      color: 0x990000
       signal_name: I1
       signal_quantity: current
-      signal_unit: mV
+      signal_unit: A
       sample_rate: 1000
-      required_size: 512
+      required_size: 10000
   - name: PlotDataSetU1
     id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
@@ -55,26 +55,26 @@ blocks:
       color: 0x000099
       signal_name: I1
       signal_quantity: current
-      signal_unit: mV
+      signal_unit: A
       dataset_index: 0
   - name: PlotTotalActivePower
     id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x009900
       signal_name: total active power
-      signal_quantity: watt
+      signal_quantity: power
       signal_unit: W
-      sample_rate: 1000
-      required_size: 512
+      sample_rate: 25
+      required_size: 1500
   - name: PlotFrequencyU1
     id: opendigitizer::ImPlotSink<float32>
     parameters:
-      color: 0x009900
-      signal_name: U1 frequency
+      color: 0x101010
+      signal_name: mains frequency
       signal_quantity: frequency
       signal_unit: Hz
-      sample_rate: 1000
-      required_size: 512
+      sample_rate: 25
+      required_size: 1500
 connections:
   - [RemoteU1, 0, PlotU1, 0]
   - [RemoteI1, 0, PlotI1, 0]
