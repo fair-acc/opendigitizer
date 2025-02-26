@@ -124,7 +124,11 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         _subscribedUri           = command.topic.str();
         std::weak_ptr maybeQueue = _queue;
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
-            if (!rep.error.empty()) {
+            long           skipped_samples     = 0;
+            constexpr auto skip_warning_prefix = "Warning: skipped ";
+            if (rep.error.starts_with(skip_warning_prefix)) {
+                skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+            } else if (!rep.error.empty()) {
                 stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                             gr::Error(fmt::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
@@ -155,6 +159,12 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 auto                            buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+                if (skipped_samples != 0) {
+                    acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
+                    acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), acq.acqLocalTimeStamp.value());
+                    acq.triggerEventNames.insert(acq.triggerEventNames.begin(), rep.error);
+                    acq.triggerOffsets.insert(acq.triggerOffsets.begin(), 0.0f);
+                }
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
