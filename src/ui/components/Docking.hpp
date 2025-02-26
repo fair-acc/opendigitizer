@@ -27,7 +27,7 @@ inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
 
 /// Hosts a group of dock windows
 class DockSpace {
-    DockingLayoutType _layoutType      = DockingLayoutType::Grid;
+    DockingLayoutType _layoutType      = DockingLayoutType::Free;
     bool              _needsRelayout   = true;
     size_t            _lastWindowCount = 0;
 
