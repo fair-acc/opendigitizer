@@ -25,11 +25,10 @@
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/basic/common_blocks.hpp>
-#include <gnuradio-4.0/electrical/PowerEstimators.hpp>
+#include "gnuradio/blocks/PowerEstimators.hpp"
 #include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
 #include <gnuradio-4.0/testing/TagMonitors.hpp>
-// #include <gnuradio-4.0/testing/NullSources.hpp>
 
 namespace {
 template<typename Registry>

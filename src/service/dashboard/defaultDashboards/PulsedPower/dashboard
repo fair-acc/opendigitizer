@@ -24,8 +24,8 @@ plots:
         min: inf
         max: inf
       - axis: Y
-        min: -1
-        max: +1
+        min: inf
+        max: inf
     sources:
       - PlotDataSetU1
       - PlotDataSetI1
@@ -37,8 +37,8 @@ plots:
         max: inf
         scale: Time
       - axis: Y
-        min: inf
-        max: inf
+        min: 49.8
+        max: 50.2
     sources:
       - PlotFrequencyU1
     rect: [1, 0, 1, 1] # x, y, width, height
@@ -61,8 +61,8 @@ plots:
         max: inf
         scale: Linear
       - axis: Y
-        min: -1
-        max: +1
+        min: inf
+        max: inf
     sources:
       - PlotU1
       - PlotI1

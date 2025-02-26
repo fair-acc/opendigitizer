@@ -37,8 +37,8 @@ blocks:
       signal_name: U1
       signal_quantity: voltage
       signal_unit: V
-      sample_rate: 10000
-      required_size: 100000
+      sample_rate: 1000
+      required_size: 10000
   - name: PlotI1
     id: opendigitizer::ImPlotSink
     template_args: "float"
@@ -47,8 +47,8 @@ blocks:
       signal_name: I1
       signal_quantity: current
       signal_unit: A
-      sample_rate: 10000
-      required_size: 100000
+      sample_rate: 1000
+      required_size: 10000
   - name: PlotDataSetU1
     id: opendigitizer::ImPlotSinkDataSet
     template_args: "float"
@@ -85,8 +85,8 @@ blocks:
       signal_name: mains frequency
       signal_quantity: frequency
       signal_unit: Hz
-      sample_rate: 10000
-      required_size: 600000
+      sample_rate: 25
+      required_size: 1500
 connections:
   - [RemoteU1, 0, PlotU1, 0]
   - [RemoteI1, 0, PlotI1, 0]
