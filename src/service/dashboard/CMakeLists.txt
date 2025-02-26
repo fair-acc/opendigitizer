@@ -13,9 +13,9 @@ cmrc_add_resource_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemoteTags/header
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemoteTags/dashboard
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemoteTags/flowgraph
-  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo/header
-  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo/dashboard
-  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo/flowgraph
+  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/PulsedPower/header
+  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/PulsedPower/dashboard
+  ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/PulsedPower/flowgraph
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo2/header
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo2/dashboard
   ${CMAKE_CURRENT_SOURCE_DIR}/defaultDashboards/RemotePulsedPowerDemo2/flowgraph)
