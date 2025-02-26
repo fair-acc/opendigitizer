@@ -380,6 +380,7 @@ public:
         if (data.extents.empty()) {
             return gr::work::Status::OK;
         }
+        setAxisFromConfig(config);
         const auto n = data.extents[1];
         if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
             for (std::int32_t i = 0; i < data.extents[0]; ++i) {

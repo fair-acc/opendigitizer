@@ -1,36 +1,23 @@
 sources:
   - name: PlotU1
     block: PlotU1
-    color: 0x990000
+    color: 0x000099
   - name: PlotI1
     block: PlotI1
-    color: 0x000099
+    color: 0x990000
   - name: PlotDataSetU1
     block: PlotDataSetU1
-    color: 0x990000
+    color: 0x000099
   - name: PlotDataSetI1
     block: PlotDataSetI1
-    color: 0x000099
+    color: 0x990000
   - name: PlotTotalActivePower
     block: PlotTotalActivePower
     color: 0x009900
   - name: PlotFrequencyU1
     block: PlotFrequencyU1
-    color: 0x009900
+    color: 0x101010
 plots:
-  - name: PlotUI
-    axes:
-      - axis: X
-        min: inf
-        max: inf
-        scale: Time
-      - axis: Y
-        min: inf
-        max: inf
-    sources:
-      - PlotU1
-      - PlotI1
-    rect: [0, 0, 1, 1]
   - name: PlotDataSetUI
     axes:
       - axis: X
@@ -42,7 +29,19 @@ plots:
     sources:
       - PlotDataSetU1
       - PlotDataSetI1
-    rect: [1, 0, 1, 1]
+    rect: [0, 0, 1, 1] # x, y, width, height
+  - name: PlotFrequencyU1
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: 49.8
+        max: 50.2
+    sources:
+      - PlotFrequencyU1
+    rect: [1, 0, 1, 1] # x, y, width, height
   - name: PlotActivePower
     axes:
       - axis: X
@@ -54,17 +53,18 @@ plots:
         max: inf
     sources:
       - PlotTotalActivePower
-    rect: [0, 1, 1, 1]
-  - name: PlotFrequencyU1
+    rect: [0, 1, 2, 1] # x, y, width, height
+  - name: PlotUI
     axes:
       - axis: X
         min: inf
         max: inf
-        scale: Time
+        scale: Linear
       - axis: Y
         min: inf
         max: inf
     sources:
-      - PlotFrequencyU1
-    rect: [1, 1, 1, 1]
+      - PlotU1
+      - PlotI1
+    rect: [0, 2, 2, 1] # x, y, width, height
 flowgraphLayout: ""
