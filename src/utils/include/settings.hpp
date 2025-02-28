@@ -52,6 +52,7 @@ struct Settings {
     bool        darkMode{false};
     std::string wasmServeDir{""};
     std::string defaultDashboard{"RemoteStream"};
+    std::string remoteDashboards{"../dashboard/defaultDashboards"};
 
 private:
     Settings() {
@@ -63,6 +64,7 @@ private:
         port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
+        remoteDashboards  = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);   // Directory the dashboard worker loads the dashboards from
 #ifndef EMSCRIPTEN
         opencmw::client::RestClient::CHECK_CERTIFICATES = checkCertificates;
 #else
@@ -99,8 +101,8 @@ private:
         }
         disableHttps = url.scheme() == "http";
 #endif
-        fmt::print("settings loaded: disableHttps={}, darkMode={}, checkCertificates={}, hostname={}, port={}, wasmServeDir={}, defaultDashboard={}\n", //
-            disableHttps, darkMode, checkCertificates, hostname, port, wasmServeDir, defaultDashboard);
+        fmt::print("settings loaded: disableHttps={}, darkMode={}, checkCertificates={}, hostname={}, port={}, wasmServeDir={}, defaultDashboard={}, remoteDashboards={}\n", //
+            disableHttps, darkMode, checkCertificates, hostname, port, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:
