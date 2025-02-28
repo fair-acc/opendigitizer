@@ -1,4 +1,5 @@
 #include "Block.hpp"
+#include "BlockNeighborsPreview.hpp"
 #include "Keypad.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
@@ -69,15 +70,13 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         return ImGui::GetTextLineHeightWithSpacing() * 1.5f;
     }();
 
-    auto resetTime = [&]() { panelContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; };
-
     const auto itemSpacing = ImGui::GetStyle().ItemSpacing;
 
     size = ImGui::GetContentRegionAvail();
 
     // don't close the panel while the mouse is hovering it or edits are made.
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible()) {
-        resetTime();
+        panelContext.resetTime();
     }
 
     auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(panelContext.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(LookAndFeel::instance().editPaneCloseDelay).count());
@@ -87,11 +86,16 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         ImGui::ProgressBar(1.f - duration, {size.x, 3});
     }
 
+    if (!verticalLayout) {
+        BlockNeighborsPreview(panelContext, ImGui::GetContentRegionAvail());
+        ImGui::SameLine();
+    }
+
     auto minpos = ImGui::GetCursorPos();
     size        = ImGui::GetContentRegionAvail();
 
     {
-        IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
+        IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(panelContext.block->blockName.c_str());
         // std::string_view typeName = panelContext.block->blockTypeName;
 
@@ -159,17 +163,21 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
             }
         }
 
-        BlockSettingsControls(panelContext.block, verticalLayout);
+        if (verticalLayout) {
+            BlockNeighborsPreview(panelContext, ImGui::GetContentRegionAvail());
+        }
+
+        BlockSettingsControls(panelContext.block);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-            resetTime();
+            panelContext.resetTime();
         }
     }
 
     ImGui::SetCursorPos(minpos);
 }
 
-void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const ImVec2& /*size*/) {
+void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
     constexpr auto editorFieldWidth = 150;
     if (auto table = IMW::Table("settings_table", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
         // Setup columns without headers
@@ -259,5 +267,17 @@ void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const I
         }
     }
 }
+
+BlockControlsPanelContext::BlockControlsPanelContext() {
+    blockClickedCallback = [this](UiGraphBlock* clickedBlock) {
+        // Guaranteed by the caller
+        assert(clickedBlock && clickedBlock != this->block);
+
+        this->block = clickedBlock;
+        resetTime();
+    };
+}
+
+void BlockControlsPanelContext::resetTime() { closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; }
 
 } // namespace DigitizerUi::components
