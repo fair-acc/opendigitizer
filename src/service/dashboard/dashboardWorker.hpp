@@ -4,6 +4,8 @@
 #include <majordomo/Worker.hpp>
 #include <majordomo/base64pp.hpp>
 
+#include <settings.hpp>
+
 #include <atomic>
 #include <cmath>
 #include <fstream>
@@ -11,8 +13,6 @@
 #include <ranges>
 #include <string_view>
 #include <thread>
-
-CMRC_DECLARE(dashboardFilesystem);
 
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
@@ -162,25 +162,34 @@ public:
             }
         });
 
-        auto readDefaultDashboard = [](std::string_view name) {
-            auto fs        = cmrc::dashboardFilesystem::get_filesystem();
-            auto header    = fs.open(fmt::format("defaultDashboards/{}/header", name));
-            auto dashboard = fs.open(fmt::format("defaultDashboards/{}/dashboard", name));
-            auto flowgraph = fs.open(fmt::format("defaultDashboards/{}/flowgraph", name));
-
-            Dashboard ds;
-            ds.header.resize(header.size());
-            std::ranges::copy(header, ds.header.begin());
-            ds.dashboard.resize(dashboard.size());
-            std::ranges::copy(dashboard, ds.dashboard.begin());
-            ds.flowgraph.resize(flowgraph.size());
-            std::ranges::copy(flowgraph, ds.flowgraph.begin());
-            return ds;
+        auto readFile = [](const std::filesystem::path& filePath, std::string& contents) {
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                fmt::print("DashboardWorker: could not read file with default flowgraph: {}\n", filePath);
+                return;
+            }
+            contents.assign((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
+            return;
         };
-
-        for (const auto& name : {"RemoteStream", "RemoteDataSet", "RemoteTags", "RemotePulsedPowerDemo", "RemotePulsedPowerDemo2"}) {
-            names.push_back(name);
-            dashboards.push_back(readDefaultDashboard(name));
+        auto& settings = Digitizer::Settings::instance();
+        try {
+            for (const auto& dir : std::filesystem::directory_iterator(settings.remoteDashboards)) {
+                if (!dir.is_directory() || !exists(dir.path() / "header") || !exists(dir.path() / "dashboard") || !exists(dir.path() / "flowgraph")) {
+                    continue;
+                }
+                std::string name = dir.path().filename();
+                Dashboard   dashboard;
+                readFile(dir.path() / "header", dashboard.header);
+                readFile(dir.path() / "dashboard", dashboard.dashboard);
+                readFile(dir.path() / "flowgraph", dashboard.flowgraph);
+                names.push_back(name);
+                dashboards.push_back(dashboard);
+            }
+            fmt::print("DashboardWorker: loaded dashboards: {}\n", names);
+        } catch (std::filesystem::filesystem_error& e) {
+            fmt::print("DashboardWorker: failed to load default remote Dashboards: {}\n", e.what());
+        } catch (...) {
+            fmt::print("DashboardWorker: failed to load default remote Dashboards\n");
         }
     }
 
