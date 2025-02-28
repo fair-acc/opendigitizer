@@ -414,10 +414,12 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
         auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
-            m_editPaneContext.block = nullptr;
+            m_editPaneContext.block      = nullptr;
+            m_editPaneContext.graphModel = nullptr;
         } else {
-            m_editPaneContext.block     = block;
-            m_editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            m_editPaneContext.block      = block;
+            m_editPaneContext.graphModel = &m_graphModel;
+            m_editPaneContext.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 

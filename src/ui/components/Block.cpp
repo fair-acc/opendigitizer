@@ -1,4 +1,5 @@
 #include "Block.hpp"
+#include "BlockNeighborsPreview.hpp"
 #include "Keypad.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
@@ -79,15 +80,13 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         return ImGui::GetTextLineHeightWithSpacing() * 1.5f;
     }();
 
-    auto resetTime = [&]() { panelContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; };
-
     const auto itemSpacing = ImGui::GetStyle().ItemSpacing;
 
     size = ImGui::GetContentRegionAvail();
 
     // don't close the panel while the mouse is hovering it or edits are made.
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible()) {
-        resetTime();
+        panelContext.resetTime();
     }
 
     auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(panelContext.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(LookAndFeel::instance().editPaneCloseDelay).count());
@@ -171,17 +170,17 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
             }
         }
 
-        BlockSettingsControls(panelContext.block, verticalLayout);
+        BlockSettingsControls(panelContext, verticalLayout);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
-            resetTime();
+            panelContext.resetTime();
         }
     }
 
     ImGui::SetCursorPos(minpos);
 }
 
-void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& /*size*/) {
+void BlockSettingsControls(const BlockControlsPanelContext& context, bool verticalLayout, const ImVec2& /*size*/) {
     const auto availableSize = ImGui::GetContentRegionAvail();
 
     auto             storage = ImGui::GetStateStorage();
@@ -191,8 +190,11 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
     const auto  indent    = style.IndentSpacing;
     const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
 
-    int i = 0;
-    for (const auto& p : block->blockSettings) {
+    BlockNeighborsPreview(context, availableSize);
+
+    int  i     = 0;
+    auto block = context.block;
+    for (const auto& p : context.block->blockSettings) {
         auto id = ImGui::GetID(p.first.c_str());
         ImGui::PushID(int(id));
         auto* enabled = storage->GetBoolRef(id, true);
@@ -290,5 +292,17 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
         ++i;
     }
 }
+
+BlockControlsPanelContext::BlockControlsPanelContext() {
+    blockClickedCallback = [this](UiGraphBlock* clickedBlock) {
+        // Guaranteed by the caller
+        assert(clickedBlock && clickedBlock != this->block);
+
+        this->block = clickedBlock;
+        resetTime();
+    };
+}
+
+void BlockControlsPanelContext::resetTime() { closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; }
 
 } // namespace DigitizerUi::components
