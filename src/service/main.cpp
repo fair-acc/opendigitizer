@@ -71,12 +71,12 @@ int main(int argc, char** argv) {
     std::string grc = R"(blocks:
   - name: source
     id: gr::basic::ClockSource
-    template_args: double
+    template_args: float
   - name: sink
     id: gr::basic::DataSink
     parameters:
       signal_name: test
-    template_args: double
+    template_args: float
 connections:
   - [source, 0, sink, 0]
 )";
