@@ -12,6 +12,8 @@
 #include <opencmw.hpp>
 #include <type_traits>
 
+#include "conversion.hpp"
+
 namespace opendigitizer {
 
 opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
@@ -36,7 +38,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     float                       signal_max;
     std::string                 host;
     opencmw::client::RestClient _client;
-    std::string                 _subscribedUri = "";
+    std::string                 _subscribedUri;
 
     std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
@@ -65,6 +67,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             startSubscription(remote_uri);
             _reconnect = std::nullopt;
         }
+
         std::size_t     written = 0;
         std::lock_guard lock(_queue->mutex);
         while (written < output.size() && !_queue->data.empty()) {
@@ -74,9 +77,9 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
 
             if constexpr (std::is_same_v<T, float>) {
-                std::ranges::copy(in, output.begin() + written);
+                std::ranges::copy(in, output.begin() + cast_to_signed(written));
             } else {
-                std::ranges::transform(in, output.begin() + written, [](float v) { return static_cast<T>(v); });
+                std::ranges::transform(in, output.begin() + cast_to_signed(written), [](float v) { return static_cast<T>(v); });
             }
 
             for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
@@ -93,7 +96,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
                     // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
 
-                output.publishTag(map, idx - d.read);
+                output.publishTag(map, cast_to_unsigned(idx - cast_to_signed(d.read)));
             }
             written += in.size();
             d.read += in.size();
@@ -115,6 +118,12 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         command.callback = [](const opencmw::mdp::Message&) {};
         _client.request(command);
         _subscribedUri = "";
+    }
+
+    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
+        //
+        fmt::print("Lifecycle {} {}\n", propertyName, message);
+        return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
     void startSubscription(const std::string& uri) {
@@ -177,6 +186,8 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
         }
     }
 
+    RemoteStreamSource(gr::property_map props) : Parent(std::move(props)) { start(); }
+
     void start() {
         if (!remote_uri.empty() && !host.empty()) {
             startSubscription(remote_uri);
@@ -184,7 +195,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     }
 
     void stop() { stopSubscription(); }
-};
+}; // namespace opendigitizer
 
 template<typename T>
 requires std::is_floating_point_v<T>
@@ -194,7 +205,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     std::string                 remote_uri;
     std::string                 host;
     opencmw::client::RestClient _client;
-    std::string                 _subscribedUri = "";
+    std::string                 _subscribedUri;
 
     std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
@@ -211,11 +222,12 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
             startSubscription(remote_uri);
             _reconnect = std::nullopt;
         }
+
         std::lock_guard           lock(_queue->mutex);
-        const auto                n   = std::min(_queue->data.size(), output.size());
-        std::span<gr::DataSet<T>> out = output;
+        const auto                n       = std::min(_queue->data.size(), output.size());
+        std::span<gr::DataSet<T>> outSpan = output;
         for (auto i = 0UZ; i < n; ++i) {
-            out[i] = std::move(_queue->data.front());
+            outSpan[i] = std::move(_queue->data.front());
             _queue->data.pop_front();
         }
         output.publish(n);
@@ -232,6 +244,12 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
         command.callback = [](const opencmw::mdp::Message&) {};
         _client.request(command);
         _subscribedUri = "";
+    }
+
+    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
+        //
+        fmt::print("Lifecycle {} {}\n", propertyName, message);
+        return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
     void startSubscription(const std::string& uri) {
@@ -290,6 +308,8 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
             startSubscription(remote_uri);
         }
     }
+
+    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { start(); }
 
     void start() {
         if (!remote_uri.empty() && !host.empty()) {

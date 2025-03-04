@@ -7,62 +7,56 @@
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
-#include "Flowgraph.hpp"
+#include "Dashboard.hpp"
 
 #include "components/Block.hpp"
+#include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
+
+#include "GraphModel.hpp"
+
+namespace opendigitizer {
+class ImPlotSinkModel;
+}
 
 namespace DigitizerUi {
 
-class FlowGraph;
-
 class FlowGraphItem {
-public:
-    FlowGraphItem();
-    ~FlowGraphItem();
-
-    void draw(FlowGraph* fg, const ImVec2& size);
-
-    std::string settings(FlowGraph* fg) const;
-    void        setSettings(FlowGraph* fg, const std::string& settings);
-    void        clear();
-    void        setStyle(LookAndFeel::Style style);
-
-    std::function<Block*(FlowGraph*)>                                                               newSinkCallback;
-    std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
-
 private:
     enum class Alignment {
         Left,
         Right,
     };
 
-    void addBlock(const Block& b, std::optional<ImVec2> nodePos = {}, Alignment alignment = Alignment::Left);
-    void drawNewBlockDialog(FlowGraph* fg);
-    void sortNodes(FlowGraph* fg);
-    void arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks);
+    UiGraphModel  m_graphModel;
+    UiGraphBlock* m_selectedBlock = nullptr;
 
-    UiGraphBlock*                 m_selectedBlock = nullptr;
-    std::vector<Block::Parameter> m_parameters;
-    const BlockDefinition*        m_selectedBlockDefinition = nullptr;
-    bool                          m_createNewBlock          = false;
-    ImVec2                        m_contextMenuPosition;
-    std::vector<const Block*>     m_nodesToArrange;
+    ax::NodeEditor::Config         m_editorConfig;
+    ax::NodeEditor::EditorContext* m_editor = nullptr;
 
-    SignalSelector m_signalSelector;
+    bool   m_layoutGraph = true;
+    ImVec2 m_contextMenuPosition;
 
-    // new block dialog data
-    const Block* m_filterBlock = nullptr;
-    struct Context {
-        Context();
+    SignalSelector   m_remoteSignalSelector;
+    NewBlockSelector m_newBlockSelector;
 
-        ax::NodeEditor::EditorContext* editor = nullptr;
-        ax::NodeEditor::Config         config;
-        std::string                    settings;
-    };
-    std::unordered_map<FlowGraph*, Context> m_editors;
-    components::BlockControlsPanelContext   m_editPaneContext;
-    bool                                    m_layoutGraph{true};
+    components::BlockControlsPanelContext m_editPaneContext;
+
+    void sortNodes();
+
+    void drawNodeEditor(const ImVec2& size);
+
+public:
+    FlowGraphItem();
+    ~FlowGraphItem();
+
+    void draw(Dashboard& dashboard) noexcept;
+
+    void setStyle(LookAndFeel::Style style);
+
+    std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
+
+    UiGraphModel& graphModel() { return m_graphModel; }
 };
 
 } // namespace DigitizerUi

@@ -31,24 +31,19 @@ struct SDLState;
 
 class App {
 public:
-    std::string                       executable;
-    std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        std::vector<std::filesystem::path> pluginPaths;
-#ifndef __EMSCRIPTEN__
-        // TODO set correct paths
-        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
-#endif
-        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
-    }();
+    std::string executable;
 
-    FlowGraphItem                fgItem;
-    DashboardPage                dashboardPage;
-    std::shared_ptr<Dashboard>   dashboard;
-    OpenDashboardPage            openDashboardPage;
-    SDLState*                    sdlState         = nullptr;
-    bool                         running          = true;
-    ViewMode                     mainViewMode     = ViewMode::VIEW;
-    ViewMode                     previousViewMode = ViewMode::VIEW;
+    std::shared_ptr<Dashboard> dashboard;
+
+    DashboardPage     dashboardPage;
+    FlowGraphItem     flowgraphPage;
+    OpenDashboardPage openDashboardPage;
+
+    SDLState* sdlState         = nullptr;
+    bool      running          = true;
+    ViewMode  mainViewMode     = ViewMode::VIEW;
+    ViewMode  previousViewMode = ViewMode::VIEW;
+
     std::vector<gr::BlockModel*> toolbarBlocks;
 
     components::AppHeader header;
@@ -67,14 +62,14 @@ public:
         std::string_view uniqueName() const { return handler ? handler->uniqueName() : ""; }
 
         void sendMessage(const gr::Message& msg) { handler->sendMessage(msg); }
-        void handleMessages(FlowGraph& fg) { handler->handleMessages(fg); }
+        void handleMessages(UiGraphModel& graphModel) { handler->handleMessages(graphModel); }
 
     private:
         struct Handler {
             virtual ~Handler()                                           = default;
             virtual std::string_view uniqueName() const                  = 0;
             virtual void             sendMessage(const gr::Message& msg) = 0;
-            virtual void             handleMessages(FlowGraph& fg)       = 0;
+            virtual void             handleMessages(UiGraphModel& fg)    = 0;
         };
 
         template<typename TScheduler>
@@ -116,13 +111,13 @@ public:
                 output[0]   = msg;
             }
 
-            void handleMessages(FlowGraph& fg) final {
+            void handleMessages(UiGraphModel& graphModel) final {
                 const auto available = _fromScheduler.streamReader().available();
                 if (available > 0) {
                     auto messages = _fromScheduler.streamReader().get(available);
 
                     for (const auto& msg : messages) {
-                        fg.handleMessage(msg);
+                        graphModel.processMessage(msg);
                     }
                     std::ignore = messages.consume(available);
                 }
@@ -140,10 +135,7 @@ public:
     SchedWrapper _scheduler;
 
 public:
-    App() {
-        BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*pluginLoader);
-        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
-    }
+    App() { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
 
     static App& instance() {
         static App app;
@@ -164,9 +156,7 @@ public:
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
     void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
-        fgItem.clear();
-        dashboard = Dashboard::create(&fgItem, desc);
-        dashboard->setPluginLoader(pluginLoader);
+        dashboard = Dashboard::create(&flowgraphPage, desc);
         dashboard->load();
     }
 
@@ -174,11 +164,11 @@ public:
         namespace fs = std::filesystem;
         fs::path path(url);
 
-        auto source = DashboardSource::get(path.parent_path().native());
-        DashboardDescription::load(source, path.filename(), [this, source](std::shared_ptr<DashboardDescription>&& desc) {
+        auto storageInfo = DashboardStorageInfo::get(path.parent_path().native());
+        DashboardDescription::loadAndThen(storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<DashboardDescription>&& desc) {
             if (desc) {
                 loadDashboard(desc);
-                openDashboardPage.addSource(source->path);
+                openDashboardPage.addDashboard(storageInfo->path);
             }
         });
     }
@@ -199,7 +189,7 @@ public:
 
     void setStyle(LookAndFeel::Style style) {
         setImGuiStyle(style);
-        fgItem.setStyle(style);
+        flowgraphPage.setStyle(style);
     }
 
     template<typename Graph>
@@ -217,7 +207,7 @@ public:
         }
     }
 
-    void handleMessages(FlowGraph& fg) {
+    void handleMessages(UiGraphModel& fg) {
         if (_scheduler) {
             _scheduler.handleMessages(fg);
         }

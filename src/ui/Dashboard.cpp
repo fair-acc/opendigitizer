@@ -18,8 +18,10 @@
 #include <opencmw.hpp>
 
 #include "App.hpp"
-#include "Flowgraph.hpp"
 #include "GraphModel.hpp"
+
+#include "blocks/ImPlotSink.hpp"
+#include "conversion.hpp"
 
 using namespace std::string_literals;
 
@@ -39,24 +41,11 @@ T randomRange(T min, T max) {
     return min + scale * (max - min);
 }
 
-uint32_t randomColor() {
-    const uint8_t x = randomRange<uint8_t>(0, 255);
-    const uint8_t y = randomRange<uint8_t>(0, 255);
-    const uint8_t z = randomRange<uint8_t>(0, 255);
+std::uint32_t randomColor() {
+    const std::uint8_t x = randomRange<std::uint8_t>(0, 255);
+    const std::uint8_t y = randomRange<std::uint8_t>(0, 255);
+    const std::uint8_t z = randomRange<std::uint8_t>(0, 255);
     return 0xff000000u | x << 16U | y << 8U | z;
-}
-
-std::shared_ptr<DashboardSource> unsavedSource() {
-    static auto source = std::make_shared<DashboardSource>(DashboardSource{
-        .path    = "Unsaved",
-        .isValid = false,
-    });
-    return source;
-}
-
-auto& sources() {
-    static std::vector<std::weak_ptr<DashboardSource>> sources;
-    return sources;
 }
 
 enum class What { Header, Dashboard, Flowgraph };
@@ -64,17 +53,17 @@ enum class What { Header, Dashboard, Flowgraph };
 template<typename T>
 struct arrsize;
 
-template<typename T, int N>
+template<typename T, std::size_t N>
 struct arrsize<T const (&)[N]> {
     static constexpr auto size = N;
 };
 
 template<std::size_t N>
-auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
-    if (source->path.starts_with("http://") || source->path.starts_with("https://")) {
+auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
+    if (storageInfo->path.starts_with("http://") || storageInfo->path.starts_with("https://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
-        auto        path = std::filesystem::path(source->path) / name;
+        auto        path = std::filesystem::path(storageInfo->path) / name;
         std::string whatStr;
         for (std::size_t i = 0UZ; i < N; ++i) {
             if (i > 0) {
@@ -124,7 +113,7 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
         static opencmw::client::RestClient client;
         client.request(command);
         return;
-    } else if (source->path.starts_with("example://")) {
+    } else if (storageInfo->path.starts_with("example://")) {
         std::array<std::string, N> reply;
         auto                       fs = cmrc::sample_dashboards::get_filesystem();
         for (std::size_t i = 0UZ; i < N; ++i) {
@@ -147,7 +136,7 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
         return;
     } else {
 #ifndef EMSCRIPTEN
-        auto          path = std::filesystem::path(source->path) / name;
+        auto          path = std::filesystem::path(storageInfo->path) / name;
         std::ifstream stream(path, std::ios::in);
         if (stream.is_open()) {
             stream.seekg(0, std::ios::end);
@@ -193,19 +182,35 @@ auto fetch(const std::shared_ptr<DashboardSource>& source, const std::string& na
 
 } // namespace
 
-DashboardSource::~DashboardSource() noexcept {
-    sources().erase(std::remove_if(sources().begin(), sources().end(), [](const auto& s) { return s.expired(); }), sources().end());
+DashboardStorageInfo::~DashboardStorageInfo() noexcept {
+    std::erase_if(knownDashobardStorage(), [](const auto& s) { return s.expired(); });
 }
 
-std::shared_ptr<DashboardSource> DashboardSource::get(std::string_view path) {
-    auto it = std::find_if(sources().begin(), sources().end(), [=](const auto& s) { return s.lock()->path == path; });
-    if (it != sources().end()) {
+std::vector<std::weak_ptr<DashboardStorageInfo>>& DigitizerUi::DashboardStorageInfo::knownDashobardStorage() {
+    static std::vector<std::weak_ptr<DashboardStorageInfo>> sources;
+    return sources;
+}
+
+std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view path) {
+    auto it = std::ranges::find_if(knownDashobardStorage(), [=](const auto& s) { return s.lock()->path == path; });
+    if (it != knownDashobardStorage().end()) {
         return it->lock();
     }
 
-    auto s = std::make_shared<DashboardSource>(DashboardSource{std::string(path), true});
-    sources().push_back(s);
-    return s;
+    auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path), PrivateTag{});
+    fmt::print("Creating dashboard source for path {}\n", path);
+    knownDashobardStorage().push_back(dashboardStorageInfo);
+    return dashboardStorageInfo;
+}
+
+// This does not really have a shared pointer semantics,
+// it is a static shared pointer, so it has a static lifetime.
+// It is a shared pointer because DashboardSources are used
+// as shared pointers, and this is a single special instance
+// of all dashboard sources which is not saved.
+std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStorage() {
+    static auto storageInfo = std::make_shared<DashboardStorageInfo>("Unsaved"s, PrivateTag{});
+    return storageInfo;
 }
 
 Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
@@ -218,59 +223,46 @@ Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<Da
     }
     LookAndFeel::mutableInstance().style         = style;
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-
-    localFlowGraph.plotSinkBlockAddedCallback = [this](Block* b) {
-        const auto color = std::get_if<uint32_t>(&b->settings().at("color"));
-        assert(color);
-        m_sources.insert({b->name, b->name, (*color << 8) | 0xff});
-    };
-    localFlowGraph.blockDeletedCallback = [this](Block* b) {
-        const auto blockName = b->name;
-        for (auto& p : m_plots) {
-            std::erase_if(p.sources, [&blockName](const auto& s) { return s->blockName == blockName; });
-        }
-        if (b->typeName() == "opendigitizer::RemoteStreamSource" || b->typeName() == "opendigitizer::RemoteDataSetSource") {
-            unregisterRemoteService(b->name);
-        }
-        std::erase_if(m_sources, [&blockName](const auto& s) { return s.blockName == blockName; });
-    };
 }
 
 Dashboard::~Dashboard() {}
 
 std::shared_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) { return std::make_shared<Dashboard>(PrivateTag{}, fgItem, desc); }
 
-Block* Dashboard::createSink() {
-    const auto sinkCount = std::ranges::count_if(localFlowGraph.blocks(), [](const auto& b) { return b->type().isPlotSink(); });
-    auto       name      = fmt::format("sink {}", sinkCount + 1);
-    auto       sink      = BlockRegistry::instance().get("opendigitizer::ImPlotSink")->createBlock(name);
-    sink->updateSettings({{"color", randomColor()}});
-    auto sinkptr = sink.get();
-    localFlowGraph.addBlock(std::move(sink));
-    return sinkptr;
-}
-
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
 void Dashboard::load() {
-    if (m_desc->source != unsavedSource()) {
+    if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
         fetch(
-            m_desc->source, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
-            [_this = shared()](std::array<std::string, 2>&& data) { _this->load(std::move(data[0]), std::move(data[1])); },
+            m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
+            [_this = shared()](std::array<std::string, 2>&& data) {                    //
+                _this->load(std::move(data[0]), std::move(data[1]));
+            },
             [_this = shared()]() {
-                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->source->path, _this->m_desc->filename);
+                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->storageInfo->path, _this->m_desc->filename);
                 components::Notification::error(error);
 
                 App::instance().closeDashboard();
             });
-    } else if (m_fgItem) {
-        m_fgItem->setSettings(&localFlowGraph, {});
     }
 }
 
 void Dashboard::load(const std::string& grcData, const std::string& dashboardData) {
     try {
-        localFlowGraph.parse(grcData);
+        gr::Graph grGraph = [this, &grcData]() -> gr::Graph {
+            try {
+                return gr::loadGrc(*pluginLoader, grcData);
+            } catch (const gr::exception& e) {
+                throw;
+            } catch (const std::string& e) {
+                throw gr::exception(e);
+            } catch (...) {
+                throw std::current_exception();
+            }
+        }();
+
+        App::instance().assignScheduler(std::move(grGraph));
+
         // Load is called after parsing the flowgraph so that we already have the list of sources
         doLoad(dashboardData);
     } catch (const gr::exception& e) {
@@ -297,7 +289,7 @@ void Dashboard::doLoad(const std::string& desc) {
 
     const property_map& rootMap = yaml.value();
 
-    auto path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
+    auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
 
     if (!rootMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("sources"))) {
         throw gr::exception("sources entry invalid");
@@ -319,16 +311,15 @@ void Dashboard::doLoad(const std::string& desc) {
         auto name  = std::get<std::string>(srcMap.at("name"));
         auto color = pmtv::cast<std::uint32_t>(srcMap.at("color"));
 
-        auto source = std::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == name; });
-        if (source == m_sources.end()) {
-            auto msg = fmt::format("Unable to find the source '{}'", block);
+        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == name; });
+        if (!sink) {
+            auto msg = fmt::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        source->name      = name;
-        source->color     = color;
-        source->blockName = block;
+        sink->setName(name);
+        sink->settings().set({{"color"s, color}});
     }
 
     if (!rootMap.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("plots"))) {
@@ -408,8 +399,8 @@ void Dashboard::doLoad(const std::string& desc) {
     }
 
     if (m_fgItem) {
-        const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
-        m_fgItem->setSettings(&localFlowGraph, isGoodString ? std::get<std::string>(rootMap.at("flowgraphLayout")) : std::string{});
+        // TODO: Port loading and saving flowgraph layouts
+        // const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
     }
 
     loadPlotSources();
@@ -418,7 +409,7 @@ void Dashboard::doLoad(const std::string& desc) {
 void Dashboard::save() {
     using namespace gr;
 
-    if (!m_desc->source->isValid) {
+    if (m_desc->storageInfo->isInMemoryDashboardStorage()) {
         return;
     }
 
@@ -432,22 +423,23 @@ void Dashboard::save() {
     property_map dashboardYaml;
 
     std::vector<pmtv::pmt> sources;
-    for (auto& src : m_sources) {
+    opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {
+        // TODO: Port saving and loading flowgraph layouts
         property_map map;
-        map["name"]  = src.name;
-        map["block"] = src.blockName;
-        map["color"] = src.color;
+        map["name"] = sink.name();
+        // map["color"] = sink.color();
+
         sources.emplace_back(std::move(map));
-    }
+    });
     dashboardYaml["sources"] = sources;
 
     std::vector<pmtv::pmt> plots;
-    for (auto& p : m_plots) {
+    for (auto& plot : m_plots) {
         property_map plotMap;
-        plotMap["name"] = p.name;
+        plotMap["name"] = plot.name;
 
         std::vector<pmtv::pmt> plotAxes;
-        for (const auto& axis : p.axes) {
+        for (const auto& axis : plot.axes) {
             property_map axisMap;
             axisMap["axis"]  = axis.axis == Plot::AxisKind::X ? "X" : "Y";
             axisMap["min"]   = axis.min;
@@ -458,16 +450,16 @@ void Dashboard::save() {
         plotMap["axes"] = plotAxes;
 
         std::vector<pmtv::pmt> plotSources;
-        for (auto& s : p.sources) {
-            plotSources.emplace_back(s->name);
+        for (auto& source : plot.sources) {
+            plotSources.emplace_back(source->name());
         }
         plotMap["sources"] = plotSources;
 
         std::vector<int> plotRect;
-        plotRect.emplace_back(p.window->x);
-        plotRect.emplace_back(p.window->y);
-        plotRect.emplace_back(p.window->width);
-        plotRect.emplace_back(p.window->height);
+        plotRect.emplace_back(plot.window->x);
+        plotRect.emplace_back(plot.window->y);
+        plotRect.emplace_back(plot.window->width);
+        plotRect.emplace_back(plot.window->height);
         plotMap["rect"] = plotRect;
 
         plots.emplace_back(plotMap);
@@ -475,12 +467,13 @@ void Dashboard::save() {
     dashboardYaml["plots"] = plots;
 
     if (m_fgItem) {
-        dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
+        // TODO: Port loading and saving flowgraph layouts
+        // dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
     }
 
-    if (m_desc->source->path.starts_with("http://") || m_desc->source->path.starts_with("https://")) {
+    if (m_desc->storageInfo->path.starts_with("http://") || m_desc->storageInfo->path.starts_with("https://")) {
         opencmw::client::RestClient client;
-        auto                        path = std::filesystem::path(m_desc->source->path) / m_desc->filename;
+        auto                        path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
 
         opencmw::client::Command hcommand;
         hcommand.command          = opencmw::mdp::Command::Set;
@@ -499,13 +492,12 @@ void Dashboard::save() {
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
-        localFlowGraph.save(stream);
         fcommand.data.put(stream.str());
         fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         client.request(fcommand);
     } else {
 #ifndef EMSCRIPTEN
-        auto path = std::filesystem::path(m_desc->source->path);
+        auto path = std::filesystem::path(m_desc->storageInfo->path);
 
         std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
         if (!stream.is_open()) {
@@ -528,11 +520,11 @@ void Dashboard::save() {
         stream.seekp(headerStart);
         stream << headerYamlStr.c_str() << '\n';
         stream << dashboardYamlStr.c_str() << '\n';
-        std::uint32_t flowgraphStart = stream.tellp();
-        std::uint32_t flowgraphSize  = localFlowGraph.save(stream);
-        stream.seekp(16);
-        stream.write(reinterpret_cast<char*>(&flowgraphStart), 4);
-        stream.write(reinterpret_cast<char*>(&flowgraphSize), 4);
+        // auto flowgraphStart = static_cast<std::uint32_t>(stream.tellp());
+        // auto flowgraphSize  = static_cast<std::uint32_t>(localFlowGraph.save(stream));
+        // stream.seekp(16);
+        // stream.write(reinterpret_cast<char*>(&flowgraphStart), 4);
+        // stream.write(reinterpret_cast<char*>(&flowgraphSize), 4);
         stream << '\n';
 #endif
     }
@@ -563,13 +555,13 @@ void Dashboard::loadPlotSources() {
         plot.sources.clear();
 
         for (const auto& name : plot.sourceNames) {
-            auto source = std::ranges::find_if(m_sources.begin(), m_sources.end(), [&](const auto& s) { return s.name == name; });
-            if (source == m_sources.end()) {
-                auto msg = fmt::format("Unable to find source {}", name);
+            auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) { return sink.name() == name; });
+            if (!plotSource) {
+                auto msg = fmt::format("Unable to find plot source -- sink: {}", name);
                 components::Notification::warning(msg);
                 continue;
             }
-            plot.sources.push_back(&*source);
+            plot.sources.push_back(&*plotSource);
         }
     }
 }
@@ -619,10 +611,6 @@ void Dashboard::Service::reload() {
             grc    = newFlowgraph->serialisedFlowgraph;
             layout = newFlowgraph->serialisedUiLayout;
 
-#if 0 // TODO this crashes on e.g. unknown blocks
-            s.flowGraph.parse(reply.flowgraph);
-#endif
-            App::instance().fgItem.setSettings(&flowGraph, newFlowgraph->serialisedUiLayout);
         } else {
             components::Notification::warning("Error reading flowgraph from the service reply");
         }
@@ -655,6 +643,8 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     client.request(command);
 }
 
+UiGraphModel& Dashboard::graphModel() { return m_fgItem->graphModel(); }
+
 void Dashboard::Service::execute() {
     opencmw::client::Command command;
     command.command = opencmw::mdp::Command::Set;
@@ -674,8 +664,8 @@ void Dashboard::Service::execute() {
 }
 
 void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
+    // TODO: Port loading and saving flowgraph layouts
     std::stringstream stream;
-    s->flowGraph.save(stream);
 
     opencmw::client::Command command;
     command.command = opencmw::mdp::Command::Set;
@@ -683,32 +673,28 @@ void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
 
     FlowgraphMessage msg;
     msg.flowgraph = std::move(stream).str();
-    if (m_fgItem) {
-        msg.layout = m_fgItem->settings(&s->flowGraph);
-    }
     opencmw::serialise<opencmw::Json>(command.data, msg);
     s->client.request(command);
 }
 
-void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
-    using namespace gr;
+void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
     fetch(
-        source, name, {What::Header},
-        [cb, name, source](std::array<std::string, 1>&& desc) {
+        storageInfo, name, {What::Header},
+        [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
             const auto yaml = pmtv::yaml::deserialize(desc[0]);
             if (!yaml) {
                 throw gr::exception(fmt::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
             }
-            const property_map& rootMap  = yaml.value();
-            bool                favorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
+            const gr::property_map& rootMap  = yaml.value();
+            bool                    favorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
 
             auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
                 if (str.size() < 10) {
                     return {};
                 }
                 int      year  = std::atoi(str.data());
-                unsigned month = static_cast<unsigned>(std::atoi(str.c_str() + 5UZ));
-                unsigned day   = static_cast<unsigned>(std::atoi(str.c_str() + 8UZ));
+                unsigned month = cast_to_unsigned(std::atoi(str.c_str() + 5UZ));
+                unsigned day   = cast_to_unsigned(std::atoi(str.c_str() + 8UZ));
 
                 std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
                 return std::chrono::sys_days(date);
@@ -716,10 +702,10 @@ void DashboardDescription::load(const std::shared_ptr<DashboardSource>& source, 
 
             auto lastUsed = rootMap.contains("lastUsed") && std::holds_alternative<bool>(rootMap.at("lastUsed")) ? getDate(std::get<std::string>(rootMap.at("lastUsed"))) : std::nullopt;
 
-            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .source = source, .filename = name, .isFavorite = favorite, .lastUsed = lastUsed}));
+            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .storageInfo = storageInfo, .filename = name, .isFavorite = favorite, .lastUsed = lastUsed}));
         },
         [cb]() { cb({}); });
 }
 
-std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .source = unsavedSource(), .filename = {}, .isFavorite = false, .lastUsed = std::nullopt}); }
+std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .storageInfo = DashboardStorageInfo::memoryDashboardStorage(), .isFavorite = false, .lastUsed = std::nullopt}); }
 } // namespace DigitizerUi

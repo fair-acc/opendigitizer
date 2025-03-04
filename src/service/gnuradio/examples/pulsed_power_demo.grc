@@ -1,7 +1,6 @@
 blocks:
   - name: Picoscope4000
-    id: fair::picoscope::Picoscope4000a
-    template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
+    id: fair::picoscope::Picoscope4000a<float32, (fair::picoscope::AcquisitionMode)0>
     parameters:
       acquisition_mode: Streaming
       auto_arm: !!bool true
@@ -52,136 +51,111 @@ blocks:
         - a.u
       sample_rate: !!float32 1000
   - name: SinkA
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U1
   - name: SinkB
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U2
   - name: SinkC
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U3
   - name: SinkD
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I1
   - name: SinkE
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I2
   - name: SinkF
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I3
   - name: SinkG
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: PicoG
   - name: SinkH
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: TT
   - name: StreamToDataSetA
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetB
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetC
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetD
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetE
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetF
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: SinkDataSetA
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU1
   - name: SinkDataSetB
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU2
   - name: SinkDataSetC
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU3
   - name: SinkDataSetD
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI1
   - name: SinkDataSetE
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI2
   - name: SinkDataSetF
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI3
   - name: PowerMetrics
-    id: gr::electrical::PowerMetrics
-    template_args: "float,3"
+    id: gr::electrical::PowerMetrics<float32, 3>
     parameters:
       decim: 1
   - name: SystemUnbalance
-    id: gr::electrical::SystemUnbalance
-    template_args: "float,3"
+    id: gr::electrical::SystemUnbalance<float32, 3>
   - name: SinkTotalActivePower
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: TotalActivePower
   - name: FrequencyEstimatorU1
-    id: gr::filter::FrequencyEstimatorTimeDomain
-    template_args: "float"
+    id: gr::filter::FrequencyEstimatorTimeDomain<float32>
   - name: SinkFrequencyU1
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: FrequencyU1
 connections:

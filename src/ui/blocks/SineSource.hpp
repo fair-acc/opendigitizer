@@ -64,8 +64,8 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
             return gr::work::Status::OK;
         }
 
-        std::copy(samples.begin(), samples.begin() + n, output.begin());
-        samples.erase(samples.begin(), samples.begin() + n);
+        std::copy(samples.begin(), samples.begin() + cast_to_signed(n), output.begin());
+        samples.erase(samples.begin(), samples.begin() + cast_to_signed(n));
         output.publish(n);
         return gr::work::Status::OK;
     }

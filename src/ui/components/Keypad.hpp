@@ -558,8 +558,7 @@ private:
             if constexpr (std::same_as<std::string, EdTy>) {
                 *value = _editBuffer;
             } else if constexpr (std::floating_point<EdTy>) {
-                EdTy converted = 0;
-                *value         = strtof(_editBuffer.c_str(), nullptr);
+                *value = strtof(_editBuffer.c_str(), nullptr);
             } else {
                 EdTy             converted = 0;
                 std::string_view a{_editBuffer};

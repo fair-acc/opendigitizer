@@ -6,6 +6,7 @@ target_link_libraries(
           gr-fourier
           gr-testing
           od_gnuradio_worker
+          digitizer_common_utils
           client
           zmq)
 add_test(NAME qa_GnuRadioWorker COMMAND qa_GnuRadioWorker)

@@ -167,7 +167,7 @@ void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, in
 }
 
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
-    std::span args(argv + 1, argc - 1);
+    std::span args(argv + 1, static_cast<std::size_t>(argc - 1));
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(args.cbegin(), args.cend(), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
@@ -209,6 +209,5 @@ ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->
 
 std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
     auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
-    BlockRegistry::instance().addBlockDefinitionsFromPluginLoader(*loader);
     return loader;
 }

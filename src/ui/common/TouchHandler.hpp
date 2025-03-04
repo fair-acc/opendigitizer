@@ -17,6 +17,7 @@
 #include <SDL.h>
 
 #include "../common/LookAndFeel.hpp"
+#include "conversion.hpp"
 
 namespace DigitizerUi {
 
@@ -189,7 +190,7 @@ struct TouchHandler {
             }
             if (!gestureActive && !gestureDragActive && !gestureZoomActive && nFingers == 1) {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
-                ImGui::GetIO().AddMouseButtonEvent(fingerIndex, true);
+                ImGui::GetIO().AddMouseButtonEvent(static_cast<int>(fingerIndex), true);
                 singleFingerClicked = true;
             }
             if (LookAndFeel::instance().touchDiagnostics) {
@@ -231,7 +232,7 @@ struct TouchHandler {
 
             if (!gestureDragActive && !gestureZoomActive && nFingers == 0) { // finish single-finger drag
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
-                ImGui::GetIO().AddMouseButtonEvent(fingerIndex, false);
+                ImGui::GetIO().AddMouseButtonEvent(static_cast<int>(fingerIndex), false);
             }
 
             if (LookAndFeel::instance().touchDiagnostics) {

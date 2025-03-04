@@ -140,7 +140,7 @@ public:
 
         //
         const auto menuButtonPushed = [&] {
-            IMW::StyleColor style(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, 0.6f));
+            IMW::StyleColor mainButtonStyle(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, 0.6f));
             IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
             return ImGui::Button(LookAndFeel::instance().prototypeMode ? "" : "");
         }();

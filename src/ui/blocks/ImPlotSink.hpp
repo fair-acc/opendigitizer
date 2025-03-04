@@ -14,6 +14,7 @@
 
 #include <implot.h>
 
+#include "conversion.hpp"
 #include "meta.hpp"
 
 namespace opendigitizer {
@@ -95,6 +96,39 @@ inline void setAxisFromConfig(const gr::property_map& config) {
     ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
 }
 
+struct ImPlotSinkModel {
+    std::string uniqueName;
+
+    ImPlotSinkModel(std::string _uniqueName) : uniqueName(std::move(_uniqueName)) {}
+
+    virtual ~ImPlotSinkModel() {}
+
+    virtual gr::work::Status draw(const gr::property_map& config = {}) noexcept = 0;
+
+    virtual std::string name() const              = 0;
+    virtual void        setName(std::string name) = 0;
+
+    virtual gr::SettingsBase& settings() const = 0;
+
+    virtual gr::work::Result work(std::size_t count) = 0;
+
+    ImVec4 color() {
+        static const auto defaultColor = ImVec4(1, 0, 0, 1);
+        auto              maybeColor   = settings().get("color");
+        if (!maybeColor) {
+            return defaultColor;
+        }
+        const auto colorValue = maybeColor.value();
+        const auto cv         = std::get_if<std::vector<float>>(&colorValue);
+        if (!cv || cv->size() != 4) {
+            return defaultColor;
+        }
+        return ImVec4((*cv)[0], (*cv)[1], (*cv)[2], (*cv)[3]);
+    }
+
+    bool isVisible = true;
+};
+
 struct ImPlotSinkManager {
 private:
     ImPlotSinkManager() {}
@@ -103,25 +137,22 @@ private:
 
     ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
 
-    struct SinkModel {
-        std::string uniqueName;
+    std::unordered_map<std::string, std::unique_ptr<ImPlotSinkModel>> _knownSinks;
 
-        SinkModel(std::string uniqueName) : uniqueName(std::move(uniqueName)) {}
+    template<typename TBlock>
+    struct SinkWrapper : ImPlotSinkModel {
+        SinkWrapper(TBlock* _block) : ImPlotSinkModel(_block->unique_name), block(_block) {}
 
-        virtual ~SinkModel() {}
+        gr::work::Status draw(const gr::property_map& config = {}) noexcept override { return block->draw(config); }
 
-        virtual gr::work::Status draw() noexcept = 0;
-    };
+        std::string name() const override { return block->name; }
+        void        setName(std::string name) override { block->name = std::move(name); }
 
-    std::unordered_map<std::string, std::unique_ptr<SinkModel>> _knownSinks;
+        virtual gr::SettingsBase& settings() const { return block->settings(); }
 
-    template<typename Block>
-    struct SinkWrapper : SinkModel {
-        SinkWrapper(Block* block) : SinkModel(block->unique_name) {}
+        gr::work::Result work(std::size_t count) override { return block->work(count); }
 
-        gr::work::Status draw() noexcept override { return block->draw(); }
-
-        Block* block;
+        TBlock* block = nullptr;
     };
 
 public:
@@ -139,6 +170,22 @@ public:
     void unregisterPlotSink(TBlock* block) {
         _knownSinks.erase(block->unique_name);
     }
+
+    template<typename Pred>
+    ImPlotSinkModel* findSink(Pred pred) const {
+        auto it = std::ranges::find_if(_knownSinks, [&](const auto& kvp) { return pred(*kvp.second.get()); });
+        if (it == _knownSinks.cend()) {
+            return nullptr;
+        }
+        return it->second.get();
+    }
+
+    template<typename Fn>
+    void forEach(Fn function) {
+        for (const auto& [_, sinkPtr] : _knownSinks) {
+            function(*sinkPtr.get());
+        }
+    }
 };
 
 template<typename TBlock>
@@ -147,7 +194,7 @@ using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::SupportedTyp
 template<typename T>
 struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
     gr::PortIn<T> in;
-    uint32_t      color         = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
+    std::uint32_t color         = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
     gr::Size_t    required_size = 2048U;    // TODO: make this a multi-consumer/vector property
     std::string   signal_name;
     std::string   signal_quantity;
@@ -169,7 +216,7 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) {
         if (_xValues.capacity() != required_size) {
             _xValues.resize(required_size);
             _xUtcValues.resize(required_size);
@@ -261,8 +308,8 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
                     label.c_str(),
                     [](int idx, void* user_data) -> ImPlotPoint {
                         auto   self     = static_cast<ImPlotSink<T>*>(user_data);
-                        double xShifted = self->_xValues[idx] - self->_xValues.back();
-                        double y        = self->_yValues[idx];
+                        double xShifted = self->_xValues[cast_to_unsigned(idx)] - self->_xValues.back();
+                        double y        = self->_yValues[cast_to_unsigned(idx)];
                         return ImPlotPoint(xShifted, y);
                     },
                     this,                                // user_data pointer passed to the lambda
@@ -317,7 +364,7 @@ public:
         return gr::work::Status::OK;
     }
 
-    gr::work::Status draw(const gr::property_map& config = {}) noexcept {
+    gr::work::Status draw(const gr::property_map& /*config*/ = {}) noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
         if (data.extents.empty()) {
             return gr::work::Status::OK;
@@ -328,10 +375,10 @@ public:
                 ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(i)].c_str(), data.signal_values.data() + n * i, n);
             }
         } else {
-            if (dataset_index >= data.extents[0]) {
+            if (dataset_index >= cast_to_unsigned(data.extents[0])) {
                 dataset_index = 0U;
             }
-            ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(dataset_index)].c_str(), data.signal_values.data() + n * dataset_index, n);
+            ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(dataset_index)].c_str(), data.signal_values.data() + cast_to_unsigned(n) * dataset_index, n);
         }
         return gr::work::Status::OK;
     }

@@ -1,36 +1,31 @@
 blocks:
   - name: ClockSource
-    id: gr::basic::ClockSource
-    template_args: "unsigned char"
+    id: gr::basic::ClockSource<uint8>
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0
       sample_rate: 4096
       verbose_console: false
   - name: SignalGenerator1
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 0.125
       amplitude: 20
       sample_rate: 4096
       signal_type: Triangle
   - name: SignalGenerator2
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 1
       amplitude: 5
       sample_rate: 4096
       signal_type: Sine
   - name: Sum
-    id: MultiAdder
-    template_args: "float"
+    id: MultiAdder<float32>
     parameters:
       n_inputs: 2
   - name: DataSink
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: test
 connections:

@@ -1,7 +1,6 @@
 blocks:
   - name: ClockSource
-    id: gr::basic::ClockSource
-    template_args: "unsigned char"
+    id: gr::basic::ClockSource<uint8>
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0
@@ -14,16 +13,14 @@ blocks:
       tag_values: !!str
         - "systemtime"
   - name: SignalGeneratorA
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
       signal_type: Sine
       sample_rate: 1000
   - name: SignalGeneratorB
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
@@ -31,8 +28,7 @@ blocks:
       sample_rate: 1000
       phase: 2.0944
   - name: SignalGeneratorC
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
@@ -40,16 +36,14 @@ blocks:
       sample_rate: 1000
       phase: 4.18879
   - name: SignalGeneratorD
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
       signal_type: Sine
       sample_rate: 1000
   - name: SignalGeneratorE
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
@@ -57,8 +51,7 @@ blocks:
       sample_rate: 1000
       phase: 2.0944
   - name: SignalGeneratorF
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
@@ -66,197 +59,162 @@ blocks:
       sample_rate: 1000
       phase: 4.18879
   - name: SignalGeneratorG
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       amplitude: 1
       signal_type: Const
       sample_rate: 1000
   - name: SignalGeneratorH
-    id: gr::basic::SignalGenerator
-    template_args: "float"
+    id: gr::basic::SignalGenerator<float32>
     parameters:
       amplitude: 1
       signal_type: Const
       sample_rate: 1000
   - name: SinkA
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U1
   - name: SinkB
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U2
   - name: SinkC
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: U3
   - name: SinkD
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I1
   - name: SinkE
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I2
   - name: SinkF
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: I3
   - name: SinkG
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: PicoG
   - name: SinkH
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: TT
   - name: StreamToDataSetA
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetB
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetC
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetD
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetE
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetF
-    id: gr::basic::StreamFilterImpl
-    template_args: "float"
+    id: gr::basic::StreamFilterImpl<float32>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: SinkDataSetA
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU1
   - name: SinkDataSetB
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU2
   - name: SinkDataSetC
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetU3
   - name: SinkDataSetD
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI1
   - name: SinkDataSetE
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI2
   - name: SinkDataSetF
-    id: gr::basic::DataSetSink
-    template_args: "float"
+    id: gr::basic::DataSetSink<float32>
     parameters:
       signal_name: DataSetI3
   - name: PowerMetrics
-    id: gr::electrical::PowerMetrics
-    template_args: "float,3"
+    id: gr::electrical::PowerMetrics<float32, 3>
     parameters:
       decim: 1
   - name: SystemUnbalance
-    id: gr::electrical::SystemUnbalance
-    template_args: "float,3"
+    id: gr::electrical::SystemUnbalance<float32, 3>
   - name: SinkTotalActivePower
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: TotalActivePower
   - name: FrequencyEstimatorU1
-    id: gr::filter::FrequencyEstimatorTimeDomain
-    template_args: "float"
+    id: gr::filter::FrequencyEstimatorTimeDomain<float32>
   - name: SinkFrequencyU1
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: FrequencyU1
   - name: DummySinkPQS10
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS11
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS12
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS20
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS21
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS22
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkUnbalance1
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkUnbalance2
-    id: gr::testing::TagSink
-    template_args: "float,gr::testing::ProcessFunction::USE_PROCESS_BULK"
+    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
     parameters:
       logTags: false
       logSamples: false

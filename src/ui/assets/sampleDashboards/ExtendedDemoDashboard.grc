@@ -1,64 +1,50 @@
 blocks:
   - name: sum sigs1
-    id: opendigitizer::Arithmetic
-    template_args: float
+    id: opendigitizer::Arithmetic<float32>
   - name: sum sigs2
-    id: opendigitizer::Arithmetic
-    template_args: float
+    id: opendigitizer::Arithmetic<float32>
   - name: sum sigs3
-    id: opendigitizer::Arithmetic
-    template_args: float
+    id: opendigitizer::Arithmetic<float32>
   - name: FFT
-    id: gr::blocks::fft::FFT
-    template_args: float
+    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
   - name: sine source 3
-    id: opendigitizer::SineSource
-    template_args: float
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 0.1
   - name: sine source 4
-    id: opendigitizer::SineSource
-    template_args: float
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 0.2
   - name: sine source 5
-    id: opendigitizer::SineSource
-    template_args: float
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 0.3
   - name: sine source 6
-    id: opendigitizer::SineSource
-    template_args: float
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 0.4
   - name: sink 1
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xff0000
   - name: sink 2
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: float
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0x00ff00
   - name: sink 3
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x0000ff
   - name: sink 4
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xffff00
   - name: sink 5
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x00ffff
   - name: sink 6
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xff00ff
 connections:

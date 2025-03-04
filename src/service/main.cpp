@@ -52,7 +52,7 @@ void registerTestBlocks(Registry& registry) {
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
-        fmt::print("  - {}: {}\n", blockName, registry.knownBlockParameterizations(blockName));
+        fmt::print("  - {}\n", blockName);
     }
 #pragma GCC diagnostic pop
 }
@@ -70,13 +70,11 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::ClockSource
-    template_args: double
+    id: gr::basic::DefaultClockSource<float64>
   - name: sink
-    id: gr::basic::DataSink
+    id: gr::basic::DataSink<float64>
     parameters:
       signal_name: test
-    template_args: double
 connections:
   - [source, 0, sink, 0]
 )";

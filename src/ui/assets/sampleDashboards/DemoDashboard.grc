@@ -1,31 +1,25 @@
 blocks:
   - name: sum sigs
-    id: opendigitizer::Arithmetic
-    template_args: "float"
+    id: opendigitizer::Arithmetic<float32>
   - name: FFT
-    id: gr::blocks::fft::FFT
-    template_args: "float"
+    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
   - name: sine source 1
-    id: opendigitizer::SineSource
-    template_args: "float"
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 2
   - name: sine source 3
-    id: opendigitizer::SineSource
-    template_args: "float"
+    id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 5
   - name: sinesSink
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x00C800
       signal_name: value
       signal_quantity: measuredVoltage
       signal_unit: V
   - name: fftSink
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: "float"
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0xFF5500
       dataset_index: 3
@@ -33,8 +27,7 @@ blocks:
       signal_quantity: magnitude
       signal_unit: dB
   - name: ClockSource
-    id: gr::basic::ClockSource
-    template_args: "unsigned char"
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
     parameters:
       chunk_size: 20
       do_zero_order_hold: true
@@ -61,8 +54,7 @@ blocks:
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
   - name: DipoleCurrentGenerator
-    id: gr::basic::FunctionGenerator
-    template_args: float
+    id: gr::basic::FunctionGenerator<float32>
     parameters:
       sample_rate: 1000
       signal_type: Const
@@ -123,8 +115,7 @@ blocks:
           sample_rate: 1000
           signal_type: Const
   - name: IntensityGenerator
-    id: gr::basic::FunctionGenerator
-    template_args: float
+    id: gr::basic::FunctionGenerator<float32>
     parameters:
       sample_rate: 1000
       signal_type: Const
@@ -161,8 +152,7 @@ blocks:
           sample_rate: 1000
           signal_type: Const
   - name: DipoleCurrentSink
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xC80000
       required_size: 16384
@@ -170,8 +160,7 @@ blocks:
       signal_quantity: DipoleCurrent
       signal_unit: A
   - name: IntensitySink
-    id: opendigitizer::ImPlotSink
-    template_args: float
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x0000C8
       required_size: 16384

@@ -79,8 +79,8 @@ std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& ite
 
     IMW::Group group;
 
-    auto y = ImGui::GetCursorPosY();
     auto x = ImGui::GetCursorPosX();
+    auto y = ImGui::GetCursorPosY();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Filter:");
     ImGui::SameLine();
@@ -170,7 +170,7 @@ std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& ite
 }
 
 template<typename Items, typename ItemGetter>
-auto FilteredListBox(const char* id, Items&& items, ItemGetter getItem, const ImVec2& size = {200, 200})
+auto FilteredListBox(const char* id, const ImVec2& size, Items&& items, ItemGetter getItem)
 requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
@@ -178,7 +178,7 @@ requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto FilteredListBox(const char* id, Items&& items, ItemGetter getItem, ItemDrawer drawItem, const ImVec2& size = {200, 200})
+auto FilteredListBox(const char* id, const ImVec2& size, Items&& items, ItemGetter getItem, ItemDrawer drawItem)
 requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));

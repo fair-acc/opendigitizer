@@ -23,24 +23,24 @@ public:
 
     void draw(const std::shared_ptr<Dashboard>& optionalDashboard);
 
-    void addSource(std::string_view path);
-    void addDashboard(const std::shared_ptr<DashboardSource>& source, const auto& n);
+    void addDashboard(std::string_view path);
+    void addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n);
 
     std::shared_ptr<DashboardDescription> get(const size_t index);
 
 private:
     void dashboardControls(const std::shared_ptr<Dashboard>& optionalDashboard);
     void drawAddSourcePopup();
-    void unsubscribeSource(const std::shared_ptr<DashboardSource>& source);
+    void unsubscribeSource(const std::shared_ptr<DashboardStorageInfo>& source);
 
     std::vector<std::shared_ptr<DashboardDescription>> m_dashboards;
-    std::vector<std::shared_ptr<DashboardSource>>      m_sources;
+    std::vector<std::shared_ptr<DashboardStorageInfo>> m_storageInfos;
     bool                                               m_favoritesEnabled    = true;
     bool                                               m_notFavoritesEnabled = true;
     std::chrono::time_point<std::chrono::system_clock> m_date;
     int                                                m_filterDate;
-    bool                                               m_filterDateEnabled = false;
-    DashboardSource*                                   m_sourceHovered     = nullptr;
+    bool                                               m_filterDateEnabled  = false;
+    DashboardStorageInfo*                              m_storageInfoHovered = nullptr;
     std::unique_ptr<opencmw::client::RestClient>       m_restClient;
 };
 

@@ -110,8 +110,6 @@ endif()
 # the tests and not build N times
 add_library(
   ${target_name}lib STATIC
-  Flowgraph.cpp
-  Flowgraph.hpp
   FlowgraphItem.cpp
   FlowgraphItem.hpp
   GraphModel.cpp
@@ -137,6 +135,9 @@ add_library(
   components/PopupMenu.hpp
   components/SelectedLabelsView.hpp
   components/SignalSelector.hpp
+  components/SignalSelector.cpp
+  components/NewBlockSelector.hpp
+  components/NewBlockSelector.cpp
   components/Splitter.cpp
   components/Splitter.hpp
   components/Toolbar.hpp
@@ -163,6 +164,7 @@ target_link_libraries(
          sample_dashboards
          fonts
          digitizer_settings
+         digitizer_common_utils
          gnuradio-core
          gnuradio-meta
          gnuradio-algorithm

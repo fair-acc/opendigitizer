@@ -8,7 +8,6 @@
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
-#include <Flowgraph.hpp>
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
@@ -99,11 +98,11 @@ int main(int argc, char* argv[]) {
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
-    g_state.dashboard->setPluginLoader(loader);
+    // g_state.dashboard->setPluginLoader(loader);
     g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()));
 
-    auto execution = g_state.dashboard->localFlowGraph.createExecutionContext();
-    g_state.dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
+    // auto execution = g_state.dashboard->localFlowGraph.createExecutionContext();
+    // g_state.dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
 
     return app.runTests() ? 0 : 1;
 }

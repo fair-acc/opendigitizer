@@ -1,3 +1,6 @@
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -36,7 +39,6 @@
 #include "App.hpp"
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
-#include "Flowgraph.hpp"
 #include "FlowgraphItem.hpp"
 
 #include "common/AppDefinitions.hpp"
@@ -68,11 +70,11 @@ using namespace DigitizerUi;
 static void main_loop(void*);
 
 static void loadFonts(App& app) {
-    static const ImWchar fullRange[] = {
-        0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
-        // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
-        // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
-    };
+    // static const ImWchar fullRange[] = {
+    //     0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker
+    //     // N.B. a bit unsafe but in imgui_draw.cpp::ImFontAtlasBuildWithStbTruetype break condition is:
+    //     // 'for (const ImWchar* src_range = src_tmp.SrcRanges; src_range[0] && src_range[1]; src_range += 2)'
+    // };
     static const std::vector<ImWchar> rangeLatin             = {0x0020, 0x0080, // Basic Latin
                     0, 0};
     static const std::vector<ImWchar> rangeLatinExtended     = {0x80, 0xFFFF, 0}; // Latin-1 Supplement
@@ -113,14 +115,14 @@ static void loadFonts(App& app) {
     config.FontDataOwnedByAtlas = false;
 
     auto loadDefaultFont = [&app](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar>& ranges = {}) {
-        auto loadFont = [&primaryFont, &secondaryFont, &ranges](float fontSize) {
-            const auto loadFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), int(primaryFont.size()), fontSize, &config);
+        auto loadFont = [&primaryFont, &secondaryFont, &ranges](float loadFontSize) {
+            const auto resultFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), int(primaryFont.size()), loadFontSize, &config);
             if (!ranges.empty()) {
                 config.MergeMode = true;
-                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), int(secondaryFont.size()), fontSize, &config, ranges.data());
+                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), int(secondaryFont.size()), loadFontSize, &config, ranges.data());
                 config.MergeMode = false;
             }
-            return loadFont;
+            return resultFont;
         };
 
         auto& lookAndFeel             = LookAndFeel::mutableInstance();
@@ -134,9 +136,9 @@ static void loadFonts(App& app) {
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
     ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
 
-    auto loadIconsFont = [](auto name, float fontSize) {
+    auto loadIconsFont = [](auto name, float iconFontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);
-        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), fontSize, &config, glyphRanges); // alt: fullRange
+        return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(file.begin()), static_cast<int>(file.size()), iconFontSize, &config, glyphRanges); // alt: fullRange
     };
 
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
@@ -179,6 +181,9 @@ int main(int argc, char** argv) {
     }
 
     Digitizer::Settings& settings = Digitizer::Settings::instance();
+
+    // TODO: Remove when GR gets proper blocks library
+    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(gr::globalBlockRegistry());
 
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     // GL ES 2.0 + GLSL 100
@@ -242,6 +247,12 @@ int main(int argc, char** argv) {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     auto& app = App::instance();
+#ifdef EMSCRIPTEN
+    app.executable = "index.html";
+#else
+    app.executable = argv[0];
+#endif
+    app.sdlState = &sdlState;
 
     // Init openDashboardPage
     app.openDashboardPage.requestCloseDashboard = [&] { app.closeDashboard(); };
@@ -253,28 +264,16 @@ int main(int argc, char** argv) {
             app.mainViewMode = ViewMode::VIEW;
         }
     };
-    app.openDashboardPage.addSource(settings.serviceUrl().path("/dashboards").build().str());
-    app.openDashboardPage.addSource("example://builtin-samples");
-#ifdef EMSCRIPTEN
-    app.executable = "index.html";
-#else
-    app.executable = argv[0];
-#endif
-    app.sdlState = &sdlState;
+    app.openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
+    app.openDashboardPage.addDashboard("example://builtin-samples");
 
-    app.fgItem.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
-        auto& dashboard     = app.dashboard;
-        auto& dashboardPage = app.dashboardPage;
-        components::BlockControlsPanel(*dashboard, dashboardPage, panelContext, pos, size, horizontalSplit);
-    };
-    app.fgItem.newSinkCallback = [&](FlowGraph*) mutable {
-        auto newSink = app.dashboard->createSink();
-        app.dashboardPage.newPlot(*app.dashboard);
-        auto& plot = app.dashboard->plots().back();
-        plot.sourceNames.push_back(newSink->name);
-        return newSink;
+    // Flowgraph page
+    app.flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
+        components::BlockControlsPanel(panelContext, pos, size, horizontalSplit);
+        //
     };
 
+    // UI init
     LookAndFeel::mutableInstance().verticalDPI = [&app]() -> float {
         float diagonalDPI   = LookAndFeel::instance().defaultDPI;
         float horizontalDPI = diagonalDPI;
@@ -347,18 +346,8 @@ static void main_loop(void* arg) {
 
     EventLoop::instance().fireCallbacks();
 
-    if (app->dashboard && app->dashboard->localFlowGraph.graphChanged()) {
-        // create the graph and the scheduler
-        auto execution = app->dashboard->localFlowGraph.createExecutionContext();
-        app->dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
-        app->toolbarBlocks = std::move(execution.toolbarBlocks);
-        app->dashboard->loadPlotSources();
-        app->assignScheduler(std::move(execution.grGraph));
-        localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
-    }
-
     if (app->dashboard) {
-        app->handleMessages(app->dashboard->localFlowGraph);
+        app->handleMessages(app->dashboard->graphModel());
     }
 
     // Poll and handle events (inputs, window resize, etc.)
@@ -424,84 +413,15 @@ static void main_loop(void* arg) {
             if (app->dashboard != nullptr) {
                 app->dashboardPage.draw(*app->dashboard, DashboardPage::Mode::Layout);
             }
+
         } else if (app->mainViewMode == ViewMode::FLOWGRAPH) {
-            if (app->previousViewMode != ViewMode::FLOWGRAPH) {
-                app->dashboard->localFlowGraph.graphModel.requestGraphUpdate();
-            }
-
             if (app->dashboard != nullptr) {
-                // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
-                IMW::TabBar tabBar("maintabbar", 0);
-                if (auto item = IMW::TabItem("Local", nullptr, 0)) {
-                    auto contentRegion = ImGui::GetContentRegionAvail();
-                    app->fgItem.draw(&app->dashboard->localFlowGraph, contentRegion);
-                }
-                if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
-                    if (ImGui::Button("Reset")) {
-                        localFlowgraphGrc = app->dashboard->localFlowGraph.grc();
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Apply")) {
-                        auto sinkNames = [](const auto& blocks) {
-                            using namespace std;
-                            auto isPlotSink = [](const auto& b) { return b->type().isPlotSink(); };
-                            auto getName    = [](const auto& b) { return b->name; };
-                            auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
-                            auto names      = std::vector(namesView.begin(), namesView.end());
-                            ranges::sort(names);
-                            names.erase(std::unique(names.begin(), names.end()), names.end());
-                            return names;
-                        };
-
-                        const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-
-                        try {
-                            app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                            const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-                            std::vector<std::string> toRemove;
-                            std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                            std::vector<std::string> toAdd;
-                            std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                            for (const auto& name : toRemove) {
-                                app->dashboard->removeSinkFromPlots(name);
-                            }
-                            for (const auto& newName : toAdd) {
-                                app->dashboardPage.newPlot(*app->dashboard);
-                                app->dashboard->plots().back().sourceNames.push_back(newName);
-                            }
-                        } catch (const std::exception& e) {
-                            // TODO show error message
-                            auto msg = fmt::format("Error parsing YAML: {}", e.what());
-                            components::Notification::error(msg);
-                        }
-                    }
-
-                    ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+                if (app->previousViewMode != ViewMode::FLOWGRAPH) {
+                    app->dashboard->graphModel().requestGraphUpdate();
+                    app->dashboard->graphModel().requestAvailableBlocksTypesUpdate();
                 }
 
-                for (auto& s : app->dashboard->remoteServices()) {
-                    std::string title = "Remote YAML for " + s.name;
-                    if (auto item = IMW::TabItem(title.c_str(), nullptr, 0)) {
-                        if (ImGui::Button("Reload from service")) {
-                            s.reload();
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::Button("Execute on service")) {
-                            s.execute();
-                        }
-
-                        // TODO: For demonstration purposes only, remove
-                        // once we have a proper server-side graph editor
-                        // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
-                        ImGui::SameLine();
-                        if (ImGui::Button("Create a block")) {
-                            s.emplaceBlock("gr::basic::DataSink", "float");
-                        }
-                        // }
-
-                        ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
-                    }
-                }
+                app->flowgraphPage.draw(*app->dashboard);
             }
         } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
             app->openDashboardPage.draw(app->dashboard);

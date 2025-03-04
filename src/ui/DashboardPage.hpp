@@ -21,16 +21,14 @@ private:
     ImVec2 pane_size{0, 0};     // updated by drawPlots(...)
     ImVec2 legend_box{500, 40}; // updated by drawLegend(...)
 
-    Dashboard::Plot* clicked_plot = nullptr;
-
 private:
     static constexpr inline auto* dnd_type = "DND_SOURCE";
 
 public:
     enum class Mode { View, Layout };
     struct DndItem {
-        Dashboard::Plot*   plotSource;
-        Dashboard::Source* source;
+        Dashboard::Plot*                plot;
+        opendigitizer::ImPlotSinkModel* plotSource;
     };
 
 public:
@@ -53,8 +51,6 @@ private:
     void        drawGrid(float w, float h);
     void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
     static void drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot& plot) noexcept;
-
-    void addSignalCallback(Dashboard& dashboard, Block* block);
 
     DockSpace                             m_dockSpace;
     components::BlockControlsPanelContext m_editPane;

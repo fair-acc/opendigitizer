@@ -1,8 +1,11 @@
 #ifndef OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 #define OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 
+// #pragma GCC diagnostic push
+// #pragma GCC diagnostic ignore "-Wold-style-cast"
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
+// #pragma GCC diagnostic pop
 
 #include <memory>
 

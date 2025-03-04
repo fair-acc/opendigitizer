@@ -16,6 +16,7 @@ CMRC_DECLARE(dashboardFilesystem);
 
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
+using namespace std::string_literals;
 
 struct Dashboard {
     std::string header;

@@ -129,6 +129,8 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   target_compile_definitions(imgui PUBLIC IMGUI_ENABLE_TEST_ENGINE IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
                                           IMGUI_APP_SDL2_GL3 IMGUI_TEST_ENGINE_ENABLE_CAPTURE)
 
+  target_compile_options(imgui PRIVATE -Wno-old-style-cast -Wno-deprecated-enum-enum-conversion -Wno-double-promotion)
+
   target_include_directories(imgui PUBLIC ${imgui_test_engine_SOURCE_DIR})
 endif()
 
@@ -143,6 +145,7 @@ add_library(
   ${imgui-node-editor_SOURCE_DIR}/imgui_canvas.cpp
   ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor_api.cpp
   ${imgui-node-editor_SOURCE_DIR}/crude_json.cpp)
+target_compile_options(imgui-node-editor PRIVATE -Wno-deprecated-declarations)
 target_include_directories(imgui-node-editor SYSTEM BEFORE PUBLIC ${imgui-node-editor_SOURCE_DIR})
 target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 

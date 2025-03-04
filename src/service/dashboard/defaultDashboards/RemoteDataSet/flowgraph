@@ -1,32 +1,26 @@
 blocks:
   - name: remote stream
-    id: opendigitizer::RemoteStreamSource
-    template_args: "float"
+    id: opendigitizer::RemoteStreamSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=test
   - name: remote triggered
-    id: opendigitizer::RemoteDataSetSource
-    template_args: "float"
+    id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=triggered&preSamples=500&postSamples=500&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
   - name: remote multiplexed
-    id: opendigitizer::RemoteDataSetSource
-    template_args: "float"
+    id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=test&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D6%5D
   - name: stream sink
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xff0000
   - name: triggered sink
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: "float"
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0x00ff00
   - name: multiplexed sink
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: "float"
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0x0000ff
 connections:
