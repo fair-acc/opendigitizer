@@ -61,41 +61,42 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std:
         g.clear();
     }
 
-    // for (const auto& source : plot.sources) {
-    //     auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
-    //     if (!grBlock) {
-    //         continue;
-    //     }
-    //
-    //     // quantity, unit
-    //     std::string qStr, uStr;
-    //     if (auto qOpt = grBlock->settings().get("signal_quantity")) {
-    //         qStr = std::get<std::string>(*qOpt);
-    //     }
-    //     if (auto uOpt = grBlock->settings().get("signal_unit")) {
-    //         uStr = std::get<std::string>(*uOpt);
-    //     }
-    //
-    //     // axis kind = X or Y
-    //     AxisKind axisKind = AxisKind::Y; // default
-    //     if (auto axisOpt = grBlock->settings().get("signal_axis")) {
-    //         std::string axisVal = std::get<std::string>(*axisOpt);
-    //         if (axisVal == "X") {
-    //             axisKind = AxisKind::X;
-    //         }
-    //     }
-    //
-    //     if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, source->color); idx) {
-    //         if (axisKind == AxisKind::X) {
-    //             xAxisGroups[idx.value()].push_back(source->name);
-    //         } else {
-    //             yAxisGroups[idx.value()].push_back(source->name);
-    //         }
-    //     } else {
-    //         components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name, qStr, uStr));
-    //         continue;
-    //     }
-    // }
+    for (const auto& source : plot.sources) {
+        auto grBlock = opendigitizer::ImPlotSinkManager::instance().findSink([source](auto& block) { return block.name() == source->name(); });
+        if (!grBlock) {
+            continue;
+        }
+
+        // quantity, unit
+        std::string qStr, uStr;
+        if (auto qOpt = grBlock->settings().get("signal_quantity")) {
+            qStr = std::get<std::string>(*qOpt);
+        }
+        if (auto uOpt = grBlock->settings().get("signal_unit")) {
+            uStr = std::get<std::string>(*uOpt);
+        }
+
+        // axis kind = X or Y
+        AxisKind axisKind = AxisKind::Y; // default
+        if (auto axisOpt = grBlock->settings().get("signal_axis")) {
+            std::string axisVal = std::get<std::string>(*axisOpt);
+            if (axisVal == "X") {
+                axisKind = AxisKind::X;
+            }
+        }
+
+        auto color = ImGui::ColorConvertFloat4ToU32(source->color());
+        if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, color); idx) {
+            if (axisKind == AxisKind::X) {
+                xAxisGroups[idx.value()].push_back(source->name());
+            } else {
+                yAxisGroups[idx.value()].push_back(source->name());
+            }
+        } else {
+            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name(), qStr, uStr));
+            continue;
+        }
+    }
 }
 
 std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t idx, bool isX) {

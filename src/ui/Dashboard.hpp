@@ -23,6 +23,10 @@ CMRC_DECLARE(sample_dashboards);
 
 #include "components/Docking.hpp"
 
+namespace gr {
+class Graph;
+}
+
 namespace opendigitizer {
 class ImPlotSinkModel;
 }
@@ -54,7 +58,7 @@ public:
     bool        isEnabled = true;
 
     static std::shared_ptr<DashboardStorageInfo>             get(std::string_view path);
-    static std::vector<std::weak_ptr<DashboardStorageInfo>>& knownDashobardStorage();
+    static std::vector<std::weak_ptr<DashboardStorageInfo>>& knownDashboardStorage();
     static std::shared_ptr<DashboardStorageInfo>             memoryDashboardStorage();
 
     bool isInMemoryDashboardStorage() const { return this == memoryDashboardStorage().get(); }
@@ -127,7 +131,7 @@ public:
 
     void load();
 
-    void load(const std::string& grcData, const std::string& dashboardData);
+    void load(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler = {});
 
     void save();
 
@@ -150,7 +154,7 @@ public:
         std::string uri;
         std::string layout;
         std::string grc;
-        // FlowGraph                   flowGraph;
+
         opencmw::client::RestClient client;
 
         void reload();

@@ -183,23 +183,23 @@ auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::
 } // namespace
 
 DashboardStorageInfo::~DashboardStorageInfo() noexcept {
-    std::erase_if(knownDashobardStorage(), [](const auto& s) { return s.expired(); });
+    std::erase_if(knownDashboardStorage(), [](const auto& s) { return s.expired(); });
 }
 
-std::vector<std::weak_ptr<DashboardStorageInfo>>& DigitizerUi::DashboardStorageInfo::knownDashobardStorage() {
+std::vector<std::weak_ptr<DashboardStorageInfo>>& DigitizerUi::DashboardStorageInfo::knownDashboardStorage() {
     static std::vector<std::weak_ptr<DashboardStorageInfo>> sources;
     return sources;
 }
 
 std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view path) {
-    auto it = std::ranges::find_if(knownDashobardStorage(), [=](const auto& s) { return s.lock()->path == path; });
-    if (it != knownDashobardStorage().end()) {
+    auto it = std::ranges::find_if(knownDashboardStorage(), [=](const auto& s) { return s.lock()->path == path; });
+    if (it != knownDashboardStorage().end()) {
         return it->lock();
     }
 
     auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path), PrivateTag{});
     fmt::print("Creating dashboard source for path {}\n", path);
-    knownDashobardStorage().push_back(dashboardStorageInfo);
+    knownDashboardStorage().push_back(dashboardStorageInfo);
     return dashboardStorageInfo;
 }
 
@@ -247,7 +247,7 @@ void Dashboard::load() {
     }
 }
 
-void Dashboard::load(const std::string& grcData, const std::string& dashboardData) {
+void Dashboard::load(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
     try {
         gr::Graph grGraph = [this, &grcData]() -> gr::Graph {
             try {
@@ -261,7 +261,11 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
             }
         }();
 
-        App::instance().assignScheduler(std::move(grGraph));
+        if (assignScheduler) {
+            assignScheduler(std::move(grGraph));
+        } else {
+            App::instance().assignScheduler(std::move(grGraph));
+        }
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
         doLoad(dashboardData);

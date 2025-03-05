@@ -122,7 +122,6 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
         //
-        fmt::print("Lifecycle {} {}\n", propertyName, message);
         return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
@@ -248,7 +247,6 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
         //
-        fmt::print("Lifecycle {} {}\n", propertyName, message);
         return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 

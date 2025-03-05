@@ -70,9 +70,9 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::DefaultClockSource<float64>
+    id: gr::basic::DefaultClockSource<float32>
   - name: sink
-    id: gr::basic::DataSink<float64>
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: test
 connections:

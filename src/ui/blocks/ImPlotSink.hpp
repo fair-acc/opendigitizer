@@ -112,6 +112,8 @@ struct ImPlotSinkModel {
 
     virtual gr::work::Result work(std::size_t count) = 0;
 
+    virtual void* raw() const = 0;
+
     ImVec4 color() {
         static const auto defaultColor = ImVec4(1, 0, 0, 1);
         auto              maybeColor   = settings().get("color");
@@ -151,6 +153,8 @@ private:
         virtual gr::SettingsBase& settings() const { return block->settings(); }
 
         gr::work::Result work(std::size_t count) override { return block->work(count); }
+
+        void* raw() const override { return static_cast<void*>(block); }
 
         TBlock* block = nullptr;
     };
