@@ -52,6 +52,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, float>(registry);
     gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
+    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
     gr::registerBlock<gr::timing::TimingSource>(registry);
 
     fmt::print("providedBlocks:\n");
