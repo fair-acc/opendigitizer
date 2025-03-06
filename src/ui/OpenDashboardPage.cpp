@@ -47,7 +47,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) {
     m_storageInfos.push_back(DashboardStorageInfo::get(path));
     auto& storageInfo = m_storageInfos.back();
 
-    if (path.starts_with("https://") | path.starts_with("http://")) {
+    if (path.starts_with("https://") || path.starts_with("http://")) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Subscribe;
         command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();

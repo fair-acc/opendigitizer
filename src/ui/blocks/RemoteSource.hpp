@@ -16,7 +16,7 @@
 
 namespace opendigitizer {
 
-opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
+inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
     auto pathUrl = opencmw::URI<>(remote);
     if (!pathUrl.hostName().has_value() || pathUrl.hostName()->empty()) {
         auto baseUrl = opencmw::URI<>(base.empty() ? "https://localhost:8080" : base);
@@ -26,17 +26,22 @@ opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string
     return pathUrl;
 }
 
+struct RemoteSourceBase {
+    std::string remote_uri;
+    std::string host = "ADDA";
+};
+
 template<typename T>
 requires std::is_floating_point_v<T>
-struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
+struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     using Parent = gr::Block<RemoteStreamSource<T>>;
-    gr::PortOut<T>              out;
-    std::string                 remote_uri;
-    std::string                 signal_name;
-    std::string                 signal_unit;
-    float                       signal_min;
-    float                       signal_max;
-    std::string                 host;
+    gr::PortOut<T> out;
+
+    std::string signal_name;
+    std::string signal_unit;
+    float       signal_min;
+    float       signal_max;
+
     opencmw::client::RestClient _client;
     std::string                 _subscribedUri;
 
@@ -56,6 +61,8 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
+    RemoteStreamSource(gr::property_map props) : Parent(props), _reconnect(std::chrono::system_clock::now()) { start(); }
+
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
             this->settings().set({{"signal_name", acq.channelName.value()}, {"signal_unit", acq.channelUnit.value()}, {"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
@@ -65,7 +72,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
             startSubscription(remote_uri);
-            _reconnect = std::nullopt;
+            _reconnect.reset();
         }
 
         std::size_t     written = 0;
@@ -126,6 +133,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     }
 
     void startSubscription(const std::string& uri) {
+        fmt::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
@@ -176,7 +184,7 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     fmt::print("We didn't get a running lifetime from GR\n");
+        //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
         const auto old_host = old_settings.find("host");
@@ -186,8 +194,6 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
             startSubscription(remote_uri);
         }
     }
-
-    RemoteStreamSource(gr::property_map props) : Parent(std::move(props)) { start(); }
 
     void start() {
         if (!remote_uri.empty() && !host.empty()) {
@@ -200,11 +206,10 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
 
 template<typename T>
 requires std::is_floating_point_v<T>
-struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
+struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>> {
     using Parent = gr::Block<RemoteDataSetSource<T>>;
     gr::PortOut<gr::DataSet<T>> out;
-    std::string                 remote_uri;
-    std::string                 host;
+
     opencmw::client::RestClient _client;
     std::string                 _subscribedUri;
 
@@ -218,10 +223,12 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
+    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)), _reconnect(std::chrono::system_clock::now()) { start(); }
+
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
             startSubscription(remote_uri);
-            _reconnect = std::nullopt;
+            _reconnect.reset();
         }
 
         std::lock_guard           lock(_queue->mutex);
@@ -253,6 +260,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     }
 
     void startSubscription(const std::string& uri) {
+        fmt::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
@@ -300,7 +308,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     fmt::print("We didn't get a running lifetime from GR\n");
+        //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
         const auto old_host = old_settings.find("host");
@@ -310,8 +318,6 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
             startSubscription(remote_uri);
         }
     }
-
-    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { start(); }
 
     void start() {
         if (!remote_uri.empty() && !host.empty()) {
@@ -324,7 +330,7 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
 
 } // namespace opendigitizer
 
-auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float>(gr::globalBlockRegistry());
-auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float>(gr::globalBlockRegistry());
+inline auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float>(gr::globalBlockRegistry());
+inline auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float>(gr::globalBlockRegistry());
 
 #endif

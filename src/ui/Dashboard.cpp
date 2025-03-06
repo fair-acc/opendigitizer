@@ -21,6 +21,8 @@
 #include "GraphModel.hpp"
 
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/RemoteSource.hpp"
+
 #include "conversion.hpp"
 
 using namespace std::string_literals;
@@ -260,6 +262,16 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
                 throw std::current_exception();
             }
         }();
+
+        if (const auto dashboardUri = opencmw::URI<>(std::string(m_desc->storageInfo->path)); dashboardUri.hostName().has_value()) {
+            const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
+            grGraph.forEachBlockMutable([this, &remoteUri](auto& block) {
+                if (block.typeName().starts_with("opendigitizer::RemoteStreamSource") || block.typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
+                    auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block.raw());
+                    sourceBlock->host = remoteUri.str();
+                }
+            });
+        }
 
         if (assignScheduler) {
             assignScheduler(std::move(grGraph));
