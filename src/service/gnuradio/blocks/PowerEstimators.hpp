@@ -39,13 +39,18 @@ applies low-pass filters to calculate average values, and outputs decimated resu
     std::vector<PortOut<T>> I_rms{nPhases};
 
     // settings
-    Annotated<float, "sample_rate", gr::Unit<"Hz">>                                                                     sample_rate{10'000.f};
+    Annotated<float, "sample_rate", Unit<"Hz">>                                                                         sample_rate{10'000.f};
+    Annotated<float, "high pass", Unit<"Hz">, Doc<"AC-input coupling (rejects ADC DC-bias)">>                           high_pass{2.f};
+    Annotated<float, "low pass", Unit<"Hz">, Doc<"Upper Low-Pass Frequency">>                                           low_pass{90.f};
     Annotated<gr::Size_t, "decimation factor", Doc<"1: none, i.e. preserving the relationship: N_out = N_in/decimate">> decimate{100U};
 
     GR_MAKE_REFLECTABLE(PowerMetrics, U, I, P, Q, S, U_rms, I_rms, sample_rate, decimate);
 
     // private state for exponential moving average (EMA)
     using FilterImpl = std::conditional_t<UncertainValueLike<T>, filter::ErrorPropagatingFilter<T>, filter::Filter<meta::fundamental_base_value_type_t<T>>>;
+
+    std::array<FilterImpl, nPhases> _hpVoltage;
+    std::array<FilterImpl, nPhases> _hpCurrent;
 
     std::array<FilterImpl, nPhases> _lpVoltageSquared;
     std::array<FilterImpl, nPhases> _lpCurrentSquared;
@@ -55,21 +60,32 @@ applies low-pass filters to calculate average values, and outputs decimated resu
         using namespace gr::filter;
         using ValueType = meta::fundamental_base_value_type_t<T>;
 
+        const auto hp_filter_init = [&](auto) { //
+            if (high_pass > 0.f) {
+                return FilterImpl(iir::designFilter<ValueType>(Type::HIGHPASS,                                  //
+                    FilterParameters{.order = 2UZ, .fHigh = high_pass, .fs = static_cast<double>(sample_rate)}, //
+                    iir::Design::BUTTERWORTH));
+            }
+            return FilterImpl();
+        };
+        constexpr auto indices = std::views::iota(0UZ, nPhases);
+        std::ranges::transform(indices, _hpVoltage.begin(), hp_filter_init);
+        std::ranges::transform(indices, _hpCurrent.begin(), hp_filter_init);
+
         if constexpr (not TParent::ResamplingControl::kIsConst) {
             this->input_chunk_size = decimate;
         }
 
-        const double cutoff_frequency = 0.5 * static_cast<double>(sample_rate) / static_cast<double>(decimate);
-        const auto   filter_init      = [&, cutoff_frequency](auto) {                                                    //
+        const double cutoff_frequency = std::min(0.5 * (static_cast<double>(sample_rate) / static_cast<double>(decimate)), static_cast<double>(low_pass.value));
+        const auto   lp_filter_init   = [&, cutoff_frequency](auto) {                                                 //
             return FilterImpl(iir::designFilter<ValueType>(Type::LOWPASS,                                         //
-                       FilterParameters{.order = 2UZ, .fLow = cutoff_frequency, .fs = static_cast<double>(sample_rate)}, //
-                       iir::Design::BUTTERWORTH));
+                    FilterParameters{.order = 2UZ, .fLow = cutoff_frequency, .fs = static_cast<double>(sample_rate)}, //
+                    iir::Design::BUTTERWORTH));
         };
 
-        constexpr auto indices = std::views::iota(0UZ, nPhases);
-        std::ranges::transform(indices, _lpVoltageSquared.begin(), filter_init);
-        std::ranges::transform(indices, _lpCurrentSquared.begin(), filter_init);
-        std::ranges::transform(indices, _lpActivePower.begin(), filter_init);
+        std::ranges::transform(indices, _lpVoltageSquared.begin(), lp_filter_init);
+        std::ranges::transform(indices, _lpCurrentSquared.begin(), lp_filter_init);
+        std::ranges::transform(indices, _lpActivePower.begin(), lp_filter_init);
     }
 
     void settingsChanged(const property_map& /*oldSettings*/, const property_map& /*newSettings*/) { initFilters(); }
@@ -78,10 +94,10 @@ applies low-pass filters to calculate average values, and outputs decimated resu
     constexpr work::Status processBulk(std::span<TInputSpanType>& voltage, std::span<TInputSpanType>& current,                         // inputs
         std::span<TOutputSpanType>& activePower, std::span<TOutputSpanType>& reactivePower, std::span<TOutputSpanType>& apparentPower, // power outputs
         std::span<TOutputSpanType>& rmsVoltage, std::span<TOutputSpanType>& rmsCurrent) {
-        for (std::size_t phaseIdx = 0UZ; phaseIdx < nPhases; ++phaseIdx) { // process each phase
-            for (std::size_t i = 0UZ; i < voltage[phaseIdx].size(); ++i) { // iterate over samples
-                const T u_i = voltage[phaseIdx][i];
-                const T i_i = current[phaseIdx][i];
+        for (std::size_t phaseIdx = 0UZ; phaseIdx < nPhases; ++phaseIdx) {                      // process each phase
+            for (std::size_t i = 0UZ; i < voltage[phaseIdx].size(); ++i) {                      // iterate over samples
+                const T u_i = _hpVoltage[phaseIdx].processOne(gr::value(voltage[phaseIdx][i])); // removes DC-offset TODO: check uncertainty propagation
+                const T i_i = _hpCurrent[phaseIdx].processOne(gr::value(current[phaseIdx][i])); // removes DC-offset TODO: check uncertainty propagation
 
                 const T p_i    = u_i * i_i;                                         // instantaneous power
                 const T ema_p  = _lpActivePower[phaseIdx].processOne(p_i);          // update exponential moving average for power
