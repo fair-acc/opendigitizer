@@ -430,8 +430,8 @@ void Dashboard::save() {
     opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {
         // TODO: Port saving and loading flowgraph layouts
         property_map map;
-        map["name"] = sink.name();
-        // map["color"] = sink.color();
+        map["name"]  = sink.name();
+        map["color"] = ImGui::ColorConvertFloat4ToU32(sink.color());
 
         sources.emplace_back(std::move(map));
     });

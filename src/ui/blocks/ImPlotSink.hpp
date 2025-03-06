@@ -115,17 +115,24 @@ struct ImPlotSinkModel {
     virtual void* raw() const = 0;
 
     ImVec4 color() {
-        static const auto defaultColor = ImVec4(1, 0, 0, 1);
+        static const auto defaultColor = ImVec4(0.3, 0.3, 0.3, 1);
         auto              maybeColor   = settings().get("color");
         if (!maybeColor) {
             return defaultColor;
         }
-        const auto colorValue = maybeColor.value();
-        const auto cv         = std::get_if<std::vector<float>>(&colorValue);
-        if (!cv || cv->size() != 4) {
-            return defaultColor;
+        const auto colorVariant = maybeColor.value();
+
+        const auto* colorValueInt32 = std::get_if<std::uint32_t>(&colorVariant);
+        if (colorValueInt32) {
+            return ImGui::ColorConvertU32ToFloat4(*colorValueInt32);
         }
-        return ImVec4((*cv)[0], (*cv)[1], (*cv)[2], (*cv)[3]);
+
+        const auto colorValueVectorF = std::get_if<std::vector<float>>(&colorVariant);
+        if (colorValueVectorF && colorValueVectorF->size() == 4) {
+            return ImVec4((*colorValueVectorF)[0], (*colorValueVectorF)[1], (*colorValueVectorF)[2], (*colorValueVectorF)[3]);
+        }
+
+        return defaultColor;
     }
 
     bool isVisible = true;
