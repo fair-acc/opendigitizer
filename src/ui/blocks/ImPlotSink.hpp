@@ -375,7 +375,7 @@ public:
         return gr::work::Status::OK;
     }
 
-    gr::work::Status draw(const gr::property_map& /*config*/ = {}) noexcept {
+    gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
         if (data.extents.empty()) {
             return gr::work::Status::OK;

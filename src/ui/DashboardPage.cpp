@@ -49,7 +49,7 @@ std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCat
     return std::nullopt; // no slot left
 }
 
-void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string_view>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string_view>, 3>& yAxisGroups) {
+void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string>, 3>& yAxisGroups) {
     enum class AxisKind { X = 0, Y };
 
     xCats.fill(std::nullopt);
@@ -268,10 +268,10 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
 // Draw the multi-axis plot
 void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexcept {
     // 1) Build up two sets of categories for X & Y
-    std::array<std::optional<AxisCategory>, 3>   xCats{};
-    std::array<std::vector<std::string_view>, 3> xAxisGroups{};
-    std::array<std::optional<AxisCategory>, 3>   yCats{};
-    std::array<std::vector<std::string_view>, 3> yAxisGroups{};
+    std::array<std::optional<AxisCategory>, 3> xCats{};
+    std::array<std::vector<std::string>, 3>    xAxisGroups{};
+    std::array<std::optional<AxisCategory>, 3> yCats{};
+    std::array<std::vector<std::string>, 3>    yAxisGroups{};
 
     assignSourcesToAxes(plot, dashboard, xCats, xAxisGroups, yCats, yAxisGroups);
 
