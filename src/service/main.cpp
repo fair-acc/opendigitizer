@@ -20,6 +20,7 @@
 #include "build_configuration.hpp"
 #include "settings.hpp"
 #include <Picoscope4000a.hpp>
+#include <TimingSource.hpp>
 #include <gnuradio-4.0/basic/FunctionGenerator.hpp>
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
@@ -51,6 +52,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, float>(registry);
     gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
+    gr::registerBlock<gr::timing::TimingSource>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
