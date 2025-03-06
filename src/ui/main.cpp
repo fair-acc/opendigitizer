@@ -184,6 +184,9 @@ int main(int argc, char** argv) {
 
     // TODO: Remove when GR gets proper blocks library
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(gr::globalBlockRegistry());
+    gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(gr::globalBlockRegistry());
+    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(gr::globalBlockRegistry());
+    gr::registerBlock<gr::basic::FunctionGenerator, float, double>(gr::globalBlockRegistry());
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {
