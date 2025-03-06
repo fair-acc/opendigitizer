@@ -174,9 +174,11 @@ struct RemoteStreamSource : public gr::Block<RemoteStreamSource<T>> {
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
-        if (Parent::state() != gr::lifecycle::State::RUNNING) {
-            return; // early return, only apply settings for the running flowgraph
-        }
+        // GR doesn't set the state for a block added after the scheduler started
+        // if (Parent::state() != gr::lifecycle::State::RUNNING) {
+        //     fmt::print("We didn't get a running lifetime from GR\n");
+        //     return; // early return, only apply settings for the running flowgraph
+        // }
         const auto old_host = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
         if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
@@ -296,9 +298,11 @@ struct RemoteDataSetSource : public gr::Block<RemoteDataSetSource<T>> {
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
-        if (Parent::state() != gr::lifecycle::State::RUNNING) {
-            return; // early return, only apply settings for the running flowgraph
-        }
+        // GR doesn't set the state for a block added after the scheduler started
+        // if (Parent::state() != gr::lifecycle::State::RUNNING) {
+        //     fmt::print("We didn't get a running lifetime from GR\n");
+        //     return; // early return, only apply settings for the running flowgraph
+        // }
         const auto old_host = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
         if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {

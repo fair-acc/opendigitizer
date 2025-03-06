@@ -81,7 +81,6 @@ if(NOT DISABLE_WASM_BUILD)
     BUILD_BYPRODUCTS
       ${WASM_BUILD_DIR}/web/index.html
       ${WASM_BUILD_DIR}/web/index.js
-      ${WASM_BUILD_DIR}/web/index.worker.js
       ${WASM_BUILD_DIR}/web/index.wasm)
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
   add_custom_command(
@@ -89,7 +88,7 @@ if(NOT DISABLE_WASM_BUILD)
     POST_BUILD
     COMMAND
       ${CMAKE_COMMAND} -E make_directory ${ROOT_BUILD_DIR}/ui-wasm/web && ${CMAKE_COMMAND} -E copy
-      ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.worker.js
+      ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js
       ${WASM_BUILD_DIR}/web/index.wasm ${ROOT_BUILD_DIR}/ui-wasm/web)
 endif()
 

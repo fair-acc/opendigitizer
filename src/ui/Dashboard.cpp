@@ -315,14 +315,14 @@ void Dashboard::doLoad(const std::string& desc) {
         auto name  = std::get<std::string>(srcMap.at("name"));
         auto color = pmtv::cast<std::uint32_t>(srcMap.at("color"));
 
-        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == name; });
+        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
         if (!sink) {
             auto msg = fmt::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        sink->setName(name);
+        sink->setName(block);
         sink->settings().set({{"color"s, color}});
     }
 

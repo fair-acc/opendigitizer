@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::DefaultClockSource<float32>
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
   - name: sink
     id: gr::basic::DataSink<float32>
     parameters:

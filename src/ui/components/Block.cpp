@@ -262,7 +262,7 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
             width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
 
             {
-                IMW::StyleColor(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
                 ImGui::SetCursorPos(curpos);
 
                 float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
