@@ -97,7 +97,7 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
 }
 
 FlowGraphItem::FlowGraphItem() {
-    ax::NodeEditor::Config config;
+    m_editorConfig.SettingsFile = nullptr;
     m_editorConfig.UserPointer = std::addressof(m_graphModel);
     m_editor                   = ax::NodeEditor::CreateEditor(&m_editorConfig);
     ax::NodeEditor::SetCurrentEditor(m_editor);
