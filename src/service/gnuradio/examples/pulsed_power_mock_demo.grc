@@ -1,6 +1,6 @@
 blocks:
   - name: ClockSource
-    id: gr::basic::ClockSource<uint8>
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0
@@ -103,37 +103,37 @@ blocks:
     parameters:
       signal_name: TT
   - name: StreamToDataSetA
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetB
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetC
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetD
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetE
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
   - name: StreamToDataSetF
-    id: gr::basic::StreamFilterImpl<float32>
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       filter: "systemtime"
       n_pre: 10
@@ -163,11 +163,11 @@ blocks:
     parameters:
       signal_name: DataSetI3
   - name: PowerMetrics
-    id: gr::electrical::PowerMetrics<float32, 3>
+    id: gr::electrical::PowerMetrics<float32, 3ul>
     parameters:
       decim: 1
   - name: SystemUnbalance
-    id: gr::electrical::SystemUnbalance<float32, 3>
+    id: gr::electrical::SystemUnbalance<float32, 3ul>
   - name: SinkTotalActivePower
     id: gr::basic::DataSink<float32>
     parameters:
@@ -179,42 +179,42 @@ blocks:
     parameters:
       signal_name: FrequencyU1
   - name: DummySinkPQS10
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS11
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS12
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS20
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS21
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkPQS22
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkUnbalance1
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false
   - name: DummySinkUnbalance2
-    id: gr::testing::TagSink<float32, gr::testing::ProcessFunction::USE_PROCESS_BULK>
+    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
       logTags: false
       logSamples: false

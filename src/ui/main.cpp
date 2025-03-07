@@ -185,6 +185,11 @@ int main(int argc, char** argv) {
     // TODO: Remove when GR gets proper blocks library
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(gr::globalBlockRegistry());
 
+    fmt::print("providedBlocks:\n");
+    for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {
+        fmt::print("  - {}\n", blockName);
+    }
+
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     // GL ES 2.0 + GLSL 100
     const char* glsl_version = "#version 100";

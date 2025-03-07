@@ -1,6 +1,6 @@
 blocks:
   - name: ClockSource
-    id: gr::basic::ClockSource<uint8>
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0
