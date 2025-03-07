@@ -27,7 +27,7 @@ blocks:
       signal_quantity: magnitude
       signal_unit: dB
   - name: ClockSource
-    id: gr::basic::ClockSource<uint8, true, std::__2::chrono::system_clock, true>
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
     parameters:
       chunk_size: 20
       do_zero_order_hold: true
