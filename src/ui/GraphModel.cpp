@@ -280,12 +280,13 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Delete blocks that GR doesn't know about.
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
-    auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& child) { //
+    const auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& child) { //
         return children.contains(child.blockUniqueName);
     });
-    for (; toRemove != _blocks.end(); ++toRemove) {
-        removeEdgesForBlock(*toRemove);
+    for (auto it = toRemove; it != _blocks.end(); ++it) {
+        removeEdgesForBlock(*it);
     }
+
     _blocks.erase(toRemove, _blocks.end());
 
     // Establish new edges
