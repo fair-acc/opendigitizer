@@ -229,21 +229,24 @@ Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<Da
 
 Dashboard::~Dashboard() {}
 
-std::shared_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) { return std::make_shared<Dashboard>(PrivateTag{}, fgItem, desc); }
+std::unique_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, fgItem, desc); }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
 void Dashboard::load() {
     if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
+        inUse = true;
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
-            [_this = shared()](std::array<std::string, 2>&& data) {                    //
-                _this->load(std::move(data[0]), std::move(data[1]));
+            [this](std::array<std::string, 2>&& data) {                                //
+                load(std::move(data[0]), std::move(data[1]));
+                inUse = false;
             },
-            [_this = shared()]() {
-                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", _this->m_desc->storageInfo->path, _this->m_desc->filename);
+            [this]() {
+                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", m_desc->storageInfo->path, m_desc->filename);
                 components::Notification::error(error);
 
+                inUse = false;
                 App::instance().closeDashboard();
             });
     }

@@ -98,13 +98,24 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
 
 FlowGraphItem::FlowGraphItem() {
     m_editorConfig.SettingsFile = nullptr;
-    m_editorConfig.UserPointer = std::addressof(m_graphModel);
-    m_editor                   = ax::NodeEditor::CreateEditor(&m_editorConfig);
-    ax::NodeEditor::SetCurrentEditor(m_editor);
-    setEditorStyle(m_editor, LookAndFeel::instance().style);
+    m_editorConfig.UserPointer  = std::addressof(m_graphModel);
+    reset();
 }
 
 FlowGraphItem::~FlowGraphItem() { ax::NodeEditor::DestroyEditor(m_editor); }
+
+void FlowGraphItem::reset() {
+    m_graphModel.reset();
+
+    if (m_editor) {
+        ax::NodeEditor::SetCurrentEditor(nullptr);
+        ax::NodeEditor::DestroyEditor(m_editor);
+    }
+
+    m_editor = ax::NodeEditor::CreateEditor(&m_editorConfig);
+    ax::NodeEditor::SetCurrentEditor(m_editor);
+    setEditorStyle(m_editor, LookAndFeel::instance().style);
+}
 
 void FlowGraphItem::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
 

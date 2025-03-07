@@ -33,9 +33,11 @@ class App {
 public:
     std::string executable;
 
-    std::shared_ptr<Dashboard> dashboard;
+    std::unique_ptr<Dashboard> dashboard;
 
-    DashboardPage     dashboardPage;
+    Dashboard*                     loadedDashboard = nullptr;
+    std::unique_ptr<DashboardPage> dashboardPage;
+
     FlowGraphItem     flowgraphPage;
     OpenDashboardPage openDashboardPage;
 
@@ -156,6 +158,10 @@ public:
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
     void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
+        if (dashboard && dashboard->inUse) {
+            fmt::print("The current dashboard can not yet be disposed of\n");
+            std::this_thread::sleep_for(500ms);
+        }
         dashboard = Dashboard::create(&flowgraphPage, desc);
         dashboard->load();
     }

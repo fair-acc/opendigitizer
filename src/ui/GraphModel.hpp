@@ -124,6 +124,11 @@ public:
     const auto& edges() const { return _edges; }
     auto&       edges() { return _edges; }
 
+    void reset() {
+        _blocks.clear();
+        _edges.clear();
+    }
+
     /**
      * @return true if consumed the message
      */

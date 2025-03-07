@@ -52,6 +52,8 @@ public:
 
     void draw(Dashboard& dashboard) noexcept;
 
+    void reset();
+
     void setStyle(LookAndFeel::Style style);
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;

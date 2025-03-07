@@ -410,15 +410,19 @@ static void main_loop(void* arg) {
             components::Toolbar(app->toolbarBlocks);
         }
 
-        if (app->mainViewMode == ViewMode::VIEW) {
-            if (app->dashboard != nullptr) {
-                app->dashboardPage.draw(*app->dashboard);
+        if (app->dashboard != nullptr) {
+            if (app->loadedDashboard != app->dashboard.get()) {
+                // Are we in the process of changing the dashboard?
+                app->loadedDashboard = app->dashboard.get();
+                app->dashboardPage   = std::make_unique<DashboardPage>();
+                app->flowgraphPage.reset();
             }
-        } else if (app->mainViewMode == ViewMode::LAYOUT) {
-            if (app->dashboard != nullptr) {
-                app->dashboardPage.draw(*app->dashboard, DashboardPage::Mode::Layout);
-            }
+        }
 
+        if (app->mainViewMode == ViewMode::VIEW || app->mainViewMode == ViewMode::LAYOUT) {
+            if (app->dashboard != nullptr) {
+                app->dashboardPage->draw(*app->dashboard, app->mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
+            }
         } else if (app->mainViewMode == ViewMode::FLOWGRAPH) {
             if (app->dashboard != nullptr) {
                 if (app->previousViewMode != ViewMode::FLOWGRAPH) {
@@ -429,7 +433,7 @@ static void main_loop(void* arg) {
                 app->flowgraphPage.draw(*app->dashboard);
             }
         } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
-            app->openDashboardPage.draw(app->dashboard);
+            app->openDashboardPage.draw(app->dashboard.get());
         } else {
             auto msg = fmt::format("unknown view mode {}", static_cast<int>(app->mainViewMode));
             components::Notification::warning(msg);

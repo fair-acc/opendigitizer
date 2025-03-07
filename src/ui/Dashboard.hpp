@@ -81,10 +81,8 @@ struct DashboardDescription {
     static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
 };
 
-class Dashboard : public std::enable_shared_from_this<Dashboard> {
+class Dashboard {
 public:
-    std::shared_ptr<Dashboard> shared() { return shared_from_this(); }
-
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
         std::vector<std::filesystem::path> pluginPaths;
 #ifndef __EMSCRIPTEN__
@@ -125,7 +123,7 @@ private:
 public:
     explicit Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc);
 
-    static std::shared_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
+    static std::unique_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
 
     ~Dashboard();
 
@@ -177,6 +175,8 @@ public:
     void loadPlotSources();
 
     UiGraphModel& graphModel();
+
+    std::atomic<bool> inUse = false;
 
 private:
     void doLoad(const std::string& desc);

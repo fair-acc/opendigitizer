@@ -21,7 +21,7 @@ public:
     std::function<void()>                                             requestCloseDashboard;
     std::function<void(const std::shared_ptr<DashboardDescription>&)> requestLoadDashboard;
 
-    void draw(const std::shared_ptr<Dashboard>& optionalDashboard);
+    void draw(Dashboard* optionalDashboard);
 
     void addDashboard(std::string_view path);
     void addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n);
@@ -29,7 +29,7 @@ public:
     std::shared_ptr<DashboardDescription> get(const size_t index);
 
 private:
-    void dashboardControls(const std::shared_ptr<Dashboard>& optionalDashboard);
+    void dashboardControls(Dashboard* optionalDashboard);
     void drawAddSourcePopup();
     void unsubscribeSource(const std::shared_ptr<DashboardStorageInfo>& source);
 
