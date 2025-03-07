@@ -1097,7 +1097,7 @@ constexpr DeviceInfo getDeviceInfo(std::string_view deviceName) {
 
         // append any remaining part of the device name to the function description
         if (deviceName.size() > 9 + sequence.size()) {
-            [[maybe_unused]] std::string_view remainingFunction = deviceName.substr(9 + sequence.size());
+            // std::string_view remainingFunction = deviceName.substr(9 + sequence.size());
             // info.function += remainingFunction;
         }
     }

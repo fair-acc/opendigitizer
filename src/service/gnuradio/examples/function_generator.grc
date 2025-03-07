@@ -1,7 +1,6 @@
 blocks:
   - name: ClockSource
-    id: gr::basic::ClockSource
-    template_args: "unsigned char"
+    id: gr::basic::ClockSource<uint8, true, std::chrono::_V2::system_clock, true>
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0
@@ -29,8 +28,7 @@ blocks:
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=8"
   - name: FunctionGenerator
-    id: gr::basic::FunctionGenerator
-    template_args: "float"
+    id: gr::basic::FunctionGenerator<float32>
     parameters:
       sample_rate: 1000
       signal_type: Const
@@ -95,8 +93,7 @@ blocks:
           signal_type: ImpulseResponse
           start_value: 5
   - name: DataSink
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
     parameters:
       signal_name: test
 connections:

@@ -13,7 +13,6 @@
 
 #include "components/Dialog.hpp"
 #include "components/ImGuiNotify.hpp"
-#include "components/ListBox.hpp"
 #include "components/Splitter.hpp"
 
 #include "App.hpp"
@@ -77,49 +76,6 @@ inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::
     return result;
 }
 
-FlowGraphItem::FlowGraphItem() {}
-
-FlowGraphItem::~FlowGraphItem() = default;
-
-FlowGraphItem::Context::Context() {
-    config.SettingsFile = nullptr;
-    config.UserPointer  = this;
-    config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /* reason */, void* userPointer) {
-        auto* c     = static_cast<Context*>(userPointer);
-        c->settings = std::string(data, size);
-        return true;
-    };
-    config.LoadSettings = [](char* data, void* userPointer) {
-        auto* c = static_cast<Context*>(userPointer);
-        if (data) {
-            memcpy(data, c->settings.data(), c->settings.size());
-        }
-        return c->settings.size();
-    };
-}
-
-std::string FlowGraphItem::settings(FlowGraph* fg) const {
-    // The nodes in the settings are saved with their NodeId, which is just a pointer
-    // to the Blocks. Since that will change between runs save also the name of the blocks.
-    auto it = m_editors.find(fg);
-    if (it == m_editors.end()) {
-        return {};
-    }
-
-    auto  json  = crude_json::value::parse(it->second.settings);
-    auto& nodes = json["nodes"];
-    if (nodes.type() == crude_json::type_t::object) {
-        for (auto& n : nodes.get<crude_json::object>()) {
-            if (n.first.starts_with("node:")) {
-                auto  id         = std::atoll(n.first.data() + 5);
-                auto* block      = reinterpret_cast<Block*>(id);
-                n.second["name"] = block->name;
-            }
-        }
-    }
-    return json.dump();
-}
-
 static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style s) {
     ax::NodeEditor::SetCurrentEditor(ed);
     auto& style        = ax::NodeEditor::GetStyle();
@@ -140,105 +96,31 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
     }
 }
 
-void FlowGraphItem::setSettings(FlowGraph* fg, const std::string& settings) {
-    auto& c              = m_editors[fg];
-    c.config.UserPointer = &c;
-    if (c.editor) {
-        ax::NodeEditor::DestroyEditor(c.editor);
-    }
-
-    auto json = crude_json::value::parse(settings);
-    if (json.type() == crude_json::type_t::object) {
-        // recover the correct NodeIds using the block names;
-        auto& nodes = json["nodes"];
-        if (nodes.type() == crude_json::type_t::object) {
-            crude_json::value newnodes;
-            for (auto& n : nodes.get<crude_json::object>()) {
-                auto  name  = n.second["name"].get<std::string>();
-                auto* block = fg->findBlock(name);
-
-                if (block) {
-                    auto newname      = fmt::format("node:{}", reinterpret_cast<uintptr_t>(block));
-                    newnodes[newname] = n.second;
-                }
-            }
-            json["nodes"] = newnodes;
-        }
-        c.settings = json.dump();
-    } else {
-        c.settings = {};
-    }
-
-    c.editor = ax::NodeEditor::CreateEditor(&c.config);
-    ax::NodeEditor::SetCurrentEditor(c.editor);
-    setEditorStyle(c.editor, LookAndFeel::instance().style);
-
-    m_layoutGraph = true;
+FlowGraphItem::FlowGraphItem() {
+    m_editorConfig.SettingsFile = nullptr;
+    m_editorConfig.UserPointer  = std::addressof(m_graphModel);
+    reset();
 }
 
-void FlowGraphItem::setStyle(LookAndFeel::Style s) {
-    for (auto& e : m_editors) {
-        setEditorStyle(e.second.editor, s);
+FlowGraphItem::~FlowGraphItem() { ax::NodeEditor::DestroyEditor(m_editor); }
+
+void FlowGraphItem::reset() {
+    m_graphModel.reset();
+
+    if (m_editor) {
+        ax::NodeEditor::SetCurrentEditor(nullptr);
+        ax::NodeEditor::DestroyEditor(m_editor);
     }
+
+    m_editor = ax::NodeEditor::CreateEditor(&m_editorConfig);
+    ax::NodeEditor::SetCurrentEditor(m_editor);
+    setEditorStyle(m_editor, LookAndFeel::instance().style);
 }
 
-void FlowGraphItem::clear() { m_editors.clear(); }
+void FlowGraphItem::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
 
-static uint32_t colorForDataType(DataType t) {
-    if (LookAndFeel::instance().style == LookAndFeel::Style::Light) {
-        switch (t) {
-        case DataType::ComplexFloat64: return 0xff795548;
-        case DataType::ComplexFloat32: return 0xff2196F3;
-        case DataType::ComplexInt64: return 0xff8BC34A;
-        case DataType::ComplexInt32: return 0xff4CAF50;
-        case DataType::ComplexInt16: return 0xffFFC107;
-        case DataType::ComplexInt8: return 0xff9C27B0;
-        case DataType::Float64: return 0xff00BCD4;
-        case DataType::Float32: return 0xffF57C00;
-        case DataType::Int64: return 0xffCDDC39;
-        case DataType::Int32: return 0xff009688;
-        case DataType::Int16: return 0xffFFEB3B;
-        case DataType::Int8: return 0xffD500F9;
-        case DataType::Bits: return 0xffEA80FC;
-        case DataType::AsyncMessage: return 0xffDBDBDB;
-        case DataType::BusConnection: return 0xffffffff;
-        case DataType::Wildcard: return 0xffffffff;
-        case DataType::Untyped: return 0xffffffff;
-        case DataType::DataSetFloat64: return 0xff00BCD4;
-        case DataType::DataSetFloat32: return 0xffF57C00;
-        case DataType::UInt64: return 0xffCDDC39; // TODO: cross check which colours to use
-        case DataType::UInt32: return 0xff009688; // TODO: cross check which colours to use
-        case DataType::UInt16: return 0xffFFEB3B; // TODO: cross check which colours to use
-        case DataType::UInt8: return 0xffD500F9;  // TODO: cross check which colours to use
-        }
-    } else {
-        switch (t) {
-        case DataType::ComplexFloat64: return 0xff86aab8;
-        case DataType::ComplexFloat32: return 0xffde690c;
-        case DataType::ComplexInt64: return 0xff743cb5;
-        case DataType::ComplexInt32: return 0xffb350af;
-        case DataType::ComplexInt16: return 0xff003ef8;
-        case DataType::ComplexInt8: return 0xff63d84f;
-        case DataType::Float64: return 0xffff432b;
-        case DataType::Float32: return 0xff0a83ff;
-        case DataType::Int64: return 0xff3223c6;
-        case DataType::Int32: return 0xffff6977;
-        case DataType::Int16: return 0xff0014c4;
-        case DataType::Int8: return 0xff2aff06;
-        case DataType::Bits: return 0xff158003;
-        case DataType::AsyncMessage: return 0xff242424;
-        case DataType::BusConnection: return 0xff000000;
-        case DataType::Wildcard: return 0xff000000;
-        case DataType::Untyped: return 0xff000000;
-        case DataType::DataSetFloat64: return 0xffff432b;
-        case DataType::DataSetFloat32: return 0xff0a83ff;
-        case DataType::UInt64: return 0xffCDDC39; // TODO: cross check which colours to use
-        case DataType::UInt32: return 0xff009688; // TODO: cross check which colours to use
-        case DataType::UInt16: return 0xffFFEB3B; // TODO: cross check which colours to use
-        case DataType::UInt8: return 0xffD500F9;  // TODO: cross check which colours to use
-        }
-    }
-    assert(0);
+static std::uint32_t colorForDataType(const std::string&) {
+    // TODO: Restore colors for ports
     return 0;
 }
 
@@ -285,7 +167,7 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, DataType type) {
+static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
     drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
 
@@ -293,41 +175,6 @@ static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize,
     ImGui::SetCursorPosY(pinPosition.y - spacing);
     ImGui::TextUnformatted(name.c_str());
 };
-
-static void drawPin(ImDrawList* drawList, ImVec2 rectSize, float spacing, float textMargin, const std::string& name, DataType type) {
-    auto p = ImGui::GetCursorScreenPos();
-    drawList->AddRectFilled(p, p + rectSize, colorForDataType(type));
-    drawList->AddRect(p, p + rectSize, darkenOrLighten(colorForDataType(type)));
-
-    auto y = ImGui::GetCursorPosY();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textMargin);
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - spacing);
-    ImGui::TextUnformatted(name.c_str());
-
-    ImGui::SetCursorPosY(y + rectSize.y + spacing);
-};
-
-template<auto GetPorts, decltype(Connection::src) Connection::*ConnectionEnd>
-static bool blockInTreeHelper(const Block* block, const Block* start) {
-    if (block == start) {
-        return true;
-    }
-
-    for (const auto& port : GetPorts(start)) {
-        for (auto* c : port.portConnections) {
-            if (blockInTreeHelper<GetPorts, ConnectionEnd>(block, (c->*ConnectionEnd).uiBlock)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static bool blockInTree(const Block* block, const Block* start) {
-    constexpr auto inputs  = [](const Block* b) { return b->inputs(); };
-    constexpr auto outputs = [](const Block* b) { return b->outputs(); };
-    return blockInTreeHelper<inputs, &Connection::src>(block, start) || blockInTreeHelper<outputs, &Connection::dst>(block, start);
-}
 
 void valToString(const pmtv::pmt& val, std::string& str) {
     std::visit(gr::meta::overloaded{
@@ -337,155 +184,7 @@ void valToString(const pmtv::pmt& val, std::string& str) {
         val);
 }
 
-void FlowGraphItem::addBlock(const Block& b, std::optional<ImVec2> nodePos, Alignment alignment) {
-    const auto nodeId  = ax::NodeEditor::NodeId(&b);
-    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
-
-    const bool filteredOut = [&]() {
-        if (m_filterBlock && !blockInTree(&b, m_filterBlock)) {
-            return true;
-        }
-        return false;
-    }();
-
-    {
-        IMW::Disabled disabled(filteredOut);
-
-        if (nodePos) {
-            ax::NodeEditor::SetNodeZPosition(nodeId, 1000);
-
-            auto p = nodePos.value();
-            if (alignment == Alignment::Right) {
-                float       width = 80;
-                std::string value;
-                for (const auto& val : b.settings()) {
-                    valToString(val.second, value);
-                    float w = ImGui::CalcTextSize("%s: %s", val.first.c_str(), value.c_str()).x;
-                    width   = std::max(width, w);
-                }
-                width += padding.x + padding.z;
-                p.x -= width;
-            }
-
-            ax::NodeEditor::SetNodePosition(nodeId, p);
-        }
-        ax::NodeEditor::BeginNode(nodeId);
-        auto nodeBeginPos = ImGui::GetCursorScreenPos();
-
-        ImGui::TextUnformatted(b.name.c_str());
-
-        auto         curPos       = ImGui::GetCursorScreenPos();
-        auto         leftPos      = curPos.x - padding.x;
-        const int    rectHeight   = 14;
-        const int    rectsSpacing = 5;
-        const int    textMargin   = 2;
-        const ImVec2 minSize{80.0f, 70.0f};
-        auto         yMax{minSize.y}; // we have to keep track of the Node Size ourselves
-
-        std::string value;
-        for (const auto& val : b.settings()) {
-            const auto metaKey = val.first + "::visible";
-            const auto it      = b.metaInformation().find(metaKey);
-            if (it != b.metaInformation().end()) {
-                if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
-                    continue;
-                }
-            }
-            valToString(val.second, value);
-            ImGui::Text("%s: %s", val.first.c_str(), value.c_str());
-        }
-        auto positionAfterTexts = ImGui::GetCursorScreenPos();
-
-        ImGui::SetCursorScreenPos(curPos);
-        const auto& inputs      = b.inputs();
-        auto*       inputWidths = static_cast<float*>(alloca(sizeof(float) * inputs.size()));
-
-        auto   curScreenPos = ImGui::GetCursorScreenPos();
-        ImVec2 pos          = {curScreenPos.x - padding.x, curScreenPos.y};
-
-        for (std::size_t i = 0; i < inputs.size(); ++i) {
-            inputWidths[i] = ImGui::CalcTextSize(b.currentInstantiation().inputs[i].name.c_str()).x + textMargin * 2;
-            if (!filteredOut) {
-                addPin(ax::NodeEditor::PinId(&inputs[i]), ax::NodeEditor::PinKind::Input, pos, {inputWidths[i], rectHeight});
-            }
-            pos.y += rectHeight + rectsSpacing;
-        }
-        // make sure the node ends up being tall enough to fit all the pins
-        yMax = std::max(yMax, pos.y - curPos.y);
-
-        const auto& outputs      = b.outputs();
-        auto*       outputWidths = static_cast<float*>(alloca(sizeof(float) * outputs.size()));
-        ImVec2      nodeSize     = ax::NodeEditor::GetNodeSize(nodeId);
-        pos                      = {curPos.x - padding.x + nodeSize.x, curPos.y};
-        for (std::size_t i = 0; i < outputs.size(); ++i) {
-            outputWidths[i] = ImGui::CalcTextSize(b.currentInstantiation().outputs[i].name.c_str()).x + textMargin * 2;
-            if (!filteredOut) {
-                addPin(ax::NodeEditor::PinId(&outputs[i]), ax::NodeEditor::PinKind::Output, pos, {outputWidths[i], rectHeight});
-            }
-            pos.y += rectHeight + rectsSpacing;
-        }
-        // likewise for the output pins
-        yMax = std::max(yMax, pos.y - curScreenPos.y);
-
-        // Now for the Filter Button
-        ImGui::SetCursorScreenPos(positionAfterTexts);
-        curScreenPos            = ImGui::GetCursorScreenPos();
-        auto   filterButtonSize = (ImGui::CalcTextSize("Dummy").y + padding.y + padding.w + 20);
-        auto   myHeight         = curScreenPos.y - nodeBeginPos.y + filterButtonSize - (curPos.y - nodeBeginPos.y);
-        ImVec2 filterPos;
-
-        if (myHeight < yMax) {
-            // Find the lower end, deduct myHeight
-            filterPos = curPos;
-            filterPos.y += yMax - filterButtonSize;
-            ImGui::SetCursorScreenPos(filterPos);
-        }
-
-        {
-            IMW::ChangeStrId newId(b.name.c_str());
-            if (ImGui::RadioButton("Filter", m_filterBlock == &b)) {
-                if (m_filterBlock == &b) {
-                    m_filterBlock = nullptr;
-                } else {
-                    m_filterBlock = &b;
-                }
-            }
-        }
-
-        ax::NodeEditor::EndNode();
-
-        // The input/output pins are drawn after ending the node because otherwise
-        // drawing them would increase the node size, which we need to know to correctly place the
-        // output pins, and that would cause the nodes to continuously grow in width
-
-        ImGui::SetCursorScreenPos(curPos);
-        auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(nodeId);
-
-        for (std::size_t i = 0; i < inputs.size(); ++i) {
-            const auto& in = inputs[i];
-
-            ImGui::SetCursorPosX(leftPos - inputWidths[i]);
-            drawPin(drawList, {inputWidths[i], rectHeight}, rectsSpacing, textMargin, b.currentInstantiation().inputs[i].name, in.portDataType);
-        }
-
-        ImGui::SetCursorScreenPos(curPos);
-        for (std::size_t i = 0; i < outputs.size(); ++i) {
-            const auto& out = outputs[i];
-
-            nodeSize = ax::NodeEditor::GetNodeSize(nodeId);
-            ImGui::SetCursorPosX(leftPos + nodeSize.x);
-            drawPin(drawList, {outputWidths[i], rectHeight}, rectsSpacing, textMargin, b.currentInstantiation().outputs[i].name, out.portDataType);
-        }
-
-        ImGui::SetCursorScreenPos(curPos);
-    }
-
-    const auto size = ax::NodeEditor::GetNodeSize(nodeId);
-    ImGui::SetCursorScreenPos(ax::NodeEditor::GetNodePosition(nodeId) + ImVec2(padding.x, size.y - padding.y - padding.w - 20));
-}
-
 void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
-    //
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -561,10 +260,9 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 }
 
                 // Register ports with node editor, actual drawing comes later
-                auto registerPins = [&padding, &pinHeight, &blockId](auto& ports, auto& widths, auto position, auto pinType) {
+                auto registerPins = [&padding, &pinHeight, &blockId, &blockSize](auto& ports, auto& widths, auto position, auto pinType) {
                     widths.resize(ports.size());
                     if (pinType == ax::NodeEditor::PinKind::Output) {
-                        auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                         position.x += blockSize.x - padding.x;
                     }
 
@@ -599,17 +297,16 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
             // output pins, and that would cause the nodes to continuously grow in width
             {
                 const auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-                // const auto blockPosition          = ax::NodeEditor::GetNodePosition(blockId);
 
                 auto leftPos = blockPosition.topLeft.x - padding.x;
 
                 ImGui::SetCursorScreenPos(blockPosition.topLeft);
                 auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
-                auto drawPorts = [&](auto& ports, auto& widths, auto leftPos, bool rightAlign) {
+                auto drawPorts = [&](auto& ports, auto& widths, auto portLeftPos, bool rightAlign) {
                     auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        auto pinPositionX = leftPos + padding.x - (rightAlign ? widths[i] : 0);
+                        auto pinPositionX = portLeftPos + padding.x - (rightAlign ? widths[i] : 0);
                         newDrawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, {} /* TODO in.portType */);
                         pinPositionY += pinHeight + pinSpacing;
                     }
@@ -677,7 +374,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                                 {"destinationBlock"s, inputPort->ownerBlock->blockUniqueName}, //
                                 {"destinationPort"s, inputPort->portName},                     //
                                 {"minBufferSize"s, gr::Size_t(4096)},                          //
-                                {"weight"s, std::int32_t(1)},                                  //
+                                {"weight"s, 1},                                                //
                                 {"edgeName"s, std::string()}};
                             App::instance().sendMessage(message);
                         }
@@ -688,15 +385,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
-
-    auto& c = m_editors[fg];
-    if (!c.editor) {
-        return;
-    }
-
-    c.config.UserPointer = &c;
-    ax::NodeEditor::SetCurrentEditor(c.editor);
+void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
 
     const ImVec2 origCursorPos = ImGui::GetCursorScreenPos();
     const float  left          = ImGui::GetCursorPosX();
@@ -712,10 +401,10 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
 
     if (m_layoutGraph) {
         m_layoutGraph = false;
-        sortNodes(fg);
+        sortNodes();
     }
 
-    newDrawGraph(fg->graphModel, size);
+    newDrawGraph(m_graphModel, size);
 
     auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
@@ -738,10 +427,6 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         if (block) {
             ImGui::OpenPopup("Block settings");
             m_selectedBlock = block;
-            // m_parameters.clear();
-            // for (auto &p : block->parameters()) {
-            //     m_parameters.push_back(p);
-            // }
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
@@ -752,21 +437,27 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
         }
     }
 
-    bool openNewBlockDialog = false;
     if (backgroundClicked == ImGuiMouseButton_Right && mouseDrag < 200) {
         ImGui::OpenPopup("ctx_menu");
         m_contextMenuPosition = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     }
 
+    bool openNewBlockDialog       = false;
+    bool openRemoteSignalSelector = false;
+
     if (auto menu = IMW::Popup("ctx_menu", 0)) {
-        if (ImGui::MenuItem("New block")) {
+        if (ImGui::MenuItem("Add block...")) {
             openNewBlockDialog = true;
         }
+        if (ImGui::MenuItem("Add remote signal...")) {
+            openRemoteSignalSelector = true;
+        }
         if (ImGui::MenuItem("Rearrange blocks")) {
-            sortNodes(fg);
+            sortNodes();
         }
         if (ImGui::MenuItem("Refresh graph")) {
-            fg->graphModel.requestGraphUpdate();
+            m_graphModel.requestGraphUpdate();
+            m_graphModel.requestAvailableBlocksTypesUpdate();
         }
     }
 
@@ -779,26 +470,19 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             App::instance().sendMessage(std::move(message));
         }
 
-        std::string_view blockType         = m_selectedBlock->blockTypeName;
-        auto             blockTypeSplitter = std::ranges::find(blockType, '<');
-        if (blockTypeSplitter != blockType) {
-            const auto& types = BlockRegistry::instance().types();
-
-            const auto currentBlockBaseType            = std::string(blockType.cbegin(), blockTypeSplitter);
-            const auto currentBlockParametrizationType = std::string(blockTypeSplitter + 1, blockType.cend() - 1);
-            const auto currentBlockBaseTypeInfoIt      = types.find(currentBlockBaseType);
-            if (currentBlockBaseTypeInfoIt != types.cend()) {
-                for (const auto& availableParametrization : currentBlockBaseTypeInfoIt->second->availableParametrizations) {
-                    if (availableParametrization != currentBlockParametrizationType) {
+        auto typeParams = m_graphModel.availableParametrizationsFor(m_selectedBlock->blockTypeName);
+        if (typeParams.availableParametrizations) {
+            if (typeParams.availableParametrizations->size() > 1) {
+                for (const auto& availableParametrization : *typeParams.availableParametrizations) {
+                    if (availableParametrization != typeParams.parametrization) {
                         auto name = std::string{"Change Type to "} + availableParametrization;
                         if (ImGui::MenuItem(name.c_str())) {
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::graph::property::kReplaceBlock;
                             message.data     = gr::property_map{
-                                    {"uniqueName"s, m_selectedBlock->blockUniqueName}, //
-                                    {"type"s, std::move(currentBlockBaseType)},        //
-                                    {"parameters"s, availableParametrization}          //
+                                    {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
+                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
                             App::instance().sendMessage(message);
                         }
@@ -827,31 +511,32 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
             IMW::StyleColor buttonStyle(ImGuiCol_Button, buttonColor);
 
             ImGui::SetCursorPosX(15);
-            if (ImGui::Button("Add signal")) {
-                m_signalSelector.open();
+            if (ImGui::Button("Add block...")) {
+                openNewBlockDialog = true;
             }
-
             ImGui::SameLine();
 
-            float newSinkButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("New Sink").x - 15;
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + newSinkButtonPos / 2 - ImGui::CalcTextSize("Re-Layout Graph").x);
-            if (ImGui::Button("Re-Layout Graph")) {
+            if (ImGui::Button("Add remote signal...")) {
+                openRemoteSignalSelector = true;
+            }
+            ImGui::SameLine();
+
+            float relayoutGraphButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Rearrange blocks").x - 15;
+            ImGui::SetCursorPosX(relayoutGraphButtonPos);
+            if (ImGui::Button("Rearrange blocks")) {
                 m_layoutGraph = true;
-            }
-
-            ImGui::SameLine();
-
-            ImGui::SetCursorPosX(newSinkButtonPos);
-            if (ImGui::Button("New sink") && newSinkCallback) {
-                m_nodesToArrange.push_back(newSinkCallback(fg));
             }
         }
 
         if (openNewBlockDialog) {
-            ImGui::OpenPopup("New block");
+            m_newBlockSelector.open();
         }
-        drawNewBlockDialog(fg);
-        m_signalSelector.draw(fg);
+        if (openRemoteSignalSelector) {
+            m_remoteSignalSelector.open();
+        }
+
+        m_remoteSignalSelector.draw();
+        m_newBlockSelector.draw(m_graphModel.knownBlockTypes);
     }
 
     if (horizontalSplit) {
@@ -863,46 +548,87 @@ void FlowGraphItem::draw(FlowGraph* fg, const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::drawNewBlockDialog(FlowGraph* /* fg */) {
-    ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
-    if (auto menu = IMW::ModalPopup("New block", nullptr, 0)) {
-        auto ret = components::FilteredListBox("blocks", BlockRegistry::instance().types(), [](auto& it) -> std::pair<BlockDefinition*, std::string> {
-            if (it.second->isSource) {
-                return {};
+void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
+    // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
+    IMW::TabBar tabBar("maintabbar", 0);
+    if (auto item = IMW::TabItem("Local", nullptr, 0)) {
+        auto contentRegion = ImGui::GetContentRegionAvail();
+        drawNodeEditor(contentRegion);
+    }
+
+    if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
+        if (ImGui::Button("Reset")) {
+            // localFlowgraphGrc = dashboard->localFlowGraph.grc();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Apply")) {
+
+            // auto sinkNames = [](const auto& blocks) {
+            //     using namespace std;
+            //     auto isPlotSink = [](const auto& b) { return b->type().isPlotSink(); };
+            //     auto getName    = [](const auto& b) { return b->name; };
+            //     auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
+            //     auto names      = std::vector(namesView.begin(), namesView.end());
+            //     ranges::sort(names);
+            //     names.erase(std::unique(names.begin(), names.end()), names.end());
+            //     return names;
+            // };
+
+            // const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+
+            try {
+                // app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
+                // const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
+                // std::vector<std::string> toRemove;
+                // std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
+                // std::vector<std::string> toAdd;
+                // std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
+                // for (const auto& name : toRemove) {
+                //     app->dashboard->removeSinkFromPlots(name);
+                // }
+                // for (const auto& newName : toAdd) {
+                //     app->dashboardPage.newPlot(*app->dashboard);
+                //     app->dashboard->plots().back().sourceNames.push_back(newName);
+                // }
+            } catch (const std::exception& e) {
+                // TODO show error message
+                auto msg = fmt::format("Error parsing YAML: {}", e.what());
+                components::Notification::error(msg);
             }
-            return std::pair{it.second.get(), it.first};
-        });
-
-        if (ret) {
-            const auto& selected      = ret.value().first;
-            m_selectedBlockDefinition = selected;
-
-        } else {
-            m_selectedBlockDefinition = nullptr;
         }
 
-        if (components::DialogButtons() == components::DialogButton::Ok) {
-            if (m_selectedBlockDefinition) {
-                // TODO kill m_createNewBlock
-                m_createNewBlock = true;
-                // sendMessage
-                gr::Message message;
-                std::string type   = m_selectedBlockDefinition->name;
-                std::string params = "float";
-                message.cmd        = gr::message::Command::Set;
-                message.endpoint   = gr::graph::property::kEmplaceBlock;
-                message.data       = gr::property_map{
-                          {"type"s, std::move(type)},        //
-                          {"parameters"s, std::move(params)} //
-                };
-                App::instance().sendMessage(message);
+        std::string localFlowgraphGrc;
+        ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+    }
+
+    for (auto& s : dashboard.remoteServices()) {
+        std::string tabTitle = "Remote YAML for " + s.name;
+        if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
+            if (ImGui::Button("Reload from service")) {
+                s.reload();
             }
+            ImGui::SameLine();
+            if (ImGui::Button("Execute on service")) {
+                s.execute();
+            }
+
+            // TODO: For demonstration purposes only, remove
+            // once we have a proper server-side graph editor
+            // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
+            ImGui::SameLine();
+            if (ImGui::Button("Create a block")) {
+                s.emplaceBlock("gr::basic::DataSink", "float");
+            }
+            // }
+
+            ImGui::InputTextMultiline("##grc", &s.grc, ImGui::GetContentRegionAvail());
         }
     }
 }
 
-void FlowGraphItem::sortNodes(FlowGraph* fg) {
-    auto blockLevels = topologicalSort(fg->graphModel.blocks(), fg->graphModel.edges());
+void FlowGraphItem::sortNodes() {
+    fmt::print("Sorting blocks\n");
+    auto blockLevels = topologicalSort(m_graphModel.blocks(), m_graphModel.edges());
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
@@ -921,50 +647,6 @@ void FlowGraphItem::sortNodes(FlowGraph* fg) {
         }
 
         x += levelWidth + xSpacing;
-    }
-}
-
-void FlowGraphItem::arrangeUnconnectedNodes(FlowGraph* fg, const std::vector<const Block*>& blocks) {
-    float x_max = 0, y_max = 0, x_min = std::numeric_limits<float>::max();
-    for (const auto& b : fg->blocks()) {
-        if (std::ranges::any_of(blocks, [&](auto* n) { return n == b.get(); }) /*|| !b*/) {
-            continue;
-        }
-        auto id  = ax::NodeEditor::NodeId(b.get());
-        auto pos = ax::NodeEditor::GetNodePosition(id);
-        auto k   = pos + ax::NodeEditor::GetNodeSize(id);
-        x_max    = std::max(x_max, k.x);
-        y_max    = std::max(y_max, k.y);
-        x_min    = std::min(x_min, pos.x);
-    }
-
-    enum Arrange { Left, Middle, Right } arrange;
-    std::map<Arrange, float> columnOffsets{{Left, 0}, {Middle, 0}, {Right, 0}};
-    for (auto b : blocks) {
-        auto id   = ax::NodeEditor::NodeId(b);
-        auto size = ax::NodeEditor::GetNodeSize(id);
-
-        const float padding = 50;
-
-        if (b->inputs().size() == 0 && b->outputs().size() > 0) {
-            arrange = Left;
-        } else if (b->inputs().size() > 0 && b->outputs().size() == 0) {
-            arrange = Right;
-        } else {
-            arrange = Middle;
-        }
-
-        ImVec2 position{x_min, y_max + padding};
-        if (arrange == Left) {
-        } else if (arrange == Middle) {
-            position.x = x_max / 2 - size.x / 2;
-        } else {
-            position.x = x_max - size.x;
-        }
-        position.y += columnOffsets[arrange];
-        columnOffsets[arrange] += padding + size.y;
-
-        ax::NodeEditor::SetNodePosition(id, position);
     }
 }
 

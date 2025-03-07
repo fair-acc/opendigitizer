@@ -26,33 +26,33 @@ constexpr const char* addSourcePopupId = "addSourcePopup";
 
 OpenDashboardPage::OpenDashboardPage() : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now())), m_filterDate(FilterDate::Before), m_restClient(std::make_unique<opencmw::client::RestClient>()) {
 #ifndef __EMSCRIPTEN__
-    addSource(".");
+    addDashboard(".");
 #endif
 }
 
 OpenDashboardPage::~OpenDashboardPage() = default;
 
-void OpenDashboardPage::addDashboard(const std::shared_ptr<DashboardSource>& source, const auto& n) {
-    DashboardDescription::load(source, n, [&](std::shared_ptr<DashboardDescription>&& dd) {
-        if (dd) {
-            auto it = std::find_if(m_dashboards.begin(), m_dashboards.end(), [&](const auto& d) { return d->source.get() == source.get() && d->name == dd->name; });
+void OpenDashboardPage::addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n) {
+    DashboardDescription::loadAndThen(storageInfo, n, [&](std::shared_ptr<DashboardDescription>&& desc) {
+        if (desc) {
+            auto it = std::ranges::find_if(m_dashboards, [&](const auto& d) { return d->storageInfo.get() == storageInfo.get() && d->name == desc->name; });
             if (it == m_dashboards.end()) {
-                m_dashboards.push_back(dd);
+                m_dashboards.push_back(desc);
             }
         }
     });
 }
 
-void OpenDashboardPage::addSource(std::string_view path) {
-    m_sources.push_back(DashboardSource::get(path));
-    auto& source = m_sources.back();
+void OpenDashboardPage::addDashboard(std::string_view path) {
+    m_storageInfos.push_back(DashboardStorageInfo::get(path));
+    auto& storageInfo = m_storageInfos.back();
 
-    if (path.starts_with("https://") | path.starts_with("http://")) {
+    if (path.starts_with("https://") || path.starts_with("http://")) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Subscribe;
         command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(path).build();
 
-        command.callback = [this, source](const opencmw::mdp::Message& rep) {
+        command.callback = [this, storageInfo](const opencmw::mdp::Message& rep) {
             if (rep.data.size() == 0) {
                 return;
             }
@@ -61,9 +61,9 @@ void OpenDashboardPage::addSource(std::string_view path) {
             std::vector<std::string> names;
             opencmw::IoSerialiser<opencmw::Json, decltype(names)>::deserialise(buf, opencmw::FieldDescriptionShort{}, names);
 
-            EventLoop::instance().executeLater([this, source, names = std::move(names)]() {
+            EventLoop::instance().executeLater([this, storageInfo, names = std::move(names)]() {
                 for (const auto& n : names) {
-                    addDashboard(source, n);
+                    addDashboard(storageInfo, n);
                 }
             });
         };
@@ -78,7 +78,7 @@ void OpenDashboardPage::addSource(std::string_view path) {
         auto dir = fs.iterate_directory("assets/sampleDashboards/");
         for (auto d : dir) {
             if (d.is_file() && d.filename().ends_with(".yml")) {
-                addDashboard(source, d.filename().substr(0, d.filename().size() - 4));
+                addDashboard(storageInfo, d.filename().substr(0, d.filename().size() - 4));
             }
         }
     } else {
@@ -90,18 +90,18 @@ void OpenDashboardPage::addSource(std::string_view path) {
 
         for (auto& file : fs::directory_iterator(path)) {
             if (file.is_regular_file() && file.path().extension() == DashboardDescription::fileExtension) {
-                addDashboard(source, file.path().filename().native());
+                addDashboard(storageInfo, file.path().filename().native());
             }
         }
 #endif
     }
 }
 
-void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource>& source) {
-    if (source->path.starts_with("https://") || source->path.starts_with("http://")) {
+void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardStorageInfo>& storageInfo) {
+    if (storageInfo->path.starts_with("https://") || storageInfo->path.starts_with("http://")) {
         opencmw::client::Command command;
         command.command = opencmw::mdp::Command::Unsubscribe;
-        command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(source->path).build();
+        command.topic   = opencmw::URI<opencmw::STRICT>::UriFactory().path(storageInfo->path).build();
         m_restClient->request(command);
     }
 }
@@ -110,12 +110,12 @@ void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardSource>
 static constexpr float indent = 20;
 
 //
-void OpenDashboardPage::dashboardControls(const std::shared_ptr<Dashboard>& optionalDashboard) {
+void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
 
     if (optionalDashboard) {
         auto desc = optionalDashboard->description();
-        ImGui::Text("%s (%s)", desc->name.c_str(), desc->source->path.c_str());
+        ImGui::Text("%s (%s)", desc->name.c_str(), desc->storageInfo->path.c_str());
     } else {
         ImGui::Text("-");
     }
@@ -126,9 +126,8 @@ void OpenDashboardPage::dashboardControls(const std::shared_ptr<Dashboard>& opti
 
     IMW::Disabled disabled(!dashboardLoaded);
 
-    // Only enable the save button if the dashboard has a valid source, that is it has been saved somewhere before
     {
-        IMW::Disabled innerDisabled(dashboardLoaded && !optionalDashboard->description()->source->isValid);
+        IMW::Disabled innerDisabled(dashboardLoaded && optionalDashboard->description()->storageInfo->isInMemoryDashboardStorage());
         if (dashboardLoaded && ImGui::Button("Save")) {
             optionalDashboard->save();
         }
@@ -144,7 +143,7 @@ void OpenDashboardPage::dashboardControls(const std::shared_ptr<Dashboard>& opti
     }
 }
 
-void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard) {
+void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
     ImGui::Spacing();
 
     dashboardControls(optionalDashboard);
@@ -154,12 +153,12 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
         ImGui::SameLine();
-        auto                                    desc = optionalDashboard ? optionalDashboard->description() : nullptr;
-        static std::string                      name;
-        static std::shared_ptr<DashboardSource> source;
+        auto                                         desc = optionalDashboard ? optionalDashboard->description() : nullptr;
+        static std::string                           name;
+        static std::shared_ptr<DashboardStorageInfo> storageInfo;
         if (ImGui::IsWindowAppearing()) {
-            name   = desc->name;
-            source = desc->source->isValid || m_sources.empty() ? desc->source : m_sources.front();
+            name        = desc->name;
+            storageInfo = !desc->storageInfo->isInMemoryDashboardStorage() || m_storageInfos.empty() ? desc->storageInfo : m_storageInfos.front();
         }
         ImGui::InputText("##name", &name);
 
@@ -168,10 +167,10 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
 
         {
             IMW::Group group;
-            for (const auto& s : m_sources) {
-                bool enabled = s == source;
+            for (const auto& s : m_storageInfos) {
+                bool enabled = s == storageInfo;
                 if (ImGui::Checkbox(s->path.c_str(), &enabled)) {
-                    source = s;
+                    storageInfo = s;
                 }
             }
             if (ImGui::Button("Add new")) {
@@ -181,11 +180,11 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
 
         drawAddSourcePopup();
 
-        bool okEnabled = !name.empty() && source->isValid;
+        bool okEnabled = !name.empty() && !storageInfo->isInMemoryDashboardStorage();
         if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
-            auto newDesc    = std::make_shared<DashboardDescription>(*desc);
-            newDesc->name   = name;
-            newDesc->source = source;
+            auto newDesc         = std::make_shared<DashboardDescription>(*desc);
+            newDesc->name        = name;
+            newDesc->storageInfo = storageInfo;
             m_dashboards.push_back(newDesc);
 
             if (optionalDashboard) {
@@ -222,7 +221,7 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
     ImGui::Spacing();
 
     auto getDashboard = [this](auto& it) -> std::pair<std::shared_ptr<DashboardDescription>, std::string> {
-        if (!it->source->enabled) {
+        if (!it->storageInfo->isEnabled) {
             return {it, {}};
         }
         if ((!m_favoritesEnabled && it->isFavorite) || (!m_notFavoritesEnabled && !it->isFavorite)) {
@@ -245,7 +244,7 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
     };
     int  dashboardCount = 0;
     auto drawDashboard  = [&](auto&& item, bool /* selected */) {
-        IMW::ChangeStrId outerId(item.first->source->path.c_str());
+        IMW::ChangeStrId outerId(item.first->storageInfo->path.c_str());
         IMW::ChangeStrId innerId(item.second.data());
 
         auto  pos  = ImGui::GetCursorPos();
@@ -267,7 +266,7 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
             ImGui::SetCursorPos(pos);
             ImGui::TextUnformatted(item.second.data());
         }
-        ImGui::TextUnformatted(item.first->source->path.c_str());
+        ImGui::TextUnformatted(item.first->storageInfo->path.c_str());
         if (item.first->lastUsed) {
             std::chrono::year_month_day ymd  = std::chrono::floor<std::chrono::days>(item.first->lastUsed.value());
             auto                        date = fmt::format("Last used: {:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
@@ -291,8 +290,8 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
             }
 
             const auto& name              = item.first->name;
-            const auto& source            = item.first->source;
-            bool        isDashboardActive = optionalDashboard && optionalDashboard->description() && name == optionalDashboard->description()->name && source == optionalDashboard->description()->source;
+            const auto& storageInfo       = item.first->storageInfo;
+            bool        isDashboardActive = optionalDashboard && optionalDashboard->description() && name == optionalDashboard->description()->name && storageInfo == optionalDashboard->description()->storageInfo;
 
             {
                 IMW::Font font(isDashboardActive ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
@@ -306,7 +305,7 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
         return false;
     };
 
-    components::FilteredListBox("dashboards", m_dashboards, getDashboard, drawDashboard, {300, 300});
+    components::FilteredListBox("dashboards", {300, 300}, m_dashboards, getDashboard, drawDashboard);
     ImGui::SameLine();
 
     ImGui::Dummy({20, 0});
@@ -318,25 +317,24 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
             ImGui::TextUnformatted("Source:");
             ImGui::SameLine();
 
-            float x = 0.0f;
             {
-                IMW::Group       sourcesListGroup;
-                DashboardSource* newHovered = nullptr;
-                float            x          = ImGui::GetCursorPosX() + 100;
-                for (auto it = m_sources.begin(); it != m_sources.end();) {
+                IMW::Group            storageInfosListGroup;
+                DashboardStorageInfo* newHovered = nullptr;
+                float                 x          = ImGui::GetCursorPosX() + 100;
+                for (auto it = m_storageInfos.begin(); it != m_storageInfos.end();) {
                     auto& s = *it;
                     // push a ID beacuse the button has a constant label
                     IMW::ChangeStrId id(s->path.c_str());
                     {
-                        IMW::Group sourceGroup;
-                        ImGui::Checkbox(s->path.c_str(), &s->enabled);
+                        IMW::Group storageInfoGroup;
+                        ImGui::Checkbox(s->path.c_str(), &s->isEnabled);
                         ImGui::SameLine();
                         x = std::max(x, ImGui::GetCursorPosX() + 40);
                         IMW::Font font(LookAndFeel::instance().fontIcons);
-                        if (m_sourceHovered == s.get() && ImGui::Button("\uf2ed")) { // trash can
-                            m_dashboards.erase(std::remove_if(m_dashboards.begin(), m_dashboards.end(), [&](auto& d) { return d->source == s; }), m_dashboards.end());
+                        if (m_storageInfoHovered == s.get() && ImGui::Button("\uf2ed")) { // trash can
+                            std::erase_if(m_dashboards, [&](auto& d) { return d->storageInfo == s; });
                             unsubscribeSource(*it);
-                            it = m_sources.erase(it);
+                            it = m_storageInfos.erase(it);
                         } else {
                             ++it;
                         }
@@ -345,11 +343,11 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
                         newHovered = s.get();
                     }
                 }
-                m_sourceHovered = newHovered;
+                m_storageInfoHovered = newHovered;
             }
 
             ImGui::SameLine();
-            ImGui::SetCursorPosX(x);
+            ImGui::SetCursorPosX(0.0f);
             if (ImGui::Button("Add new")) {
                 ImGui::OpenPopup(addSourcePopupId);
             }
@@ -383,19 +381,19 @@ void OpenDashboardPage::draw(const std::shared_ptr<Dashboard>& optionalDashboard
         ImGui::SameLine();
 
         std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_date));
-        char                        date[11] = {};
-        fmt::format_to(date, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
-        if (ImGui::InputTextWithHint("##date", "today", date, 11, ImGuiInputTextFlags_CallbackCharFilter,
+        char                        dateStr[11] = {};
+        fmt::format_to(dateStr, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+        if (ImGui::InputTextWithHint("##date", "today", dateStr, 11, ImGuiInputTextFlags_CallbackCharFilter,
                 [](ImGuiInputTextCallbackData* d) -> int {
                     if (d->EventChar == '/' || (d->EventChar >= '0' && d->EventChar <= '9')) {
                         return 0;
                     }
                     return 1;
                 }) &&
-            strnlen(date, sizeof(date)) == 10) {
-            unsigned                    day   = static_cast<unsigned>(std::atoi(date));
-            unsigned                    month = static_cast<unsigned>(std::atoi(date + 3));
-            int                         year  = std::atoi(date + 6);
+            strnlen(dateStr, sizeof(dateStr)) == 10) {
+            unsigned                    day   = static_cast<unsigned>(std::atoi(dateStr));
+            unsigned                    month = static_cast<unsigned>(std::atoi(dateStr + 3));
+            int                         year  = std::atoi(dateStr + 6);
             std::chrono::year_month_day ldate{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
             if (ldate.ok()) {
                 m_date = std::chrono::sys_days(ldate);
@@ -435,7 +433,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
         const bool okEnabled = !path.empty();
 #endif
         if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
-            addSource(path);
+            addDashboard(path);
         }
     }
 }

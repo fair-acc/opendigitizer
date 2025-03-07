@@ -18,16 +18,26 @@ CMRC_DECLARE(sample_dashboards);
 #endif
 #include <plf_colony.h>
 
-#include "Flowgraph.hpp"
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
+
 #include "components/Docking.hpp"
 
+namespace gr {
+class Graph;
+}
+
+namespace opendigitizer {
+class ImPlotSinkModel;
+}
+
 namespace DigitizerUi {
-class Block;
-class FlowGraph;
 class FlowGraphItem;
+class UiGraphModel;
+
 struct DashboardDescription;
 
-enum class AxisScale : uint8_t {
+enum class AxisScale : std::uint8_t {
     Linear = 0U,   /// default linear scale [t0, .., tn]
     LinearReverse, /// reverse linear scale [t0-tn, ..., 0]
     Time,          /// date/timescale
@@ -35,44 +45,52 @@ enum class AxisScale : uint8_t {
     SymLog,        /// symmetric log scale
 };
 
-struct DashboardSource {
-    ~DashboardSource() noexcept;
+// Defines where the dashboard is stored and fetched from
+struct DashboardStorageInfo {
+private:
+    struct PrivateTag {};
+
+public:
+    DashboardStorageInfo(std::string _path, PrivateTag) : path(std::move(_path)) {}
+    ~DashboardStorageInfo() noexcept;
 
     std::string path;
-    bool        enabled;
-    const bool  isValid = true;
+    bool        isEnabled = true;
 
-    static std::shared_ptr<DashboardSource> get(std::string_view path);
+    static std::shared_ptr<DashboardStorageInfo>             get(std::string_view path);
+    static std::vector<std::weak_ptr<DashboardStorageInfo>>& knownDashboardStorage();
+    static std::shared_ptr<DashboardStorageInfo>             memoryDashboardStorage();
+
+    bool isInMemoryDashboardStorage() const { return this == memoryDashboardStorage().get(); }
 };
 
 struct DashboardDescription {
     static constexpr const char* fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
 
-    std::string                                                       name;
-    std::shared_ptr<DashboardSource>                                  source;
-    std::string                                                       filename;
-    bool                                                              isFavorite;
+    std::string                           name;
+    std::shared_ptr<DashboardStorageInfo> storageInfo;
+    std::string                           filename;
+    bool                                  isFavorite;
+
     std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
 
     void save();
 
-    static void load(const std::shared_ptr<DashboardSource>& source, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+    static void loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
 
     static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
 };
 
-class Dashboard : public std::enable_shared_from_this<Dashboard> {
+class Dashboard {
 public:
-    std::shared_ptr<Dashboard> shared() { return shared_from_this(); }
-
-    struct Source {
-        std::string blockName;
-        std::string name;
-        uint32_t    color;
-        bool        visible{true};
-
-        inline bool operator==(const Source& s) const { return s.blockName == blockName; };
-    };
+    std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
+        std::vector<std::filesystem::path> pluginPaths;
+#ifndef __EMSCRIPTEN__
+        // TODO set correct paths
+        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
+#endif
+        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
+    }();
 
     struct Plot {
         enum class AxisKind { X = 0, Y };
@@ -85,10 +103,10 @@ public:
             float     width = std::numeric_limits<float>::max();
         };
 
-        std::string              name;
-        std::vector<std::string> sourceNames;
-        std::vector<Source*>     sources;
-        std::vector<AxisData>    axes;
+        std::string                                  name;
+        std::vector<std::string>                     sourceNames;
+        std::vector<opendigitizer::ImPlotSinkModel*> sources; // Not owned by us
+        std::vector<AxisData>                        axes;
 
         std::shared_ptr<DockSpace::Window> window;
 
@@ -105,15 +123,13 @@ private:
 public:
     explicit Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc);
 
-    static std::shared_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
+    static std::unique_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
 
     ~Dashboard();
 
-    void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader) { localFlowGraph.setPluginLoader(std::move(loader)); }
-
     void load();
 
-    void load(const std::string& grcData, const std::string& dashboardData);
+    void load(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler = {});
 
     void save();
 
@@ -122,9 +138,6 @@ public:
     void deletePlot(Plot* plot);
 
     void removeSinkFromPlots(std::string_view sinkName);
-
-    inline const auto& sources() const { return m_sources; }
-    inline auto&       sources() { return m_sources; }
 
     inline auto& plots() { return m_plots; }
 
@@ -135,11 +148,11 @@ public:
     struct Service {
         Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
 
-        std::string                 name;
-        std::string                 uri;
-        std::string                 layout;
-        std::string                 grc;
-        FlowGraph                   flowGraph;
+        std::string name;
+        std::string uri;
+        std::string layout;
+        std::string grc;
+
         opencmw::client::RestClient client;
 
         void reload();
@@ -159,18 +172,17 @@ public:
 
     inline auto& remoteServices() { return m_services; }
 
-    Block* createSink();
-
     void loadPlotSources();
 
-    FlowGraph localFlowGraph;
+    UiGraphModel& graphModel();
+
+    std::atomic<bool> inUse = false;
 
 private:
     void doLoad(const std::string& desc);
 
     std::shared_ptr<DashboardDescription>        m_desc;
     std::vector<Plot>                            m_plots;
-    plf::colony<Source>                          m_sources;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
     FlowGraphItem*                               m_fgItem = nullptr;

@@ -10,6 +10,12 @@ target_include_directories(digitizer_settings INTERFACE $<BUILD_INTERFACE:${CMAK
                                                         $<INSTALL_INTERFACE:include>)
 set_target_properties(digitizer_settings PROPERTIES PUBLIC_HEADER include/settings.h)
 
+add_library(digitizer_common_utils INTERFACE)
+
+target_include_directories(digitizer_common_utils INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                                                            $<INSTALL_INTERFACE:include>)
+set_target_properties(digitizer_common_utils PROPERTIES PUBLIC_HEADER include/conversion.hpp)
+
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)
 endif()

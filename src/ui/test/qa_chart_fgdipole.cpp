@@ -7,7 +7,6 @@
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
-#include <Flowgraph.hpp>
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
@@ -46,10 +45,11 @@ struct TestState {
     std::thread                                                   schedulerThread;
     std::unique_ptr<TestScheduler<gr::profiling::null::Profiler>> scheduler;
 
-    void startScheduler(gr::Graph&& graph) {
+    void assignGraph(gr::Graph&& graph) { scheduler = std::make_unique<TestScheduler<gr::profiling::null::Profiler>>(std::move(graph)); }
+
+    void startScheduler() {
         schedulerThread = std::thread([&] {
-            scheduler = std::make_unique<TestScheduler<gr::profiling::null::Profiler>>(std::move(graph));
-            auto ret  = scheduler->runAndWait();
+            auto ret = scheduler->runAndWait();
             expect(ret.has_value()) << [&ret]() { return std::format("TestScheduler returned with: {} in {}:{}", ret.error().message, ret.error().srcLoc(), ret.error().methodName()); };
         });
     }
@@ -88,14 +88,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                // For our test we stop the graph after a certain amount samples.
-                // TODO: Once Ivan finishes his new ImPlotSink registry class we can remove these reinterpret_cast.
-
-                auto execution  = g_state.dashboard->localFlowGraph.createExecutionContext();
-                auto blockModel = g_state.dashboard->localFlowGraph.findPlotSinkGrBlock("DipoleCurrentSink");
-                ut::expect(blockModel);
-                auto plotBlockModel = reinterpret_cast<gr::BlockWrapper<opendigitizer::ImPlotSink<float>>*>(blockModel);
-                auto implotSink     = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(plotBlockModel->raw());
+                auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                ut::expect(implotSinkRaw);
+                auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
 
                 while (gr::lifecycle::isActive(implotSink->state())) {
                     ImGuiTestEngine_Yield(ctx->Engine);
@@ -109,6 +104,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
+    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(gr::globalBlockRegistry());
+
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_fg_dipole";
 
@@ -126,13 +123,9 @@ int main(int argc, char* argv[]) {
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
-    g_state.dashboard->setPluginLoader(loader);
-    g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()));
+    g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { g_state.assignGraph(std::move(grGraph)); });
 
-    auto execution = g_state.dashboard->localFlowGraph.createExecutionContext();
-    g_state.dashboard->localFlowGraph.setPlotSinkGrBlocks(std::move(execution.plotSinkGrBlocks));
-
-    g_state.startScheduler(std::move(execution.grGraph));
+    g_state.startScheduler();
 
     return app.runTests() ? 0 : 1;
 }

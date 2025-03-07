@@ -1,11 +1,14 @@
 #ifndef GRAPHMODEL_H
 #define GRAPHMODEL_H
 
+#include <map>
 #include <string>
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
+
+namespace DigitizerUi {
 
 class UiGraphModel;
 struct UiGraphBlock;
@@ -112,10 +115,8 @@ public:
     std::string blockName;
     std::string blockTypeName;
 
-    // void setPluginLoader(std::shared_ptr<gr::PluginLoader> loader);
-    // void parse(const std::filesystem::path& file);
-    // void parse(const std::string& str);
-    // void clear();
+    // Not a multimap as filtered lists like sequence collections
+    std::map<std::string, std::set<std::string>> knownBlockTypes;
 
     const auto& blocks() const { return _blocks; }
     auto&       blocks() { return _blocks; }
@@ -123,17 +124,27 @@ public:
     const auto& edges() const { return _edges; }
     auto&       edges() { return _edges; }
 
+    void reset() {
+        _blocks.clear();
+        _edges.clear();
+    }
+
     /**
      * @return true if consumed the message
      */
     bool processMessage(const gr::Message& message);
 
     void requestGraphUpdate();
+    void requestAvailableBlocksTypesUpdate();
 
-    // TODO
-    // requestEmplaceBlock
-    // requestEmplaceEdge
-    // ...
+    struct AvailableParametrizationsResult {
+        std::string baseType;
+        std::string parametrization;
+        // We still don't have optional of references
+        const std::set<std::string>* availableParametrizations;
+    };
+
+    AvailableParametrizationsResult availableParametrizationsFor(const std::string& fullBlockType) const;
 
 private:
     auto findBlockByName(const std::string& uniqueName);
@@ -150,10 +161,12 @@ private:
     void handleEdgeEmplaced(const gr::property_map& data);
     void handleEdgeRemoved(const gr::property_map& data);
     void handleGraphRedefined(const gr::property_map& data);
+    void handleAvailableGraphBlockTypes(const gr::property_map& data);
 
     void               setBlockData(auto& block, const gr::property_map& blockData);
     [[nodiscard]] bool setEdgeData(auto& edge, const gr::property_map& edgeData);
     void               removeEdgesForBlock(UiGraphBlock& block);
 };
 
+} // namespace DigitizerUi
 #endif // include guard

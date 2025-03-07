@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fmt/format.h>
 #include <functional>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <variant>

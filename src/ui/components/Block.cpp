@@ -1,26 +1,26 @@
 #include "Block.hpp"
 #include "Keypad.hpp"
-#include "ListBox.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "../common/LookAndFeel.hpp"
+#include "../components/Dialog.hpp"
 
 #include "../App.hpp"
-#include "../Dashboard.hpp"
-#include "../DashboardPage.hpp"
+
+using namespace std::string_literals;
 
 namespace DigitizerUi::components {
 
 constexpr const char* addContextPopupId    = "Add Context";
 constexpr const char* removeContextPopupId = "Remove Context";
 
-void setItemTooltip(const char* fmt, auto&&... args) {
+void setItemTooltip(auto&&... args) {
     if (ImGui::IsItemHovered()) {
         if constexpr (sizeof...(args) == 0) {
-            ImGui::SetTooltip(fmt);
+            ImGui::SetTooltip("");
         } else {
-            ImGui::SetTooltip(fmt, std::forward<decltype(args)...>(args...));
+            ImGui::SetTooltip("%s", std::forward<decltype(args)...>(args...));
         }
     }
 }
@@ -58,15 +58,15 @@ bool drawRemoveContextPopup(const std::string& context) {
     return false;
 }
 
-void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardPage */, BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
-    if (!context.block) {
+void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
+    if (!panelContext.block) {
         return;
     }
     using namespace DigitizerUi;
 
     auto size = frameSize;
-    if (context.closeTime < std::chrono::system_clock::now()) {
-        context = {};
+    if (panelContext.closeTime < std::chrono::system_clock::now()) {
+        panelContext = {};
         return;
     }
 
@@ -79,16 +79,9 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
         return ImGui::GetTextLineHeightWithSpacing() * 1.5f;
     }();
 
-    auto resetTime = [&]() { context.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; };
+    auto resetTime = [&]() { panelContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; };
 
     const auto itemSpacing = ImGui::GetStyle().ItemSpacing;
-
-    auto calcButtonSize = [&](int numButtons) -> ImVec2 {
-        if (verticalLayout) {
-            return {(size.x - float(numButtons - 1) * itemSpacing.x) / float(numButtons), lineHeight};
-        }
-        return {lineHeight, (size.y - float(numButtons - 1) * itemSpacing.y) / float(numButtons)};
-    };
 
     size = ImGui::GetContentRegionAvail();
 
@@ -97,7 +90,7 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
         resetTime();
     }
 
-    auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(context.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(LookAndFeel::instance().editPaneCloseDelay).count());
+    auto duration = float(std::chrono::duration_cast<std::chrono::milliseconds>(panelContext.closeTime - std::chrono::system_clock::now()).count()) / float(std::chrono::duration_cast<std::chrono::milliseconds>(LookAndFeel::instance().editPaneCloseDelay).count());
     {
         // IMW::StyleColor color(ImGuiCol_PlotHistogram, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Button]));
         IMW::StyleColor color(ImGuiCol_PlotHistogram, ImGui::GetStyle().Colors[ImGuiCol_Button]);
@@ -107,206 +100,20 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
     auto minpos = ImGui::GetCursorPos();
     size        = ImGui::GetContentRegionAvail();
 
-#ifdef TODO_PORT
-    int outputsCount = 0;
-    {
-        const char* prevString = verticalLayout ? "\uf062" : "\uf060";
-        for (const auto& out : context.block->outputs()) {
-            outputsCount += out.portConnections.size();
-        }
-        if (outputsCount == 0) {
-            IMW::Disabled dg(true);
-            IMW::Font     font(LookAndFeel::instance().fontIconsSolid);
-            ImGui::Button(prevString, calcButtonSize(1));
-        } else {
-            const auto buttonSize = calcButtonSize(outputsCount);
-
-            IMW::Group group;
-            int        id = 1;
-            // "go up" buttons: for each output of the current block, and for each connection they have, put an arrow up button
-            // that switches to the connected block
-            for (auto& out : context.block->outputs()) {
-                for (const auto* conn : out.portConnections) {
-                    IMW::ChangeId newId(id++);
-
-                    if (IMW::Font font(LookAndFeel::instance().fontIconsSolid); ImGui::Button(prevString, buttonSize)) {
-                        context.block = conn->dst.uiBlock;
-                    }
-
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%s", conn->dst.uiBlock->name.c_str());
-                    }
-                    if (verticalLayout) {
-                        ImGui::SameLine();
-                    }
-                }
-            }
-        }
-    }
-
-    if (!verticalLayout) {
-        ImGui::SameLine();
-    }
-#endif
-
-#ifdef TODO_PORT
-    {
-        // Draw the two add block buttons
-        {
-            IMW::Group group;
-            const auto buttonSize = calcButtonSize(2);
-            {
-                IMW::Disabled dg(context.mode != BlockControlsPanelContext::Mode::None || outputsCount == 0);
-                if (IMW::Font font(LookAndFeel::instance().fontIconsSolid); ImGui::Button("\uf055", buttonSize)) {
-                    if (outputsCount > 1) {
-                        ImGui::OpenPopup("insertBlockPopup");
-                    } else {
-                        [&]() {
-                            int index = 0;
-                            for (auto& out : context.block->outputs()) {
-                                for (auto* conn : out.portConnections) {
-                                    context.insertFrom      = &conn->src.uiBlock->outputs()[conn->src.index];
-                                    context.insertBefore    = &conn->dst.uiBlock->inputs()[conn->dst.index];
-                                    context.breakConnection = conn;
-                                    return;
-                                }
-                                ++index;
-                            }
-                        }();
-                        context.mode = BlockControlsPanelContext::Mode::Insert;
-                    }
-                }
-                setItemTooltip("%s", "Insert new block before the next");
-
-                if (auto popup = IMW::Popup("insertBlockPopup", 0)) {
-                    int index = 0;
-                    for (auto& out : context.block->outputs()) {
-                        for (auto* conn : out.portConnections) {
-                            auto text = fmt::format("Before block '{}'", conn->dst.uiBlock->name);
-                            if (ImGui::Selectable(text.c_str())) {
-                                context.insertBefore    = &conn->dst.uiBlock->inputs()[conn->dst.index];
-                                context.mode            = BlockControlsPanelContext::Mode::Insert;
-                                context.insertFrom      = &conn->src.uiBlock->outputs()[conn->src.index];
-                                context.breakConnection = conn;
-                            }
-                        }
-                        ++index;
-                    }
-                }
-
-                if (verticalLayout) {
-                    ImGui::SameLine();
-                }
-            }
-
-            {
-                IMW::Font     font(LookAndFeel::instance().fontIconsSolid);
-                IMW::Disabled disabled(context.mode != BlockControlsPanelContext::Mode::None || context.block->outputs().empty());
-                if (ImGui::Button("\uf0fe", buttonSize)) {
-                    if (context.block->outputs().size() > 1) {
-                        ImGui::OpenPopup("addBlockPopup");
-                    } else {
-                        context.mode       = BlockControlsPanelContext::Mode::AddAndBranch;
-                        context.insertFrom = &context.block->outputs()[0];
-                    }
-                }
-            }
-            setItemTooltip("%s", "Add new block");
-
-            if (auto popup = IMW::Popup("addBlockPopup", 0)) {
-                int index = 0;
-                for (const auto& out : context.block->currentInstantiation().outputs) {
-                    if (ImGui::Selectable(out.name.c_str())) {
-                        context.insertFrom = &context.block->outputs()[index];
-                        context.mode       = BlockControlsPanelContext::Mode::AddAndBranch;
-                    }
-                    ++index;
-                }
-            }
-        }
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-    }
-#endif
-
-#ifdef TODO_PORT
-    if (context.mode != BlockControlsPanelContext::Mode::None) {
-        {
-            IMW::Group group;
-
-            auto listSize = verticalLayout ? ImVec2(size.x, 200) : ImVec2(200, size.y - ImGui::GetFrameHeightWithSpacing());
-            auto ret      = FilteredListBox(
-                "blocks", BlockRegistry::instance().types(),
-                [](auto& it) -> std::pair<BlockDefinition*, std::string> {
-                    auto anyInstantiation = it.second->defaultInstantiation();
-                    if (anyInstantiation.inputs.size() != 1 || anyInstantiation.outputs.size() != 1) {
-                        return {};
-                    }
-                    return std::pair{it.second.get(), it.first};
-                },
-                listSize);
-
-            {
-                IMW::Disabled dg(!ret.has_value());
-                if (ImGui::Button("Ok")) {
-                    BlockDefinition* selected = ret->first;
-                    auto             name     = fmt::format("{}({})", selected->name, context.block->blockName);
-
-                    auto block = selected->createBlock(name);
-
-                    Connection* c1;
-                    if (context.mode == BlockControlsPanelContext::Mode::Insert) {
-                        // mode Insert means that the new block should be added in between this block and the next one.
-                        // put the new block in between this block and the following one
-                        c1 = dashboard.localFlowGraph.connect(&block->outputs()[0], context.insertBefore);
-                        dashboard.localFlowGraph.connect(context.insertFrom, &block->inputs()[0]);
-                        dashboard.localFlowGraph.disconnect(context.breakConnection);
-                        context.breakConnection = nullptr;
-                    } else {
-                        // mode AddAndBranch means the new block should feed its data to a new sink to be also plotted together with the old one.
-                        auto* newsink = dashboard.createSink();
-                        c1            = dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
-                        dashboard.localFlowGraph.connect(context.insertFrom, &block->inputs()[0]);
-
-                        auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
-
-                        dashboardPage.newPlot(dashboard);
-                        dashboard.plots().back().sourceNames.push_back(source->name);
-                    }
-                    context.block = block.get();
-
-                    dashboard.localFlowGraph.addBlock(std::move(block));
-                    context.mode = BlockControlsPanelContext::Mode::None;
-                }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
-                context.mode = BlockControlsPanelContext::Mode::None;
-            }
-        }
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-    }
-#endif
-
     {
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x - lineHeight - itemSpacing.x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::TextUnformatted(context.block->blockName.c_str());
-        std::string_view typeName = context.block->blockTypeName;
+        ImGui::TextUnformatted(panelContext.block->blockName.c_str());
+        // std::string_view typeName = panelContext.block->blockTypeName;
 
-        const auto& activeContext = context.block->activeContext;
+        const auto& activeContext = panelContext.block->activeContext;
 
-        const std::string activeContextLabel = activeContext.context == "" ? "Default" : activeContext.context;
+        const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
         if (ImGui::BeginCombo("##contextNameCombo", activeContextLabel.c_str())) {
-            for (const auto& contextNameAndTime : context.block->contexts) {
+            for (const auto& contextNameAndTime : panelContext.block->contexts) {
                 const bool        selected = activeContext.context == contextNameAndTime.context;
-                const std::string label    = contextNameAndTime.context == "" ? "Default" : contextNameAndTime.context;
+                const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
                 if (ImGui::Selectable(label.c_str(), selected)) {
-                    context.block->setActiveContext(contextNameAndTime);
+                    panelContext.block->setActiveContext(contextNameAndTime);
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
@@ -317,13 +124,13 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
 
         {
             ImGui::SameLine();
-            IMW::Disabled disableDueDefaultAction(activeContext.context == "");
+            IMW::Disabled disableDueDefaultAction(activeContext.context.empty());
             IMW::Font     _(LookAndFeel::instance().fontIconsSolid);
             if (ImGui::Button("\uf146")) {
                 ImGui::OpenPopup(removeContextPopupId);
             }
         }
-        setItemTooltip("%s", "Remove context");
+        setItemTooltip("Remove context");
 
         {
             ImGui::SameLine();
@@ -332,37 +139,39 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
                 ImGui::OpenPopup(addContextPopupId);
             }
         }
-        setItemTooltip("%s", "Add new context");
+        setItemTooltip("Add new context");
 
-        drawAddContextPopup(context.block);
+        drawAddContextPopup(panelContext.block);
         if (drawRemoveContextPopup(activeContext.context)) {
-            context.block->removeContext(activeContext);
+            panelContext.block->removeContext(activeContext);
         }
 
-        ImGui::TextUnformatted("<");
-        ImGui::SameLine();
+        auto typeParams = App::instance().flowgraphPage.graphModel().availableParametrizationsFor(panelContext.block->blockTypeName);
 
-        // auto                     types = context.block->type().availableBaseTypes;
-        // std::vector<std::string> typeNames{types.size()};
-        // std::ranges::transform(types, typeNames.begin(), [](auto t) { return DataType::name(t); });
-#ifdef TODO_PORT
-        if (ImGui::BeginCombo("##baseTypeCombo", context.block->currentInstantiationName().c_str())) {
-            for (const auto& [instantiationName, _] : context.block->type().instantiations) {
-                if (ImGui::Selectable(instantiationName.c_str(), typeName == instantiationName)) {
-                    context.block->flowGraph()->changeBlockDefinition(context.block, instantiationName);
-                }
-                if (typeName == instantiationName) {
-                    ImGui::SetItemDefaultFocus();
+        if (typeParams.availableParametrizations) {
+            if (typeParams.availableParametrizations->size() > 1) {
+                if (ImGui::BeginCombo("##baseTypeCombo", typeParams.parametrization.c_str())) {
+                    for (const auto& availableParametrization : *typeParams.availableParametrizations) {
+                        if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kReplaceBlock;
+                            message.data     = gr::property_map{
+                                    {"uniqueName"s, panelContext.block->blockUniqueName},                 //
+                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                            };
+                            App::instance().sendMessage(message);
+                        }
+                        if (availableParametrization == typeParams.parametrization) {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
                 }
             }
-            ImGui::EndCombo();
         }
-#endif
 
-        ImGui::SameLine();
-        ImGui::TextUnformatted(">");
-
-        BlockSettingsControls(context.block, verticalLayout);
+        BlockSettingsControls(panelContext.block, verticalLayout);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
             resetTime();
@@ -370,60 +179,9 @@ void BlockControlsPanel(Dashboard& /* dashboard */, DashboardPage& /* dashboardP
     }
 
     ImGui::SetCursorPos(minpos);
-
-#ifdef TODO_PORT
-    // draw the button(s) that go to the previous block(s).
-    const char* nextString = verticalLayout ? "\uf063" : "\uf061";
-    IMW::Font   font(LookAndFeel::instance().fontIconsSolid);
-    if (context.block->inputPorts.empty()) {
-        auto buttonSize = calcButtonSize(1);
-        if (verticalLayout) {
-            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-        } else {
-            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-        }
-        IMW::Disabled dg(true);
-        ImGui::Button(nextString, buttonSize);
-    } else {
-        auto buttonSize = calcButtonSize(context.block->inputs().size());
-        if (verticalLayout) {
-            ImGui::SetCursorPosY(ImGui::GetContentRegionMax().y - buttonSize.y);
-        } else {
-            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonSize.x);
-        }
-
-        IMW::Group group;
-        int        id = 1;
-        for (auto& in : context.block->inputs()) {
-            IMW::ChangeId newId(id++);
-            IMW::Disabled dg(in.portConnections.empty());
-
-            if (ImGui::Button(nextString, buttonSize)) {
-                context.block = in.portConnections.front()->src.uiBlock;
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::PopFont();
-                ImGui::SetTooltip("%s", in.portConnections.front()->src.uiBlock->name.c_str());
-                ImGui::PushFont(LookAndFeel::instance().fontIconsSolid);
-            }
-            if (verticalLayout) {
-                ImGui::SameLine();
-            }
-        }
-    }
-#endif
 }
 
-namespace {
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-template<typename... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-} // namespace
-
-void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& size) {
+void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& /*size*/) {
     const auto availableSize = ImGui::GetContentRegionAvail();
 
     auto             storage = ImGui::GetStateStorage();
@@ -460,7 +218,7 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
                     };
 
                     const bool controlDrawn = std::visit( //
-                        overloaded{                       //
+                        gr::meta::overloaded{             //
                             [&](float val) {
                                 ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
                                 ImGui::SetNextItemWidth(100);
@@ -504,7 +262,7 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
             width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
 
             {
-                IMW::StyleColor(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
+                IMW::StyleColor buttonStyle(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
                 ImGui::SetCursorPos(curpos);
 
                 float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
@@ -513,7 +271,7 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
                 }
             }
 
-            setItemTooltip("%s", p.first.c_str());
+            setItemTooltip(p.first.c_str());
 
             ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
             ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);

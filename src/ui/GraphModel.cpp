@@ -89,6 +89,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     } else if (message.endpoint == graph::kGraphInspected) {
         handleGraphRedefined(data);
 
+    } else if (message.endpoint == graph::kRegistryBlockTypes) {
+        handleAvailableGraphBlockTypes(data);
+
     } else if (message.endpoint == "LifecycleState") {
         // Nothing to do for lifecycle state changes
 
@@ -118,9 +121,18 @@ void UiGraphModel::requestGraphUpdate() {
     if (_newGraphDataBeingSet) {
         return;
     }
+
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::graph::property::kGraphInspect;
+    message.data     = gr::property_map{};
+    App::instance().sendMessage(message);
+}
+
+void UiGraphModel::requestAvailableBlocksTypesUpdate() {
+    gr::Message message;
+    message.cmd      = gr::message::Command::Set;
+    message.endpoint = gr::graph::property::kRegistryBlockTypes;
     message.data     = gr::property_map{};
     App::instance().sendMessage(message);
 }
@@ -268,12 +280,13 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Delete blocks that GR doesn't know about.
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
-    auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& block) { //
-        return children.contains(block.blockUniqueName);
+    const auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& child) { //
+        return children.contains(child.blockUniqueName);
     });
-    for (; toRemove != _blocks.end(); ++toRemove) {
-        removeEdgesForBlock(*toRemove);
+    for (auto it = toRemove; it != _blocks.end(); ++it) {
+        removeEdgesForBlock(*it);
     }
+
     _blocks.erase(toRemove, _blocks.end());
 
     // Establish new edges
@@ -289,6 +302,38 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
             components::Notification::error("Invalid edge ignored");
         }
     }
+}
+
+void UiGraphModel::handleAvailableGraphBlockTypes(const gr::property_map& data) {
+    const auto& knownBlockTypesList = getProperty<std::vector<std::string>>(data, "types");
+    for (const auto& type : knownBlockTypesList) {
+        auto splitterPosition = std::ranges::find(type, '<');
+
+        if (splitterPosition != type.cend()) {
+            knownBlockTypes[std::string(type.cbegin(), splitterPosition)].emplace(splitterPosition, type.cend());
+
+        } else {
+            knownBlockTypes[std::string(type)].emplace();
+        }
+    }
+
+    fmt::print("Known block types: {}\n", knownBlockTypes);
+}
+
+UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametrizationsFor(const std::string& fullBlockType) const {
+
+    auto blockTypeSplitter = std::ranges::find(fullBlockType, '<');
+
+    if (blockTypeSplitter != fullBlockType.cend()) {
+        const auto currentBlockBaseType            = std::string(fullBlockType.cbegin(), blockTypeSplitter);
+        const auto currentBlockParametrizationType = std::string(blockTypeSplitter, fullBlockType.cend());
+
+        if (auto typeIt = knownBlockTypes.find(currentBlockBaseType); typeIt != knownBlockTypes.cend()) {
+            return UiGraphModel::AvailableParametrizationsResult{currentBlockBaseType, currentBlockParametrizationType, std::addressof(typeIt->second)};
+        }
+    }
+
+    return UiGraphModel::AvailableParametrizationsResult{std::string(), std::string(), nullptr};
 }
 
 void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) {
@@ -333,7 +378,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     updateFieldFrom(edge.edgeSourceBlockName, edgeData, "sourceBlock"s);
     updateFieldFrom(edge.edgeDestinationBlockName, edgeData, "destinationBlock"s);
 
-    auto portDefinition = [&edgeData](const std::string& key) -> gr::PortDefinition {
+    auto portDefinitionFor = [&edgeData](const std::string& key) -> gr::PortDefinition {
         auto stringPortDefinition = getOptionalProperty<std::string>(edgeData, key);
         if (stringPortDefinition) {
             return gr::PortDefinition(*stringPortDefinition);
@@ -344,8 +389,8 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
         }
     };
 
-    edge.edgeSourcePortDefinition      = portDefinition("sourcePort"s);
-    edge.edgeDestinationPortDefinition = portDefinition("destinationPort"s);
+    edge.edgeSourcePortDefinition      = portDefinitionFor("sourcePort"s);
+    edge.edgeDestinationPortDefinition = portDefinitionFor("destinationPort"s);
 
     auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
         auto [it, found] = findBlockByName(currentBlockName);

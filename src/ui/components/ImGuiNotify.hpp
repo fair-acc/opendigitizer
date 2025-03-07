@@ -12,6 +12,11 @@
 #ifndef IMGUI_NOTIFY
 #define IMGUI_NOTIFY
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wconversion"
+
 #include <chrono>     // For the notifications timed dissmiss
 #include <functional> // For storing the code, which executest on the button click in the notification
 #include <string>
@@ -37,7 +42,7 @@
 #define NOTIFY_PADDING_X          20.f  // Bottom-left X padding
 #define NOTIFY_PADDING_Y          20.f  // Bottom-left Y padding
 #define NOTIFY_PADDING_MESSAGE_Y  10.f  // Padding Y between each message
-#define NOTIFY_FADE_IN_OUT_TIME   150.f // Fade in and out duration
+#define NOTIFY_FADE_IN_OUT_TIME   150   // Fade in and out duration
 #define NOTIFY_DEFAULT_DISMISS    3000  // Auto dismiss after X ms (default, applied only of no data provided in constructors)
 #define NOTIFY_OPACITY            0.95f // 0-1 Toast opacity
 #define NOTIFY_USE_SEPARATOR      false // If true, a separator will be rendered between the title and the content
@@ -128,14 +133,14 @@ public:
      *
      * @param flags ImGui window flags to set.
      */
-    inline void setWindowFlags(const ImGuiWindowFlags& flags_) { this->flags = flags_; }
+    inline void setWindowFlags(const ImGuiWindowFlags& flags_) { flags = flags_; }
 
     /**
      * @brief Set the function to run on the button click in the notification.
      *
      * @param onButtonPress std::fuction or lambda expression, which contains the code for execution.
      */
-    inline void setOnButtonPress(const std::function<void()>& onButtonPress_) { this->onButtonPress = onButtonPress_; }
+    inline void setOnButtonPress(const std::function<void()>& onButtonPress_) { onButtonPress = onButtonPress_; }
 
     /**
      * @brief Set the label for the button in the notification.
@@ -575,4 +580,5 @@ struct Notification {
 
 } // namespace DigitizerUi::components
 
+#pragma GCC diagnostic pop
 #endif

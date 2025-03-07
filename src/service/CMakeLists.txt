@@ -16,6 +16,9 @@ endif()
 if(NOT TARGET digitizer_settings)
   add_subdirectory(../utils utils)
 endif()
+if(NOT TARGET digitizer_common_utils)
+  add_subdirectory(../utils utils)
+endif()
 
 set(WASM_BUILD_DIR
     "${CMAKE_BINARY_DIR}/build-wasm"
@@ -132,4 +135,5 @@ target_link_libraries(
           gr-basic
           gr-electrical
           gr-filter
+          digitizer_common_utils
           digitizer_settings)

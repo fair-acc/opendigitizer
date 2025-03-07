@@ -17,9 +17,12 @@
 #include <string_view>
 #include <utility>
 
+#include <conversion.hpp>
+
 namespace opendigitizer::gnuradio {
 
 using namespace opendigitizer::acq;
+using namespace std::string_literals;
 
 namespace detail {
 template<typename T>
@@ -490,7 +493,7 @@ private:
                     }
                     reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
                 } else {
-                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
+                    reply.triggerIndices.push_back(cast_to_signed(idx));
                     reply.triggerEventNames.push_back("");
                     reply.triggerTimestamps.push_back(0ULL);
                     reply.triggerOffsets.push_back(0.f);

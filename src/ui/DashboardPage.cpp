@@ -6,11 +6,12 @@
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 #include "common/TouchHandler.hpp"
+#include "conversion.hpp"
 
 #include "components//ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 
-#include "Flowgraph.hpp"
+#include "blocks/ImPlotSink.hpp"
 
 namespace DigitizerUi {
 
@@ -33,7 +34,7 @@ std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCat
         if (cats[i].has_value()) {
             const auto& cat = cats[i].value();
             if (cat.quantity == qStr && cat.unit == uStr) {
-                return i; // found match
+                return static_cast<int>(i); // found match
             }
         }
     }
@@ -61,7 +62,7 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std:
     }
 
     for (const auto& source : plot.sources) {
-        auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
+        auto grBlock = opendigitizer::ImPlotSinkManager::instance().findSink([source](auto& block) { return block.name() == source->name(); });
         if (!grBlock) {
             continue;
         }
@@ -84,14 +85,15 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std:
             }
         }
 
-        if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, source->color); idx) {
+        auto color = ImGui::ColorConvertFloat4ToU32(source->color());
+        if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, color); idx) {
             if (axisKind == AxisKind::X) {
-                xAxisGroups[idx.value()].push_back(source->name);
+                xAxisGroups[idx.value()].push_back(source->name());
             } else {
-                yAxisGroups[idx.value()].push_back(source->name);
+                yAxisGroups[idx.value()].push_back(source->name());
             }
         } else {
-            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name, qStr, uStr));
+            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name(), qStr, uStr));
             continue;
         }
     }
@@ -217,7 +219,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             continue;
         }
         ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on top
-        std::string     lbl   = buildLabel(xCats[i], i, /*isX=*/true);
+        std::string     lbl   = buildLabel(xCats[i], static_cast<int>(i), /*isX=*/true);
         ImPlot::SetupAxis(kXs[i], lbl.c_str(), flags);
         setAxisScale(kXs[i], xCats[i]->scale);
     }
@@ -231,7 +233,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
         ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
         ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on right
-        std::string     lbl   = buildLabel(yCats[i], i, /*isX=*/false);
+        std::string     lbl   = buildLabel(yCats[i], static_cast<int>(i), /*isX=*/false);
         ImPlot::SetupAxis(kYs[i], lbl.c_str(), flags);
         ImPlot::PopStyleColor(2);
         setAxisScale(kYs[i], yCats[i]->scale);
@@ -289,22 +291,19 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
 
     // draw each source on the correct axis
     bool drawTag = true;
-    for (const auto& source : plot.sources) {
-        auto grBlock = dashboard.localFlowGraph.findPlotSinkGrBlock(source->name);
-        if (!grBlock) {
+    for (opendigitizer::ImPlotSinkModel* sourceBlock : plot.sources) {
+        if (!sourceBlock->isVisible) {
+            // consume data if hidden
+            std::ignore = sourceBlock->work(std::numeric_limits<std::size_t>::max());
             continue;
         }
 
-        if (!source->visible) {
-            // consume data if hidden
-            std::ignore = grBlock->work(std::numeric_limits<std::size_t>::max());
-            continue;
-        }
+        const auto& sourceBlockName = sourceBlock->name();
 
         // figure out which axis group check X first
         std::size_t xAxisID = std::numeric_limits<std::size_t>::max();
         for (std::size_t i = 0UZ; i < 3UZ && xAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
-            auto it = std::ranges::find(xAxisGroups[i], source->name);
+            auto it = std::ranges::find(xAxisGroups[i], sourceBlock->name());
             if (it != xAxisGroups[i].end()) {
                 xAxisID = i;
             }
@@ -316,7 +315,7 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
         // check Y if not found
         std::size_t yAxisID = std::numeric_limits<std::size_t>::max();
         for (std::size_t i = 0UZ; i < 3UZ && yAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
-            auto it = std::ranges::find(yAxisGroups[i], source->name);
+            auto it = std::ranges::find(yAxisGroups[i], sourceBlock->name());
             if (it != yAxisGroups[i].end()) {
                 yAxisID = i;
             }
@@ -325,30 +324,17 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
             yAxisID = 0;
         }
 
-        std::ignore = grBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
+        std::ignore = sourceBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
         drawTag     = false;
 
         // allow legend item labels to be DND sources
-        if (ImPlot::BeginDragDropSourceItem(source->name.c_str())) {
-            DigitizerUi::DashboardPage::DndItem dnd = {&plot, source};
+        if (ImPlot::BeginDragDropSourceItem(sourceBlockName.c_str())) {
+            DigitizerUi::DashboardPage::DndItem dnd = {&plot, sourceBlock};
             ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
-            const auto color = [&grBlock] {
-                static const auto defaultColor = ImVec4(1, 0, 0, 1);
-                auto              maybeColor   = grBlock->settings().get("color");
-                if (!maybeColor) {
-                    return defaultColor;
-                }
-                const auto colorValue = maybeColor.value();
-                const auto cv         = std::get_if<std::vector<float>>(&colorValue);
-                if (!cv || cv->size() != 4) {
-                    return defaultColor;
-                }
-                return ImVec4((*cv)[0], (*cv)[1], (*cv)[2], (*cv)[3]);
-            }();
 
-            ImPlot::ItemIcon(color);
+            ImPlot::ItemIcon(sourceBlock->color());
             ImGui::SameLine();
-            ImGui::TextUnformatted(source->name.c_str());
+            ImGui::TextUnformatted(sourceBlockName.c_str());
             ImPlot::EndDragDropSource();
         }
     }
@@ -422,8 +408,7 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
             }
 
             if (m_signalSelector) {
-                m_signalSelector->setAddSignalCallback([&](Block* block) { addSignalCallback(dashboard, block); });
-                m_signalSelector->draw(&dashboard.localFlowGraph);
+                m_signalSelector->draw();
             }
 
             if (LookAndFeel::instance().prototypeMode) {
@@ -441,10 +426,10 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
 
     if (horizontalSplit) {
         const float w = size.x * ratio;
-        components::BlockControlsPanel(dashboard, *this, m_editPane, {left + size.x - w + halfSplitterWidth, top}, {w - halfSplitterWidth, size.y}, true);
+        components::BlockControlsPanel(m_editPane, {left + size.x - w + halfSplitterWidth, top}, {w - halfSplitterWidth, size.y}, true);
     } else {
         const float h = size.y * ratio;
-        components::BlockControlsPanel(dashboard, *this, m_editPane, {left, top + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false);
+        components::BlockControlsPanel(m_editPane, {left, top + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false);
     }
 }
 
@@ -486,9 +471,9 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                 if (ImPlot::BeginDragDropTargetPlot()) {
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
                         auto* dnd = static_cast<DndItem*>(payload->Data);
-                        plot.sources.push_back(dnd->source);
-                        if (Dashboard::Plot* localPlot = dnd->plotSource) {
-                            localPlot->sources.erase(std::ranges::find(localPlot->sources, dnd->source));
+                        plot.sources.push_back(dnd->plotSource);
+                        if (auto* dndPlot = dnd->plot) {
+                            dndPlot->sources.erase(std::ranges::find(dndPlot->sources, dnd->plotSource));
                         }
                     }
                     ImPlot::EndDragDropTarget();
@@ -519,13 +504,14 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
                     if (!plotItemHovered) {
                         // Unfortunaetly there is no function that returns whether the entire legend is hovered,
                         // we need to check one entry at a time
-                        for (const auto& s : plot.sources) {
-                            if (ImPlot::IsLegendEntryHovered(s->name.c_str())) {
+                        for (const auto& source : plot.sources) {
+                            const auto& sourceName = source->name();
+                            if (ImPlot::IsLegendEntryHovered(sourceName.c_str())) {
                                 plotItemHovered = true;
 
                                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
                                     // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
-                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(s->blockName);
+                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(source->blockName);
                                     m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                                 }
                                 break;
@@ -631,17 +617,6 @@ void DashboardPage::newPlot(Dashboard& dashboard) {
     if (dashboard.plots().size() < kMaxPlots) {
         // Plot will get adjusted by the layout automatically
         return dashboard.newPlot(0, 0, 1, 1);
-    }
-}
-
-void DashboardPage::addSignalCallback(Dashboard& dashboard, Block* block) {
-    ImGui::CloseCurrentPopup();
-    auto* newsink = dashboard.createSink();
-    dashboard.localFlowGraph.connect(&block->outputs()[0], &newsink->inputs()[0]);
-    newPlot(dashboard);
-    auto source = std::ranges::find_if(dashboard.sources(), [newsink](const auto& s) { return s.blockName == newsink->name; });
-    if (source != dashboard.sources().end()) {
-        dashboard.plots().back().sourceNames.push_back(source->name);
     }
 }
 

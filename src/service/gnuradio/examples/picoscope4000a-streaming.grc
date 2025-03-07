@@ -1,7 +1,6 @@
 blocks:
   - name: picoscope
-    id: fair::picoscope::Picoscope4000a
-    template_args: "float,fair::picoscope::AcquisitionMode::Streaming"
+    id: fair::picoscope::Picoscope4000a<float32, (fair::picoscope::AcquisitionMode)0>
     parameters:
       acquisition_mode: Streaming
       auto_arm: true
@@ -32,17 +31,13 @@ blocks:
         - Test unit D
       sample_rate: 10000
   - name: sinkA
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
   - name: sinkB
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
   - name: sinkC
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
   - name: sinkD
-    id: gr::basic::DataSink
-    template_args: "float"
+    id: gr::basic::DataSink<float32>
 connections:
   - [picoscope,  [0, 0], sinkA, 0]
   - [picoscope,  [0, 1], sinkB, 0]

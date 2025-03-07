@@ -1,37 +1,30 @@
 blocks:
   - name: RemoteU1
-    id: opendigitizer::RemoteStreamSource
-    template_args: "float"
+    id: opendigitizer::RemoteStreamSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=U1
   - name: RemoteI1
-    id: opendigitizer::RemoteStreamSource
-    template_args: "float"
+    id: opendigitizer::RemoteStreamSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=I1
   - name: RemoteDataSetU1
-    id: opendigitizer::RemoteDataSetSource
-    template_args: "float"
+    id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSetU1&acquisitionModeFilter=dataset
   - name: RemoteDataSetI1
-    id: opendigitizer::RemoteDataSetSource
-    template_args: "float"
+    id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSetI1&acquisitionModeFilter=dataset
   - name: RemoteTotalActivePower
-    id: opendigitizer::RemoteStreamSource
-    template_args: "float"
+    id: opendigitizer::RemoteStreamSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=TotalActivePower
   - name: RemoteFrequencyU1
-    id: opendigitizer::RemoteStreamSource
-    template_args: "float"
+    id: opendigitizer::RemoteStreamSource<float32>
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=FrequencyU1
   - name: PlotU1
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x990000
       signal_name: U1
@@ -40,8 +33,7 @@ blocks:
       sample_rate: 1000
       required_size: 512
   - name: PlotI1
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x000099
       signal_name: I1
@@ -50,8 +42,7 @@ blocks:
       sample_rate: 1000
       required_size: 512
   - name: PlotDataSetU1
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: "float"
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0x990000
       signal_name: U1
@@ -59,8 +50,7 @@ blocks:
       signal_unit: V
       dataset_index: 0
   - name: PlotDataSetI1
-    id: opendigitizer::ImPlotSinkDataSet
-    template_args: "float"
+    id: opendigitizer::ImPlotSinkDataSet<float32>
     parameters:
       color: 0x000099
       signal_name: I1
@@ -68,8 +58,7 @@ blocks:
       signal_unit: mV
       dataset_index: 0
   - name: PlotTotalActivePower
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x009900
       signal_name: total active power
@@ -78,8 +67,7 @@ blocks:
       sample_rate: 1000
       required_size: 512
   - name: PlotFrequencyU1
-    id: opendigitizer::ImPlotSink
-    template_args: "float"
+    id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x009900
       signal_name: U1 frequency

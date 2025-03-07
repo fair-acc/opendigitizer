@@ -24,6 +24,7 @@ using namespace gr::message;
 using enum gr::message::Command;
 using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
+using namespace std::string_literals;
 
 template<typename TAcquisitionWorker, units::basic_fixed_string serviceName, typename... Meta>
 class GnuRadioFlowGraphWorker : public Worker<serviceName, flowgraph::FilterContext, flowgraph::SerialisedFlowgraphMessage, flowgraph::SerialisedFlowgraphMessage, Meta...> {
@@ -118,7 +119,7 @@ private:
         std::lock_guard lockGuard(_flowgraphLock);
         out = _flowgraph;
 
-        auto serialisedFlowgraph = _acquisitionWorker.withGraph([](const auto& graph) { return gr::saveGrc(graph); });
+        auto serialisedFlowgraph = _acquisitionWorker.withGraph([this](const auto& graph) { return gr::saveGrc(*_pluginLoader, graph); });
 
         out.serialisedFlowgraph = serialisedFlowgraph.value_or("");
     }
