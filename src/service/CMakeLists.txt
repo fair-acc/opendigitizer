@@ -130,6 +130,7 @@ target_link_libraries(
           client
           project_options
           fair-picoscope
+          timing
           assets::rest
           gr-testing
           gr-basic
