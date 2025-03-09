@@ -11,6 +11,8 @@
 #include "FlowgraphItem.hpp"
 #include "OpenDashboardPage.hpp"
 
+#include "settings.hpp"
+
 #include <implot.h>
 
 #include <gnuradio-4.0/CircularBuffer.hpp>
@@ -216,6 +218,55 @@ public:
             _scheduler.handleMessages(fg);
         }
     }
+
+    void init(int argc, char** argv) {
+        Digitizer::Settings& settings = Digitizer::Settings::instance();
+
+        // Init openDashboardPage
+        openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
+        openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
+            if (!desc) {
+                loadEmptyDashboard();
+            } else {
+                loadDashboard(desc);
+                mainViewMode = ViewMode::VIEW;
+            }
+        };
+        openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
+        openDashboardPage.addDashboard("example://builtin-samples");
+
+        // Flowgraph page
+        flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
+            components::BlockControlsPanel(panelContext, pos, size, horizontalSplit);
+            //
+        };
+
+        // Init header
+        header.requestApplicationSwitchMode  = [this](ViewMode mode) { mainViewMode = mode; };
+        header.requestApplicationSwitchTheme = [this](LookAndFeel::Style style) { setStyle(style); };
+        header.requestApplicationStop        = [this] { running = false; };
+        header.loadAssets();
+
+        if (argc > 1) { // load dashboard if specified on the command line/query parameter
+            const char* url = argv[1];
+            if (strlen(url) > 0) {
+                fmt::print("Loading dashboard from '{}'\n", url);
+                loadDashboard(url);
+            }
+        } else if (!settings.defaultDashboard.empty()) {
+            // TODO: add subscription to remote dashboard worker if needed
+            std::string dashboardPath = settings.defaultDashboard;
+            if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
+                dashboardPath = fmt::format("{}://{}:{}/dashboards/{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port, dashboardPath);
+            }
+            loadDashboard(dashboardPath);
+        }
+        if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
+            loadDashboard(firstDashboard);
+        }
+    }
+
+    void mainLoop() {}
 };
 
 } // namespace DigitizerUi
