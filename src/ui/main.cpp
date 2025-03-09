@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 #else
     SDL_GL_SetSwapInterval(1); // Enable vsync
 
-    while (app.running) {
+    while (app.isRunning) {
         main_loop(&app);
     }
     // Cleanup
@@ -233,7 +233,7 @@ static void main_loop(void* arg) {
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL2_ProcessEvent(&event);
         switch (event.type) {
-        case SDL_QUIT: app->running = false; break;
+        case SDL_QUIT: app->isRunning = false; break;
         case SDL_WINDOWEVENT:
             if (event.window.windowID != SDL_GetWindowID(app->sdlState->window)) {
                 // break // TODO: why was this aborted here?
@@ -247,7 +247,7 @@ static void main_loop(void* arg) {
                 ImGui::SetNextWindowSize(ImVec2(float(width), float(height)));
             }
             switch (event.window.event) {
-            case SDL_WINDOWEVENT_CLOSE: app->running = false; break;
+            case SDL_WINDOWEVENT_CLOSE: app->isRunning = false; break;
             case SDL_WINDOWEVENT_RESTORED: LookAndFeel::mutableInstance().windowMode = WindowMode::RESTORED; break;
             case SDL_WINDOWEVENT_MINIMIZED: LookAndFeel::mutableInstance().windowMode = WindowMode::MINIMISED; break;
             case SDL_WINDOWEVENT_MAXIMIZED: LookAndFeel::mutableInstance().windowMode = WindowMode::MAXIMISED; break;

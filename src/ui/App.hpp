@@ -42,7 +42,7 @@ public:
     OpenDashboardPage openDashboardPage;
 
     SDLState* sdlState         = nullptr;
-    bool      running          = true;
+    bool      isRunning        = true;
     ViewMode  mainViewMode     = ViewMode::VIEW;
     ViewMode  previousViewMode = ViewMode::VIEW;
 
@@ -244,7 +244,7 @@ public:
         // Init header
         header.requestApplicationSwitchMode  = [this](ViewMode mode) { mainViewMode = mode; };
         header.requestApplicationSwitchTheme = [this](LookAndFeel::Style style) { setStyle(style); };
-        header.requestApplicationStop        = [this] { running = false; };
+        header.requestApplicationStop        = [this] { isRunning = false; };
         header.loadAssets();
 
         if (argc > 1) { // load dashboard if specified on the command line/query parameter
