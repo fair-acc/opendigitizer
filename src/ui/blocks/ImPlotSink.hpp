@@ -115,7 +115,7 @@ struct ImPlotSinkModel {
     virtual void* raw() const = 0;
 
     ImVec4 color() {
-        static const auto defaultColor = ImVec4(0.3, 0.3, 0.3, 1);
+        static const auto defaultColor = ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
         auto              maybeColor   = settings().get("color");
         if (!maybeColor) {
             return defaultColor;
@@ -333,8 +333,8 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
                     label.c_str(),
                     [](int idx, void* user_data) -> ImPlotPoint {
                         auto   self     = static_cast<ImPlotSink<T>*>(user_data);
-                        double xShifted = self->_xUtcValues[idx] - self->_xUtcValues.front();
-                        double y        = self->_yValues[idx];
+                        double xShifted = self->_xUtcValues[cast_to_unsigned(idx)] - self->_xUtcValues.front();
+                        double y        = self->_yValues[cast_to_unsigned(idx)];
                         return ImPlotPoint(xShifted, y);
                     },
                     this,                                // user_data pointer passed to the lambda

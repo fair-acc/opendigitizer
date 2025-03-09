@@ -111,8 +111,8 @@ endif()
 add_library(
   ${target_name}lib STATIC
   App.hpp
-  FlowgraphItem.cpp
-  FlowgraphItem.hpp
+  FlowgraphPage.cpp
+  FlowgraphPage.hpp
   GraphModel.cpp
   GraphModel.hpp
   Dashboard.cpp

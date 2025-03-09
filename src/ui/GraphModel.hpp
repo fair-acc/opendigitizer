@@ -111,6 +111,8 @@ private:
 public:
     UiGraphModel() {}
 
+    std::function<void(gr::Message)> sendMessage;
+
     std::string blockUniqueName;
     std::string blockName;
     std::string blockTypeName;

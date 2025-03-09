@@ -181,7 +181,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         _client.request(command);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
         //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
@@ -305,7 +305,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         _client.request(command);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& new_settings) {
+    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
         //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");

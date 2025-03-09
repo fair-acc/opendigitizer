@@ -65,7 +65,7 @@ void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& 
                 message.data     = gr::property_map{
                         {"type"s, std::move(type)}, //
                 };
-                App::instance().sendMessage(message);
+                m_graphModel->sendMessage(message);
             }
         }
     }
