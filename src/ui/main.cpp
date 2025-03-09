@@ -1,5 +1,6 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/basic/ConverterBlocks.hpp>
+#include <gnuradio-4.0/basic/SignalGenerator.hpp>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -183,12 +184,12 @@ int main(int argc, char** argv) {
     Digitizer::Settings& settings = Digitizer::Settings::instance();
 
     // TODO: Remove when GR gets proper blocks library
-    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(gr::globalBlockRegistry());
-    gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(gr::globalBlockRegistry());
-    gr::globalBlockRegistry().addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    gr::registerBlock<gr::basic::FunctionGenerator, float, double>(gr::globalBlockRegistry());
-    gr::registerBlock<opendigitizer::Arithmetic, float>(gr::globalBlockRegistry());
-    gr::registerBlock<opendigitizer::SineSource, float>(gr::globalBlockRegistry());
+    auto& registry = gr::globalBlockRegistry();
+    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
+    gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(registry);
+    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
+    gr::registerBlock<gr::basic::FunctionGenerator, float, double>(registry);
+    gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {
