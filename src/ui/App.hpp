@@ -23,8 +23,6 @@
 
 #include "common/AppDefinitions.hpp"
 
-struct ImFont;
-
 namespace DigitizerUi {
 
 struct SDLState;
