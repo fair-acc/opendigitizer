@@ -36,9 +36,6 @@
 #endif
 
 #include "App.hpp"
-#include "Dashboard.hpp"
-#include "DashboardPage.hpp"
-#include "FlowgraphItem.hpp"
 
 #include "common/AppDefinitions.hpp"
 #include "common/TouchHandler.hpp"
@@ -92,7 +89,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    Digitizer::Settings& settings = Digitizer::Settings::instance();
+    Digitizer::Settings::instance(); // TODO do we need this here?
 
     // TODO: Remove when GR gets proper blocks library
     auto& registry = gr::globalBlockRegistry();
@@ -182,7 +179,7 @@ int main(int argc, char** argv) {
         return verticalDPI;
     }();
 
-    auto& app = App::instance();
+    App app;
 #ifdef EMSCRIPTEN
     app.executable = "index.html";
 #else

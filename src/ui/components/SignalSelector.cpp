@@ -104,7 +104,7 @@ void SignalSelector::addRemoteSource(const std::string& uriStr) {
     message.data = gr::property_map{                              //
         {"type"s, std::move(blockType) + std::move(blockParams)}, //
         {"properties"s, std::move(properties)}};
-    App::instance().sendMessage(message);
+    m_graphModel->sendMessage(std::move(message));
     close();
 }
 

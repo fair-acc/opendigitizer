@@ -126,7 +126,7 @@ void UiGraphModel::requestGraphUpdate() {
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::graph::property::kGraphInspect;
     message.data     = gr::property_map{};
-    App::instance().sendMessage(message);
+    sendMessage(std::move(message));
 }
 
 void UiGraphModel::requestAvailableBlocksTypesUpdate() {
@@ -134,7 +134,7 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::graph::property::kRegistryBlockTypes;
     message.data     = gr::property_map{};
-    App::instance().sendMessage(message);
+    sendMessage(std::move(message));
 }
 
 auto UiGraphModel::findBlockByName(const std::string& uniqueName) {
@@ -452,11 +452,11 @@ void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
     });
 }
 
-void UiGraphBlock::getAllContexts() { App::instance().sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "all", .endpoint = gr::block::property::kSettingsContexts, .data = {}}); }
+void UiGraphBlock::getAllContexts() { ownerGraph->sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "all", .endpoint = gr::block::property::kSettingsContexts, .data = {}}); }
 
 void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
     const auto& [context, time] = contextTime;
-    App::instance().sendMessage(gr::Message{
+    ownerGraph->sendMessage(gr::Message{
         .cmd             = gr::Message::Set,
         .serviceName     = blockUniqueName,
         .clientRequestID = "activate",
@@ -465,11 +465,11 @@ void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
     });
 }
 
-void UiGraphBlock::getActiveContext() { App::instance().sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "active", .endpoint = gr::block::property::kActiveContext, .data = {}}); }
+void UiGraphBlock::getActiveContext() { ownerGraph->sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "active", .endpoint = gr::block::property::kActiveContext, .data = {}}); }
 
 void UiGraphBlock::addContext(const ContextTime& contextTime) {
     const auto& [context, time] = contextTime;
-    App::instance().sendMessage(gr::Message{
+    ownerGraph->sendMessage(gr::Message{
         .cmd             = gr::Message::Set,
         .serviceName     = blockUniqueName,
         .clientRequestID = "add",
@@ -480,7 +480,7 @@ void UiGraphBlock::addContext(const ContextTime& contextTime) {
 
 void UiGraphBlock::removeContext(const ContextTime& contextTime) {
     const auto& [context, time] = contextTime;
-    App::instance().sendMessage(gr::Message{
+    ownerGraph->sendMessage(gr::Message{
         .cmd             = gr::Message::Disconnect,
         .serviceName     = blockUniqueName,
         .clientRequestID = "rm",

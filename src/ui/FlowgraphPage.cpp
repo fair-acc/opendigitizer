@@ -1,4 +1,4 @@
-#include "FlowgraphItem.hpp"
+#include "FlowgraphPage.hpp"
 
 #include <algorithm>
 
@@ -98,14 +98,15 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
 
 FlowgraphPage::FlowgraphPage() {
     m_editorConfig.SettingsFile = nullptr;
-    m_editorConfig.UserPointer  = std::addressof(m_graphModel);
-    reset();
+    m_editorConfig.UserPointer  = this;
 }
 
 FlowgraphPage::~FlowgraphPage() { ax::NodeEditor::DestroyEditor(m_editor); }
 
 void FlowgraphPage::reset() {
-    m_graphModel.reset();
+    if (m_dashboard) {
+        m_dashboard->graphModel().reset();
+    }
 
     if (m_editor) {
         ax::NodeEditor::SetCurrentEditor(nullptr);
@@ -117,7 +118,11 @@ void FlowgraphPage::reset() {
     setEditorStyle(m_editor, LookAndFeel::instance().style);
 }
 
-void FlowgraphPage::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
+void FlowgraphPage::setStyle(LookAndFeel::Style s) {
+    if (m_editor) {
+        setEditorStyle(m_editor, s);
+    }
+}
 
 struct DataTypeStyle {
     std::uint32_t color;
@@ -220,7 +225,8 @@ static const DataTypeStyle& styleForDataType(std::string_view type) {
     auto  it  = map.find(type);
     if (it == map.cend()) {
         fmt::print("Warning: Color not defined for {}\n", type);
-        return {0x00000000};
+        static DataTypeStyle none{0x00000000};
+        return none;
     } else {
         return it->second;
     }
@@ -269,7 +275,7 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, bool rightAlign, float spacing, float textMargin, const std::string& name, const std::string& type) {
+static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
 
     const auto& style = styleForDataType(type);
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
@@ -411,7 +417,7 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                     auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         auto pinPositionX = portLeftPos + padding.x - (rightAlign ? widths[i] : 0);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, rightAlign, pinSpacing, textMargin, ports[i].portName, ports[i].portType);
+                        drawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, ports[i].portType);
                         pinPositionY += pinHeight + pinSpacing;
                     }
                 };
@@ -480,7 +486,7 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                                 {"minBufferSize"s, gr::Size_t(4096)},                          //
                                 {"weight"s, 1},                                                //
                                 {"edgeName"s, std::string()}};
-                            App::instance().sendMessage(message);
+                            graphModel.sendMessage(std::move(message));
                         }
                     }
                 }
@@ -508,7 +514,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         sortNodes();
     }
 
-    drawGraph(m_graphModel, size);
+    drawGraph(m_dashboard->graphModel(), size);
 
     auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
@@ -560,8 +566,8 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             sortNodes();
         }
         if (ImGui::MenuItem("Refresh graph")) {
-            m_graphModel.requestGraphUpdate();
-            m_graphModel.requestAvailableBlocksTypesUpdate();
+            m_dashboard->graphModel().requestGraphUpdate();
+            m_dashboard->graphModel().requestAvailableBlocksTypesUpdate();
         }
     }
 
@@ -571,10 +577,10 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             gr::Message message;
             message.endpoint = gr::graph::property::kRemoveBlock;
             message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
-            App::instance().sendMessage(std::move(message));
+            m_dashboard->graphModel().sendMessage(std::move(message));
         }
 
-        auto typeParams = m_graphModel.availableParametrizationsFor(m_selectedBlock->blockTypeName);
+        auto typeParams = m_dashboard->graphModel().availableParametrizationsFor(m_selectedBlock->blockTypeName);
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
                 for (const auto& availableParametrization : *typeParams.availableParametrizations) {
@@ -588,7 +594,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
                                     {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
-                            App::instance().sendMessage(message);
+                            m_dashboard->graphModel().sendMessage(std::move(message));
                         }
                     }
                 }
@@ -640,7 +646,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         }
 
         m_remoteSignalSelector.draw();
-        m_newBlockSelector.draw(m_graphModel.knownBlockTypes);
+        m_newBlockSelector.draw(m_dashboard->graphModel().knownBlockTypes);
     }
 
     if (horizontalSplit) {
@@ -652,7 +658,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
     }
 }
 
-void FlowgraphPage::draw(Dashboard& dashboard) noexcept {
+void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
@@ -705,7 +711,7 @@ void FlowgraphPage::draw(Dashboard& dashboard) noexcept {
         ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
     }
 
-    for (auto& s : dashboard.remoteServices()) {
+    for (auto& s : m_dashboard->remoteServices()) {
         std::string tabTitle = "Remote YAML for " + s.name;
         if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
             if (ImGui::Button("Reload from service")) {
@@ -732,7 +738,7 @@ void FlowgraphPage::draw(Dashboard& dashboard) noexcept {
 
 void FlowgraphPage::sortNodes() {
     fmt::print("Sorting blocks\n");
-    auto blockLevels = topologicalSort(m_graphModel.blocks(), m_graphModel.edges());
+    auto blockLevels = topologicalSort(m_dashboard->graphModel().blocks(), m_dashboard->graphModel().edges());
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;

@@ -4,6 +4,15 @@
 
 #include <boost/ut.hpp>
 
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <gnuradio-4.0/Profiler.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/ClockSource.hpp>
+#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
+#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
+#include <gnuradio-4.0/fourier/fft.hpp>
+
 #include "ImGuiTestApp.hpp"
 
 #include <Dashboard.hpp>
@@ -14,14 +23,12 @@
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
 #include "gnuradio-4.0/basic/ClockSource.hpp"
+#include "gnuradio-4.0/basic/FunctionGenerator.hpp"
 #include "gnuradio-4.0/basic/SignalGenerator.hpp"
+
 #include "imgui_test_engine/imgui_te_internal.h"
-#include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
 
 #include <cmrc/cmrc.hpp>
-#include <gnuradio-4.0/Graph_yaml_importer.hpp>
-#include <gnuradio-4.0/Profiler.hpp>
 #include <memory.h>
 
 CMRC_DECLARE(ui_test_assets);
@@ -61,8 +68,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             if (g_state.dashboard) {
                 DigitizerUi::DashboardPage page;
+                page.setDashboard(*g_state.dashboard);
                 page.setLayoutType(vars.layoutType);
-                page.draw(*g_state.dashboard);
+                page.draw();
                 ut::expect(!g_state.dashboard->plots().empty());
             }
         };
@@ -89,6 +97,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
+
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboardpage_layout";
 
@@ -106,10 +115,9 @@ int main(int argc, char* argv[]) {
     auto grcFile       = fs.open("examples/qa_layout.grc");
     auto dashboardFile = fs.open("examples/qa_layout.yml");
 
-    auto dashBoardDescription       = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard               = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
-    g_state.dashboard->pluginLoader = std::make_shared<gr::PluginLoader>(std::move(pluginLoader));
-    g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()));
+    auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
+    g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { g_state.dashboard->emplaceScheduler(std::move(graph)); });
 
     return app.runTests() ? 0 : 1;
 }

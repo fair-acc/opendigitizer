@@ -10,6 +10,8 @@
 
 namespace DigitizerUi {
 
+class UiGraphModel;
+
 class NewBlockSelector {
 private:
     std::string m_windowName = "New Block";
@@ -17,9 +19,13 @@ private:
     std::string m_previouslySelectedType;
     std::string m_selectedTypeParametrizationListName;
 
+    UiGraphModel* m_graphModel = nullptr;
+
 public:
     void open() { ImGui::OpenPopup(m_windowName.c_str()); }
     void draw(const std::map<std::string, std::set<std::string>>& knownBlockTypes);
+
+    void setGraphModel(UiGraphModel* newModel) { m_graphModel = newModel; }
 };
 } // namespace DigitizerUi
 

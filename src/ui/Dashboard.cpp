@@ -37,6 +37,11 @@ ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 namespace DigitizerUi {
 
 namespace {
+template<typename T>
+T randomRange(T min, T max) {
+    T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
+    return static_cast<T>(min + scale * (max - min));
+}
 
 enum class What { Header, Dashboard, Flowgraph };
 
@@ -203,7 +208,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
-Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc), m_fgItem(fgItem) {
+Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
@@ -213,11 +218,13 @@ Dashboard::Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<Da
     }
     LookAndFeel::mutableInstance().style         = style;
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+
+    m_graphModel.sendMessage = [this](gr::Message message) { m_scheduler.sendMessage(std::move(message)); };
 }
 
 Dashboard::~Dashboard() {}
 
-std::unique_ptr<Dashboard> Dashboard::create(FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, fgItem, desc); }
+std::unique_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, desc); }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
@@ -227,7 +234,7 @@ void Dashboard::load() {
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
             [this](std::array<std::string, 2>&& data) {                                //
-                load(std::move(data[0]), std::move(data[1]));
+                loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceScheduler(std::move(graph)); });
                 inUse = false;
             },
             [this]() {
@@ -235,12 +242,14 @@ void Dashboard::load() {
                 components::Notification::error(error);
 
                 inUse = false;
-                App::instance().closeDashboard();
+                if (requestClose) {
+                    requestClose(this);
+                }
             });
     }
 }
 
-void Dashboard::load(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
+void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
     try {
         gr::Graph grGraph = [this, &grcData]() -> gr::Graph {
             try {
@@ -264,11 +273,7 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
             });
         }
 
-        if (assignScheduler) {
-            assignScheduler(std::move(grGraph));
-        } else {
-            App::instance().assignScheduler(std::move(grGraph));
-        }
+        assignScheduler(std::move(grGraph));
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
         doLoad(dashboardData);
@@ -277,13 +282,17 @@ void Dashboard::load(const std::string& grcData, const std::string& dashboardDat
         fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
 #endif
         components::Notification::error(fmt::format("Error: {}", e.what()));
-        App::instance().closeDashboard();
+        if (requestClose) {
+            requestClose(this);
+        }
     } catch (const std::exception& e) {
 #ifndef NDEBUG
         fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e.what());
 #endif
         components::Notification::error(fmt::format("Error: {}", e.what()));
-        App::instance().closeDashboard();
+        if (requestClose) {
+            requestClose(this);
+        }
     }
 }
 
@@ -409,10 +418,10 @@ void Dashboard::doLoad(const std::string& desc) {
         plot.window->height = pmtv::cast<int>(rect[3]);
     }
 
-    if (m_fgItem) {
-        // TODO: Port loading and saving flowgraph layouts
-        // const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
-    }
+    // if (m_fgItem) {
+    // TODO: Port loading and saving flowgraph layouts
+    // const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
+    // }
 
     loadPlotSources();
 }
@@ -477,10 +486,10 @@ void Dashboard::save() {
     }
     dashboardYaml["plots"] = plots;
 
-    if (m_fgItem) {
-        // TODO: Port loading and saving flowgraph layouts
-        // dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
-    }
+    // if (m_fgItem) {
+    // TODO: Port loading and saving flowgraph layouts
+    // dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
+    // }
 
     if (m_desc->storageInfo->path.starts_with("http://") || m_desc->storageInfo->path.starts_with("https://")) {
         opencmw::client::RestClient client;
@@ -654,7 +663,7 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     client.request(command);
 }
 
-UiGraphModel& Dashboard::graphModel() { return m_fgItem->graphModel(); }
+UiGraphModel& Dashboard::graphModel() { return m_graphModel; }
 
 void Dashboard::Service::execute() {
     opencmw::client::Command command;
