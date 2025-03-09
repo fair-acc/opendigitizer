@@ -14,7 +14,7 @@ namespace DigitizerUi {
 namespace play_stop {
 enum class State { PlayStop, Play, PlayStream, Pause, Stopped, Error };
 
-bool isValidTransition(State from, State to) {
+inline bool isValidTransition(State from, State to) {
     using enum play_stop::State;
     switch (from) {
     case Stopped: return to == PlayStop || to == Play || to == PlayStream;

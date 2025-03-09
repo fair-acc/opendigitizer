@@ -43,9 +43,6 @@
 #include "common/AppDefinitions.hpp"
 #include "common/TouchHandler.hpp"
 
-#include "components/AppHeader.hpp"
-#include "components/Toolbar.hpp"
-
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
@@ -260,10 +257,6 @@ static void main_loop(void* arg) {
     }
 
     EventLoop::instance().fireCallbacks();
-
-    if (app->dashboard) {
-        app->handleMessages(app->dashboard->graphModel());
-    }
     TouchHandler<>::updateGestures();
 
     // Start the Dear ImGui frame
@@ -277,49 +270,7 @@ static void main_loop(void* arg) {
     ImGui::SetNextWindowSize({float(width), float(height)});
     TouchHandler<>::applyToImGui();
 
-    {
-        IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
-
-        const char* title = app->dashboard ? app->dashboard->description()->name.data() : "OpenDigitizer";
-        app->header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
-
-        IMW::Disabled disabled(app->dashboard == nullptr);
-
-        if (app->mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
-            components::Toolbar(app->toolbarBlocks);
-        }
-
-        if (app->dashboard != nullptr) {
-            if (app->loadedDashboard != app->dashboard.get()) {
-                // Are we in the process of changing the dashboard?
-                app->loadedDashboard = app->dashboard.get();
-                app->dashboardPage   = std::make_unique<DashboardPage>();
-                app->flowgraphPage.reset();
-            }
-        }
-
-        if (app->mainViewMode == ViewMode::VIEW || app->mainViewMode == ViewMode::LAYOUT) {
-            if (app->dashboard != nullptr) {
-                app->dashboardPage->draw(*app->dashboard, app->mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
-            }
-        } else if (app->mainViewMode == ViewMode::FLOWGRAPH) {
-            if (app->dashboard != nullptr) {
-                if (app->previousViewMode != ViewMode::FLOWGRAPH) {
-                    app->dashboard->graphModel().requestGraphUpdate();
-                    app->dashboard->graphModel().requestAvailableBlocksTypesUpdate();
-                }
-
-                app->flowgraphPage.draw(*app->dashboard);
-            }
-        } else if (app->mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
-            app->openDashboardPage.draw(app->dashboard.get());
-        } else {
-            auto msg = fmt::format("unknown view mode {}", static_cast<int>(app->mainViewMode));
-            components::Notification::warning(msg);
-        }
-    }
-
-    app->previousViewMode = app->mainViewMode;
+    app->processAndRender();
 
     components::Notification::render();
 
