@@ -21,7 +21,7 @@ class ImPlotSinkModel;
 
 namespace DigitizerUi {
 
-class FlowGraphItem {
+class FlowgraphPage {
 private:
     enum class Alignment {
         Left,
@@ -47,8 +47,8 @@ private:
     void drawNodeEditor(const ImVec2& size);
 
 public:
-    FlowGraphItem();
-    ~FlowGraphItem();
+    FlowgraphPage();
+    ~FlowgraphPage();
 
     void draw(Dashboard& dashboard) noexcept;
 
