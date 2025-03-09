@@ -13,6 +13,9 @@
 
 #include "settings.hpp"
 
+#include "components/AppHeader.hpp"
+#include "components/Toolbar.hpp"
+
 #include <implot.h>
 
 #include <gnuradio-4.0/CircularBuffer.hpp>
@@ -266,7 +269,56 @@ public:
         }
     }
 
-    void mainLoop() {}
+    void processAndRender() {
+        {
+            if (dashboard) {
+                handleMessages(dashboard->graphModel());
+            }
+
+            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+            const char* title = dashboard ? dashboard->description()->name.data() : "OpenDigitizer";
+            header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            IMW::Disabled disabled(dashboard == nullptr);
+
+            if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
+                components::Toolbar(toolbarBlocks);
+            }
+
+            if (dashboard != nullptr) {
+                if (loadedDashboard != dashboard.get()) {
+                    // Are we in the process of changing the dashboard?
+                    loadedDashboard = dashboard.get();
+                    dashboardPage   = std::make_unique<DashboardPage>();
+                    dashboardPage->setLayoutType(loadedDashboard->layout());
+                    flowgraphPage.reset();
+                }
+            }
+
+            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
+                if (dashboard != nullptr) {
+                    dashboardPage->draw(*dashboard, mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
+                }
+            } else if (mainViewMode == ViewMode::FLOWGRAPH) {
+                if (dashboard != nullptr) {
+                    if (previousViewMode != ViewMode::FLOWGRAPH) {
+                        dashboard->graphModel().requestGraphUpdate();
+                        dashboard->graphModel().requestAvailableBlocksTypesUpdate();
+                    }
+
+                    flowgraphPage.draw(*dashboard);
+                }
+            } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
+                openDashboardPage.draw(dashboard.get());
+            } else {
+                auto msg = fmt::format("unknown view mode {}", static_cast<int>(mainViewMode));
+                components::Notification::warning(msg);
+            }
+        }
+
+        previousViewMode = mainViewMode;
+    }
 };
 
 } // namespace DigitizerUi
