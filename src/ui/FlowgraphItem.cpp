@@ -96,15 +96,15 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
     }
 }
 
-FlowGraphItem::FlowGraphItem() {
+FlowgraphPage::FlowgraphPage() {
     m_editorConfig.SettingsFile = nullptr;
     m_editorConfig.UserPointer  = std::addressof(m_graphModel);
     reset();
 }
 
-FlowGraphItem::~FlowGraphItem() { ax::NodeEditor::DestroyEditor(m_editor); }
+FlowgraphPage::~FlowgraphPage() { ax::NodeEditor::DestroyEditor(m_editor); }
 
-void FlowGraphItem::reset() {
+void FlowgraphPage::reset() {
     m_graphModel.reset();
 
     if (m_editor) {
@@ -117,7 +117,7 @@ void FlowGraphItem::reset() {
     setEditorStyle(m_editor, LookAndFeel::instance().style);
 }
 
-void FlowGraphItem::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
+void FlowgraphPage::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
 
 struct DataTypeStyle {
     std::uint32_t color;
@@ -489,7 +489,7 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
+void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
 
     const ImVec2 origCursorPos = ImGui::GetCursorScreenPos();
     const float  left          = ImGui::GetCursorPosX();
@@ -652,7 +652,7 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
+void FlowgraphPage::draw(Dashboard& dashboard) noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
@@ -730,7 +730,7 @@ void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
     }
 }
 
-void FlowGraphItem::sortNodes() {
+void FlowgraphPage::sortNodes() {
     fmt::print("Sorting blocks\n");
     auto blockLevels = topologicalSort(m_graphModel.blocks(), m_graphModel.edges());
 
