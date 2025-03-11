@@ -10,6 +10,16 @@
 
 #include <fmt/core.h>
 
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
+#include <gnuradio-4.0/basic/SignalGenerator.hpp>
+#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
+#include <gnuradio-4.0/basic/clock_source.hpp>
+#include <gnuradio-4.0/basic/common_blocks.hpp>
+#include <gnuradio-4.0/electrical/PowerEstimators.hpp>
+#include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
+#include <gnuradio-4.0/filter/time_domain_filter.hpp>
+#include <gnuradio-4.0/testing/TagMonitors.hpp>
+
 #include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioAcquisitionWorker.hpp"
@@ -20,16 +30,6 @@
 #include "build_configuration.hpp"
 #include "settings.hpp"
 #include <Picoscope4000a.hpp>
-#include <TimingSource.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/basic/SignalGenerator.hpp>
-#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
-#include <gnuradio-4.0/basic/clock_source.hpp>
-#include <gnuradio-4.0/basic/common_blocks.hpp>
-#include <gnuradio-4.0/electrical/PowerEstimators.hpp>
-#include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
-#include <gnuradio-4.0/filter/time_domain_filter.hpp>
-#include <gnuradio-4.0/testing/TagMonitors.hpp>
 
 namespace {
 template<typename Registry>
@@ -53,7 +53,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
-    gr::registerBlock<gr::timing::TimingSource>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
