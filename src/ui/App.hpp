@@ -69,9 +69,27 @@ public:
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
     void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
-        if (dashboard && dashboard->inUse) {
-            fmt::print("The current dashboard can not yet be disposed of\n");
-            std::this_thread::sleep_for(500ms);
+        auto startedAt = std::chrono::system_clock::now();
+
+        if (dashboard) {
+            while (true) {
+                bool wait = false;
+                if (dashboard->isInUse) {
+                    wait = true;
+                } else if (dashboard->scheduler() && dashboard->scheduler()->state() != gr::lifecycle::State::STOPPED) {
+                    dashboard->scheduler()->stop();
+                    wait = true;
+                }
+
+                if (!wait) {
+                    break;
+                }
+
+                if (std::chrono::system_clock::now() - startedAt > 1s) {
+                    components::Notification::error("Failed to stop current flowgraph, can not load the dashboard.");
+                    return;
+                }
+            }
         }
 
         dashboard = Dashboard::create(desc);

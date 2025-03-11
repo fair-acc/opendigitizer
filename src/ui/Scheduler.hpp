@@ -25,6 +25,8 @@ private:
         virtual std::expected<void, gr::Error> stop()   = 0;
         virtual std::expected<void, gr::Error> pause()  = 0;
         virtual std::expected<void, gr::Error> resume() = 0;
+
+        virtual gr::lifecycle::State state() const = 0;
     };
 
     template<typename TScheduler>
@@ -82,6 +84,8 @@ private:
         std::expected<void, gr::Error> stop() final { return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); }
         std::expected<void, gr::Error> pause() final { return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE); }
         std::expected<void, gr::Error> resume() final { return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); }
+
+        gr::lifecycle::State state() const final { return _scheduler.state(); }
 
         ~SchedulerImpl() noexcept final {
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");

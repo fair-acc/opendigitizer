@@ -569,6 +569,29 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             m_dashboard->graphModel().requestGraphUpdate();
             m_dashboard->graphModel().requestAvailableBlocksTypesUpdate();
         }
+
+        if (m_dashboard->scheduler()) {
+            auto state = m_dashboard->scheduler()->state();
+
+            if (state == gr::lifecycle::State::RUNNING) {
+                if (ImGui::MenuItem("Pause scheduler")) {
+                    m_dashboard->scheduler()->pause();
+                }
+                if (ImGui::MenuItem("Stop scheduler")) {
+                    m_dashboard->scheduler()->stop();
+                }
+
+            } else if (state == gr::lifecycle::State::PAUSED) {
+                if (ImGui::MenuItem("Resume scheduler")) {
+                    m_dashboard->scheduler()->resume();
+                }
+
+            } else if (state == gr::lifecycle::State::STOPPED) {
+                if (ImGui::MenuItem("Start scheduler")) {
+                    m_dashboard->scheduler()->start();
+                }
+            }
+        }
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
