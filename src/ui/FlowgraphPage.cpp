@@ -595,29 +595,39 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
-        if (ImGui::MenuItem("Delete")) {
-            // Send message to delete block
-            gr::Message message;
-            message.endpoint = gr::graph::property::kRemoveBlock;
-            message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
-            m_dashboard->graphModel().sendMessage(std::move(message));
-        }
+        if (m_dashboard->scheduler()) {
+            auto          state             = m_dashboard->scheduler()->state();
+            const bool    canModifyTopology = state == gr::lifecycle::State::STOPPED || !m_selectedBlock->isConnected();
+            IMW::Disabled disabled(!canModifyTopology);
 
-        auto typeParams = m_dashboard->graphModel().availableParametrizationsFor(m_selectedBlock->blockTypeName);
-        if (typeParams.availableParametrizations) {
-            if (typeParams.availableParametrizations->size() > 1) {
-                for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                    if (availableParametrization != typeParams.parametrization) {
-                        auto name = std::string{"Change Type to "} + availableParametrization;
-                        if (ImGui::MenuItem(name.c_str())) {
-                            gr::Message message;
-                            message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kReplaceBlock;
-                            message.data     = gr::property_map{
-                                    {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
-                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
-                            };
-                            m_dashboard->graphModel().sendMessage(std::move(message));
+            if (!canModifyTopology) {
+                ImGui::MenuItem("Changing topology is disabled as scheduler is running");
+            }
+
+            if (ImGui::MenuItem("Delete this block")) {
+                // Send message to delete block
+                gr::Message message;
+                message.endpoint = gr::graph::property::kRemoveBlock;
+                message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
+                m_dashboard->graphModel().sendMessage(std::move(message));
+            }
+
+            auto typeParams = m_dashboard->graphModel().availableParametrizationsFor(m_selectedBlock->blockTypeName);
+            if (typeParams.availableParametrizations) {
+                if (typeParams.availableParametrizations->size() > 1) {
+                    for (const auto& availableParametrization : *typeParams.availableParametrizations) {
+                        if (availableParametrization != typeParams.parametrization) {
+                            auto name = std::string{"Change Type to "} + availableParametrization;
+                            if (ImGui::MenuItem(name.c_str())) {
+                                gr::Message message;
+                                message.cmd      = gr::message::Command::Set;
+                                message.endpoint = gr::graph::property::kReplaceBlock;
+                                message.data     = gr::property_map{
+                                        {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
+                                        {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                                };
+                                m_dashboard->graphModel().sendMessage(std::move(message));
+                            }
                         }
                     }
                 }

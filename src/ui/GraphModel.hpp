@@ -75,6 +75,8 @@ struct UiGraphBlock {
 
     void addContext(const ContextTime& contextTime);
     void removeContext(const ContextTime& contextTime);
+
+    bool isConnected() const;
 };
 
 struct UiGraphEdge {
