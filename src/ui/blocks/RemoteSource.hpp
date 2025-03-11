@@ -42,12 +42,14 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     float       signal_min;
     float       signal_max;
 
+    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
+
     opencmw::client::RestClient _client;
     std::string                 _subscribedUri;
 
     std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
-    GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max, host);
+    GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max, host, verbose_console);
 
     struct Data {
         opendigitizer::acq::Acquisition acq;
@@ -61,7 +63,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteStreamSource(gr::property_map props) : Parent(props), _reconnect(std::chrono::system_clock::now()) { start(); }
+    RemoteStreamSource(gr::property_map props) : Parent(props) {}
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
@@ -90,19 +92,28 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
             }
 
             for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
+                if (idx < cast_to_signed(d.read)) { // this tag was already handled in a previous call
+                    continue;
+                }
                 const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                 auto       latency = now - std::chrono::nanoseconds(timestamp);
-                auto       map     = gr::property_map{{gr::tag::TRIGGER_NAME, {trigger}}, {gr::tag::TRIGGER_TIME, {timestamp}}, {gr::tag::TRIGGER_OFFSET, {offset}}, {"REMOTE_SOURCE_LATENCY", {latency.count()}}};
-
+                auto       map     = gr::property_map{ //
+                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},   //
+                    {gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}}, //
+                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},  //
+                    {"REMOTE_SOURCE_LATENCY", {latency.count()}}     // compares the current system time with the time inside the tag
+                };
                 const auto yamlMap = pmtv::yaml::deserialize(yaml);
                 if (yamlMap) {
                     const gr::property_map& rootMap = yamlMap.value();
-                    // Ignore duplicates (do not overwrite)
-                    map.insert(rootMap.begin(), rootMap.end());
+                    map.insert(rootMap.begin(), rootMap.end()); // Ignore duplicates (do not overwrite)
                 } else {
                     // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
-
+                if (verbose_console) {
+                    auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
+                    fmt::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name, tag_time, std::chrono::system_clock::now(), map);
+                }
                 output.publishTag(map, cast_to_unsigned(idx - cast_to_signed(d.read)));
             }
             written += in.size();
@@ -128,7 +139,6 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     }
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
-        //
         return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
@@ -140,7 +150,11 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         _subscribedUri           = command.topic.str();
         std::weak_ptr maybeQueue = _queue;
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
-            if (!rep.error.empty()) {
+            long           skipped_samples     = 0;
+            constexpr auto skip_warning_prefix = "Warning: skipped ";
+            if (rep.error.starts_with(skip_warning_prefix)) {
+                skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+            } else if (!rep.error.empty()) {
                 stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                             gr::Error(fmt::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
@@ -150,12 +164,12 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     return;
                 }
                 opendigitizer::acq::Acquisition acq;
-                acq.channelValue.value()            = {0, -5, 5, -5, 5, 0}; // TODO: remove this once the UI supports showing tags and correct time axes
+                acq.channelValue.value()            = {0};
                 acq.triggerEventNames.value()       = {"SubscriptionInterrupted"};
                 acq.triggerIndices.value()          = {0};
-                acq.triggerTimestamps.value()       = {0};
+                acq.triggerTimestamps.value()       = {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
                 acq.triggerOffsets.value()          = {0.f};
-                acq.triggerYamlPropertyMaps.value() = {};
+                acq.triggerYamlPropertyMaps.value() = {{"subscription-error", rep.error}};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
                 return;
@@ -171,10 +185,17 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 auto                            buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+                if (skipped_samples != 0) {
+                    acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
+                    acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), acq.acqLocalTimeStamp.value());
+                    acq.triggerEventNames.insert(acq.triggerEventNames.begin(), "WARNING_SAMPLES_DROPPED");
+                    acq.triggerOffsets.insert(acq.triggerOffsets.begin(), 0.0f);
+                }
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                                                              gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
         };
@@ -213,9 +234,11 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     opencmw::client::RestClient _client;
     std::string                 _subscribedUri;
 
+    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
+
     std::optional<std::chrono::system_clock::time_point> _reconnect{};
 
-    GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host);
+    GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console);
     struct Queue {
         std::deque<gr::DataSet<T>> data;
         std::mutex                 mutex;
@@ -223,7 +246,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)), _reconnect(std::chrono::system_clock::now()) { start(); }
+    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
@@ -268,7 +291,11 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         std::weak_ptr maybeQueue = _queue;
 
         command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
-            if (!rep.error.empty()) {
+            long           skipped_samples     = 0;
+            constexpr auto skip_warning_prefix = "Warning: skipped ";
+            if (rep.error.starts_with(skip_warning_prefix)) {
+                skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+            } else if (!rep.error.empty()) {
                 stopSubscription();
                 sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                     gr::Error(fmt::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
@@ -294,6 +321,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 auto values      = acq.channelValue | std::views::transform(convert);
                 ds.signal_values = {values.begin(), values.end()};
                 // auto errors      = acq.channelError | std::views::transform(convert); // TODO: If type is uncertain value, use values and errors to initialize
+                ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
                 ds.signal_ranges = {{convert(acq.channelRangeMin.value()), convert(acq.channelRangeMax.value())}};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back(std::move(ds));
