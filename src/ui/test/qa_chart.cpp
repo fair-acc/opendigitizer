@@ -87,6 +87,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
+    gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(registry);
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
 
