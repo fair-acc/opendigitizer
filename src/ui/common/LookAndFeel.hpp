@@ -4,6 +4,8 @@
 #include <array>
 #include <chrono>
 
+struct ImFont;
+
 namespace DigitizerUi {
 
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
@@ -36,12 +38,10 @@ struct LookAndFeel {
     Style      style      = Style::Light;
     WindowMode windowMode = WindowMode::RESTORED;
 
-    static LookAndFeel& mutableInstance() {
-        static LookAndFeel s_instance;
-        return s_instance;
-    }
+    static LookAndFeel&       mutableInstance();
+    static const LookAndFeel& instance();
 
-    static const LookAndFeel& instance() { return mutableInstance(); }
+    void loadFonts();
 
 private:
     LookAndFeel() {}

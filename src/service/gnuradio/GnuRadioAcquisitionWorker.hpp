@@ -36,7 +36,7 @@ inline std::expected<T, std::string> get(const gr::property_map& m, const std::s
     if (res) {
         return res.value();
     } else {
-        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& value) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
+        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& /*value*/) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
     }
 }
 
@@ -481,9 +481,9 @@ private:
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqLocalTimeStamp = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()));
+                        reply.acqLocalTimeStamp = cast_to_signed(std::get<std::uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey())));
                     }
-                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
+                    reply.triggerIndices.push_back(static_cast<std::int64_t>(idx));
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())));
                     reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))));
                     if (tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey())) {

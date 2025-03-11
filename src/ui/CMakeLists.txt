@@ -110,8 +110,9 @@ endif()
 # the tests and not build N times
 add_library(
   ${target_name}lib STATIC
-  FlowgraphItem.cpp
-  FlowgraphItem.hpp
+  App.hpp
+  FlowgraphPage.cpp
+  FlowgraphPage.hpp
   GraphModel.cpp
   GraphModel.hpp
   Dashboard.cpp
@@ -146,6 +147,7 @@ add_library(
   common/Events.hpp
   common/ImguiWrap.hpp
   common/LookAndFeel.hpp
+  common/LookAndFeel.cpp
   common/TouchHandler.hpp)
 
 target_sources(${target_name} PRIVATE main.cpp)

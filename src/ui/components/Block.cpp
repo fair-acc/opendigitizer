@@ -146,7 +146,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
             panelContext.block->removeContext(activeContext);
         }
 
-        auto typeParams = App::instance().flowgraphPage.graphModel().availableParametrizationsFor(panelContext.block->blockTypeName);
+        auto typeParams = panelContext.block->ownerGraph->availableParametrizationsFor(panelContext.block->blockTypeName);
 
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
@@ -160,7 +160,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                                     {"uniqueName"s, panelContext.block->blockUniqueName},                 //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
-                            App::instance().sendMessage(message);
+                            panelContext.block->ownerGraph->sendMessage(std::move(message));
                         }
                         if (availableParametrization == typeParams.parametrization) {
                             ImGui::SetItemDefaultFocus();
@@ -208,13 +208,13 @@ void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec
                     char label[64];
                     snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                    auto sendSetSettingMessage = [](auto blockUniqueName, auto key, auto value) {
+                    auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
                         gr::Message message;
                         message.serviceName = blockUniqueName;
                         message.endpoint    = gr::block::property::kSetting;
                         message.cmd         = gr::message::Command::Set;
                         message.data        = gr::property_map{{key, value}};
-                        App::instance().sendMessage(std::move(message));
+                        block->ownerGraph->sendMessage(std::move(message));
                     };
 
                     const bool controlDrawn = std::visit( //

@@ -10,17 +10,6 @@
 
 #include <fmt/core.h>
 
-#include "FAIR/DeviceNameHelper.hpp"
-#include "dashboard/dashboardWorker.hpp"
-#include "gnuradio/GnuRadioAcquisitionWorker.hpp"
-#include "gnuradio/GnuRadioFlowgraphWorker.hpp"
-#include "rest/fileserverRestBackend.hpp"
-
-// TODO instead of including and registering blocks manually here, rely on the plugin system
-#include "build_configuration.hpp"
-#include "settings.hpp"
-#include <Picoscope4000a.hpp>
-#include <TimingSource.hpp>
 #include <gnuradio-4.0/basic/FunctionGenerator.hpp>
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
@@ -30,6 +19,19 @@
 #include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
 #include <gnuradio-4.0/testing/TagMonitors.hpp>
+
+#include "FAIR/DeviceNameHelper.hpp"
+#include "dashboard/dashboardWorker.hpp"
+#include "gnuradio/GnuRadioAcquisitionWorker.hpp"
+#include "gnuradio/GnuRadioFlowgraphWorker.hpp"
+#include "rest/fileserverRestBackend.hpp"
+
+// TODO instead of including and registering blocks manually here, rely on the plugin system
+#include "build_configuration.hpp"
+#include "settings.hpp"
+
+#include <Picoscope4000a.hpp>
+#include <TimingSource.hpp>
 
 namespace {
 template<typename Registry>
@@ -75,7 +77,7 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::ClockSource<float32, true, std::chrono::_V2::system_clock, true>
+    id: gr::basic::ClockSource<float32, true, std::chrono::system_clock, true>
   - name: sink
     id: gr::basic::DataSink<float32>
     parameters:

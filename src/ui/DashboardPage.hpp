@@ -42,19 +42,28 @@ public:
     {
     }
 
-    void draw(Dashboard& dashboard, Mode mode = Mode::View) noexcept;
-    void newPlot(Dashboard& dashboard);
+    void draw(Mode mode = Mode::View) noexcept;
+    void newPlot();
     void setLayoutType(DockingLayoutType);
 
+    void setDashboard(Dashboard& dashboard) {
+        m_dashboard = std::addressof(dashboard);
+        if (m_signalSelector) {
+            m_signalSelector->setGraphModel(dashboard.graphModel());
+        }
+    }
+
 private:
-    void        drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::Mode mode);
-    void        drawGrid(float w, float h);
-    void        drawLegend(Dashboard& dashboard, const Mode& mode) noexcept;
-    static void drawPlot(Dashboard& dashboard, DigitizerUi::Dashboard::Plot& plot) noexcept;
+    void drawPlots(DigitizerUi::DashboardPage::Mode mode);
+    void drawGrid(float w, float h);
+    void drawLegend(const Mode& mode) noexcept;
+    void drawPlot(DigitizerUi::Dashboard::Plot& plot) noexcept;
 
     DockSpace                             m_dockSpace;
     components::BlockControlsPanelContext m_editPane;
     std::unique_ptr<SignalSelector>       m_signalSelector;
+
+    Dashboard* m_dashboard = nullptr;
 };
 
 } // namespace DigitizerUi

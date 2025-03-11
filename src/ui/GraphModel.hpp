@@ -75,6 +75,8 @@ struct UiGraphBlock {
 
     void addContext(const ContextTime& contextTime);
     void removeContext(const ContextTime& contextTime);
+
+    bool isConnected() const;
 };
 
 struct UiGraphEdge {
@@ -110,6 +112,8 @@ private:
 
 public:
     UiGraphModel() {}
+
+    std::function<void(gr::Message)> sendMessage;
 
     std::string blockUniqueName;
     std::string blockName;
