@@ -230,18 +230,18 @@ void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& d
 
 void Dashboard::load() {
     if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
-        inUse = true;
+        isInUse = true;
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
             [this](std::array<std::string, 2>&& data) {                                //
                 loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceScheduler(std::move(graph)); });
-                inUse = false;
+                isInUse = false;
             },
             [this]() {
                 auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", m_desc->storageInfo->path, m_desc->filename);
                 components::Notification::error(error);
 
-                inUse = false;
+                isInUse = false;
                 if (requestClose) {
                     requestClose(this);
                 }

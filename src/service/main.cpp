@@ -31,7 +31,9 @@
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include "build_configuration.hpp"
 #include "settings.hpp"
+
 #include <Picoscope4000a.hpp>
+#include <TimingSource.hpp>
 
 #include <TimingSource.hpp>
 

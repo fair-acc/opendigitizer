@@ -179,7 +179,7 @@ public:
 
     UiGraphModel& graphModel();
 
-    std::atomic<bool> inUse = false;
+    std::atomic<bool> isInUse = false;
 
     std::function<void(Dashboard*)> requestClose;
 
