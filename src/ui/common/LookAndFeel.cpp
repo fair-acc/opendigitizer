@@ -89,11 +89,11 @@ void LookAndFeel::loadFonts() {
     };
 
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
-    lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 12);
-    lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 18);
-    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", 36);
-    lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 12);
-    lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 18);
-    lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", 36);
+    lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize[0]);
+    lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize[1]);
+    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize[3]);
+    lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize[0]);
+    lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize[1]);
+    lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize[3]);
 }
 } // namespace DigitizerUi

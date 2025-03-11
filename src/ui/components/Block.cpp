@@ -181,113 +181,77 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
     ImGui::SetCursorPos(minpos);
 }
 
-void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& /*size*/) {
-    const auto availableSize = ImGui::GetContentRegionAvail();
-
+void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const ImVec2& /*size*/) {
     auto             storage = ImGui::GetStateStorage();
     IMW::ChangeStrId mainId("block_controls");
+    const auto&      style = ImGui::GetStyle();
 
-    const auto& style     = ImGui::GetStyle();
-    const auto  indent    = style.IndentSpacing;
-    const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
+    if (ImGui::BeginTable("settings_table", 2, ImGuiTableFlags_SizingFixedFit)) {
+        // Setup columns without headers
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
-    int i = 0;
-    for (const auto& p : block->blockSettings) {
-        auto id = ImGui::GetID(p.first.c_str());
-        ImGui::PushID(int(id));
-        auto* enabled = storage->GetBoolRef(id, true);
+        int i = 0;
+        for (const auto& p : block->blockSettings) {
+            auto id = ImGui::GetID(p.first.c_str());
+            ImGui::PushID(int(id));
+            auto* enabled = storage->GetBoolRef(id, true);
 
-        {
-            IMW::Group topGroup;
-            const auto curpos = ImGui::GetCursorPos();
+            ImGui::TableNextRow();
 
-            {
-                IMW::Group controlGroup;
+            // Column 1: Checkbox + Label
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("##enabled", enabled);
+            ImGui::SameLine(0, style.ItemSpacing.x);
+            ImGui::TextUnformatted(p.first.c_str());
 
-                if (*enabled) {
-                    char label[64];
-                    snprintf(label, sizeof(label), "##parameter_%d", i);
+            // Column 2: Input
+            ImGui::TableSetColumnIndex(1);
+            if (*enabled) {
+                char label[64];
+                snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                    auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
-                        gr::Message message;
-                        message.serviceName = blockUniqueName;
-                        message.endpoint    = gr::block::property::kSetting;
-                        message.cmd         = gr::message::Command::Set;
-                        message.data        = gr::property_map{{key, value}};
-                        block->ownerGraph->sendMessage(std::move(message));
-                    };
+                auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
+                    gr::Message message;
+                    message.serviceName = blockUniqueName;
+                    message.endpoint    = gr::block::property::kSetting;
+                    message.cmd         = gr::message::Command::Set;
+                    message.data        = gr::property_map{{key, value}};
+                    block->ownerGraph->sendMessage(std::move(message));
+                };
 
-                    const bool controlDrawn = std::visit( //
-                        gr::meta::overloaded{             //
-                            [&](float val) {
-                                ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                ImGui::SetNextItemWidth(100);
-                                if (InputKeypad<>::edit(label, &val)) {
-                                    sendSetSettingMessage(block->blockUniqueName, p.first, val);
-                                }
-                                return true;
-                            },
-                            [&](auto&& val) {
-                                using T = std::decay_t<decltype(val)>;
-                                if constexpr (std::integral<T>) {
-                                    auto v = int(val);
-                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                    ImGui::SetNextItemWidth(100);
-                                    if (InputKeypad<>::edit(label, &v)) {
-                                        sendSetSettingMessage(block->blockUniqueName, p.first, v);
-                                    }
-                                    return true;
-                                } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                    std::string str(val);
-                                    if (ImGui::InputText("##in", &str)) {
-                                        sendSetSettingMessage(block->blockUniqueName, p.first, std::move(str));
-                                    }
-                                    return true;
-                                }
-                                return false;
-                            }},
-                        p.second);
-
-                    if (!controlDrawn) {
-                        ImGui::PopID();
-                        continue;
-                    }
-                }
-            }
-            ImGui::SameLine(0, 0);
-
-            auto        width = verticalLayout ? availableSize.x : ImGui::GetCursorPosX() - curpos.x;
-            const auto* text  = *enabled || verticalLayout ? p.first.c_str() : "";
-            width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
-
-            {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
-                ImGui::SetCursorPos(curpos);
-
-                float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
-                if (ImGui::Button("##nothing", {width, height})) {
-                    *enabled = !*enabled;
-                }
+                std::visit(gr::meta::overloaded{[&](float val) {
+                                                    ImGui::SetNextItemWidth(100);
+                                                    float temp = val;
+                                                    if (InputKeypad<>::edit(label, &temp)) {
+                                                        sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                                    }
+                                                },
+                               [&](auto&& val) {
+                                   using T = std::decay_t<decltype(val)>;
+                                   if constexpr (std::integral<T>) {
+                                       ImGui::SetNextItemWidth(100);
+                                       int temp = int(val);
+                                       if (InputKeypad<>::edit(label, &temp)) {
+                                           sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                       }
+                                   } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                       ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
+                                       std::string temp(val);
+                                       if (ImGui::InputText(label, &temp)) {
+                                           sendSetSettingMessage(block->blockUniqueName, p.first, std::move(temp));
+                                       }
+                                   }
+                               }},
+                    p.second);
             }
 
             setItemTooltip(p.first.c_str());
-
-            ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
-            ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);
-
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-            if (*enabled || verticalLayout) {
-                ImGui::TextUnformatted(p.first.c_str());
-            }
+            ImGui::PopID();
+            ++i;
         }
 
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-
-        ImGui::PopID();
-        ++i;
+        ImGui::EndTable();
     }
 }
 
