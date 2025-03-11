@@ -10,17 +10,6 @@
 
 #include <fmt/core.h>
 
-#include "FAIR/DeviceNameHelper.hpp"
-#include "dashboard/dashboardWorker.hpp"
-#include "gnuradio/GnuRadioAcquisitionWorker.hpp"
-#include "gnuradio/GnuRadioFlowgraphWorker.hpp"
-#include "rest/fileserverRestBackend.hpp"
-
-// TODO instead of including and registering blocks manually here, rely on the plugin system
-#include "build_configuration.hpp"
-#include "settings.hpp"
-#include <Picoscope4000a.hpp>
-#include <TimingSource.hpp>
 #include <gnuradio-4.0/basic/ClockSource.hpp>
 #include <gnuradio-4.0/basic/CommonBlocks.hpp>
 #include <gnuradio-4.0/basic/FunctionGenerator.hpp>
@@ -32,6 +21,19 @@
 #include <gnuradio-4.0/testing/ImChartMonitor.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 #include <gnuradio-4.0/testing/TagMonitors.hpp>
+
+#include "FAIR/DeviceNameHelper.hpp"
+#include "dashboard/dashboardWorker.hpp"
+#include "gnuradio/GnuRadioAcquisitionWorker.hpp"
+#include "gnuradio/GnuRadioFlowgraphWorker.hpp"
+#include "rest/fileserverRestBackend.hpp"
+
+// TODO instead of including and registering blocks manually here, rely on the plugin system
+#include "build_configuration.hpp"
+#include "settings.hpp"
+#include <Picoscope4000a.hpp>
+
+#include <TimingSource.hpp>
 
 namespace {
 template<typename Registry>

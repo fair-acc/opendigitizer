@@ -478,9 +478,9 @@ private:
                     }
                     if (reply.acqTriggerTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
                         reply.acqTriggerName      = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
-                        reply.acqTriggerTimeStamp = static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
+                        reply.acqTriggerTimeStamp = cast_to_signed(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
                     }
-                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
+                    reply.triggerIndices.push_back(static_cast<std::int64_t>(idx));
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())));
                     reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))));
                     if (tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey())) {
