@@ -80,10 +80,22 @@ private:
             }
         }
 
-        std::expected<void, gr::Error> start() final { return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); }
-        std::expected<void, gr::Error> stop() final { return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP); }
-        std::expected<void, gr::Error> pause() final { return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE); }
-        std::expected<void, gr::Error> resume() final { return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); }
+        std::expected<void, gr::Error> start() final {
+            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
+        }
+        std::expected<void, gr::Error> stop() final {
+            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+        }
+        std::expected<void, gr::Error> pause() final {
+            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE);
+        }
+        std::expected<void, gr::Error> resume() final {
+            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
+        }
 
         gr::lifecycle::State state() const final { return _scheduler.state(); }
 
@@ -96,11 +108,15 @@ private:
     std::unique_ptr<SchedulerModel> _scheduler;
 
 public:
-    template<typename... Args>
+    template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
-        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
-
         _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)..., schedulerThreadPool);
+    }
+
+    template<typename... Args>
+    void emplaceGraph(Args&&... args) {
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
+        emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
     }
 
     std::string_view schedulerUniqueName() const { return _scheduler->uniqueName(); }

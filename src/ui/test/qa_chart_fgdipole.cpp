@@ -39,6 +39,18 @@ struct TestState {
 
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
+
+    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
+        std::size_t count = 0;
+        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
+            // wait until scheduler is started
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            count++;
+        }
+        if (count >= maxCount) {
+            throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
+        }
+    }
 };
 
 TestState g_state;
@@ -95,9 +107,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto implotIntensitySink     = getUiSink(float{}, "IntensitySink");
                 auto implotDipoleDataSetSink = getUiSink(float{}, "DipoleCurrentDataSetSink");
 
-                // TODO: ivan
-                // g_state.waitForScheduler(10);
-                g_state.stopScheduler();
+                g_state.waitForScheduler(10);
 
                 std::size_t count = 0UZ;
                 while (!isActive(implotDipoleSink->state()) || count < 20) { // wait until scheduler is started
@@ -112,8 +122,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(implotDipoleSink->state() == gr::lifecycle::STOPPED) << "implotDipoleSink not in STOPPED state";
                 expect(implotIntensitySink->state() == gr::lifecycle::STOPPED) << "implotIntensitySink not in STOPPED state";
                 expect(implotDipoleDataSetSink->state() == gr::lifecycle::STOPPED) << "implotDipoleDataSetSink not in STOPPED state";
-                // expect(g_state.scheduler->state() == gr::lifecycle::STOPPED) << "g_state.scheduler not in STOPPED state";
                 g_state.stopScheduler();
+                expect(g_state.dashboard->scheduler()->state() == gr::lifecycle::STOPPED) << "g_state.scheduler not in STOPPED state";
                 captureScreenshot(*ctx);
             };
         };
@@ -121,9 +131,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
-    auto& registry = gr::globalBlockRegistry();
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
-    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
+    registerTestBlocks(gr::globalBlockRegistry());
 
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_fg_dipole";
@@ -142,8 +150,8 @@ int main(int argc, char* argv[]) {
     g_state.dashboard         = DigitizerUi::Dashboard::create(dashboardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), //
         [](gr::Graph&& grGraph) {
-            fmt::print("!!! Setting the graph... !!!\n");
-            g_state.dashboard->emplaceScheduler(std::move(grGraph));
+            using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+            g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
         });
 
     g_state.startScheduler();

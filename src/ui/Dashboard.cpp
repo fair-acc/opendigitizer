@@ -37,12 +37,6 @@ ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 namespace DigitizerUi {
 
 namespace {
-template<typename T>
-T randomRange(T min, T max) {
-    T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
-    return static_cast<T>(min + scale * (max - min));
-}
-
 enum class What { Header, Dashboard, Flowgraph };
 
 template<typename T>
@@ -234,7 +228,7 @@ void Dashboard::load() {
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
             [this](std::array<std::string, 2>&& data) {                                //
-                loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceScheduler(std::move(graph)); });
+                loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
                 isInUse = false;
             },
             [this]() {

@@ -185,9 +185,14 @@ public:
 
     void doLoad(const std::string& desc);
 
-    template<typename... Args>
+    template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
-        m_scheduler.emplaceScheduler(std::forward<Args>(args)...);
+        m_scheduler.emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void emplaceGraph(Args&&... args) {
+        m_scheduler.emplaceGraph(std::forward<Args>(args)...);
     }
 
     auto& scheduler() { return m_scheduler; }

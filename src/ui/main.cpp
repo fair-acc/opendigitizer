@@ -93,12 +93,15 @@ int main(int argc, char** argv) {
 
     // TODO: Remove when GR gets proper blocks library
     auto& registry = gr::globalBlockRegistry();
-    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
+    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
+    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
     gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(registry);
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
     gr::registerBlock<gr::basic::FunctionGenerator, float, double>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
+    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
+    gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
+    gr::registerBlock<opendigitizer::SineSource, float>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {

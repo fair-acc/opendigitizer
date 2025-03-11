@@ -107,9 +107,7 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    gr::BlockRegistry registry = gr::globalBlockRegistry();
-    registerTestBlocks(registry);
-    gr::PluginLoader pluginLoader(registry, {});
+    registerTestBlocks(gr::globalBlockRegistry());
 
     auto fs            = cmrc::ui_test_assets::get_filesystem();
     auto grcFile       = fs.open("examples/qa_layout.grc");
@@ -117,7 +115,10 @@ int main(int argc, char* argv[]) {
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { g_state.dashboard->emplaceScheduler(std::move(graph)); });
+    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { //
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+        g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(graph));
+    });
 
     return app.runTests() ? 0 : 1;
 }

@@ -37,6 +37,18 @@ struct TestState {
 
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
+
+    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
+        std::size_t count = 0;
+        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
+            // wait until scheduler is started
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            count++;
+        }
+        if (count >= maxCount) {
+            throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
+        }
+    }
 };
 
 TestState g_state;
@@ -115,9 +127,9 @@ int main(int argc, char* argv[]) {
     options.screenshotPrefix = "chart";
 
     // This is not a globalBlockRegistry, but a copy of it
+    registerTestBlocks(gr::globalBlockRegistry());
     gr::BlockRegistry registry = gr::globalBlockRegistry();
-    registerTestBlocks(registry);
-    gr::PluginLoader pluginLoader(registry, {});
+    gr::PluginLoader  pluginLoader(registry, {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
@@ -133,7 +145,10 @@ int main(int argc, char* argv[]) {
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { g_state.dashboard->emplaceScheduler(std::move(grGraph)); });
+    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+        g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
+    });
 
     g_state.startScheduler();
 
