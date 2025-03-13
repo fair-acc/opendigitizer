@@ -45,20 +45,10 @@ inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, g
         if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
             const auto name = std::get<std::string>(triggerNameIt->second);
 
-            if (auto triggerMetaInfoIt = map.find(std::string(gr::tag::TRIGGER_META_INFO.shortKey())); triggerMetaInfoIt != map.end()) {
-                const auto meta = std::get<gr::property_map>(triggerMetaInfoIt->second);
-                if (auto contextIt = meta.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != meta.end()) {
-                    const auto context = std::get<std::string>(contextIt->second);
-                    if (!context.empty()) {
-                        return name + "/" + context;
-                    }
-                }
-            }
-
             if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
                 const auto context = std::get<std::string>(contextIt->second);
                 if (!context.empty()) {
-                    return name + "/" + context;
+                    return fmt::format("{}/{}", name, context);
                 }
             }
 
@@ -183,22 +173,10 @@ namespace detail {
 struct Matcher {
     std::string          filterDefinition;
     trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) {
-        const auto  maybeName = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
-        const auto  name      = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
-        const auto  maybeMeta = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
-        std::string context   = "<undefined>";
-        if (maybeMeta) {
-            const auto meta = std::get<gr::property_map>(maybeMeta->get());
-            auto       it   = meta.find(gr::tag::CONTEXT.shortKey());
-            if (it != meta.end()) {
-                context = std::get<std::string>(it->second);
-            }
-        }
-
-        if (context.empty()) {
-            const auto maybeContext = tag.get(std::string(gr::tag::CONTEXT.shortKey()));
-            context                 = maybeContext ? std::get<std::string>(maybeContext->get()) : "<undefined>";
-        }
+        const auto maybeName    = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        const auto name         = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
+        const auto maybeContext = tag.get(std::string(gr::tag::CONTEXT.shortKey()));
+        const auto context      = maybeContext ? std::get<std::string>(maybeContext->get()) : ""s;
 
         return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
     }
@@ -393,7 +371,6 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
-                    fmt::print("There is a pendingFlowGraph -- new sched\n");
                     _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph), _threadPool);
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();
@@ -602,7 +579,6 @@ private:
 
             if (!dataSet.timing_events.empty()) {
                 reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
-                fmt::print("Setting acqTriggerName to {}\n", reply.acqTriggerName);
             }
             reply.channelName     = std::string(signalName);
             reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";
