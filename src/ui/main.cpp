@@ -12,8 +12,8 @@
 #include <fmt/format.h>
 
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/ClockSource.hpp>
 #include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/basic/clock_source.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
@@ -187,6 +187,8 @@ int main(int argc, char** argv) {
     gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(gr::globalBlockRegistry());
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(gr::globalBlockRegistry());
     gr::registerBlock<gr::basic::FunctionGenerator, float, double>(gr::globalBlockRegistry());
+    gr::registerBlock<opendigitizer::Arithmetic, float>(gr::globalBlockRegistry());
+    gr::registerBlock<opendigitizer::SineSource, float>(gr::globalBlockRegistry());
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {

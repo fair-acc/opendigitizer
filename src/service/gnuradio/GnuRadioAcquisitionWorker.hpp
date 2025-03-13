@@ -45,13 +45,10 @@ inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, g
         if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
             const auto name = std::get<std::string>(triggerNameIt->second);
 
-            if (auto triggerMetaInfoIt = map.find(std::string(gr::tag::TRIGGER_META_INFO.shortKey())); triggerMetaInfoIt != map.end()) {
-                const auto meta = std::get<gr::property_map>(triggerMetaInfoIt->second);
-                if (auto contextIt = meta.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != meta.end()) {
-                    const auto context = std::get<std::string>(contextIt->second);
-                    if (!context.empty()) {
-                        return name + "/" + context;
-                    }
+            if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
+                const auto context = std::get<std::string>(contextIt->second);
+                if (!context.empty()) {
+                    return fmt::format("{}/{}", name, context);
                 }
             }
 
@@ -176,18 +173,11 @@ namespace detail {
 struct Matcher {
     std::string          filterDefinition;
     trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) {
-        const auto  maybeName = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
-        const auto  name      = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
-        const auto  maybeMeta = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
-        std::string context   = "<undefined>";
-        if (maybeMeta) {
-            const auto m  = std::get<gr::property_map>(maybeMeta->get());
-            auto       it = m.find(gr::tag::CONTEXT.shortKey());
-            if (it != m.end()) {
-                context = std::get<std::string>(it->second);
-            }
-        }
-        fmt::println("Matching {} against '{}' / '{}'", filterDefinition, name, context);
+        const auto maybeName    = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
+        const auto name         = maybeName ? std::get<std::string>(maybeName->get()) : "<unset>"s;
+        const auto maybeContext = tag.get(std::string(gr::tag::CONTEXT.shortKey()));
+        const auto context      = maybeContext ? std::get<std::string>(maybeContext->get()) : ""s;
+
         return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
     }
 };

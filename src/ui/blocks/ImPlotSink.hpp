@@ -8,6 +8,8 @@
 #include <gnuradio-4.0/BlockModel.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 #include <gnuradio-4.0/HistoryBuffer.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
+#include <gnuradio-4.0/Tag.hpp>
 
 #include "../Dashboard.hpp"
 #include "../common/ImguiWrap.hpp"
@@ -24,17 +26,19 @@ struct TagData {
 };
 
 template<typename T>
-T getValueOrDefault(const gr::property_map& map, const std::string& key, const T& defaultValue) {
+T getValueOrDefault(const gr::property_map& map, const std::string& key, const T& defaultValue, std::source_location location = std::source_location::current()) {
     if (auto it = map.find(key); it != map.end()) {
-        if (auto ptr = std::get_if<T>(&it->second)) {
-            return *ptr;
+        constexpr bool                strictChecks   = false;
+        std::expected<T, std::string> convertedValue = pmtv::convert_safely<T, strictChecks>(it->second);
+        if (!convertedValue) {
+            throw gr::exception(fmt::format("failed to convert value for key {} - error: {}", key, convertedValue.error()), location);
         }
+        return convertedValue.value_or(defaultValue);
     }
     return defaultValue;
 }
 
 inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
-    using DigitizerUi::AxisScale;
     using enum DigitizerUi::AxisScale;
 
     std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
@@ -54,7 +58,9 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
     };
 
     const float  fontHeight = ImGui::GetFontSize();
-    const double yMax       = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO).Y.Max;
+    const auto   plotLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
+    const double yMax       = plotLimits.Y.Max;
+    const double yRange     = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x;
     float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(minX, maxX)), 0.0f).x;
@@ -67,25 +73,103 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
         if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
-            const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, "trigger_name", "TRIGGER");
+            const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
-            ImPlot::PlotText(triggerLabel.c_str(), xTagPosition, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+            if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                ImPlot::PlotText(triggerLabel.c_str(), xTagPosition, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+            } else {
+                continue;
+            }
 
-            if (auto metaInfo = tag.map.find("trigger_meta_info"); metaInfo != tag.map.end()) {
-                if (auto mapPtr = std::get_if<gr::property_map>(&metaInfo->second)) {
-                    auto              extractCtx = [](const std::string& s) { return s.substr(s.rfind('/') + 1); };
-                    const std::string triggerCtx = extractCtx(getValueOrDefault<std::string>(*mapPtr, "context", ""));
-                    if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
-                        const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
-                        ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
-                    }
+            const std::string triggerCtx = getValueOrDefault<std::string>(tag.map, gr::tag::CONTEXT.shortKey(), "");
+            if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
+                const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
+                if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                    ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
+                } else {
+                    continue;
                 }
             }
 
             lastTextPixelX = xPixelPos;
+        } // plot labels
+    }
+    ImGui::PopStyleColor();
+}
+
+template<typename T>
+void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
+    using enum DigitizerUi::AxisScale;
+    if (dataset.timing_events.empty() || dataset.axisValues(0).empty()) {
+        return;
+    }
+
+    // Let's assume axisValues(0) is our main X-axis
+    // We'll do a front/back min/max for pruning
+    const auto&  xAxisSpan = dataset.axisValues(0);
+    const double xAxisMin  = static_cast<double>(xAxisSpan.front());
+    const double xAxisMax  = static_cast<double>(xAxisSpan.back());
+
+    // Prepare a small transform that replicates your "Time", "LinearReverse", etc. logic
+    auto transformX = [axisScale, &xAxisMin, &xAxisMax](double xVal) {
+        switch (axisScale) {
+        case Linear:
+        case Log10:
+        case SymLog: return xVal - xAxisMin;
+        case LinearReverse: return xVal - xAxisMax;
+        case Time:
+        default: return xVal; // pass through
+        }
+    };
+
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    float        lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(xAxisMin, xAxisMax)), 0.0f).x;
+    float        lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(xAxisMin, xAxisMax)), 0.0f).x;
+    const float  fontHeight     = ImGui::GetFontSize();
+    const auto   plotLimits     = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
+    const double yMax           = plotLimits.Y.Max;
+    const double yRange         = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    for (std::size_t sig_i = 0; sig_i < dataset.timing_events.size(); ++sig_i) {
+        auto& eventsForSig = dataset.timing_events[sig_i];
+
+        for (auto& [xIndex, tagMap] : eventsForSig) {
+            if (xIndex < 0 || static_cast<std::size_t>(xIndex) >= xAxisSpan.size()) {
+                continue; // out-of-bounds
+            }
+
+            double      xVal         = static_cast<double>(xAxisSpan[static_cast<std::size_t>(xIndex)]);
+            double      xTagPosition = transformX(xVal);
+            const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
+            ImPlot::SetNextLineStyle(color);
+            ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
+
+            // suppress tag labels if it is too close to the previous one or close to the extremities
+            if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
+                const std::string triggerLabel     = getValueOrDefault<std::string>(tagMap, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
+                const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
+
+                if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                    ImPlot::PlotText(triggerLabel.c_str(), xTagPosition, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+                } else {
+                    continue;
+                }
+
+                const std::string triggerCtx = getValueOrDefault<std::string>(tagMap, gr::tag::CONTEXT.shortKey(), "");
+                if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
+                    const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
+                    if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                        ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
+                    } else {
+                        continue;
+                    }
+                }
+
+                lastTextPixelX = xPixelPos;
+            } // plot labels
         }
     }
+
     ImGui::PopStyleColor();
 }
 
@@ -115,7 +199,7 @@ struct ImPlotSinkModel {
     virtual void* raw() const = 0;
 
     ImVec4 color() {
-        static const auto defaultColor = ImVec4(0.3, 0.3, 0.3, 1);
+        static const auto defaultColor = ImVec4(0.3f, 0.3f, 0.3f, 1.f);
         auto              maybeColor   = settings().get("color");
         if (!maybeColor) {
             return defaultColor;
@@ -200,37 +284,46 @@ public:
 };
 
 template<typename TBlock>
-using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::SupportedTypes<float, double>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>;
+using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>;
+
+GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>)
 
 template<typename T>
-struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
+struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
+    using ValueType = gr::meta::fundamental_base_value_type_t<T>;
+
     gr::PortIn<T> in;
-    std::uint32_t color         = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
-    gr::Size_t    required_size = 2048U;    // TODO: make this a multi-consumer/vector property
+    uint32_t      color         = 0xff0000;                         ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
+    gr::Size_t    required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
     std::string   signal_name;
     std::string   signal_quantity;
     std::string   signal_unit;
-    float         signal_min  = std::numeric_limits<float>::lowest();
-    float         signal_max  = std::numeric_limits<float>::max();
-    float         sample_rate = 1000.0f;
+    float         signal_min     = std::numeric_limits<float>::lowest();
+    float         signal_max     = std::numeric_limits<float>::max();
+    float         sample_rate    = 1000.0f;
+    gr::Size_t    dataset_index  = std::numeric_limits<gr::Size_t>::max();
+    gr::Size_t    n_history      = 3U;
+    float         history_offset = 0.01f;
 
-    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate);
+    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
+        dataset_index, n_history, history_offset);
 
-    double                    _xUtcOffset   = 0.;
-    std::uint64_t             _utcOffsetIdx = 0U; // index since last clock update
-    gr::HistoryBuffer<double> _xValues{required_size};
-    gr::HistoryBuffer<double> _xUtcValues{required_size};
-    gr::HistoryBuffer<double> _yValues{required_size};
+    double _xUtcOffset = [] {
+        using namespace std::chrono;
+        auto now = system_clock::now().time_since_epoch();
+        return duration<double, std::nano>(now).count() * 1e-9;
+    }();
+    gr::HistoryBuffer<double> _xValues{required_size}; // needs to be 'double' because of required ns-level UTC timestamp precision
+    gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) {
+    void settingsChanged(const gr::property_map& /* oldSettings */, const gr::property_map& /* newSettings */) {
         if (_xValues.capacity() != required_size) {
             _xValues.resize(required_size);
-            _xUtcValues.resize(required_size);
             _tagValues.clear();
         }
         if (_yValues.capacity() != required_size) {
@@ -246,39 +339,20 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
             if (tag.contains("trigger_time")) {
                 const auto offset  = static_cast<double>(getValueOrDefault<float>(tag, "trigger_offset", 0.f));
                 const auto utcTime = static_cast<double>(getValueOrDefault<uint64_t>(tag, "trigger_time", 0U)) + offset;
-                if (utcTime > 0.0 || (utcTime + offset) > 0.0) {
-                    _xUtcOffset   = (utcTime + offset) * 1e-9;
-                    _utcOffsetIdx = 0U;
+                if (utcTime > 0.0 || (utcTime * 1e-9 + offset) > 0.0) {
+                    _xUtcOffset = utcTime * 1e-9 + offset;
                 }
                 _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
             }
             this->_mergedInputTag.map.clear(); // TODO: provide proper API for clearing tags
-        }
-
-        if (_utcOffsetIdx == 0) {
-            if (_xUtcOffset == 0.0) {
-                using namespace std::chrono;
-                auto now      = system_clock::now().time_since_epoch();
-                _xUtcOffset   = duration<double, std::nano>(now).count() * 1e-9;
-                _utcOffsetIdx = 0U;
-            }
-            _xUtcValues.push_back(_xUtcOffset);
+            _xValues.push_back(_xUtcOffset);
         } else {
             if constexpr (std::is_arithmetic_v<T>) {
                 const double Ts = 1.0 / static_cast<double>(sample_rate);
-                _xUtcValues.push_back(_xUtcValues.back() + Ts);
-            }
-        }
-        if constexpr (std::is_arithmetic_v<T>) {
-            const double Ts = 1.0 / static_cast<double>(sample_rate);
-            if (_xValues.size() == 0UZ) {
-                _xValues.push_back(0.0);
-            } else {
                 _xValues.push_back(_xValues.back() + Ts);
             }
         }
         _yValues.push_back(input);
-        _utcOffsetIdx++;
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
@@ -299,51 +373,102 @@ struct ImPlotSink : public ImPlotSinkBase<ImPlotSink<T>> {
             // plot one single dummy value so that the sink shows up in the plot legend
             double v = {};
             ImPlot::PlotLine(label.c_str(), &v, 1);
-        } else {
+            return gr::work::Status::OK;
+        }
+
+        struct PlotLineContext {
+            std::span<const double>    xValues;
+            std::span<const ValueType> yValues;
+            AxisScale                  axisScale;
+            ValueType                  yOffset{0};
+        };
+
+        constexpr auto pointGetter = +[](int signedIndex, void* user_data) -> ImPlotPoint {
+            const std::size_t          idx     = cast_to_unsigned(signedIndex);
+            auto*                      ctx     = static_cast<PlotLineContext*>(user_data);
+            std::span<const double>    xValues = ctx->xValues;
+            std::span<const ValueType> yValues = ctx->yValues;
+            ValueType                  yOffset = ctx->yOffset;
+
+            switch (ctx->axisScale) {
+            case Time: return {xValues[idx], static_cast<double>(yValues[idx] + yOffset)};
+            case LinearReverse: {
+                const double xValueBack = xValues.back();
+                return {xValues[idx] - xValueBack, static_cast<double>(yValues[idx] + yOffset)};
+            }
+            case Linear:
+            case Log10:  // base 10 logarithmic scale -> transform computed by axis
+            case SymLog: // symmetric log scale -> transform computed by axis
+            default:     // linear
+                const double xValueFront = xValues.front();
+                return {xValues[idx] - xValueFront, static_cast<double>(yValues[idx] + yOffset)};
+            }
+        };
+
+        if constexpr (std::is_arithmetic_v<T>) {
             ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
             ImPlot::SetNextLineStyle(lineColor);
 
             // draw tags before data (data is drawn on top)
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
-                lineColor.w *= 0.35f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, _xUtcValues.front(), _xUtcValues.back(), axisScale, lineColor);
+                ImVec4 tagColor = lineColor;
+                tagColor.w *= 0.35f; // semi-transparent tags
+                drawAndPruneTags(_tagValues, _xValues.front(), _xValues.back(), axisScale, tagColor);
             }
 
-            switch (axisScale) {
-            case Time: {
-                ImPlot::PlotLine(label.c_str(), _xUtcValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
-            } break;
-            case LinearReverse: {
-                // like Linear but normalised to the newest _xValues.back() thus the axis range is [xValues.front() - xValues.back(), 0]
-                ImPlot::PlotLineG(
-                    label.c_str(),
-                    [](int idx, void* user_data) -> ImPlotPoint {
-                        auto   self     = static_cast<ImPlotSink<T>*>(user_data);
-                        double xShifted = self->_xValues[cast_to_unsigned(idx)] - self->_xValues.back();
-                        double y        = self->_yValues[cast_to_unsigned(idx)];
-                        return ImPlotPoint(xShifted, y);
-                    },
-                    this,                                // user_data pointer passed to the lambda
-                    static_cast<int>(_xUtcValues.size()) // number of points
-                );
-            } break;
-            case Linear:
-            default: {
-                ImPlot::PlotLineG(
-                    label.c_str(),
-                    [](int idx, void* user_data) -> ImPlotPoint {
-                        auto   self     = static_cast<ImPlotSink<T>*>(user_data);
-                        double xShifted = self->_xUtcValues[idx] - self->_xUtcValues.front();
-                        double y        = self->_yValues[idx];
-                        return ImPlotPoint(xShifted, y);
-                    },
-                    this,                                // user_data pointer passed to the lambda
-                    static_cast<int>(_xUtcValues.size()) // number of points
-                );
-                // ImPlot::PlotLine(label.c_str(), _xValues.get_span(0).data(), _yValues.get_span(0).data(), static_cast<int>(_xValues.size()));
-            } break;
+            PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
+            ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size()));
+        } else if constexpr (gr::DataSetLike<T>) {
+
+            const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
+            for (std::size_t historyIdx = 0UZ; historyIdx < nMax; historyIdx++) {
+                const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
+                // dimension checks
+                if (dataSet.extents.size() < 2) {
+                    continue; // not enough dimensions
+                }
+
+                ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
+                lineColor.w      = std::max(0.f, 1.0f - static_cast<float>(historyIdx) * 1.f / static_cast<float>(nMax));
+                ImPlot::SetNextLineStyle(lineColor);
+
+                std::vector<double> xAxisDouble;
+                if constexpr (!std::is_same_v<ValueType, double>) { // TODO: find a smarter zero-copy solution
+                    auto xSpan = dataSet.axisValues(0UZ);
+                    xAxisDouble.assign(xSpan.begin(), xSpan.end());
+                }
+
+                // draw tags before data (data is drawn on top)
+                if (historyIdx == 0UZ || getValueOrDefault<bool>(config, "draw_tag", false)) {
+                    ImVec4 tagColor = lineColor;
+                    tagColor.w *= std::max(0.35f - 0.05f * static_cast<float>(historyIdx), 0.f); // semi-transparent
+                    drawDataSetTimingEvents(dataSet, axisScale, tagColor);
+                }
+
+                const auto nsignals = dataSet.extents[0];
+                const auto npoints  = static_cast<std::size_t>(dataSet.extents[1]);
+                if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
+                    // draw all signals
+                    auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);
+                    ValueType baseOffset  = static_cast<ValueType>(history_offset) * (maxVal - minVal);
+
+                    for (std::size_t signalIdx = 0UZ; signalIdx < cast_to_unsigned(nsignals); ++signalIdx) {
+                        ImPlot::SetNextLineStyle(lineColor);
+                        PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
+                        ImPlot::PlotLineG(dataSet.signal_names[signalIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
+                    }
+                } else {
+                    // single sub-signal
+                    if (dataset_index >= static_cast<gr::Size_t>(nsignals)) {
+                        dataset_index = 0U;
+                    }
+                    const auto signalIdx = static_cast<std::size_t>(dataset_index);
+                    ImPlot::SetNextLineStyle(lineColor);
+                    PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale};
+                    ImPlot::PlotLineG(dataSet.signal_names[signalIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
+                }
             }
-        }
+        } //  if constexpr (gr::DataSetLike<T>) { .. }
 
         return gr::work::Status::OK;
     }
@@ -397,6 +522,6 @@ public:
 };
 } // namespace opendigitizer
 
-inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float>(gr::globalBlockRegistry());
+inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(gr::globalBlockRegistry());
 inline static auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(gr::globalBlockRegistry());
 #endif

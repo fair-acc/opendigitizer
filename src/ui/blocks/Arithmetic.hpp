@@ -5,9 +5,11 @@
 
 namespace opendigitizer {
 
+GR_REGISTER_BLOCK(opendigitizer::Arithmetic, [ float, double ]);
+
 template<typename T>
 requires std::is_arithmetic_v<T>
-struct Arithmetic : public gr::Block<Arithmetic<T>> {
+struct Arithmetic : gr::Block<Arithmetic<T>> {
     gr::PortIn<T> in1;
     gr::PortIn<T> in2;
 

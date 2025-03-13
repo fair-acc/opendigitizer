@@ -7,6 +7,14 @@ sources:
     block: IntensitySink
     port: 0
     color: 0x0000C8
+  - name: DipoleCurrentDataSetSink
+    block: DipoleCurrentDataSetSink
+    port: 0
+    color: 0xC80000
+  - name: IntensityDataSetSink
+    block: IntensityDataSetSink
+    port: 0
+    color: 0x0000C8
 plots:
   - name: Plot 1
     axes:
@@ -33,4 +41,17 @@ plots:
     sources:
       - IntensitySink
       - DipoleCurrentSink
+    rect: [0, 1, 8, 1] # x, y, width, height
+  - name: DataSinkPlot
+    axes:
+      - axis: X
+        min: NaN # auto-range min
+        max: NaN # auto-range max
+        scale: Linear # options: Linear, LinearReverse, Time, Log10, SymLog
+      - axis: Y
+        min: NaN # auto-range min
+        max: NaN # auto-range max
+    sources:
+      - IntensityDataSetSink
+      - DipoleCurrentDataSetSink
     rect: [0, 1, 8, 1] # x, y, width, height

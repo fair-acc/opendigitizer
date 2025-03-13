@@ -13,10 +13,11 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
+#include "gnuradio-4.0/basic/ClockSource.hpp"
 #include "gnuradio-4.0/basic/FunctionGenerator.hpp"
-#include "gnuradio-4.0/basic/clock_source.hpp"
 #include "imgui_test_engine/imgui_te_internal.h"
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -54,7 +55,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 DigitizerUi::DashboardPage page;
                 page.setLayoutType(vars.layoutType);
                 page.draw(*g_state.dashboard);
-                ut::expect(!g_state.dashboard->plots().empty());
+                ut::expect(ut::fatal(!g_state.dashboard->plots().empty()));
             }
         };
 
@@ -89,7 +90,11 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
+    auto& registry = gr::globalBlockRegistry();
+    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t>(registry);
+    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
+    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
+    gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
 
     auto fs            = cmrc::sample_dashboards::get_filesystem();
     auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");

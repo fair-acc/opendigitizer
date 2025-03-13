@@ -19,7 +19,7 @@ blocks:
       signal_quantity: measuredVoltage
       signal_unit: V
   - name: fftSink
-    id: opendigitizer::ImPlotSinkDataSet<float32>
+    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
       color: 0xFF5500
       dataset_index: 3
@@ -27,7 +27,7 @@ blocks:
       signal_quantity: magnitude
       signal_unit: dB
   - name: ClockSource
-    id: gr::basic::ClockSource<uint8, true, std::chrono::system_clock, true>
+    id: gr::basic::ClockSource<uint8>
     parameters:
       chunk_size: 20
       do_zero_order_hold: true
@@ -60,14 +60,14 @@ blocks:
       signal_type: Const
       start_value: 0
     ctx_parameters:
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
+      - context: FAIR.SELECTOR.C=1:S=1:P=1
         time: !!uint64 0
         parameters:
           start_value: 1
           final_value: 1
           sample_rate: 1000
           signal_type: Const
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
+      - context: FAIR.SELECTOR.C=1:S=1:P=2
         time: !!uint64 0
         parameters:
           duration: 0.1
@@ -76,14 +76,14 @@ blocks:
           round_off_time: 0.02
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+      - context: FAIR.SELECTOR.C=1:S=1:P=3
         time: !!uint64 0
         parameters:
           start_value: 5
           final_value: 5
           sample_rate: 1000
           signal_type: Const
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+      - context: FAIR.SELECTOR.C=1:S=1:P=4
         time: !!uint64 0
         parameters:
           duration: 0.5
@@ -92,14 +92,14 @@ blocks:
           round_off_time: 0.2
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+      - context: FAIR.SELECTOR.C=1:S=1:P=5
         time: !!uint64 0
         parameters:
           start_value: 30
           final_value: 30
           sample_rate: 1000
           signal_type: Const
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+      - context: FAIR.SELECTOR.C=1:S=1:P=6
         time: !!uint64 0
         parameters:
           duration: 0.3
@@ -107,7 +107,7 @@ blocks:
           final_value:  1
           sample_rate: 1000
           signal_type: CubicSpline
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7
+      - context: FAIR.SELECTOR.C=1:S=1:P=7
         time: !!uint64 0
         parameters:
           start_value: 1
@@ -121,14 +121,14 @@ blocks:
       signal_type: Const
       start_value: 0
     ctx_parameters:
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
+      - context: FAIR.SELECTOR.C=1:S=1:P=3
         time: !!uint64 0
         parameters:
           start_value: 40e9f
           final_value: 40e9f
           sample_rate: 1000
           signal_type: Const
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
+      - context: FAIR.SELECTOR.C=1:S=1:P=4
         time: !!uint64 0
         parameters:
           duration: 0.5
@@ -136,7 +136,7 @@ blocks:
           final_value: 38e9f
           sample_rate: 1000
           signal_type: CubicSpline
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5
+      - context: FAIR.SELECTOR.C=1:S=1:P=5
         time: !!uint64 0
         parameters:
           duration: 2
@@ -145,7 +145,7 @@ blocks:
           round_off_time: 0.3
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6
+      - context: FAIR.SELECTOR.C=1:S=1:P=6
         time: !!uint64 0
         parameters:
           start_value: 0

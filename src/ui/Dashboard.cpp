@@ -37,18 +37,6 @@ ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 namespace DigitizerUi {
 
 namespace {
-template<typename T>
-T randomRange(T min, T max) {
-    T scale = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
-    return min + scale * (max - min);
-}
-
-std::uint32_t randomColor() {
-    const std::uint8_t x = randomRange<std::uint8_t>(0, 255);
-    const std::uint8_t y = randomRange<std::uint8_t>(0, 255);
-    const std::uint8_t z = randomRange<std::uint8_t>(0, 255);
-    return 0xff000000u | x << 16U | y << 8U | z;
-}
 
 enum class What { Header, Dashboard, Flowgraph };
 
