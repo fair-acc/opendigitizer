@@ -420,6 +420,7 @@ static void main_loop(void* arg) {
                 // Are we in the process of changing the dashboard?
                 app->loadedDashboard = app->dashboard.get();
                 app->dashboardPage   = std::make_unique<DashboardPage>();
+                app->dashboardPage->setLayoutType(app->loadedDashboard->layout());
                 app->flowgraphPage.reset();
             }
         }

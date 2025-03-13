@@ -35,7 +35,9 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     NAMESPACE
     ui_test_assets
     examples/fg_dipole_intensity_ramp.grc
-    examples/fg_dipole_intensity_ramp.yml)
+    examples/fg_dipole_intensity_ramp.yml
+    examples/qa_layout.grc
+    examples/qa_layout.yml)
 
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
@@ -63,6 +65,6 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_keypad)
   add_imgui_test(qa_chart)
   add_imgui_test(qa_chart_fgdipole)
-  add_imgui_test(qa_dashboardpage)
   add_imgui_test(qa_docking)
+  add_imgui_test(qa_layout)
 endif()

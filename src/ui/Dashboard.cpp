@@ -298,6 +298,10 @@ void Dashboard::doLoad(const std::string& desc) {
 
     auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
 
+    if (rootMap.contains("layout") && std::holds_alternative<std::string>(rootMap.at("layout"))) {
+        m_layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(rootMap.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+    }
+
     if (!rootMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("sources"))) {
         throw gr::exception("sources entry invalid");
     }

@@ -1,3 +1,4 @@
+layout: Free
 sources:
   - name: DipoleCurrentSink
     block: DipoleCurrentSink
@@ -28,7 +29,7 @@ plots:
     sources:
       - IntensitySink
       - DipoleCurrentSink
-    rect: [0, 0, 8, 1] # x, y, width, height
+    rect: [0, 0, 1, 1] # x, y, width, height
   - name: Plot 2
     axes:
       - axis: X
@@ -41,7 +42,7 @@ plots:
     sources:
       - IntensitySink
       - DipoleCurrentSink
-    rect: [0, 1, 8, 1] # x, y, width, height
+    rect: [1, 0, 1, 1] # x, y, width, height
   - name: DataSinkPlot
     axes:
       - axis: X
@@ -54,4 +55,4 @@ plots:
     sources:
       - IntensityDataSetSink
       - DipoleCurrentDataSetSink
-    rect: [0, 1, 8, 1] # x, y, width, height
+    rect: [0, 1, 2, 1] # x, y, width, height

@@ -42,7 +42,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float>(registry); // omitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
+    // gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
     gr::registerBlock<MultiAdder, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
