@@ -4,7 +4,7 @@ sources:
     color: !!uint32 0x009900
   - name: fftSink
     block: fftSink
-    color: !!uint32 0x009900
+    color: !!uint32 0xFF5500
   - name: DipoleCurrentSink
     block: DipoleCurrentSink
     port: 0
@@ -25,11 +25,7 @@ plots:
         max: NaN # enables auto-range
     sources:
       - sinesSink
-    rect:
-      - 0
-      - 0
-      - 8
-      - 8
+    rect: [ 0, 0, 8, 8]
   - name: Plot 2
     axes:
       - axis: X
@@ -41,11 +37,7 @@ plots:
         max: NaN
     sources:
       - fftSink
-    rect:
-      - 0
-      - 8
-      - 8
-      - 8
+    rect: [ 0, 8, 8, 8]
   - name: Plot 3
     axes:
       - axis: X

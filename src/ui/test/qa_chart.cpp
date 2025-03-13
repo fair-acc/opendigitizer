@@ -50,6 +50,18 @@ struct TestState {
         schedulerThread = std::thread([&] { scheduler->runAndWait(); });
     }
 
+    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
+        std::size_t count = 0;
+        while (!gr::lifecycle::isActive(scheduler->state()) && count < maxCount) {
+            // wait until scheduler is started
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            count++;
+        }
+        if (count >= maxCount) {
+            throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
+        }
+    }
+
     void stopScheduler() {
         scheduler->stop();
         schedulerThread.join();
@@ -87,6 +99,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
                 ut::expect(implotSinkRaw);
                 auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
+
+                // g_state.waitForScheduler();
 
                 const int maxSamples = 3000;
                 while (implotSink->_yValues.size() < maxSamples) {
