@@ -76,7 +76,7 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
 
         if (verbose) {
             fmt::print("  ImPlotSink: draw Tag marker (ns/xUtc/transformed -> trigger_name): {}/{}/{} -> {}\n", //
-                       getValueOrDefault<uint64_t>(tag.map, gr::tag::TRIGGER_TIME.shortKey(), 0u), tag.timestamp, xTagPosition, getValueOrDefault(tag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")));
+                getValueOrDefault<uint64_t>(tag.map, gr::tag::TRIGGER_TIME.shortKey(), 0u), tag.timestamp, xTagPosition, getValueOrDefault(tag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")));
         }
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
@@ -357,7 +357,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                 }
                 if (verbose_console) {
                     fmt::print("ImPlotSink::processOne: add tag_name: {}, _xUtcOffset: {}, utcTime: {}, offset: {}\n", getValueOrDefault(this->_mergedInputTag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")), //
-                                _xUtcOffset, utcTime, offset);
+                        _xUtcOffset, utcTime, offset);
                 }
                 _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
             }

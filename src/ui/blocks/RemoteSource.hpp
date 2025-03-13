@@ -97,11 +97,12 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 }
                 const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                 auto       latency = now - std::chrono::nanoseconds(timestamp);
-                auto       map     = gr::property_map{ //
-                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},   //
+                auto       map     = gr::property_map{
+                    //
+                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},                               //
                     {gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}}, //
-                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},  //
-                    {"REMOTE_SOURCE_LATENCY", {latency.count()}}     // compares the current system time with the time inside the tag
+                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},                              //
+                    {"REMOTE_SOURCE_LATENCY", {latency.count()}}                                 // compares the current system time with the time inside the tag
                 };
                 const auto yamlMap = pmtv::yaml::deserialize(yaml);
                 if (yamlMap) {
@@ -138,9 +139,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         _subscribedUri = "";
     }
 
-    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
-        return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
-    }
+    std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     void startSubscription(const std::string& uri) {
         fmt::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
@@ -195,7 +194,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                                                              gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+                            gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
         };
@@ -246,7 +245,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { }
+    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {}
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
