@@ -1,7 +1,9 @@
 #include "Docking.hpp"
 #include "../ui/common/ImguiWrap.hpp"
+#include "../ui/components/ImGuiNotify.hpp"
 
 #include <fmt/format.h>
+#include <ranges>
 
 #include <imgui_internal.h>
 
@@ -28,11 +30,9 @@ static void setFlagsForAllDockNodes(ImGuiDockNodeFlags flags) {
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
         _layoutType = type;
+        setNeedsRelayout(true);
         if (type == DockingLayoutType::Free) {
-            // No need to relayout, just show the titlebar so user can drag it
             setFlagsForAllDockNodes(nodeFlags());
-        } else {
-            setNeedsRelayout(true);
         }
     }
 }
@@ -76,9 +76,9 @@ void DockSpace::renderWindows(const Windows& windows) {
         }
 
         // Write back geometry info, as user might have used the splitters
-        window->setGeometry(ImGui::GetWindowPos(), ImGui::GetWindowSize());
-
-        if (layoutType() == DockingLayoutType::Free) {
+        if (isBoxLayout()) {
+            // window->setGeometry(ImGui::GetWindowPos(), ImGui::GetWindowSize());
+        } else if (layoutType() == DockingLayoutType::Free) {
             if (auto node = ImGui::GetWindowDockNode()) {
                 node->SetLocalFlags(node->LocalFlags | ImGuiDockNodeFlags_NoDockingOverMe);
             }
@@ -90,10 +90,6 @@ void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction) {
     auto initNode = [this](ImGuiID nodeId, const std::shared_ptr<Window>& window) {
         auto node = ImGui::DockBuilderGetNode(nodeId);
         node->SetLocalFlags(nodeFlags());
-
-        if (window->hasSize()) {
-            ImGui::DockBuilderSetNodeSize(nodeId, ImVec2(float(window->width), node->Size.y));
-        }
         ImGui::DockBuilderDockWindow(window->name.data(), nodeId);
     };
 
@@ -156,15 +152,106 @@ void DockSpace::layoutInGrid(const Windows& windows) {
     }
 }
 
-void DockSpace::relayout(const Windows& windows) {
-    clearWindowGeometry(windows);
+void DockSpace::layoutInFree(const Windows& windows) {
+    if (windows.empty()) {
+        return;
+    }
 
+    // Assume that minX = 0, minY = 0
+    int maxX = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->x + w->width; }));
+    int maxY = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->y + w->height; }));
+    if (maxX <= 0 || maxY <= 0) {
+        return;
+    }
+
+    std::vector<std::vector<int>> grid(static_cast<std::size_t>(maxX), std::vector<int>(static_cast<std::size_t>(maxY), -1));
+
+    // No overlap -> each cell belongs to exactly one window
+    bool isOverlapDetected = false;
+    for (std::size_t i = 0; i < windows.size(); i++) {
+        const auto& w = windows[i];
+        for (int x = w->x; x < w->x + w->width; x++) {
+            for (int y = w->y; y < w->y + w->height; y++) {
+                if (grid[x][y] != -1) {
+                    isOverlapDetected = true;
+                }
+                grid[x][y] = i;
+            }
+        }
+    }
+
+    const bool isEmptyCellDetected = std::ranges::any_of(grid | std::views::join, [](int cellValue) { return cellValue == -1; });
+
+    // if layout is ill-formed -> inform user and use grid layout
+    if (isOverlapDetected) {
+        components::Notification::error("Free layout is ill-formed, overlapped cells detected.");
+        layoutInGrid(windows);
+    } else if (isEmptyCellDetected) {
+        components::Notification::error("Free layout is ill-formed, empty cells detected.");
+        layoutInGrid(windows);
+    } else {
+        layoutInFreeRegion(grid, windows, 0, static_cast<std::size_t>(maxX), 0, static_cast<std::size_t>(maxY), dockspaceID());
+    }
+}
+
+void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId) {
+
+    // Check if entire region belongs to exactly one window ID
+    const int  firstId = grid[x0][y0];
+    const bool allSame = std::ranges::all_of( // x in [x0, x1)
+        std::views::iota(x0, x1), [&](std::size_t x) {
+            return std::ranges::all_of( // y in [y0, y1)
+                std::views::iota(y0, y1), [&](std::size_t y) { return grid[x][y] == firstId; });
+        });
+
+    if (allSame) {
+        // last window, occupy whatever is left
+        if (firstId < windows.size()) {
+            ImGui::DockBuilderDockWindow(windows[firstId]->name.c_str(), nodeId);
+        } else {
+            ImGui::DockBuilderDockWindow(std::to_string(firstId).c_str(), nodeId); // empty draw
+        }
+        ImGuiDockNode* node = ImGui::DockBuilderGetNode(nodeId);
+        node->SetLocalFlags(nodeFlags());
+        return;
+    }
+
+    // Try vertical split: left/right
+    for (std::size_t cutX = x0 + 1; cutX < x1; cutX++) {
+        const bool canSplit = std::ranges::all_of(std::views::iota(y0, y1), [&](auto y) { return grid[cutX][y] != grid[cutX - 1][y]; });
+        if (canSplit) {
+            float   fraction = float(cutX - x0) / float(x1 - x0);
+            ImGuiID leftNode, rightNode;
+            ImGui::DockBuilderSplitNode(nodeId, ImGuiDir_Left, fraction, &leftNode, &rightNode);
+            layoutInFreeRegion(grid, windows, x0, cutX, y0, y1, leftNode);
+            layoutInFreeRegion(grid, windows, cutX, x1, y0, y1, rightNode);
+            return;
+        }
+    }
+
+    // Try horizontal split: top/bottom
+    for (std::size_t cutY = y0 + 1; cutY < y1; cutY++) {
+        const bool canSplit = std::ranges::all_of(std::views::iota(x0, x1), [&](auto x) { return grid[x][cutY] != grid[x][cutY - 1]; });
+        if (canSplit) {
+            float   fraction = float(cutY - y0) / float(y1 - y0);
+            ImGuiID topNode, bottomNode;
+            ImGui::DockBuilderSplitNode(nodeId, ImGuiDir_Up, fraction, &topNode, &bottomNode);
+            layoutInFreeRegion(grid, windows, x0, x1, y0, cutY, topNode);
+            layoutInFreeRegion(grid, windows, x0, x1, cutY, y1, bottomNode);
+            return;
+        }
+    }
+}
+
+void DockSpace::relayout(const Windows& windows) {
     const ImGuiID dockspaceID = this->dockspaceID();
     ImGui::DockBuilderAddNode(dockspaceID);
     ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetWindowSize());
 
     if (isBoxLayout()) {
         layoutInBox(windows, _layoutType == DockingLayoutType::Row ? ImGuiDir_Left : ImGuiDir_Up);
+    } else if (isFreeLayout()) {
+        layoutInFree(windows);
     } else {
         layoutInGrid(windows);
     }
@@ -183,9 +270,13 @@ int DockSpace::nodeFlags() const {
     int flags = ImGuiDockNodeFlags_None;
 
     if (isFreeLayout()) {
-        // No central docking (tabbed) to match old behavior, but we might want to enable.
         // TODO: ImGui bug: When detached and redocked, the window menu button comes back
+        // TODO: Plot-Tabs are currently always hidden. In the future, they might be used for Mode::Layout, but because the mode must be passed to this function (which is tricky right now),
+        //  the Docking feature for layout is not yet available.
         flags |= ImGuiDockNodeFlags_NoWindowMenuButton;
+        flags |= ImGuiDockNodeFlags_NoUndocking;
+        flags |= ImGuiDockNodeFlags_HiddenTabBar;
+        flags |= ImGuiDockNodeFlags_NoTabBar;
     } else {
         flags |= ImGuiDockNodeFlags_NoUndocking;
         flags |= ImGuiDockNodeFlags_HiddenTabBar;
