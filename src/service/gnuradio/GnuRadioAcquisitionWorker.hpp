@@ -55,6 +55,13 @@ inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, g
                 }
             }
 
+            if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
+                const auto context = std::get<std::string>(contextIt->second);
+                if (!context.empty()) {
+                    return name + "/" + context;
+                }
+            }
+
             return name;
         }
     }
@@ -181,13 +188,18 @@ struct Matcher {
         const auto  maybeMeta = tag.get(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
         std::string context   = "<undefined>";
         if (maybeMeta) {
-            const auto m  = std::get<gr::property_map>(maybeMeta->get());
-            auto       it = m.find(gr::tag::CONTEXT.shortKey());
-            if (it != m.end()) {
+            const auto meta = std::get<gr::property_map>(maybeMeta->get());
+            auto       it   = meta.find(gr::tag::CONTEXT.shortKey());
+            if (it != meta.end()) {
                 context = std::get<std::string>(it->second);
             }
         }
-        fmt::println("Matching {} against '{}' / '{}'", filterDefinition, name, context);
+
+        if (context.empty()) {
+            const auto maybeContext = tag.get(std::string(gr::tag::CONTEXT.shortKey()));
+            context                 = maybeContext ? std::get<std::string>(maybeContext->get()) : "<undefined>";
+        }
+
         return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
     }
 };
@@ -381,6 +393,7 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
+                    fmt::print("There is a pendingFlowGraph -- new sched\n");
                     _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph), _threadPool);
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();
@@ -589,6 +602,7 @@ private:
 
             if (!dataSet.timing_events.empty()) {
                 reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
+                fmt::print("Setting acqTriggerName to {}\n", reply.acqTriggerName);
             }
             reply.channelName     = std::string(signalName);
             reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";

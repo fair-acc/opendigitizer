@@ -8,6 +8,7 @@
 
 namespace opendigitizer {
 
+GR_REGISTER_BLOCK(opendigitizer::SineSource, [ float, double ]);
 template<typename T>
 requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {

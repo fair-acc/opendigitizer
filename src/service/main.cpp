@@ -21,11 +21,11 @@
 #include "settings.hpp"
 #include <Picoscope4000a.hpp>
 #include <TimingSource.hpp>
+#include <gnuradio-4.0/basic/ClockSource.hpp>
+#include <gnuradio-4.0/basic/CommonBlocks.hpp>
 #include <gnuradio-4.0/basic/FunctionGenerator.hpp>
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
-#include <gnuradio-4.0/basic/clock_source.hpp>
-#include <gnuradio-4.0/basic/common_blocks.hpp>
 #include <gnuradio-4.0/electrical/PowerEstimators.hpp>
 #include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
@@ -42,6 +42,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float>(registry); // omitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
+    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
     gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
     gr::registerBlock<MultiAdder, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);

@@ -49,7 +49,7 @@ std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCat
     return std::nullopt; // no slot left
 }
 
-void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& dashboard, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string>, 3>& yAxisGroups) {
+void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string>, 3>& yAxisGroups) {
     enum class AxisKind { X = 0, Y };
 
     xCats.fill(std::nullopt);
@@ -219,7 +219,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             continue;
         }
         ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on top
-        std::string     lbl   = buildLabel(xCats[i], static_cast<int>(i), /*isX=*/true);
+        std::string     lbl   = buildLabel(xCats[i], i, /*isX=*/true);
         ImPlot::SetupAxis(kXs[i], lbl.c_str(), flags);
         setAxisScale(kXs[i], xCats[i]->scale);
     }
@@ -233,7 +233,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
         ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
         ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on right
-        std::string     lbl   = buildLabel(yCats[i], static_cast<int>(i), /*isX=*/false);
+        std::string     lbl   = buildLabel(yCats[i], i, /*isX=*/false);
         ImPlot::SetupAxis(kYs[i], lbl.c_str(), flags);
         ImPlot::PopStyleColor(2);
         setAxisScale(kYs[i], yCats[i]->scale);
