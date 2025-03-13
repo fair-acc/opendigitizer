@@ -38,10 +38,13 @@ T getValueOrDefault(const gr::property_map& map, const std::string& key, const T
     return defaultValue;
 }
 
-inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
+inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color, bool verbose) {
     using enum DigitizerUi::AxisScale;
 
-    std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
+    auto nErasedTags = std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
+    if (verbose) {
+        fmt::print("ImPlotSink: draw Tag {} markers, pruned {} tags, min/max: {}/{}\n", tagValues.size(), nErasedTags, minX, maxX);
+    }
     if (tagValues.empty()) {
         return;
     }
@@ -70,6 +73,11 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
 
         ImPlot::SetNextLineStyle(color);
         ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
+
+        if (verbose) {
+            fmt::print("  ImPlotSink: draw Tag marker (ns/xUtc/transformed -> trigger_name): {}/{}/{} -> {}\n", //
+                getValueOrDefault<uint64_t>(tag.map, gr::tag::TRIGGER_TIME.shortKey(), 0u), tag.timestamp, xTagPosition, getValueOrDefault(tag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")));
+        }
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
         if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
@@ -305,14 +313,16 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     gr::Size_t    n_history      = 3U;
     float         history_offset = 0.01f;
 
+    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
+
     GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
-        dataset_index, n_history, history_offset);
+        dataset_index, n_history, history_offset, verbose_console);
 
     double _xUtcOffset = [] {
         using namespace std::chrono;
         auto now = system_clock::now().time_since_epoch();
         return duration<double, std::nano>(now).count() * 1e-9;
-    }();
+    }(); // utc timestamp of the last tag or first sample
     gr::HistoryBuffer<double> _xValues{required_size}; // needs to be 'double' because of required ns-level UTC timestamp precision
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
@@ -334,13 +344,20 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
     constexpr void processOne(const T& input) noexcept {
         if (this->inputTagsPresent()) { // received tag
+            if (verbose_console) {
+                fmt::print("ImPlotSink::processOne: tag: {}, _xUtcOffset: {}\n", this->_mergedInputTag.map, _xUtcOffset);
+            }
             const gr::property_map& tag = this->_mergedInputTag.map;
 
-            if (tag.contains("trigger_time")) {
-                const auto offset  = static_cast<double>(getValueOrDefault<float>(tag, "trigger_offset", 0.f));
-                const auto utcTime = static_cast<double>(getValueOrDefault<uint64_t>(tag, "trigger_time", 0U)) + offset;
+            if (tag.contains(gr::tag::TRIGGER_TIME.shortKey())) {
+                const auto offset  = static_cast<double>(getValueOrDefault<float>(tag, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
+                const auto utcTime = static_cast<double>(getValueOrDefault<uint64_t>(tag, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
                 if (utcTime > 0.0 || (utcTime * 1e-9 + offset) > 0.0) {
                     _xUtcOffset = utcTime * 1e-9 + offset;
+                }
+                if (verbose_console) {
+                    fmt::print("ImPlotSink::processOne: add tag_name: {}, _xUtcOffset: {}, utcTime: {}, offset: {}\n", getValueOrDefault(this->_mergedInputTag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")), //
+                        _xUtcOffset, utcTime, offset);
                 }
                 _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
             }
@@ -409,11 +426,12 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
             ImPlot::SetNextLineStyle(lineColor);
 
+            auto [minX, maxX] = std::ranges::minmax(_xValues);
             // draw tags before data (data is drawn on top)
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
                 tagColor.w *= 0.35f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, _xValues.front(), _xValues.back(), axisScale, tagColor);
+                drawAndPruneTags(_tagValues, minX, maxX, axisScale, tagColor, verbose_console);
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
