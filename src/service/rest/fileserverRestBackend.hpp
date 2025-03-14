@@ -74,7 +74,7 @@ public:
 
         auto redirectHandler = [this](const httplib::Request& /* request */, httplib::Response& response) {
             auto& settings = Digitizer::Settings::instance();
-            response.set_redirect(fmt::format("/web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : ""));
+            response.set_redirect(fmt::format("web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : ""));
         };
         _svr.Get("/", redirectHandler);
         _svr.Get("/index.html", redirectHandler);
