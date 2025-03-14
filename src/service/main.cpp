@@ -39,7 +39,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<builtin_multiply, float>(registry);
-    gr::registerBlock<fair::picoscope::Picoscope4000a, fair::picoscope::AcquisitionMode::Streaming, float>(registry); // omitting gr::UncertainValue<float> for now, which would also be supported by picoscope block
+    gr::registerBlock<fair::picoscope::Picoscope4000a, float, gr::DataSet<float>>(registry);
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
     gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
@@ -54,6 +54,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
+    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint16_t>(registry);
     gr::registerBlock<gr::timing::TimingSource>(registry);
 
     fmt::print("providedBlocks:\n");
