@@ -407,18 +407,22 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             std::span<const ValueType> yValues = ctx->yValues;
             ValueType                  yOffset = ctx->yOffset;
 
-            switch (ctx->axisScale) {
-            case Time: return {xValues[idx], static_cast<double>(yValues[idx] + yOffset)};
-            case LinearReverse: {
-                const double xValueBack = xValues.back();
-                return {xValues[idx] - xValueBack, static_cast<double>(yValues[idx] + yOffset)};
-            }
-            case Linear:
-            case Log10:  // base 10 logarithmic scale -> transform computed by axis
-            case SymLog: // symmetric log scale -> transform computed by axis
-            default:     // linear
-                const double xValueFront = xValues.front();
-                return {xValues[idx] - xValueFront, static_cast<double>(yValues[idx] + yOffset)};
+            if (ctx->xValues.empty()) {
+                return {static_cast<double>(idx), static_cast<double>(yValues[idx] + yOffset)};
+            } else {
+                switch (ctx->axisScale) {
+                case Time: return {xValues[idx], static_cast<double>(yValues[idx] + yOffset)};
+                case LinearReverse: {
+                    const double xValueBack = xValues.back();
+                    return {xValues[idx] - xValueBack, static_cast<double>(yValues[idx] + yOffset)};
+                }
+                case Linear:
+                case Log10:  // base 10 logarithmic scale -> transform computed by axis
+                case SymLog: // symmetric log scale -> transform computed by axis
+                default:     // linear
+                    const double xValueFront = xValues.front();
+                    return {xValues[idx] - xValueFront, static_cast<double>(yValues[idx] + yOffset)};
+                }
             }
         };
 
@@ -452,8 +456,10 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
                 std::vector<double> xAxisDouble;
                 if constexpr (!std::is_same_v<ValueType, double>) { // TODO: find a smarter zero-copy solution
-                    auto xSpan = dataSet.axisValues(0UZ);
-                    xAxisDouble.assign(xSpan.begin(), xSpan.end());
+                    if (!dataSet.axis_values.empty()) {
+                        auto xSpan = dataSet.axisValues(0UZ);
+                        xAxisDouble.assign(xSpan.begin(), xSpan.end());
+                    }
                 }
 
                 // draw tags before data (data is drawn on top)

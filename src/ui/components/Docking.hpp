@@ -27,7 +27,7 @@ inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
 
 /// Hosts a group of dock windows
 class DockSpace {
-    DockingLayoutType _layoutType      = DockingLayoutType::Free;
+    DockingLayoutType _layoutType      = DockingLayoutType::Grid;
     bool              _needsRelayout   = true;
     size_t            _lastWindowCount = 0;
 
@@ -59,6 +59,9 @@ private:
 
     void layoutInGrid(const Windows& windows);
 
+    void layoutInFree(const Windows& windows);
+    void layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId);
+
     // triggers a relayout for the next frame
     void setNeedsRelayout(bool);
 
@@ -87,7 +90,7 @@ struct DockSpace::Window {
         height = static_cast<int>(size.y);
     }
 
-    bool hasSize() const { return width > 0 && height > 0; }
+    [[nodiscard]] bool hasSize() const { return width > 0 && height > 0; }
 };
 
 } // namespace DigitizerUi

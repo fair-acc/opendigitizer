@@ -141,6 +141,8 @@ public:
 
     inline auto& plots() { return m_plots; }
 
+    DockingLayoutType layout() { return m_layout; }
+
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
 
     inline std::shared_ptr<DashboardDescription> description() const { return m_desc; }
@@ -183,6 +185,7 @@ private:
 
     std::shared_ptr<DashboardDescription>        m_desc;
     std::vector<Plot>                            m_plots;
+    DockingLayoutType                            m_layout;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
     FlowGraphItem*                               m_fgItem = nullptr;
