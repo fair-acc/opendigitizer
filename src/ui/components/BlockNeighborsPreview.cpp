@@ -88,15 +88,12 @@ void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 avai
 
     // Port parameters
     const float portWidth  = 6.0f;
-    const float portHeight = 12.0f;
+    const float portHeight = 6.0f;
     const ImU32 portColor  = IM_COL32(255, 100, 100, 255); // Lighter red
 
-    const std::string middleText     = context.block->blockName;
-    const ImVec2      middleTextSize = ImGui::CalcTextSize(middleText.c_str());
-
     // Center rectangle parameters
-    const float centerBlockWidth  = middleTextSize.x + blockInnerPadding;
-    const float centerBlockHeight = 100;
+    const float centerBlockWidth  = 50;
+    const float centerBlockHeight = centerBlockWidth;
 
     const bool hasLeft  = numBlocksLeft;
     const bool hasRight = numBlocksRight;
@@ -184,10 +181,9 @@ void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 avai
     drawList->AddRectFilled(centerBlockTopLeft, centerBlockBottomRight, fillColor);
     drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, 0.0f, 0, borderThickness);
     drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, 0.0f, 0, borderThickness);
-
-    // Middle text
-    const ImVec2 middleTextPos = centerBlockTopLeft + ImVec2((centerBlockWidth - middleTextSize.x) * 0.5f, (centerBlockHeight - middleTextSize.y) * 0.5f);
-    drawList->AddText(middleTextPos, IM_COL32(0, 0, 0, 255), middleText.c_str());
+    if (ImGui::IsMouseHoveringRect(centerBlockTopLeft, centerBlockBottomRight)) {
+        ImGui::SetTooltip("%s", context.block->blockName.c_str());
+    }
 
     auto drawNeighbourBlock = [&](UiGraphPort& port, bool isLeft, float blockX, long index) {
         const float  y          = startY + (blockHeight + verticalSpacing) * static_cast<float>(index);
