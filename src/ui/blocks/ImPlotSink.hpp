@@ -38,13 +38,26 @@ T getValueOrDefault(const gr::property_map& map, const std::string& key, const T
     return defaultValue;
 }
 
-inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color, bool verbose) {
-    using enum DigitizerUi::AxisScale;
-
-    auto nErasedTags = std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
-    if (verbose) {
-        fmt::print("ImPlotSink: draw Tag {} markers, pruned {} tags, min/max: {}/{}\n", tagValues.size(), nErasedTags, minX, maxX);
+inline void plotVerticalTagLabel(const std::string_view& label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75f) {
+    if (label.empty()) {
+        return;
     }
+
+    const double yRange   = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    ImVec2       textSize = ImGui::CalcTextSize(label.data());
+    if (static_cast<double>(textSize.x) > sizeRatioLimit * yRange) {
+        return; // the text is too large relative to the vertical scale
+    }
+
+    const double ySafeTop = plotLimits.Y.Max - fractionBelowTop * yRange;
+    const double yClamped = std::clamp(ySafeTop, plotLimits.Y.Min, plotLimits.Y.Max);
+    ImVec2       pixOffset{plotLeft ? (-textSize.y + 2.0f) : (+5.0f), textSize.x};
+    ImPlot::PlotText(label.data(), xData, yClamped, pixOffset, static_cast<int>(ImPlotTextFlags_Vertical) | static_cast<int>(ImPlotItemFlags_NoFit));
+}
+
+inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
+    using enum DigitizerUi::AxisScale;
+    std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
     if (tagValues.empty()) {
         return;
     }
@@ -62,7 +75,6 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
 
     const float  fontHeight = ImGui::GetFontSize();
     const auto   plotLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
-    const double yMax       = plotLimits.Y.Max;
     const double yRange     = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x;
@@ -74,18 +86,13 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
         ImPlot::SetNextLineStyle(color);
         ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
-        if (verbose) {
-            fmt::print("  ImPlotSink: draw Tag marker (ns/xUtc/transformed -> trigger_name): {}/{}/{} -> {}\n", //
-                getValueOrDefault<uint64_t>(tag.map, gr::tag::TRIGGER_TIME.shortKey(), 0u), tag.timestamp, xTagPosition, getValueOrDefault(tag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")));
-        }
-
         // suppress tag labels if it is too close to the previous one or close to the extremities
         if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
             const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
             if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
-                ImPlot::PlotText(triggerLabel.c_str(), xTagPosition, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+                plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
             } else {
                 continue;
             }
@@ -94,7 +101,7 @@ inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double
             if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                 const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
                 if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
-                    ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
+                    plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
                 } else {
                     continue;
                 }
@@ -136,7 +143,6 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
     float        lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(xAxisMin, xAxisMax)), 0.0f).x;
     const float  fontHeight     = ImGui::GetFontSize();
     const auto   plotLimits     = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
-    const double yMax           = plotLimits.Y.Max;
     const double yRange         = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
     for (std::size_t sig_i = 0; sig_i < dataset.timing_events.size(); ++sig_i) {
         auto& eventsForSig = dataset.timing_events[sig_i];
@@ -158,7 +164,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
                 const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
                 if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
-                    ImPlot::PlotText(triggerLabel.c_str(), xTagPosition, yMax, {-fontHeight + 2.0f, 1.0f * triggerLabelSize.x}, ImPlotTextFlags_Vertical);
+                    plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
                 } else {
                     continue;
                 }
@@ -167,7 +173,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
                 if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                     const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
                     if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
-                        ImPlot::PlotText(triggerCtx.c_str(), xTagPosition, yMax, {5.0f, 1.0f * triggerCtxLabelSize.x}, ImPlotTextFlags_Vertical);
+                        plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
                     } else {
                         continue;
                     }
@@ -294,29 +300,34 @@ public:
 template<typename TBlock>
 using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>;
 
+using namespace gr;
+
 GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>)
 
 template<typename T>
 struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     using ValueType = gr::meta::fundamental_base_value_type_t<T>;
+    // optional shortening
+    template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
+    using A = gr::Annotated<U, description, Arguments...>;
 
-    gr::PortIn<T> in;
-    uint32_t      color         = 0xff0000;                         ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
-    gr::Size_t    required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
-    std::string   signal_name;
-    std::string   signal_quantity;
-    std::string   signal_unit;
-    float         signal_min     = std::numeric_limits<float>::lowest();
-    float         signal_max     = std::numeric_limits<float>::max();
-    float         sample_rate    = 1000.0f;
-    gr::Size_t    dataset_index  = std::numeric_limits<gr::Size_t>::max();
-    gr::Size_t    n_history      = 3U;
-    float         history_offset = 0.01f;
+    PortIn<T> in;
 
-    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
+    A<uint32_t, "plot color", Doc<"RGB color for the plot">>                                                                                              color         = 0xff0000;                         // TODO: Use a better type, support configurable colors for datasets?
+    A<gr::Size_t, "required buffer size", Doc<"Minimum number of samples to retain">>                                                                     required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
+    A<std::string, "signal name", Visible, Doc<"Human-readable identifier for the signal">>                                                               signal_name;
+    A<std::string, "signal quantity", Visible, Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
+    A<std::string, "signal unit", Visible, Doc<"Unit of measurement for the signal values">>                                                              signal_unit;
+    A<float, "signal min", Doc<"Minimum expected value for the signal">, Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min     = std::numeric_limits<float>::lowest();
+    A<float, "signal max", Doc<"Maximum expected value for the signal">, Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max     = std::numeric_limits<float>::max();
+    A<float, "sample rate", Visible, Doc<"Sampling frequency in Hz">, Unit<"Hz">, Limits<float(0), std::numeric_limits<float>::max()>>                    sample_rate    = 1000.0f;
+    A<gr::Size_t, "dataset index", Visible, Doc<"Index of the dataset, if applicable">>                                                                   dataset_index  = std::numeric_limits<gr::Size_t>::max();
+    A<gr::Size_t, "history length", Doc<"Number of samples retained for historical visualization">>                                                       n_history      = 3U;
+    A<float, "history offset", Doc<"Time offset for historical data display">, Unit<"s">, Limits<float(0.0), std::numeric_limits<float>::max()>>          history_offset = 0.01f;
+    A<bool, "plot tags", Doc<"true: draw the timing tags">>                                                                                               plot_tags      = true;
 
     GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
-        dataset_index, n_history, history_offset, verbose_console);
+        dataset_index, n_history, history_offset, plot_tags);
 
     double _xUtcOffset = [] {
         using namespace std::chrono;
@@ -326,6 +337,9 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     gr::HistoryBuffer<double> _xValues{required_size}; // needs to be 'double' because of required ns-level UTC timestamp precision
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
+
+    double      _sample_period = 1.0 / static_cast<double>(sample_rate);
+    std::size_t _sample_count  = 0UZ;
 
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
 
@@ -340,36 +354,34 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             _yValues.resize(required_size);
             _tagValues.clear();
         }
+
+        _sample_period = 1.0 / static_cast<double>(sample_rate);
     }
 
     constexpr void processOne(const T& input) noexcept {
         if (this->inputTagsPresent()) { // received tag
-            if (verbose_console) {
-                fmt::print("ImPlotSink::processOne: tag: {}, _xUtcOffset: {}\n", this->_mergedInputTag.map, _xUtcOffset);
-            }
             const gr::property_map& tag = this->_mergedInputTag.map;
 
             if (tag.contains(gr::tag::TRIGGER_TIME.shortKey())) {
                 const auto offset  = static_cast<double>(getValueOrDefault<float>(tag, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
                 const auto utcTime = static_cast<double>(getValueOrDefault<uint64_t>(tag, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
                 if (utcTime > 0.0 || (utcTime * 1e-9 + offset) > 0.0) {
-                    _xUtcOffset = utcTime * 1e-9 + offset;
+                    _xUtcOffset   = utcTime * 1e-9 + offset;
+                    _sample_count = 0UZ;
                 }
-                if (verbose_console) {
-                    fmt::print("ImPlotSink::processOne: add tag_name: {}, _xUtcOffset: {}, utcTime: {}, offset: {}\n", getValueOrDefault(this->_mergedInputTag.map, gr::tag::TRIGGER_NAME.shortKey(), std::string("Unknown")), //
-                        _xUtcOffset, utcTime, offset);
+                if (plot_tags) {
+                    _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
                 }
-                _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
             }
             this->_mergedInputTag.map.clear(); // TODO: provide proper API for clearing tags
             _xValues.push_back(_xUtcOffset);
         } else {
             if constexpr (std::is_arithmetic_v<T>) {
-                const double Ts = 1.0 / static_cast<double>(sample_rate);
-                _xValues.push_back(_xValues.back() + Ts);
+                _xValues.push_back(_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
             }
         }
         _yValues.push_back(input);
+        _sample_count++;
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
@@ -385,7 +397,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             return (start < end) ? std::string(start, end) : std::string{};
         };
         const AxisScale    axisScale = magic_enum::enum_cast<AxisScale>(trim(scaleStr)).value_or(AxisScale::Linear);
-        const std::string& label     = signal_name.empty() ? this->name.value : signal_name;
+        const std::string& label     = signal_name.value.empty() ? this->name.value : signal_name.value;
         if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
             double v = {};
@@ -431,7 +443,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
                 tagColor.w *= 0.35f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, minX, maxX, axisScale, tagColor, verbose_console);
+                drawAndPruneTags(_tagValues, minX, maxX, axisScale, tagColor);
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
@@ -442,8 +454,9 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             for (std::size_t historyIdx = 0UZ; historyIdx < nMax; historyIdx++) {
                 const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
                 // dimension checks
-                if (dataSet.extents.size() < 2) {
-                    continue; // not enough dimensions
+                const std::size_t nsignals = dataSet.size();
+                if (dataSet.extents.size() != 1UZ && nsignals < 1UZ) {
+                    continue; // not 1D signal or not enough signals
                 }
 
                 ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
@@ -463,14 +476,13 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     drawDataSetTimingEvents(dataSet, axisScale, tagColor);
                 }
 
-                const auto nsignals = dataSet.extents[0];
-                const auto npoints  = static_cast<std::size_t>(dataSet.extents[1]);
+                const auto npoints = static_cast<std::size_t>(dataSet.axisValues(0UZ).size());
                 if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
                     // draw all signals
                     auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);
                     ValueType baseOffset  = static_cast<ValueType>(history_offset) * (maxVal - minVal);
 
-                    for (std::size_t signalIdx = 0UZ; signalIdx < cast_to_unsigned(nsignals); ++signalIdx) {
+                    for (std::size_t signalIdx = 0UZ; signalIdx < nsignals; ++signalIdx) {
                         ImPlot::SetNextLineStyle(lineColor);
                         PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
                         ImPlot::PlotLineG(dataSet.signal_names[signalIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
@@ -510,30 +522,30 @@ public:
 
     ~ImPlotSinkDataSet() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    gr::DataSet<T> data{};
+    gr::DataSet<T> dataSet{};
 
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
-        data        = input.back();
+        dataSet     = input.back();
         std::ignore = input.consume(input.size());
         return gr::work::Status::OK;
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
-        if (data.extents.empty()) {
+        if (dataSet.extents.empty()) {
             return gr::work::Status::OK;
         }
         setAxisFromConfig(config);
-        const auto n = data.extents[1];
+        const int n = static_cast<int>(dataSet.axisValues(0UZ).size());
         if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
-            for (std::int32_t i = 0; i < data.extents[0]; ++i) {
-                ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(i)].c_str(), data.signal_values.data() + n * i, n);
+            for (std::size_t i = 0UZ; i < dataSet.size(); ++i) {
+                ImPlot::PlotLine(dataSet.signalName(i).c_str(), dataSet.signalValues(i).data(), n);
             }
         } else {
-            if (dataset_index >= cast_to_unsigned(data.extents[0])) {
+            if (dataset_index >= dataSet.size()) {
                 dataset_index = 0U;
             }
-            ImPlot::PlotLine(data.signal_names[static_cast<std::size_t>(dataset_index)].c_str(), data.signal_values.data() + cast_to_unsigned(n) * dataset_index, n);
+            ImPlot::PlotLine(dataSet.signalName(dataset_index).c_str(), dataSet.signalValues(dataset_index).data(), n);
         }
         return gr::work::Status::OK;
     }
