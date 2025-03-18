@@ -313,15 +313,34 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 opendigitizer::acq::Acquisition acq;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
                 gr::DataSet<T> ds;
-                ds.extents       = {1, static_cast<int32_t>(acq.channelValue.size())};
-                ds.signal_names  = {acq.channelName};
-                ds.signal_units  = {acq.channelUnit};
-                auto convert     = [](float v) { return static_cast<T>(v); };
-                auto values      = acq.channelValue | std::views::transform(convert);
-                ds.signal_values = {values.begin(), values.end()};
+                auto           convert = [](float v) { return static_cast<T>(v); };
+
+                ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
+
+                // axis layout:
+                ds.axis_names = {"x-axis"};
+                ds.axis_units = {"a.u."};
+                ds.axis_values.resize(1UZ);
+                auto axisValues     = acq.channelTimeBase | std::views::transform(convert);
+                ds.axis_values[0UZ] = {axisValues.begin(), axisValues.end()};
+
+                // signal data layout:
+                ds.extents = {static_cast<int32_t>(acq.channelValue.size())};
+                ds.layout  = LayoutRight{};
+
+                // signal data storage:
+                ds.signal_names      = {acq.channelName};
+                ds.signal_quantities = {acq.channelQuantity};
+                ds.signal_units      = {acq.channelUnit};
+                auto signalValues    = acq.channelValue | std::views::transform(convert);
+                ds.signal_values     = {signalValues.begin(), signalValues.end()};
                 // auto errors      = acq.channelError | std::views::transform(convert); // TODO: If type is uncertain value, use values and errors to initialize
-                ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
                 ds.signal_ranges = {{convert(acq.channelRangeMin.value()), convert(acq.channelRangeMax.value())}};
+
+                // meta data
+                ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
+                ds.timing_events.resize(1UZ);
+
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back(std::move(ds));
             } catch (opencmw::ProtocolException& e) {
