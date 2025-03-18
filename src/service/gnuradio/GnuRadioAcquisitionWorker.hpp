@@ -36,7 +36,7 @@ inline std::expected<T, std::string> get(const gr::property_map& m, const std::s
     if (res) {
         return res.value();
     } else {
-        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& value) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
+        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& /*value*/) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
     }
 }
 
@@ -470,8 +470,15 @@ private:
             reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
+                    // float   Ts_ns  = 1'000'000'000.f / entry.sample_rate;
+                    float   Ts_ns  = 0.f; // TODO: find where sample_rate is stored
+                    int64_t offset = static_cast<int64_t>(idx * Ts_ns);
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqLocalTimeStamp = std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()));
+                        reply.acqLocalTimeStamp = static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
+                    }
+                    if (reply.acqTriggerTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
+                        reply.acqTriggerName      = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
+                        reply.acqTriggerTimeStamp = static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
                     }
                     reply.triggerIndices.push_back(static_cast<int64_t>(idx));
                     reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())));
@@ -581,9 +588,8 @@ private:
                 reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
             }
             reply.channelName     = std::string(signalName);
-            reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";
-            // reply.channelQuantity = dataSet.signalQuantity(signalIndex); // needs fix in DataSink::makeDataSetTemplate, which misses to initialise signal quantity
-            reply.channelUnit = dataSet.signalUnit(signalIndex);
+            reply.channelQuantity = signalIndex < dataSet.size() ? dataSet.signalQuantity(signalIndex) : "";
+            reply.channelUnit     = signalIndex < dataSet.size() ? dataSet.signalUnit(signalIndex) : "";
 
             if (dataSet.signal_ranges.size() > signalIndex) {
                 // Workaround for Annotated, see above
@@ -600,9 +606,14 @@ private:
 
             reply.channelValue.resize(values.size());
             std::ranges::copy(values, reply.channelValue.begin());
-            reply.channelError.resize(0);
-            reply.channelTimeBase.resize(values.size());
-            std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
+            reply.channelError.resize(0); // TODO: add std::uncertain<T>() value here
+
+            // TODO: FixMe axis_values are not appropriately defined/tested in GR4: Data[Set]Sink -> adding mock data here
+            // assert(dataSet.axis_values.size() > 0UZ);
+            // assert(dataSet.axis_values[0UZ].size() > 0UZ);
+            // reply.channelTimeBase.resize(dataSet.axis_values[0].size());
+            // std::ranges::copy(dataSet.axis_values[0], reply.channelTimeBase.begin()); // TODO: correct for trigger offset which may not be on the '0'-th sample
+            reply.channelTimeBase = std::views::iota(0UZ, dataSet.signalValues(0UZ).size()) | std::ranges::to<std::vector<float>>();
         };
 
         const auto wasFinished = pollerEntry.poller->finished.load();

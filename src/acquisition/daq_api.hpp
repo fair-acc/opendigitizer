@@ -131,14 +131,14 @@ using namespace std::literals;
 /**
  * Generic time domain data object.
  * Specified in: https://edms.cern.ch/document/1823376/1 EDMS: 1823376 v.1 Section 4.3.1
+ * Updated version at: https://gitlab.gsi.de/acc/specs/generic-daq#user-content-expected-data-acquisition-variables
  */
-// clang-format: OFF
 struct Acquisition {
     Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                      // specified as Enum + String
     Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = {"STREAMING"}; // specified as ENUM
     Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;             // specified as type WR timestamp
     Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
-    Annotated<std::vector<::int32_t>, si::time<second>, "time scale">                            channelTimeBase; // todo either nanosecond or float
+    Annotated<std::vector<float>, si::time<second>, "time scale [s]">                            channelTimeBase;
     Annotated<float, si::time<second>, "user-defined delay">                                     channelUserDelay   = 0.0f;
     Annotated<float, si::time<second>, "actual trigger delay">                                   channelActualDelay = 0.0f;
     Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
@@ -163,7 +163,6 @@ struct Acquisition {
  * Generic frequency domain data object.
  * Specified in: https://edms.cern.ch/document/1823376/1 EDMS: 1823376 v.1 Section 4.3.2
  */
-// clang-format: OFF
 struct AcquisitionSpectra {
     Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                      // specified as Enum + String
     Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = {"STREAMING"}; // specified as ENUM
@@ -180,7 +179,6 @@ struct AcquisitionSpectra {
     Annotated<std::vector<long>, si::time<si::second>, "timestamps of samples">                  channelPhase_dim1_labels; // todo: either nanosecond or float
     Annotated<std::vector<float>, opencmw::NoUnit, "freqency scale">                             channelPhase_dim2_labels; // unit: Hz or f_rev
 };
-// clang-format: ON
 
 struct TimeDomainContext {
     std::string channelNameFilter;
