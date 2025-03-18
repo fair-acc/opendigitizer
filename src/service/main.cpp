@@ -29,6 +29,8 @@
 #include <gnuradio-4.0/electrical/PowerEstimators.hpp>
 #include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
+#include <gnuradio-4.0/testing/ImChartMonitor.hpp>
+#include <gnuradio-4.0/testing/NullSources.hpp>
 #include <gnuradio-4.0/testing/TagMonitors.hpp>
 
 namespace {
@@ -42,8 +44,14 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope4000a, float, gr::DataSet<float>>(registry);
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
+    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
+    registry.template addBlockType<gr::testing::ImChartMonitor<float, false>>("gr::basic::ConsoleDebugSink<float>");
+    registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<float>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<float>>");
+    // Note ImChartMonitor currently is only implemented for floating point types
+    // registry.template addBlockType<gr::testing::ImChartMonitor<uint8_t, false>>("gr::basic::ConsoleDebugSink<uint8>");
+    // registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<uint8_t>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<uint8>>");
+    // registry.template addBlockType<gr::testing::ImChartMonitor<uint16_t, false>>("gr::basic::ConsoleDebugSink<uint16>");
+    // registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<uint16_t>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<uint16>>");
     gr::registerBlock<MultiAdder, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<gr::electrical::PowerMetrics, 3, float>(registry);
@@ -55,6 +63,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint16_t>(registry);
+    gr::registerBlock<gr::testing::NullSink, float, uint8_t, uint16_t, gr::DataSet<float>, gr::DataSet<uint8_t>, gr::DataSet<uint16_t>>(registry);
     gr::registerBlock<gr::timing::TimingSource>(registry);
 
     fmt::print("providedBlocks:\n");
@@ -77,9 +86,9 @@ int main(int argc, char** argv) {
 
     std::string grc = R"(blocks:
   - name: source
-    id: gr::basic::ClockSource<float32, true, std::chrono::_V2::system_clock, true>
+    id: gr::basic::ClockSource
   - name: sink
-    id: gr::basic::DataSink<float32>
+    id: gr::basic::DataSink<float>
     parameters:
       signal_name: test
 connections:

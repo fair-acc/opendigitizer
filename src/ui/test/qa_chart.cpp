@@ -120,8 +120,7 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
+    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
     gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);

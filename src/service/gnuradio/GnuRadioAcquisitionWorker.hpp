@@ -582,7 +582,8 @@ private:
             }
             reply.channelName     = std::string(signalName);
             reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";
-            reply.channelUnit     = dataSet.signal_units.size() > signalIndex ? dataSet.signal_units[signalIndex] : "N/A";
+            // reply.channelQuantity = dataSet.signalQuantity(signalIndex); // needs fix in DataSink::makeDataSetTemplate, which misses to initialise signal quantity
+            reply.channelUnit = dataSet.signalUnit(signalIndex);
 
             if (dataSet.signal_ranges.size() > signalIndex) {
                 // Workaround for Annotated, see above
@@ -594,10 +595,7 @@ private:
             auto values = std::span(dataSet.signal_values);
 
             if (key.mode == AcquisitionMode::DataSet) {
-                const auto samplesPerSignal = static_cast<std::size_t>(dataSet.extents[1]);
-                const auto offset           = signalIndex * samplesPerSignal;
-                const auto nValues          = offset + samplesPerSignal <= values.size() ? samplesPerSignal : 0;
-                values                      = values.subspan(offset, nValues);
+                values = dataSet.signalValues(signalIndex);
             }
 
             reply.channelValue.resize(values.size());

@@ -20,6 +20,8 @@
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
+#include <gnuradio-4.0/testing/ImChartMonitor.hpp>
+#include <gnuradio-4.0/testing/NullSources.hpp>
 
 #include <cmrc/cmrc.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
@@ -80,16 +82,17 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t>(registry);
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
+    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
     gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
     gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
+    gr::registerBlock<gr::testing::NullSink, float, uint8_t, uint16_t, gr::DataSet<float>, gr::DataSet<uint8_t>, gr::DataSet<uint16_t>>(registry);
+    registry.template addBlockType<gr::testing::ImChartMonitor<float, false>>("gr::basic::ConsoleDebugSink<float>");
+    registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<float>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<float>>");
 #pragma GCC diagnostic pop
 }
 

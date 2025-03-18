@@ -652,11 +652,11 @@ connections:
 
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal::2&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal::3&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
             expect(eq(acq.channelValue.size(), 512UZ));
             expect(eq(acq.channelError.size(), 0UZ));
             expect(eq(acq.channelName.value(), "FFTTestSignal"sv));
-            expect(eq(acq.channelUnit.value(), "itest unit"sv));
+            expect(eq(acq.channelUnit.value(), "Imtest unit"sv));
             receivedCount++;
         });
 
