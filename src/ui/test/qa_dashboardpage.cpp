@@ -91,17 +91,19 @@ int main(int argc, char* argv[]) {
     app.initImGui();
 
     auto& registry = gr::globalBlockRegistry();
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t>(registry);
+    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
+    gr::PluginLoader pluginLoader(registry, {});
 
     auto fs            = cmrc::sample_dashboards::get_filesystem();
     auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");
     auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
 
-    auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
+    auto dashBoardDescription       = DigitizerUi::DashboardDescription::createEmpty("empty");
+    g_state.dashboard               = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
+    g_state.dashboard->pluginLoader = std::make_shared<gr::PluginLoader>(std::move(pluginLoader));
     g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()));
 
     return app.runTests() ? 0 : 1;

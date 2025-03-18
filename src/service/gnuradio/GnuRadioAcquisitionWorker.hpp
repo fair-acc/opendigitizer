@@ -583,7 +583,7 @@ private:
             reply.channelName     = std::string(signalName);
             reply.channelQuantity = dataSet.signal_quantities.size() > signalIndex ? dataSet.signal_quantities[signalIndex] : "";
             // reply.channelQuantity = dataSet.signalQuantity(signalIndex); // needs fix in DataSink::makeDataSetTemplate, which misses to initialise signal quantity
-            reply.channelUnit     = dataSet.signalUnit(signalIndex);
+            reply.channelUnit = dataSet.signalUnit(signalIndex);
 
             if (dataSet.signal_ranges.size() > signalIndex) {
                 // Workaround for Annotated, see above
