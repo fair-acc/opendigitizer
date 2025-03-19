@@ -29,8 +29,8 @@ plots:
   - name: Plot 2
     axes:
       - axis: X
-        min: 0.001
-        max: NaN
+        min: 0.0001
+        max: 0.5
         scale: Log10
       - axis: Y
         min: NaN
