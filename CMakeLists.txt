@@ -65,6 +65,7 @@ add_subdirectory(src/ui)
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
+  set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
   ExternalProject_Add(
     ui-wasm
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
@@ -79,7 +80,6 @@ if(NOT DISABLE_WASM_BUILD)
     CMAKE_ARGS -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
                -DCMAKE_MODULE_PATH="${CMAKE_SOURCE_DIR}/cmake"
     BUILD_BYPRODUCTS ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.wasm)
-  set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
   add_custom_command(
     TARGET ui-wasm
     POST_BUILD
