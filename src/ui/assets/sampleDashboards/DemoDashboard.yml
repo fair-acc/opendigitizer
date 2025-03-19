@@ -25,19 +25,19 @@ plots:
         max: NaN # enables auto-range
     sources:
       - sinesSink
-    rect: [ 0, 0, 8, 8]
+    rect: [0, 0, 8, 8]
   - name: Plot 2
     axes:
       - axis: X
-        min: 0.1
-        max: 50.0
-        scale: Linear
-      - axis: Y
         min: 0.001
+        max: NaN
+        scale: Log10
+      - axis: Y
+        min: NaN
         max: NaN
     sources:
       - fftSink
-    rect: [ 0, 8, 8, 8]
+    rect: [0, 8, 8, 8]
   - name: Plot 3
     axes:
       - axis: X
