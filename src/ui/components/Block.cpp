@@ -108,7 +108,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         const auto& activeContext = panelContext.block->activeContext;
 
         const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
-        if (ImGui::BeginCombo("##contextNameCombo", activeContextLabel.c_str())) {
+        if (auto combo = IMW::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
             for (const auto& contextNameAndTime : panelContext.block->contexts) {
                 const bool        selected = activeContext.context == contextNameAndTime.context;
                 const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
@@ -119,7 +119,6 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                     ImGui::SetItemDefaultFocus();
                 }
             }
-            ImGui::EndCombo();
         }
 
         {
@@ -150,7 +149,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
-                if (ImGui::BeginCombo("##baseTypeCombo", typeParams.parametrization.c_str())) {
+                if (auto combo = IMW::Combo("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
                     for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                         if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                             gr::Message message;
@@ -166,7 +165,6 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                             ImGui::SetItemDefaultFocus();
                         }
                     }
-                    ImGui::EndCombo();
                 }
             }
         }
@@ -182,19 +180,36 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 }
 
 void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const ImVec2& /*size*/) {
-    auto             storage = ImGui::GetStateStorage();
+    constexpr auto   editorFieldWidth = 100;
+    auto             storage          = ImGui::GetStateStorage();
     IMW::ChangeStrId mainId("block_controls");
     const auto&      style = ImGui::GetStyle();
-
-    if (ImGui::BeginTable("settings_table", 2, ImGuiTableFlags_SizingFixedFit)) {
+    if (auto table = IMW::Table("settings_table", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
         // Setup columns without headers
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
         int i = 0;
         for (const auto& p : block->blockSettings) {
-            auto id = ImGui::GetID(p.first.c_str());
-            ImGui::PushID(int(id));
+            // Do we know how to edit this type?
+            if (!std::visit(gr::meta::overloaded{//
+                                [&](float) { return true; },
+                                [&]([[maybe_unused]] auto&& val) {
+                                    using T = std::decay_t<decltype(val)>;
+                                    if constexpr (std::integral<T>) {
+                                        return true;
+                                    } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                        return true;
+                                    }
+                                    return false;
+                                }},
+                    p.second)) {
+                continue;
+            };
+
+            auto          id = ImGui::GetID(p.first.c_str());
+            IMW::ChangeId rowId{int(id)};
+
             auto* enabled = storage->GetBoolRef(id, true);
 
             ImGui::TableNextRow();
@@ -220,17 +235,18 @@ void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const I
                     block->ownerGraph->sendMessage(std::move(message));
                 };
 
-                std::visit(gr::meta::overloaded{[&](float val) {
-                                                    ImGui::SetNextItemWidth(100);
-                                                    float temp = val;
-                                                    if (InputKeypad<>::edit(label, &temp)) {
-                                                        sendSetSettingMessage(block->blockUniqueName, p.first, temp);
-                                                    }
-                                                },
+                std::visit(gr::meta::overloaded{//
+                               [&](float val) {
+                                   ImGui::SetNextItemWidth(editorFieldWidth);
+                                   float temp = val;
+                                   if (InputKeypad<>::edit(label, &temp)) {
+                                       sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                   }
+                               },
                                [&](auto&& val) {
                                    using T = std::decay_t<decltype(val)>;
                                    if constexpr (std::integral<T>) {
-                                       ImGui::SetNextItemWidth(100);
+                                       ImGui::SetNextItemWidth(editorFieldWidth);
                                        int temp = int(val);
                                        if (InputKeypad<>::edit(label, &temp)) {
                                            sendSetSettingMessage(block->blockUniqueName, p.first, temp);
@@ -247,11 +263,8 @@ void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const I
             }
 
             setItemTooltip(p.first.c_str());
-            ImGui::PopID();
             ++i;
         }
-
-        ImGui::EndTable();
     }
 }
 
