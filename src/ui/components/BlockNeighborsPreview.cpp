@@ -1,70 +1,27 @@
 #include "BlockNeighborsPreview.hpp"
+#include "../FlowgraphItem.hpp"
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "Block.hpp"
+
+#include <fmt/core.h>
+#include <imgui_node_editor.h>
+#include <imgui_node_editor_internal.h>
 
 #include <ranges>
 #include <string>
 
 namespace DigitizerUi::components {
 
-bool drawCollapsible(ImVec2 availableSize) {
-    // Collapsibles are being removed. But this one might be useful, as the preview is quite tall.
-    // To be discussed
-
-    static bool enabled   = true;
-    const auto& style     = ImGui::GetStyle();
-    const auto  curpos    = ImGui::GetCursorPos();
-    const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
-
-    if (ImGui::Button("##blockNavigationCollapsible", {availableSize.x, 0.f})) {
-        enabled = !enabled;
-    }
-
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Displays the current block and its adjacent blocks.\nClicking an adjacent block will display its properties.");
-    }
-
-    const auto newPos = ImGui::GetCursorPos();
-
-    ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
-    ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);
-
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + style.IndentSpacing);
-    ImGui::TextUnformatted("Block Navigation");
-
-    ImGui::SetCursorPos(newPos);
-
-    return enabled;
-}
-
 void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
-    // Here we draw the current block and its neighbours, for navigation purposes. Clicking a neighbour will change the panel properties.
-    // Reusing ax::NodeEditor seems overkill for this use case and would introduce complexity:
-    // - We need a different block styling, as we have very little space (blocks should be smaller)
-    // - We don't need interaction (DnD, Zoom, change edges)
-    // - Needs unique ids for the edges and blocks (otherwise clashes with main fg)
-    // - We want ports to be explicitly rendered and colored
-    // The gui is separate from the business logic, can be changed once the main frame graph is restyled
-    // Open discussion points:
-    // - There's not a lot of vertical space in the properties panel. Maybe make the blocks smaller and use text wrapping ?
-    // - which colors to use for the different port types?
+    // Here we draw the current block and its neighbours, for navigation purposes.
+    // Clicking a neighbour will change the panel properties.
 
     if (!context.block || !context.graphModel) {
         // This does not happen, it would be a bug. Let it crash in debug mode so we notice.
         assert(false);
         return;
     }
-
-    if (!drawCollapsible(availableSize)) {
-        return;
-    }
-
-    auto leftEdges  = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.block; });
-    auto rightEdges = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.block; });
-
-    auto leftBlocks  = leftEdges | std::views::transform([](const auto& edge) { return edge.edgeSourcePort->ownerBlock; });
-    auto rightBlocks = rightEdges | std::views::transform([](const auto& edge) { return edge.edgeDestinationPort->ownerBlock; });
 
     auto maxBlockTextSize = [](auto blocks) {
         float maxWidth = 0.0f;
@@ -75,198 +32,154 @@ void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 avai
         return maxWidth;
     };
 
+    auto leftEdges      = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.block; });
+    auto rightEdges     = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.block; });
+    auto leftBlocks     = leftEdges | std::views::transform([](const auto& edge) { return edge.edgeSourcePort->ownerBlock; });
+    auto previousEditor = ax::NodeEditor::GetCurrentEditor();
+
     // Layout parameters
-    const float blockInnerPadding  = 10.0f * 2;
-    const float leftRectsMaxWidth  = maxBlockTextSize(leftBlocks) + blockInnerPadding;
-    const float rightRectsMaxWidth = maxBlockTextSize(rightBlocks) + blockInnerPadding;
-    const float blockHeight        = 50.0f;
-    const float blockSpacing       = 40;
-    const float verticalSpacing    = 10;
-    const auto  numBlocksLeft      = std::ranges::distance(leftEdges);
-    const auto  numBlocksRight     = std::ranges::distance(rightEdges);
-    const auto  maxRects           = static_cast<float>(std::max(numBlocksLeft, numBlocksRight));
+    const float blockInnerPadding = 10.0f * 2;
+    const float leftRectsMaxWidth = maxBlockTextSize(leftBlocks) + blockInnerPadding;
 
-    // Port parameters
-    const float portWidth  = 6.0f;
-    const float portHeight = 6.0f;
-    const ImU32 portColor  = IM_COL32(255, 100, 100, 255); // Lighter red
+    const float blockHeight     = 50.0f;
+    const float blockSpacing    = 40;
+    const float verticalSpacing = 10;
+    const int   pinHeight       = 10;
+    const int   pinYOffset      = 5;
+    const int   previewHeight   = 150;
+    const auto  numBlocksLeft   = std::ranges::distance(leftEdges);
 
-    // Center rectangle parameters
-    const float centerBlockWidth  = 50;
-    const float centerBlockHeight = centerBlockWidth;
-
-    const bool hasLeft  = numBlocksLeft;
-    const bool hasRight = numBlocksRight;
-
-    // Calculate total height needed for N rects with spacing
-    const float topMargin   = 10.0f;
-    const float totalHeight = std::max(maxRects * blockHeight + (maxRects - 1.0f) * verticalSpacing + (topMargin * 2), centerBlockHeight + (topMargin * 2));
-    const float totalWidth  = [&] {
-        float result = centerBlockWidth;
-
-        if (hasLeft) {
-            result += leftRectsMaxWidth + blockSpacing;
-        }
-
-        if (hasRight) {
-            result += rightRectsMaxWidth + blockSpacing;
-        }
-
-        return result;
-    }();
-
-    const float scrollbarHeight = ImGui::GetStyle().ScrollbarSize;
-
-    ImGui::BeginChild("scroll_area", ImVec2(availableSize.x, totalHeight + scrollbarHeight), 0, ImGuiWindowFlags_HorizontalScrollbar);
-    ImGui::BeginChild("blockNavigationPreview", ImVec2(totalWidth, totalHeight), false);
-    ImGui::BeginGroup();
-
-    // Calculate positions
-    const float startX       = 0;
-    const float startY       = 10.0f;
-    const float middleBlockX = startX + (hasLeft ? leftRectsMaxWidth + blockSpacing : 0);
-    const float rightBlocksX = middleBlockX + centerBlockWidth + blockSpacing;
-
-    const ImU32 fillColor        = IM_COL32(240, 235, 255, 255);
-    const ImU32 hoverColor       = IM_COL32(250, 245, 255, 255);
-    const ImU32 activeColor      = IM_COL32(255, 250, 255, 255);
-    const ImU32 borderColor      = IM_COL32(61, 61, 61, 255);
-    const ImU32 outerBorderColor = IM_COL32(215, 156, 62, 255);
-    const ImU32 lineColor        = IM_COL32(0, 0, 0, 255);
-    const float borderThickness  = 2.0f;
-
-    // Calculate center connection points
-    float centerTopOffset    = 10.0f; // Offset from top of center box
-    float centerBottomOffset = 10.0f; // Offset from bottom of center box
-
-    const ImVec2 centerBlockTopLeft     = ImGui::GetWindowPos() + ImVec2(middleBlockX, totalHeight / 2 - centerBlockHeight / 2);
-    const ImVec2 centerBlockBottomRight = centerBlockTopLeft + ImVec2(centerBlockWidth, centerBlockHeight);
-
-    auto drawList = ImGui::GetWindowDrawList();
-
-    auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, const std::string& tooltip) {
-        const ImVec2 portTopLeft     = portPosition;
-        const ImVec2 portBottomRight = portTopLeft + ImVec2(portWidth, portHeight);
-        drawList->AddRectFilled(portTopLeft, portBottomRight, portColor);
-
-        if (ImGui::IsMouseHoveringRect(portTopLeft, portBottomRight)) {
-            ImGui::SetTooltip("%s", tooltip.c_str());
-        }
-
-        return std::make_pair(portTopLeft, portBottomRight);
-    };
-
-    // Draw left ports first for middle block
-    {
-        size_t i = 0;
-        // for (const auto& [i, edge] : std::views::enumerate(leftEdges)) TODO: Uncomment once we bump to an EMSDK that supports it
-        for (const auto& edge : leftEdges) {
-            ImVec2 leftMiddlePortTopLeft = centerBlockTopLeft + ImVec2(-portWidth, centerTopOffset + static_cast<float>(i) * ((centerBlockHeight - centerTopOffset - centerBottomOffset) / 2) - portHeight / 2);
-            drawPort(leftMiddlePortTopLeft, edge.edgeSourcePort->portName);
-            i++;
-        }
-    }
-
-    // Draw right ports first for middle block
-    {
-        size_t i = 0;
-        for (const auto& edge : rightEdges) {
-            ImVec2 rightMiddlePortTopLeft = centerBlockBottomRight + ImVec2(0, centerTopOffset + static_cast<float>(i) * ((centerBlockHeight - centerTopOffset - centerBottomOffset) / 2) - centerBlockHeight - portHeight / 2);
-            drawPort(rightMiddlePortTopLeft, edge.edgeDestinationPort->portName);
-            i++;
-        }
-    }
-
-    // Draw middle block
-    drawList->AddRectFilled(centerBlockTopLeft, centerBlockBottomRight, fillColor);
-    drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, 0.0f, 0, borderThickness);
-    drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, 0.0f, 0, borderThickness);
-    if (ImGui::IsMouseHoveringRect(centerBlockTopLeft, centerBlockBottomRight)) {
-        ImGui::SetTooltip("%s", context.block->blockName.c_str());
-    }
-
-    auto drawNeighbourBlock = [&](UiGraphPort& port, bool isLeft, float blockX, long index) {
-        const float  y          = startY + (blockHeight + verticalSpacing) * static_cast<float>(index);
-        const float  blockWidth = isLeft ? leftRectsMaxWidth : rightRectsMaxWidth;
-        const ImVec2 rectMin    = ImGui::GetWindowPos() + ImVec2(blockX, y);
-        const ImVec2 rectMax    = rectMin + ImVec2(blockWidth, blockHeight);
-
-        // Draw port
-        ImVec2 portPosition;
-        if (isLeft) {
-            portPosition = rectMin + ImVec2(blockWidth - 1.0f, blockHeight / 2 - portHeight / 2);
-        } else {
-            portPosition = rectMin + ImVec2(-portWidth + 1, blockHeight / 2 - portHeight / 2);
-        }
-        auto [portTopLeft, portBottomRight] = drawPort(portPosition, port.portName);
-
-        // Handle interaction
-        ImGui::SetCursorScreenPos(rectMin);
-        const bool hovered = ImGui::IsMouseHoveringRect(rectMin, rectMax);
-        const bool active  = ImGui::IsMouseDown(0) && hovered;
-
-        const ImU32 blockColor = active ? activeColor : (hovered ? hoverColor : fillColor);
-
-        // Draw block
-        drawList->AddRectFilled(rectMin, rectMax, blockColor);
-        drawList->AddRect(rectMin, rectMax, borderColor, 0.0f, 0, borderThickness);
-
-        // Button and callback
-        std::string buttonId = (isLeft ? "left_block_" : "right_block_") + std::to_string(index);
-        if (ImGui::InvisibleButton(buttonId.c_str(), ImVec2(blockWidth, blockHeight))) {
-            context.blockClickedCallback(port.ownerBlock);
-        }
-
-        // Block title
-        const std::string text     = port.ownerBlock->blockName;
-        const ImVec2      textSize = ImGui::CalcTextSize(text.c_str());
-        const ImVec2      textPos  = rectMin + ImVec2((blockWidth - textSize.x) * 0.5f, (blockHeight - textSize.y) * 0.5f);
-        drawList->AddText(textPos, IM_COL32(0, 0, 0, 255), text.c_str());
-
-        // Draw connecting lines
-        const float arrowWidth  = 9.0f;
-        const float arrowHeight = 9.0f;
-        ImVec2      lineStart, lineEnd;
-        if (isLeft) {
-            const ImVec2 leftMiddlePortTopLeft = centerBlockTopLeft + ImVec2(-portWidth, centerTopOffset + static_cast<float>(index) * ((centerBlockHeight - centerTopOffset - centerBottomOffset) / 2) - portHeight / 2);
-            lineStart                          = portTopLeft + ImVec2(portWidth, portHeight / 2);
-            lineEnd                            = leftMiddlePortTopLeft + ImVec2(0, portHeight / 2) + ImVec2(-arrowHeight, 0);
-        } else {
-            ImVec2 rightMiddlePortTopLeft = centerBlockBottomRight + ImVec2(0, centerTopOffset + static_cast<float>(index) * ((centerBlockHeight - centerTopOffset - centerBottomOffset) / 2) - centerBlockHeight - portHeight / 2);
-            lineStart                     = rightMiddlePortTopLeft + ImVec2(portWidth, portHeight / 2);
-            lineEnd                       = portTopLeft + ImVec2(0, portHeight / 2) + ImVec2(-arrowHeight, 0);
-        }
-
-        const ImVec2 cp1 = lineStart + ImVec2(blockSpacing / 2, 0);
-        const ImVec2 cp2 = lineEnd + ImVec2(-blockSpacing / 2, 0);
-        drawList->AddBezierCubic(lineStart, cp1, cp2, lineEnd, lineColor, 1.0f);
-
-        // Draw arrow at line end:
-        ImVec2 arrowPoints[3];
-        arrowPoints[0] = lineEnd + ImVec2(0, -arrowWidth / 2);
-        arrowPoints[1] = lineEnd + ImVec2(arrowHeight, 0);
-        arrowPoints[2] = lineEnd + ImVec2(0, arrowWidth / 2);
-        drawList->AddTriangleFilled(arrowPoints[0], arrowPoints[1], arrowPoints[2], lineColor);
-    };
-
-    {
-        int i = 0;
-        for (const auto& edge : leftEdges) {
-            drawNeighbourBlock(*edge.edgeSourcePort, true, startX, i);
-            i++;
-        }
+    static ax::NodeEditor::EditorContext* editorContext = nullptr;
+    if (!editorContext) {
+        ax::NodeEditor::Config config;
+        config.SettingsFile = nullptr;
+        // config.NavigateButtonIndex = -1; crashes in ImGui if we try to disable panning
+        config.EnableSmoothZoom = false;
+        config.CustomZoomLevels.clear();
+        config.CustomZoomLevels.push_back(1.0f); // force 1x zoom
+        editorContext = ax::NodeEditor::CreateEditor(&config);
     }
 
     {
-        int i = 0;
-        for (const auto& edge : rightEdges) {
-            drawNeighbourBlock(*edge.edgeDestinationPort, false, rightBlocksX, i);
-            i++;
-        }
-    }
+        IMW::Child child("preview_editor", ImVec2(availableSize.x, previewHeight), 0, 0);
 
-    ImGui::EndGroup();
-    ImGui::EndChild(); // blocks
-    ImGui::EndChild(); // scroll_area
+        auto mainStyle = ax::NodeEditor::GetStyle();
+        ax::NodeEditor::SetCurrentEditor(editorContext);
+        ax::NodeEditor::GetStyle() = mainStyle; // share style with main editor
+
+        {
+            IMW::NodeEditor::Editor editor("editor", availableSize);
+
+            // Center node:
+            float  centerNodeX     = 0;
+            float  centerNodeY     = 0;
+            ImVec2 centralNodeSize = {};
+            {
+                const auto            centralBlockId = ax::NodeEditor::NodeId(context.block);
+                IMW::NodeEditor::Node node(centralBlockId);
+                ax::NodeEditor::ClearSelection();
+                ax::NodeEditor::SelectNode(centralBlockId, true);
+
+                // Makes the node fixed size. Center node doesn't have text, so make it small.
+                ImGui::Dummy(ImVec2(blockHeight, blockHeight));
+                auto nodeSize = ax::NodeEditor::GetNodeSize(centralBlockId);
+
+                centerNodeX = -availableSize.x / 2 + nodeSize.x / 2 + (numBlocksLeft ? (leftRectsMaxWidth + blockSpacing) : 0);
+                centerNodeY = nodeSize.y / 2;
+                ax::NodeEditor::SetNodePosition(centralBlockId, {centerNodeX, centerNodeY});
+
+                centralNodeSize = ax::NodeEditor::GetNodeSize(centralBlockId);
+
+                // Register pins
+                for (const auto& inPort : context.block->inputPorts) {
+                    // reuse code from FlowGraphItem to draw an arrow
+                    FlowGraphItem::addPin(ax::NodeEditor::PinId(&inPort), ax::NodeEditor::PinKind::Input, {centerNodeX, centerNodeY + pinYOffset}, {0, pinHeight});
+                }
+
+                for (const auto& outPort : context.block->outputPorts) {
+                    // output ports don't have arrows
+                    ax::NodeEditor::BeginPin(ax::NodeEditor::PinId(&outPort), ax::NodeEditor::PinKind::Output);
+                    ax::NodeEditor::EndPin();
+                }
+            }
+
+            auto blockClickHandler = [&] {
+                if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+                    auto n     = ax::NodeEditor::GetHoveredNode();
+                    auto block = n.AsPointer<UiGraphBlock>();
+                    if (block) {
+                        context.blockClickedCallback(block);
+                    }
+                }
+            };
+
+            // Left nodes
+            float       nextNodeY = centerNodeY;
+            const float leftNodeX = centerNodeX - leftRectsMaxWidth - blockSpacing;
+
+            for (const auto& edge : leftEdges) {
+                auto       block       = edge.edgeSourcePort->ownerBlock;
+                const auto leftBlockId = ax::NodeEditor::NodeId(block);
+                {
+                    IMW::NodeEditor::Node node(leftBlockId);
+                    ImGui::Text("%s", block->blockName.c_str());
+                    ax::NodeEditor::SetNodePosition(leftBlockId, ImVec2(leftNodeX, nextNodeY));
+
+                    for (const auto& outPort : edge.edgeSourcePort->ownerBlock->outputPorts) {
+                        ax::NodeEditor::BeginPin(ax::NodeEditor::PinId(&outPort), ax::NodeEditor::PinKind::Output);
+                        ax::NodeEditor::EndPin();
+                    }
+
+                    blockClickHandler();
+                }
+
+                const auto previousNodeSize = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(block));
+                nextNodeY += previousNodeSize.y + verticalSpacing;
+            }
+
+            // Right nodes
+            const float rightNodeX = centerNodeX + blockSpacing + centralNodeSize.x;
+            nextNodeY              = centerNodeY;
+            for (const auto& edge : rightEdges) {
+                auto       block        = edge.edgeDestinationPort->ownerBlock;
+                const auto rightBlockId = ax::NodeEditor::NodeId(block);
+                ax::NodeEditor::SetNodePosition(rightBlockId, ImVec2(rightNodeX, nextNodeY));
+                {
+                    IMW::NodeEditor::Node node(rightBlockId);
+                    ImGui::Text("%s", block->blockName.c_str());
+
+                    for (const auto& inPort : edge.edgeDestinationPort->ownerBlock->inputPorts) {
+                        FlowGraphItem::addPin(ax::NodeEditor::PinId(&inPort), ax::NodeEditor::PinKind::Input, {rightNodeX, nextNodeY}, {0, pinHeight});
+                    }
+
+                    blockClickHandler();
+                }
+
+                const auto previousNodeSize = ax::NodeEditor::GetNodeSize(rightBlockId);
+                nextNodeY += previousNodeSize.y + verticalSpacing;
+            }
+
+            const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+
+            for (const auto& edge : leftEdges) {
+                for (const auto& outPort : edge.edgeSourcePort->ownerBlock->outputPorts) {
+                    if (outPort.portName == edge.edgeSourcePort->portName) {
+                        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), ax::NodeEditor::PinId(&outPort), ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+                    }
+                }
+            }
+
+            for (const auto& edge : rightEdges) {
+                for (const auto& inPort : edge.edgeDestinationPort->ownerBlock->inputPorts) {
+                    if (inPort.portName == edge.edgeDestinationPort->portName) {
+                        ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), ax::NodeEditor::PinId(edge.edgeSourcePort), ax::NodeEditor::PinId(&inPort), linkColor);
+                    }
+                }
+            }
+        } // end editor
+    } // end child
+
+    ax::NodeEditor::SetCurrentEditor(previousEditor);
 }
+
 } // namespace DigitizerUi::components

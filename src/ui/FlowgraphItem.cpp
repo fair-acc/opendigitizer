@@ -144,29 +144,6 @@ static uint32_t darkenOrLighten(uint32_t color) {
     }
 }
 
-static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
-    const bool   input = kind == ax::NodeEditor::PinKind::Input;
-    const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
-    const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
-    const ImVec2 rmin  = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
-    const ImVec2 rmax  = ImVec2(rmin.x + 1, rmin.y + 1);
-
-    if (input) {
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, 10);
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_SnapLinkToPinDir, 1);
-    }
-
-    ax::NodeEditor::BeginPin(id, kind);
-    ax::NodeEditor::PinPivotRect(rmin, rmax);
-    ax::NodeEditor::PinRect(min, max);
-    ax::NodeEditor::EndPin();
-
-    if (input) {
-        ax::NodeEditor::PopStyleVar(3);
-    }
-};
-
 static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
     drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
@@ -260,7 +237,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 }
 
                 // Register ports with node editor, actual drawing comes later
-                auto registerPins = [&padding, &pinHeight, &blockId, &blockSize](auto& ports, auto& widths, auto position, auto pinType) {
+                auto registerPins = [&padding, &pinHeight, &blockSize](auto& ports, auto& widths, auto position, auto pinType) {
                     widths.resize(ports.size());
                     if (pinType == ax::NodeEditor::PinKind::Output) {
                         position.x += blockSize.x - padding.x;
@@ -270,7 +247,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                         widths[i] = ImGui::CalcTextSize(ports[i].portName.c_str()).x + textMargin * 2;
                         // TODO Reimplement block visual filtering
                         // if (!filteredOut) {
-                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
+                        FlowGraphItem::addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
                         // }
                         position.y += pinHeight + pinSpacing;
                     }
@@ -651,5 +628,33 @@ void FlowGraphItem::sortNodes() {
         x += levelWidth + xSpacing;
     }
 }
+
+void FlowGraphItem::addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
+    const bool   input = kind == ax::NodeEditor::PinKind::Input;
+    const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
+    const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
+    const ImVec2 rmin  = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
+    const ImVec2 rmax  = ImVec2(rmin.x + 1, rmin.y + 1);
+
+    if (input) {
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, 10);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_SnapLinkToPinDir, 1);
+    }
+
+    ax::NodeEditor::BeginPin(id, kind);
+    ax::NodeEditor::PinPivotRect(rmin, rmax);
+    ax::NodeEditor::PinRect(min, max);
+
+    ax::NodeEditor::EndPin();
+
+    // if (ImGui::IsMouseHoveringRect(min, max)) {
+    //     ImGui::SetTooltip("%s", "foo");
+    // }
+
+    if (input) {
+        ax::NodeEditor::PopStyleVar(3);
+    }
+};
 
 } // namespace DigitizerUi

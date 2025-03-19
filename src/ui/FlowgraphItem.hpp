@@ -59,6 +59,8 @@ public:
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
     UiGraphModel& graphModel() { return m_graphModel; }
+
+    static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size);
 };
 
 } // namespace DigitizerUi

@@ -296,7 +296,7 @@ void BlockSettingsControls(const BlockControlsPanelContext& context, bool vertic
 BlockControlsPanelContext::BlockControlsPanelContext() {
     blockClickedCallback = [this](UiGraphBlock* clickedBlock) {
         // Guaranteed by the caller
-        assert(clickedBlock && clickedBlock != this->block);
+        assert(clickedBlock);
 
         this->block = clickedBlock;
         resetTime();
