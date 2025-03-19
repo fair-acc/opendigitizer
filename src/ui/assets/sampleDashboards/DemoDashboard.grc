@@ -35,7 +35,7 @@ blocks:
     parameters:
       chunk_size: 20
       do_zero_order_hold: true
-      n_samples_max: 10000
+      n_samples_max: 0
       repeat_period: 4000000000
       sample_rate: 1000
       verbose_console: false
