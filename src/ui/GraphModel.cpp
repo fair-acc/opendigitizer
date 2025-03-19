@@ -188,7 +188,9 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         return;
     }
     for (const auto& [key, value] : data) {
-        blockIt->blockSettings.insert_or_assign(key, value);
+        if (key != "unique_name"s) {
+            blockIt->blockSettings.insert_or_assign(key, value);
+        }
     }
 }
 
@@ -344,6 +346,8 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
     if constexpr (std::is_same_v<std::remove_cvref_t<decltype(block)>, UiGraphBlock>) {
         updateFieldFrom(block.blockSettings, blockData, "settings"s);
         updateFieldFrom(block.blockMetaInformation, blockData, "metaInformation"s);
+
+        block.blockSettings.erase("unique_name"s);
 
         updateFieldFrom(block.blockCategory, blockData, "blockCategory"s);
         updateFieldFrom(block.blockUiCategory, blockData, "uiCategory"s);
