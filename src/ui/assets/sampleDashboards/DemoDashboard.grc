@@ -1,5 +1,5 @@
 blocks:
-  - name: sum sigs
+  - name: Sum1
     id: opendigitizer::Arithmetic<float32>
   - name: FFT
     id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
@@ -7,15 +7,29 @@ blocks:
       outputInDb: true
       outputInDeg: true
       unwrapPhase: true
-  - name: sine source 1
+  - name: SineSource1
     id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 2
-  - name: sine source 3
+  - name: SineSource2
     id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 5
-  - name: sinesSink
+  - name: SineSink1
+    id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      color: 0xFF0000
+      signal_name: value
+      signal_quantity: voltage
+      signal_unit: V
+  - name: SineSink2
+    id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      color: 0x000099
+      signal_name: value
+      signal_quantity: voltage
+      signal_unit: V
+  - name: SumSink1
     id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0x00C800
@@ -169,10 +183,12 @@ blocks:
       signal_quantity: BeamIntensity
       signal_unit: ppp
 connections:
-  - [sine source 1, 0, sum sigs, 0]
-  - [sine source 3, 0, sum sigs, 1]
-  - [sum sigs, 0, FFT, 0]
-  - [sum sigs, 0, sinesSink, 0]
+  - [SineSource1, 0, Sum1, 0]
+  - [SineSource2, 0, Sum1, 1]
+  - [SineSource1, 0, SineSink1, 0]
+  - [SineSource2, 0, SineSink2, 0]
+  - [Sum1, 0, FFT, 0]
+  - [Sum1, 0, SumSink1, 0]
   - [FFT, 0, fftSink, 0]
   - [ClockSource, 0, DipoleCurrentGenerator, 0]
   - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]

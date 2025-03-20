@@ -1,7 +1,13 @@
 layout: Free
 sources:
-  - name: sinesSink
-    block: sinesSink
+  - name: SineSink1
+    block: SineSink1
+    color: !!uint32 0xFF0000
+  - name: SineSink2
+    block: SineSink2
+    color: !!uint32 0x000099
+  - name: SumSink1
+    block: SumSink1
     color: !!uint32 0x009900
   - name: fftSink
     block: fftSink
@@ -25,9 +31,33 @@ plots:
         min: NaN # enables auto-range
         max: NaN # enables auto-range
     sources:
-      - sinesSink
+      - SineSink1
     rect: [0, 0, 1, 1]
   - name: Plot 2
+    axes:
+      - axis: X
+        min: NaN # enables auto-range
+        max: NaN # enables auto-range
+        scale: LinearReverse
+      - axis: Y
+        min: NaN # enables auto-range
+        max: NaN # enables auto-range
+    sources:
+      - SineSink2
+    rect: [1, 0, 1, 1]
+  - name: Plot 3
+    axes:
+      - axis: X
+        min: NaN # enables auto-range
+        max: NaN # enables auto-range
+        scale: LinearReverse
+      - axis: Y
+        min: NaN # enables auto-range
+        max: NaN # enables auto-range
+    sources:
+      - SumSink1
+    rect: [2, 0, 1, 1]
+  - name: Plot 4
     axes:
       - axis: X
         min: 0.0001
@@ -38,8 +68,8 @@ plots:
         max: NaN
     sources:
       - fftSink
-    rect: [1, 0, 1, 1]
-  - name: Plot 3
+    rect: [0, 1, 3, 1]
+  - name: Plot 5
     axes:
       - axis: X
         min: NaN # auto-range min
@@ -51,4 +81,4 @@ plots:
     sources:
       - IntensitySink
       - DipoleCurrentSink
-    rect: [0, 1, 2, 1] # x, y, width, height
+    rect: [0, 2, 3, 1] # x, y, width, height
