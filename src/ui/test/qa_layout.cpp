@@ -14,10 +14,9 @@
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
 #include "gnuradio-4.0/basic/ClockSource.hpp"
-#include "gnuradio-4.0/basic/FunctionGenerator.hpp"
+#include "gnuradio-4.0/basic/SignalGenerator.hpp"
 #include "imgui_test_engine/imgui_te_internal.h"
 #include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -37,6 +36,15 @@ struct TestState {
 
 TestState g_state;
 
+template<typename Registry>
+void registerTestBlocks(Registry& registry) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+    gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
+    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
+#pragma GCC diagnostic pop
+}
+
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
@@ -55,12 +63,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 DigitizerUi::DashboardPage page;
                 page.setLayoutType(vars.layoutType);
                 page.draw(*g_state.dashboard);
-                ut::expect(ut::fatal(!g_state.dashboard->plots().empty()));
+                ut::expect(!g_state.dashboard->plots().empty());
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            "DashboardPage::draw"_test = [ctx] {
+            "DashboardPage::layout"_test = [ctx] {
                 auto& vars = ctx->GetVars<TestState>();
                 ctx->SetRef("Test Window");
 
@@ -82,7 +90,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
 int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
-    options.screenshotPrefix = "dashboardpage";
+    options.screenshotPrefix = "dashboardpage_layout";
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
@@ -90,16 +98,13 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    auto& registry = gr::globalBlockRegistry();
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
-    gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
+    gr::BlockRegistry registry = gr::globalBlockRegistry();
+    registerTestBlocks(registry);
     gr::PluginLoader pluginLoader(registry, {});
 
-    auto fs            = cmrc::sample_dashboards::get_filesystem();
-    auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");
-    auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
+    auto fs            = cmrc::ui_test_assets::get_filesystem();
+    auto grcFile       = fs.open("examples/qa_layout.grc");
+    auto dashboardFile = fs.open("examples/qa_layout.yml");
 
     auto dashBoardDescription       = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard               = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);

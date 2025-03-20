@@ -22,6 +22,8 @@
 #include <string>
 #include <vector> // Vector for storing notifications list
 
+#include <fmt/format.h>
+
 #include "imgui.h"
 #include "imgui_internal.h"
 

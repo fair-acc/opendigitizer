@@ -1,3 +1,4 @@
+layout: Free
 sources:
   - name: sinesSink
     block: sinesSink
@@ -25,7 +26,7 @@ plots:
         max: NaN # enables auto-range
     sources:
       - sinesSink
-    rect: [0, 0, 8, 8]
+    rect: [0, 0, 1, 1]
   - name: Plot 2
     axes:
       - axis: X
@@ -37,7 +38,7 @@ plots:
         max: NaN
     sources:
       - fftSink
-    rect: [0, 8, 8, 8]
+    rect: [1, 0, 1, 1]
   - name: Plot 3
     axes:
       - axis: X
@@ -50,4 +51,4 @@ plots:
     sources:
       - IntensitySink
       - DipoleCurrentSink
-    rect: [0, 8, 16, 8] # x, y, width, height
+    rect: [0, 1, 2, 1] # x, y, width, height

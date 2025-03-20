@@ -465,8 +465,10 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
                 std::vector<double> xAxisDouble;
                 if constexpr (!std::is_same_v<ValueType, double>) { // TODO: find a smarter zero-copy solution
-                    auto xSpan = dataSet.axisValues(0UZ);
-                    xAxisDouble.assign(xSpan.begin(), xSpan.end());
+                    if (!dataSet.axis_values.empty()) {
+                        auto xSpan = dataSet.axisValues(0UZ);
+                        xAxisDouble.assign(xSpan.begin(), xSpan.end());
+                    }
                 }
 
                 // draw tags before data (data is drawn on top)
