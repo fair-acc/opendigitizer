@@ -18,6 +18,8 @@ jobs:
     name: "${{ matrix.configurations.name }} | ${{ matrix.cmake-build-type }}"
     runs-on: ubuntu-latest
     container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    env:
+      CCACHE_DIR: /home/runner/work/ccache
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +33,20 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Cache
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: /home/runner/work/ccache
+        key: ${{ runner.os }}-ccache-${{ matrix.compiler.cc }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-
+
+    - name: Configure ccache
+      run: |
+        ccache --max-size=12G
+        ccache --show-stats
+
+    - name: Cache fetchContent
       uses: actions/cache@v4
       env:
         cache-name: cache-fetchContent-cache
@@ -53,7 +68,7 @@ jobs:
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
-        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DENABLE_IMGUI_TEST_ENGINE=ON -DEMCMAKE_COMMAND=`which emcmake`
+        cmake -S . -B ../build -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_IMGUI_TEST_ENGINE=ON -DEMCMAKE_COMMAND=`which emcmake`
 
     - name: Build
       shell: bash
@@ -99,6 +114,9 @@ jobs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: '../build/CMakeExternals/Build/ui-wasm/web/'
+
+    - name: Show final ccache stats
+      run: ccache --show-stats
 
   deploy_pages:
     name: Deploy to GitHub Pages

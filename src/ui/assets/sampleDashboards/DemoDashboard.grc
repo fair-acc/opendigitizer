@@ -41,9 +41,9 @@ blocks:
       verbose_console: false
       tag_times: !!uint64
         - 10000000
-        - 100000000  # start pre-ramp
-        - 200000000  # lower-plateau
-        - 500000000  # start main-ramp
+        - 100000000 # start pre-ramp
+        - 200000000 # lower-plateau
+        - 500000000 # start main-ramp
         - 1000000000 # upper-plateau
         - 2000000000 # CMD_DIAG_TRIGGER1
         - 3000000000 # start ramp-down
