@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <fmt/format.h>
+#include <unordered_map>
 
 namespace DigitizerUi::components {
 
@@ -298,6 +299,8 @@ template<std::size_t BufferSize = 256>
 class InputKeypad {
     static inline constexpr const char* keypad_name = "KeypadX";
 
+    std::unordered_map<std::string, double> _manualyEditedPrecisions;
+
     //
     bool        _visible     = true;
     bool        _altMode     = false;
@@ -479,24 +482,149 @@ class InputKeypad {
 public:
     template<typename EdTy>
     requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
-    [[nodiscard]] static bool edit(const char* label, EdTy* value) {
+    [[nodiscard]] static bool edit(const std::string& key, const char* label, EdTy* value, std::string_view suffix = {}) {
         if (!label || !value) {
             return false;
         }
 
+        const auto drawChangeButtons = [&]() -> bool {
+            auto keyPad = getInstance();
+            bool result = keyPad.editImpl(label, value);
+            if (result) {
+                // const double increment = InputKeypad::computeIncrement(value);
+                // keyPad._manualyEditedPrecisions.insert({key, increment});
+            }
+
+            {
+                ImGui::SameLine();
+                // IMW::Disabled disableDueDefaultAction(activeContext.context.empty());
+                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                if (ImGui::Button("\uf146")) {
+                    if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
+                        *value -= static_cast<EdTy>(it->second);
+                    } else {
+                        if constexpr (std::floating_point<EdTy>) {
+                            *value -= 0.001f;
+                        } else if constexpr (std::integral<EdTy>) {
+                            *value -= 1;
+                        }
+                    }
+
+                    result = true;
+                }
+            }
+            IMW::detail::setItemTooltip("Decrement");
+
+            {
+                ImGui::SameLine();
+                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                if (ImGui::Button("\uf0fe")) {
+                    if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
+                        *value += static_cast<EdTy>(it->second);
+                    } else {
+                        if constexpr (std::floating_point<EdTy>) {
+                            *value += 0.001f;
+                        } else if constexpr (std::integral<EdTy>) {
+                            *value += 1;
+                        }
+                    }
+
+                    result = true;
+                }
+            }
+            IMW::detail::setItemTooltip("Increment");
+
+            return result;
+        };
+
         if constexpr (std::floating_point<EdTy>) {
-            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f);
+            const std::string format = suffix.empty() ? "%.3f" : fmt::format("%.3f {}", suffix);
+            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f, 0.0f, 0.0f, format.c_str());
+            IMW::detail::setItemTooltip(key.c_str());
+
+            return drawChangeButtons();
         } else if constexpr (std::integral<EdTy>) {
-            ImGui::DragInt(label, static_cast<int*>(value));
+            const std::string format = suffix.empty() ? "%d" : fmt::format("%d {}", suffix);
+            ImGui::DragInt(label, static_cast<int*>(value), 1.0f, 0, 0, format.c_str());
+            IMW::detail::setItemTooltip(key.c_str());
+
+            return drawChangeButtons();
         } else {
             ImGui::InputText(label, value);
-        }
+            IMW::detail::setItemTooltip(key.c_str());
 
-        return getInstance().editImpl(label, value);
+            return getInstance().editImpl(label, value);
+        }
     }
     static bool isVisible() noexcept { return getInstance()._visible; }
 
 private:
+    [[nodiscard]] static int computeIntIncrement(int value) {
+        // This computes the increment for the +/- buttons
+        // if value is 0 default increment is 1
+        // else the least  non zero precision is used
+        // 40 => 10, 400 => 100, 4'000 => 1'000
+        if (value == 0) {
+            return 1;
+        }
+
+        const double abs_val  = std::abs(value);
+        const int    exponent = static_cast<int>(std::floor(std::log10(abs_val)));
+        return std::pow(10.0, exponent);
+    }
+
+    template<typename EdTy>
+    requires std::integral<EdTy> || std::floating_point<EdTy>
+    [[nodiscard]] static double computeIncrement(EdTy* value) {
+        // This computes the increment for the +/- buttons
+        // if value is 0 default increment is 1
+        // else the least  non zero precision is used
+        // 10.0700 => 0.0100, 0.07 => 0.01
+        if constexpr (std::floating_point<EdTy>) {
+            if (*value == 0.0f) {
+                return 1.0;
+            }
+
+            const double abs_val = std::abs(*value);
+
+            double       int_part;
+            const double frac_part = std::modf(abs_val, &int_part);
+            const double epsilon   = std::numeric_limits<double>::epsilon();
+
+            if (frac_part < epsilon) {
+                const int exponent = static_cast<int>(std::floor(std::log10(abs_val)));
+                return std::pow(10.0, exponent);
+            } else {
+                double scaled         = frac_part;
+                int    decimal_places = 0;
+
+                while (scaled < 1.0 && std::abs(scaled - std::round(scaled)) > epsilon * scaled) {
+                    scaled *= 10.0;
+                    decimal_places++;
+                }
+
+                if (std::abs(scaled - std::round(scaled)) <= epsilon * scaled) {
+                    return std::pow(10.0, -decimal_places);
+                } else {
+                    double smallest_unit = scaled - std::floor(scaled);
+                    if (smallest_unit > epsilon) {
+                        const int precision_exponent = static_cast<int>(std::floor(std::log10(smallest_unit)));
+                        return std::pow(10.0, -decimal_places + precision_exponent);
+                    }
+                    return std::pow(10.0, -decimal_places);
+                }
+            }
+        } else {
+            if (*value == 0) {
+                return 1.0;
+            }
+
+            const int abs_val  = std::abs(*value);
+            const int exponent = static_cast<int>(std::floor(std::log10(abs_val)));
+            return std::pow(10.0, exponent);
+        }
+    }
+
     [[nodiscard]] ReturnState drawKeypadPopup(std::string& valueLabel) noexcept {
         const auto&      mainViewPort     = *ImGui::GetMainViewport();
         const ImVec2     mainViewPortSize = mainViewPort.WorkSize;
