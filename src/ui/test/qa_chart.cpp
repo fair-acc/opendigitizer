@@ -3,6 +3,14 @@
 
 #include <boost/ut.hpp>
 
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <gnuradio-4.0/Profiler.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/basic/ClockSource.hpp>
+#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
+#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
+#include <gnuradio-4.0/fourier/fft.hpp>
+
 #include "ImGuiTestApp.hpp"
 
 #include <Dashboard.hpp>
@@ -12,16 +20,11 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
-#include "gnuradio-4.0/basic/ClockSource.hpp"
-#include "gnuradio-4.0/basic/FunctionGenerator.hpp"
+
 #include "imgui_test_engine/imgui_te_internal.h"
-#include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
 
 #include <cmrc/cmrc.hpp>
-#include <gnuradio-4.0/Graph_yaml_importer.hpp>
-#include <gnuradio-4.0/Profiler.hpp>
-#include <gnuradio-4.0/Scheduler.hpp>
+
 #include <memory.h>
 
 CMRC_DECLARE(ui_test_assets);
@@ -29,30 +32,15 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-// We derive from gr's scheduler just to make stop() public
-template<gr::profiling::ProfilerLike TProfiler = gr::profiling::null::Profiler>
-class TestScheduler : public gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded, TProfiler> {
-public:
-    explicit TestScheduler(gr::Graph&& graph) : gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded, TProfiler>(std::move(graph)) {}
-
-    void stop() { gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded, TProfiler>::stop(); }
-};
-
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard>                       dashboard;
-    std::function<void()>                                         stopFunction;
-    std::thread                                                   schedulerThread;
-    std::unique_ptr<TestScheduler<gr::profiling::null::Profiler>> scheduler;
+    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
 
-    void assignGraph(gr::Graph&& graph) { scheduler = std::make_unique<TestScheduler<gr::profiling::null::Profiler>>(std::move(graph)); }
-
-    void startScheduler() {
-        schedulerThread = std::thread([&] { scheduler->runAndWait(); });
-    }
+    void startScheduler() { dashboard->scheduler()->start(); }
+    void stopScheduler() { dashboard->scheduler()->stop(); }
 
     void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
         std::size_t count = 0;
-        while (!gr::lifecycle::isActive(scheduler->state()) && count < maxCount) {
+        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
             // wait until scheduler is started
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             count++;
@@ -60,11 +48,6 @@ struct TestState {
         if (count >= maxCount) {
             throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
         }
-    }
-
-    void stopScheduler() {
-        scheduler->stop();
-        schedulerThread.join();
     }
 };
 
@@ -85,7 +68,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             if (g_state.dashboard) {
                 DigitizerUi::DashboardPage page;
-                page.draw(*g_state.dashboard);
+                page.setDashboard(*g_state.dashboard);
+                page.draw();
                 ut::expect(!g_state.dashboard->plots().empty());
             }
 
@@ -128,6 +112,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
+    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
@@ -141,9 +126,10 @@ int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart";
 
+    // This is not a globalBlockRegistry, but a copy of it
+    registerTestBlocks(gr::globalBlockRegistry());
     gr::BlockRegistry registry = gr::globalBlockRegistry();
-    registerTestBlocks(registry);
-    gr::PluginLoader pluginLoader(registry, {});
+    gr::PluginLoader  pluginLoader(registry, {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
@@ -157,10 +143,12 @@ int main(int argc, char* argv[]) {
     auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");
     auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
 
-    auto dashBoardDescription       = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard               = DigitizerUi::Dashboard::create(/**fgItem=*/nullptr, dashBoardDescription);
-    g_state.dashboard->pluginLoader = std::make_shared<gr::PluginLoader>(std::move(pluginLoader));
-    g_state.dashboard->load(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { g_state.assignGraph(std::move(grGraph)); });
+    auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
+    g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+        g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
+    });
 
     g_state.startScheduler();
 

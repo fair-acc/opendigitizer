@@ -16,11 +16,14 @@
 
 namespace DigitizerUi {
 
+class UiGraphModel;
+
 class SignalSelector {
 private:
     std::string            m_windowName = "Add Device Signals";
     QueryFilterElementList m_querySignalFilters;
     SignalList             m_signalList{m_querySignalFilters};
+    UiGraphModel*          m_graphModel = nullptr;
 
     std::function<void(std::string)> m_addSignalCallback;
 
@@ -139,6 +142,8 @@ public:
     void drawRemoteSignalsInput();
 
     void drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection);
+
+    void setGraphModel(UiGraphModel& graphModel) { m_graphModel = std::addressof(graphModel); }
 
     void drawSignalSelector();
 

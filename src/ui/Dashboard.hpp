@@ -23,6 +23,9 @@ CMRC_DECLARE(sample_dashboards);
 
 #include "components/Docking.hpp"
 
+#include "GraphModel.hpp"
+#include "Scheduler.hpp"
+
 namespace gr {
 class Graph;
 }
@@ -32,8 +35,6 @@ class ImPlotSinkModel;
 }
 
 namespace DigitizerUi {
-class FlowGraphItem;
-class UiGraphModel;
 
 struct DashboardDescription;
 
@@ -121,15 +122,15 @@ private:
     class PrivateTag {};
 
 public:
-    explicit Dashboard(PrivateTag, FlowGraphItem* fgItem, const std::shared_ptr<DashboardDescription>& desc);
+    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc);
 
-    static std::unique_ptr<Dashboard> create(FlowGraphItem*, const std::shared_ptr<DashboardDescription>& desc);
+    static std::unique_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription>& desc);
 
     ~Dashboard();
 
     void load();
 
-    void load(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler = {});
+    void loadAndThen(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler);
 
     void save();
 
@@ -178,17 +179,36 @@ public:
 
     UiGraphModel& graphModel();
 
-    std::atomic<bool> inUse = false;
+    std::atomic<bool> isInUse = false;
 
-private:
+    std::function<void(Dashboard*)> requestClose;
+
     void doLoad(const std::string& desc);
 
+    template<typename TScheduler, typename... Args>
+    void emplaceScheduler(Args&&... args) {
+        m_scheduler.emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void emplaceGraph(Args&&... args) {
+        m_scheduler.emplaceGraph(std::forward<Args>(args)...);
+    }
+
+    auto& scheduler() { return m_scheduler; }
+
+    void handleMessages() { m_scheduler.handleMessages(m_graphModel); }
+
+private:
     std::shared_ptr<DashboardDescription>        m_desc;
     std::vector<Plot>                            m_plots;
     DockingLayoutType                            m_layout;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
-    FlowGraphItem*                               m_fgItem = nullptr;
+
+    Scheduler m_scheduler;
+
+    UiGraphModel m_graphModel;
 };
 } // namespace DigitizerUi
 

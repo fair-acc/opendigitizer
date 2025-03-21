@@ -266,14 +266,14 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
 }
 
 // Draw the multi-axis plot
-void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexcept {
+void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // 1) Build up two sets of categories for X & Y
     std::array<std::optional<AxisCategory>, 3> xCats{};
     std::array<std::vector<std::string>, 3>    xAxisGroups{};
     std::array<std::optional<AxisCategory>, 3> yCats{};
     std::array<std::vector<std::string>, 3>    yAxisGroups{};
 
-    assignSourcesToAxes(plot, dashboard, xCats, xAxisGroups, yCats, yAxisGroups);
+    assignSourcesToAxes(plot, *m_dashboard, xCats, xAxisGroups, yCats, yAxisGroups);
 
     // 2) Setup up to 3 X axes & 3 Y axes
     setupPlotAxes(plot, xCats, yCats);
@@ -340,7 +340,7 @@ void DashboardPage::drawPlot(Dashboard& dashboard, Dashboard::Plot& plot) noexce
     }
 }
 
-void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
+void DashboardPage::draw(Mode mode) noexcept {
     const float  left = ImGui::GetCursorPosX();
     const float  top  = ImGui::GetCursorPosY();
     const ImVec2 size = ImGui::GetContentRegionAvail();
@@ -363,7 +363,7 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
         // Plots
         {
             IMW::Group group;
-            drawPlots(dashboard, mode);
+            drawPlots(mode);
         }
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - legend_box.y));
 
@@ -374,7 +374,7 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
             if (mode == Mode::Layout) {
                 if (plotButton("\uF201", "create new chart")) {
                     // chart-line
-                    newPlot(dashboard);
+                    newPlot();
                 }
                 ImGui::SameLine();
                 if (plotButton("\uF7A5", "change to the horizontal layout")) {
@@ -395,7 +395,7 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
                 ImGui::SameLine();
             }
 
-            drawLegend(dashboard, mode);
+            drawLegend(mode);
 
             // Post button strip
             if (mode == Mode::Layout) {
@@ -433,7 +433,7 @@ void DashboardPage::draw(Dashboard& dashboard, Mode mode) noexcept {
     }
 }
 
-void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::Mode mode) {
+void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
     pane_size = ImGui::GetContentRegionAvail();
     pane_size.y -= legend_box.y;
 
@@ -447,12 +447,12 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
     Dashboard::Plot* toDelete = nullptr;
 
     DockSpace::Windows windows;
-    auto&              plots = dashboard.plots();
+    auto&              plots = m_dashboard->plots();
     windows.reserve(plots.size());
 
     for (auto& plot : plots) {
         windows.push_back(plot.window);
-        plot.window->renderFunc = [this, &dashboard, &plot, mode] {
+        plot.window->renderFunc = [this, &plot, mode] {
             const float offset = (mode == Mode::Layout) ? 5.f : 0.f;
 
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
@@ -465,7 +465,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
             auto plotSize = ImGui::GetContentRegionAvail();
             ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.00f, 0.05f));
             if (TouchHandler<>::BeginZoomablePlot(plot.name, plotSize - ImVec2(2 * offset, 2 * offset), plotFlags)) {
-                drawPlot(dashboard, plot);
+                drawPlot(plot);
 
                 // allow the main plot area to be a DND target
                 if (ImPlot::BeginDragDropTargetPlot()) {
@@ -529,7 +529,7 @@ void DashboardPage::drawPlots(Dashboard& dashboard, DigitizerUi::DashboardPage::
     m_dockSpace.render(windows, pane_size);
 
     if (toDelete) {
-        dashboard.deletePlot(toDelete);
+        m_dashboard->deletePlot(toDelete);
     }
 }
 
@@ -545,7 +545,7 @@ void DashboardPage::drawGrid(float w, float h) {
     }
 }
 
-void DashboardPage::drawLegend([[maybe_unused]] Dashboard& dashboard, [[maybe_unused]] const DashboardPage::Mode& mode) noexcept {
+void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode) noexcept {
 #ifdef TODO_PORT // TODO: revisit this!!!
     alignForWidth(std::max(10.f, legend_box.x), 0.5f);
     legend_box.x = 0.f;
@@ -613,10 +613,10 @@ void DashboardPage::drawLegend([[maybe_unused]] Dashboard& dashboard, [[maybe_un
 #endif
 }
 
-void DashboardPage::newPlot(Dashboard& dashboard) {
-    if (dashboard.plots().size() < kMaxPlots) {
+void DashboardPage::newPlot() {
+    if (m_dashboard->plots().size() < kMaxPlots) {
         // Plot will get adjusted by the layout automatically
-        return dashboard.newPlot(0, 0, 1, 1);
+        return m_dashboard->newPlot(0, 0, 1, 1);
     }
 }
 

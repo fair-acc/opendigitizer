@@ -21,14 +21,15 @@ class ImPlotSinkModel;
 
 namespace DigitizerUi {
 
-class FlowGraphItem {
+class FlowgraphPage {
 private:
     enum class Alignment {
         Left,
         Right,
     };
 
-    UiGraphModel  m_graphModel;
+    Dashboard* m_dashboard = nullptr;
+
     UiGraphBlock* m_selectedBlock = nullptr;
 
     ax::NodeEditor::Config         m_editorConfig;
@@ -47,18 +48,22 @@ private:
     void drawNodeEditor(const ImVec2& size);
 
 public:
-    FlowGraphItem();
-    ~FlowGraphItem();
+    FlowgraphPage();
+    ~FlowgraphPage();
 
-    void draw(Dashboard& dashboard) noexcept;
+    void draw() noexcept;
 
+    void setDashboard(Dashboard* dashboard) {
+        m_dashboard     = dashboard;
+        m_selectedBlock = nullptr;
+        m_newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel()) : nullptr);
+        reset();
+    }
     void reset();
 
     void setStyle(LookAndFeel::Style style);
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
-
-    UiGraphModel& graphModel() { return m_graphModel; }
 };
 
 } // namespace DigitizerUi

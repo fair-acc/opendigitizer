@@ -8,22 +8,24 @@
 
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
-#include "FlowgraphItem.hpp"
+#include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
+
+#include "settings.hpp"
+
+#include "components/AppHeader.hpp"
+#include "components/Toolbar.hpp"
 
 #include <implot.h>
 
 #include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
-#include <gnuradio-4.0/Scheduler.hpp>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
 #include "common/AppDefinitions.hpp"
-
-struct ImFont;
 
 namespace DigitizerUi {
 
@@ -38,11 +40,11 @@ public:
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
 
-    FlowGraphItem     flowgraphPage;
+    FlowgraphPage     flowgraphPage;
     OpenDashboardPage openDashboardPage;
 
     SDLState* sdlState         = nullptr;
-    bool      running          = true;
+    bool      isRunning        = true;
     ViewMode  mainViewMode     = ViewMode::VIEW;
     ViewMode  previousViewMode = ViewMode::VIEW;
 
@@ -50,99 +52,8 @@ public:
 
     components::AppHeader header;
 
-    // The thread limit here is mainly for emscripten because the default thread pool will exhaust the browser's limits and be recreated for every new scheduler
-    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 1, 1);
-
-    struct SchedWrapper {
-        template<typename T, typename... Args>
-        void emplace(Args&&... args) {
-            handler = std::make_unique<HandlerImpl<T>>(std::forward<Args>(args)...);
-        }
-
-        explicit operator bool() const { return handler != nullptr; };
-
-        std::string_view uniqueName() const { return handler ? handler->uniqueName() : ""; }
-
-        void sendMessage(const gr::Message& msg) { handler->sendMessage(msg); }
-        void handleMessages(UiGraphModel& graphModel) { handler->handleMessages(graphModel); }
-
-    private:
-        struct Handler {
-            virtual ~Handler()                                           = default;
-            virtual std::string_view uniqueName() const                  = 0;
-            virtual void             sendMessage(const gr::Message& msg) = 0;
-            virtual void             handleMessages(UiGraphModel& fg)    = 0;
-        };
-
-        template<typename TScheduler>
-        struct HandlerImpl : Handler {
-            TScheduler  _scheduler;
-            std::thread _thread;
-
-            gr::MsgPortIn  _fromScheduler;
-            gr::MsgPortOut _toScheduler;
-
-            template<typename... Args>
-            explicit HandlerImpl(Args&&... args) : _scheduler(std::forward<Args>(args)...) {
-                if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
-                    throw fmt::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
-                }
-                if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
-                    throw fmt::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
-                }
-                gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
-                gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
-                gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
-
-                _thread = std::thread([this]() {
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                        throw fmt::format("Failed to initialize flowgraph");
-                    }
-                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                        throw fmt::format("Failed to start flowgraph processing");
-                    }
-                    // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
-                    // We once have to directly change the state to running, after this, all further state updates are performed via the msg API
-                });
-            }
-
-            std::string_view uniqueName() const override { return _scheduler.unique_name; }
-
-            void sendMessage(const gr::Message& msg) final {
-                auto output = _toScheduler.streamWriter().reserve<gr::SpanReleasePolicy::ProcessAll>(1UZ);
-                output[0]   = msg;
-            }
-
-            void handleMessages(UiGraphModel& graphModel) final {
-                const auto available = _fromScheduler.streamReader().available();
-                if (available > 0) {
-                    auto messages = _fromScheduler.streamReader().get(available);
-
-                    for (const auto& msg : messages) {
-                        graphModel.processMessage(msg);
-                    }
-                    std::ignore = messages.consume(available);
-                }
-            }
-
-            ~HandlerImpl() {
-                gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");
-                _thread.join();
-            }
-        };
-
-        std::unique_ptr<Handler> handler;
-    };
-
-    SchedWrapper _scheduler;
-
 public:
     App() { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
-
-    static App& instance() {
-        static App app;
-        return app;
-    }
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
@@ -158,12 +69,34 @@ public:
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
     void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
-        if (dashboard && dashboard->inUse) {
-            fmt::print("The current dashboard can not yet be disposed of\n");
-            std::this_thread::sleep_for(500ms);
+        auto startedAt = std::chrono::system_clock::now();
+
+        if (dashboard) {
+            while (true) {
+                bool wait = false;
+                if (dashboard->isInUse) {
+                    wait = true;
+                } else if (dashboard->scheduler() && dashboard->scheduler()->state() != gr::lifecycle::State::STOPPED) {
+                    dashboard->scheduler()->stop();
+                    wait = true;
+                }
+
+                if (!wait) {
+                    break;
+                }
+
+                if (std::chrono::system_clock::now() - startedAt > 1s) {
+                    components::Notification::error("Failed to stop current flowgraph, can not load the dashboard.");
+                    return;
+                }
+            }
         }
-        dashboard = Dashboard::create(&flowgraphPage, desc);
+
+        dashboard = Dashboard::create(desc);
         dashboard->load();
+        dashboard->requestClose = [this](Dashboard*) { closeDashboard(); };
+
+        flowgraphPage.setDashboard(dashboard.get());
     }
 
     void loadDashboard(std::string_view url) {
@@ -198,25 +131,103 @@ public:
         flowgraphPage.setStyle(style);
     }
 
-    template<typename Graph>
-    void assignScheduler(Graph&& graph) {
-        using Scheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
+    void init(int argc, char** argv) {
+        Digitizer::Settings& settings = Digitizer::Settings::instance();
 
-        _scheduler.emplace<Scheduler>(std::forward<Graph>(graph), schedulerThreadPool);
-    }
+        // Init openDashboardPage
+        openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
+        openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
+            if (!desc) {
+                loadEmptyDashboard();
+            } else {
+                loadDashboard(desc);
+                mainViewMode = ViewMode::VIEW;
+            }
+        };
+        openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
+        openDashboardPage.addDashboard("example://builtin-samples");
 
-    std ::string_view schedulerUniqueName() const { return _scheduler.uniqueName(); }
+        // Flowgraph page
+        flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {
+            components::BlockControlsPanel(panelContext, pos, size, horizontalSplit);
+            //
+        };
 
-    void sendMessage(const gr::Message& msg) {
-        if (_scheduler) {
-            _scheduler.sendMessage(msg);
+        // Init header
+        header.requestApplicationSwitchMode  = [this](ViewMode mode) { mainViewMode = mode; };
+        header.requestApplicationSwitchTheme = [this](LookAndFeel::Style style) { setStyle(style); };
+        header.requestApplicationStop        = [this] { isRunning = false; };
+        header.loadAssets();
+
+        if (argc > 1) { // load dashboard if specified on the command line/query parameter
+            const char* url = argv[1];
+            if (strlen(url) > 0) {
+                fmt::print("Loading dashboard from '{}'\n", url);
+                loadDashboard(url);
+            }
+        } else if (!settings.defaultDashboard.empty()) {
+            // TODO: add subscription to remote dashboard worker if needed
+            std::string dashboardPath = settings.defaultDashboard;
+            if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
+                dashboardPath = fmt::format("{}://{}:{}/dashboards/{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port, dashboardPath);
+            }
+            loadDashboard(dashboardPath);
+        }
+        if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
+            loadDashboard(firstDashboard);
         }
     }
 
-    void handleMessages(UiGraphModel& fg) {
-        if (_scheduler) {
-            _scheduler.handleMessages(fg);
+    void processAndRender() {
+        {
+            if (dashboard) {
+                dashboard->handleMessages();
+            }
+
+            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+            const char* title = dashboard ? dashboard->description()->name.data() : "OpenDigitizer";
+            header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            IMW::Disabled disabled(dashboard == nullptr);
+
+            if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
+                components::Toolbar(toolbarBlocks);
+            }
+
+            if (dashboard != nullptr) {
+                if (loadedDashboard != dashboard.get()) {
+                    // Are we in the process of changing the dashboard?
+                    loadedDashboard = dashboard.get();
+                    dashboardPage   = std::make_unique<DashboardPage>();
+                    dashboardPage->setDashboard(*dashboard.get());
+                    dashboardPage->setLayoutType(loadedDashboard->layout());
+                    flowgraphPage.reset();
+                }
+            }
+
+            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
+                if (dashboard != nullptr) {
+                    dashboardPage->draw(mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
+                }
+            } else if (mainViewMode == ViewMode::FLOWGRAPH) {
+                if (dashboard != nullptr) {
+                    if (previousViewMode != ViewMode::FLOWGRAPH) {
+                        dashboard->graphModel().requestGraphUpdate();
+                        dashboard->graphModel().requestAvailableBlocksTypesUpdate();
+                    }
+
+                    flowgraphPage.draw();
+                }
+            } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
+                openDashboardPage.draw(dashboard.get());
+            } else {
+                auto msg = fmt::format("unknown view mode {}", static_cast<int>(mainViewMode));
+                components::Notification::warning(msg);
+            }
         }
+
+        previousViewMode = mainViewMode;
     }
 };
 

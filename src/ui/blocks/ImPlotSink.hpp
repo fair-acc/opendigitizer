@@ -447,7 +447,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
-            ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size()));
+            ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if xValues can have long values
         } else if constexpr (gr::DataSetLike<T>) {
 
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
@@ -478,7 +478,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     drawDataSetTimingEvents(dataSet, axisScale, tagColor);
                 }
 
-                const auto npoints = static_cast<std::size_t>(dataSet.axisValues(0UZ).size());
+                // NOTE: npoints is long int, while ImPlot lines are limited to int
+                const auto npoints = cast_to_signed(dataSet.axisValues(0UZ).size());
                 if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
                     // draw all signals
                     auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);

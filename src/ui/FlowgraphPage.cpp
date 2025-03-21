@@ -1,4 +1,4 @@
-#include "FlowgraphItem.hpp"
+#include "FlowgraphPage.hpp"
 
 #include <algorithm>
 
@@ -96,16 +96,17 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
     }
 }
 
-FlowGraphItem::FlowGraphItem() {
+FlowgraphPage::FlowgraphPage() {
     m_editorConfig.SettingsFile = nullptr;
-    m_editorConfig.UserPointer  = std::addressof(m_graphModel);
-    reset();
+    m_editorConfig.UserPointer  = this;
 }
 
-FlowGraphItem::~FlowGraphItem() { ax::NodeEditor::DestroyEditor(m_editor); }
+FlowgraphPage::~FlowgraphPage() { ax::NodeEditor::DestroyEditor(m_editor); }
 
-void FlowGraphItem::reset() {
-    m_graphModel.reset();
+void FlowgraphPage::reset() {
+    if (m_dashboard) {
+        m_dashboard->graphModel().reset();
+    }
 
     if (m_editor) {
         ax::NodeEditor::SetCurrentEditor(nullptr);
@@ -117,11 +118,118 @@ void FlowGraphItem::reset() {
     setEditorStyle(m_editor, LookAndFeel::instance().style);
 }
 
-void FlowGraphItem::setStyle(LookAndFeel::Style s) { setEditorStyle(m_editor, s); }
+void FlowgraphPage::setStyle(LookAndFeel::Style s) {
+    if (m_editor) {
+        setEditorStyle(m_editor, s);
+    }
+}
 
-static std::uint32_t colorForDataType(const std::string&) {
-    // TODO: Restore colors for ports
-    return 0;
+struct DataTypeStyle {
+    std::uint32_t color;
+    bool          unsignedMarker = false;
+    bool          datasetMarker  = false;
+};
+static const DataTypeStyle& styleForDataType(std::string_view type) {
+    struct transparent_string_hash // why isn't std::hash<std::string> this exact same thing?
+    {
+        using hash_type      = std::hash<std::string_view>;
+        using is_transparent = void;
+
+        size_t operator()(const char* str) const { return hash_type{}(str); }
+        size_t operator()(std::string_view str) const { return hash_type{}(str); }
+        size_t operator()(std::string const& str) const { return hash_type{}(str); }
+    };
+    using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, transparent_string_hash, std::equal_to<>>;
+
+    auto withDataSetColors = [](DataTypeStyleMap&& map) {
+        DataTypeStyleMap result;
+        while (map.begin() != map.end()) {
+            auto it          = map.begin();
+            auto datasetName = "gr::DataSet<"s + it->first + ">"s;
+
+            result[datasetName]               = it->second;
+            result[datasetName].datasetMarker = true;
+
+            result.insert(map.extract(it));
+        }
+
+        return result;
+    };
+
+    static auto styleForDataTypeLight = withDataSetColors({
+        {"float32"s, {0xffF57C00}}, //
+        {"float64"s, {0xff00BCD4}}, //
+
+        {"int8"s, {0xffD500F9}},                  //
+        {"int16"s, {0xffFFEB3B}},                 //
+        {"int32"s, {0xff009688}},                 //
+        {"int64"s, {0xffCDDC39}},                 //
+        {"uint8"s, {0xffD500F9, true}},           //
+        {"uint16"s, {0xffFFEB3B, true}},          //
+        {"uint32"s, {0xff009688, true}},          //
+        {"uint64"s, {0xffCDDC39, true}},          //
+                                                  //
+        {"std::complex<float32>"s, {0xff2196F3}}, //
+        {"std::complex<float64>"s, {0xff795548}}, //
+                                                  //
+        {"std::complex<int8>"s, {0xff9C27B0}},    //
+        {"std::complex<int16>"s, {0xffFFC107}},   //
+        {"std::complex<int32>"s, {0xff4CAF50}},   //
+        {"std::complex<int64>"s, {0xff8BC34A}},   //
+
+        {"gr::DataSet<float32>"s, {0xffF57C00, false, true}}, //
+        {"gr::DataSet<float64>"s, {0xff00BCD4, false, true}}, //
+                                                              //
+        {"gr::Message"s, {0xffDBDBDB}},                       //
+
+        {"Bits"s, {0xffEA80FC}},          //
+        {"BusConnection"s, {0xffffffff}}, //
+        {"Wildcard"s, {0xffffffff}},      //
+        {"Untyped"s, {0xffffffff}},       //
+    });
+
+    static auto styleForDataTypeDark = withDataSetColors({
+        {"float32"s, {0xff0a83ff}}, //
+        {"float64"s, {0xffff432b}}, //
+
+        {"int8"s, {0xff2aff06}},         //
+        {"int16"s, {0xff0014c4}},        //
+        {"int32"s, {0xffff6977}},        //
+        {"int64"s, {0xff3223c6}},        //
+        {"uint8"s, {0xff2aff06, true}},  //
+        {"uint16"s, {0xff0014c4, true}}, //
+        {"uint32"s, {0xffff6977, true}}, //
+        {"uint64"s, {0xff3223c6, true}}, //
+
+        {"std::complex<float32>"s, {0xffde690c}}, //
+        {"std::complex<float64>"s, {0xff86aab8}}, //
+
+        {"std::complex<int8>"s, {0xff63d84f}},  //
+        {"std::complex<int16>"s, {0xff003ef8}}, //
+        {"std::complex<int32>"s, {0xffb350af}}, //
+        {"std::complex<int64>"s, {0xff743cb5}}, //
+
+        {"gr::DataSet<float64>"s, {0xffff432b}}, //
+        {"gr::DataSet<float32>"s, {0xff0a83ff}}, //
+
+        {"gr::Message"s, {0xff242424}}, //
+
+        {"Bits"s, {0xff158003}},          //
+        {"BusConnection"s, {0xff000000}}, //
+        {"Wildcard"s, {0xff000000}},      //
+        {"Untyped"s, {0xff000000}},       //
+
+    });
+
+    auto& map = LookAndFeel::instance().style == LookAndFeel::Style::Light ? styleForDataTypeLight : styleForDataTypeDark;
+    auto  it  = map.find(type);
+    if (it == map.cend()) {
+        fmt::print("Warning: Color not defined for {}\n", type);
+        static DataTypeStyle none{0x00000000};
+        return none;
+    } else {
+        return it->second;
+    }
 }
 
 static uint32_t darkenOrLighten(uint32_t color) {
@@ -167,12 +275,14 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-static void newDrawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, colorForDataType(type));
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(colorForDataType(type)));
+static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
 
+    const auto& style = styleForDataType(type);
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
     ImGui::SetCursorPosX(pinPosition.x + textMargin);
     ImGui::SetCursorPosY(pinPosition.y - spacing);
+
     ImGui::TextUnformatted(name.c_str());
 };
 
@@ -184,7 +294,7 @@ void valToString(const pmtv::pmt& val, std::string& str) {
         val);
 }
 
-void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -206,7 +316,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         // TODO: Move to the theme definition
         const int    pinHeight  = 14;
         const int    pinSpacing = 5;
-        const int    textMargin = 2;
+        const int    textMargin = 4;
         const ImVec2 minimumBlockSize{80.0f, 0.0f};
 
         // We need to pass all blocks in order for NodeEditor to calculate
@@ -307,7 +417,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                     auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         auto pinPositionX = portLeftPos + padding.x - (rightAlign ? widths[i] : 0);
-                        newDrawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, {} /* TODO in.portType */);
+                        drawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, ports[i].portType);
                         pinPositionY += pinHeight + pinSpacing;
                     }
                 };
@@ -376,7 +486,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                                 {"minBufferSize"s, gr::Size_t(4096)},                          //
                                 {"weight"s, 1},                                                //
                                 {"edgeName"s, std::string()}};
-                            App::instance().sendMessage(message);
+                            graphModel.sendMessage(std::move(message));
                         }
                     }
                 }
@@ -385,7 +495,7 @@ void newDrawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
+void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
 
     const ImVec2 origCursorPos = ImGui::GetCursorScreenPos();
     const float  left          = ImGui::GetCursorPosX();
@@ -404,7 +514,7 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
         sortNodes();
     }
 
-    newDrawGraph(m_graphModel, size);
+    drawGraph(m_dashboard->graphModel(), size);
 
     auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
@@ -456,35 +566,68 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
             sortNodes();
         }
         if (ImGui::MenuItem("Refresh graph")) {
-            m_graphModel.requestGraphUpdate();
-            m_graphModel.requestAvailableBlocksTypesUpdate();
+            m_dashboard->graphModel().requestGraphUpdate();
+            m_dashboard->graphModel().requestAvailableBlocksTypesUpdate();
+        }
+
+        if (m_dashboard->scheduler()) {
+            auto state = m_dashboard->scheduler()->state();
+
+            if (state == gr::lifecycle::State::RUNNING) {
+                if (ImGui::MenuItem("Pause scheduler")) {
+                    m_dashboard->scheduler()->pause();
+                }
+                if (ImGui::MenuItem("Stop scheduler")) {
+                    m_dashboard->scheduler()->stop();
+                }
+
+            } else if (state == gr::lifecycle::State::PAUSED) {
+                if (ImGui::MenuItem("Resume scheduler")) {
+                    m_dashboard->scheduler()->resume();
+                }
+
+            } else if (state == gr::lifecycle::State::STOPPED) {
+                if (ImGui::MenuItem("Start scheduler")) {
+                    m_dashboard->scheduler()->start();
+                }
+            }
         }
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
-        if (ImGui::MenuItem("Delete")) {
-            // Send message to delete block
-            gr::Message message;
-            message.endpoint = gr::graph::property::kRemoveBlock;
-            message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
-            App::instance().sendMessage(std::move(message));
-        }
+        if (m_dashboard->scheduler()) {
+            auto          state             = m_dashboard->scheduler()->state();
+            const bool    canModifyTopology = state == gr::lifecycle::State::STOPPED || !m_selectedBlock->isConnected();
+            IMW::Disabled disabled(!canModifyTopology);
 
-        auto typeParams = m_graphModel.availableParametrizationsFor(m_selectedBlock->blockTypeName);
-        if (typeParams.availableParametrizations) {
-            if (typeParams.availableParametrizations->size() > 1) {
-                for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                    if (availableParametrization != typeParams.parametrization) {
-                        auto name = std::string{"Change Type to "} + availableParametrization;
-                        if (ImGui::MenuItem(name.c_str())) {
-                            gr::Message message;
-                            message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kReplaceBlock;
-                            message.data     = gr::property_map{
-                                    {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
-                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
-                            };
-                            App::instance().sendMessage(message);
+            if (!canModifyTopology) {
+                ImGui::MenuItem("Changing topology is disabled as scheduler is running");
+            }
+
+            if (ImGui::MenuItem("Delete this block")) {
+                // Send message to delete block
+                gr::Message message;
+                message.endpoint = gr::graph::property::kRemoveBlock;
+                message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
+                m_dashboard->graphModel().sendMessage(std::move(message));
+            }
+
+            auto typeParams = m_dashboard->graphModel().availableParametrizationsFor(m_selectedBlock->blockTypeName);
+            if (typeParams.availableParametrizations) {
+                if (typeParams.availableParametrizations->size() > 1) {
+                    for (const auto& availableParametrization : *typeParams.availableParametrizations) {
+                        if (availableParametrization != typeParams.parametrization) {
+                            auto name = std::string{"Change Type to "} + availableParametrization;
+                            if (ImGui::MenuItem(name.c_str())) {
+                                gr::Message message;
+                                message.cmd      = gr::message::Command::Set;
+                                message.endpoint = gr::graph::property::kReplaceBlock;
+                                message.data     = gr::property_map{
+                                        {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
+                                        {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                                };
+                                m_dashboard->graphModel().sendMessage(std::move(message));
+                            }
                         }
                     }
                 }
@@ -536,7 +679,7 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
         }
 
         m_remoteSignalSelector.draw();
-        m_newBlockSelector.draw(m_graphModel.knownBlockTypes);
+        m_newBlockSelector.draw(m_dashboard->graphModel().knownBlockTypes);
     }
 
     if (horizontalSplit) {
@@ -548,7 +691,7 @@ void FlowGraphItem::drawNodeEditor(const ImVec2& size) {
     }
 }
 
-void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
+void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
@@ -601,7 +744,7 @@ void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
         ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
     }
 
-    for (auto& s : dashboard.remoteServices()) {
+    for (auto& s : m_dashboard->remoteServices()) {
         std::string tabTitle = "Remote YAML for " + s.name;
         if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
             if (ImGui::Button("Reload from service")) {
@@ -626,9 +769,9 @@ void FlowGraphItem::draw(Dashboard& dashboard) noexcept {
     }
 }
 
-void FlowGraphItem::sortNodes() {
+void FlowgraphPage::sortNodes() {
     fmt::print("Sorting blocks\n");
-    auto blockLevels = topologicalSort(m_graphModel.blocks(), m_graphModel.edges());
+    auto blockLevels = topologicalSort(m_dashboard->graphModel().blocks(), m_dashboard->graphModel().edges());
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
