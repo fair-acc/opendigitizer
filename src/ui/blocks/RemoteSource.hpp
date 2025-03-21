@@ -341,6 +341,16 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
                 ds.timing_events.resize(1UZ);
 
+                for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
+                    const auto yamlMap = pmtv::yaml::deserialize(yaml);
+                    if (yamlMap) {
+                        const gr::property_map& rootMap = yamlMap.value();
+                        ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
+                    } else {
+                        // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
+                    }
+                }
+
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back(std::move(ds));
             } catch (opencmw::ProtocolException& e) {
