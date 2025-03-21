@@ -608,12 +608,30 @@ private:
             std::ranges::copy(values, reply.channelValue.begin());
             reply.channelError.resize(0); // TODO: add std::uncertain<T>() value here
 
-            // TODO: FixMe axis_values are not appropriately defined/tested in GR4: Data[Set]Sink -> adding mock data here
-            // assert(dataSet.axis_values.size() > 0UZ);
-            // assert(dataSet.axis_values[0UZ].size() > 0UZ);
-            // reply.channelTimeBase.resize(dataSet.axis_values[0].size());
-            // std::ranges::copy(dataSet.axis_values[0], reply.channelTimeBase.begin()); // TODO: correct for trigger offset which may not be on the '0'-th sample
-            reply.channelTimeBase = std::views::iota(0UZ, dataSet.signalValues(0UZ).size()) | std::ranges::to<std::vector<float>>();
+            reply.channelTimeBase.resize(dataSet.axis_values[0].size());
+            std::ranges::copy(dataSet.axis_values[0], reply.channelTimeBase.begin()); // TODO: correct for trigger offset which may not be on the '0'-th sample
+
+            // copy event_timing information, TODO: now we copy all data only from timing_events[0]
+            if (!dataSet.timing_events.empty()) {
+                const auto& tags = dataSet.timing_events[0];
+                reply.triggerIndices.reserve(tags.size());
+                reply.triggerEventNames.reserve(tags.size());
+                reply.triggerTimestamps.reserve(tags.size());
+                reply.triggerOffsets.reserve(tags.size());
+                reply.triggerYamlPropertyMaps.reserve(tags.size());
+                for (auto& [idx, tagMap] : tags) {
+                    reply.triggerIndices.push_back(static_cast<int64_t>(idx));
+                    reply.triggerEventNames.push_back("");
+                    reply.triggerTimestamps.push_back(0ULL);
+                    reply.triggerOffsets.push_back(0.f);
+                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
+                }
+                reply.triggerIndices.shrink_to_fit();
+                reply.triggerEventNames.shrink_to_fit();
+                reply.triggerTimestamps.shrink_to_fit();
+                reply.triggerOffsets.shrink_to_fit();
+                reply.triggerYamlPropertyMaps.shrink_to_fit();
+            }
         };
 
         const auto wasFinished = pollerEntry.poller->finished.load();
