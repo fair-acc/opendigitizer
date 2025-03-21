@@ -55,32 +55,46 @@ inline void plotVerticalTagLabel(const std::string_view& label, double xData, co
     ImPlot::PlotText(label.data(), xData, yClamped, pixOffset, static_cast<int>(ImPlotTextFlags_Vertical) | static_cast<int>(ImPlotItemFlags_NoFit));
 }
 
-inline void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
+template<typename T>
+static double transformX(double xVal, DigitizerUi::AxisScale axisScale, double xMin, double xMax) {
+    using enum DigitizerUi::AxisScale;
+    switch (axisScale) {
+    case Time: return xVal;
+    case LinearReverse:
+        if constexpr (gr::DataSetLike<T>) {
+            return xVal;
+        } else {
+            return xVal - xMax;
+        }
+    case Linear:
+    case Log10:
+    case SymLog:
+    default: {
+        if constexpr (gr::DataSetLike<T>) {
+            return xVal;
+        } else {
+            return xVal - xMin;
+        }
+    }
+    }
+}
+
+template<typename T>
+void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
     using enum DigitizerUi::AxisScale;
     std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
     if (tagValues.empty()) {
         return;
     }
 
-    auto transformX = [axisScale, &minX, &maxX](double xPos) -> double {
-        switch (axisScale) {
-        case Linear:
-        case Log10:
-        case SymLog: return xPos - minX;
-        case LinearReverse: return xPos - maxX;
-        case Time:
-        default: return xPos;
-        }
-    };
-
     const float  fontHeight = ImGui::GetFontSize();
     const auto   plotLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
     const double yRange     = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(minX, maxX)), 0.0f).x;
-    float lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(minX, maxX)), 0.0f).x;
+    float lastTextPixelX = ImPlot::PlotToPixels(transformX<T>(std::min(minX, maxX), axisScale, minX, maxX), 0.0f).x;
+    float lastAxisPixelX = ImPlot::PlotToPixels(transformX<T>(std::max(minX, maxX), axisScale, minX, maxX), 0.0f).x;
     for (const auto& tag : tagValues) {
-        double      xTagPosition = transformX(tag.timestamp);
+        double      xTagPosition = transformX<T>(tag.timestamp, axisScale, minX, maxX);
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
 
         ImPlot::SetNextLineStyle(color);
@@ -123,24 +137,12 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
     // Let's assume axisValues(0) is our main X-axis
     // We'll do a front/back min/max for pruning
     const auto&  xAxisSpan = dataset.axisValues(0);
-    const double xAxisMin  = static_cast<double>(xAxisSpan.front());
-    const double xAxisMax  = static_cast<double>(xAxisSpan.back());
-
-    // Prepare a small transform that replicates your "Time", "LinearReverse", etc. logic
-    auto transformX = [axisScale, &xAxisMin, &xAxisMax](double xVal) {
-        switch (axisScale) {
-        case Linear:
-        case Log10:
-        case SymLog: return xVal - xAxisMin;
-        case LinearReverse: return xVal - xAxisMax;
-        case Time:
-        default: return xVal; // pass through
-        }
-    };
+    const double minX      = static_cast<double>(xAxisSpan.front());
+    const double maxX      = static_cast<double>(xAxisSpan.back());
 
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float        lastTextPixelX = ImPlot::PlotToPixels(transformX(std::min(xAxisMin, xAxisMax)), 0.0f).x;
-    float        lastAxisPixelX = ImPlot::PlotToPixels(transformX(std::max(xAxisMin, xAxisMax)), 0.0f).x;
+    float        lastTextPixelX = ImPlot::PlotToPixels(transformX<T>(std::min(minX, maxX), axisScale, minX, maxX), 0.0f).x;
+    float        lastAxisPixelX = ImPlot::PlotToPixels(transformX<T>(std::max(minX, maxX), axisScale, minX, maxX), 0.0f).x;
     const float  fontHeight     = ImGui::GetFontSize();
     const auto   plotLimits     = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
     const double yRange         = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
@@ -153,7 +155,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
             }
 
             double      xVal         = static_cast<double>(xAxisSpan[static_cast<std::size_t>(xIndex)]);
-            double      xTagPosition = transformX(xVal);
+            double      xTagPosition = transformX<T>(xVal, axisScale, minX, maxX);
             const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
             ImPlot::SetNextLineStyle(color);
             ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
@@ -413,24 +415,35 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         };
 
         constexpr auto pointGetter = +[](int signedIndex, void* user_data) -> ImPlotPoint {
-            const std::size_t          idx     = cast_to_unsigned(signedIndex);
-            auto*                      ctx     = static_cast<PlotLineContext*>(user_data);
-            std::span<const double>    xValues = ctx->xValues;
-            std::span<const ValueType> yValues = ctx->yValues;
-            ValueType                  yOffset = ctx->yOffset;
+            std::size_t idx = static_cast<std::size_t>(signedIndex);
+            auto*       ctx = static_cast<PlotLineContext*>(user_data);
+
+            double xVal = ctx->xValues[idx];
+            double yVal = static_cast<double>(ctx->yValues[idx] + ctx->yOffset);
 
             switch (ctx->axisScale) {
-            case Time: return {xValues[idx], static_cast<double>(yValues[idx] + yOffset)};
+            case Time: return {xVal, yVal};
+
             case LinearReverse: {
-                const double xValueBack = xValues.back();
-                return {xValues[idx] - xValueBack, static_cast<double>(yValues[idx] + yOffset)};
+                if constexpr (gr::DataSetLike<T>) {
+                    return {xVal, yVal};
+                } else { // fundamental types
+                    double xMax = ctx->xValues.back();
+                    return {xVal - xMax, yVal};
+                }
             }
+
             case Linear:
-            case Log10:  // base 10 logarithmic scale -> transform computed by axis
-            case SymLog: // symmetric log scale -> transform computed by axis
-            default:     // linear
-                const double xValueFront = xValues.front();
-                return {xValues[idx] - xValueFront, static_cast<double>(yValues[idx] + yOffset)};
+            case Log10:
+            case SymLog:
+            default: {
+                if constexpr (gr::DataSetLike<T>) {
+                    return {xVal, yVal};
+                } else { // fundamental types
+                    double xMin = ctx->xValues.front();
+                    return {xVal - xMin, yVal};
+                }
+            }
             }
         };
 
@@ -443,7 +456,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
                 tagColor.w *= 0.35f; // semi-transparent tags
-                drawAndPruneTags(_tagValues, minX, maxX, axisScale, tagColor);
+                drawAndPruneTags<T>(_tagValues, minX, maxX, axisScale, tagColor);
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
