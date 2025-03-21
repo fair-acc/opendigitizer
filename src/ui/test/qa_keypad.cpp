@@ -26,7 +26,7 @@ private:
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto& vars = ctx->GetVars<TestState>();
-            if (DigitizerUi::components::InputKeypad<>::edit("label", &vars.value)) {
+            if (DigitizerUi::components::InputKeypad<>::edit("item_source", "label", &vars.value)) {
                 // do not override with false every frame
                 vars.edited = true;
             }

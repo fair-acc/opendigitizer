@@ -19,6 +19,16 @@ inline bool ImGuiBeginDisabled(bool disabled) {
     return disabled;
 }
 
+void setItemTooltip(auto&&... args) {
+    if (ImGui::IsItemHovered()) {
+        if constexpr (sizeof...(args) == 0) {
+            ImGui::SetTooltip("");
+        } else {
+            ImGui::SetTooltip("%s", std::forward<decltype(args)...>(args...));
+        }
+    }
+}
+
 // We use different overloads of BeginChild, we will make separate RAII objects for them
 inline auto ImGuiBeginChild(const char* str_id, const ImVec2& size = ImVec2(0, 0), ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0) { return ImGui::BeginChild(str_id, size, child_flags, window_flags); }
 
