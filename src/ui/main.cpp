@@ -182,7 +182,9 @@ int main(int argc, char** argv) {
         return verticalDPI;
     }();
 
-    App app;
+    // EMSCRIPTEN ends main before it enters the main loop,
+    // app needs to live forever, so it is static
+    static App app;
 #ifdef EMSCRIPTEN
     app.executable = "index.html";
 #else
