@@ -196,7 +196,7 @@ public:
             }
 
             if (dashboard != nullptr) {
-                if (loadedDashboard != dashboard.get()) {
+                if (loadedDashboard != dashboard.get() && dashboard->isInitialised()) {
                     // Are we in the process of changing the dashboard?
                     loadedDashboard = dashboard.get();
                     dashboardPage   = std::make_unique<DashboardPage>();
@@ -207,11 +207,11 @@ public:
             }
 
             if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
-                if (dashboard != nullptr) {
+                if (dashboard != nullptr && dashboard->isInitialised()) {
                     dashboardPage->draw(mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
                 }
             } else if (mainViewMode == ViewMode::FLOWGRAPH) {
-                if (dashboard != nullptr) {
+                if (dashboard != nullptr && dashboard->isInitialised()) {
                     if (previousViewMode != ViewMode::FLOWGRAPH) {
                         dashboard->graphModel().requestGraphUpdate();
                         dashboard->graphModel().requestAvailableBlocksTypesUpdate();

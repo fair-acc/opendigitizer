@@ -199,12 +199,15 @@ public:
 
     void handleMessages() { m_scheduler.handleMessages(m_graphModel); }
 
+    [[nodiscard]] bool isInitialised() const noexcept { return m_isInitialised.load(std::memory_order_acquire); }
+
 private:
-    std::shared_ptr<DashboardDescription>        m_desc;
+    std::shared_ptr<DashboardDescription>        m_desc = nullptr;
     std::vector<Plot>                            m_plots;
     DockingLayoutType                            m_layout;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
+    std::atomic<bool>                            m_isInitialised = false;
 
     Scheduler m_scheduler;
 
