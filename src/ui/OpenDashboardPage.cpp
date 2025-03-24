@@ -113,7 +113,7 @@ static constexpr float indent = 20;
 void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
 
-    if (optionalDashboard) {
+    if (optionalDashboard != nullptr && optionalDashboard->isInitialised()) {
         auto desc = optionalDashboard->description();
         ImGui::Text("%s (%s)", desc->name.c_str(), desc->storageInfo->path.c_str());
     } else {
@@ -122,7 +122,7 @@ void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
 
     ImGui::Dummy({indent, 20});
     ImGui::SameLine();
-    const bool dashboardLoaded = optionalDashboard != nullptr;
+    const bool dashboardLoaded = optionalDashboard != nullptr && optionalDashboard->isInitialised();
 
     IMW::Disabled disabled(!dashboardLoaded);
 
@@ -153,10 +153,10 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
         ImGui::SameLine();
-        auto                                         desc = optionalDashboard ? optionalDashboard->description() : nullptr;
+        auto                                         desc = optionalDashboard != nullptr && optionalDashboard->isInitialised() ? optionalDashboard->description() : nullptr;
         static std::string                           name;
         static std::shared_ptr<DashboardStorageInfo> storageInfo;
-        if (ImGui::IsWindowAppearing()) {
+        if (ImGui::IsWindowAppearing() && desc != nullptr) {
             name        = desc->name;
             storageInfo = !desc->storageInfo->isInMemoryDashboardStorage() || m_storageInfos.empty() ? desc->storageInfo : m_storageInfos.front();
         }
@@ -181,13 +181,13 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         drawAddSourcePopup();
 
         bool okEnabled = !name.empty() && !storageInfo->isInMemoryDashboardStorage();
-        if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
+        if (components::DialogButtons(okEnabled) == components::DialogButton::Ok && desc != nullptr) {
             auto newDesc         = std::make_shared<DashboardDescription>(*desc);
             newDesc->name        = name;
             newDesc->storageInfo = storageInfo;
             m_dashboards.push_back(newDesc);
 
-            if (optionalDashboard) {
+            if (optionalDashboard != nullptr && optionalDashboard->isInitialised()) {
                 optionalDashboard->setNewDescription(newDesc);
                 optionalDashboard->save();
             }
@@ -291,7 +291,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
 
             const auto& name              = item.first->name;
             const auto& storageInfo       = item.first->storageInfo;
-            bool        isDashboardActive = optionalDashboard && optionalDashboard->description() && name == optionalDashboard->description()->name && storageInfo == optionalDashboard->description()->storageInfo;
+            bool        isDashboardActive = optionalDashboard != nullptr && optionalDashboard->isInitialised() && optionalDashboard->description() && name == optionalDashboard->description()->name && storageInfo == optionalDashboard->description()->storageInfo;
 
             {
                 IMW::Font font(isDashboardActive ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);

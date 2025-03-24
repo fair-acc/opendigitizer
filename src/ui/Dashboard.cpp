@@ -224,6 +224,7 @@ void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& d
 
 void Dashboard::load() {
     if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
+        m_isInitialised.store(false, std::memory_order_release);
         isInUse = true;
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
@@ -271,6 +272,7 @@ void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashb
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
         doLoad(dashboardData);
+        m_isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
         fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
