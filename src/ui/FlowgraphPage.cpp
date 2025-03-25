@@ -270,18 +270,6 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type) {
-
-    const auto& style = FlowgraphPage::styleForDataType(type);
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
-    ImGui::SetCursorPos(pinPosition);
-
-    if (ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize)) {
-        ImGui::SetTooltip("%s (%s)", name.c_str(), type.c_str());
-    }
-};
-
 void valToString(const pmtv::pmt& val, std::string& str) {
     std::visit(gr::meta::overloaded{
                    [&](const std::string& s) { str = s; },
@@ -409,7 +397,7 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                     auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinHeight, pinHeight}, ports[i].portName, ports[i].portType);
+                        FlowgraphPage::drawPin(drawList, {pinPositionX, pinPositionY}, {pinHeight, pinHeight}, ports[i].portName, ports[i].portType);
                         pinPositionY += pinHeight + pinSpacing;
                     }
                 };
@@ -786,5 +774,17 @@ void FlowgraphPage::sortNodes() {
         x += levelWidth + xSpacing;
     }
 }
+
+void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type) {
+
+    const auto& style = FlowgraphPage::styleForDataType(type);
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
+    ImGui::SetCursorPos(pinPosition);
+
+    if (ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize)) {
+        ImGui::SetTooltip("%s (%s)", name.c_str(), type.c_str());
+    }
+};
 
 } // namespace DigitizerUi

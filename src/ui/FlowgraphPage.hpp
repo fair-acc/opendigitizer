@@ -71,6 +71,8 @@ public:
 
     static const DataTypeStyle& styleForDataType(std::string_view type);
 
+    static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type);
+
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 };
 

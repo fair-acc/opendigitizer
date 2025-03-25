@@ -136,18 +136,11 @@ void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 avai
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor);
 
     auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, UiGraphPort& port) {
-        const std::string& tooltip         = port.portName;
-        const ImVec2       portTopLeft     = portPosition;
-        const ImVec2       portBottomRight = portTopLeft + ImVec2(portWidth, portHeight);
+        const ImVec2 portBottomRight = portPosition + ImVec2(portWidth, portHeight);
 
-        const auto& portStyle = FlowgraphPage::styleForDataType(port.portType);
-        drawList->AddRectFilled(portTopLeft, portBottomRight, portStyle.color);
+        FlowgraphPage::drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType);
 
-        if (ImGui::IsMouseHoveringRect(portTopLeft, portBottomRight)) {
-            ImGui::SetTooltip("%s", tooltip.c_str());
-        }
-
-        return std::make_pair(portTopLeft, portBottomRight);
+        return std::make_pair(portPosition, portBottomRight);
     };
 
     // Draw left ports first for middle block
