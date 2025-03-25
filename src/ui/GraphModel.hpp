@@ -58,10 +58,6 @@ struct UiGraphBlock {
     std::vector<UiGraphPort> inputPorts;
     std::vector<UiGraphPort> outputPorts;
 
-    // Rendering-related members
-    std::vector<float> inputPortWidths;
-    std::vector<float> outputPortWidths;
-
     // TODO when nested graphs support gets here
     // std::vector<UiGraphBlock> children
     // std::vector<UiGraphEdge> edges
