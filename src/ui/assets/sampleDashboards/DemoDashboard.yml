@@ -2,18 +2,14 @@ layout: Free
 sources:
   - name: sinesSink
     block: sinesSink
-    color: !!uint32 0x009900
   - name: fftSink
     block: fftSink
-    color: !!uint32 0xFF5500
   - name: DipoleCurrentSink
     block: DipoleCurrentSink
     port: 0
-    color: !!uint32 0xC80000
   - name: IntensitySink
     block: IntensitySink
     port: 0
-    color: !!uint32 0x0000C8
 plots:
   - name: Plot 1
     axes:

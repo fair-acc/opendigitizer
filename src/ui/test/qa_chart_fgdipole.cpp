@@ -28,6 +28,13 @@
 #include <gnuradio-4.0/Profiler.hpp>
 #include <memory.h>
 
+#include <plf_colony.h>
+
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
+
+#include "../components/ColourManager.hpp"
+
 CMRC_DECLARE(ui_test_assets);
 
 using namespace boost;
@@ -131,6 +138,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
+    [[maybe_unused]] opendigitizer::ColourManager& colourManager = opendigitizer::ColourManager::instance();
     registerTestBlocks(gr::globalBlockRegistry());
 
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);

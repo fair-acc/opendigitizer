@@ -90,6 +90,7 @@ int main(int argc, char** argv) {
     }
 
     Digitizer::Settings::instance(); // TODO do we need this here?
+    opendigitizer::ColourManager::instance(); // rstein: possibly -> both are singletons
 
     // TODO: Remove when GR gets proper blocks library
     auto& registry = gr::globalBlockRegistry();

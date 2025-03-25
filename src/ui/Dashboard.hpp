@@ -22,6 +22,10 @@ CMRC_DECLARE(sample_dashboards);
 #include <gnuradio-4.0/PluginLoader.hpp>
 
 #include "components/Docking.hpp"
+#include "components/ColourManager.hpp"
+namespace detail {
+[[maybe_unused]] inline static opendigitizer::ColourManager& _colourManager = opendigitizer::ColourManager::instance();
+}
 
 #include "GraphModel.hpp"
 #include "Scheduler.hpp"
