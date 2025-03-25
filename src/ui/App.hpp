@@ -169,7 +169,12 @@ public:
             // TODO: add subscription to remote dashboard worker if needed
             std::string dashboardPath = settings.defaultDashboard;
             if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
-                dashboardPath = fmt::format("{}://{}:{}/dashboards/{}", settings.disableHttps ? "http" : "https", settings.hostname, settings.port, dashboardPath);
+                std::string basePath = settings.basePath.empty() ? "" : settings.basePath;          // needed in case the dashboard page is loaded via a redirect
+                if (!basePath.ends_with("/")) {
+                    basePath += "/";
+                }
+                dashboardPath = fmt::format("{}://{}:{}/{}dashboards/{}", //
+                    settings.disableHttps ? "http" : "https", settings.hostname, settings.port, basePath, dashboardPath);
             }
             loadDashboard(dashboardPath);
         }
