@@ -14,6 +14,8 @@
 #include "../Dashboard.hpp"
 #include "../common/ImguiWrap.hpp"
 
+#include "../components/ColourManager.hpp"
+
 #include <implot.h>
 
 #include "conversion.hpp"
@@ -315,7 +317,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
     PortIn<T> in;
 
-    A<uint32_t, "plot color", Doc<"RGB color for the plot">>                                                                                              color         = 0xff0000;                         // TODO: Use a better type, support configurable colors for datasets?
+    ManagedColour                                                                                                                                         _colour;
+    A<uint32_t, "plot color", Doc<"RGB color for the plot">>                                                                                              color         = 0U;
     A<gr::Size_t, "required buffer size", Doc<"Minimum number of samples to retain">>                                                                     required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
     A<std::string, "signal name", Visible, Doc<"Human-readable identifier for the signal">>                                                               signal_name;
     A<std::string, "signal quantity", Visible, Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
@@ -347,7 +350,16 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
-    void settingsChanged(const gr::property_map& /* oldSettings */, const gr::property_map& /* newSettings */) {
+    void settingsChanged(const gr::property_map& /* oldSettings */, const gr::property_map& newSettings) {
+        if (newSettings.contains("color") || color == 0U) {
+            if (color == 0U) {
+                _colour.updateColour();
+            } else {
+                _colour.setColour(color);
+            }
+            color = _colour.colour();
+        }
+
         if (_xValues.capacity() != required_size) {
             _xValues.resize(required_size);
             _tagValues.clear();
@@ -447,6 +459,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             }
         };
 
+        color = _colour.colour();
         if constexpr (std::is_arithmetic_v<T>) {
             ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
             ImPlot::SetNextLineStyle(lineColor);
@@ -464,7 +477,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         } else if constexpr (gr::DataSetLike<T>) {
 
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
-            for (std::size_t historyIdx = 0UZ; historyIdx < nMax; historyIdx++) {
+            for (std::size_t historyIdx = nMax; historyIdx-- > 0;) { // draw newest DataSet last -> on top
                 const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
                 // dimension checks
                 const std::size_t nsignals = dataSet.size();
@@ -501,7 +514,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     for (std::size_t signalIdx = 0UZ; signalIdx < nsignals; ++signalIdx) {
                         ImPlot::SetNextLineStyle(lineColor);
                         PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
-                        ImPlot::PlotLineG(dataSet.signal_names[signalIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
+                        ImPlot::PlotLineG(historyIdx == 0UZ ? dataSet.signal_names[signalIdx].c_str() : "", pointGetter, &ctx, static_cast<int>(npoints));
                     }
                 } else {
                     // single sub-signal

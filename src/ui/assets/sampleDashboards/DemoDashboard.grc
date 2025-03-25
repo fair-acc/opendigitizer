@@ -18,14 +18,12 @@ blocks:
   - name: sinesSink
     id: opendigitizer::ImPlotSink<float32>
     parameters:
-      color: 0x00C800
       signal_name: value
       signal_quantity: voltage
       signal_unit: V
   - name: fftSink
     id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
-      color: 0xFF5500
       dataset_index: 0
       signal_name: fft
       signal_quantity: magnitude

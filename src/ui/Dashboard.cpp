@@ -318,14 +318,12 @@ void Dashboard::doLoad(const std::string& desc) {
         }
         const property_map srcMap = std::get<property_map>(src);
 
-        if (!srcMap.contains("block") || !std::holds_alternative<std::string>(srcMap.at("block"))  //
-            || !srcMap.contains("name") || !std::holds_alternative<std::string>(srcMap.at("name")) //
-            || !srcMap.contains("color")) {
-            throw std::runtime_error("invalid source color definition");
+        if (!srcMap.contains("block") || !std::holds_alternative<std::string>(srcMap.at("block")) //
+            || !srcMap.contains("name") || !std::holds_alternative<std::string>(srcMap.at("name"))) {
+            throw std::runtime_error("invalid source name definition");
         }
         auto block = std::get<std::string>(srcMap.at("block"));
         auto name  = std::get<std::string>(srcMap.at("name"));
-        auto color = pmtv::cast<std::uint32_t>(srcMap.at("color"));
 
         auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
         if (!sink) {
@@ -335,7 +333,6 @@ void Dashboard::doLoad(const std::string& desc) {
         }
 
         sink->setName(block);
-        sink->settings().set({{"color"s, color}});
     }
 
     if (!rootMap.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("plots"))) {
