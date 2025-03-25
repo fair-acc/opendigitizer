@@ -98,7 +98,7 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
 
         ImPlot::SetNextLineStyle(color);
-        ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
+        ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
         if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
@@ -158,7 +158,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
             double      xTagPosition = transformX<T>(xVal, axisScale, minX, maxX);
             const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
             ImPlot::SetNextLineStyle(color);
-            ImPlot::PlotInfLines("TagLines", &xTagPosition, 1, ImPlotInfLinesFlags_None);
+            ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
             // suppress tag labels if it is too close to the previous one or close to the extremities
             if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {

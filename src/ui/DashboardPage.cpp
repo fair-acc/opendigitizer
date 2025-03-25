@@ -458,7 +458,7 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
             ImPlotFlags plotFlags = ImPlotFlags_NoChild;
             plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
-            plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
+            plotFlags |= mode == Mode::Layout || mode == Mode::View ? ImPlotFlags_None : ImPlotFlags_NoLegend; // TODO: Mode::View is a temporary fix to allow the legend being drawn until the global legend drawn by drawLegend(..) works again
 
             ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0}); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
             ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
@@ -502,7 +502,7 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
                 if (mode == Mode::Layout) {
                     bool plotItemHovered = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
                     if (!plotItemHovered) {
-                        // Unfortunaetly there is no function that returns whether the entire legend is hovered,
+                        // Unfortunately there is no function that returns whether the entire legend is hovered,
                         // we need to check one entry at a time
                         for (const auto& source : plot.sources) {
                             const auto& sourceName = source->name();

@@ -47,9 +47,15 @@ inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
 struct Settings {
     std::string hostname{"localhost"};
     uint16_t    port{8080};
+    std::string basePath;
     bool        disableHttps{false};
     bool        checkCertificates{true};
     bool        darkMode{false};
+#ifdef EMSCRIPTEN
+    bool editableMode{false};
+#else
+    bool editableMode{true}; // running natively
+#endif
     std::string wasmServeDir{""};
     std::string defaultDashboard{"RemoteStream"};
     std::string remoteDashboards{"../dashboard/defaultDashboards"};
@@ -58,10 +64,12 @@ private:
     Settings() {
         using std::operator""sv;
         disableHttps      = getValueFromEnv("DIGITIZER_DISABLE_HTTPS", disableHttps);           // use http instead of https
-        darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enableDarkMode
+        darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enable 'dark mode'
+        editableMode      = getValueFromEnv("DIGITIZER_EDIT_MODE", editableMode);               // enable 'editable mode'
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
         port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
+        basePath          = getValueFromEnv("DIGITIZER_PATH", basePath);                        // path
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
         remoteDashboards  = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);   // Directory the dashboard worker loads the dashboards from
@@ -90,6 +98,7 @@ private:
             }
         }
         hostname      = url.hostName().value_or(hostname);
+        basePath      = url.path().value_or(basePath);
         auto fragment = url.fragment().value_or("");
         for (auto param : std::ranges::split_view(fragment, "&"sv)) {
             auto sv = std::string_view(param.begin(), param.end());
@@ -97,12 +106,16 @@ private:
                 defaultDashboard = sv.substr("dashboard="sv.length());
             } else if (sv.starts_with("darkMode=")) {
                 darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
+            } else if (sv.starts_with("darkMode")) {
+                darkMode = true;
+            } else if (sv.starts_with("editable")) {
+                editableMode = true;
             }
         }
         disableHttps = url.scheme() == "http";
 #endif
-        fmt::print("settings loaded: disableHttps={}, darkMode={}, checkCertificates={}, hostname={}, port={}, wasmServeDir={}, defaultDashboard={}, remoteDashboards={}\n", //
-            disableHttps, darkMode, checkCertificates, hostname, port, wasmServeDir, defaultDashboard, remoteDashboards);
+        fmt::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+            disableHttps, darkMode, editableMode, checkCertificates, hostname, port, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:
