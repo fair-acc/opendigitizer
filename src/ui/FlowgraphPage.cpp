@@ -278,7 +278,7 @@ void valToString(const pmtv::pmt& val, std::string& str) {
         val);
 }
 
-void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 

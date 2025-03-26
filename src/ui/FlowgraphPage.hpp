@@ -15,6 +15,8 @@
 
 #include "GraphModel.hpp"
 
+struct TestState;
+
 namespace opendigitizer {
 class ImPlotSinkModel;
 }
@@ -23,6 +25,7 @@ namespace DigitizerUi {
 
 class FlowgraphPage {
 private:
+    friend struct ::TestState;
     enum class Alignment {
         Left,
         Right,
@@ -46,6 +49,8 @@ private:
     void sortNodes();
 
     void drawNodeEditor(const ImVec2& size);
+
+    static void drawGraph(UiGraphModel& graphModel, const ImVec2& size);
 
 public:
     struct DataTypeStyle {
