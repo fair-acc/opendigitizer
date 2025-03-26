@@ -13,11 +13,13 @@ template<typename T>
 requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     using super_t = gr::Block<SineSource<T>, gr::BlockingIO<true>>;
-    gr::MsgPortIn           freqIn;
-    gr::MsgPortOut          freqOut;
-    gr::PortOut<T>          out{};
-    float                   val       = 0;
-    float                   frequency = 1.f;
+    gr::MsgPortIn  freqIn;
+    gr::MsgPortOut freqOut;
+    gr::PortOut<T> out{};
+    float          val = 0;
+
+    gr::Annotated<float, "frequency", gr::Unit<"Hz">> frequency{1.f};
+
     std::mutex              mutex;
     std::condition_variable conditionvar;
     std::deque<T>           samples;

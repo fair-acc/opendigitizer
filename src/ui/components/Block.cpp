@@ -108,7 +108,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         const auto& activeContext = panelContext.block->activeContext;
 
         const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
-        if (ImGui::BeginCombo("##contextNameCombo", activeContextLabel.c_str())) {
+        if (auto combo = IMW::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
             for (const auto& contextNameAndTime : panelContext.block->contexts) {
                 const bool        selected = activeContext.context == contextNameAndTime.context;
                 const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
@@ -119,7 +119,6 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                     ImGui::SetItemDefaultFocus();
                 }
             }
-            ImGui::EndCombo();
         }
 
         {
@@ -150,7 +149,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
-                if (ImGui::BeginCombo("##baseTypeCombo", typeParams.parametrization.c_str())) {
+                if (auto combo = IMW::Combo("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
                     for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                         if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                             gr::Message message;
@@ -166,7 +165,6 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                             ImGui::SetItemDefaultFocus();
                         }
                     }
-                    ImGui::EndCombo();
                 }
             }
         }
@@ -181,113 +179,92 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
     ImGui::SetCursorPos(minpos);
 }
 
-void BlockSettingsControls(UiGraphBlock* block, bool verticalLayout, const ImVec2& /*size*/) {
-    const auto availableSize = ImGui::GetContentRegionAvail();
-
-    auto             storage = ImGui::GetStateStorage();
+void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const ImVec2& /*size*/) {
+    constexpr auto   editorFieldWidth = 100;
+    auto             storage          = ImGui::GetStateStorage();
     IMW::ChangeStrId mainId("block_controls");
+    const auto&      style = ImGui::GetStyle();
+    if (auto table = IMW::Table("settings_table", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
+        // Setup columns without headers
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
-    const auto& style     = ImGui::GetStyle();
-    const auto  indent    = style.IndentSpacing;
-    const auto  textColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
-
-    int i = 0;
-    for (const auto& p : block->blockSettings) {
-        auto id = ImGui::GetID(p.first.c_str());
-        ImGui::PushID(int(id));
-        auto* enabled = storage->GetBoolRef(id, true);
-
-        {
-            IMW::Group topGroup;
-            const auto curpos = ImGui::GetCursorPos();
-
-            {
-                IMW::Group controlGroup;
-
-                if (*enabled) {
-                    char label[64];
-                    snprintf(label, sizeof(label), "##parameter_%d", i);
-
-                    auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
-                        gr::Message message;
-                        message.serviceName = blockUniqueName;
-                        message.endpoint    = gr::block::property::kSetting;
-                        message.cmd         = gr::message::Command::Set;
-                        message.data        = gr::property_map{{key, value}};
-                        block->ownerGraph->sendMessage(std::move(message));
-                    };
-
-                    const bool controlDrawn = std::visit( //
-                        gr::meta::overloaded{             //
-                            [&](float val) {
-                                ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                ImGui::SetNextItemWidth(100);
-                                if (InputKeypad<>::edit(label, &val)) {
-                                    sendSetSettingMessage(block->blockUniqueName, p.first, val);
-                                }
-                                return true;
-                            },
-                            [&](auto&& val) {
-                                using T = std::decay_t<decltype(val)>;
-                                if constexpr (std::integral<T>) {
-                                    auto v = int(val);
-                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                    ImGui::SetNextItemWidth(100);
-                                    if (InputKeypad<>::edit(label, &v)) {
-                                        sendSetSettingMessage(block->blockUniqueName, p.first, v);
+        int i = 0;
+        for (const auto& p : block->blockSettings) {
+            // Do we know how to edit this type?
+            if (!std::visit(gr::meta::overloaded{//
+                                [&](float) { return true; },
+                                [&]([[maybe_unused]] auto&& val) {
+                                    using T = std::decay_t<decltype(val)>;
+                                    if constexpr (std::integral<T>) {
+                                        return true;
+                                    } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                        return true;
                                     }
-                                    return true;
-                                } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                    ImGui::SetCursorPosY(curpos.y + ImGui::GetFrameHeightWithSpacing());
-                                    std::string str(val);
-                                    if (ImGui::InputText("##in", &str)) {
-                                        sendSetSettingMessage(block->blockUniqueName, p.first, std::move(str));
-                                    }
-                                    return true;
-                                }
-                                return false;
-                            }},
-                        p.second);
+                                    return false;
+                                }},
+                    p.second)) {
+                continue;
+            };
 
-                    if (!controlDrawn) {
-                        ImGui::PopID();
-                        continue;
-                    }
-                }
-            }
-            ImGui::SameLine(0, 0);
+            auto          id = ImGui::GetID(p.first.c_str());
+            IMW::ChangeId rowId{int(id)};
 
-            auto        width = verticalLayout ? availableSize.x : ImGui::GetCursorPosX() - curpos.x;
-            const auto* text  = *enabled || verticalLayout ? p.first.c_str() : "";
-            width             = std::max(width, indent + ImGui::CalcTextSize(text).x + style.FramePadding.x * 2);
+            auto* enabled = storage->GetBoolRef(id, true);
 
-            {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, style.Colors[*enabled ? ImGuiCol_ButtonActive : ImGuiCol_TabUnfocusedActive]);
-                ImGui::SetCursorPos(curpos);
+            ImGui::TableNextRow();
 
-                float height = !verticalLayout && !*enabled ? availableSize.y : 0.f;
-                if (ImGui::Button("##nothing", {width, height})) {
-                    *enabled = !*enabled;
-                }
+            // Column 1: Checkbox + Label
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("##enabled", enabled);
+            ImGui::SameLine(0, style.ItemSpacing.x);
+            ImGui::TextUnformatted(p.first.c_str());
+
+            // Column 2: Input
+            ImGui::TableSetColumnIndex(1);
+            if (*enabled) {
+                char label[64];
+                snprintf(label, sizeof(label), "##parameter_%d", i);
+
+                auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
+                    gr::Message message;
+                    message.serviceName = blockUniqueName;
+                    message.endpoint    = gr::block::property::kSetting;
+                    message.cmd         = gr::message::Command::Set;
+                    message.data        = gr::property_map{{key, value}};
+                    block->ownerGraph->sendMessage(std::move(message));
+                };
+
+                std::visit(gr::meta::overloaded{//
+                               [&](float val) {
+                                   ImGui::SetNextItemWidth(editorFieldWidth);
+                                   float temp = val;
+                                   if (InputKeypad<>::edit(label, &temp)) {
+                                       sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                   }
+                               },
+                               [&](auto&& val) {
+                                   using T = std::decay_t<decltype(val)>;
+                                   if constexpr (std::integral<T>) {
+                                       ImGui::SetNextItemWidth(editorFieldWidth);
+                                       int temp = int(val);
+                                       if (InputKeypad<>::edit(label, &temp)) {
+                                           sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                       }
+                                   } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                       ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
+                                       std::string temp(val);
+                                       if (ImGui::InputText(label, &temp)) {
+                                           sendSetSettingMessage(block->blockUniqueName, p.first, std::move(temp));
+                                       }
+                                   }
+                               }},
+                    p.second);
             }
 
             setItemTooltip(p.first.c_str());
-
-            ImGui::SetCursorPos(curpos + ImVec2(style.FramePadding.x, style.FramePadding.y));
-            ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), textColor, *enabled ? ImGuiDir_Down : ImGuiDir_Right, 1.0f);
-
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-            if (*enabled || verticalLayout) {
-                ImGui::TextUnformatted(p.first.c_str());
-            }
+            ++i;
         }
-
-        if (!verticalLayout) {
-            ImGui::SameLine();
-        }
-
-        ImGui::PopID();
-        ++i;
     }
 }
 
