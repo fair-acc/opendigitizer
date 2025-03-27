@@ -97,8 +97,21 @@ private:
                 }
             }
         }
-        hostname      = url.hostName().value_or(hostname);
-        basePath      = url.path().value_or(basePath);
+        hostname                 = url.hostName().value_or(hostname);
+        basePath                 = url.path().value_or(basePath);
+        auto extractPrefixBefore = [](std::string_view uri, std::string_view trigger) -> std::string_view {
+            if (!uri.ends_with(trigger) || uri.size() <= trigger.size()) {
+                return {};
+            }
+
+            auto prefix = uri.substr(0, uri.size() - trigger.size());
+            if (prefix.starts_with('/')) {
+                prefix.remove_prefix(1);
+            }
+            return prefix;
+        };
+        basePath = extractPrefixBefore(basePath, "web/index.html"); // TODO: temporary fix to be compatible with proxy forwarding like: https://my.proxy.com/prefix/web/index.html -> https://my.localdomain.com//web/index.html'. All paths (incl. dashboard need to be relative to the 'prefix' path.
+
         auto fragment = url.fragment().value_or("");
         for (auto param : std::ranges::split_view(fragment, "&"sv)) {
             auto sv = std::string_view(param.begin(), param.end());
