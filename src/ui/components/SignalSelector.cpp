@@ -11,7 +11,9 @@ using namespace std::string_literals;
 
 namespace DigitizerUi {
 
-SignalSelector::SignalSelector() {
+SignalSelector::SignalSelector(UiGraphModel& graphModel) {
+    m_graphModel = std::addressof(graphModel);
+
     m_signalList.updateSignalsCallback = [&](const std::vector<opencmw::service::dns::Entry>& signals) {
         for (const auto& s : signals) {
             SignalData sig;
@@ -130,6 +132,8 @@ void SignalSelector::drawRemoteSignalsInput() {
 }
 
 void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection) {
+    IMW::ChangeId rowId{int(idx)};
+
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));

@@ -668,11 +668,14 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         if (openNewBlockDialog) {
             m_newBlockSelector.open();
         }
-        if (openRemoteSignalSelector) {
-            m_remoteSignalSelector.open();
-        }
 
-        m_remoteSignalSelector.draw();
+        if (m_remoteSignalSelector) {
+            if (openRemoteSignalSelector) {
+                m_remoteSignalSelector->open();
+            }
+
+            m_remoteSignalSelector->draw();
+        }
         m_newBlockSelector.draw(m_dashboard->graphModel().knownBlockTypes);
     }
 

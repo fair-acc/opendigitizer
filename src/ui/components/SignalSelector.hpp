@@ -132,7 +132,7 @@ private:
     void buildIndex();
 
 public:
-    SignalSelector();
+    explicit SignalSelector(UiGraphModel& graphModel);
 
     void open() { ImGui::OpenPopup(m_windowName.c_str()); }
     void close() { ImGui::CloseCurrentPopup(); }
@@ -142,8 +142,6 @@ public:
     void drawRemoteSignalsInput();
 
     void drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection);
-
-    void setGraphModel(UiGraphModel& graphModel) { m_graphModel = std::addressof(graphModel); }
 
     void drawSignalSelector();
 
