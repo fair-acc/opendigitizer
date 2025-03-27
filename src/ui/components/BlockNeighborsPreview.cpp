@@ -29,6 +29,21 @@ struct ScaleFont {
     const float   originalScale;
 };
 
+std::string_view shortBlockTitle(std::string_view title) {
+    // minor improvement to save precious space. Drop the Source and Sink
+    // suffixes as they can be deduced from the context.
+
+    static constexpr std::string_view suffixes[] = {"Source", "Sink"};
+
+    for (auto suffix : suffixes) {
+        if (title.ends_with(suffix)) {
+            return title.substr(0, title.size() - suffix.size());
+        }
+    }
+
+    return title;
+}
+
 void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
     // Here we draw the current block and its neighbours, for navigation purposes. Clicking a neighbour will change the panel properties.
     // Reuses styling from the main flowgraph.
@@ -202,10 +217,10 @@ void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 avai
         }
 
         // Block title
-        const std::string text     = port.ownerBlock->blockName;
-        const ImVec2      textSize = ImGui::CalcTextSize(text.c_str());
-        const ImVec2      textPos  = rectMin + ImVec2((blockWidth - textSize.x) * 0.5f, (blockHeight - textSize.y) * 0.5f);
-        drawList->AddText(textPos, textColor, text.c_str());
+        const std::string_view text     = shortBlockTitle(port.ownerBlock->blockName);
+        const ImVec2           textSize = ImGui::CalcTextSize(text.data(), text.data() + text.size());
+        const ImVec2           textPos  = rectMin + ImVec2((blockWidth - textSize.x) * 0.5f, (blockHeight - textSize.y) * 0.5f);
+        drawList->AddText(textPos, textColor, text.data(), text.data() + text.size());
 
         // Draw connecting lines
         const float arrowWidth  = 9.0f;
