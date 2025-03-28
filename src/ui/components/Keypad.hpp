@@ -299,6 +299,7 @@ template<std::size_t BufferSize = 256>
 class InputKeypad {
     static inline constexpr const char* keypad_name = "KeypadX";
 
+    std::string                             _currentBlockUniqueName;
     std::unordered_map<std::string, double> _manualyEditedIncrements;
     std::unordered_map<std::string, int>    _manualyEditedPrecisions;
 
@@ -481,6 +482,15 @@ class InputKeypad {
     }
 
 public:
+    static void clearIfNewBlock(std::string_view block) {
+        auto& keyPad = getInstance();
+        if (keyPad._currentBlockUniqueName != block) {
+            keyPad._currentBlockUniqueName = block;
+            keyPad._manualyEditedIncrements.clear();
+            keyPad._manualyEditedPrecisions.clear();
+        }
+    }
+
     template<typename EdTy>
     requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
     [[nodiscard]] static bool edit(const std::string& key, const char* label, EdTy* value, std::string_view suffix = {}) {

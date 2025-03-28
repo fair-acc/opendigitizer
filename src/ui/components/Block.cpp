@@ -227,6 +227,8 @@ void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const I
                 return {};
             };
 
+            InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
+
             std::visit(gr::meta::overloaded{[&](float val) {
                                                 ImGui::SetNextItemWidth(editorFieldWidth);
                                                 float temp = val;
