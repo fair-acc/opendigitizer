@@ -32,7 +32,9 @@
 #include "build_configuration.hpp"
 #include "settings.hpp"
 
+#include <Picoscope3000a.hpp>
 #include <Picoscope4000a.hpp>
+#include <Picoscope5000a.hpp>
 #include <TimingSource.hpp>
 
 #include <TimingSource.hpp>
@@ -45,7 +47,9 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<builtin_multiply, float>(registry);
+    gr::registerBlock<fair::picoscope::Picoscope3000a, float, gr::DataSet<float>>(registry);
     gr::registerBlock<fair::picoscope::Picoscope4000a, float, gr::DataSet<float>>(registry);
+    gr::registerBlock<fair::picoscope::Picoscope5000a, float, gr::DataSet<float>>(registry);
     gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
     gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
     registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
