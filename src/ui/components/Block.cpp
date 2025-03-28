@@ -1,5 +1,5 @@
 #include "Block.hpp"
-#include "BlockNeighborsPreview.hpp"
+#include "BlockNeighboursPreview.hpp"
 #include "Keypad.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
@@ -87,7 +87,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
     }
 
     if (!verticalLayout) {
-        BlockNeighborsPreview(panelContext, ImGui::GetContentRegionAvail());
+        BlockNeighboursPreview(panelContext, ImGui::GetContentRegionAvail());
         ImGui::SameLine();
     }
 
@@ -164,7 +164,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         }
 
         if (verticalLayout) {
-            BlockNeighborsPreview(panelContext, ImGui::GetContentRegionAvail());
+            BlockNeighboursPreview(panelContext, ImGui::GetContentRegionAvail());
         }
 
         BlockSettingsControls(panelContext.block);

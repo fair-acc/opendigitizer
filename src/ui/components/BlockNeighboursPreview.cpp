@@ -1,4 +1,4 @@
-#include "BlockNeighborsPreview.hpp"
+#include "BlockNeighboursPreview.hpp"
 #include "../FlowgraphPage.hpp"
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
@@ -66,7 +66,7 @@ std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, b
     }) | std::ranges::to<std::set>();
 }
 
-void BlockNeighborsPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
+void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 availableSize) {
     // Here we draw the current block and its neighbours, for navigation purposes. Clicking a neighbour will change the panel properties.
     // Reuses styling from the main flowgraph.
     // Rendering with ax::NodeEditor for  would be overkill and introduce complications:
