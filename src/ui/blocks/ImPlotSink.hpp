@@ -40,14 +40,15 @@ T getValueOrDefault(const gr::property_map& map, const std::string& key, const T
     return defaultValue;
 }
 
-inline void plotVerticalTagLabel(const std::string_view& label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75f) {
+inline void plotVerticalTagLabel(const std::string_view& label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75) {
     if (label.empty()) {
         return;
     }
 
-    const double yRange   = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
-    ImVec2       textSize = ImGui::CalcTextSize(label.data());
-    if (static_cast<double>(textSize.x) > sizeRatioLimit * yRange) {
+    const double yRange      = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    const double yPixelRange = static_cast<double>(std::abs(ImPlot::PlotToPixels(0.0, plotLimits.Y.Max).y - ImPlot::PlotToPixels(0.0, plotLimits.Y.Min).y));
+    ImVec2       textSize    = ImGui::CalcTextSize(label.data());
+    if (static_cast<double>(textSize.x) > sizeRatioLimit * yPixelRange) {
         return; // the text is too large relative to the vertical scale
     }
 
@@ -89,15 +90,15 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
         return;
     }
 
-    const float  fontHeight = ImGui::GetFontSize();
-    const auto   plotLimits = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
-    const double yRange     = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    const float fontHeight  = ImGui::GetFontSize();
+    const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
+    const float yPixelRange = std::abs(ImPlot::PlotToPixels(0.0, plotLimits.Y.Max).y - ImPlot::PlotToPixels(0.0, plotLimits.Y.Min).y);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float lastTextPixelX = ImPlot::PlotToPixels(transformX<T>(std::min(minX, maxX), axisScale, minX, maxX), 0.0f).x;
-    float lastAxisPixelX = ImPlot::PlotToPixels(transformX<T>(std::max(minX, maxX), axisScale, minX, maxX), 0.0f).x;
+    float lastTextPixelX = ImPlot::PlotToPixels(transformX<T>(std::min(minX, maxX), axisScale, minX, maxX), 0.0).x;
+    float lastAxisPixelX = ImPlot::PlotToPixels(transformX<T>(std::max(minX, maxX), axisScale, minX, maxX), 0.0).x;
     for (const auto& tag : tagValues) {
         double      xTagPosition = transformX<T>(tag.timestamp, axisScale, minX, maxX);
-        const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
+        const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
         ImPlot::SetNextLineStyle(color);
         ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
@@ -107,7 +108,7 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
             const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
-            if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
+            if (triggerLabelSize.x < 0.75f * yPixelRange) {
                 plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
             } else {
                 continue;
@@ -116,7 +117,7 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
             const std::string triggerCtx = getValueOrDefault<std::string>(tag.map, gr::tag::CONTEXT.shortKey(), "");
             if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                 const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
-                if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                if (triggerCtxLabelSize.x < 0.75f * yPixelRange) {
                     plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
                 } else {
                     continue;
@@ -143,11 +144,11 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
     const double maxX      = static_cast<double>(xAxisSpan.back());
 
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    float        lastTextPixelX = ImPlot::PlotToPixels(transformX<T>(std::min(minX, maxX), axisScale, minX, maxX), 0.0f).x;
-    float        lastAxisPixelX = ImPlot::PlotToPixels(transformX<T>(std::max(minX, maxX), axisScale, minX, maxX), 0.0f).x;
-    const float  fontHeight     = ImGui::GetFontSize();
-    const auto   plotLimits     = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
-    const double yRange         = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    float       lastTextPixelX = ImPlot::PlotToPixels(transformX<gr::DataSet<T>>(std::min(minX, maxX), axisScale, minX, maxX), 0.0).x;
+    float       lastAxisPixelX = ImPlot::PlotToPixels(transformX<gr::DataSet<T>>(std::max(minX, maxX), axisScale, minX, maxX), 0.0).x;
+    const float fontHeight     = ImGui::GetFontSize();
+    const auto  plotLimits     = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
+    const float yPixelRange    = std::abs(ImPlot::PlotToPixels(0.0, plotLimits.Y.Max).y - ImPlot::PlotToPixels(0.0, plotLimits.Y.Min).y);
     for (std::size_t sig_i = 0; sig_i < dataset.timing_events.size(); ++sig_i) {
         auto& eventsForSig = dataset.timing_events[sig_i];
 
@@ -157,8 +158,8 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
             }
 
             double      xVal         = static_cast<double>(xAxisSpan[static_cast<std::size_t>(xIndex)]);
-            double      xTagPosition = transformX<T>(xVal, axisScale, minX, maxX);
-            const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0f).x;
+            double      xTagPosition = transformX<gr::DataSet<T>>(xVal, axisScale, minX, maxX);
+            const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
             ImPlot::SetNextLineStyle(color);
             ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
@@ -166,8 +167,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
             if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
                 const std::string triggerLabel     = getValueOrDefault<std::string>(tagMap, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
                 const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
-
-                if (triggerLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                if (triggerLabelSize.x < 0.75f * yPixelRange) {
                     plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
                 } else {
                     continue;
@@ -176,7 +176,7 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
                 const std::string triggerCtx = getValueOrDefault<std::string>(tagMap, gr::tag::CONTEXT.shortKey(), "");
                 if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                     const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
-                    if (triggerCtxLabelSize.x < static_cast<float>(0.75 * yRange)) {
+                    if (triggerCtxLabelSize.x < 0.75f * yPixelRange) {
                         plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
                     } else {
                         continue;
@@ -475,7 +475,6 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
             ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if xValues can have long values
         } else if constexpr (gr::DataSetLike<T>) {
-
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
             for (std::size_t historyIdx = nMax; historyIdx-- > 0;) { // draw newest DataSet last -> on top
                 const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
@@ -498,7 +497,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                 }
 
                 // draw tags before data (data is drawn on top)
-                if (historyIdx == 0UZ || getValueOrDefault<bool>(config, "draw_tag", false)) {
+                if (historyIdx == 0UZ && getValueOrDefault<bool>(config, "draw_tag", false)) {
                     ImVec4 tagColor = lineColor;
                     tagColor.w *= std::max(0.35f - 0.05f * static_cast<float>(historyIdx), 0.f); // semi-transparent
                     drawDataSetTimingEvents(dataSet, axisScale, tagColor);
