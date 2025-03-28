@@ -278,6 +278,11 @@ void valToString(const pmtv::pmt& val, std::string& str) {
         val);
 }
 
+float FlowgraphPage::pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
+    const float spacing = blockHeight / (static_cast<float>(numPins) + 1);
+    return spacing * (static_cast<float>(index) + 1) - (pinHeight / 2);
+}
+
 void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
@@ -298,8 +303,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         BoundingBox boundingBox;
 
         // TODO: Move to the theme definition
-        const int    pinHeight  = 10;
-        const int    pinSpacing = 5;
+        const int    pinWidth  = 10;
+        const int    pinHeight = 10;
         const ImVec2 minimumBlockSize{80.0f, 0.0f};
 
         // We need to pass all blocks in order for NodeEditor to calculate
@@ -356,13 +361,14 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                         position.x += blockSize.x - padding.x;
                     }
 
-                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                    const float blockY = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
+                    for (std::size_t i = 0; i < ports.size(); ++i) {
                         // TODO Reimplement block visual filtering
                         // if (!filteredOut) {
-                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinHeight, pinHeight});
+                        position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
+                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinWidth, pinHeight});
                         // }
-                        position.y += pinHeight + pinSpacing;
                     }
                 };
 
@@ -394,11 +400,10 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
                 auto drawPorts = [&](auto& ports, auto portLeftPos, bool rightAlign) {
-                    auto pinPositionY = blockPosition.topLeft.y;
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
-                        FlowgraphPage::drawPin(drawList, {pinPositionX, pinPositionY}, {pinHeight, pinHeight}, ports[i].portName, ports[i].portType);
-                        pinPositionY += pinHeight + pinSpacing;
+                        const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
+                        const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
+                        FlowgraphPage::drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i].portName, ports[i].portType);
                     }
                 };
 
