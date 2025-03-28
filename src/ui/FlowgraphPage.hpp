@@ -48,6 +48,12 @@ private:
     void drawNodeEditor(const ImVec2& size);
 
 public:
+    struct DataTypeStyle {
+        std::uint32_t color;
+        bool          unsignedMarker = false;
+        bool          datasetMarker  = false;
+    };
+
     FlowgraphPage();
     ~FlowgraphPage();
 
@@ -62,6 +68,8 @@ public:
     void reset();
 
     void setStyle(LookAndFeel::Style style);
+
+    static const DataTypeStyle& styleForDataType(std::string_view type);
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 };

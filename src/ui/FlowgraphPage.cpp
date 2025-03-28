@@ -124,12 +124,7 @@ void FlowgraphPage::setStyle(LookAndFeel::Style s) {
     }
 }
 
-struct DataTypeStyle {
-    std::uint32_t color;
-    bool          unsignedMarker = false;
-    bool          datasetMarker  = false;
-};
-static const DataTypeStyle& styleForDataType(std::string_view type) {
+const FlowgraphPage::DataTypeStyle& FlowgraphPage::styleForDataType(std::string_view type) {
     struct transparent_string_hash // why isn't std::hash<std::string> this exact same thing?
     {
         using hash_type      = std::hash<std::string_view>;
@@ -277,7 +272,7 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
 
 static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
 
-    const auto& style = styleForDataType(type);
+    const auto& style = FlowgraphPage::styleForDataType(type);
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
     drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
     ImGui::SetCursorPosX(pinPosition.x + textMargin);
@@ -524,10 +519,12 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
-            m_editPaneContext.block = nullptr;
+            m_editPaneContext.block      = nullptr;
+            m_editPaneContext.graphModel = nullptr;
         } else {
-            m_editPaneContext.block     = block;
-            m_editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            m_editPaneContext.block      = block;
+            m_editPaneContext.graphModel = &m_dashboard->graphModel();
+            m_editPaneContext.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 
