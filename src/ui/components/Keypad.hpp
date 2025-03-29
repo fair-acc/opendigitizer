@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <fmt/format.h>
+#include <unordered_map>
 
 namespace DigitizerUi::components {
 
@@ -298,6 +299,10 @@ template<std::size_t BufferSize = 256>
 class InputKeypad {
     static inline constexpr const char* keypad_name = "KeypadX";
 
+    std::string                             _currentBlockUniqueName;
+    std::unordered_map<std::string, double> _manualyEditedIncrements;
+    std::unordered_map<std::string, int>    _manualyEditedPrecisions;
+
     //
     bool        _visible     = true;
     bool        _altMode     = false;
@@ -477,26 +482,190 @@ class InputKeypad {
     }
 
 public:
+    static void clearIfNewBlock(std::string_view block) {
+        auto& keyPad = getInstance();
+        if (keyPad._currentBlockUniqueName != block) {
+            keyPad._currentBlockUniqueName = block;
+            keyPad._manualyEditedIncrements.clear();
+            keyPad._manualyEditedPrecisions.clear();
+        }
+    }
+
     template<typename EdTy>
     requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
-    [[nodiscard]] static bool edit(const char* label, EdTy* value) {
+    [[nodiscard]] static bool edit(const std::string& key, const char* label, EdTy* value, std::string_view suffix = {}) {
         if (!label || !value) {
             return false;
         }
 
+        const auto drawChangeButtons = [&]() -> bool {
+            auto& keyPad = getInstance();
+
+            bool result = keyPad.editImpl(label, value);
+            if (result) {
+                const int precision = InputKeypad::getDecimalPrecision(keyPad._editBuffer);
+                keyPad._manualyEditedPrecisions.insert_or_assign(key, precision);
+
+                const double increment = InputKeypad::computeIncrement(keyPad._editBuffer);
+                keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+            }
+
+            {
+                ImGui::SameLine();
+                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                if (ImGui::Button("\uf146")) {
+                    auto it = keyPad._manualyEditedIncrements.find(key);
+                    if (it == keyPad._manualyEditedIncrements.end()) {
+                        const double increment = InputKeypad::computeIncrementNonZero(fmt::format("{:.4f}", static_cast<double>(*value)));
+                        auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+                        it                     = op.first;
+                    }
+                    *value -= static_cast<EdTy>(it->second);
+
+                    result = true;
+                }
+            }
+            IMW::detail::setItemTooltip("Decrement");
+
+            {
+                ImGui::SameLine();
+                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+                if (ImGui::Button("\uf0fe")) {
+                    auto it = keyPad._manualyEditedIncrements.find(key);
+                    if (it == keyPad._manualyEditedIncrements.end()) {
+                        const double increment = InputKeypad::computeIncrementNonZero(fmt::format("{:.4f}", static_cast<double>(*value)));
+                        auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+                        it                     = op.first;
+                    }
+                    *value += static_cast<EdTy>(it->second);
+
+                    result = true;
+                }
+            }
+            IMW::detail::setItemTooltip("Increment");
+
+            return result;
+        };
+
+        auto& keyPad = getInstance();
+
         if constexpr (std::floating_point<EdTy>) {
-            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f);
+            const int precision = [&]() -> int {
+                if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
+                    return it->second;
+                } else {
+                    return InputKeypad::getDecimalPrecisionNonZero(fmt::format("{:.4f}", *value));
+                }
+            }();
+
+            const std::string format = suffix.empty() ? fmt::format("%.{}f", precision) : fmt::format("%.{}f {}", precision, suffix);
+            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f, 0.0f, 0.0f, format.c_str());
+            IMW::detail::setItemTooltip(key.c_str());
+
+            return drawChangeButtons();
         } else if constexpr (std::integral<EdTy>) {
-            ImGui::DragInt(label, static_cast<int*>(value));
+            const std::string format = suffix.empty() ? "%d" : fmt::format("%d {}", suffix);
+            ImGui::DragInt(label, static_cast<int*>(value), 1.0f, 0, 0, format.c_str());
+            IMW::detail::setItemTooltip(key.c_str());
+
+            return drawChangeButtons();
         } else {
             ImGui::InputText(label, value);
-        }
+            IMW::detail::setItemTooltip(key.c_str());
 
-        return getInstance().editImpl(label, value);
+            return keyPad.editImpl(label, value);
+        }
     }
     static bool isVisible() noexcept { return getInstance()._visible; }
 
 private:
+    /**
+     * @return the precision value of digits after the decimal point
+     */
+    [[nodiscard]] static int getDecimalPrecision(const std::string& value) {
+        const size_t dot_pos = value.find('.');
+        if (dot_pos == std::string::npos) {
+            return 0;
+        }
+
+        const size_t frac_length = value.size() - (dot_pos + 1);
+        return static_cast<int>(frac_length);
+    }
+
+    /**
+     * @return the increment for the number of digits after the decimal point
+     */
+    [[nodiscard]] static double computeIncrement(const std::string& value) {
+        if (value.empty()) {
+            return 1.0;
+        }
+
+        const size_t dot_pos = value.find('.');
+        if (dot_pos == std::string::npos) {
+            // Integer case: count significant digits before dot
+            size_t first_non_zero = value.find_first_not_of('0');
+            if (first_non_zero == std::string::npos) {
+                return 1.0; // "0", "00"
+            }
+            int digits = static_cast<int>(value.length() - first_non_zero);
+            return std::pow(10.0, digits - 1);
+        }
+
+        // Decimal case: check if dot is last character
+        if (dot_pos + 1 == value.length()) {
+            return 1.0; // "2."
+        }
+
+        int decimal_places = static_cast<int>(value.length() - dot_pos - 1);
+        return std::pow(10.0, -decimal_places);
+    }
+
+    /**
+     * @return the precision value of non-zero digits after the decimal point
+     */
+    [[nodiscard]] static int getDecimalPrecisionNonZero(const std::string& value) {
+        const size_t dot_pos = value.find('.');
+        if (dot_pos == std::string::npos) {
+            return 0;
+        }
+
+        const size_t last_non_zero = value.find_last_not_of('0');
+        if (last_non_zero == std::string::npos || last_non_zero <= dot_pos) {
+            return 0;
+        }
+
+        return static_cast<int>(last_non_zero - dot_pos);
+    }
+
+    /**
+     * @return the increment for the number of non zero digits after the decimal point
+     */
+    [[nodiscard]] static double computeIncrementNonZero(const std::string& value) {
+        if (value.empty()) {
+            return 1.0;
+        }
+
+        const size_t dot_pos = value.find('.');
+        if (dot_pos == std::string::npos) {
+            // Integer case: count significant digits before dot
+            size_t first_non_zero = value.find_first_not_of('0');
+            if (first_non_zero == std::string::npos) {
+                return 1.0; // "0", "00"
+            }
+            int digits = static_cast<int>(value.length() - first_non_zero);
+            return std::pow(10.0, digits - 1);
+        }
+
+        // Decimal case: check last non zero digit and if it's less or equal to dot
+        const size_t last_non_zero = value.find_last_not_of('0');
+        if (last_non_zero == std::string::npos || last_non_zero <= dot_pos) {
+            return 1.0;
+        }
+
+        int decimal_places = static_cast<int>(last_non_zero - dot_pos);
+        return std::pow(10.0, -decimal_places);
+    }
+
     [[nodiscard]] ReturnState drawKeypadPopup(std::string& valueLabel) noexcept {
         const auto&      mainViewPort     = *ImGui::GetMainViewport();
         const ImVec2     mainViewPortSize = mainViewPort.WorkSize;

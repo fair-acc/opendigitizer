@@ -15,16 +15,6 @@ namespace DigitizerUi::components {
 constexpr const char* addContextPopupId    = "Add Context";
 constexpr const char* removeContextPopupId = "Remove Context";
 
-void setItemTooltip(auto&&... args) {
-    if (ImGui::IsItemHovered()) {
-        if constexpr (sizeof...(args) == 0) {
-            ImGui::SetTooltip("");
-        } else {
-            ImGui::SetTooltip("%s", std::forward<decltype(args)...>(args...));
-        }
-    }
-}
-
 void drawAddContextPopup(UiGraphBlock* block) {
     ImGui::SetNextWindowSize({600, 120}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(addContextPopupId, nullptr, 0)) {
@@ -129,7 +119,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                 ImGui::OpenPopup(removeContextPopupId);
             }
         }
-        setItemTooltip("Remove context");
+        IMW::detail::setItemTooltip("Remove context");
 
         {
             ImGui::SameLine();
@@ -138,7 +128,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                 ImGui::OpenPopup(addContextPopupId);
             }
         }
-        setItemTooltip("Add new context");
+        IMW::detail::setItemTooltip("Add new context");
 
         drawAddContextPopup(panelContext.block);
         if (drawRemoveContextPopup(activeContext.context)) {
@@ -180,17 +170,14 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 }
 
 void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const ImVec2& /*size*/) {
-    constexpr auto   editorFieldWidth = 100;
-    auto             storage          = ImGui::GetStateStorage();
-    IMW::ChangeStrId mainId("block_controls");
-    const auto&      style = ImGui::GetStyle();
+    constexpr auto editorFieldWidth = 150;
     if (auto table = IMW::Table("settings_table", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
         // Setup columns without headers
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
         int i = 0;
-        for (const auto& p : block->blockSettings) {
+        for (const auto& [key, value] : block->blockSettings) {
             // Do we know how to edit this type?
             if (!std::visit(gr::meta::overloaded{//
                                 [&](float) { return true; },
@@ -203,66 +190,71 @@ void BlockSettingsControls(UiGraphBlock* block, bool /*verticalLayout*/, const I
                                     }
                                     return false;
                                 }},
-                    p.second)) {
+                    value)) {
                 continue;
             };
 
-            auto          id = ImGui::GetID(p.first.c_str());
+            auto          id = ImGui::GetID(key.c_str());
             IMW::ChangeId rowId{int(id)};
-
-            auto* enabled = storage->GetBoolRef(id, true);
 
             ImGui::TableNextRow();
 
-            // Column 1: Checkbox + Label
+            // Column 1: Label
             ImGui::TableSetColumnIndex(0);
-            ImGui::Checkbox("##enabled", enabled);
-            ImGui::SameLine(0, style.ItemSpacing.x);
-            ImGui::TextUnformatted(p.first.c_str());
+            ImGui::TextUnformatted(key.c_str());
 
             // Column 2: Input
             ImGui::TableSetColumnIndex(1);
-            if (*enabled) {
-                char label[64];
-                snprintf(label, sizeof(label), "##parameter_%d", i);
+            char label[64];
+            snprintf(label, sizeof(label), "##parameter_%d", i);
 
-                auto sendSetSettingMessage = [block](auto blockUniqueName, auto key, auto value) {
-                    gr::Message message;
-                    message.serviceName = blockUniqueName;
-                    message.endpoint    = gr::block::property::kSetting;
-                    message.cmd         = gr::message::Command::Set;
-                    message.data        = gr::property_map{{key, value}};
-                    block->ownerGraph->sendMessage(std::move(message));
-                };
+            auto sendSetSettingMessage = [block](auto blockUniqueName, auto keyToUpdate, auto updatedValue) {
+                gr::Message message;
+                message.serviceName = blockUniqueName;
+                message.endpoint    = gr::block::property::kSetting;
+                message.cmd         = gr::message::Command::Set;
+                message.data        = gr::property_map{{keyToUpdate, updatedValue}};
+                block->ownerGraph->sendMessage(std::move(message));
+            };
 
-                std::visit(gr::meta::overloaded{//
-                               [&](float val) {
+            const auto getUnit = [block, key]() -> std::string_view {
+                const auto it = block->blockMetaInformation.find(key + "::unit");
+                if (it != block->blockMetaInformation.end()) {
+                    if (const auto unitPtr = std::get_if<std::string>(&it->second); unitPtr) {
+                        return *unitPtr;
+                    }
+                }
+                return {};
+            };
+
+            InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
+
+            std::visit(gr::meta::overloaded{[&](float val) {
+                                                ImGui::SetNextItemWidth(editorFieldWidth);
+                                                float temp = val;
+                                                if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                                                    sendSetSettingMessage(block->blockUniqueName, key, temp);
+                                                }
+                                            },
+                           [&](auto&& val) {
+                               using T = std::decay_t<decltype(val)>;
+                               if constexpr (std::integral<T>) {
                                    ImGui::SetNextItemWidth(editorFieldWidth);
-                                   float temp = val;
-                                   if (InputKeypad<>::edit(label, &temp)) {
-                                       sendSetSettingMessage(block->blockUniqueName, p.first, temp);
+                                   int temp = int(val);
+                                   if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                                       sendSetSettingMessage(block->blockUniqueName, key, temp);
                                    }
-                               },
-                               [&](auto&& val) {
-                                   using T = std::decay_t<decltype(val)>;
-                                   if constexpr (std::integral<T>) {
-                                       ImGui::SetNextItemWidth(editorFieldWidth);
-                                       int temp = int(val);
-                                       if (InputKeypad<>::edit(label, &temp)) {
-                                           sendSetSettingMessage(block->blockUniqueName, p.first, temp);
-                                       }
-                                   } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                       ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
-                                       std::string temp(val);
-                                       if (ImGui::InputText(label, &temp)) {
-                                           sendSetSettingMessage(block->blockUniqueName, p.first, std::move(temp));
-                                       }
+                               } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                   ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
+                                   std::string temp(val);
+                                   if (ImGui::InputText(label, &temp)) {
+                                       sendSetSettingMessage(block->blockUniqueName, key, std::move(temp));
                                    }
-                               }},
-                    p.second);
-            }
+                                   IMW::detail::setItemTooltip(key.c_str());
+                               }
+                           }},
+                value);
 
-            setItemTooltip(p.first.c_str());
             ++i;
         }
     }
