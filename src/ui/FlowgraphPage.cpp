@@ -328,21 +328,24 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
                 // Draw block properties
                 std::string value;
-                for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
-                    if (propertyKey == "description" || propertyKey.contains("::")) {
-                        continue;
-                    }
-
-                    const auto metaKey = propertyKey + "::visible";
-                    const auto it      = block.blockMetaInformation.find(metaKey);
-                    if (it != block.blockMetaInformation.end()) {
-                        if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                {
+                    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+                    for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                        if (propertyKey == "description" || propertyKey.contains("::")) {
                             continue;
                         }
-                    }
 
-                    valToString(propertyValue, value);
-                    ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                        const auto metaKey = propertyKey + "::visible";
+                        const auto it      = block.blockMetaInformation.find(metaKey);
+                        if (it != block.blockMetaInformation.end()) {
+                            if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                                continue;
+                            }
+                        }
+
+                        valToString(propertyValue, value);
+                        ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                    }
                 }
 
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
