@@ -172,7 +172,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor);
 
     auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, UiGraphPort& port) { //
-        FlowgraphPage::drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType);
+        FlowgraphPage::drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType, /*mainFlowGraph=*/false);
     };
 
     // Draw left ports first for middle block

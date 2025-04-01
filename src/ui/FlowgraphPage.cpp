@@ -783,7 +783,7 @@ void FlowgraphPage::sortNodes() {
     }
 }
 
-void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type) {
+void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph) {
 
     const auto& style = FlowgraphPage::styleForDataType(type);
     drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
@@ -791,7 +791,19 @@ void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pin
     ImGui::SetCursorPos(pinPosition);
 
     if (ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize)) {
+        // Node editor has very limited support for tooltips.
+        // See imgui-node-editor/examples/widgets-example/widgets-example.cpp for workarounds
+        // such as this one:
+
+        if (mainFlowGraph) {
+            ax::NodeEditor::Suspend();
+        }
+
         ImGui::SetTooltip("%s (%s)", name.c_str(), type.c_str());
+
+        if (mainFlowGraph) {
+            ax::NodeEditor::Resume();
+        }
     }
 };
 
