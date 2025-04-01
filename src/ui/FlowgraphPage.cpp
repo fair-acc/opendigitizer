@@ -270,17 +270,6 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, float spacing, float textMargin, const std::string& name, const std::string& type) {
-
-    const auto& style = FlowgraphPage::styleForDataType(type);
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
-    ImGui::SetCursorPosX(pinPosition.x + textMargin);
-    ImGui::SetCursorPosY(pinPosition.y - spacing);
-
-    ImGui::TextUnformatted(name.c_str());
-};
-
 void valToString(const pmtv::pmt& val, std::string& str) {
     std::visit(gr::meta::overloaded{
                    [&](const std::string& s) { str = s; },
@@ -289,7 +278,12 @@ void valToString(const pmtv::pmt& val, std::string& str) {
         val);
 }
 
-void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+float FlowgraphPage::pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
+    const float spacing = blockHeight / (static_cast<float>(numPins) + 1);
+    return spacing * (static_cast<float>(index) + 1) - (pinHeight / 2);
+}
+
+void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -309,9 +303,8 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         BoundingBox boundingBox;
 
         // TODO: Move to the theme definition
-        const int    pinHeight  = 14;
-        const int    pinSpacing = 5;
-        const int    textMargin = 4;
+        const int    pinWidth  = 10;
+        const int    pinHeight = 10;
         const ImVec2 minimumBlockSize{80.0f, 0.0f};
 
         // We need to pass all blocks in order for NodeEditor to calculate
@@ -319,10 +312,8 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         for (auto& block : graphModel.blocks()) {
             auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
 
-            const auto& inputPorts       = block.inputPorts;
-            const auto& outputPorts      = block.outputPorts;
-            auto&       inputPortWidths  = block.inputPortWidths;
-            auto&       outputPortWidths = block.outputPortWidths;
+            const auto& inputPorts  = block.inputPorts;
+            const auto& outputPorts = block.outputPorts;
 
             auto blockPosition = [&] {
                 IMW::NodeEditor::Node node(blockId);
@@ -337,21 +328,24 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
                 // Draw block properties
                 std::string value;
-                for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
-                    if (propertyKey == "description" || propertyKey.contains("::")) {
-                        continue;
-                    }
-
-                    const auto metaKey = propertyKey + "::visible";
-                    const auto it      = block.blockMetaInformation.find(metaKey);
-                    if (it != block.blockMetaInformation.end()) {
-                        if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                {
+                    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+                    for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                        if (propertyKey == "description" || propertyKey.contains("::")) {
                             continue;
                         }
-                    }
 
-                    valToString(propertyValue, value);
-                    ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                        const auto metaKey = propertyKey + "::visible";
+                        const auto it      = block.blockMetaInformation.find(metaKey);
+                        if (it != block.blockMetaInformation.end()) {
+                            if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
+                                continue;
+                            }
+                        }
+
+                        valToString(propertyValue, value);
+                        ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                    }
                 }
 
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
@@ -365,27 +359,27 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 }
 
                 // Register ports with node editor, actual drawing comes later
-                auto registerPins = [&padding, &pinHeight, &blockId, &blockSize](auto& ports, auto& widths, auto position, auto pinType) {
-                    widths.resize(ports.size());
+                auto registerPins = [&padding, &pinHeight, &blockSize](auto& ports, auto position, auto pinType) {
                     if (pinType == ax::NodeEditor::PinKind::Output) {
                         position.x += blockSize.x - padding.x;
                     }
 
+                    const float blockY = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
+
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        widths[i] = ImGui::CalcTextSize(ports[i].portName.c_str()).x + textMargin * 2;
                         // TODO Reimplement block visual filtering
                         // if (!filteredOut) {
-                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {widths[i], pinHeight});
+                        position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
+                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinWidth, pinHeight});
                         // }
-                        position.y += pinHeight + pinSpacing;
                     }
                 };
 
                 ImVec2 position = {blockScreenPosition.x - padding.x, blockScreenPosition.y};
-                registerPins(inputPorts, inputPortWidths, position, ax::NodeEditor::PinKind::Input);
+                registerPins(inputPorts, position, ax::NodeEditor::PinKind::Input);
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
-                registerPins(outputPorts, outputPortWidths, blockScreenPosition, ax::NodeEditor::PinKind::Output);
+                registerPins(outputPorts, blockScreenPosition, ax::NodeEditor::PinKind::Output);
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
                 ImGui::SetCursorScreenPos({position.x, blockBottomY});
@@ -408,17 +402,16 @@ void drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 ImGui::SetCursorScreenPos(blockPosition.topLeft);
                 auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
-                auto drawPorts = [&](auto& ports, auto& widths, auto portLeftPos, bool rightAlign) {
-                    auto pinPositionY = blockPosition.topLeft.y;
+                auto drawPorts = [&](auto& ports, auto portLeftPos, bool rightAlign) {
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        auto pinPositionX = portLeftPos + padding.x - (rightAlign ? widths[i] : 0);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {widths[i], pinHeight}, pinSpacing, textMargin, ports[i].portName, ports[i].portType);
-                        pinPositionY += pinHeight + pinSpacing;
+                        const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
+                        const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
+                        FlowgraphPage::drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i].portName, ports[i].portType);
                     }
                 };
 
-                drawPorts(inputPorts, inputPortWidths, leftPos, true);
-                drawPorts(outputPorts, outputPortWidths, leftPos + blockSize.x, false);
+                drawPorts(inputPorts, leftPos, true);
+                drawPorts(outputPorts, leftPos + blockSize.x, false);
             }
         }
 
@@ -789,5 +782,29 @@ void FlowgraphPage::sortNodes() {
         x += levelWidth + xSpacing;
     }
 }
+
+void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph) {
+
+    const auto& style = FlowgraphPage::styleForDataType(type);
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
+    ImGui::SetCursorPos(pinPosition);
+
+    if (ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize)) {
+        // Node editor has very limited support for tooltips.
+        // See imgui-node-editor/examples/widgets-example/widgets-example.cpp for workarounds
+        // such as this one:
+
+        if (mainFlowGraph) {
+            ax::NodeEditor::Suspend();
+        }
+
+        ImGui::SetTooltip("%s (%s)", name.c_str(), type.c_str());
+
+        if (mainFlowGraph) {
+            ax::NodeEditor::Resume();
+        }
+    }
+};
 
 } // namespace DigitizerUi

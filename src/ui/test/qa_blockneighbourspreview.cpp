@@ -4,7 +4,7 @@
 #include "imgui_test_engine/imgui_te_context.h"
 
 #include "components/Block.hpp"
-#include "components/BlockNeighborsPreview.hpp"
+#include "components/BlockNeighboursPreview.hpp"
 #include <boost/ut.hpp>
 #include <string>
 
@@ -19,7 +19,7 @@ private:
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
-        ImGuiTest* t = IM_REGISTER_TEST(engine(), "blockneighborspreview", "basic");
+        ImGuiTest* t = IM_REGISTER_TEST(engine(), "blockneighbourspreview", "basic");
 
         t->GuiFunc = [](ImGuiTestContext*) {
             // black edges on black background isn't readable, use some other color:
@@ -28,13 +28,13 @@ private:
             ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(500, 400));
 
-            DigitizerUi::components::BlockNeighborsPreview(g_context, ImGui::GetContentRegionAvail());
+            DigitizerUi::components::BlockNeighboursPreview(g_context, ImGui::GetContentRegionAvail());
 
             ImGui::End();
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            ut::test("block neighbors preview") = [ctx] {
+            ut::test("block neighbours preview") = [ctx] {
                 ctx->SetRef("Test Window");
                 captureScreenshot(*ctx);
             };
@@ -44,7 +44,7 @@ private:
 
 int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
-    options.screenshotPrefix = "blockneighborspreview";
+    options.screenshotPrefix = "blockneighbourspreview";
 
     DigitizerUi::UiGraphModel graphModel;
 
