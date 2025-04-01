@@ -1,6 +1,6 @@
 blocks:
   - name: ClockSource1
-    id: gr::basic::ClockSource<uint8>
+    id: gr::basic::ClockSource
     parameters:
       do_zero_order_hold: true
       n_samples_max: 0

@@ -3,13 +3,14 @@
 
 #include <boost/ut.hpp>
 
+#include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/basic/ClockSource.hpp>
-#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
+
+#include <GrBasicBlocks.hpp>
+#include <GrFourierBlocks.hpp>
+#include <GrTestingBlocks.hpp>
 
 #include "ImGuiTestApp.hpp"
 
@@ -103,15 +104,9 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
-    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
-    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
     gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
@@ -126,9 +121,14 @@ int main(int argc, char* argv[]) {
     options.screenshotPrefix = "chart";
 
     // This is not a globalBlockRegistry, but a copy of it
-    registerTestBlocks(gr::globalBlockRegistry());
-    gr::BlockRegistry registry = gr::globalBlockRegistry();
-    gr::PluginLoader  pluginLoader(registry, {});
+    auto& registry = gr::globalBlockRegistry();
+
+    gr::blocklib::initGrBasicBlocks(registry);
+    gr::blocklib::initGrFourierBlocks(registry);
+    gr::blocklib::initGrTestingBlocks(registry);
+    registerTestBlocks(registry);
+
+    gr::PluginLoader pluginLoader(registry, {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);

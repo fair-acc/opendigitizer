@@ -10,17 +10,10 @@
 
 #include <fmt/core.h>
 
-#include <gnuradio-4.0/basic/ClockSource.hpp>
-#include <gnuradio-4.0/basic/CommonBlocks.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/basic/SignalGenerator.hpp>
-#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
-#include <gnuradio-4.0/electrical/PowerEstimators.hpp>
-#include <gnuradio-4.0/filter/FrequencyEstimator.hpp>
-#include <gnuradio-4.0/filter/time_domain_filter.hpp>
-#include <gnuradio-4.0/testing/ImChartMonitor.hpp>
-#include <gnuradio-4.0/testing/NullSources.hpp>
-#include <gnuradio-4.0/testing/TagMonitors.hpp>
+#include <gnuradio-4.0/Export.hpp>
+
+#include <GrBasicBlocks.hpp>
+#include <GrTestingBlocks.hpp>
 
 #include "FAIR/DeviceNameHelper.hpp"
 #include "dashboard/dashboardWorker.hpp"
@@ -42,43 +35,13 @@
 namespace {
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<gr::basic::DataSink, float>(registry);
-    gr::registerBlock<gr::basic::DataSetSink, float>(registry);
-    gr::registerBlock<builtin_multiply, float>(registry);
-    gr::registerBlock<fair::picoscope::Picoscope3000a, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<fair::picoscope::Picoscope4000a, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<fair::picoscope::Picoscope5000a, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    registry.template addBlockType<gr::testing::ImChartMonitor<float, false>>("gr::basic::ConsoleDebugSink<float>");
-    registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<float>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<float>>");
-    // Note ImChartMonitor currently is only implemented for floating point types
-    // registry.template addBlockType<gr::testing::ImChartMonitor<uint8_t, false>>("gr::basic::ConsoleDebugSink<uint8>");
-    // registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<uint8_t>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<uint8>>");
-    // registry.template addBlockType<gr::testing::ImChartMonitor<uint16_t, false>>("gr::basic::ConsoleDebugSink<uint16>");
-    // registry.template addBlockType<gr::testing::ImChartMonitor<gr::DataSet<uint16_t>, false>>("gr::basic::ConsoleDebugSink<gr::DataSet<uint16>>");
-    gr::registerBlock<MultiAdder, float>(registry);
-    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
-    gr::registerBlock<gr::electrical::PowerMetrics, 3, float>(registry);
-    gr::registerBlock<gr::electrical::PowerFactor, 3, float>(registry);
-    gr::registerBlock<gr::electrical::SystemUnbalance, 3, float>(registry);
-    gr::registerBlock<gr::filter::BasicDecimatingFilter, float>(registry);
-    gr::registerBlock<gr::filter::FrequencyEstimatorTimeDomain, float>(registry);
-    gr::registerBlock<gr::filter::FrequencyEstimatorFrequencyDomain, float>(registry);
-    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, float>(registry);
-    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint8_t>(registry);
-    gr::registerBlock<gr::testing::TagSink, gr::testing::ProcessFunction::USE_PROCESS_BULK, uint16_t>(registry);
-    gr::registerBlock<gr::testing::NullSink, float, uint8_t, uint16_t, gr::DataSet<float>, gr::DataSet<uint8_t>, gr::DataSet<uint16_t>>(registry);
-    gr::registerBlock<gr::timing::TimingSource>(registry);
+    gr::blocklib::initGrBasicBlocks(registry);
+    gr::blocklib::initGrTestingBlocks(registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : registry.providedBlocks()) {
         fmt::print("  - {}\n", blockName);
     }
-#pragma GCC diagnostic pop
 }
 } // namespace
 
