@@ -4,14 +4,11 @@
 
 #include <boost/ut.hpp>
 
+#include <gnuradio-4.0/BlockLib.hpp>
+#include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/basic/ClockSource.hpp>
-#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
 
 #include "ImGuiTestApp.hpp"
 
@@ -22,9 +19,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
-#include "gnuradio-4.0/basic/ClockSource.hpp"
-#include "gnuradio-4.0/basic/FunctionGenerator.hpp"
-#include "gnuradio-4.0/basic/SignalGenerator.hpp"
 
 #include "imgui_test_engine/imgui_te_internal.h"
 
@@ -42,15 +36,6 @@ struct TestState {
 };
 
 TestState g_state;
-
-template<typename Registry>
-void registerTestBlocks(Registry& registry) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t>(registry);
-#pragma GCC diagnostic pop
-}
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
@@ -71,7 +56,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 page.setDashboard(*g_state.dashboard);
                 page.setLayoutType(vars.layoutType);
                 page.draw();
-                ut::expect(!g_state.dashboard->plots().empty());
+                ut::expect(!g_state.dashboard->plots().empty()) << ut::fatal;
             }
         };
 
@@ -107,7 +92,8 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    registerTestBlocks(gr::globalBlockRegistry());
+    auto& registry = gr::globalBlockRegistry();
+    grBlockLibInit(registry);
 
     auto fs            = cmrc::ui_test_assets::get_filesystem();
     auto grcFile       = fs.open("examples/qa_layout.grc");

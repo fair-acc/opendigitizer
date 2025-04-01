@@ -8,12 +8,12 @@
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 
+#include <gnuradio-4.0/BlockLib.hpp>
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Message.hpp>
+#include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/basic/ClockSource.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
@@ -66,10 +66,6 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    gr::registerBlock<gr::basic::FunctionGenerator, float>(registry);
-    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
-    gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
 #pragma GCC diagnostic pop
@@ -139,7 +135,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
 int main(int argc, char* argv[]) {
     [[maybe_unused]] opendigitizer::ColourManager& colourManager = opendigitizer::ColourManager::instance();
-    registerTestBlocks(gr::globalBlockRegistry());
+
+    auto& registry = gr::globalBlockRegistry();
+    registerTestBlocks(registry);
+    grBlockLibInit(registry);
 
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "chart_fg_dipole";
