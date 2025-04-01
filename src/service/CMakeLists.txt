@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 23)
 
-# Mainly for FMT
-set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-
 project(opendigitizer-service LANGUAGES CXX)
 include(GNUInstallDirs)
 
@@ -132,9 +129,10 @@ target_link_libraries(
           fair-picoscope
           timing
           assets::rest
-          gr-testing
-          gr-basic
-          gr-electrical
-          gr-filter
           digitizer_common_utils
-          digitizer_settings)
+          digitizer_settings
+          gnuradio-core
+          gnuradio-blocklib-core
+          GrBasicBlocksShared
+          GrTestingBlocksShared
+          GrFourierBlocksShared)
