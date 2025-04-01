@@ -126,6 +126,8 @@ add_library(
   components/AppHeader.hpp
   components/Block.cpp
   components/Block.hpp
+  components/BlockNeighboursPreview.cpp
+  components/BlockNeighboursPreview.hpp
   components/Dialog.hpp
   components/Docking.cpp
   components/Docking.hpp

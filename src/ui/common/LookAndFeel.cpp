@@ -43,15 +43,17 @@ void LookAndFeel::loadFonts() {
         0XEF819A, 0XEF819A,               // notification ICON_FA_CIRCLE_INFO
         0, 0};
 
-    static const auto fontSize = []() -> std::array<float, 4> {
+    enum FontSizeIndex { FontSizeTiny = 0, FontSizeSmall, FontSizeNormal, FontSizeBig, FontSizeBigger, FontSizeLarge, FontSizeCount };
+
+    static const auto fontSize = []() -> std::array<float, FontSizeCount> {
         if (std::abs(LookAndFeel::instance().verticalDPI - LookAndFeel::instance().defaultDPI) < 8.f) {
-            return {20, 24, 28, 46}; // 28" monitor
+            return {12, 17, 20, 24, 28, 46}; // 28" monitor
         } else if (LookAndFeel::instance().verticalDPI > 200) {
-            return {16, 22, 23, 38}; // likely mobile monitor
+            return {8, 13, 16, 22, 23, 38}; // likely mobile monitor
         } else if (std::abs(LookAndFeel::instance().defaultDPI - LookAndFeel::instance().verticalDPI) >= 8.f) {
-            return {22, 26, 30, 46}; // likely large fixed display monitor
+            return {12, 18, 22, 26, 30, 46}; // likely large fixed display monitor
         }
-        return {18, 24, 26, 46}; // default
+        return {12, 16, 18, 24, 26, 46}; // default
     }();
 
     static ImFontConfig config;
@@ -73,10 +75,12 @@ void LookAndFeel::loadFonts() {
         };
 
         auto& lookAndFeel             = LookAndFeel::mutableInstance();
-        lookAndFeel.fontNormal[index] = loadFont(fontSize[0]);
-        lookAndFeel.fontBig[index]    = loadFont(fontSize[1]);
-        lookAndFeel.fontBigger[index] = loadFont(fontSize[2]);
-        lookAndFeel.fontLarge[index]  = loadFont(fontSize[3]);
+        lookAndFeel.fontTiny[index]   = loadFont(fontSize[FontSizeTiny]);
+        lookAndFeel.fontSmall[index]  = loadFont(fontSize[FontSizeSmall]);
+        lookAndFeel.fontNormal[index] = loadFont(fontSize[FontSizeNormal]);
+        lookAndFeel.fontBig[index]    = loadFont(fontSize[FontSizeBig]);
+        lookAndFeel.fontBigger[index] = loadFont(fontSize[FontSizeBigger]);
+        lookAndFeel.fontLarge[index]  = loadFont(fontSize[FontSizeLarge]);
     };
 
     loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);

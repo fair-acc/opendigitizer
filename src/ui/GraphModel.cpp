@@ -366,8 +366,6 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
 
         processPorts(block.inputPorts, "inputPorts"s, gr::PortDirection::INPUT);
         processPorts(block.outputPorts, "outputPorts"s, gr::PortDirection::OUTPUT);
-        block.inputPortWidths.clear();
-        block.outputPortWidths.clear();
 
         block.getAllContexts();
         block.getActiveContext();

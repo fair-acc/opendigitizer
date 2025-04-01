@@ -15,6 +15,8 @@
 
 #include "GraphModel.hpp"
 
+struct TestState;
+
 namespace opendigitizer {
 class ImPlotSinkModel;
 }
@@ -23,6 +25,7 @@ namespace DigitizerUi {
 
 class FlowgraphPage {
 private:
+    friend struct ::TestState;
     enum class Alignment {
         Left,
         Right,
@@ -47,7 +50,15 @@ private:
 
     void drawNodeEditor(const ImVec2& size);
 
+    static void drawGraph(UiGraphModel& graphModel, const ImVec2& size);
+
 public:
+    struct DataTypeStyle {
+        std::uint32_t color;
+        bool          unsignedMarker = false;
+        bool          datasetMarker  = false;
+    };
+
     FlowgraphPage();
     ~FlowgraphPage();
 
@@ -62,6 +73,13 @@ public:
     void reset();
 
     void setStyle(LookAndFeel::Style style);
+
+    static const DataTypeStyle& styleForDataType(std::string_view type);
+
+    static void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true);
+
+    // Returns the pin positionY relative to the block
+    static float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight);
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 };
