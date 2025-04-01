@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
-        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
         g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
     });
 
@@ -157,7 +157,8 @@ int main(int argc, char* argv[]) {
     g_state.flowgraphPage.requestBlockControlsPanel = [](DigitizerUi::components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool) {};
 
     g_state.flowgraphPage.setDashboard(g_state.dashboard.get());
-    g_state.startScheduler();
+
+    std::jthread schedulerThread([] { g_state.startScheduler(); });
 
     return app.runTests() ? 0 : 1;
 }
