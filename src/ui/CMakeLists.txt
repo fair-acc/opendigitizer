@@ -9,9 +9,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
-# Mainly for FMT
-set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-
 if(EMSCRIPTEN)
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
@@ -171,16 +168,14 @@ target_link_libraries(
          fonts
          digitizer_settings
          digitizer_common_utils
-         gnuradio-core
-         gnuradio-meta
-         gnuradio-algorithm
-         gr-basic
-         gr-fourier
          raii_wrapper
-         gr-testing
          fftw
          vir
-         pmtv)
+         pmtv
+         gnuradio-core
+         gnuradio-blocklib-core
+         GrBasicBlocksShared
+         GrFourierBlocksShared)
 target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(${target_name} PRIVATE ${target_name}lib)

@@ -1,7 +1,3 @@
-#include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/basic/ConverterBlocks.hpp>
-#include <gnuradio-4.0/basic/SignalGenerator.hpp>
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -12,11 +8,11 @@
 
 #include <fmt/format.h>
 
+#include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
-#include <gnuradio-4.0/basic/ClockSource.hpp>
-#include <gnuradio-4.0/basic/FunctionGenerator.hpp>
-#include <gnuradio-4.0/fourier/fft.hpp>
-#include <gnuradio-4.0/testing/Delay.hpp>
+
+#include <GrBasicBlocks.hpp>
+#include <GrFourierBlocks.hpp>
 
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
@@ -89,20 +85,13 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    Digitizer::Settings::instance(); // TODO do we need this here?
+    Digitizer::Settings::instance();          // TODO do we need this here?
     opendigitizer::ColourManager::instance(); // rstein: possibly -> both are singletons
 
     // TODO: Remove when GR gets proper blocks library
-    auto& registry = gr::globalBlockRegistry();
-    registry.template addBlockType<gr::basic::DefaultClockSource<std::uint8_t>>("gr::basic::ClockSource");
-    gr::registerBlock<"gr::basic::ClockSource", gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
-    gr::registerBlock<"gr::blocks::fft::DefaultFFT", gr::blocks::fft::DefaultFFT, float>(registry);
-    gr::registerBlock<gr::basic::DefaultClockSource, std::uint8_t, float>(registry);
-    gr::registerBlock<gr::basic::FunctionGenerator, float, double>(registry);
-    gr::registerBlock<gr::basic::SignalGenerator, float>(registry);
-    gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
-    gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
-    gr::registerBlock<opendigitizer::SineSource, float>(registry);
+    auto* registry = grGlobalBlockRegistry();
+    gr::blocklib::initGrBasicBlocks(*registry);
+    gr::blocklib::initGrFourierBlocks(*registry);
 
     fmt::print("providedBlocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {
