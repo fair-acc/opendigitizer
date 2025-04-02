@@ -114,7 +114,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
     gr::registerBlock<gr::blocks::type::converter::Convert, gr::BlockParameters<double, float>, gr::BlockParameters<float, double>>(registry);
 
     fmt::print("providedBlocks:\n");
