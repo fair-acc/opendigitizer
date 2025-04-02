@@ -16,6 +16,7 @@
 #include <stb_image.h>
 
 #include "PopupMenu.hpp"
+#include "settings.hpp"
 
 CMRC_DECLARE(ui_assets);
 
@@ -95,10 +96,14 @@ public:
 
     void draw(std::string_view title, ImFont* title_font, LookAndFeel::Style style_) {
         using namespace detail;
-        // localtime
-        const auto clock         = std::chrono::system_clock::now();
-        const auto utcClock      = fmt::format("{:%Y-%m-%d %H:%M:%S (LOC)}", std::chrono::round<std::chrono::seconds>(clock));
-        const auto utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
+
+        const auto  now           = std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now());
+        const auto  timeT         = std::chrono::system_clock::to_time_t(now);
+        std::tm     localTm       = *std::localtime(&timeT);
+        std::tm     utcTm         = *std::gmtime(&timeT);
+        std::string localClock    = fmt::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02} (LOC)", localTm.tm_year + 1900, localTm.tm_mon + 1, localTm.tm_mday, localTm.tm_hour, localTm.tm_min, localTm.tm_sec);
+        std::string utcClock      = fmt::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
+        const auto  utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
         const auto topLeft = ImGui::GetCursorPos();
         // draw title
@@ -116,18 +121,10 @@ public:
 
         ImGui::SameLine();
         auto pos = ImGui::GetCursorPos();
-        TextRight(utcClock); // %Z should print abbreviated timezone but doesnt
-        // utc (using c-style timedate functions because of missing stdlib support)
-        // const auto utc_clock = std::chrono::utc_clock::now(); // c++20 timezone is not implemented in gcc or clang yet
-        // date + tz library unfortunately doesn't play too well with emscripten/fetchcontent
-        // const auto localtime = fmt::format("{:%H:%M:%S (%Z)}", date::make_zoned("utc", clock).get_sys_time());
-        std::string utctime; // assume maximum of 32 characters for datetime length
-        utctime.resize(32);
+        TextRight(localClock);
         pos.y += ImGui::GetTextLineHeightWithSpacing();
         ImGui::SetCursorPos(pos);
-        const auto utc = std::chrono::system_clock::to_time_t(clock);
-        const auto len = strftime(utctime.data(), utctime.size(), "%H:%M:%S (UTC)", gmtime(&utc));
-        TextRight(std::string_view(utctime.data(), len));
+        TextRight(utcClock);
         auto posBeneathClock = ImGui::GetCursorPos();
 
         // left menu
@@ -138,8 +135,8 @@ public:
         IMW::StyleColor      activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
         VerticalPopupMenu<1> leftMenu;
 
-        //
-        const auto menuButtonPushed = [&] {
+        const auto& settings         = Digitizer::Settings::instance();
+        const auto  menuButtonPushed = settings.editableMode && [&] {
             IMW::StyleColor mainButtonStyle(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, 0.6f));
             IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
             return ImGui::Button(LookAndFeel::instance().prototypeMode ? "" : "");
@@ -147,7 +144,7 @@ public:
 
         IMW::StyleVar framePaddingStyle(ImGuiStyleVar_FramePadding, ImVec2(4, 6));
 
-        if (menuButtonPushed || ImGui::IsItemHovered()) {
+        if ((menuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
             using DigitizerUi::MenuButton;
             const bool wasAlreadyOpen = leftMenu.isOpen();
 
@@ -167,7 +164,9 @@ public:
         }
 
         // draw fair logo
-        ImGui::SameLine(0.f, 0.f);
+        if (settings.editableMode) {
+            ImGui::SameLine(0.f, 0.f);
+        }
         const auto imgLogo = static_cast<ImTextureID>(style_ == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
         if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
             // call url to project site
@@ -184,13 +183,13 @@ public:
             buttonTimeOut = 2.f;
         }
 
-        const bool devMenuButtonPushed = [&] {
+        const bool devMenuButtonPushed = settings.editableMode && [&] {
             IMW::StyleColor textStyle(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, (mouseMoved || buttonTimeOut > 0.f) ? 0.9f : 0.f));
             IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
             return ImGui::Button("");
         }();
 
-        if (devMenuButtonPushed || ImGui::IsItemHovered()) {
+        if ((devMenuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
             using enum DigitizerUi::WindowMode;
 
             {
