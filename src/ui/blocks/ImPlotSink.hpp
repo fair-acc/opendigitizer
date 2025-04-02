@@ -22,6 +22,9 @@
 #include "meta.hpp"
 
 namespace opendigitizer {
+
+constexpr std::string_view kFishyTagKey = "ui_fishy_tag";
+
 struct TagData {
     double           timestamp;
     gr::property_map map;
@@ -40,22 +43,24 @@ T getValueOrDefault(const gr::property_map& map, const std::string& key, const T
     return defaultValue;
 }
 
-inline void plotVerticalTagLabel(const std::string_view& label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75) {
+inline ImVec2 plotVerticalTagLabel(const std::string_view& label, double xData, const ImPlotRect& plotLimits, bool plotLeft, double fractionBelowTop = 0.02, double sizeRatioLimit = 0.75) {
+    const double yRange   = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
+    const double ySafeTop = plotLimits.Y.Max - fractionBelowTop * yRange;
+    const double yClamped = std::clamp(ySafeTop, plotLimits.Y.Min, plotLimits.Y.Max);
+    ImVec2       pixelPos = ImPlot::PlotToPixels(xData, yClamped);
     if (label.empty()) {
-        return;
+        return pixelPos;
     }
 
-    const double yRange      = std::abs(plotLimits.Y.Max - plotLimits.Y.Min);
     const double yPixelRange = static_cast<double>(std::abs(ImPlot::PlotToPixels(0.0, plotLimits.Y.Max).y - ImPlot::PlotToPixels(0.0, plotLimits.Y.Min).y));
     ImVec2       textSize    = ImGui::CalcTextSize(label.data());
     if (static_cast<double>(textSize.x) > sizeRatioLimit * yPixelRange) {
-        return; // the text is too large relative to the vertical scale
+        return pixelPos; // the text is too large relative to the vertical scale
     }
 
-    const double ySafeTop = plotLimits.Y.Max - fractionBelowTop * yRange;
-    const double yClamped = std::clamp(ySafeTop, plotLimits.Y.Min, plotLimits.Y.Max);
-    ImVec2       pixOffset{plotLeft ? (-textSize.y + 2.0f) : (+5.0f), textSize.x};
+    ImVec2 pixOffset{plotLeft ? (-textSize.y + 2.0f) : (+5.0f), textSize.x};
     ImPlot::PlotText(label.data(), xData, yClamped, pixOffset, static_cast<int>(ImPlotTextFlags_Vertical) | static_cast<int>(ImPlotItemFlags_NoFit));
+    return {pixelPos.x + pixOffset.x + textSize.y, pixelPos.y};
 }
 
 template<typename T>
@@ -100,16 +105,20 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
         double      xTagPosition = transformX<T>(tag.timestamp, axisScale, minX, maxX);
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
-        ImPlot::SetNextLineStyle(color);
+        if (tag.map.contains(kFishyTagKey)) {
+            ImPlot::SetNextLineStyle(ImVec4(1.0, 0.0, 1.0, 1.0));
+        } else {
+            ImPlot::SetNextLineStyle(color);
+        }
         ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
         // suppress tag labels if it is too close to the previous one or close to the extremities
-        if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
+        if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
             const std::string triggerLabel     = getValueOrDefault<std::string>(tag.map, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
             const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
 
             if (triggerLabelSize.x < 0.75f * yPixelRange) {
-                plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
+                lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
             } else {
                 continue;
             }
@@ -118,13 +127,9 @@ void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, 
             if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                 const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
                 if (triggerCtxLabelSize.x < 0.75f * yPixelRange) {
-                    plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
-                } else {
-                    continue;
+                    lastTextPixelX = plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false).x;
                 }
             }
-
-            lastTextPixelX = xPixelPos;
         } // plot labels
     }
     ImGui::PopStyleColor();
@@ -164,11 +169,11 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
             ImPlot::PlotInfLines("", &xTagPosition, 1, ImPlotInfLinesFlags_None);
 
             // suppress tag labels if it is too close to the previous one or close to the extremities
-            if ((xPixelPos - lastTextPixelX) > 2.0f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
+            if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
                 const std::string triggerLabel     = getValueOrDefault<std::string>(tagMap, gr::tag::TRIGGER_NAME.shortKey(), "TRIGGER");
                 const ImVec2      triggerLabelSize = ImGui::CalcTextSize(triggerLabel.c_str());
                 if (triggerLabelSize.x < 0.75f * yPixelRange) {
-                    plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true);
+                    lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
                 } else {
                     continue;
                 }
@@ -177,13 +182,9 @@ void drawDataSetTimingEvents(const gr::DataSet<T>& dataset, DigitizerUi::AxisSca
                 if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
                     const ImVec2 triggerCtxLabelSize = ImGui::CalcTextSize(triggerCtx.c_str());
                     if (triggerCtxLabelSize.x < 0.75f * yPixelRange) {
-                        plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false);
-                    } else {
-                        continue;
+                        lastTextPixelX = plotVerticalTagLabel(triggerCtx, xTagPosition, plotLimits, false).x;
                     }
                 }
-
-                lastTextPixelX = xPixelPos;
             } // plot labels
         }
     }
@@ -377,14 +378,23 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             const gr::property_map& tag = this->_mergedInputTag.map;
 
             if (tag.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-                const auto offset  = static_cast<double>(getValueOrDefault<float>(tag, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
-                const auto utcTime = static_cast<double>(getValueOrDefault<uint64_t>(tag, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
-                if (utcTime > 0.0 || (utcTime * 1e-9 + offset) > 0.0) {
-                    _xUtcOffset   = utcTime * 1e-9 + offset;
+                const auto   offset       = static_cast<double>(getValueOrDefault<float>(tag, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
+                const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tag, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
+                const double tagEventTime = utcTime * 1e-9 + offset; // [s]
+                bool         tagOK        = true;
+
+                if ((utcTime > 0.0 || tagEventTime > 0.0) && tagEventTime > _xUtcOffset) {
+                    _xUtcOffset   = tagEventTime;
                     _sample_count = 0UZ;
+                } else {
+                    tagOK = false; // mark fishy tag
                 }
+
                 if (plot_tags) {
                     _tagValues.push_back({.timestamp = _xUtcOffset, .map = this->mergedInputTag().map});
+                    if (!tagOK) {
+                        _tagValues.back().map[std::string(kFishyTagKey)] = true;
+                    }
                 }
             }
             this->_mergedInputTag.map.clear(); // TODO: provide proper API for clearing tags
@@ -532,54 +542,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     }
 };
 
-template<typename T>
-struct ImPlotSinkDataSet : public ImPlotSinkBase<ImPlotSinkDataSet<T>> {
-    gr::PortIn<gr::DataSet<T>> in;
-    uint32_t                   color = 0xff0000; ///< RGB color for the plot // TODO use better type, support configurable colors for datasets?
-    std::string                signal_name;
-    std::string                signal_quantity;
-    std::string                signal_unit;
-    float                      signal_min    = std::numeric_limits<float>::lowest();
-    float                      signal_max    = std::numeric_limits<float>::max();
-    gr::Size_t                 dataset_index = std::numeric_limits<gr::Size_t>::max();
-
-    GR_MAKE_REFLECTABLE(ImPlotSinkDataSet, in, color, signal_name, signal_quantity, signal_unit, signal_min, signal_max, dataset_index);
-
-public:
-    ImPlotSinkDataSet(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSinkDataSet<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
-
-    ~ImPlotSinkDataSet() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
-
-    gr::DataSet<T> dataSet{};
-
-    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
-        dataSet     = input.back();
-        std::ignore = input.consume(input.size());
-        return gr::work::Status::OK;
-    }
-
-    gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        [[maybe_unused]] const gr::work::Status status = this->invokeWork();
-        if (dataSet.extents.empty()) {
-            return gr::work::Status::OK;
-        }
-        setAxisFromConfig(config);
-        const int n = static_cast<int>(dataSet.axisValues(0UZ).size());
-        if (dataset_index == std::numeric_limits<gr::Size_t>::max()) {
-            for (std::size_t i = 0UZ; i < dataSet.size(); ++i) {
-                ImPlot::PlotLine(dataSet.signalName(i).c_str(), dataSet.signalValues(i).data(), n);
-            }
-        } else {
-            if (dataset_index >= dataSet.size()) {
-                dataset_index = 0U;
-            }
-            ImPlot::PlotLine(dataSet.signalName(dataset_index).c_str(), dataSet.signalValues(dataset_index).data(), n);
-        }
-        return gr::work::Status::OK;
-    }
-};
 } // namespace opendigitizer
 
-inline static auto registerImPlotSink        = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(gr::globalBlockRegistry());
-inline static auto registerImPlotSinkDataSet = gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(gr::globalBlockRegistry());
+inline static auto registerImPlotSink = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(gr::globalBlockRegistry());
+
 #endif

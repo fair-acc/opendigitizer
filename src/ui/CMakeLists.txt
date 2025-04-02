@@ -80,6 +80,8 @@ cmrc_add_resource_library(
   sample_dashboards
   NAMESPACE
   sample_dashboards
+  assets/sampleDashboards/dashboard.grc
+  assets/sampleDashboards/dashboard.yml
   assets/sampleDashboards/ExtendedDemoDashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.yml
   assets/sampleDashboards/DemoDashboard.grc
