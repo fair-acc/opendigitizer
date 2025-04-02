@@ -13,9 +13,11 @@
 
 #include "../Dashboard.hpp"
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 
 #include "../components/ColourManager.hpp"
 
+#include "../common/ImguiWrap.hpp"
 #include <implot.h>
 
 #include "conversion.hpp"
@@ -90,11 +92,14 @@ static double transformX(double xVal, DigitizerUi::AxisScale axisScale, double x
 template<typename T>
 void drawAndPruneTags(std::deque<TagData>& tagValues, double minX, double maxX, DigitizerUi::AxisScale axisScale, const ImVec4& color) {
     using enum DigitizerUi::AxisScale;
+    using namespace DigitizerUi;
+
     std::erase_if(tagValues, [=](const auto& tag) { return static_cast<double>(tag.timestamp) < std::min(minX, maxX); });
     if (tagValues.empty()) {
         return;
     }
 
+    IMW::Font   titleFont(LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode]);
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
     const float yPixelRange = std::abs(ImPlot::PlotToPixels(0.0, plotLimits.Y.Max).y - ImPlot::PlotToPixels(0.0, plotLimits.Y.Min).y);
