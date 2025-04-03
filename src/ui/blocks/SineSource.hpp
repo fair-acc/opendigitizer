@@ -18,7 +18,7 @@ struct SineSource : public gr::Block<SineSource<T>, gr::BlockingIO<true>> {
     gr::PortOut<T> out{};
     float          val = 0;
 
-    gr::Annotated<float, "frequency", gr::Unit<"Hz">> frequency{1.f};
+    gr::Annotated<float, "frequency", gr::Unit<"Hz">, gr::Visible> frequency{1.f};
 
     std::mutex              mutex;
     std::condition_variable conditionvar;
