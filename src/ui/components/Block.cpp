@@ -209,7 +209,7 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
 
             // Column 1: Label
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(key.c_str());
+            ImGui::TextUnformatted(block->blockSettingsMetaInformation[key].description.c_str());
 
             // Column 2: Input
             ImGui::TableSetColumnIndex(1);
@@ -225,15 +225,7 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
                 block->ownerGraph->sendMessage(std::move(message));
             };
 
-            const auto getUnit = [block, key]() -> std::string_view {
-                const auto it = block->blockMetaInformation.find(key + "::unit");
-                if (it != block->blockMetaInformation.end()) {
-                    if (const auto unitPtr = std::get_if<std::string>(&it->second); unitPtr) {
-                        return *unitPtr;
-                    }
-                }
-                return {};
-            };
+            const auto getUnit = [block, &key]() -> std::string_view { return block->blockSettingsMetaInformation[key].unit; };
 
             InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
 

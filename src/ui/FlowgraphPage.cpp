@@ -270,12 +270,21 @@ static void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const
     }
 };
 
-void valToString(const pmtv::pmt& val, std::string& str) {
-    std::visit(gr::meta::overloaded{
-                   [&](const std::string& s) { str = s; },
-                   [&](const auto& /* a */) { str = "na"; },
-               },
-        val);
+std::string valToString(const pmtv::pmt& _val) {
+    return std::visit(gr::meta::overloaded{                                //
+                          [&](double val) { return std::to_string(val); }, //
+                          [&](float val) { return std::to_string(val); },  //
+                          [&](auto&& val) {
+                              using T = std::remove_cvref_t<decltype(val)>;
+                              if constexpr (std::integral<T>) {
+                                  std::string x = fmt::format("{}", val);
+                                  return std::to_string(val);
+                              } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
+                                  return std::string(val);
+                              }
+                              return ""s;
+                          }},
+        _val);
 }
 
 float FlowgraphPage::pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
@@ -327,7 +336,6 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
                 // Draw block properties
-                std::string value;
                 {
                     IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
                     for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
@@ -335,16 +343,12 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                             continue;
                         }
 
-                        const auto metaKey = propertyKey + "::visible";
-                        const auto it      = block.blockMetaInformation.find(metaKey);
-                        if (it != block.blockMetaInformation.end()) {
-                            if (const auto visiblePtr = std::get_if<bool>(&it->second); visiblePtr && !(*visiblePtr)) {
-                                continue;
-                            }
+                        const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[propertyKey];
+                        if (!currentPropertyMetaInformation.isVisible) {
+                            continue;
                         }
-
-                        valToString(propertyValue, value);
-                        ImGui::Text("%s: %s", propertyKey.c_str(), value.c_str());
+                        std::string value = valToString(propertyValue);
+                        ImGui::Text("%s: %s", currentPropertyMetaInformation.description.c_str(), value.c_str());
                     }
                 }
 
