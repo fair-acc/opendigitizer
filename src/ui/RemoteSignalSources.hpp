@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_REMOTESIGNALSOURCES_H
 #define OPENDIGITIZER_REMOTESIGNALSOURCES_H
 
+#include <ClientCommon.hpp>
 #include <list>
 #include <refl.hpp>
 
@@ -74,9 +75,9 @@ protected:
 
 class SignalList {
     Digitizer::Settings&           settings      = Digitizer::Settings::instance();
-    opencmw::client::ClientContext clientContext = []() {
+    opencmw::client::ClientContext clientContext = [this]() {
         std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
-        clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
+        clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY), opencmw::client::VerifyServerCertificates(settings.checkCertificates)));
         return opencmw::client::ClientContext{std::move(clients)};
     }();
     opencmw::service::dns::DnsClient dnsClient{clientContext, settings.serviceUrl().path("/dns").build()};

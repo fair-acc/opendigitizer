@@ -1,7 +1,12 @@
 #include <Client.hpp>
+#include <RestDefaultClientCertificates.hpp>
+#include <cmrc/cmrc.hpp>
 #include <majordomo/Broker.hpp>
+#include <majordomo/LoadTestWorker.hpp>
+#include <majordomo/Rest.hpp>
 #include <majordomo/Worker.hpp>
 #include <services/dns.hpp>
+#include <services/dns_client.hpp>
 #include <zmq/ZmqUtils.hpp>
 
 #include <algorithm>
@@ -25,7 +30,6 @@
 #include "dashboard/dashboardWorker.hpp"
 #include "gnuradio/GnuRadioAcquisitionWorker.hpp"
 #include "gnuradio/GnuRadioFlowgraphWorker.hpp"
-#include "rest/fileserverRestBackend.hpp"
 
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include "build_configuration.hpp"
@@ -120,20 +124,67 @@ connections:
     Digitizer::Settings& settings = Digitizer::Settings::instance();
     std::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
     Broker broker("/PrimaryBroker");
-    // REST backend
-    auto fs           = cmrc::assets::get_filesystem();
-    using RestBackend = FileServerRestBackend<HTTPS, decltype(fs)>;
-    RestBackend rest(broker, fs, settings.wasmServeDir != "" ? settings.wasmServeDir : SERVING_DIR, settings.serviceUrl().build());
 
-    const auto requestedAddress    = URI<>("mds://127.0.0.1:12345");
+    const auto wasmServeDir = !settings.wasmServeDir.empty() ? settings.wasmServeDir : SERVING_DIR;
+
+    auto getEnvironmentVariable = [](const char* name, std::string_view defaultValue) {
+        if (auto value = std::getenv(name); value) {
+            return std::string(value);
+        } else {
+            return std::string(defaultValue);
+        }
+    };
+
+    using namespace opencmw::majordomo;
+    rest::Settings restSettings;
+
+    std::vector<std::pair<std::string, std::string>> extraHeaders = {
+        {"cross-origin-opener-policy", "same-origin"},
+        {"cross-origin-embedder-policy", "require-corp"},
+        {"cache-control", "public, max-age=3600"},
+    };
+
+    auto cmrcFs = std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem());
+
+    const auto mainPath = fmt::format("web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : "");
+
+    auto redirectHandler = [](auto from, auto to) {
+        return rest::Handler{.method = "GET", .path = from, .handler = [to](const rest::Request&) {
+                                 rest::Response response;
+                                 response.headers = {{"location", to}};
+                                 response.code    = 302;
+                                 return response;
+                             }};
+    };
+
+    restSettings.handlers = {
+        rest::cmrcHandler("/assets/*", "", cmrcFs, ""),                     //
+        rest::fileSystemHandler("/web/*", "/", wasmServeDir, extraHeaders), //
+        redirectHandler("/", mainPath),                                     //
+        redirectHandler("/index.html", mainPath)                            //
+    };
+
+    if (!settings.disableHttps) {
+        restSettings.certificateFilePath = getEnvironmentVariable("OPENCMW_REST_CERT_FILE", "demo_public.crt");
+        restSettings.keyFilePath         = getEnvironmentVariable("OPENCMW_REST_PRIVATE_KEY_FILE", "demo_private.key");
+        fmt::println(std::cout, "Using certificate file: {}", restSettings.certificateFilePath);
+        fmt::println(std::cout, "Using private key file: {}", restSettings.keyFilePath);
+    }
+
+    if (auto rc = broker.bindRest(restSettings); !rc) {
+        fmt::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
+        return 1;
+    }
+
+    // TODO check what functionality from fileserverRestBackend.hpp we need
+
+    const auto requestedAddress    = URI<>("mds://127.0.0.1:12350");
     const auto brokerRouterAddress = broker.bind(requestedAddress);
     if (!brokerRouterAddress) {
         std::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
     std::jthread brokerThread([&broker] { broker.run(); });
-
-    std::jthread restThread([&rest] { rest.run(); });
 
     dns::DnsWorkerType dns_worker{broker, dns::DnsHandler{}};
     std::jthread       dnsThread([&dns_worker] { dns_worker.run(); });
@@ -147,9 +198,10 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader pluginLoader(registry, {});
-    GrAcqWorker      grAcqWorker(broker, &pluginLoader, 50ms);
-    GrFgWorker       grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
+    gr::PluginLoader                      pluginLoader(registry, {});
+    GrAcqWorker                           grAcqWorker(broker, &pluginLoader, 50ms);
+    GrFgWorker                            grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
+    opencmw::majordomo::load_test::Worker loadTestWorker(broker);
 
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
@@ -213,14 +265,13 @@ connections:
 
     std::jthread grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
     std::jthread grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
+    std::jthread loadTestWorkerThread([&loadTestWorker] { loadTestWorker.run(); });
 
     brokerThread.join();
-    restThread.join();
-
     client.stop();
-
     dnsThread.join();
     dashboardWorkerThread.join();
     grAcqWorkerThread.join();
     grFgWorkerThread.join();
+    loadTestWorkerThread.join();
 }

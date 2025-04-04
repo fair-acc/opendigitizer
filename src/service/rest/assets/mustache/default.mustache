@@ -104,7 +104,7 @@
             'opencmw::TimingCtx' : processStringField,
             'MimeType'           : processMimeTypeField,
             'ImageData'          : processImageField
-        };	
+        };
 
     function processField(form, field) {
         const meta = {
@@ -154,7 +154,7 @@
     }
 
     function pollingHandler() {
-        let get = { method: 'GET', headers: { 'X-OPENCMW-METHOD' : 'POLL' } };
+        let get = { method: 'GET', headers: { 'x-opencmw-method' : 'POLL' } };
 
         fetch(getAddress(), get)
             .then(response => response.text())
