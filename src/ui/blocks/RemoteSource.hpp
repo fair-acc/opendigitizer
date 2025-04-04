@@ -16,6 +16,7 @@
 #include <opencmw.hpp>
 
 #include "conversion.hpp"
+#include "settings.hpp"
 
 namespace opendigitizer {
 
@@ -113,7 +114,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
 
-    opencmw::client::RestClient _client;
+    opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
     std::string                 _subscribedUri;
 
     std::optional<std::chrono::system_clock::time_point> _reconnect{};
@@ -309,7 +310,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     using Parent = gr::Block<RemoteDataSetSource<T>>;
     gr::PortOut<gr::DataSet<T>> out;
 
-    opencmw::client::RestClient _client;
+    opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
     std::string                 _subscribedUri;
 
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;

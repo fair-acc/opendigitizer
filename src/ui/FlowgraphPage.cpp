@@ -105,7 +105,7 @@ static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style
     }
 }
 
-FlowgraphPage::FlowgraphPage() {
+FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : m_restClient{std::move(restClient)} {
     m_editorConfig.SettingsFile = nullptr;
     m_editorConfig.UserPointer  = this;
 }

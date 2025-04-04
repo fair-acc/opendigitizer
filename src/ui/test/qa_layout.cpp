@@ -2,6 +2,7 @@
 #include "imgui.h"
 #include "imgui_test_engine/imgui_te_context.h"
 
+#include <ClientCommon.hpp>
 #include <boost/ut.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
@@ -92,6 +93,7 @@ int main(int argc, char* argv[]) {
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
+    auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
@@ -106,7 +108,7 @@ int main(int argc, char* argv[]) {
     auto dashboardFile = fs.open("examples/qa_layout.yml");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state->dashboard        = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state->dashboard        = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
     g_state->dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
         g_state->dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(graph));

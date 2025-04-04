@@ -15,6 +15,6 @@ cmrc_add_resource_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/default.mustache
   ${CMAKE_CURRENT_SOURCE_DIR}/assets/mustache/ServicesList.mustache)
 
-add_library(od_rest INTERFACE fileserverRestBackend.hpp)
+add_library(od_rest INTERFACE)
 target_include_directories(od_rest INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/.)
 target_link_libraries(od_rest INTERFACE majordomo project_options assets::rest)
