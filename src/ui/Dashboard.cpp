@@ -49,7 +49,7 @@ struct arrsize<T const (&)[N]> {
 };
 
 template<std::size_t N>
-auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
+auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, What const (&what)[N], std::function<void(std::array<std::string, arrsize<decltype(what)>::size>&&)>&& cb, std::function<void()>&& errCb) {
     if (storageInfo->path.starts_with("http://") || storageInfo->path.starts_with("https://")) {
         opencmw::client::Command command;
         command.command  = opencmw::mdp::Command::Get;
@@ -99,9 +99,7 @@ auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::
             }
         };
 
-        // static because ~RestClient() waits for the request to finish, and we don't want that
-        static opencmw::client::RestClient client;
-        client.request(command);
+        client->request(command);
         return;
     } else if (storageInfo->path.starts_with("example://")) {
         std::array<std::string, N> reply;
@@ -203,7 +201,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
-Dashboard::Dashboard(PrivateTag, const std::shared_ptr<const DashboardDescription>& desc) : m_desc(desc) {
+Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> restClient, const std::shared_ptr<const DashboardDescription>& desc) : m_restClient(std::move(restClient)), m_desc(desc) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
@@ -219,7 +217,7 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<const DashboardDescriptio
 
 Dashboard::~Dashboard() {}
 
-std::unique_ptr<Dashboard> Dashboard::create(const std::shared_ptr<const DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, desc); }
+std::unique_ptr<Dashboard> Dashboard::create(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, client, desc); }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
@@ -227,11 +225,11 @@ void Dashboard::load() {
     if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
         m_isInitialised.store(false, std::memory_order_release);
         isInUse = true;
+
         fetch(
-            m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
+            m_restClient, m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
             [this](std::array<std::string, 2>&& data) {
-                //
-                loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
+                loadAndThen(data[0], data[1], [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
                 isInUse = false;
             },
             [this]() {
@@ -246,7 +244,7 @@ void Dashboard::load() {
     }
 }
 
-void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
+void Dashboard::loadAndThen(std::string_view grcData, std::string_view dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
     try {
         gr::Graph grGraph = [this, &grcData]() -> gr::Graph {
             try {
@@ -262,7 +260,7 @@ void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashb
 
         if (const auto dashboardUri = opencmw::URI<>(std::string(m_desc->storageInfo->path)); dashboardUri.hostName().has_value()) {
             const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
-            grGraph.forEachBlockMutable([this, &remoteUri](auto& block) {
+            grGraph.forEachBlockMutable([&remoteUri](auto& block) {
                 if (block.typeName().starts_with("opendigitizer::RemoteStreamSource") || block.typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
                     auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block.raw());
                     sourceBlock->host = remoteUri.str();
@@ -294,7 +292,7 @@ void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashb
     }
 }
 
-void Dashboard::doLoad(const std::string& desc) {
+void Dashboard::doLoad(std::string_view desc) {
     using namespace gr;
     const auto yaml = pmtv::yaml::deserialize(desc);
     if (!yaml) {
@@ -495,29 +493,28 @@ void Dashboard::save() {
     // }
 
     if (m_desc->storageInfo->path.starts_with("http://") || m_desc->storageInfo->path.starts_with("https://")) {
-        opencmw::client::RestClient client;
-        auto                        path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
+        auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
 
         opencmw::client::Command hcommand;
         hcommand.command          = opencmw::mdp::Command::Set;
         std::string headerYamlStr = pmtv::yaml::serialize(headerYaml);
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
         hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
-        client.request(hcommand);
+        m_restClient->request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command             = opencmw::mdp::Command::Set;
         std::string dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
         dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
         dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
-        client.request(dcommand);
+        m_restClient->request(dcommand);
 
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
         fcommand.data.put(stream.str());
         fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
-        client.request(fcommand);
+        m_restClient->request(fcommand);
     } else {
 #ifndef EMSCRIPTEN
         auto path = std::filesystem::path(m_desc->storageInfo->path);
@@ -611,7 +608,7 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::optional<
     if (it == m_services.end()) {
         auto msg = std::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
         components::Notification::warning(msg);
-        auto& s = *m_services.emplace(flowgraphUri, flowgraphUri);
+        auto& s = *m_services.emplace(m_restClient, flowgraphUri, flowgraphUri);
         s.reload();
     }
     removeUnusedRemoteServices();
@@ -684,7 +681,7 @@ void Dashboard::Service::reload() {
             components::Notification::warning("Error reading flowgraph from the service reply");
         }
     };
-    client.request(command);
+    restClient->request(command);
 }
 
 void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
@@ -709,7 +706,7 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
             components::Notification::warning(rep.error);
         }
     };
-    client.request(command);
+    restClient->request(command);
 }
 
 UiGraphModel& Dashboard::graphModel() { return m_graphModel; }
@@ -729,7 +726,7 @@ void Dashboard::Service::execute() {
             components::Notification::warning(rep.error);
         }
     };
-    client.request(command);
+    restClient->request(command);
 }
 
 void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
@@ -743,12 +740,12 @@ void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
     FlowgraphMessage msg;
     msg.flowgraph = std::move(stream).str();
     opencmw::serialise<opencmw::Json>(command.data, msg);
-    s->client.request(command);
+    s->restClient->request(command);
 }
 
-void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb) {
+void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb) {
     fetch(
-        storageInfo, name, {What::Header},
+        client, storageInfo, name, {What::Header},
         [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
             const auto yaml = pmtv::yaml::deserialize(desc[0]);
             if (!yaml) {

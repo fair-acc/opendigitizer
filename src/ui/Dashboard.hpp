@@ -30,6 +30,7 @@ namespace detail {
 
 #include "GraphModel.hpp"
 #include "Scheduler.hpp"
+#include "settings.hpp"
 
 namespace gr {
 class Graph;
@@ -94,7 +95,7 @@ public:
 
     void save();
 
-    static void loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb);
+    static void loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb);
 
     static std::shared_ptr<const DashboardDescription> createEmpty(const std::string& name);
 };
@@ -140,15 +141,15 @@ private:
     class PrivateTag {};
 
 public:
-    explicit Dashboard(PrivateTag, const std::shared_ptr<const DashboardDescription>& desc);
+    explicit Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> restClient, const std::shared_ptr<const DashboardDescription>& desc);
 
-    static std::unique_ptr<Dashboard> create(const std::shared_ptr<const DashboardDescription>& desc);
+    static std::unique_ptr<Dashboard> create(std::shared_ptr<opencmw::client::RestClient> restClient, const std::shared_ptr<const DashboardDescription>& desc);
 
     ~Dashboard();
 
     void load();
 
-    void loadAndThen(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler);
+    void loadAndThen(std::string_view grcData, std::string_view dashboardData, std::function<void(gr::Graph&&)> assignScheduler);
 
     void save();
 
@@ -167,14 +168,13 @@ public:
     inline std::shared_ptr<const DashboardDescription> description() const { return m_desc; }
 
     struct Service {
-        Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
+        Service(std::shared_ptr<opencmw::client::RestClient> client, std::string n, std::string u) : restClient{std::move(client)}, name(std::move(n)), uri(std::move(u)) {}
 
-        std::string name;
-        std::string uri;
-        std::string layout;
-        std::string grc;
-
-        opencmw::client::RestClient client;
+        std::shared_ptr<opencmw::client::RestClient> restClient;
+        std::string                                  name;
+        std::string                                  uri;
+        std::string                                  layout;
+        std::string                                  grc;
 
         void reload();
 
@@ -205,7 +205,7 @@ public:
 
     std::function<void(Dashboard*)> requestClose;
 
-    void doLoad(const std::string& desc);
+    void doLoad(std::string_view desc);
 
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
@@ -224,6 +224,7 @@ public:
     [[nodiscard]] bool isInitialised() const noexcept { return m_isInitialised.load(std::memory_order_acquire); }
 
 private:
+    std::shared_ptr<opencmw::client::RestClient> m_restClient;
     std::shared_ptr<const DashboardDescription>  m_desc = nullptr;
     std::vector<Plot>                            m_plots;
     DockingLayoutType                            m_layout;

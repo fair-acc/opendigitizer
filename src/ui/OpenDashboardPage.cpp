@@ -1,3 +1,4 @@
+#include <ClientCommon.hpp>
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
@@ -15,6 +16,7 @@
 #include "components/Dialog.hpp"
 #include "components/ListBox.hpp"
 #include "scope_exit.hpp"
+#include "settings.hpp"
 
 namespace DigitizerUi {
 
@@ -25,7 +27,7 @@ enum FilterDate { Before, After };
 constexpr const char* addSourcePopupId = "addSourcePopup";
 } // namespace
 
-OpenDashboardPage::OpenDashboardPage() : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now())), m_filterDate(FilterDate::Before), m_restClient(std::make_unique<opencmw::client::RestClient>()) {
+OpenDashboardPage::OpenDashboardPage(std::shared_ptr<opencmw::client::RestClient> restClient) : m_date(std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now())), m_filterDate(FilterDate::Before), m_restClient{std::move(restClient)} {
 #ifndef __EMSCRIPTEN__
     addDashboard(".");
 #endif
@@ -34,7 +36,7 @@ OpenDashboardPage::OpenDashboardPage() : m_date(std::chrono::floor<std::chrono::
 OpenDashboardPage::~OpenDashboardPage() = default;
 
 void OpenDashboardPage::addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n) {
-    DashboardDescription::loadAndThen(storageInfo, n, [&](std::shared_ptr<const DashboardDescription>&& desc) {
+    DashboardDescription::loadAndThen(m_restClient, storageInfo, n, [&](std::shared_ptr<const DashboardDescription>&& desc) {
         if (desc) {
             auto it = std::ranges::find_if(m_dashboards, [&](const auto& d) { return d->storageInfo.get() == storageInfo.get() && d->name == desc->name; });
             if (it == m_dashboards.end()) {

@@ -16,6 +16,9 @@
 #include "components/AppHeader.hpp"
 #include "components/Toolbar.hpp"
 
+#include <IoSerialiserYaS.hpp>
+#include <LoadTest.hpp>
+
 #include <implot.h>
 
 #include <gnuradio-4.0/CircularBuffer.hpp>
@@ -35,7 +38,8 @@ class App {
 public:
     std::string executable;
 
-    std::unique_ptr<Dashboard> dashboard;
+    std::unique_ptr<Dashboard>                   dashboard;
+    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
 
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
@@ -60,7 +64,7 @@ public:
     components::AppHeader header;
 
 public:
-    App() { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
+    App() : flowgraphPage(restClient), openDashboardPage(restClient) { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
@@ -99,7 +103,7 @@ public:
             }
         }
 
-        dashboard = Dashboard::create(desc);
+        dashboard = Dashboard::create(restClient, desc);
         dashboard->load();
         dashboard->requestClose = [this](Dashboard*) { closeDashboard(); };
 
@@ -111,7 +115,7 @@ public:
         fs::path path(url);
 
         auto storageInfo = DashboardStorageInfo::get(path.parent_path().native());
-        DashboardDescription::loadAndThen(storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<const DashboardDescription>&& desc) {
+        DashboardDescription::loadAndThen(restClient, storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<const DashboardDescription>&& desc) {
             if (desc) {
                 loadDashboard(desc);
                 openDashboardPage.addDashboard(storageInfo->path);

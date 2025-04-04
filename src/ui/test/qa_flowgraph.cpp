@@ -30,8 +30,11 @@ using namespace boost;
 using namespace boost::ut;
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    DigitizerUi::FlowgraphPage              flowgraphPage;
+    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
+    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
+    DigitizerUi::FlowgraphPage                   flowgraphPage;
+
+    TestState() : flowgraphPage(restClient) {}
 
     /// In case the tests create more than 1 scheduler, we'll need to wait for them at the end
     std::vector<std::jthread> schedulerThreads;
@@ -95,7 +98,7 @@ struct TestState {
         auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
 
         auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-        dashboard                 = DigitizerUi::Dashboard::create(dashBoardDescription);
+        dashboard                 = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [this](gr::Graph&& grGraph) { //
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;

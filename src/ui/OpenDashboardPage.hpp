@@ -15,7 +15,7 @@ namespace DigitizerUi {
 
 class OpenDashboardPage {
 public:
-    OpenDashboardPage();
+    explicit OpenDashboardPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~OpenDashboardPage();
 
     std::function<void()>                                                   requestCloseDashboard;
@@ -41,7 +41,7 @@ private:
     int                                                      m_filterDate;
     bool                                                     m_filterDateEnabled  = false;
     DashboardStorageInfo*                                    m_storageInfoHovered = nullptr;
-    std::unique_ptr<opencmw::client::RestClient>             m_restClient;
+    std::shared_ptr<opencmw::client::RestClient>             m_restClient;
 };
 
 } // namespace DigitizerUi

@@ -1,13 +1,18 @@
 #ifndef OPENDIGITIZER_SETTINGS_H
 #define OPENDIGITIZER_SETTINGS_H
 
-#include "RestClient.hpp"
+#include <URI.hpp>
+
 #include <algorithm>
 #include <print>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#endif
 
 namespace Digitizer {
 
@@ -76,9 +81,7 @@ private:
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
         remoteDashboards  = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);   // Directory the dashboard worker loads the dashboards from
-#ifndef EMSCRIPTEN
-        opencmw::client::RestClient::CHECK_CERTIFICATES = checkCertificates;
-#else
+#ifdef EMSCRIPTEN
         auto        finalURLChar = static_cast<char*>(EM_ASM_PTR({
             var finalURL         = window.location.href;
             var lengthBytes      = lengthBytesUTF8(finalURL) + 1;
@@ -88,7 +91,7 @@ private:
                }));
         std::string finalURL{finalURLChar, strlen(finalURLChar)};
         EM_ASM({_free($0)}, finalURLChar);
-        auto url = opencmw::URI<STRICT>(finalURL);
+        auto url = opencmw::URI<opencmw::STRICT>(finalURL);
         if (url.port().has_value()) {
             port = url.port().value();
         } else {

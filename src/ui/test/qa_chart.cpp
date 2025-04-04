@@ -126,6 +126,7 @@ int main(int argc, char* argv[]) {
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
+    auto    restClient = std::make_shared<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(false));
 
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
@@ -137,7 +138,7 @@ int main(int argc, char* argv[]) {
     auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state.dashboard         = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
         g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
