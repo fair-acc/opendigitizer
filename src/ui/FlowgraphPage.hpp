@@ -41,8 +41,8 @@ private:
     bool   m_layoutGraph = true;
     ImVec2 m_contextMenuPosition;
 
-    SignalSelector   m_remoteSignalSelector;
-    NewBlockSelector m_newBlockSelector;
+    std::unique_ptr<SignalSelector> m_remoteSignalSelector;
+    NewBlockSelector                m_newBlockSelector;
 
     components::BlockControlsPanelContext m_editPaneContext;
 
@@ -68,6 +68,11 @@ public:
         m_dashboard     = dashboard;
         m_selectedBlock = nullptr;
         m_newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel()) : nullptr);
+        if (dashboard) {
+            m_remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel());
+        } else {
+            m_remoteSignalSelector.reset();
+        }
         reset();
     }
     void reset();

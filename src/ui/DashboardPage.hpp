@@ -32,15 +32,7 @@ public:
     };
 
 public:
-    DashboardPage()
-#ifndef OPENDIGITIZER_TEST
-        // SignalSelector triggers RemoteSignalSources which uses opencmw::client::ClientContext
-        // making self-contained tests difficult to write. Everything is tightly coupled and
-        // this is the best place to break the dependency.
-        : m_signalSelector(std::make_unique<SignalSelector>())
-#endif
-    {
-    }
+    DashboardPage() {}
 
     void draw(Mode mode = Mode::View) noexcept;
     void newPlot();
@@ -48,15 +40,18 @@ public:
 
     void setDashboard(Dashboard& dashboard) {
         m_dashboard = std::addressof(dashboard);
-        if (m_signalSelector) {
-            m_signalSelector->setGraphModel(dashboard.graphModel());
-        }
+#ifndef OPENDIGITIZER_TEST
+        // SignalSelector triggers RemoteSignalSources which uses opencmw::client::ClientContext
+        // making self-contained tests difficult to write. Everything is tightly coupled and
+        // this is the best place to break the dependency.
+        m_signalSelector = std::make_unique<SignalSelector>(dashboard.graphModel());
+#endif
     }
 
 private:
     void drawPlots(DigitizerUi::DashboardPage::Mode mode);
     void drawGrid(float w, float h);
-    void drawLegend(const Mode& mode) noexcept;
+    void drawGlobalLegend(const Mode& mode) noexcept;
     void drawPlot(DigitizerUi::Dashboard::Plot& plot) noexcept;
 
     DockSpace                             m_dockSpace;
