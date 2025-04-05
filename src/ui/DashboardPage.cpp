@@ -395,7 +395,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 ImGui::SameLine();
             }
 
-            drawLegend(mode);
+            drawGlobalLegend(mode);
 
             // Post button strip
             if (mode == Mode::Layout) {
@@ -458,7 +458,7 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
             ImPlotFlags plotFlags = ImPlotFlags_NoChild;
             plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
-            plotFlags |= mode == Mode::Layout || mode == Mode::View ? ImPlotFlags_None : ImPlotFlags_NoLegend; // TODO: Mode::View is a temporary fix to allow the legend being drawn until the global legend drawn by drawLegend(..) works again
+            plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
             ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0}); // TODO: make this perhaps a global style setting via ImPlot::GetStyle()
             ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
@@ -545,8 +545,7 @@ void DashboardPage::drawGrid(float w, float h) {
     }
 }
 
-void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode) noexcept {
-#ifdef TODO_PORT // TODO: revisit this!!!
+void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode& mode) noexcept {
     alignForWidth(std::max(10.f, legend_box.x), 0.5f);
     legend_box.x = 0.f;
     {
@@ -556,7 +555,9 @@ void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode)
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
             // Draw colored rectangle
-            const ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+            ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+            modifiedColor.w      = 1;
+
             const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
             ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), ImGui::ColorConvertFloat4ToU32(modifiedColor));
             bool pressed = ImGui::InvisibleButton("##Button", rectSize);
@@ -573,11 +574,21 @@ void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode)
             return pressed;
         };
 
-        for (plf::colony<Dashboard::Source>::iterator iter = dashboard.sources().begin(); iter != dashboard.sources().end(); ++iter) { // N.B. colony doesn't have a bracket operator TODO: evaluate dependency
-            Dashboard::Source& signal = *iter;
-            auto               color  = ImGui::ColorConvertU32ToFloat4(signal.color);
-            if (legend_item(color, signal.name, signal.visible)) {
-                m_editPane.block     = dashboard.localFlowGraph.findBlock(signal.blockName);
+        int index    = 0;
+        legend_box.x = pane_size.x; // The plots have already filled in full width, legend should be on the new line
+        opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& signal) {
+            IMW::ChangeId itemId(index++);
+            auto          color = signal.color();
+
+            const auto widthEstimate = ImGui::CalcTextSize(signal.name().c_str()).x + 20 /* icon width */;
+            if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
+                ImGui::SameLine();
+            } else {
+                legend_box.x = 0.f; // start a new line
+            }
+
+            if (legend_item(color, signal.name(), signal.isVisible)) {
+                m_editPane.block     = m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName);
                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
             legend_box.x += ImGui::GetItemRectSize().x;
@@ -585,18 +596,9 @@ void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode)
             if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                 DndItem dnd = {nullptr, &signal};
                 ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
-                legend_item(color, signal.name, signal.visible);
+                legend_item(color, signal.name(), signal.isVisible);
             }
-
-            if (const auto nextSignal = std::next(iter, 1); nextSignal != dashboard.sources().cend()) {
-                const auto widthEstimate = ImGui::CalcTextSize(nextSignal->name.c_str()).x + 20 /* icon width */;
-                if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
-                    ImGui::SameLine(); // keep item on the same line if compatible with overall pane width
-                } else {
-                    legend_box.x = 0.f; // start a new line
-                }
-            }
-        }
+        });
     }
     legend_box.x = ImGui::GetItemRectSize().x;
     legend_box.y = std::max(5.f, ImGui::GetItemRectSize().y);
@@ -604,13 +606,12 @@ void DashboardPage::drawLegend([[maybe_unused]] const DashboardPage::Mode& mode)
     if (auto dndTarget = IMW::DragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
             auto* dnd = static_cast<DndItem*>(payload->Data);
-            if (auto plot = dnd->plotSource) {
-                plot->sources.erase(std::find(plot->sources.begin(), plot->sources.end(), dnd->source));
+            if (auto* dndPlot = dnd->plot) {
+                dndPlot->sources.erase(std::ranges::find(dndPlot->sources, dnd->plotSource));
             }
         }
     }
     // end draw legend
-#endif
 }
 
 void DashboardPage::newPlot() {
