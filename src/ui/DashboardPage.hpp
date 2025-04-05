@@ -51,7 +51,7 @@ public:
 private:
     void drawPlots(DigitizerUi::DashboardPage::Mode mode);
     void drawGrid(float w, float h);
-    void drawLegend(const Mode& mode) noexcept;
+    void drawGlobalLegend(const Mode& mode) noexcept;
     void drawPlot(DigitizerUi::Dashboard::Plot& plot) noexcept;
 
     DockSpace                             m_dockSpace;
