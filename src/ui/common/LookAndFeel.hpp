@@ -23,7 +23,9 @@ struct LookAndFeel {
     std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
     float                     defaultDPI  = 76.2f;
     float                     verticalDPI = defaultDPI;
-    std::array<ImFont*, 2>    fontNormal  = {nullptr, nullptr}; /// default font [0] production [1] prototype use
+    std::array<ImFont*, 2>    fontTiny    = {nullptr, nullptr}; /// default font [0] production [1] prototype use
+    std::array<ImFont*, 2>    fontSmall   = {nullptr, nullptr}; /// 0: production 1: prototype use
+    std::array<ImFont*, 2>    fontNormal  = {nullptr, nullptr}; /// 0: production 1: prototype use
     std::array<ImFont*, 2>    fontBig     = {nullptr, nullptr}; /// 0: production 1: prototype use
     std::array<ImFont*, 2>    fontBigger  = {nullptr, nullptr}; /// 0: production 1: prototype use
     std::array<ImFont*, 2>    fontLarge   = {nullptr, nullptr}; /// 0: production 1: prototype use

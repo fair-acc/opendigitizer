@@ -1,0 +1,44 @@
+layout: Free
+sources:
+  - name: PlotSinkGS04ME1E_Septum_voltage
+    block: PlotSinkGS04ME1E_Septum_voltage
+  - name: PlotSinkGS04ME1E_Clearing_voltage
+    block: PlotSinkGS04ME1E_Clearing_voltage
+plots:
+  - name: CombinedPlot
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotSinkGS04ME1E_Septum_voltage
+      - PlotSinkGS04ME1E_Clearing_voltage
+    rect: [0, 0, 4, 1] # x, y, width, height
+  - name: PlotGS04ME1E_Septum
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotSinkGS04ME1E_Septum_voltage
+    rect: [0, 1, 2, 1] # x, y, width, height
+  - name: PlotGS04ME1E_Clearing
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotSinkGS04ME1E_Clearing_voltage
+    rect: [2, 1, 2, 1] # x, y, width, height

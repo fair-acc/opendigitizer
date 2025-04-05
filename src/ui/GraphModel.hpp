@@ -55,12 +55,17 @@ struct UiGraphBlock {
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
+    struct SettingsMetaInformation {
+        std::string unit;
+        std::string description;
+        bool        isVisible;
+    };
+
+    std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
+    void                                           updateBlockSettingsMetaInformation();
+
     std::vector<UiGraphPort> inputPorts;
     std::vector<UiGraphPort> outputPorts;
-
-    // Rendering-related members
-    std::vector<float> inputPortWidths;
-    std::vector<float> outputPortWidths;
 
     // TODO when nested graphs support gets here
     // std::vector<UiGraphBlock> children

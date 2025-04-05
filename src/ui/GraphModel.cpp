@@ -199,6 +199,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     for (const auto& [key, value] : data) {
         if (key != "unique_name"s) {
             blockIt->blockSettings.insert_or_assign(key, value);
+            blockIt->updateBlockSettingsMetaInformation();
         }
     }
 }
@@ -357,6 +358,7 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
         updateFieldFrom(block.blockMetaInformation, blockData, "metaInformation"s);
 
         block.blockSettings.erase("unique_name"s);
+        block.updateBlockSettingsMetaInformation();
 
         updateFieldFrom(block.blockCategory, blockData, "blockCategory"s);
         updateFieldFrom(block.blockUiCategory, blockData, "uiCategory"s);
@@ -375,8 +377,6 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
 
         processPorts(block.inputPorts, "inputPorts"s, gr::PortDirection::INPUT);
         processPorts(block.outputPorts, "outputPorts"s, gr::PortDirection::OUTPUT);
-        block.inputPortWidths.clear();
-        block.outputPortWidths.clear();
 
         block.getAllContexts();
         block.getActiveContext();
@@ -503,4 +503,21 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
         .endpoint        = gr::block::property::kSettingsCtx,
         .data            = gr::property_map{{"context", context}, {"time", time}},
     });
+}
+
+void UiGraphBlock::updateBlockSettingsMetaInformation() {
+    for (const auto& [settingKey, _] : blockSettings) {
+        auto findMetaInformation = [this, &settingKey]<typename TDesired>(const std::string& key, const std::string& attr, TDesired defaultResult) -> TDesired {
+            const auto it = this->blockMetaInformation.find(key + "::" + attr);
+            if (const auto unitPtr = std::get_if<TDesired>(&it->second); unitPtr) {
+                return *unitPtr;
+            }
+            return defaultResult;
+        };
+        const auto description = findMetaInformation(settingKey, "description", settingKey);
+        const auto unit        = findMetaInformation(settingKey, "unit", std::string());
+        const auto isVisible   = findMetaInformation(settingKey, "visible", false);
+
+        blockSettingsMetaInformation[settingKey] = SettingsMetaInformation{.unit = unit, .description = description, .isVisible = isVisible};
+    }
 }

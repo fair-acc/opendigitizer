@@ -80,6 +80,8 @@ cmrc_add_resource_library(
   sample_dashboards
   NAMESPACE
   sample_dashboards
+  assets/sampleDashboards/dashboard.grc
+  assets/sampleDashboards/dashboard.yml
   assets/sampleDashboards/ExtendedDemoDashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.yml
   assets/sampleDashboards/DemoDashboard.grc
@@ -126,6 +128,8 @@ add_library(
   components/AppHeader.hpp
   components/Block.cpp
   components/Block.hpp
+  components/BlockNeighboursPreview.cpp
+  components/BlockNeighboursPreview.hpp
   components/Dialog.hpp
   components/Docking.cpp
   components/Docking.hpp

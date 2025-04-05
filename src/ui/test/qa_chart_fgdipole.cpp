@@ -71,7 +71,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
-    gr::registerBlock<opendigitizer::ImPlotSinkDataSet, float>(registry);
 #pragma GCC diagnostic pop
 }
 

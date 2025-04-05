@@ -16,11 +16,11 @@ blocks:
     parameters:
       color: 0xff0000
   - name: triggered sink
-    id: opendigitizer::ImPlotSinkDataSet<float32>
+    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
       color: 0x00ff00
   - name: multiplexed sink
-    id: opendigitizer::ImPlotSinkDataSet<float32>
+    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
       color: 0x0000ff
 connections:

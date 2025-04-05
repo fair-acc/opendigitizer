@@ -10,7 +10,7 @@ blocks:
     parameters:
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=test
   - name: sink 1
-    id: opendigitizer::ImPlotSinkDataSet<float32>
+    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
       color: 0xff0000
   - name: sink 2

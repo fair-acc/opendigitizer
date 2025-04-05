@@ -1,8 +1,10 @@
+#include "FlowgraphPage.hpp"
 #include "imgui.h"
 #include "imgui_test_engine/imgui_te_context.h"
 
 #include <boost/ut.hpp>
 
+#include <fmt/core.h>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -34,9 +36,20 @@ using namespace boost::ut;
 
 struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard> dashboard;
+    DigitizerUi::FlowgraphPage              flowgraphPage;
 
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
+
+    bool hasBlocks() const { return dashboard && !dashboard->graphModel().blocks().empty(); }
+
+    void drawGraph() {
+        // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
+        if (hasBlocks()) {
+            flowgraphPage.sortNodes();
+            flowgraphPage.drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail());
+        }
+    }
 
     void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
         std::size_t count = 0;
@@ -57,7 +70,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
-        ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_dashboard", "DashboardPage::drawPlot");
+        ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "FlowgraphPage::drawNodeEditor");
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext*) {
@@ -66,28 +79,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));
 
-            if (g_state.dashboard) {
-                DigitizerUi::DashboardPage page;
-                page.setDashboard(*g_state.dashboard);
-                page.draw();
-                ut::expect(!g_state.dashboard->plots().empty());
-            }
+            g_state.drawGraph();
 
+            g_state.dashboard->handleMessages();
             ImGui::End();
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            "DashboardPage::drawPlot"_test = [ctx] {
+            "FlowgraphPage::drawNodeEditor"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
-                ut::expect(implotSinkRaw);
-                auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
-
-                // g_state.waitForScheduler();
-
-                const int maxSamples = 3000;
-                while (implotSink->_yValues.size() < maxSamples) {
+                g_state.waitForScheduler();
+                while (!g_state.hasBlocks()) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 
@@ -145,11 +148,16 @@ int main(int argc, char* argv[]) {
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
-        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
+        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
         g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
     });
 
-    g_state.startScheduler();
+    // set the callback so we don't crash
+    g_state.flowgraphPage.requestBlockControlsPanel = [](DigitizerUi::components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool) {};
+
+    g_state.flowgraphPage.setDashboard(g_state.dashboard.get());
+
+    std::jthread schedulerThread([] { g_state.startScheduler(); });
 
     return app.runTests() ? 0 : 1;
 }
