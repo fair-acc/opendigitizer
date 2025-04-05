@@ -222,7 +222,7 @@ struct ImPlotSinkModel {
 
     virtual void* raw() const = 0;
 
-    ImVec4 color() {
+    ImVec4 color() const {
         static const auto defaultColor = ImVec4(0.3f, 0.3f, 0.3f, 1.f);
         auto              maybeColor   = settings().get("color");
         if (!maybeColor) {
@@ -476,7 +476,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
         color = _colour.colour();
         if constexpr (std::is_arithmetic_v<T>) {
-            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
+            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | color);
             ImPlot::SetNextLineStyle(lineColor);
 
             auto [minX, maxX] = std::ranges::minmax(_xValues);
@@ -499,7 +499,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     continue; // not 1D signal or not enough signals
                 }
 
-                ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | ((color & 0xFF) << 16) | (color & 0xFF00) | ((color & 0xFF0000) >> 16));
+                ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | color);
                 lineColor.w      = std::max(0.f, 1.0f - static_cast<float>(historyIdx) * 1.f / static_cast<float>(nMax));
                 ImPlot::SetNextLineStyle(lineColor);
 

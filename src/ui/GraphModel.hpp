@@ -155,9 +155,11 @@ public:
 
     AvailableParametrizationsResult availableParametrizationsFor(const std::string& fullBlockType) const;
 
+    UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
+
 private:
-    auto findBlockByName(const std::string& uniqueName);
-    auto findPortByName(auto& ports, const std::string& uniqueName);
+    auto findBlockIteratorByUniqueName(const std::string& uniqueName);
+    auto findPortIteratorByName(auto& ports, const std::string& portName);
 
     bool handleBlockRemoved(const std::string& uniqueName);
     void handleBlockEmplaced(const gr::property_map& blockData);

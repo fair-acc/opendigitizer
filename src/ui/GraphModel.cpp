@@ -137,18 +137,27 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
     sendMessage(std::move(message));
 }
 
-auto UiGraphModel::findBlockByName(const std::string& uniqueName) {
+auto UiGraphModel::findBlockIteratorByUniqueName(const std::string& uniqueName) {
     auto it = std::ranges::find_if(_blocks, [&](const auto& block) { return block.blockUniqueName == uniqueName; });
     return std::make_pair(it, it != _blocks.end());
 }
 
-auto UiGraphModel::findPortByName(auto& ports, const std::string& portName) {
+UiGraphBlock* UiGraphModel::findBlockByUniqueName(const std::string& uniqueName) {
+    auto [it, found] = findBlockIteratorByUniqueName(uniqueName);
+    if (found) {
+        return std::addressof(*it);
+    } else {
+        return nullptr;
+    }
+}
+
+auto UiGraphModel::findPortIteratorByName(auto& ports, const std::string& portName) {
     auto it = std::ranges::find_if(ports, [&](const auto& port) { return port.portName == portName; });
     return std::make_pair(it, it != ports.end());
 }
 
 bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return false;
@@ -162,7 +171,7 @@ bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
 
 void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
     const auto uniqueName  = getProperty<std::string>(blockData, "uniqueName"s);
-    const auto [it, found] = findBlockByName(uniqueName);
+    const auto [it, found] = findBlockIteratorByUniqueName(uniqueName);
     if (found) {
         setBlockData(*it, blockData);
     } else {
@@ -172,7 +181,7 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
 }
 
 void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return;
@@ -182,7 +191,7 @@ void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const g
 }
 
 void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return;
@@ -198,7 +207,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
 void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
 
 void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return;
@@ -214,7 +223,7 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
 }
 
 void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return;
@@ -234,7 +243,7 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
 }
 
 void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
-    auto [blockIt, found] = findBlockByName(uniqueName);
+    auto [blockIt, found] = findBlockIteratorByUniqueName(uniqueName);
     if (!found) {
         requestGraphUpdate();
         return;
@@ -272,7 +281,7 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Update or create blocks that GR knows
     const auto& children = getProperty<gr::property_map>(data, "children");
     for (const auto& [childUniqueName, blockData] : children) {
-        const auto [blockIt, found] = findBlockByName(childUniqueName);
+        const auto [blockIt, found] = findBlockIteratorByUniqueName(childUniqueName);
         if (found) {
             setBlockData(*blockIt, std::get<gr::property_map>(blockData));
         } else {
@@ -397,7 +406,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     edge.edgeDestinationPortDefinition = portDefinitionFor("destinationPort"s);
 
     auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
-        auto [it, found] = findBlockByName(currentBlockName);
+        auto [it, found] = findBlockIteratorByUniqueName(currentBlockName);
         if (!found) {
             return nullptr;
         }
