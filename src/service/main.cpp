@@ -97,14 +97,24 @@ int main(int argc, char** argv) {
     }
 
     std::string grc = R"(blocks:
-  - name: source
+  - name: ClockSource1
     id: gr::basic::ClockSource
-  - name: sink
+    parameters:
+      n_samples_max: 0
+  - name: SignalGenerator1
+    id: gr::basic::SignalGenerator<float32>
+    parameters:
+      frequency: 1
+      amplitude: 5
+      sample_rate: 4096
+      signal_type: Sine
+  - name: Sink
     id: gr::basic::DataSink<float32>
     parameters:
       signal_name: test
 connections:
-  - [source, 0, sink, 0]
+  - [ClockSource1, 0, SignalGenerator1, 0]
+  - [SignalGenerator1, 0, Sink, 0]
 )";
     if (argc > 1) {
         std::ifstream     in(argv[1]);
