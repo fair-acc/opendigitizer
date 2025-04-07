@@ -47,7 +47,7 @@ struct TestState {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks()) {
             flowgraphPage.sortNodes();
-            flowgraphPage.drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail());
+            DigitizerUi::FlowgraphPage::drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail(), flowgraphPage.m_filterBlock);
         }
     }
 
@@ -62,6 +62,8 @@ struct TestState {
             throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
         }
     }
+
+    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.m_filterBlock = block; }
 };
 
 TestState g_state;
@@ -95,6 +97,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
 
                 g_state.stopScheduler();
+                captureScreenshot(*ctx);
+
+                // Test filtering
+                g_state.setFilterBlock(&g_state.dashboard->graphModel().blocks()[0]);
                 captureScreenshot(*ctx);
             };
         };
