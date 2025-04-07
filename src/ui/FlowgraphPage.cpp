@@ -539,12 +539,16 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         sortNodes();
     }
 
+    auto originalFilterBlock = m_filterBlock;
     drawGraph(m_dashboard->graphModel(), size, m_filterBlock);
+
+    // don't open properties pane if just clicking on the radio button
+    const bool filterRadioPressed = originalFilterBlock != m_filterBlock;
 
     auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+    if (!filterRadioPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
         auto block = n.AsPointer<UiGraphBlock>();
 
