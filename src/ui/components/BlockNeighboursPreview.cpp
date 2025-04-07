@@ -75,7 +75,14 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     // While the above can be achieved with some hacking and private API, disabling panning was crashing inside ImGui and disabling Zoom
     // was flaky, where it still zoomed in some edge cases.
 
-    if (!context.block || !context.graphModel) {
+    if (!context.graphModel) {
+        // We can not show the preview if the graph model is not set
+        // (this can happen when block properties are shown in the
+        // chart view)
+        return;
+    }
+
+    if (!context.block) {
         // This does not happen, it would be a bug. Let it crash in debug mode so we notice.
         assert(false);
         return;
