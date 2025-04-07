@@ -551,7 +551,10 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
     {
         IMW::Group group;
 
-        const auto legend_item = [](const ImVec4& color, std::string_view text, bool enabled = true) -> bool {
+        enum class MouseClick { No, Left, Right };
+
+        const auto LegendItem = [](const ImVec4& color, std::string_view text, bool enabled = true) -> MouseClick {
+            MouseClick   result    = MouseClick::No;
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
             // Draw colored rectangle
@@ -560,7 +563,9 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
             const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
             ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), ImGui::ColorConvertFloat4ToU32(modifiedColor));
-            bool pressed = ImGui::InvisibleButton("##Button", rectSize);
+            if (ImGui::InvisibleButton("##Button", rectSize)) {
+                result = MouseClick::Left;
+            }
             ImGui::SameLine();
 
             // Draw button text with transparent background
@@ -569,9 +574,16 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
             IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.1f));
             IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
             IMW::StyleColor textStyle(ImGuiCol_Text, enabled ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            pressed |= ImGui::Button(text.data(), buttonSize);
 
-            return pressed;
+            if (ImGui::Button(text.data(), buttonSize)) {
+                result = MouseClick::Left;
+            }
+
+            if (ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonRight & ImGuiPopupFlags_MouseButtonMask_) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+                result = MouseClick::Right;
+            }
+
+            return result;
         };
 
         int index    = 0;
@@ -580,23 +592,28 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
             IMW::ChangeId itemId(index++);
             auto          color = signal.color();
 
-            const auto widthEstimate = ImGui::CalcTextSize(signal.name().c_str()).x + 20 /* icon width */;
+            const auto widthEstimate = ImGui::CalcTextSize(signal.signalName().c_str()).x + 20 /* icon width */;
             if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
                 ImGui::SameLine();
             } else {
                 legend_box.x = 0.f; // start a new line
             }
 
-            if (legend_item(color, signal.name(), signal.isVisible)) {
-                m_editPane.block     = m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName);
-                m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            auto clickedMouseButton = LegendItem(color, signal.signalName(), signal.isVisible);
+            if (clickedMouseButton == MouseClick::Right) {
+                m_editPane.graphModel = std::addressof(m_dashboard->graphModel());
+                m_editPane.block      = m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName);
+                m_editPane.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            }
+            if (clickedMouseButton == MouseClick::Left) {
+                signal.isVisible = !signal.isVisible;
             }
             legend_box.x += ImGui::GetItemRectSize().x;
 
             if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                 DndItem dnd = {nullptr, &signal};
                 ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
-                legend_item(color, signal.name(), signal.isVisible);
+                LegendItem(color, signal.signalName(), signal.isVisible);
             }
         });
     }
