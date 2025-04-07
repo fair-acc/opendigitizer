@@ -213,8 +213,10 @@ struct ImPlotSinkModel {
 
     virtual gr::work::Status draw(const gr::property_map& config = {}) noexcept = 0;
 
-    virtual std::string name() const              = 0;
-    virtual void        setName(std::string name) = 0;
+    virtual std::string name() const                    = 0;
+    virtual void        setName(std::string name)       = 0;
+    virtual std::string signalName() const              = 0;
+    virtual void        setSignalName(std::string name) = 0;
 
     virtual gr::SettingsBase& settings() const = 0;
 
@@ -264,6 +266,8 @@ private:
 
         std::string name() const override { return block->name; }
         void        setName(std::string name) override { block->name = std::move(name); }
+        std::string signalName() const override { return block->signal_name; }
+        void        setSignalName(std::string name) override { block->signal_name = std::move(name); }
 
         virtual gr::SettingsBase& settings() const { return block->settings(); }
 
