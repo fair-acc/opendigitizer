@@ -5,8 +5,10 @@
 #include <crude_json.h>
 #include <fmt/format.h>
 
+#include "GraphModel.hpp"
 #include "common/ImguiWrap.hpp"
 
+#include <imgui_node_editor.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "common/LookAndFeel.hpp"
@@ -292,7 +294,7 @@ float FlowgraphPage::pinLocalPositionY(std::size_t index, std::size_t numPins, f
     return spacing * (static_cast<float>(index) + 1) - (pinHeight / 2);
 }
 
-void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
+void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, const UiGraphBlock*& filterBlock) {
     IMW::NodeEditor::Editor nodeEditor("My Editor", ImVec2{size.x, size.y}); // ImGui::GetContentRegionAvail());
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -316,6 +318,12 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
         const int    pinHeight = 10;
         const ImVec2 minimumBlockSize{80.0f, 0.0f};
 
+        // to save result of expensive recursion
+        std::vector<ax::NodeEditor::NodeId> filteredOutNodes;
+
+        // over-reserved, but minimizes allocations
+        filteredOutNodes.reserve(filterBlock ? graphModel.blocks().size() : 0);
+
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphModel.blocks()) {
@@ -325,6 +333,12 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
             const auto& outputPorts = block.outputPorts;
 
             auto blockPosition = [&] {
+                const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
+                if (filteredOut) {
+                    filteredOutNodes.push_back(blockId);
+                }
+
+                IMW::Disabled         disabled(filteredOut);
                 IMW::NodeEditor::Node node(blockId);
 
                 const auto blockScreenPosition = ImGui::GetCursorScreenPos();
@@ -350,6 +364,22 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                         std::string value = valToString(propertyValue);
                         ImGui::Text("%s: %s", currentPropertyMetaInformation.description.c_str(), value.c_str());
                     }
+
+                    ImGui::Spacing();
+
+                    const bool isFilter = filterBlock == &block;
+
+                    // Make radio-button a bit smaller since we also made the properties smaller, looks huge otherwise
+                    IMW::StyleVar    styleVar(ImGuiStyleVar_FramePadding, GImGui->Style.FramePadding - ImVec2{0, 3});
+                    IMW::ChangeStrId changeId(block.blockUniqueName.c_str());
+
+                    if (ImGui::RadioButton("Filter", isFilter)) {
+                        if (isFilter) {
+                            filterBlock = nullptr;
+                        } else {
+                            filterBlock = &block;
+                        }
+                    }
                 }
 
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
@@ -371,11 +401,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
                     const float blockY = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
                     for (std::size_t i = 0; i < ports.size(); ++i) {
-                        // TODO Reimplement block visual filtering
-                        // if (!filteredOut) {
                         position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
                         addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinWidth, pinHeight});
-                        // }
                     }
                 };
 
@@ -435,9 +462,15 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size) {
 
         const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
         for (auto& edge : graphModel.edges()) {
-            ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
-                ax::NodeEditor::PinId(edge.edgeSourcePort),     //
-                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+            const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
+            const auto destinationBlockId = ax::NodeEditor::NodeId(edge.edgeDestinationPort->ownerBlock);
+            if (!std::any_of(filteredOutNodes.begin(), filteredOutNodes.end(), [&](const ax::NodeEditor::NodeId& nodeId) { //
+                    return nodeId == sourceBlockId || nodeId == destinationBlockId;
+                })) {
+                ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
+                    ax::NodeEditor::PinId(edge.edgeSourcePort),     //
+                    ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+            }
         }
 
         // Handle creation action, returns true if editor want to create new object (node or link)
@@ -506,7 +539,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         sortNodes();
     }
 
-    drawGraph(m_dashboard->graphModel(), size);
+    drawGraph(m_dashboard->graphModel(), size, m_filterBlock);
 
     auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
