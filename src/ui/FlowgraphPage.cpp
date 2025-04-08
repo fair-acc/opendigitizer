@@ -3,11 +3,13 @@
 #include <algorithm>
 
 #include <crude_json.h>
+#include <cstdint>
 #include <fmt/format.h>
 
 #include "GraphModel.hpp"
 #include "common/ImguiWrap.hpp"
 
+#include <imgui.h>
 #include <imgui_node_editor.h>
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -332,13 +334,20 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
             const auto& inputPorts  = block.inputPorts;
             const auto& outputPorts = block.outputPorts;
 
+            const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
+
+            // If filteredOut, set opacity to 25% until we exit the scope
+            struct scope_guard {
+                float originalAlpha;
+                scope_guard(float newAlpha) : originalAlpha(std::exchange(ImGui::GetStyle().Alpha, newAlpha)) {}
+                ~scope_guard() { ImGui::GetStyle().Alpha = originalAlpha; }
+            } restoreStyle(filteredOut ? 0.25f : ImGui::GetStyle().Alpha);
+
             auto blockPosition = [&] {
-                const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
                 if (filteredOut) {
                     filteredOutNodes.push_back(blockId);
                 }
 
-                IMW::Disabled         disabled(filteredOut);
                 IMW::NodeEditor::Node node(blockId);
 
                 const auto blockScreenPosition = ImGui::GetCursorScreenPos();
@@ -830,8 +839,17 @@ void FlowgraphPage::sortNodes() {
 void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph) {
 
     const auto& style = FlowgraphPage::styleForDataType(type);
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, style.color);
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(style.color));
+
+    std::uint32_t alphaClearMask = 0x00ffffff;
+    std::uint32_t alphaSetMask   = 0xff000000;
+    if (ImGui::GetStyle().Alpha < 0.9f) {
+        alphaSetMask = static_cast<std::uint32_t>(ImGui::GetStyle().Alpha * 255);
+        alphaSetMask <<= 3 * 8;
+    }
+
+    const auto color = (style.color & alphaClearMask) | alphaSetMask;
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, color);
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(color));
     ImGui::SetCursorPos(pinPosition);
 
     if (ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize)) {
