@@ -14,6 +14,8 @@ class UiGraphModel;
 struct UiGraphBlock;
 
 struct UiGraphPort {
+    enum class Role { Source, Destination };
+
     UiGraphBlock* ownerBlock = nullptr;
 
     std::string       portName;
@@ -105,6 +107,15 @@ struct UiGraphEdge {
     std::string  edgeType;
 
     UiGraphEdge(UiGraphModel* owner) : ownerGraph(owner), edgeSourcePortDefinition(std::string()), edgeDestinationPortDefinition(std::string()) {}
+
+    /// returns the source or the destination block
+    UiGraphBlock* getBlock(UiGraphPort::Role role) const {
+        if (role == UiGraphPort::Role::Source) {
+            return edgeSourcePort ? edgeSourcePort->ownerBlock : nullptr;
+        } else {
+            return edgeDestinationPort ? edgeDestinationPort->ownerBlock : nullptr;
+        }
+    }
 };
 
 class UiGraphModel {
@@ -146,6 +157,9 @@ public:
     void requestGraphUpdate();
     void requestAvailableBlocksTypesUpdate();
 
+    /// Returns whether a block is connected directly or indirectly to another block
+    bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree) const;
+
     struct AvailableParametrizationsResult {
         std::string baseType;
         std::string parametrization;
@@ -177,6 +191,8 @@ private:
     void               setBlockData(auto& block, const gr::property_map& blockData);
     [[nodiscard]] bool setEdgeData(auto& edge, const gr::property_map& edgeData);
     void               removeEdgesForBlock(UiGraphBlock& block);
+
+    bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const;
 };
 
 } // namespace DigitizerUi

@@ -461,6 +461,27 @@ void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
     });
 }
 
+bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree) const { return blockInTree(block, tree, UiGraphPort::Role::Source) || blockInTree(block, tree, UiGraphPort::Role::Destination); }
+
+bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const {
+    if (&block == &tree) {
+        return true;
+    }
+
+    const UiGraphPort::Role role1 = direction == UiGraphPort::Role::Source ? UiGraphPort::Role::Destination : UiGraphPort::Role::Source;
+    const UiGraphPort::Role role2 = direction;
+
+    auto edges = _edges | std::views::filter([&](const auto& edge) { return edge.getBlock(role1) == &tree; });
+    for (auto edge : edges) {
+        auto neighbourBlock = edge.getBlock(role2);
+        if (neighbourBlock && blockInTree(block, *neighbourBlock, direction)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool UiGraphBlock::isConnected() const {
     return std::ranges::find_if(ownerGraph->edges(), [blockPtr = this](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //

@@ -33,7 +33,8 @@ private:
 
     Dashboard* m_dashboard = nullptr;
 
-    UiGraphBlock* m_selectedBlock = nullptr;
+    const UiGraphBlock* m_filterBlock   = nullptr;
+    UiGraphBlock*       m_selectedBlock = nullptr;
 
     ax::NodeEditor::Config         m_editorConfig;
     ax::NodeEditor::EditorContext* m_editor = nullptr;
@@ -50,7 +51,7 @@ private:
 
     void drawNodeEditor(const ImVec2& size);
 
-    static void drawGraph(UiGraphModel& graphModel, const ImVec2& size);
+    static void drawGraph(UiGraphModel& graphModel, const ImVec2& size, const UiGraphBlock*& filterBlock);
 
 public:
     struct DataTypeStyle {
