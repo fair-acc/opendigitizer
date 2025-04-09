@@ -11,8 +11,6 @@ target_link_libraries(
           gnuradio-core
           gnuradio-meta
           gnuradio-algorithm
-          gr-basic
-          gr-fourier
           implot
           imgui-node-editor
           services
@@ -55,7 +53,15 @@ if(ENABLE_IMGUI_TEST_ENGINE)
 
   function(add_imgui_test NAME)
     add_executable(${NAME} ${NAME}.cpp)
-    target_link_libraries(${NAME} PRIVATE opendigitizer-uilib ut imgui_tests_common)
+    target_link_libraries(
+      ${NAME}
+      PRIVATE opendigitizer-uilib
+              ut
+              imgui_tests_common
+              gnuradio-blocklib-core
+              GrBasicBlocksShared
+              GrTestingBlocksShared
+              GrFourierBlocksShared)
     add_test(NAME ${NAME} COMMAND ${NAME})
   endfunction()
 

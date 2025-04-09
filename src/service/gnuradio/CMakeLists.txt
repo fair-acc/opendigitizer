@@ -10,7 +10,6 @@ target_link_libraries(
             majordomo
             disruptor
             gr-basic
-            gr-testing
             project_options)
 
 add_subdirectory(test)
