@@ -5,6 +5,7 @@
 
 #include "../App.hpp"
 
+#include "../blocks/RemoteSource.hpp"
 #include "FAIR/DeviceNameHelper.hpp"
 
 using namespace std::string_literals;
@@ -60,75 +61,6 @@ SignalSelector::SignalSelector(UiGraphModel& graphModel) {
     };
 
     buildIndex();
-}
-
-void SignalSelector::draw() {
-    auto parentSize = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowSize(parentSize - ImVec2(32, 32), ImGuiCond_Once);
-    if (auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        float windowWidth = ImGui::GetWindowWidth();
-        float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
-        ImGui::SetCursorPosX(buttonPosX);
-        if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            ImGui::CloseCurrentPopup();
-            return;
-        }
-
-        drawSignalSelector();
-    }
-}
-
-void SignalSelector::addRemoteSource(const std::string& uriStr) {
-    auto blockType = [&] {
-        opencmw::URI<opencmw::RELAXED> uri{uriStr};
-        const auto                     params  = uri.queryParamMap();
-        const auto                     acqMode = params.find("acquisitionModeFilter");
-        if (acqMode != params.end() && acqMode->second && acqMode->second != "streaming") {
-            return "opendigitizer::RemoteDataSetSource";
-        }
-        return "opendigitizer::RemoteStreamSource";
-    }();
-
-    auto blockParams = [&] {
-        opencmw::URI<opencmw::RELAXED> uri{uriStr};
-        const auto                     params   = uri.queryParamMap();
-        const auto                     dataType = params.find("acquisitionDataType");
-        if (dataType != params.end() && dataType->second) {
-            return *dataType->second;
-        }
-        return "<float32>"s;
-    }();
-
-    gr::Message message;
-    message.cmd      = gr::message::Command::Set;
-    message.endpoint = gr::graph::property::kEmplaceBlock;
-    gr::property_map properties{{"remote_uri"s, uriStr}};
-    message.data = gr::property_map{                              //
-        {"type"s, std::move(blockType) + std::move(blockParams)}, //
-        {"properties"s, std::move(properties)}};
-    m_graphModel->sendMessage(std::move(message));
-    close();
-}
-
-void SignalSelector::drawRemoteSignalsInput() {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("URI:");
-    ImGui::SameLine();
-    if (m_addRemoteSignalDialogOpened) {
-        ImGui::SetKeyboardFocusHere();
-        m_addRemoteSignalDialogOpened = false;
-    }
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    ImGui::InputText("##uri", &m_addRemoteSignalUri);
-
-    if (ImGui::Button("Add")) {
-        m_addRemoteSignal = false;
-        addRemoteSource(m_addRemoteSignalUri);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
-        m_addRemoteSignal = false;
-    }
 }
 
 void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection) {
@@ -201,7 +133,7 @@ bool SignalSelector::signalMatchesActiveFilters(const SignalData& signal) const 
     return std::ranges::find(stateMatches, NoMatches) == stateMatches.end();
 }
 
-void SignalSelector::drawSignalSelector() {
+std::vector<SignalData> SignalSelector::drawSignalSelector() {
     m_querySignalFilters.drawFilters();
 
     bool filtersChanged = m_forceRefresh;
@@ -286,15 +218,33 @@ void SignalSelector::drawSignalSelector() {
             selectedEntries.push_back(*m_filteredItems[id]);
         }
 
-        for (const auto& entry : selectedEntries) {
-            const auto uri = opencmw::URI<>::UriFactory().scheme(entry.protocol).hostName(entry.hostname).port(static_cast<uint16_t>(entry.port)).path(entry.serviceName).addQueryParameter("channelNameFilter", entry.signalName).build();
-            addRemoteSource(uri.str());
-        }
+        close();
+        return selectedEntries;
     }
     ImGui::SameLine();
     if (ImGui::Button("Refresh")) {
         m_signalList.update();
     }
+
+    return {};
+}
+
+std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
+    auto parentSize = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowSize(parentSize - ImVec2(32, 32), ImGuiCond_Once);
+    if (auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        float windowWidth = ImGui::GetWindowWidth();
+        float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
+        ImGui::SetCursorPosX(buttonPosX);
+        if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+            return {};
+        }
+
+        return drawSignalSelector();
+    }
+
+    return {};
 }
 
 void SignalSelector::buildIndex() {

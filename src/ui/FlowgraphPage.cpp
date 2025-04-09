@@ -720,7 +720,9 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
                 m_remoteSignalSelector->open();
             }
 
-            m_remoteSignalSelector->draw();
+            for (const auto& selectedRemoteSignal : m_remoteSignalSelector->drawAndReturnSelected()) {
+                m_dashboard->addRemoteSignal(selectedRemoteSignal);
+            }
         }
         m_newBlockSelector.draw(m_dashboard->graphModel().knownBlockTypes);
     }

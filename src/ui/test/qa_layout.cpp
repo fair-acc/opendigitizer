@@ -19,11 +19,7 @@
 #include <DashboardPage.hpp>
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
-#include "blocks/Arithmetic.hpp"
-#include "blocks/ImPlotSink.hpp"
-#include "blocks/SineSource.hpp"
 #include "gnuradio-4.0/basic/ClockSource.hpp"
-#include "gnuradio-4.0/basic/FunctionGenerator.hpp"
 #include "gnuradio-4.0/basic/SignalGenerator.hpp"
 
 #include "imgui_test_engine/imgui_te_internal.h"
@@ -41,7 +37,7 @@ struct TestState {
     DigitizerUi::DockingLayoutType          layoutType = DigitizerUi::DockingLayoutType::Row;
 };
 
-TestState g_state;
+TestState* g_state = nullptr;
 
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
@@ -66,12 +62,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));
 
-            if (g_state.dashboard) {
+            if (g_state->dashboard) {
                 DigitizerUi::DashboardPage page;
-                page.setDashboard(*g_state.dashboard);
+                page.setDashboard(*g_state->dashboard);
                 page.setLayoutType(vars.layoutType);
                 page.draw();
-                ut::expect(!g_state.dashboard->plots().empty());
+                ut::expect(!g_state->dashboard->plots().empty());
             }
         };
 
@@ -97,6 +93,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 };
 
 int main(int argc, char* argv[]) {
+    TestState state;
+    g_state = std::addressof(state);
 
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "dashboardpage_layout";
@@ -114,11 +112,13 @@ int main(int argc, char* argv[]) {
     auto dashboardFile = fs.open("examples/qa_layout.yml");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { //
+    g_state->dashboard        = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state->dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-        g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(graph));
+        g_state->dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(graph));
     });
 
-    return app.runTests() ? 0 : 1;
+    auto result = app.runTests();
+    g_state     = nullptr;
+    return result ? 0 : 1;
 }

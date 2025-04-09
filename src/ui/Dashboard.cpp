@@ -22,6 +22,7 @@
 
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
+#include "components/SignalSelector.hpp"
 
 #include "conversion.hpp"
 
@@ -440,7 +441,7 @@ void Dashboard::save() {
         // TODO: Port saving and loading flowgraph layouts
         property_map map;
         map["name"]  = sink.name();
-        map["color"] = ImGui::ColorConvertFloat4ToU32(sink.color());
+        map["color"] = sink.color();
 
         sources.emplace_back(std::move(map));
     });
@@ -462,11 +463,11 @@ void Dashboard::save() {
         }
         plotMap["axes"] = plotAxes;
 
-        std::vector<pmtv::pmt> plotSources;
-        for (auto& source : plot.sources) {
-            plotSources.emplace_back(source->name());
+        std::vector<pmtv::pmt> plotSinkBlockNames;
+        for (auto& plotSinkBlock : plot.plotSinkBlocks) {
+            plotSinkBlockNames.emplace_back(plotSinkBlock->name());
         }
-        plotMap["sources"] = plotSources;
+        plotMap["sources"] = plotSinkBlockNames;
 
         std::vector<int> plotRect;
         plotRect.emplace_back(plot.window->x);
@@ -543,12 +544,13 @@ void Dashboard::save() {
     }
 }
 
-void Dashboard::newPlot(int x, int y, int w, int h) {
+DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h) {
     m_plots.push_back({});
     auto& p = m_plots.back();
     p.axes.push_back({Plot::AxisKind::X});
     p.axes.push_back({Plot::AxisKind::Y});
     p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
+    return p;
 }
 
 void Dashboard::deletePlot(Plot* plot) {
@@ -563,19 +565,26 @@ void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
     std::erase_if(m_plots, [](const Plot& p) { return p.sourceNames.empty(); });
 }
 
+void Dashboard::loadPlotSourcesFor(Plot& plot) {
+    plot.plotSinkBlocks.clear();
+
+    for (const auto& name : plot.sourceNames) {
+        auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) {
+            // TODO: We should probably rely on block unique names for sink searching,
+            // not 'signal names'
+            return sink.signalName() == name || sink.name() == name;
+        });
+        if (!plotSource) {
+            auto msg = fmt::format("Unable to find plot source -- sink: '{}'", name);
+            components::Notification::warning(msg);
+            continue;
+        }
+        plot.plotSinkBlocks.push_back(&*plotSource);
+    }
+}
 void Dashboard::loadPlotSources() {
     for (auto& plot : m_plots) {
-        plot.sources.clear();
-
-        for (const auto& name : plot.sourceNames) {
-            auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) { return sink.name() == name; });
-            if (!plotSource) {
-                auto msg = fmt::format("Unable to find plot source -- sink: {}", name);
-                components::Notification::warning(msg);
-                continue;
-            }
-            plot.sources.push_back(&*plotSource);
-        }
+        loadPlotSourcesFor(plot);
     }
 }
 
@@ -605,6 +614,43 @@ void Dashboard::unregisterRemoteService(std::string_view blockName) {
 
 void Dashboard::removeUnusedRemoteServices() {
     std::erase_if(m_services, [&](const auto& s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
+}
+
+void Dashboard::addRemoteSignal(const SignalData& signalData) {
+    const auto& uriStr    = signalData.uri();
+    auto        blockType = [&] {
+        opencmw::URI<opencmw::RELAXED> uri{uriStr};
+        const auto                     params  = uri.queryParamMap();
+        const auto                     acqMode = params.find("acquisitionModeFilter");
+        if (acqMode != params.end() && acqMode->second && acqMode->second != "streaming") {
+            return "opendigitizer::RemoteDataSetSource";
+        }
+        return "opendigitizer::RemoteStreamSource";
+    }();
+
+    auto blockParams = [&] {
+        opencmw::URI<opencmw::RELAXED> uri{uriStr};
+        const auto                     params   = uri.queryParamMap();
+        const auto                     dataType = params.find("acquisitionDataType");
+        if (dataType != params.end() && dataType->second) {
+            return *dataType->second;
+        }
+        return "<float32>"s;
+    }();
+
+    gr::Message message;
+    message.cmd      = gr::message::Command::Set;
+    message.endpoint = gr::graph::property::kEmplaceBlock;
+    gr::property_map properties{
+        {"remote_uri"s, uriStr},                 //
+        {"signal_name"s, signalData.signalName}, //
+        {"signal_unit"s, signalData.unit}        //
+    }; //
+    message.data = gr::property_map{                              //
+        {"type"s, std::move(blockType) + std::move(blockParams)}, //
+        {"properties"s, std::move(properties)}};
+
+    graphModel().sendMessage(std::move(message));
 }
 
 void Dashboard::Service::reload() {

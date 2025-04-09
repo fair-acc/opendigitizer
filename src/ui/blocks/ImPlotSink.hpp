@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_IMPLOTSINK_HPP
 #define OPENDIGITIZER_IMPLOTSINK_HPP
 
+#include <imgui.h>
 #include <limits>
 #include <unordered_map>
 
@@ -224,39 +225,20 @@ struct ImPlotSinkModel {
 
     virtual void* raw() const = 0;
 
-    ImVec4 color() const {
-        static const auto defaultColor = ImVec4(0.3f, 0.3f, 0.3f, 1.f);
-        auto              maybeColor   = settings().get("color");
-        if (!maybeColor) {
-            return defaultColor;
-        }
-        const auto colorVariant = maybeColor.value();
-
-        const auto* colorValueInt32 = std::get_if<std::uint32_t>(&colorVariant);
-        if (colorValueInt32) {
-            return ImGui::ColorConvertU32ToFloat4(*colorValueInt32);
-        }
-
-        const auto colorValueVectorF = std::get_if<std::vector<float>>(&colorVariant);
-        if (colorValueVectorF && colorValueVectorF->size() == 4) {
-            return ImVec4((*colorValueVectorF)[0], (*colorValueVectorF)[1], (*colorValueVectorF)[2], (*colorValueVectorF)[3]);
-        }
-
-        return defaultColor;
-    }
+    virtual std::uint32_t color() const = 0;
 
     bool isVisible = true;
 };
 
-struct ImPlotSinkManager {
+class ImPlotSinkManager {
 private:
-    ImPlotSinkManager() {}
+    ImPlotSinkManager() = default;
 
-    ImPlotSinkManager(const ImPlotSinkManager&) = delete;
-
+    ImPlotSinkManager(const ImPlotSinkManager&)            = delete;
     ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
 
-    std::unordered_map<std::string, std::unique_ptr<ImPlotSinkModel>> _knownSinks;
+    std::unordered_map<std::string, std::unique_ptr<ImPlotSinkModel>>      _knownSinks;
+    std::unordered_map<void*, std::function<void(ImPlotSinkModel&, bool)>> _listeners;
 
     template<typename TBlock>
     struct SinkWrapper : ImPlotSinkModel {
@@ -275,8 +257,16 @@ private:
 
         void* raw() const override { return static_cast<void*>(block); }
 
+        std::uint32_t color() const override { return block->_colour.colour(); }
+
         TBlock* block = nullptr;
     };
+
+    void notifyListeners(ImPlotSinkModel& sink, bool isAdded) {
+        for (auto& [_, listener] : _listeners) {
+            listener(sink, isAdded);
+        }
+    }
 
 public:
     static ImPlotSinkManager& instance() {
@@ -286,11 +276,17 @@ public:
 
     template<typename TBlock>
     void registerPlotSink(TBlock* block) {
-        _knownSinks[block->unique_name] = std::make_unique<SinkWrapper<TBlock>>(block);
+        auto& wrapper = _knownSinks[block->unique_name];
+        if (wrapper != nullptr) {
+            return;
+        }
+        wrapper = std::make_unique<SinkWrapper<TBlock>>(block);
+        notifyListeners(*wrapper, true);
     }
 
     template<typename TBlock>
     void unregisterPlotSink(TBlock* block) {
+        notifyListeners(*_knownSinks[block->unique_name], false);
         _knownSinks.erase(block->unique_name);
     }
 
@@ -309,6 +305,9 @@ public:
             function(*sinkPtr.get());
         }
     }
+
+    void addListener(void* owner, std::function<void(ImPlotSinkModel&, bool)> listener) { _listeners[owner] = std::move(listener); }
+    void removeListener(void* owner) { _listeners.erase(owner); }
 };
 
 template<typename TBlock>
@@ -356,7 +355,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     double      _sample_period = 1.0 / static_cast<double>(sample_rate);
     std::size_t _sample_count  = 0UZ;
 
-    ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) { ImPlotSinkManager::instance().registerPlotSink(this); }
+    ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) {}
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
 
@@ -380,6 +379,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         }
 
         _sample_period = 1.0 / static_cast<double>(sample_rate);
+        ImPlotSinkManager::instance().registerPlotSink(this);
     }
 
     constexpr void processOne(const T& input) noexcept {
@@ -478,9 +478,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             }
         };
 
-        color = _colour.colour();
+        auto lineColor = ImGui::ColorConvertU32ToFloat4(_colour.colour() | 0xFF000000);
         if constexpr (std::is_arithmetic_v<T>) {
-            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | color);
             ImPlot::SetNextLineStyle(lineColor);
 
             auto [minX, maxX] = std::ranges::minmax(_xValues);
@@ -503,8 +502,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     continue; // not 1D signal or not enough signals
                 }
 
-                ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(0xFF000000 | color);
-                lineColor.w      = std::max(0.f, 1.0f - static_cast<float>(historyIdx) * 1.f / static_cast<float>(nMax));
+                lineColor.w = std::max(0.f, 1.0f - static_cast<float>(historyIdx) * 1.f / static_cast<float>(nMax));
                 ImPlot::SetNextLineStyle(lineColor);
 
                 std::vector<double> xAxisDouble;
