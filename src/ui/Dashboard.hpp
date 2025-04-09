@@ -21,8 +21,8 @@ CMRC_DECLARE(sample_dashboards);
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
-#include "components/Docking.hpp"
 #include "components/ColourManager.hpp"
+#include "components/Docking.hpp"
 namespace detail {
 [[maybe_unused]] inline static opendigitizer::ColourManager& _colourManager = opendigitizer::ColourManager::instance();
 }
@@ -41,6 +41,7 @@ class ImPlotSinkModel;
 namespace DigitizerUi {
 
 struct DashboardDescription;
+struct SignalData;
 
 enum class AxisScale : std::uint8_t {
     Linear = 0U,   /// default linear scale [t0, .., tn]
@@ -110,7 +111,7 @@ public:
 
         std::string                                  name;
         std::vector<std::string>                     sourceNames;
-        std::vector<opendigitizer::ImPlotSinkModel*> sources; // Not owned by us
+        std::vector<opendigitizer::ImPlotSinkModel*> plotSinkBlocks; // Not owned by us
         std::vector<AxisData>                        axes;
 
         std::shared_ptr<DockSpace::Window> window;
@@ -138,7 +139,7 @@ public:
 
     void save();
 
-    void newPlot(int x, int y, int w, int h);
+    DigitizerUi::Dashboard::Plot& newPlot(int x, int y, int w, int h);
 
     void deletePlot(Plot* plot);
 
@@ -179,7 +180,11 @@ public:
 
     inline auto& remoteServices() { return m_services; }
 
+    void addRemoteSignal(const SignalData& signalData);
+
     void loadPlotSources();
+
+    void loadPlotSourcesFor(Plot& plot);
 
     UiGraphModel& graphModel();
 

@@ -1,7 +1,9 @@
 #include "DashboardPage.hpp"
 
 #include <fmt/format.h>
+#include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
+#include <memory>
 
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
@@ -12,6 +14,7 @@
 #include "components/Splitter.hpp"
 
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/RemoteSource.hpp"
 
 namespace DigitizerUi {
 
@@ -61,8 +64,8 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
         g.clear();
     }
 
-    for (const auto& source : plot.sources) {
-        auto grBlock = opendigitizer::ImPlotSinkManager::instance().findSink([source](auto& block) { return block.name() == source->name(); });
+    for (const auto* plotSinkBlock : plot.plotSinkBlocks) {
+        auto grBlock = opendigitizer::ImPlotSinkManager::instance().findSink([plotSinkBlock](auto& block) { return block.name() == plotSinkBlock->name(); });
         if (!grBlock) {
             continue;
         }
@@ -85,15 +88,16 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
             }
         }
 
-        auto color = ImGui::ColorConvertFloat4ToU32(source->color());
+        auto color = plotSinkBlock->color();
         if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, color); idx) {
             if (axisKind == AxisKind::X) {
-                xAxisGroups[idx.value()].push_back(source->name());
+                xAxisGroups[idx.value()].push_back(plotSinkBlock->name());
             } else {
-                yAxisGroups[idx.value()].push_back(source->name());
+                yAxisGroups[idx.value()].push_back(plotSinkBlock->name());
             }
         } else {
-            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring source '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), source->name(), qStr, uStr));
+            // TODO: Remove the last added
+            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
             continue;
         }
     }
@@ -265,6 +269,43 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
     }
 }
 
+DashboardPage::DashboardPage() {
+    opendigitizer::ImPlotSinkManager::instance().addListener(this, [this](opendigitizer::ImPlotSinkModel& sink, bool wasAdded) {
+        if (!m_dashboard || !wasAdded || _addedSourceBlocksWaitingForSink.empty()) {
+            return;
+        }
+
+        auto it = std::ranges::find_if(_addedSourceBlocksWaitingForSink, [&sink](const auto& kvp) { return kvp.second.signalData.signalName == sink.signalName(); });
+        if (it == _addedSourceBlocksWaitingForSink.end()) {
+            fmt::print("[DashboardPage] Status: A sink added that is not connected to a remote source\n");
+            return;
+        }
+
+        auto url             = it->first;
+        auto sourceInWaiting = it->second;
+        _addedSourceBlocksWaitingForSink.erase(it);
+
+        gr::Message message;
+        message.cmd      = gr::message::Command::Set;
+        message.endpoint = gr::graph::property::kEmplaceEdge;
+        message.data     = gr::property_map{                       //
+            {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
+            {"sourcePort"s, "out"},                            //
+            {"destinationBlock"s, sink.uniqueName},            //
+            {"destinationPort"s, "in"},                        //
+            {"minBufferSize"s, gr::Size_t(4096)},              //
+            {"weight"s, 1},                                    //
+            {"edgeName"s, std::string()}};
+        m_dashboard->graphModel().sendMessage(std::move(message));
+
+        auto& plot = m_dashboard->newPlot(0, 0, 1, 1);
+        plot.sourceNames.push_back(sourceInWaiting.signalData.signalName);
+        m_dashboard->loadPlotSourcesFor(plot);
+    });
+}
+
+DashboardPage::~DashboardPage() { opendigitizer::ImPlotSinkManager::instance().removeListener(this); }
+
 // Draw the multi-axis plot
 void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // 1) Build up two sets of categories for X & Y
@@ -291,19 +332,19 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
 
     // draw each source on the correct axis
     bool drawTag = true;
-    for (opendigitizer::ImPlotSinkModel* sourceBlock : plot.sources) {
-        if (!sourceBlock->isVisible) {
+    for (opendigitizer::ImPlotSinkModel* plotSinkBlock : plot.plotSinkBlocks) {
+        if (!plotSinkBlock->isVisible) {
             // consume data if hidden
-            std::ignore = sourceBlock->work(std::numeric_limits<std::size_t>::max());
+            std::ignore = plotSinkBlock->work(std::numeric_limits<std::size_t>::max());
             continue;
         }
 
-        const auto& sourceBlockName = sourceBlock->name();
+        const auto& sourceBlockName = plotSinkBlock->name();
 
         // figure out which axis group check X first
         std::size_t xAxisID = std::numeric_limits<std::size_t>::max();
         for (std::size_t i = 0UZ; i < 3UZ && xAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
-            auto it = std::ranges::find(xAxisGroups[i], sourceBlock->name());
+            auto it = std::ranges::find(xAxisGroups[i], plotSinkBlock->name());
             if (it != xAxisGroups[i].end()) {
                 xAxisID = i;
             }
@@ -315,7 +356,7 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
         // check Y if not found
         std::size_t yAxisID = std::numeric_limits<std::size_t>::max();
         for (std::size_t i = 0UZ; i < 3UZ && yAxisID == std::numeric_limits<std::size_t>::max(); ++i) {
-            auto it = std::ranges::find(yAxisGroups[i], sourceBlock->name());
+            auto it = std::ranges::find(yAxisGroups[i], plotSinkBlock->name());
             if (it != yAxisGroups[i].end()) {
                 yAxisID = i;
             }
@@ -324,15 +365,15 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
             yAxisID = 0;
         }
 
-        std::ignore = sourceBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
+        std::ignore = plotSinkBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
         drawTag     = false;
 
         // allow legend item labels to be DND sources
         if (ImPlot::BeginDragDropSourceItem(sourceBlockName.c_str())) {
-            DigitizerUi::DashboardPage::DndItem dnd = {&plot, sourceBlock};
+            DigitizerUi::DashboardPage::DndItem dnd = {&plot, plotSinkBlock};
             ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
 
-            ImPlot::ItemIcon(sourceBlock->color());
+            ImPlot::ItemIcon(plotSinkBlock->color());
             ImGui::SameLine();
             ImGui::TextUnformatted(sourceBlockName.c_str());
             ImPlot::EndDragDropSource();
@@ -397,18 +438,67 @@ void DashboardPage::draw(Mode mode) noexcept {
 
             drawGlobalLegend(mode);
 
-            // Post button strip
-            if (mode == Mode::Layout) {
-                ImGui::SameLine();
-                if (plotButton("\uf067", "add signal") && m_signalSelector) {
-                    // plus
-                    // add new signal
-                    m_signalSelector->open();
-                }
-            }
+            if (m_dashboard && m_remoteSignalSelector) {
+                // Post button strip
+                if (mode == Mode::Layout) {
+                    ImGui::SameLine();
+                    if (plotButton("\uf067", "add signal")) {
+                        // 'plus' button in the global legend, adds a new signal
+                        // to the dashboard
+                        m_remoteSignalSelector->open();
+                    }
 
-            if (m_signalSelector) {
-                m_signalSelector->draw();
+                    for (const auto& selectedRemoteSignal : m_remoteSignalSelector->drawAndReturnSelected()) {
+                        const auto& uriStr_           = selectedRemoteSignal.uri();
+                        _addingRemoteSignals[uriStr_] = selectedRemoteSignal;
+
+                        m_dashboard->addRemoteSignal(selectedRemoteSignal);
+
+                        opendigitizer::RemoteSourceManager::instance().setRemoteSourceAddedCallback(uriStr_, [this, selectedRemoteSignal](opendigitizer::RemoteSourceModel& remoteSource) {
+                            const auto& uriStr = selectedRemoteSignal.uri();
+                            // Switching state for the signal -- from "adding the source block"
+                            // to "waiting for sink block to be created"
+                            _addedSourceBlocksWaitingForSink[uriStr] = SourceBlockInWaiting{
+                                .signalData      = std::move(_addingRemoteSignals[uriStr]), //
+                                .sourceBlockName = remoteSource.uniqueName()                //
+                            };
+                            _addingRemoteSignals.erase(uriStr);
+
+                            // Can be opendigitizer::RemoteStreamSource<float32> or opendigitizer::RemoteDataSetSource<float32>
+                            // for the time being, but let's support double (float64) out of the box as well
+                            const std::string remoteSourceType = remoteSource.typeName();
+
+                            auto                   it = std::ranges::find(remoteSourceType, '<');
+                            const std::string_view remoteSourceBaseType(remoteSourceType.begin(), it);
+                            const std::string_view remoteSourceTypeParams(it, remoteSourceType.end());
+
+                            std::string sinkBlockType   = "opendigitizer::ImPlotSink";
+                            std::string sinkBlockParams =                                                                                                             //
+                                (remoteSourceBaseType == "opendigitizer::RemoteStreamSource" && remoteSourceTypeParams == "<float32>")    ? "<float32>"s              //
+                                : (remoteSourceBaseType == "opendigitizer::RemoteStreamSource" && remoteSourceTypeParams == "<float64>")  ? "<float64>"s              //
+                                : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float32>") ? "<gr::DataSet<float32>>"s //
+                                : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float64>") ? "<gr::DataSet<float64>>"s //
+                                                                                                                                          : /* otherwise error */ ""s;
+
+                            gr::Message message;
+                            message.cmd      = gr::message::Command::Set;
+                            message.endpoint = gr::graph::property::kEmplaceBlock;
+                            message.data     = gr::property_map{
+                                //
+                                {"type"s, sinkBlockType + sinkBlockParams}, //
+                                {
+                                    "properties"s,
+                                    gr::property_map{
+                                        //
+                                        {"signal_name"s, selectedRemoteSignal.signalName}, //
+                                        {"signal_unit"s, selectedRemoteSignal.unit}        //
+                                    } //
+                                } //
+                            };
+                            m_dashboard->graphModel().sendMessage(std::move(message));
+                        });
+                    }
+                }
             }
 
             if (LookAndFeel::instance().prototypeMode) {
@@ -471,9 +561,9 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
                 if (ImPlot::BeginDragDropTargetPlot()) {
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
                         auto* dnd = static_cast<DndItem*>(payload->Data);
-                        plot.sources.push_back(dnd->plotSource);
+                        plot.plotSinkBlocks.push_back(dnd->plotSource);
                         if (auto* dndPlot = dnd->plot) {
-                            dndPlot->sources.erase(std::ranges::find(dndPlot->sources, dnd->plotSource));
+                            dndPlot->plotSinkBlocks.erase(std::ranges::find(dndPlot->plotSinkBlocks, dnd->plotSource));
                         }
                     }
                     ImPlot::EndDragDropTarget();
@@ -504,14 +594,14 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
                     if (!plotItemHovered) {
                         // Unfortunately there is no function that returns whether the entire legend is hovered,
                         // we need to check one entry at a time
-                        for (const auto& source : plot.sources) {
-                            const auto& sourceName = source->name();
+                        for (const auto& plotSinkBlock : plot.plotSinkBlocks) {
+                            const auto& sourceName = plotSinkBlock->name();
                             if (ImPlot::IsLegendEntryHovered(sourceName.c_str())) {
                                 plotItemHovered = true;
 
                                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
                                     // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
-                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(source->blockName);
+                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(plotSinkBlock->blockName);
                                     m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                                 }
                                 break;
@@ -553,16 +643,11 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
         enum class MouseClick { No, Left, Right };
 
-        const auto LegendItem = [](const ImVec4& color, std::string_view text, bool enabled = true) -> MouseClick {
+        const auto LegendItem = [](std::uint32_t color, std::string_view text, bool enabled = true) -> MouseClick {
             MouseClick   result    = MouseClick::No;
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-
-            // Draw colored rectangle
-            ImVec4 modifiedColor = enabled ? color : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
-            modifiedColor.w      = 1;
-
             const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
-            ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), ImGui::ColorConvertFloat4ToU32(modifiedColor));
+            ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), color | 0xFF000000);
             if (ImGui::InvisibleButton("##Button", rectSize)) {
                 result = MouseClick::Left;
             }
@@ -588,18 +673,20 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
         int index    = 0;
         legend_box.x = pane_size.x; // The plots have already filled in full width, legend should be on the new line
-        opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& signal) {
+        opendigitizer::ImPlotSinkManager::instance().forEach([&](opendigitizer::ImPlotSinkModel& signal) {
             IMW::ChangeId itemId(index++);
             auto          color = signal.color();
 
-            const auto widthEstimate = ImGui::CalcTextSize(signal.signalName().c_str()).x + 20 /* icon width */;
+            const std::string& label = signal.signalName().empty() ? signal.name() : signal.signalName();
+
+            const auto widthEstimate = ImGui::CalcTextSize(label.c_str()).x + 20 /* icon width */;
             if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
                 ImGui::SameLine();
             } else {
                 legend_box.x = 0.f; // start a new line
             }
 
-            auto clickedMouseButton = LegendItem(color, signal.signalName(), signal.isVisible);
+            auto clickedMouseButton = LegendItem(color, label, signal.isVisible);
             if (clickedMouseButton == MouseClick::Right) {
                 m_editPane.graphModel = std::addressof(m_dashboard->graphModel());
                 m_editPane.block      = m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName);
@@ -613,7 +700,7 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
             if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                 DndItem dnd = {nullptr, &signal};
                 ImGui::SetDragDropPayload(dnd_type, &dnd, sizeof(dnd));
-                LegendItem(color, signal.signalName(), signal.isVisible);
+                LegendItem(color, label, signal.isVisible);
             }
         });
     }
@@ -624,18 +711,20 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(dnd_type)) {
             auto* dnd = static_cast<DndItem*>(payload->Data);
             if (auto* dndPlot = dnd->plot) {
-                dndPlot->sources.erase(std::ranges::find(dndPlot->sources, dnd->plotSource));
+                dndPlot->plotSinkBlocks.erase(std::ranges::find(dndPlot->plotSinkBlocks, dnd->plotSource));
             }
         }
     }
     // end draw legend
 }
 
-void DashboardPage::newPlot() {
+DigitizerUi::Dashboard::Plot* DashboardPage::newPlot() {
     if (m_dashboard->plots().size() < kMaxPlots) {
         // Plot will get adjusted by the layout automatically
-        return m_dashboard->newPlot(0, 0, 1, 1);
+        return std::addressof(m_dashboard->newPlot(0, 0, 1, 1));
     }
+
+    return nullptr;
 }
 
 void DashboardPage::setLayoutType(DockingLayoutType type) { m_dockSpace.setLayoutType(type); }

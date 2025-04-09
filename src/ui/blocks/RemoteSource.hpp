@@ -1,6 +1,10 @@
 #ifndef OPENDIGITIZER_REMOTESOURCE_HPP
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
+#include <fmt/format.h>
+#include <type_traits>
+#include <unordered_map>
+
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 
@@ -10,7 +14,6 @@
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
 #include <opencmw.hpp>
-#include <type_traits>
 
 #include "conversion.hpp"
 
@@ -25,6 +28,72 @@ inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std:
     }
     return pathUrl;
 }
+
+struct RemoteSourceModel {
+    virtual ~RemoteSourceModel() {}
+    virtual std::string uniqueName() const = 0;
+    virtual std::string remoteUri() const  = 0;
+    virtual std::string typeName() const   = 0;
+    virtual void*       raw() const        = 0;
+};
+
+class RemoteSourceManager {
+private:
+    RemoteSourceManager() = default;
+
+    RemoteSourceManager(const RemoteSourceManager&)            = delete;
+    RemoteSourceManager& operator=(const RemoteSourceManager&) = delete;
+
+    std::unordered_map<std::string, std::unique_ptr<RemoteSourceModel>>      _knownRemoteSources;
+    std::unordered_map<std::string, std::function<void(RemoteSourceModel&)>> _addingSourcesCallbacks;
+
+    template<typename TRemoteSource>
+    struct RemoteSourceWrapper : RemoteSourceModel {
+        RemoteSourceWrapper(TRemoteSource* _block) : block(_block) {}
+        ~RemoteSourceWrapper() override {}
+
+        std::string uniqueName() const override { return block->unique_name; }
+        std::string remoteUri() const override { return block->remote_uri; }
+        std::string typeName() const override { return gr::meta::type_name<TRemoteSource>(); }
+
+        void* raw() const override { return block; }
+
+        TRemoteSource* block = nullptr;
+    };
+
+public:
+    static RemoteSourceManager& instance() {
+        static RemoteSourceManager s_instance;
+        return s_instance;
+    }
+
+    template<typename TBlock>
+    void registerRemoteSource(TBlock* block) {
+        _knownRemoteSources[block->unique_name] = std::make_unique<RemoteSourceWrapper<TBlock>>(block);
+    }
+
+    template<typename TBlock>
+    void unregisterRemoteSource(TBlock* block) {
+        _knownRemoteSources.erase(block->unique_name);
+    }
+
+    void setRemoteSourceAddedCallback(std::string remoteUri, std::function<void(RemoteSourceModel&)> callback) { _addingSourcesCallbacks[std::move(remoteUri)] = callback; }
+
+    void notifyOfRemoteSource(const std::string& remoteUri, void* remoteSourceRaw) {
+        auto it = _addingSourcesCallbacks.find(remoteUri);
+        if (it == _addingSourcesCallbacks.end()) {
+            return;
+        }
+
+        auto& callback = it->second;
+        for (const auto& [_, sourceModel] : _knownRemoteSources) {
+            if (sourceModel->raw() == remoteSourceRaw) {
+                callback(*sourceModel);
+            }
+        }
+        _addingSourcesCallbacks.erase(it);
+    }
+};
 
 struct RemoteSourceBase {
     std::string remote_uri;
@@ -63,11 +132,20 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteStreamSource(gr::property_map props) : Parent(props) {}
+    RemoteStreamSource(gr::property_map props) : Parent(props) { RemoteSourceManager::instance().registerRemoteSource(this); }
+    ~RemoteStreamSource() { RemoteSourceManager::instance().unregisterRemoteSource(this); }
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
         if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
-            this->settings().set({{"signal_name", acq.channelName.value()}, {"signal_unit", acq.channelUnit.value()}, {"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
+            if (!acq.channelName.value().empty()) {
+                this->settings().set({{"signal_name", acq.channelName.value()}});
+            }
+
+            if (!acq.channelUnit.value().empty()) {
+                this->settings().set({{"signal_unit", acq.channelUnit.value()}});
+            }
+
+            this->settings().set({{"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
         }
     }
 
@@ -207,9 +285,10 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
-        const auto old_host = old_settings.find("host");
+        const auto oldHost  = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
-        if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+        if ((oldValue != old_settings.end() || oldHost == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+            RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
             startSubscription(remote_uri);
         }
@@ -326,7 +405,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
                 // signal data layout:
                 ds.extents = {static_cast<int32_t>(acq.channelValue.size())};
-                ds.layout  = LayoutRight{};
+                ds.layout  = gr::LayoutRight{};
 
                 // signal data storage:
                 ds.signal_names      = {acq.channelName};
@@ -370,6 +449,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         const auto old_host = old_settings.find("host");
         const auto oldValue = old_settings.find("remote_uri");
         if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+            RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
             startSubscription(remote_uri);
         }

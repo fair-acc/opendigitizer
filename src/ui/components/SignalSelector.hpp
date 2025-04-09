@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_SIGNAL_SELECTOR_HPP_
 
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -18,14 +19,31 @@ namespace DigitizerUi {
 
 class UiGraphModel;
 
+struct SignalData {
+    std::string device;
+    std::string frontend;
+    std::string comment;
+    std::string signalName;
+    std::string subDeviceProperty;
+    std::string quantity;
+    std::string sampleRate;
+    std::string unit;
+    std::string accelerator;
+    std::string deviceClass;
+    std::string hostname;
+    std::string protocol;
+    std::string serviceName;
+    int         port = -1;
+
+    std::string uri() const { return opencmw::URI<>::UriFactory().scheme(protocol).hostName(hostname).port(static_cast<uint16_t>(port)).path(serviceName).addQueryParameter("channelNameFilter", signalName).build().str(); }
+};
+
 class SignalSelector {
 private:
     std::string            m_windowName = "Add Device Signals";
     QueryFilterElementList m_querySignalFilters;
     SignalList             m_signalList{m_querySignalFilters};
     UiGraphModel*          m_graphModel = nullptr;
-
-    std::function<void(std::string)> m_addSignalCallback;
 
     enum class Category { Domain = 0, DeviceType = 1, DAQ_M = 2, Status = 3, Quantity = 4 };
     static constexpr std::size_t CategoriesCount = 5;
@@ -50,7 +68,6 @@ private:
     FilterComboBoxes<CategoryData>  m_filterCombos;
 
     bool        m_forceRefresh                = false;
-    bool        m_addRemoteSignal             = false;
     bool        m_addRemoteSignalDialogOpened = false;
     std::string m_addRemoteSignalUri;
 
@@ -65,23 +82,6 @@ private:
             colorsForDark[+category]   //
         };
     }
-
-    struct SignalData {
-        std::string device;
-        std::string frontend;
-        std::string comment;
-        std::string signalName;
-        std::string subDeviceProperty;
-        std::string quantity;
-        std::string sampleRate;
-        std::string unit;
-        std::string accelerator;
-        std::string deviceClass;
-        std::string hostname;
-        std::string protocol;
-        std::string serviceName;
-        int         port = -1;
-    };
 
     static const std::string& categoryFieldForSignal(Category category, const SignalData& signal) {
         switch (category) {
@@ -131,21 +131,17 @@ private:
 
     void buildIndex();
 
+    [[nodiscard]] std::vector<SignalData> drawSignalSelector();
+
 public:
     explicit SignalSelector(UiGraphModel& graphModel);
 
     void open() { ImGui::OpenPopup(m_windowName.c_str()); }
     void close() { ImGui::CloseCurrentPopup(); }
 
-    void addRemoteSource(const std::string& uriStr);
-
-    void drawRemoteSignalsInput();
-
     void drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection);
 
-    void drawSignalSelector();
-
-    void draw();
+    [[nodiscard]] std::vector<SignalData> drawAndReturnSelected();
 };
 } // namespace DigitizerUi
 
