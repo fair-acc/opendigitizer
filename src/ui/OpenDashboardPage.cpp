@@ -14,6 +14,7 @@
 
 #include "components/Dialog.hpp"
 #include "components/ListBox.hpp"
+#include "scope_exit.hpp"
 
 namespace DigitizerUi {
 
@@ -33,7 +34,7 @@ OpenDashboardPage::OpenDashboardPage() : m_date(std::chrono::floor<std::chrono::
 OpenDashboardPage::~OpenDashboardPage() = default;
 
 void OpenDashboardPage::addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n) {
-    DashboardDescription::loadAndThen(storageInfo, n, [&](std::shared_ptr<DashboardDescription>&& desc) {
+    DashboardDescription::loadAndThen(storageInfo, n, [&](std::shared_ptr<const DashboardDescription>&& desc) {
         if (desc) {
             auto it = std::ranges::find_if(m_dashboards, [&](const auto& d) { return d->storageInfo.get() == storageInfo.get() && d->name == desc->name; });
             if (it == m_dashboards.end()) {
@@ -220,7 +221,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
     }
     ImGui::Spacing();
 
-    auto getDashboard = [this](auto& it) -> std::pair<std::shared_ptr<DashboardDescription>, std::string> {
+    auto getDashboard = [this](auto& it) -> std::pair<std::shared_ptr<const DashboardDescription>, std::string> {
         if (!it->storageInfo->isEnabled) {
             return {it, {}};
         }
@@ -242,8 +243,16 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         }
         return {it, it->name};
     };
-    int  dashboardCount = 0;
-    auto drawDashboard  = [&](auto&& item, bool /* selected */) {
+    int dashboardCount = 0;
+
+    std::optional<std::shared_ptr<const DigitizerUi::DashboardDescription>> newDashboardToLoad;
+    Digitizer::utils::scope_exit                                            loadNewDashboardIfNeeded = [&] {
+        if (newDashboardToLoad) {
+            requestLoadDashboard(*newDashboardToLoad);
+        }
+    };
+
+    auto drawDashboard = [&](auto&& item, bool /* selected */) {
         IMW::ChangeStrId outerId(item.first->storageInfo->path.c_str());
         IMW::ChangeStrId innerId(item.second.data());
 
@@ -296,7 +305,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
             {
                 IMW::Font font(isDashboardActive ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
                 if (ImGui::Button("\uf144")) { // , play icon
-                    requestLoadDashboard(item.first);
+                    newDashboardToLoad = item.first;
                 }
             }
         }
@@ -315,7 +324,10 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         {
             IMW::Group sourcesPanel;
             ImGui::TextUnformatted("Source:");
-            ImGui::SameLine();
+
+            if (ImGui::Button("Add new")) {
+                ImGui::OpenPopup(addSourcePopupId);
+            }
 
             {
                 IMW::Group            storageInfosListGroup;
@@ -335,6 +347,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
                             std::erase_if(m_dashboards, [&](auto& d) { return d->storageInfo == s; });
                             unsubscribeSource(*it);
                             it = m_storageInfos.erase(it);
+                            break;
                         } else {
                             ++it;
                         }
@@ -344,12 +357,6 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
                     }
                 }
                 m_storageInfoHovered = newHovered;
-            }
-
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(0.0f);
-            if (ImGui::Button("Add new")) {
-                ImGui::OpenPopup(addSourcePopupId);
             }
         }
 
@@ -438,7 +445,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
     }
 }
 
-std::shared_ptr<DashboardDescription> OpenDashboardPage::get(const size_t index) {
+std::shared_ptr<const DashboardDescription> OpenDashboardPage::get(const size_t index) {
     if (m_dashboards.size() > index) {
         return {m_dashboards.at(index)};
     }

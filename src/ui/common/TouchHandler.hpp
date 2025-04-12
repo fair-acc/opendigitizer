@@ -18,6 +18,7 @@
 
 #include "../common/LookAndFeel.hpp"
 #include "conversion.hpp"
+#include "scope_exit.hpp"
 
 namespace DigitizerUi {
 
@@ -398,12 +399,10 @@ struct TouchHandler {
     }
 
     static void EndZoomablePlot() {
-        struct scope_guard {
-            ~scope_guard() {
-                zoomablePlotInit = 0UL;
-                ImPlot::EndPlot();
-            }
-        } guard;
+        Digitizer::utils::scope_exit guard = [&] {
+            zoomablePlotInit = 0UL;
+            ImPlot::EndPlot();
+        };
 
         if (!gestureActive || gestureDragActive || nFingers != 2) {
             return;

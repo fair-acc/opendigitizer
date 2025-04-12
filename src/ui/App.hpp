@@ -50,6 +50,14 @@ public:
 
     std::vector<gr::BlockModel*> toolbarBlocks;
 
+    // Since loading a dashboard blocks the main thread,
+    // we want to have two steps, one which will prepare the
+    // window to show the "Loading..." status, and the
+    // next step to load the dashboard will hapen in the
+    // next frame.
+    bool                                        prepareForANewDashboardToLoad = false;
+    std::shared_ptr<const DashboardDescription> dashboardToLoad;
+
     components::AppHeader header;
 
 public:
@@ -68,7 +76,7 @@ public:
 
     void loadEmptyDashboard() { loadDashboard(DashboardDescription::createEmpty("New dashboard")); }
 
-    void loadDashboard(const std::shared_ptr<DashboardDescription>& desc) {
+    void loadDashboard(const std::shared_ptr<const DashboardDescription>& desc) {
         auto startedAt = std::chrono::system_clock::now();
 
         if (dashboard) {
@@ -104,7 +112,7 @@ public:
         fs::path path(url);
 
         auto storageInfo = DashboardStorageInfo::get(path.parent_path().native());
-        DashboardDescription::loadAndThen(storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<DashboardDescription>&& desc) {
+        DashboardDescription::loadAndThen(storageInfo, path.filename(), [this, storageInfo](std::shared_ptr<const DashboardDescription>&& desc) {
             if (desc) {
                 loadDashboard(desc);
                 openDashboardPage.addDashboard(storageInfo->path);
@@ -140,8 +148,8 @@ public:
             if (!desc) {
                 loadEmptyDashboard();
             } else {
-                loadDashboard(desc);
-                mainViewMode = ViewMode::VIEW;
+                prepareForANewDashboardToLoad = true;
+                dashboardToLoad               = desc;
             }
         };
         openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
@@ -185,14 +193,25 @@ public:
 
     void processAndRender() {
         {
+            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+            const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description()->name.data() : "OpenDigitizer";
+            header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            if (prepareForANewDashboardToLoad) {
+                prepareForANewDashboardToLoad = false;
+                return;
+            }
+
+            if (dashboardToLoad) {
+                loadDashboard(dashboardToLoad);
+                dashboardToLoad = nullptr;
+                mainViewMode    = ViewMode::VIEW;
+            }
+
             if (dashboard) {
                 dashboard->handleMessages();
             }
-
-            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
-
-            const char* title = dashboard ? dashboard->description()->name.data() : "OpenDigitizer";
-            header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
 
             IMW::Disabled disabled(dashboard == nullptr);
 

@@ -20,6 +20,7 @@
 #include "components/Splitter.hpp"
 
 #include "App.hpp"
+#include "scope_exit.hpp"
 
 using namespace std::string_literals;
 
@@ -111,6 +112,8 @@ void FlowgraphPage::reset() {
     if (m_dashboard) {
         m_dashboard->graphModel().reset();
     }
+
+    m_filterBlock = nullptr;
 
     if (m_editor) {
         ax::NodeEditor::SetCurrentEditor(nullptr);
@@ -337,11 +340,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
             const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
 
             // If filteredOut, set opacity to 25% until we exit the scope
-            struct scope_guard {
-                float originalAlpha;
-                scope_guard(float newAlpha) : originalAlpha(std::exchange(ImGui::GetStyle().Alpha, newAlpha)) {}
-                ~scope_guard() { ImGui::GetStyle().Alpha = originalAlpha; }
-            } restoreStyle(filteredOut ? 0.25f : ImGui::GetStyle().Alpha);
+            float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
+            Digitizer::utils::scope_exit restoreStyle  = [&] { ImGui::GetStyle().Alpha = originalAlpha; };
 
             auto blockPosition = [&] {
                 if (filteredOut) {

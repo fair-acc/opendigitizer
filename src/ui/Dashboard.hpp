@@ -71,20 +71,28 @@ public:
 };
 
 struct DashboardDescription {
+private:
+    struct PrivateTag {};
+    using OptionalTimePoint = std::optional<std::chrono::time_point<std::chrono::system_clock>>;
+
+    static std::vector<std::shared_ptr<DashboardDescription>> s_knownDashboards;
+
+public:
+    DashboardDescription(PrivateTag, std::string _name, std::shared_ptr<DashboardStorageInfo> _storageInfo, std::string _filename, bool _isFavorite, OptionalTimePoint _lastUsed) : name(std::move(_name)), storageInfo(std::move(_storageInfo)), filename(std::move(_filename)), isFavorite(_isFavorite), lastUsed(std::move(_lastUsed)) {}
     static constexpr const char* fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
 
     std::string                           name;
     std::shared_ptr<DashboardStorageInfo> storageInfo;
     std::string                           filename;
-    bool                                  isFavorite;
 
-    std::optional<std::chrono::time_point<std::chrono::system_clock>> lastUsed;
+    mutable bool              isFavorite;
+    mutable OptionalTimePoint lastUsed;
 
     void save();
 
-    static void loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb);
+    static void loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb);
 
-    static std::shared_ptr<DashboardDescription> createEmpty(const std::string& name);
+    static std::shared_ptr<const DashboardDescription> createEmpty(const std::string& name);
 };
 
 class Dashboard {
@@ -127,9 +135,9 @@ private:
     class PrivateTag {};
 
 public:
-    explicit Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc);
+    explicit Dashboard(PrivateTag, const std::shared_ptr<const DashboardDescription>& desc);
 
-    static std::unique_ptr<Dashboard> create(const std::shared_ptr<DashboardDescription>& desc);
+    static std::unique_ptr<Dashboard> create(const std::shared_ptr<const DashboardDescription>& desc);
 
     ~Dashboard();
 
@@ -151,7 +159,7 @@ public:
 
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
 
-    inline std::shared_ptr<DashboardDescription> description() const { return m_desc; }
+    inline std::shared_ptr<const DashboardDescription> description() const { return m_desc; }
 
     struct Service {
         Service(std::string n, std::string u) : name(std::move(n)), uri(std::move(u)) {}
@@ -211,7 +219,7 @@ public:
     [[nodiscard]] bool isInitialised() const noexcept { return m_isInitialised.load(std::memory_order_acquire); }
 
 private:
-    std::shared_ptr<DashboardDescription>        m_desc = nullptr;
+    std::shared_ptr<const DashboardDescription>  m_desc = nullptr;
     std::vector<Plot>                            m_plots;
     DockingLayoutType                            m_layout;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
