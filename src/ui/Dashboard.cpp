@@ -203,7 +203,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
-Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& desc) : m_desc(desc) {
+Dashboard::Dashboard(PrivateTag, const std::shared_ptr<const DashboardDescription>& desc) : m_desc(desc) {
     m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
@@ -219,7 +219,7 @@ Dashboard::Dashboard(PrivateTag, const std::shared_ptr<DashboardDescription>& de
 
 Dashboard::~Dashboard() {}
 
-std::unique_ptr<Dashboard> Dashboard::create(const std::shared_ptr<DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, desc); }
+std::unique_ptr<Dashboard> Dashboard::create(const std::shared_ptr<const DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, desc); }
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
 
@@ -736,7 +736,7 @@ void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
     s->client.request(command);
 }
 
-void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<DashboardDescription>&&)>& cb) {
+void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb) {
     fetch(
         storageInfo, name, {What::Header},
         [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
@@ -744,8 +744,8 @@ void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInf
             if (!yaml) {
                 throw gr::exception(fmt::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
             }
-            const gr::property_map& rootMap  = yaml.value();
-            bool                    favorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
+            const gr::property_map& rootMap    = yaml.value();
+            bool                    isFavorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
 
             auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
                 if (str.size() < 10) {
@@ -761,10 +761,10 @@ void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInf
 
             auto lastUsed = rootMap.contains("lastUsed") && std::holds_alternative<bool>(rootMap.at("lastUsed")) ? getDate(std::get<std::string>(rootMap.at("lastUsed"))) : std::nullopt;
 
-            cb(std::make_shared<DashboardDescription>(DashboardDescription{.name = std::filesystem::path(name).stem().native(), .storageInfo = storageInfo, .filename = name, .isFavorite = favorite, .lastUsed = lastUsed}));
+            cb(std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed));
         },
         [cb]() { cb({}); });
 }
 
-std::shared_ptr<DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(DashboardDescription{.name = name, .storageInfo = DashboardStorageInfo::memoryDashboardStorage(), .isFavorite = false, .lastUsed = std::nullopt}); }
+std::shared_ptr<const DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(PrivateTag{}, name, DashboardStorageInfo::memoryDashboardStorage(), std::string{}, false, std::nullopt); }
 } // namespace DigitizerUi

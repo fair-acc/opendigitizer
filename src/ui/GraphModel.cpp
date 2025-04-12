@@ -9,6 +9,8 @@
 
 #include "components/ImGuiNotify.hpp"
 
+#include <scope_exit.hpp>
+
 #include "App.hpp"
 
 using namespace std::string_literals;
@@ -266,12 +268,8 @@ void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
 void UiGraphModel::handleEdgeRemoved(const gr::property_map& /* data */) {}
 
 void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
-    _newGraphDataBeingSet = true;
-    struct scope_guard {
-        ~scope_guard() { flag = false; }
-        bool& flag;
-    };
-    scope_guard resetDataBeingSet(_newGraphDataBeingSet);
+    _newGraphDataBeingSet                          = true;
+    Digitizer::utils::scope_exit resetDataBeingSet = [&] { _newGraphDataBeingSet = false; };
 
     // Strictly speaking, UiGraphModel is not a block even if
     // gr::Graph is a gr::Block, but we can set some basic
