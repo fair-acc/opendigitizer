@@ -135,4 +135,5 @@ target_link_libraries(
           gnuradio-blocklib-core
           GrBasicBlocksShared
           GrTestingBlocksShared
+          GrMathBlocksShared
           GrFourierBlocksShared)
