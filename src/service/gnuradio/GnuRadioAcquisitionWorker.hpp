@@ -40,23 +40,33 @@ inline std::expected<T, std::string> get(const gr::property_map& m, const std::s
     }
 }
 
-inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, gr::property_map>>& tags) {
+inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property_map>>& tags) {
+    struct {
+        std::string   name;
+        std::uint64_t time = 0ULL;
+    } result;
+
     for (const auto& [diff, map] : tags) {
         if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
-            const auto name = std::get<std::string>(triggerNameIt->second);
+            std::string name = std::get<std::string>(triggerNameIt->second);
 
             if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
                 const auto context = std::get<std::string>(contextIt->second);
                 if (!context.empty()) {
-                    return std::format("{}/{}", name, context);
+                    name = std::format("{}/{}", name, context);
                 }
             }
 
-            return name;
+            if (auto timeIt = map.find(std::string(gr::tag::TRIGGER_TIME.shortKey())); timeIt != map.end()) {
+                result = {name, std::get<std::uint64_t>(timeIt->second)};
+            } else {
+                result = {name, 0ULL};
+            }
+            break;
         }
     }
 
-    return {};
+    return result;
 }
 
 template<typename T>
@@ -73,6 +83,15 @@ inline std::optional<T> getSetting(const gr::BlockModel& block, const std::strin
     }
 }
 
+template<typename TEnum>
+[[nodiscard]] inline constexpr TEnum convertToEnum(std::string_view strEnum) {
+    auto enumType = magic_enum::enum_cast<TEnum>(strEnum, magic_enum::case_insensitive);
+    if (!enumType.has_value()) {
+        throw std::invalid_argument(std::format("Unknown value. Cannot convert string '{}' to enum '{}'", strEnum, gr::meta::type_name<TEnum>()));
+    }
+    return enumType.value();
+}
+
 } // namespace detail
 
 using namespace gr;
@@ -82,26 +101,6 @@ using namespace opencmw::majordomo;
 using namespace std::chrono_literals;
 
 enum class AcquisitionMode { Continuous, Triggered, Multiplexed, Snapshot, DataSet };
-
-constexpr AcquisitionMode parseAcquisitionMode(std::string_view v) {
-    using enum AcquisitionMode;
-    if (v == "continuous") {
-        return Continuous;
-    }
-    if (v == "triggered") {
-        return Triggered;
-    }
-    if (v == "multiplexed") {
-        return Multiplexed;
-    }
-    if (v == "snapshot") {
-        return Snapshot;
-    }
-    if (v == "dataset") {
-        return DataSet;
-    }
-    throw std::invalid_argument(std::format("Invalid acquisition mode '{}'", v));
-}
 
 struct PollerKey {
     AcquisitionMode          mode;
@@ -120,6 +119,7 @@ struct StreamingPollerEntry {
     std::shared_ptr<gr::basic::StreamingPoller<SampleType>> poller;
     std::optional<std::string>                              signal_name;
     std::optional<std::string>                              signal_unit;
+    std::optional<std::string>                              signal_quantity;
     std::optional<float>                                    signal_min;
     std::optional<float>                                    signal_max;
 
@@ -137,6 +137,11 @@ struct StreamingPollerEntry {
                 signal_unit = unit.value();
             } else {
                 errors.push_back(unit.error());
+            }
+            if (const auto quantity = detail::get<std::string>(tag.map, tag::SIGNAL_QUANTITY.shortKey())) {
+                signal_quantity = quantity.value();
+            } else {
+                errors.push_back(quantity.error());
             }
             if (const auto min = detail::get<float>(tag.map, tag::SIGNAL_MIN.shortKey())) {
                 signal_min = min.value();
@@ -316,6 +321,11 @@ private:
                                     entry.unit        = *signalUnit;
                                     signalInfoChanged = true;
                                 }
+                                const auto signalQuantity = detail::get<std::string>(*settings, "signal_quantity");
+                                if (signalQuantity && signalQuantity.value() != entry.quantity) {
+                                    entry.quantity    = *signalQuantity;
+                                    signalInfoChanged = true;
+                                }
                             }
                         }
                     }
@@ -401,7 +411,7 @@ private:
         for (const auto& subscription : super_t::activeSubscriptions()) {
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
             try {
-                const auto acquisitionMode = parseAcquisitionMode(filterIn.acquisitionModeFilter);
+                const auto acquisitionMode = detail::convertToEnum<AcquisitionMode>(filterIn.acquisitionModeFilter);
                 for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), static_cast<std::size_t>(std::ranges::distance(r))}; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
                         if (!handleStreamingSubscription(streamingPollers, filterIn, signalName)) {
@@ -426,7 +436,7 @@ private:
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             const auto query = basic::DataSinkQuery::signalName(signalName);
-            pollerIt         = pollers.emplace(key, basic::globalDataSinkRegistry().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+            pollerIt         = pollers.emplace(key, gr::basic::globalDataSinkRegistry().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
         }
         return pollerIt;
     }
@@ -447,21 +457,19 @@ private:
         auto key         = pollerIt->first;
         auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
             std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
-            reply.acqTriggerName            = "STREAMING";
-            reply.channelName               = pollerEntry.signal_name.value_or(std::string(signalName));
-            reply.channelUnit               = pollerEntry.signal_unit.value_or("N/A");
-            // work around fix the Annotated::operator= ambiguity here (move vs. copy assignment) when creating a temporary unit here
-            // Should be fixed in Annotated (templated forwarding assignment operator=?)/or go for gnuradio4's Annotated?
-            const typename decltype(reply.channelRangeMin)::R rangeMin = pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest();
-            const typename decltype(reply.channelRangeMax)::R rangeMax = pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max();
-            reply.channelRangeMin                                      = rangeMin;
-            reply.channelRangeMax                                      = rangeMax;
-            reply.channelValue.resize(data.size());
-            reply.channelError.resize(data.size());
-            reply.channelTimeBase.resize(data.size());
-            std::ranges::copy(data, reply.channelValue.begin());
-            std::fill(reply.channelError.begin(), reply.channelError.end(), 0.f);     // TODO
-            std::fill(reply.channelTimeBase.begin(), reply.channelTimeBase.end(), 0); // TODO
+            reply.refTriggerName            = "STREAMING";
+            reply.channelNames              = {pollerEntry.signal_name.value_or(std::string(signalName))};
+            reply.channelUnits              = {pollerEntry.signal_unit.value_or("N/A")};
+            reply.channelQuantities         = {pollerEntry.signal_quantity.value_or("N/A")};
+            reply.channelRangeMin           = {pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest()};
+            reply.channelRangeMax           = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
+
+            const auto                    nSamples = static_cast<uint32_t>(data.size());
+            const std::array<uint32_t, 2> dims{1U, nSamples}; // 1 signal, N samples
+            reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), dims);
+            reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), dims);
+            reply.channelTimeSinceRefTrigger.assign(nSamples, 0.f); // TODO real timeline
+
             // preallocate trigger vectors to number of tags
             reply.triggerIndices.reserve(tags.size());
             reply.triggerEventNames.reserve(tags.size());
@@ -471,14 +479,14 @@ private:
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
                     // float   Ts_ns  = 1'000'000'000.f / entry.sample_rate;
-                    float   Ts_ns  = 0.f; // TODO: find where sample_rate is stored
-                    int64_t offset = static_cast<int64_t>(idx * Ts_ns);
+                    float      Ts_ns  = 0.f; // TODO: find where sample_rate is stored
+                    const auto offset = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
                         reply.acqLocalTimeStamp = static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
                     }
-                    if (reply.acqTriggerTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqTriggerName      = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
-                        reply.acqTriggerTimeStamp = cast_to_signed(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
+                    if (reply.refTriggerStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
+                        reply.refTriggerName  = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
+                        reply.refTriggerStamp = cast_to_signed(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
                     }
                 }
                 reply.triggerIndices.push_back(cast_to_signed(idx));
@@ -529,38 +537,28 @@ private:
         return pollerIt;
     }
 
-    // TODO: this is a workaround method to parse signal names for a DataSet: `signalName::index`
-    std::pair<std::string, std::size_t> parseSignalNameForDataSet(std::string_view input) {
-        const std::string delimiter = "::";
-        std::size_t       pos       = input.find(delimiter);
-        if (pos == std::string_view::npos) {
-            return {std::string(input), 0UZ};
-        }
+    std::vector<std::string> parseSignalNameList(std::string_view input) {
+        namespace views = std::ranges::views;
 
-        std::string_view namePart  = input.substr(0, pos);
-        std::string_view indexPart = input.substr(pos + delimiter.size());
+        auto isNotSpace = [](char ch) { return !std::isspace(static_cast<unsigned char>(ch)); };
 
-        if (indexPart.empty()) {
-            return {std::string(namePart), 0UZ};
-        }
+        std::vector<std::string> result;
+        for (auto subRange : input | views::split(',')) {
+            std::string str(subRange.begin(), subRange.end());
 
-        std::size_t index{};
-        if (auto [_, ec] = std::from_chars(indexPart.data(), indexPart.data() + indexPart.size(), index); ec != std::errc()) {
-            return {std::string(namePart), 0UZ};
+            auto lead = std::ranges::find_if(str, isNotSpace);
+            if (lead == str.end()) {
+                continue;
+            }
+            auto trailRev = std::ranges::find_if(str | views::reverse, isNotSpace);
+            result.emplace_back(lead, trailRev.base());
         }
-        return {std::string(namePart), index};
+        return result;
     }
 
     bool handleDataSetSubscription(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName_) {
-        std::string signalName(signalName_);
-        std::size_t signalIndex = 0UZ;
-
-        if (mode == AcquisitionMode::DataSet) {
-            auto parseRes = parseSignalNameForDataSet(signalName_);
-            signalName    = parseRes.first;
-            signalIndex   = parseRes.second;
-        }
-        auto pollerIt = getDataSetPoller(pollers, context, mode, signalName);
+        const std::string signalName(signalName_);
+        auto              pollerIt = getDataSetPoller(pollers, context, mode, signalName);
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
@@ -572,35 +570,55 @@ private:
             return true;
         }
         Acquisition reply;
-        auto        processData = [&reply, &key, signalName, &pollerEntry, &signalIndex](std::span<const gr::DataSet<DataSetPollerEntry::SampleType>> dataSets) {
+        auto        processData = [&reply, &key, signalName, &pollerEntry](std::span<const gr::DataSet<DataSetPollerEntry::SampleType>> dataSets) {
             const auto& dataSet = dataSets[0];
 
             if (!dataSet.timing_events.empty()) {
-                reply.acqTriggerName = detail::findTriggerName(dataSet.timing_events[0]);
-            }
-            reply.channelName     = std::string(signalName);
-            reply.channelQuantity = signalIndex < dataSet.size() ? dataSet.signalQuantity(signalIndex) : "";
-            reply.channelUnit     = signalIndex < dataSet.size() ? dataSet.signalUnit(signalIndex) : "";
-
-            if (dataSet.signal_ranges.size() > signalIndex) {
-                // Workaround for Annotated, see above
-                const typename decltype(reply.channelRangeMin)::R rangeMin = dataSet.signal_ranges[signalIndex].min;
-                const typename decltype(reply.channelRangeMax)::R rangeMax = dataSet.signal_ranges[signalIndex].max;
-                reply.channelRangeMin                                      = rangeMin;
-                reply.channelRangeMax                                      = rangeMax;
-            }
-            auto values = std::span(dataSet.signal_values);
-
-            if (key.mode == AcquisitionMode::DataSet) {
-                values = dataSet.signalValues(signalIndex);
+                const auto [triggerName, triggerTime] = detail::findTrigger(dataSet.timing_events[0]);
+                reply.refTriggerName                  = triggerName;
+                reply.refTriggerStamp                 = static_cast<std::int64_t>(triggerTime);
             }
 
-            reply.channelValue.resize(values.size());
-            std::ranges::copy(values, reply.channelValue.begin());
-            reply.channelError.resize(0); // TODO: add std::uncertain<T>() value here
+            const std::size_t nSignals = static_cast<uint32_t>(dataSet.size());
+            const std::size_t nSamples = static_cast<uint32_t>(dataSet.axisValues(0).size());
 
-            reply.channelTimeBase.resize(dataSet.axis_values[0].size());
-            std::ranges::copy(dataSet.axis_values[0], reply.channelTimeBase.begin()); // TODO: correct for trigger offset which may not be on the '0'-th sample
+            reply.channelNames.clear();
+            reply.channelNames.reserve(nSignals);
+            reply.channelQuantities.clear();
+            reply.channelQuantities.reserve(nSignals);
+            reply.channelUnits.clear();
+            reply.channelUnits.reserve(nSignals);
+            reply.channelRangeMin.clear();
+            reply.channelRangeMin.reserve(nSignals);
+            reply.channelRangeMax.clear();
+            reply.channelRangeMax.reserve(nSignals);
+            reply.status.clear();
+            reply.status.reserve(nSignals);
+            reply.temperature.clear();
+            reply.temperature.reserve(nSignals);
+
+            for (std::size_t i = 0; i < nSignals; i++) {
+                reply.channelNames.push_back(std::string(dataSet.signalName(i)));
+                reply.channelQuantities.push_back(std::string(dataSet.signalQuantity(i)));
+                reply.channelUnits.push_back(std::string(dataSet.signalUnit(i)));
+
+                const auto& range = dataSet.signalRange(i);
+                reply.channelRangeMin.push_back(static_cast<float>(range.min));
+                reply.channelRangeMax.push_back(static_cast<float>(range.max));
+            }
+            // MultiArray stores internally elements as stride 1D array: <values_signal_1><values_signal_2><values_signal_3>
+            std::vector<float> values;
+            values.reserve(nSignals * nSamples);
+            for (uint32_t i = 0; i < nSignals; ++i) {
+                auto span = dataSet.signalValues(i);
+                values.insert(values.end(), span.begin(), span.end());
+            }
+            reply.channelValues = opencmw::MultiArray<float, 2>(std::move(values), std::array<uint32_t, 2>{static_cast<uint32_t>(nSignals), static_cast<uint32_t>(nSamples)});
+
+            std::vector<float> errors(nSignals * nSamples, 0.f);
+            reply.channelErrors = opencmw::MultiArray<float, 2>(std::move(errors), std::array<uint32_t, 2>{static_cast<uint32_t>(nSignals), static_cast<uint32_t>(nSamples)});
+
+            reply.channelTimeSinceRefTrigger = dataSet.axis_values[0];
 
             // copy event_timing information, TODO: now we copy all data only from timing_events[0]
             if (!dataSet.timing_events.empty()) {

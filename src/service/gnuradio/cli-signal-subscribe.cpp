@@ -43,13 +43,14 @@ int main(int argc, char** argv) {
     clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY), opencmw::client::VerifyServerCertificates(false)));
     opencmw::client::ClientContext client{std::move(clients)};
 
-    std::size_t samples_received = 0UZ;
-    std::size_t update_count     = 0UZ;
-    const auto  start            = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+    std::size_t samplesReceived = 0UZ;
+    std::size_t signalsReceived = 0UZ;
+    std::size_t updateCount     = 0UZ;
+    const auto  start           = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
 
     std::print("Subscribing to {}\n", argv[1]);
 
-    client.subscribe(opencmw::URI<opencmw::STRICT>(argv[1]), [&samples_received, &update_count, &start](const opencmw::mdp::Message& msg) {
+    client.subscribe(opencmw::URI<opencmw::STRICT>(argv[1]), [&samplesReceived, &updateCount, &signalsReceived, &start](const opencmw::mdp::Message& msg) {
         if (!msg.error.empty() || msg.data.empty()) {
             std::print("received error or data is empty, error msg: {}\n", msg.error);
             return;
@@ -66,17 +67,19 @@ int main(int argc, char** argv) {
         }
         auto dataTimestamp = std::chrono::nanoseconds(acq.acqLocalTimeStamp.value());
         auto latency       = (dataTimestamp.count() == 0) ? 0ns : now - dataTimestamp;
-        samples_received += acq.channelValue.size();
-        update_count++;
-        double sample_rate = (static_cast<double>(samples_received) / static_cast<double>(uptime.count())) * 1000.0;
+        signalsReceived    = acq.channelValues.n(0UZ);
+        samplesReceived += acq.channelValues.n(1UZ);
+        updateCount++;
+        double sample_rate = (static_cast<double>(samplesReceived) / static_cast<double>(uptime.count())) * 1000.0;
         auto [min, max]    = [&acq]() {
-            if (acq.channelValue.empty()) {
+            if (acq.channelValues.elements().empty()) {
                 return std::ranges::min_max_result{0.0f, 0.0f};
             } else {
-                return std::ranges::minmax(acq.channelValue);
+                return std::ranges::minmax(acq.channelValues.elements());
             }
         }();
-        std::print("t = {}ms: Update received: {}, samples: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", uptime.count(), update_count, acq.channelValue.size(), min, max, samples_received, sample_rate, 1e-9 * static_cast<double>(latency.count()));
+        std::print("t = {}ms: Update received: {}, samples: {}, signals: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", //
+            uptime.count(), updateCount, acq.channelValues.n(1UZ), acq.channelValues.n(0UZ), min, max, samplesReceived, sample_rate, 1e-9 * static_cast<double>(latency.count()));
     });
 
     while (true) {

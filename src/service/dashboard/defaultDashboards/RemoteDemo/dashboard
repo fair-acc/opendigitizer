@@ -1,0 +1,82 @@
+layout: Free
+sources:
+  - name: PlotSignal1
+    block: PlotSignal1
+  - name: PlotSignalFFT1
+    block: PlotSignalFFT1
+  - name: PlotDataSet1
+    block: PlotDataSet1
+  - name: PlotDataSet2
+    block: PlotDataSet2
+  - name: PlotTriggered
+    block: PlotTriggered
+  - name: PlotMultiplexed
+    block: PlotMultiplexed
+plots:
+  - name: PlotSignal1
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+        scale: Time
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotSignal1
+    rect: [0, 0, 1, 1]
+  - name: PlotSignalFFT1
+    axes:
+      - axis: X
+        min: 0
+        max: 512
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotSignalFFT1
+    rect: [1, 0, 1, 1]
+  - name: PlotDataSet1
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotDataSet1
+    rect: [0, 1, 1, 1]
+  - name: PlotDataSet2
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotDataSet2
+    rect: [1, 1, 1, 1]
+  - name: PlotTriggered
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotTriggered
+    rect: [0, 2, 1, 1]
+  - name: PlotMultiplexed
+    axes:
+      - axis: X
+        min: inf
+        max: inf
+      - axis: Y
+        min: inf
+        max: inf
+    sources:
+      - PlotMultiplexed
+    rect: [1, 2, 1, 1]
