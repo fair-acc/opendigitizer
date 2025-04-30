@@ -584,7 +584,6 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     // draw all signals
                     auto [minVal, maxVal] = std::ranges::minmax(dataSet.signal_values);
                     ValueType baseOffset  = static_cast<ValueType>(history_offset) * (maxVal - minVal);
-
                     for (std::size_t signalIdx = 0UZ; signalIdx < nsignals; ++signalIdx) {
                         ImPlot::SetNextLineStyle(lineColor);
                         PlotLineContext ctx{xAxisDouble, dataSet.signalValues(signalIdx), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
@@ -609,6 +608,6 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
 } // namespace opendigitizer
 
-inline static auto registerImPlotSink = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(gr::globalBlockRegistry());
+inline static auto registerImPlotSink = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(gr::globalBlockRegistry());
 
 #endif
