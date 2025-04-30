@@ -134,29 +134,55 @@ using namespace std::literals;
  * Updated version at: https://gitlab.gsi.de/acc/specs/generic-daq#user-content-expected-data-acquisition-variables
  */
 struct Acquisition {
-    Annotated<std::string, opencmw::NoUnit, "property filter for sel. channel mode and name">    selectedFilter;                      // specified as Enum + String
-    Annotated<std::string, opencmw::NoUnit, "trigger name, e.g. STREAMING or INJECTION1">        acqTriggerName      = {"STREAMING"}; // specified as ENUM
-    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred"> acqTriggerTimeStamp = 0;             // specified as type WR timestamp
-    Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                acqLocalTimeStamp   = 0;
-    Annotated<std::vector<float>, si::time<second>, "time scale [s]">                            channelTimeBase;
-    Annotated<float, si::time<second>, "user-defined delay">                                     channelUserDelay   = 0.0f;
-    Annotated<float, si::time<second>, "actual trigger delay">                                   channelActualDelay = 0.0f;
-    Annotated<std::string, opencmw::NoUnit, "name of the channel/signal">                        channelName;
-    Annotated<std::vector<float>, opencmw::NoUnit, "value of the channel/signal">                channelValue;
-    Annotated<std::vector<float>, opencmw::NoUnit, "r.m.s. error of of the channel/signal">      channelError;
-    Annotated<std::string, opencmw::NoUnit, "S.I. quantity of post-processed signal">            channelQuantity;
-    Annotated<std::string, opencmw::NoUnit, "S.I. unit of post-processed signal">                channelUnit;
-    Annotated<int64_t, opencmw::NoUnit, "status bit-mask bits for this channel/signal">          status;
-    Annotated<float, opencmw::NoUnit, "minimum expected value for channel/signal">               channelRangeMin;
-    Annotated<float, opencmw::NoUnit, "maximum expected value for channel/signal">               channelRangeMax;
-    Annotated<float, opencmw::NoUnit, "temperature of the measurement device">                   temperature;
-    Annotated<std::vector<int64_t>, opencmw::NoUnit, "indices of trigger tags">                  triggerIndices;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "event names of trigger tags">          triggerEventNames;
-    Annotated<std::vector<int64_t>, si::time<nanosecond>, "timestamps of trigger tags">          triggerTimestamps;
-    Annotated<std::vector<float>, si::time<second>, "sample delay w.r.t. the trigger">           triggerOffsets;
-    // optional fields not mandated by the specification but useful/necessary to propagate additional metainformation
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "yaml of Tag's property_map">             triggerYamlPropertyMaps;
-    Annotated<std::vector<std::string>, opencmw::NoUnit, "list of error messages for this update"> acqErrors;
+    Annotated<std::string, opencmw::NoUnit, "name of timing event used to align the data, e.g. STREAMING or INJECTION1"> refTriggerName  = {"NO_REF_TRIGGER"}; // specified as ENUM
+    Annotated<int64_t, si::time<nanosecond>, "UTC timestamp on which the timing event occurred">                         refTriggerStamp = 0;                  // specified as type WR timestamp
+    Annotated<std::vector<float>, si::time<second>, "relative time between the reference trigger and each sample [s]">   channelTimeSinceRefTrigger;
+    Annotated<float, si::time<second>, "user-defined delay">                                                             channelUserDelay   = 0.0f;
+    Annotated<float, si::time<second>, "actual trigger delay">                                                           channelActualDelay = 0.0f;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "names of the channel/signal">                                  channelNames;
+    Annotated<opencmw::MultiArray<float, 2>, opencmw::NoUnit, "values for each channel/signal">                          channelValues;
+    Annotated<opencmw::MultiArray<float, 2>, opencmw::NoUnit, "r.m.s. errors for each channel/signal">                   channelErrors;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "S.I. units of post-processed signals">                         channelUnits;
+    Annotated<std::vector<int64_t>, opencmw::NoUnit, "status bit-mask bits for this channel/signal">                     status;
+    Annotated<std::vector<float>, opencmw::NoUnit, "minimum expected value for channel/signal">                          channelRangeMin;
+    Annotated<std::vector<float>, opencmw::NoUnit, "maximum expected value for channel/signal">                          channelRangeMax;
+    Annotated<std::vector<float>, opencmw::NoUnit, "temperature of the measurement device">                              temperature;
+
+    // Additional fields not mandated by the specification but are present in FESA
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "event names">                     acquisitionContextCol_eventName;
+    Annotated<std::vector<int>, opencmw::NoUnit, "process indices">                         acquisitionContextCol_processIndex;
+    Annotated<std::vector<int>, opencmw::NoUnit, "sequence indices">                        acquisitionContextCol_sequenceIndex;
+    Annotated<std::vector<int>, opencmw::NoUnit, "chain indices">                           acquisitionContextCol_chainIndex;
+    Annotated<std::vector<int>, opencmw::NoUnit, "event numbers">                           acquisitionContextCol_eventNumber;
+    Annotated<std::vector<int>, opencmw::NoUnit, "timing group ids">                        acquisitionContextCol_timingGroupID;
+    Annotated<std::vector<std::int64_t>, si::time<nanosecond>, "event timestamps">          acquisitionContextCol_eventStamp;
+    Annotated<std::vector<std::int64_t>, si::time<nanosecond>, "process start timestamps">  acquisitionContextCol_processStartStamp;
+    Annotated<std::vector<std::int64_t>, si::time<nanosecond>, "sequence start timestamps"> acquisitionContextCol_sequenceStartStamp;
+    Annotated<std::vector<std::int64_t>, si::time<nanosecond>, "chain start timestamps">    acquisitionContextCol_chainStartStamp;
+    Annotated<std::vector<std::uint8_t>, opencmw::NoUnit, "event flags">                    acquisitionContextCol_eventFlags;
+    Annotated<std::vector<std::int16_t>, opencmw::NoUnit, "reserved">                       acquisitionContextCol_reserved;
+    Annotated<std::vector<std::int64_t>, opencmw::NoUnit, "event_id_raw">                   acquisitionContextCol_event_id_raw;
+    Annotated<std::vector<std::int64_t>, opencmw::NoUnit, "param_raw">                      acquisitionContextCol_param_raw;
+    Annotated<int, opencmw::NoUnit, "process index">                                        processIndex       = 0;
+    Annotated<int, opencmw::NoUnit, "sequence index">                                       sequenceIndex      = 0;
+    Annotated<int, opencmw::NoUnit, "chain index">                                          chainIndex         = 0;
+    Annotated<int, opencmw::NoUnit, "event number">                                         eventNumber        = 0;
+    Annotated<int, opencmw::NoUnit, "timing group id">                                      timingGroupID      = 0;
+    Annotated<std::int64_t, si::time<nanosecond>, "acquisition timestamp">                  acquisitionStamp   = 0;
+    Annotated<std::int64_t, si::time<nanosecond>, "event timestamp">                        eventStamp         = 0;
+    Annotated<std::int64_t, si::time<nanosecond>, "process start timestamp">                processStartStamp  = 0;
+    Annotated<std::int64_t, si::time<nanosecond>, "sequence start timestamp">               sequenceStartStamp = 0;
+    Annotated<std::int64_t, si::time<nanosecond>, "chain start timestamp">                  chainStartStamp    = 0;
+
+    // Optional fields not mandated by the specification but useful/necessary to propagate additional metainformation
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "S.I. quantities of post-processed signals"> channelQuantities;
+    Annotated<int64_t, si::time<nanosecond>, "time-stamp w.r.t. beam-in trigger">                     acqLocalTimeStamp = 0;
+    Annotated<std::vector<int64_t>, opencmw::NoUnit, "indices of trigger tags">                       triggerIndices;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "event names of trigger tags">               triggerEventNames;
+    Annotated<std::vector<int64_t>, si::time<nanosecond>, "timestamps of trigger tags">               triggerTimestamps;
+    Annotated<std::vector<float>, si::time<second>, "sample delay w.r.t. the trigger">                triggerOffsets;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "yaml of Tag's property_map">                triggerYamlPropertyMaps;
+    Annotated<std::vector<std::string>, opencmw::NoUnit, "list of error messages for this update">    acqErrors;
 };
 
 /**
@@ -203,8 +229,7 @@ struct FreqDomainContext {
 };
 
 } // namespace opendigitizer::acq
-
-ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelTimeBase, channelUserDelay, channelActualDelay, channelName, channelValue, channelError, channelQuantity, channelUnit, status, channelRangeMin, channelRangeMax, temperature, triggerIndices, triggerEventNames, triggerTimestamps, triggerOffsets, triggerYamlPropertyMaps, acqErrors)
+ENABLE_REFLECTION_FOR(opendigitizer::acq::Acquisition, refTriggerName, refTriggerStamp, channelTimeSinceRefTrigger, channelUserDelay, channelActualDelay, channelNames, channelValues, channelErrors, channelQuantities, channelUnits, status, channelRangeMin, channelRangeMax, temperature, acqLocalTimeStamp, triggerIndices, triggerEventNames, triggerTimestamps, triggerOffsets, triggerYamlPropertyMaps, acqErrors)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionSpectra, selectedFilter, acqTriggerName, acqTriggerTimeStamp, acqLocalTimeStamp, channelName, channelMagnitude, channelMagnitude_dimensions, channelMagnitude_labels, channelMagnitude_dim1_labels, channelMagnitude_dim2_labels, channelPhase, channelPhase_labels, channelPhase_dim1_labels, channelPhase_dim2_labels)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, preSamples, postSamples, maximumWindowSize, snapshotDelay, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)

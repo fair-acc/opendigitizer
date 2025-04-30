@@ -102,24 +102,24 @@ struct RemoteSourceBase {
 };
 
 template<typename T>
-requires std::is_floating_point_v<T>
+requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
 struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     using Parent = gr::Block<RemoteStreamSource<T>>;
     gr::PortOut<T> out;
 
-    std::string signal_name;
-    std::string signal_unit;
-    float       signal_min;
-    float       signal_max;
-
-    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
+    gr::Annotated<std::string, "signal name", gr::Visible, gr::Doc<"Identifier for the signal">>                                                                              signal_name;
+    gr::Annotated<std::string, "signal quantity", gr::Visible, gr::Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
+    gr::Annotated<std::string, "signal unit", gr::Visible, gr::Doc<"Unit of measurement for the signal values">>                                                              signal_unit;
+    gr::Annotated<float, "signal min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min        = std::numeric_limits<float>::lowest();
+    gr::Annotated<float, "signal max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max        = std::numeric_limits<float>::max();
+    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>                                                                                                          verbose_console   = false;
+    gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">>                                                                                            reconnect_timeout = 5.f;
 
     opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
     std::string                 _subscribedUri;
+    std::atomic<std::uint64_t>  _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
 
-    std::optional<std::chrono::system_clock::time_point> _reconnect{};
-
-    GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_min, signal_max, host, verbose_console);
+    GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_quantity, signal_min, signal_max, host, verbose_console, reconnect_timeout);
 
     struct Data {
         opendigitizer::acq::Acquisition acq;
@@ -137,23 +137,44 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     ~RemoteStreamSource() { RemoteSourceManager::instance().unregisterRemoteSource(this); }
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
-        if (signal_name != acq.channelName.value() || signal_unit != acq.channelUnit.value() || signal_min != acq.channelRangeMin.value() || signal_max != acq.channelRangeMax.value()) {
-            if (!acq.channelName.value().empty()) {
-                this->settings().set({{"signal_name", acq.channelName.value()}});
-            }
+        if (acq.channelNames.size() != 1 || acq.channelUnits.size() != 1 || acq.channelQuantities.size() != 1 || acq.channelRangeMin.size() != 1 || acq.channelRangeMax.size() != 1) {
+            this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("Expected exactly one channel, but got {} names, {} units, {} quantities, {} range-min values, and {} range-max values.", //
+                                                                            acq.channelNames.size(), acq.channelUnits.size(), acq.channelQuantities.size(), acq.channelRangeMin.size(), acq.channelRangeMax.size())));
+        } else {
+            if (signal_name != acq.channelNames[0] || signal_unit != acq.channelUnits[0] || signal_quantity != acq.channelQuantities[0] || signal_min != acq.channelRangeMin[0] || signal_max != acq.channelRangeMax[0]) {
+                if (!acq.channelNames[0].empty()) {
+                    if (const gr::property_map failed = this->settings().set({{"signal_name", acq.channelNames[0]}}); !failed.empty()) {
+                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
+                    }
+                }
 
-            if (!acq.channelUnit.value().empty()) {
-                this->settings().set({{"signal_unit", acq.channelUnit.value()}});
-            }
+                if (!acq.channelUnits[0].empty()) {
+                    if (const gr::property_map failed = this->settings().set({{"signal_unit", acq.channelUnits[0]}}); !failed.empty()) {
+                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
+                    }
+                }
 
-            this->settings().set({{"signal_min", acq.channelRangeMin.value()}, {"signal_max", acq.channelRangeMax.value()}});
+                if (!acq.channelQuantities[0].empty()) {
+                    if (const gr::property_map failed = this->settings().set({{"signal_quantity", acq.channelQuantities[0]}}); !failed.empty()) {
+                        this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
+                    }
+                }
+
+                if (const gr::property_map failed = this->settings().set({{"signal_min", acq.channelRangeMin[0]}, {"signal_max", acq.channelRangeMax[0]}}); !failed.empty()) {
+                    this->emitErrorMessage("updateSettingsFromAcquisition(..)", gr::Error(std::format("settings could not be applied: {}", gr::join(failed))));
+                }
+            }
         }
     }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
-            startSubscription(remote_uri);
-            _reconnect.reset();
+        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
+        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
+            if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+                startSubscription(remote_uri);
+            }
         }
 
         std::size_t     written = 0;
@@ -161,18 +182,44 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         while (written < output.size() && !_queue->data.empty()) {
             auto& d = _queue->data.front();
             updateSettingsFromAcquisition(d.acq);
-            auto in = std::span<const float>(d.acq.channelValue.begin(), d.acq.channelValue.end());
-            in      = in.subspan(d.read, std::min(output.size() - written, in.size() - d.read));
 
-            if constexpr (std::is_same_v<T, float>) {
-                std::ranges::copy(in, output.begin() + cast_to_signed(written));
-            } else {
-                std::ranges::transform(in, output.begin() + cast_to_signed(written), [](float v) { return static_cast<T>(v); });
+            const auto nSignals = static_cast<std::size_t>(d.acq.channelValues.n(0));
+            const auto nSamples = static_cast<std::size_t>(d.acq.channelValues.n(1));
+            if (nSignals == 0 || nSamples == 0) {
+                continue;
             }
 
+            if (nSignals != 1) {
+                this->emitErrorMessage("processBulk(..)", gr::Error(std::format("Expected exactly one channel, but got {} channelValues", nSignals)));
+                continue;
+            }
+            // Only one signal is stored
+            const auto nSamplesToCopy = std::min(output.size() - written, d.acq.channelValues.elements().size() - d.read);
+            auto       inValues       = std::span{d.acq.channelValues.elements()}.subspan(d.read, nSamplesToCopy);
+            auto       outIt          = output.begin() + cast_to_signed(written);
+            if constexpr (std::is_same_v<T, float>) {
+                std::ranges::copy(inValues, outIt);
+            } else if constexpr (gr::UncertainValueLike<T>) { // TODO: still needs to be tested when we get full support of gr::UncertainValue
+                if (d.acq.channelValues.elements().size() != d.acq.channelErrors.elements().size()) {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
+                        gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
+                            remote_uri, d.acq.channelValues.elements().size(), d.acq.channelErrors.elements().size())));                                     //
+                    std::ranges::transform(inValues, outIt, [](const auto& v) { return gr::UncertainValue{v, typename T::value_type(0)}; });
+                } else {
+                    auto inErrors = std::span{d.acq.channelErrors.elements()}.subspan(d.read, inValues.size());
+                    std::ranges::transform(std::views::zip(inValues, inErrors), outIt, [](const auto& ve) {
+                        const auto& [v, e] = ve;
+                        return gr::UncertainValue{v, e};
+                    });
+                }
+            } else {
+                std::ranges::transform(inValues, outIt, [](float v) { return static_cast<T>(v); });
+            }
+
+            // publish trigger info
             for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
                 // this tag was already handled in a previous call OR it will be published in the next call
-                if (idx < cast_to_signed(d.read) || static_cast<std::size_t>(idx - cast_to_signed(d.read)) >= in.size()) {
+                if (idx < cast_to_signed(d.read) || static_cast<std::size_t>(idx - cast_to_signed(d.read)) >= nSamplesToCopy) {
                     continue;
                 }
                 auto map = gr::property_map{
@@ -194,14 +241,15 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 }
                 if (verbose_console) {
                     auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
-                    std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name, tag_time, std::chrono::system_clock::now(), map);
+                    std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name.value, gr::time::getIsoTime(tag_time), gr::time::getIsoTime(), gr::join(map));
                 }
                 const auto tagIndex = written + static_cast<std::size_t>(idx - cast_to_signed(d.read));
                 output.publishTag(map, tagIndex);
             }
-            written += in.size();
-            d.read += in.size();
-            if (d.read == d.acq.channelValue.size()) {
+
+            written += nSamplesToCopy;
+            d.read += nSamplesToCopy;
+            if (d.read == nSamples) {
                 _queue->data.pop_front();
             }
         }
@@ -239,18 +287,23 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                             gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
-                _reconnect = std::chrono::system_clock::now() + 5s;
+                uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
+                                        + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
+                _reconnect.store(nowTimeoutNs, std::memory_order_release);
+
                 auto queue = maybeQueue.lock();
                 if (!queue) {
                     return;
                 }
                 opendigitizer::acq::Acquisition acq;
-                acq.channelValue.value()            = {0};
-                acq.triggerEventNames.value()       = {"SubscriptionInterrupted"};
-                acq.triggerIndices.value()          = {0};
-                acq.triggerTimestamps.value()       = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
-                acq.triggerOffsets.value()          = {0.f};
-                acq.triggerYamlPropertyMaps.value() = {{"subscription-error", rep.error}};
+                acq.channelValues                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
+                acq.channelErrors                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
+                acq.triggerEventNames                  = {"SubscriptionInterrupted"s};
+                acq.triggerIndices                     = {std::int64_t(0)};
+                acq.triggerTimestamps.value()          = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
+                acq.triggerOffsets                     = {0.f};
+                const gr::property_map yamlPropertyMap = {{"subscription-error", rep.error}};
+                acq.triggerYamlPropertyMaps            = {pmtv::yaml::serialize(yamlPropertyMap)};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
                 return;
@@ -305,22 +358,22 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     }
 
     void stop() { stopSubscription(); }
-}; // namespace opendigitizer
+}; // RemoteStreamSource
 
 template<typename T>
-requires std::is_floating_point_v<T>
+requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
 struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>> {
     using Parent = gr::Block<RemoteDataSetSource<T>>;
     gr::PortOut<gr::DataSet<T>> out;
 
+    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>               verbose_console   = false;
+    gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">> reconnect_timeout = 5.f;
+
     opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
     std::string                 _subscribedUri;
+    std::atomic<std::uint64_t>  _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
 
-    gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">> verbose_console = false;
-
-    std::optional<std::chrono::system_clock::time_point> _reconnect{};
-
-    GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console);
+    GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console, reconnect_timeout);
     struct Queue {
         std::deque<gr::DataSet<T>> data;
         std::mutex                 mutex;
@@ -331,9 +384,13 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {}
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        if (_reconnect.has_value() && _reconnect.value() < std::chrono::system_clock::now() && !host.empty() && !remote_uri.empty()) {
-            startSubscription(remote_uri);
-            _reconnect.reset();
+        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
+        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
+            if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+                startSubscription(remote_uri);
+            }
         }
 
         std::lock_guard           lock(_queue->mutex);
@@ -381,7 +438,9 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 stopSubscription();
                 sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                     gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
-                _reconnect = std::chrono::system_clock::now() + 5s;
+                uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
+                                        + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
+                _reconnect.store(nowTimeoutNs, std::memory_order_release);
                 return;
             }
             if (rep.data.empty()) {
@@ -395,30 +454,95 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 auto                            buf = rep.data;
                 opendigitizer::acq::Acquisition acq;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+
+                const auto nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
+                const auto nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
+                if (nSignals == 0 || nSamples == 0) {
+                    return;
+                }
+
                 gr::DataSet<T> ds;
-                auto           convert = [](float v) { return static_cast<T>(v); };
+                auto           convert = [](float v) {
+                    if constexpr (gr::UncertainValueLike<T>) {
+                        return static_cast<T::value_type>(v);
+                    } else {
+                        return static_cast<T>(v);
+                    }
+                };
 
                 ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
+
+                // signal data layout:
+                ds.extents = {static_cast<int32_t>(nSamples)};
+                ds.layout  = gr::LayoutRight{};
 
                 // axis layout:
                 ds.axis_names = {"x-axis"};
                 ds.axis_units = {"a.u."};
-                ds.axis_values.resize(1UZ);
-                auto axisValues     = acq.channelTimeBase | std::views::transform(convert);
-                ds.axis_values[0UZ] = {axisValues.begin(), axisValues.end()};
+                if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
+                    ds.axis_values.resize(1UZ);
+                    ds.axis_values[0UZ].resize(nSamples);
+                    std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(convert), std::ranges::begin(ds.axisValues(0UZ)));
+                } else {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                               //
+                        gr::Error(std::format("Inconsistent data from '{}': channelTimeSinceRefTrigger size ({}) !=  nSamples ({})", //
+                            remote_uri, acq.channelTimeSinceRefTrigger.size(), nSamples)));
+                }
 
-                // signal data layout:
-                ds.extents = {static_cast<int32_t>(acq.channelValue.size())};
-                ds.layout  = gr::LayoutRight{};
+                // signal meta info
+                if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
+                    ds.signal_names      = acq.channelNames;
+                    ds.signal_units      = acq.channelUnits;
+                    ds.signal_quantities = acq.channelQuantities;
+                } else {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                                          //
+                        gr::Error(std::format("Inconsistent data from '{}': channelNames size ({}) or channelQuantities size ({}) or channelUnits size ({}) !=  nSignals ({})", //
+                            remote_uri, acq.channelNames.size(), acq.channelQuantities.size(), acq.channelUnits.size(), nSignals)));                                            //
+                }
 
-                // signal data storage:
-                ds.signal_names      = {acq.channelName};
-                ds.signal_quantities = {acq.channelQuantity};
-                ds.signal_units      = {acq.channelUnit};
-                auto signalValues    = acq.channelValue | std::views::transform(convert);
-                ds.signal_values     = {signalValues.begin(), signalValues.end()};
-                // auto errors      = acq.channelError | std::views::transform(convert); // TODO: If type is uncertain value, use values and errors to initialize
-                ds.signal_ranges = {{convert(acq.channelRangeMin.value()), convert(acq.channelRangeMax.value())}};
+                if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
+                    ds.signal_ranges.resize(nSignals);
+                    for (std::size_t i = 0; i < nSignals; i++) {
+                        ds.signal_ranges[i] = {convert(acq.channelRangeMin[i]), convert(acq.channelRangeMax[i])};
+                    }
+                } else {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                 //
+                        gr::Error(std::format("Inconsistent data from '{}': channelRangeMin size ({}) or channelRangeMax size ({}) !=  nSignals ({})", //
+                            remote_uri, acq.channelRangeMin.size(), acq.channelRangeMax.size(), nSignals)));                                           //
+                }
+
+                // copy signal values
+                ds.signal_values.resize(nSignals * nSamples);
+                // TODO: still needs to be tested when we get full support of gr::UncertainValue
+                if constexpr (gr::UncertainValueLike<T>) {
+                    const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
+                    if (!dataOk) {
+                        this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
+                            gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
+                                remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
+
+                        for (std::size_t i = 0; i < nSignals; i++) {
+                            auto outValues = ds.signalValues(i);
+                            auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                            std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
+                        }
+                    } else {
+                        for (std::size_t i = 0; i < nSignals; i++) {
+                            auto outValues = ds.signalValues(i);
+                            auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                            auto inErrors  = std::span{std::next(acq.channelErrors.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                            std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
+                                const auto& [v, e] = ve;
+                                return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
+                            });
+                        }
+                    }
+                } else {
+                    auto signalValues = acq.channelValues.elements() | std::views::transform(convert);
+                    for (std::size_t i = 0; i < nSignals; i++) {
+                        std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
+                    }
+                }
 
                 // meta data
                 ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
@@ -470,7 +594,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
 } // namespace opendigitizer
 
-inline auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float>(gr::globalBlockRegistry());
-inline auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float>(gr::globalBlockRegistry());
+inline auto registerRemoteStreamSource  = gr::registerBlock<opendigitizer::RemoteStreamSource, float, gr::UncertainValue<float>>(gr::globalBlockRegistry());
+inline auto registerRemoteDataSetSource = gr::registerBlock<opendigitizer::RemoteDataSetSource, float, gr::UncertainValue<float>>(gr::globalBlockRegistry());
 
 #endif

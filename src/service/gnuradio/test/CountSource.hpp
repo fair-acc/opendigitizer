@@ -7,19 +7,20 @@ template<typename T>
 struct CountSource : public gr::Block<CountSource<T>> {
     gr::PortOut<T> out;
 
-    uint32_t                 n_samples     = 0; ///< Number of samples to produce, 0 means infinite
-    T                        initial_value = {};
-    float                    sample_rate   = 1.;
-    std::string              signal_name   = "test signal";
-    std::string              signal_unit   = "test unit";
-    float                    signal_min    = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
-    float                    signal_max    = std::numeric_limits<float>::max();    ///< maximum value of the signal
-    std::string              direction     = "up";                                 ///< direction of the count, "up" or "down"
+    uint32_t                 n_samples       = 0; ///< Number of samples to produce, 0 means infinite
+    T                        initial_value   = {};
+    float                    sample_rate     = 1.;
+    std::string              signal_name     = "test signal";
+    std::string              signal_unit     = "test unit";
+    std::string              signal_quantity = "test quantity";
+    float                    signal_min      = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
+    float                    signal_max      = std::numeric_limits<float>::max();    ///< maximum value of the signal
+    std::string              direction       = "up";                                 ///< direction of the count, "up" or "down"
     std::vector<std::string> timing_tags;
     std::size_t              _produced = 0;
     std::deque<gr::Tag>      _pending_tags;
 
-    GR_MAKE_REFLECTABLE(CountSource, out, n_samples, initial_value, sample_rate, signal_name, signal_unit, signal_min, signal_max, direction, timing_tags);
+    GR_MAKE_REFLECTABLE(CountSource, out, n_samples, initial_value, sample_rate, signal_name, signal_unit, signal_quantity, signal_min, signal_max, direction, timing_tags);
 
     void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& /*new_settings*/) {
         _produced = 0;
@@ -41,7 +42,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
             }
             const auto  indexStr = std::string_view(segs[0].begin(), segs[0].end());
             std::size_t index    = 0;
-            if (const auto& [_, ec] = std::from_chars(indexStr.begin(), indexStr.end(), index); ec != std::errc{}) {
+            if (const auto& [_, ec] = std::from_chars(indexStr.data(), indexStr.data() + indexStr.size(), index); ec != std::errc{}) {
                 std::println(std::cerr, "Invalid tag index '{}'", segs[0]);
                 continue;
             }

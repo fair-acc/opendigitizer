@@ -8,5 +8,7 @@ target_link_libraries(
           od_gnuradio_worker
           digitizer_common_utils
           client
+          services
+          od_rest
           zmq)
 add_test(NAME qa_GnuRadioWorker COMMAND qa_GnuRadioWorker)
