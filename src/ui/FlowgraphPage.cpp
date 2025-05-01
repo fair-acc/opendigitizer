@@ -68,6 +68,8 @@ inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::
             break;
         }
 
+        std::ranges::reverse(newLevel.blocks);
+
         result.push_back(std::move(newLevel));
     }
 
@@ -543,9 +545,8 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
-    if (m_layoutGraph) {
-        m_layoutGraph = false;
-        sortNodes();
+    if (m_dashboard->graphModel().rearrangeBlocks()) {
+        sortNodes(false);
     }
 
     auto originalFilterBlock = m_filterBlock;
@@ -603,7 +604,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             openRemoteSignalSelector = true;
         }
         if (ImGui::MenuItem("Rearrange blocks")) {
-            sortNodes();
+            sortNodes(true);
         }
         if (ImGui::MenuItem("Refresh graph")) {
             m_dashboard->graphModel().requestGraphUpdate();
@@ -707,7 +708,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             float relayoutGraphButtonPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Rearrange blocks").x - 15;
             ImGui::SetCursorPosX(relayoutGraphButtonPos);
             if (ImGui::Button("Rearrange blocks")) {
-                m_layoutGraph = true;
+                sortNodes(true);
             }
         }
 
@@ -814,21 +815,24 @@ void FlowgraphPage::draw() noexcept {
     }
 }
 
-void FlowgraphPage::sortNodes() {
-    fmt::print("Sorting blocks\n");
+void FlowgraphPage::sortNodes(bool all) {
     auto blockLevels = topologicalSort(m_dashboard->graphModel().blocks(), m_dashboard->graphModel().edges());
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
 
     float x = 0;
-    for (const auto& level : blockLevels) {
+    for (auto& level : blockLevels) {
         float y          = 0;
         float levelWidth = 0;
 
-        for (const auto& block : level.blocks) {
-            auto blockId = ax::NodeEditor::NodeId(block);
-            ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
+        for (auto& block : level.blocks) {
+
+            const auto blockId        = ax::NodeEditor::NodeId(block);
+            const bool userPositioned = ax::NodeEditor::GetWasUserPositioned(blockId);
+            if (all || !userPositioned) {
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
+            }
             auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
             y += blockSize.y + ySpacing;
             levelWidth = std::max(levelWidth, blockSize.x);
@@ -836,10 +840,11 @@ void FlowgraphPage::sortNodes() {
 
         x += levelWidth + xSpacing;
     }
+
+    m_dashboard->graphModel().setRearrangedBlocks();
 }
 
 void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph) {
-
     const auto& style = FlowgraphPage::styleForDataType(type);
 
     std::uint32_t alphaClearMask = 0x00ffffff;
