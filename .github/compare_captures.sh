@@ -55,6 +55,8 @@ for i in ${PR_CAPTURES_DIR}/*.png ; do
     reference_image=$REFERENCE_CAPTURES_DIR/$image_name
 
     echo "Testing $image_name"
+    ls -l "$PR_CAPTURES_DIR"/"$image_name"
+    md5sum "$PR_CAPTURES_DIR"/"$image_name"
 
     if [[ -f $reference_image ]] ; then
         # 'compare' from GH's old Ubuntu always returns 1 even if files are the same. Guard with 'diff'
