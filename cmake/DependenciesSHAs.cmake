@@ -1,6 +1,6 @@
 set(GIT_SHA_GNURADIO4 87eadce577569afe87384bba19baae37dd22006b CACHE STRING "" FORCE) # main as of 2025-04-08
 
-set(GIT_SHA_OPENCMW_CPP 84dbebe602861a8694276e5f9c4bf72ee1c3d3d4 CACHE STRING "" FORCE) # main as of 2025-03-05
+set(GIT_SHA_OPENCMW_CPP frank/http2 CACHE STRING "" FORCE) # main as of 2025-03-05
 
 set(GIT_SHA_UT v2.0.1 CACHE STRING "" FORCE) # latest version as of 2023-12-19
 

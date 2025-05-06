@@ -1,6 +1,5 @@
 #include <URI.hpp>
 #include <majordomo/Broker.hpp>
-#include <majordomo/RestBackend.hpp>
 #include <majordomo/Worker.hpp>
 #include <majordomo/base64pp.hpp>
 
