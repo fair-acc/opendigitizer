@@ -2,6 +2,8 @@
 
 #include "../App.hpp"
 
+#include <gnuradio-4.0/Scheduler.hpp>
+
 #include "../components/Dialog.hpp"
 #include "../components/ListBox.hpp"
 
@@ -61,7 +63,7 @@ void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& 
                 gr::Message message;
                 std::string type = std::move(selectedType) + selectedParametrization.value_or(std::string());
                 message.cmd      = gr::message::Command::Set;
-                message.endpoint = gr::graph::property::kEmplaceBlock;
+                message.endpoint = gr::scheduler::property::kEmplaceBlock;
                 message.data     = gr::property_map{
                         {"type"s, std::move(type)}, //
                 };
