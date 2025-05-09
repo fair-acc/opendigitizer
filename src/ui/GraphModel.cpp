@@ -153,6 +153,10 @@ UiGraphBlock* UiGraphModel::findBlockByUniqueName(const std::string& uniqueName)
     }
 }
 
+bool UiGraphModel::rearrangeBlocks() const { return _rearrangeBlocks; }
+
+void UiGraphModel::setRearrangedBlocks() { _rearrangeBlocks = false; }
+
 auto UiGraphModel::findPortIteratorByName(auto& ports, const std::string& portName) {
     auto it = std::ranges::find_if(ports, [&](const auto& port) { return port.portName == portName; });
     return std::make_pair(it, it != ports.end());
@@ -168,6 +172,7 @@ bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
     // Delete edges for the removed block
     removeEdgesForBlock(*blockIt);
     _blocks.erase(blockIt);
+    _rearrangeBlocks = true;
     return true;
 }
 
@@ -204,6 +209,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
             blockIt->updateBlockSettingsMetaInformation();
         }
     }
+    _rearrangeBlocks = true;
 }
 
 void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data) { handleBlockSettingsChanged(uniqueName, data); }
@@ -222,6 +228,8 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
         .context = ctx,
         .time    = time,
     };
+
+    _rearrangeBlocks = true;
 }
 
 void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
@@ -242,6 +250,8 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
         });
     }
     blockIt->contexts = contextAndTimes;
+
+    _rearrangeBlocks = true;
 }
 
 void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
@@ -253,6 +263,8 @@ void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, 
 
     blockIt->getAllContexts();
     blockIt->getActiveContext();
+
+    _rearrangeBlocks = true;
 }
 
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
@@ -312,6 +324,7 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
             components::Notification::error("Invalid edge ignored");
         }
     }
+    _rearrangeBlocks = true;
 }
 
 void UiGraphModel::handleAvailableGraphBlockTypes(const gr::property_map& data) {
@@ -378,6 +391,8 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
 
         block.getAllContexts();
         block.getActiveContext();
+
+        _rearrangeBlocks = true;
     }
 
     // TODO: When adding support for nested graphs, need to process

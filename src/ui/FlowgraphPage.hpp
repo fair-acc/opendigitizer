@@ -39,7 +39,6 @@ private:
     ax::NodeEditor::Config         m_editorConfig;
     ax::NodeEditor::EditorContext* m_editor = nullptr;
 
-    bool   m_layoutGraph = true;
     ImVec2 m_contextMenuPosition;
 
     std::unique_ptr<SignalSelector> m_remoteSignalSelector;
@@ -47,7 +46,7 @@ private:
 
     components::BlockControlsPanelContext m_editPaneContext;
 
-    void sortNodes();
+    void sortNodes(bool all);
 
     void drawNodeEditor(const ImVec2& size);
 

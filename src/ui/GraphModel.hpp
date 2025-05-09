@@ -125,6 +125,7 @@ private:
     std::vector<UiGraphBlock> _blocks;
     std::vector<UiGraphEdge>  _edges;
     bool                      _newGraphDataBeingSet = false;
+    bool                      _rearrangeBlocks      = false;
 
 public:
     UiGraphModel() {}
@@ -170,6 +171,13 @@ public:
     AvailableParametrizationsResult availableParametrizationsFor(const std::string& fullBlockType) const;
 
     UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
+
+    /**
+     * @return true when new blocks were added or removed so UI can rearrange them
+     */
+    bool rearrangeBlocks() const;
+
+    void setRearrangedBlocks();
 
 private:
     auto findBlockIteratorByUniqueName(const std::string& uniqueName);

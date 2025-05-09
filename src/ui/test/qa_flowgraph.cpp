@@ -46,7 +46,7 @@ struct TestState {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks()) {
-            flowgraphPage.sortNodes();
+            flowgraphPage.sortNodes(false);
             DigitizerUi::FlowgraphPage::drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail(), flowgraphPage.m_filterBlock);
         }
     }
