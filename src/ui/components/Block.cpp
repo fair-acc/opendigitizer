@@ -2,6 +2,7 @@
 #include "BlockNeighboursPreview.hpp"
 #include "Keypad.hpp"
 
+#include <gnuradio-4.0/Scheduler.hpp>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "../common/LookAndFeel.hpp"
@@ -148,7 +149,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                         if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kReplaceBlock;
+                            message.endpoint = gr::scheduler::property::kReplaceBlock;
                             message.data     = gr::property_map{
                                     {"uniqueName"s, panelContext.block->blockUniqueName},                 //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //

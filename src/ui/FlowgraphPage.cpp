@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <format>
 
+#include <gnuradio-4.0/Scheduler.hpp>
+
 #include "GraphModel.hpp"
 #include "common/ImguiWrap.hpp"
 
@@ -513,7 +515,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                             // AcceptNewItem() return true when user release mouse button.
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kEmplaceEdge;
+                            message.endpoint = gr::scheduler::property::kEmplaceEdge;
                             message.data     = gr::property_map{                                   //
                                 {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
                                 {"sourcePort"s, outputPort->portName},                         //
@@ -648,7 +650,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
             if (ImGui::MenuItem("Delete this block")) {
                 // Send message to delete block
                 gr::Message message;
-                message.endpoint = gr::graph::property::kRemoveBlock;
+                message.endpoint = gr::scheduler::property::kRemoveBlock;
                 message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
                 m_dashboard->graphModel().sendMessage(std::move(message));
             }
@@ -662,7 +664,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
                             if (ImGui::MenuItem(name.c_str())) {
                                 gr::Message message;
                                 message.cmd      = gr::message::Command::Set;
-                                message.endpoint = gr::graph::property::kReplaceBlock;
+                                message.endpoint = gr::scheduler::property::kReplaceBlock;
                                 message.data     = gr::property_map{
                                         {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
                                         {"type"s, std::move(typeParams.baseType) + availableParametrization}, //

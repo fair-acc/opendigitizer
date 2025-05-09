@@ -42,8 +42,9 @@ void updateFieldFrom(FieldType& field, const auto& data, const std::string& fiel
 } // namespace
 
 bool UiGraphModel::processMessage(const gr::Message& message) {
-    namespace graph = gr::graph::property;
-    namespace block = gr::block::property;
+    namespace graph     = gr::graph::property;
+    namespace scheduler = gr::scheduler::property;
+    namespace block     = gr::block::property;
 
     if (!message.data) {
         DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
@@ -61,13 +62,13 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         return std::get<std::string>(it->second);
     };
 
-    if (message.endpoint == graph::kBlockEmplaced) {
+    if (message.endpoint == scheduler::kBlockEmplaced) {
         handleBlockEmplaced(data);
 
-    } else if (message.endpoint == graph::kBlockRemoved) {
+    } else if (message.endpoint == scheduler::kBlockRemoved) {
         handleBlockRemoved(uniqueName());
 
-    } else if (message.endpoint == graph::kBlockReplaced) {
+    } else if (message.endpoint == scheduler::kBlockReplaced) {
         handleBlockRemoved(uniqueName("replacedBlockUniqueName"));
         handleBlockEmplaced(data);
 
@@ -82,10 +83,10 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // serviceNames is used for block's unique name in settings messages
         handleBlockSettingsStaged(message.serviceName, data);
 
-    } else if (message.endpoint == graph::kEdgeEmplaced) {
+    } else if (message.endpoint == scheduler::kEdgeEmplaced) {
         handleEdgeEmplaced(data);
 
-    } else if (message.endpoint == graph::kEdgeRemoved) {
+    } else if (message.endpoint == scheduler::kEdgeRemoved) {
         handleEdgeRemoved(data);
 
     } else if (message.endpoint == graph::kGraphInspected) {

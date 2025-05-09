@@ -1,6 +1,7 @@
 #include "DashboardPage.hpp"
 
 #include <format>
+#include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
 #include <memory>
@@ -308,7 +309,7 @@ DashboardPage::DashboardPage() {
 
         gr::Message message;
         message.cmd      = gr::message::Command::Set;
-        message.endpoint = gr::graph::property::kEmplaceEdge;
+        message.endpoint = gr::scheduler::property::kEmplaceEdge;
         message.data     = gr::property_map{                       //
             {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
             {"sourcePort"s, "out"},                            //
@@ -508,7 +509,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kEmplaceBlock;
+                            message.endpoint = gr::scheduler::property::kEmplaceBlock;
                             message.data     = gr::property_map{
                                 //
                                 {"type"s, sinkBlockType + sinkBlockParams}, //

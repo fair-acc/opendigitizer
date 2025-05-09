@@ -650,7 +650,7 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
 
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
-    message.endpoint = gr::graph::property::kEmplaceBlock;
+    message.endpoint = gr::scheduler::property::kEmplaceBlock;
     gr::property_map properties{
         {"remote_uri"s, uriStr},                 //
         {"signal_name"s, signalData.signalName}, //
@@ -690,7 +690,7 @@ void Dashboard::Service::reload() {
 void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
-    message.endpoint = gr::graph::property::kEmplaceBlock;
+    message.endpoint = gr::scheduler::property::kEmplaceBlock;
     message.data     = gr::property_map{
             {"type"s, std::move(type)},        //
             {"parameters"s, std::move(params)} //
