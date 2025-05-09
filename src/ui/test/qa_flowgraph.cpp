@@ -116,8 +116,8 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
 
-    fmt::print("providedBlocks:\n");
-    for (auto& blockName : registry.providedBlocks()) {
+    fmt::print("Available blocks:\n");
+    for (auto& blockName : registry.keys()) {
         fmt::print("  - {}\n", blockName);
     }
 #pragma GCC diagnostic pop

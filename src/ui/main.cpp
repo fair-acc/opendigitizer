@@ -93,8 +93,8 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrBasicBlocks(*registry);
     gr::blocklib::initGrFourierBlocks(*registry);
 
-    fmt::print("providedBlocks:\n");
-    for (auto& blockName : gr::globalBlockRegistry().providedBlocks()) {
+    fmt::print("Available blocks:\n");
+    for (auto& blockName : gr::globalBlockRegistry().keys()) {
         fmt::print("  - {}\n", blockName);
     }
 
