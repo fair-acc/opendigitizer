@@ -126,7 +126,7 @@ void registerTestBlocks(Registry& registry) {
 
 int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
-    options.screenshotPrefix = "chart";
+    options.screenshotPrefix = "flowgraph";
 
     // This is not a globalBlockRegistry, but a copy of it
     gr::BlockRegistry& registry = gr::globalBlockRegistry();
