@@ -35,8 +35,11 @@ using namespace boost;
 using namespace boost::ut;
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    DigitizerUi::FlowgraphPage              flowgraphPage;
+    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
+    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
+    DigitizerUi::FlowgraphPage                   flowgraphPage;
+
+    TestState() : flowgraphPage(restClient) {}
 
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
@@ -151,7 +154,7 @@ int main(int argc, char* argv[]) {
     auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(dashBoardDescription);
+    g_state.dashboard         = DigitizerUi::Dashboard::create(g_state.restClient, dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
         g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
