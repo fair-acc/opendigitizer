@@ -214,7 +214,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         command.command  = opencmw::mdp::Command::Unsubscribe;
         command.topic    = opencmw::URI<>(_subscribedUri);
         command.callback = [](const opencmw::mdp::Message&) {};
-        _client.request(command);
+        //_client.request(command);
         _subscribedUri = "";
     }
 
@@ -277,7 +277,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 return;
             }
         };
-        _client.request(command);
+        //_client.request(command);
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
@@ -352,7 +352,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         command.command  = opencmw::mdp::Command::Unsubscribe;
         command.topic    = opencmw::URI<>(_subscribedUri);
         command.callback = [](const opencmw::mdp::Message&) {};
-        _client.request(command);
+        //_client.request(command);
         _subscribedUri = "";
     }
 
@@ -438,7 +438,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 return;
             }
         };
-        _client.request(command);
+        //_client.request(command);
     }
 
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {

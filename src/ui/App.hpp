@@ -64,8 +64,59 @@ public:
 
     components::AppHeader header;
 
+    //
+    //  std::vector<std::unique_ptr<opencmw::client::RestClient>> clients;
+
 public:
-    App() : flowgraphPage(restClient), openDashboardPage(restClient) { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
+    App() : flowgraphPage(restClient), openDashboardPage(restClient) {
+        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
+
+        constexpr auto kNClients              = 1UZ;
+        constexpr auto kSubscriptions         = 10UZ;
+        constexpr bool kSeparateSubscriptions = false;
+        constexpr auto kNUpdates              = -1; // infinite
+        constexpr auto kIntervalMs            = 40UZ;
+        constexpr auto kInitialDelayMs        = 100UZ;
+        constexpr auto kPayloadSize           = 4096UZ;
+
+        std::atomic<std::size_t> responseCount = 0;
+
+        using namespace opencmw;
+
+        // clients.resize(kNClients);
+        // for (std::size_t i = 0; i < clients.size(); i++) {
+        //     clients[i] = std::make_unique<client::RestClient>(client::DefaultContentTypeHeader(MIME::BINARY));
+        // }
+
+        // for (std::size_t i = 0; i < kNClients; i++) {
+        std::size_t i = 0;
+        for (std::size_t j = 0; j < kSubscriptions; j++) {
+            client::Command cmd;
+            cmd.command      = mdp::Command::Subscribe;
+            cmd.serviceName  = "/loadTest";
+            const auto topic = fmt::format("{}:{}", kSeparateSubscriptions ? i : 0, j);
+            cmd.topic        = URI<>(fmt::format("https://garbanzo:8080/loadTest?topic={}&intervalMs={}&payloadSize={}&nUpdates={}&initialDelayMs={}", topic, kIntervalMs, kPayloadSize, kNUpdates, kInitialDelayMs));
+            cmd.callback     = [this, &responseCount, kPayloadSize, i, j](const auto& msg) {
+                // REQUIRE(msg.command == mdp::Command::Notify);
+                // REQUIRE(msg.error == "");
+                // REQUIRE(msg.data.size() > 0);
+                const auto index = responseCount.fetch_add(1);
+
+                opencmw::load_test::Payload payload;
+                try {
+                    IoBuffer buffer{msg.data};
+                    deserialise<YaS, ProtocolCheck::IGNORE>(buffer, payload);
+                    //     REQUIRE(payload.data.size() == kPayloadSize);
+                } catch (const ProtocolException& e) {
+                    //     FAIL(fmt::format("Failed to deserialise payload: {}", e.what()));
+                    return;
+                }
+            };
+            fmt::println("SUBSCRIBING TO {}", cmd.topic.str());
+            restClient->request(std::move(cmd));
+        }
+        // }
+    }
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
