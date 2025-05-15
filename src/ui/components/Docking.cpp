@@ -2,7 +2,8 @@
 #include "../ui/common/ImguiWrap.hpp"
 #include "../ui/components/ImGuiNotify.hpp"
 
-#include <fmt/format.h>
+#include <algorithm>
+#include <format>
 #include <ranges>
 
 #include <imgui_internal.h>

@@ -6,6 +6,8 @@
 
 #include <settings.hpp>
 
+#include <gnuradio-4.0/meta/formatter.hpp>
+
 #include <atomic>
 #include <cmath>
 #include <fstream>
@@ -57,7 +59,7 @@ public:
             auto topicPath = ctx.request.topic.path().value_or("/");
             auto pathView  = std::string_view{topicPath};
             if (!pathView.starts_with(DashboardWorker::name)) {
-                throw std::invalid_argument(fmt::format("Unexpected service name in topic ('{}'), must start with '{}'", topicPath, DashboardWorker::name));
+                throw std::invalid_argument(std::format("Unexpected service name in topic ('{}'), must start with '{}'", topicPath, DashboardWorker::name));
             }
 
             pathView.remove_prefix(DashboardWorker::name.size());
@@ -165,7 +167,7 @@ public:
         auto readFile = [](const std::filesystem::path& filePath, std::string& contents) {
             std::ifstream file(filePath);
             if (!file.is_open()) {
-                fmt::print("DashboardWorker: could not read file with default flowgraph: {}\n", filePath);
+                std::print("DashboardWorker: could not read file with default flowgraph: {}\n", filePath.string());
                 return;
             }
             contents.assign((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
@@ -185,11 +187,11 @@ public:
                 names.push_back(name);
                 dashboards.push_back(dashboard);
             }
-            fmt::print("DashboardWorker: loaded dashboards: {}\n", names);
+            std::print("DashboardWorker: loaded dashboards: {}\n", gr::join(names));
         } catch (std::filesystem::filesystem_error& e) {
-            fmt::print("DashboardWorker: failed to load default remote Dashboards: {}\n", e.what());
+            std::print("DashboardWorker: failed to load default remote Dashboards: {}\n", e.what());
         } catch (...) {
-            fmt::print("DashboardWorker: failed to load default remote Dashboards\n");
+            std::print("DashboardWorker: failed to load default remote Dashboards\n");
         }
     }
 

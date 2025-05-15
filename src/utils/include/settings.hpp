@@ -3,6 +3,7 @@
 
 #include "RestClient.hpp"
 #include <algorithm>
+#include <print>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -127,7 +128,7 @@ private:
         }
         disableHttps = url.scheme() == "http";
 #endif
-        fmt::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+        std::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
             disableHttps, darkMode, editableMode, checkCertificates, hostname, port, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 

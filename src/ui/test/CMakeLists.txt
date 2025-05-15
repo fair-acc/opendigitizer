@@ -5,8 +5,7 @@ target_include_directories(qa_play_stop_bar INTERFACE $<BUILD_INTERFACE:${CMAKE_
                                                       $<INSTALL_INTERFACE:include/>)
 target_link_libraries(
   qa_play_stop_bar
-  PRIVATE fmt
-          ut
+  PRIVATE ut
           core
           gnuradio-core
           gnuradio-meta

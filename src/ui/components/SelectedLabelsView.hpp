@@ -8,7 +8,7 @@
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 
-#include <fmt/format.h>
+#include <format>
 
 namespace DigitizerUi {
 

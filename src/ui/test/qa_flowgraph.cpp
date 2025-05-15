@@ -4,7 +4,7 @@
 
 #include <boost/ut.hpp>
 
-#include <fmt/core.h>
+#include <format>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -59,7 +59,7 @@ struct TestState {
             count++;
         }
         if (count >= maxCount) {
-            throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
+            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
         }
     }
 
@@ -116,9 +116,9 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
 
-    fmt::print("Available blocks:\n");
+    std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
-        fmt::print("  - {}\n", blockName);
+        std::print("  - {}\n", blockName);
     }
 #pragma GCC diagnostic pop
 }

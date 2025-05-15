@@ -90,7 +90,7 @@ private:
         case Category::Quantity: return signal.quantity;
         case Category::Status: return signal.sampleRate;
         case Category::DeviceType: return signal.deviceClass;
-        default: throw gr::exception(fmt::format("unknown category {} for Signal device: {}", magic_enum::enum_name(category), signal.device));
+        default: throw gr::exception(std::format("unknown category {} for Signal device: {}", magic_enum::enum_name(category), signal.device));
         }
     }
 

@@ -39,7 +39,7 @@ T getValueOrDefault(const gr::property_map& map, const std::string& key, const T
         constexpr bool                strictChecks   = false;
         std::expected<T, std::string> convertedValue = pmtv::convert_safely<T, strictChecks>(it->second);
         if (!convertedValue) {
-            throw gr::exception(fmt::format("failed to convert value for key {} - error: {}", key, convertedValue.error()), location);
+            throw gr::exception(std::format("failed to convert value for key {} - error: {}", key, convertedValue.error()), location);
         }
         return convertedValue.value_or(defaultValue);
     }

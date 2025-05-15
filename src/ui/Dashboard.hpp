@@ -126,7 +126,7 @@ public:
 
         Plot() {
             static int n = 1;
-            name         = fmt::format("Plot {}", n++);
+            name         = std::format("Plot {}", n++);
             window       = std::make_shared<DockSpace::Window>(name);
         }
     };

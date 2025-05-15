@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <array>
-#include <fmt/core.h>
+#include <format>
 #include <stdexcept>
 #include <string_view>
 

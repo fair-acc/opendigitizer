@@ -36,13 +36,13 @@ struct CountSource : public gr::Block<CountSource<T>> {
             auto       view = tagStr | std::ranges::views::split(',');
             const auto segs = std::vector(view.begin(), view.end());
             if (segs.size() != 2) {
-                fmt::println(std::cerr, "Invalid tag: '{}'", tagStr);
+                std::println(std::cerr, "Invalid tag: '{}'", tagStr);
                 continue;
             }
             const auto  indexStr = std::string_view(segs[0].begin(), segs[0].end());
             std::size_t index    = 0;
             if (const auto& [_, ec] = std::from_chars(indexStr.begin(), indexStr.end(), index); ec != std::errc{}) {
-                fmt::println(std::cerr, "Invalid tag index '{}'", segs[0]);
+                std::println(std::cerr, "Invalid tag index '{}'", segs[0]);
                 continue;
             }
             std::string           name;

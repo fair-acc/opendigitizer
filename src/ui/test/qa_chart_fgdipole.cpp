@@ -57,7 +57,7 @@ struct TestState {
             count++;
         }
         if (count >= maxCount) {
-            throw gr::exception(fmt::format("waitForScheduler({}): maxCount exceeded", count), location);
+            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
         }
     }
 };

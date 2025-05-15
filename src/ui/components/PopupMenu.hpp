@@ -2,7 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_POPUP_MENU_HPP_
 
 #include <cmath>
-#include <fmt/format.h>
+#include <format>
 #include <functional>
 #include <numbers>
 #include <optional>
@@ -65,7 +65,7 @@ struct MenuButton {
     }
 
     [[nodiscard]] bool create(float buttonRounding = -1.f) {
-        const std::string buttonId  = fmt::format("#{}", label);
+        const std::string buttonId  = std::format("#{}", label);
         bool              isClicked = false;
         {
             const float        actualButtonSize = size();
@@ -335,7 +335,7 @@ private:
 template<std::size_t unique_id, MenuType menuType>
 bool PopupMenu<unique_id, menuType>::_isOpen = false;
 template<std::size_t unique_id, MenuType menuType>
-const std::string PopupMenu<unique_id, menuType>::_popupId = fmt::format("MenuPopup_{}", unique_id);
+const std::string PopupMenu<unique_id, menuType>::_popupId = std::format("MenuPopup_{}", unique_id);
 template<std::size_t unique_id, MenuType menuType>
 ImRect PopupMenu<unique_id, menuType>::_itemBoundaryBox = {{-1.f, -1.f}, {-1.f, -1.f}};
 template<std::size_t unique_id, MenuType menuType>

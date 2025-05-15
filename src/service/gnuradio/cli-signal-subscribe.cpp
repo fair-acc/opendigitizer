@@ -1,5 +1,5 @@
 #include <daq_api.hpp>
-#include <fmt/core.h>
+#include <format>
 
 #include <Client.hpp>
 #include <IoSerialiserYaS.hpp>
@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     opencmw::client::RestClient::CHECK_CERTIFICATES = false; // allow subscribing to local services with self-signed certificates
 
     if (argc <= 1) {
-        fmt::print("Please provide subscription URL to AcquisitionWorker.\n");
+        std::print("Please provide subscription URL to AcquisitionWorker.\n");
         return 1;
     }
 
@@ -48,11 +48,11 @@ int main(int argc, char** argv) {
     std::size_t update_count     = 0UZ;
     const auto  start            = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
 
-    fmt::print("Subscribing to {}\n", argv[1]);
+    std::print("Subscribing to {}\n", argv[1]);
 
     client.subscribe(opencmw::URI<opencmw::STRICT>(argv[1]), [&samples_received, &update_count, &start](const opencmw::mdp::Message& msg) {
         if (!msg.error.empty() || msg.data.empty()) {
-            fmt::print("received error or data is empty, error msg: {}\n", msg.error);
+            std::print("received error or data is empty, error msg: {}\n", msg.error);
             return;
         }
         const auto                      now    = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
         try {
             opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
         } catch (opencmw::ProtocolException& e) {
-            fmt::print("deserialisation error: {}\n", e.what());
+            std::print("deserialisation error: {}\n", e.what());
             return;
         }
         auto dataTimestamp = std::chrono::nanoseconds(acq.acqLocalTimeStamp.value());
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
                 return std::ranges::minmax(acq.channelValue);
             }
         }();
-        fmt::print("t = {}ms: Update received: {}, samples: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", uptime.count(), update_count, acq.channelValue.size(), min, max, samples_received, sample_rate, 1e-9 * static_cast<double>(latency.count()));
+        std::print("t = {}ms: Update received: {}, samples: {}, min-max: {}-{}, total_samples: {}, avg_sampling_rate: {}, latency: {}s\n", uptime.count(), update_count, acq.channelValue.size(), min, max, samples_received, sample_rate, 1e-9 * static_cast<double>(latency.count()));
     });
 
     while (true) {

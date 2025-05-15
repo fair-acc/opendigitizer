@@ -1,8 +1,7 @@
 add_executable(qa_GnuRadioWorker qa_GnuRadioWorker.cpp)
 target_link_libraries(
   qa_GnuRadioWorker
-  PRIVATE fmt
-          ut
+  PRIVATE ut
           gr-fourier
           gr-testing
           gnuradio-blocklib-core

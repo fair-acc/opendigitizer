@@ -5,11 +5,14 @@
 #include <zmq/ZmqUtils.hpp>
 
 #include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/meta/UnitTestHelper.hpp>
+#include <gnuradio-4.0/meta/formatter.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
 #include <boost/ut.hpp>
-#include <fmt/format.h>
+#include <format>
 #include <magic_enum_format.hpp>
+#include <print>
 
 #include "GnuRadioAcquisitionWorker.hpp"
 #include "GnuRadioFlowgraphWorker.hpp"
@@ -125,7 +128,7 @@ struct TestSetup {
 
     void subscribeClient(const URI<>& uri, std::function<void(const Acquisition&)>&& handlerFnc) {
         client.subscribe(uri, [handler = std::move(handlerFnc)](const mdp::Message& update) {
-            fmt::println("Client 'received message from service '{}' for topic '{}'", update.serviceName, update.topic.str());
+            std::println("Client 'received message from service '{}' for topic '{}'", update.serviceName, update.topic.str());
             Acquisition acq;
             IoBuffer    buffer(update.data);
             try {
@@ -135,7 +138,7 @@ struct TestSetup {
                 }
                 handler(acq);
             } catch (const ProtocolException& e) {
-                fmt::println(std::cerr, "Parsing failed: {}", e.what());
+                std::println(std::cerr, "Parsing failed: {}", e.what());
                 throw;
             }
         });
@@ -155,7 +158,7 @@ struct TestSetup {
         IoBuffer buffer;
         opencmw::serialise<opencmw::Json>(buffer, serialised);
 
-        fmt::print("Sending ReplaceGraphGRC message to the service {}\n", buffer);
+        std::print("Sending ReplaceGraphGRC message to the service {}\n", buffer.asString());
         client.set(URI("mdp://127.0.0.1:12346/GnuRadio/FlowGraph"), std::move(callback), std::move(buffer));
     }
 

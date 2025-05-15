@@ -3,7 +3,7 @@
 
 #include <expected>
 
-#include <fmt/format.h>
+#include <format>
 
 #include <gnuradio-4.0/Block.hpp>
 
@@ -78,12 +78,12 @@ public:
         if (isValidTransition(oldState, newState)) {
             setAndNotifyState(newState);
             // TODO: remove once message ports are enabled in the UI
-            fmt::println("change {} state from {} to {}", getBlockName(), magic_enum::enum_name(oldState),
+            std::println("change {} state from {} to {}", getBlockName(), magic_enum::enum_name(oldState),
                     magic_enum::enum_name(newState));
             return {};
         } else {
             return std::unexpected(gr::Error{
-                    fmt::format("Block '{}' invalid state transition in {} from {} -> to {}", getBlockName(),
+                    std::format("Block '{}' invalid state transition in {} from {} -> to {}", getBlockName(),
                             gr::meta::type_name<TDerived>(), magic_enum::enum_name(toolState()),
                             magic_enum::enum_name(newState)),
                     location });
@@ -172,7 +172,7 @@ private:
         if (clicked && !disabled) {
             if (auto e = this->changeToolStateTo(buttonType); e) {
                 this->emitMessage(this->ctrlOut, { { key::Kind, kind::SettingsChanged },
-                                                         { key::What, fmt::format("{} pressed", magic_enum::enum_name(buttonType)) } });
+                                                         { key::What, std::format("{} pressed", magic_enum::enum_name(buttonType)) } });
             } else {
                 this->emitMessage(this->msgOut, { { key::Kind, kind::Error },
                                                         { key::ErrorInfo, e.error().message },

@@ -110,7 +110,7 @@ private:
             _flowgraph              = std::move(initialFlowGraph);
             _acquisitionWorker.scheduleGraphChange(std::move(grGraph));
         } catch (const std::string& e) {
-            throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
+            throw std::invalid_argument(std::format("Could not parse flow graph: {}", e));
         }
     }
 
@@ -134,7 +134,7 @@ private:
                 _acquisitionWorker.scheduleGraphChange(std::move(grGraph));
 
             } catch (const std::string& e) {
-                throw std::invalid_argument(fmt::format("Could not parse flow graph: {}", e));
+                throw std::invalid_argument(std::format("Could not parse flow graph: {}", e));
             }
         }
         notifyUpdate();

@@ -4,7 +4,7 @@
 
 #include "components/Docking.hpp"
 #include <boost/ut.hpp>
-#include <fmt/format.h>
+#include <format>
 
 #include "ImGuiTestApp.hpp"
 
@@ -51,7 +51,7 @@ void createButtonGroup(DigitizerUi::DockSpace& dockspace) {
     if (ImGui::Button("add window")) {
         static int extraWinId = 1;
         extraWinId++;
-        g_testState.windows.push_back(createWindow(fmt::format("window-{}", extraWinId)));
+        g_testState.windows.push_back(createWindow(std::format("window-{}", extraWinId)));
     }
 
     ImGui::SameLine();
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
     options.screenshotPrefix = "docking";
 
     for (int i = 0; i < 4; ++i) {
-        g_testState.windows.push_back(createWindow(fmt::format("dock{}", i)));
+        g_testState.windows.push_back(createWindow(std::format("dock{}", i)));
     }
 
     TestApp app(options);
