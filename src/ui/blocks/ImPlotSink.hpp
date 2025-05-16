@@ -233,6 +233,11 @@ struct ImPlotSinkModel {
 class ImPlotSinkManager {
 private:
     ImPlotSinkManager() = default;
+    ~ImPlotSinkManager() {
+        // Clear it now, otherwise sink dtor calls ImPlotSinkManager::unregisterPlotSink() but
+        // ImPlotSinkManager would be partially-deleted already
+        _knownSinks.clear();
+    }
 
     ImPlotSinkManager(const ImPlotSinkManager&)            = delete;
     ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
@@ -286,8 +291,12 @@ public:
 
     template<typename TBlock>
     void unregisterPlotSink(TBlock* block) {
-        notifyListeners(*_knownSinks[block->unique_name], false);
-        _knownSinks.erase(block->unique_name);
+        // might not exist because registerPlotSink() isn't called in ctor but later
+        auto it = _knownSinks.find(block->unique_name);
+        if (it != _knownSinks.end()) {
+            notifyListeners(*it->second, false);
+            _knownSinks.erase(it);
+        }
     }
 
     template<typename Pred>
