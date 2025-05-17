@@ -4,7 +4,7 @@
 #include <fstream>
 #include <ranges>
 
-#include <fmt/format.h>
+#include <format>
 
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
@@ -110,11 +110,11 @@ auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::
             reply[i] = [&]() -> std::string {
                 switch (what[i]) {
                 case What::Dashboard: {
-                    auto file = fs.open(fmt::format("assets/sampleDashboards/{}.yml", name));
+                    auto file = fs.open(std::format("assets/sampleDashboards/{}.yml", name));
                     return {file.begin(), file.end()};
                 }
                 case What::Flowgraph: {
-                    auto file = fs.open(fmt::format("assets/sampleDashboards/{}.grc", name));
+                    auto file = fs.open(std::format("assets/sampleDashboards/{}.grc", name));
                     return {file.begin(), file.end()};
                 }
                 default:
@@ -134,7 +134,7 @@ auto fetch(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::
             stream.seekg(0);
 
 #define ERR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
-    auto msg = fmt::format("Cannot load dashboard from '{}'. File is corrupted.", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
+    auto msg = std::format("Cannot load dashboard from '{}'. File is corrupted.", path.native());                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
     components::Notification::warning(msg);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
     errCb();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \
     return;
@@ -188,7 +188,7 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view
     }
 
     auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path), PrivateTag{});
-    fmt::print("Creating dashboard source for path {}\n", path);
+    std::print("Creating dashboard source for path {}\n", path);
     knownDashboardStorage().push_back(dashboardStorageInfo);
     return dashboardStorageInfo;
 }
@@ -234,7 +234,7 @@ void Dashboard::load() {
                 isInUse = false;
             },
             [this]() {
-                auto error = fmt::format("Invalid flowgraph for dashboard {}/{}", m_desc->storageInfo->path, m_desc->filename);
+                auto error = std::format("Invalid flowgraph for dashboard {}/{}", m_desc->storageInfo->path, m_desc->filename);
                 components::Notification::error(error);
 
                 isInUse = false;
@@ -276,17 +276,17 @@ void Dashboard::loadAndThen(const std::string& grcData, const std::string& dashb
         m_isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
-        fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
+        std::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
 #endif
-        components::Notification::error(fmt::format("Error: {}", e.what()));
+        components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
             requestClose(this);
         }
     } catch (const std::exception& e) {
 #ifndef NDEBUG
-        fmt::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e.what());
+        std::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e.what());
 #endif
-        components::Notification::error(fmt::format("Error: {}", e.what()));
+        components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
             requestClose(this);
         }
@@ -297,7 +297,7 @@ void Dashboard::doLoad(const std::string& desc) {
     using namespace gr;
     const auto yaml = pmtv::yaml::deserialize(desc);
     if (!yaml) {
-        throw gr::exception(fmt::format("Could not parse yaml for Dashboard: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+        throw gr::exception(std::format("Could not parse yaml for Dashboard: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
     }
 
     const property_map& rootMap = yaml.value();
@@ -328,7 +328,7 @@ void Dashboard::doLoad(const std::string& desc) {
 
         auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
         if (!sink) {
-            auto msg = fmt::format("Unable to find the plot source -- sink: '{}'", block);
+            auto msg = std::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
@@ -385,7 +385,7 @@ void Dashboard::doLoad(const std::string& desc) {
                 } else if (axis == "Y" || axis == "y") {
                     axisData.axis = Plot::AxisKind::Y;
                 } else {
-                    components::Notification::warning(fmt::format("Unknown axis {}", axis));
+                    components::Notification::warning(std::format("Unknown axis {}", axis));
                     return;
                 }
 
@@ -431,7 +431,7 @@ void Dashboard::save() {
     headerYaml["favorite"] = m_desc->isFavorite;
     std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
     char                        lastUsed[11];
-    fmt::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+    std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
     headerYaml["lastUsed"] = std::string(lastUsed);
 
     property_map dashboardYaml;
@@ -515,7 +515,7 @@ void Dashboard::save() {
 
         std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
         if (!stream.is_open()) {
-            auto msg = fmt::format("can't open file for writing");
+            auto msg = std::format("can't open file for writing");
             components::Notification::warning(msg);
             return;
         }
@@ -575,7 +575,7 @@ void Dashboard::loadPlotSourcesFor(Plot& plot) {
             return sink.signalName() == name || sink.name() == name;
         });
         if (!plotSource) {
-            auto msg = fmt::format("Unable to find plot source -- sink: '{}'", name);
+            auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
             components::Notification::warning(msg);
             continue;
         }
@@ -594,12 +594,12 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::optional<
     }
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
-    fmt::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
+    std::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
     m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
     const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });
     if (it == m_services.end()) {
-        auto msg = fmt::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
+        auto msg = std::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
         components::Notification::warning(msg);
         auto& s = *m_services.emplace(flowgraphUri, flowgraphUri);
         s.reload();
@@ -742,7 +742,7 @@ void DashboardDescription::loadAndThen(const std::shared_ptr<DashboardStorageInf
         [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
             const auto yaml = pmtv::yaml::deserialize(desc[0]);
             if (!yaml) {
-                throw gr::exception(fmt::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
+                throw gr::exception(std::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
             }
             const gr::property_map& rootMap    = yaml.value();
             bool                    isFavorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));

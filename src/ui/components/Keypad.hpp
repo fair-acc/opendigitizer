@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include <fmt/format.h>
+#include <format>
 #include <unordered_map>
 
 namespace DigitizerUi::components {
@@ -516,7 +516,7 @@ public:
                 if (ImGui::Button("\uf146")) {
                     auto it = keyPad._manualyEditedIncrements.find(key);
                     if (it == keyPad._manualyEditedIncrements.end()) {
-                        const double increment = InputKeypad::computeIncrementNonZero(fmt::format("{:.4f}", static_cast<double>(*value)));
+                        const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
                         auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
                         it                     = op.first;
                     }
@@ -533,7 +533,7 @@ public:
                 if (ImGui::Button("\uf0fe")) {
                     auto it = keyPad._manualyEditedIncrements.find(key);
                     if (it == keyPad._manualyEditedIncrements.end()) {
-                        const double increment = InputKeypad::computeIncrementNonZero(fmt::format("{:.4f}", static_cast<double>(*value)));
+                        const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
                         auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
                         it                     = op.first;
                     }
@@ -554,17 +554,17 @@ public:
                 if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
                     return it->second;
                 } else {
-                    return InputKeypad::getDecimalPrecisionNonZero(fmt::format("{:.4f}", *value));
+                    return InputKeypad::getDecimalPrecisionNonZero(std::format("{:.4f}", *value));
                 }
             }();
 
-            const std::string format = suffix.empty() ? fmt::format("%.{}f", precision) : fmt::format("%.{}f {}", precision, suffix);
+            const std::string format = suffix.empty() ? std::format("%.{}f", precision) : std::format("%.{}f {}", precision, suffix);
             ImGui::DragFloat(label, static_cast<float*>(value), 0.1f, 0.0f, 0.0f, format.c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
             return drawChangeButtons();
         } else if constexpr (std::integral<EdTy>) {
-            const std::string format = suffix.empty() ? "%d" : fmt::format("%d {}", suffix);
+            const std::string format = suffix.empty() ? "%d" : std::format("%d {}", suffix);
             ImGui::DragInt(label, static_cast<int*>(value), 1.0f, 0, 0, format.c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
@@ -718,7 +718,7 @@ private:
             ImGui::OpenPopup(keypad_name);
             _prevValue.emplace<EdTy>(*value); // save for discard
             _editBuffer.clear();
-            fmt::format_to(std::back_inserter(_editBuffer), "{}\0", *value);
+            std::format_to(std::back_inserter(_editBuffer), "{}\0", *value);
             _lastToken = last_token(_editBuffer);
         }
 
@@ -1080,7 +1080,7 @@ private:
             if (!result) {
                 return ReturnState::None;
             }
-            _editBuffer = fmt::format("{}", result.value());
+            _editBuffer = std::format("{}", result.value());
             return ReturnState::Change;
         }
 
@@ -1146,7 +1146,7 @@ private:
                     return ReturnState::None;
                 }
                 _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
-                _editBuffer.append(fmt::format("{}", sqrtf(f)));
+                _editBuffer.append(std::format("{}", sqrtf(f)));
             }
             return ReturnState::Change;
         case Rcp: // reciprocate
@@ -1160,7 +1160,7 @@ private:
                     return ReturnState::None;
                 }
                 _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
-                _editBuffer.append(fmt::format("{}", 1.0f / f));
+                _editBuffer.append(std::format("{}", 1.0f / f));
             }
             return ReturnState::Change;
         case Percent:
@@ -1174,7 +1174,7 @@ private:
                     return ReturnState::None;
                 }
                 _editBuffer.erase(std::prev(_editBuffer.end(), static_cast<std::ptrdiff_t>(_lastToken.range.size())), _editBuffer.end());
-                _editBuffer.append(fmt::format("{}", f / 100.0f));
+                _editBuffer.append(std::format("{}", f / 100.0f));
             }
             return ReturnState::Change;
         case Period:

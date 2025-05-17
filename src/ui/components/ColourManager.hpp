@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <fmt/format.h>
+#include <format>
 #include <gnuradio-4.0/Message.hpp>
 
 namespace opendigitizer {
@@ -52,7 +52,7 @@ struct ColourManager {
     ColourMode getCurrentMode() const { return _currentMode; }
     void       setModePalette(ColourMode mode, const std::string& palName) {
         if (!_palettes.count(palName)) {
-            throw gr::exception(fmt::format("Unknown palette: '{}'", palName));
+            throw gr::exception(std::format("Unknown palette: '{}'", palName));
         }
         _modeMap[mode] = palName;
     }

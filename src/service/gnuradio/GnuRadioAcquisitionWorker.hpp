@@ -36,7 +36,7 @@ inline std::expected<T, std::string> get(const gr::property_map& m, const std::s
     if (res) {
         return res.value();
     } else {
-        return std::unexpected(fmt::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& /*value*/) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
+        return std::unexpected(std::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& /*value*/) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
     }
 }
 
@@ -48,7 +48,7 @@ inline std::string findTriggerName(const std::vector<std::pair<std::ptrdiff_t, g
             if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
                 const auto context = std::get<std::string>(contextIt->second);
                 if (!context.empty()) {
-                    return fmt::format("{}/{}", name, context);
+                    return std::format("{}/{}", name, context);
                 }
             }
 
@@ -68,7 +68,7 @@ inline std::optional<T> getSetting(const gr::BlockModel& block, const std::strin
         }
         return std::get<T>(*setting);
     } catch (const std::exception& e) {
-        fmt::println(std::cerr, "Unexpected type for '{}' property", key);
+        std::println(std::cerr, "Unexpected type for '{}' property", key);
         return {};
     }
 }
@@ -100,7 +100,7 @@ constexpr AcquisitionMode parseAcquisitionMode(std::string_view v) {
     if (v == "dataset") {
         return DataSet;
     }
-    throw std::invalid_argument(fmt::format("Invalid acquisition mode '{}'", v));
+    throw std::invalid_argument(std::format("Invalid acquisition mode '{}'", v));
 }
 
 struct PollerKey {
@@ -414,7 +414,7 @@ private:
                     }
                 }
             } catch (const std::exception& e) {
-                fmt::println(std::cerr, "Could not handle subscription {}: {}", subscription.toZmqTopic(), e.what());
+                std::println(std::cerr, "Could not handle subscription {}: {}", subscription.toZmqTopic(), e.what());
             }
         }
         return pollersFinished;
@@ -426,7 +426,7 @@ private:
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             const auto query = basic::DataSinkQuery::signalName(signalName);
-            pollerIt         = pollers.emplace(key, basic::DataSinkRegistry::instance().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+            pollerIt         = pollers.emplace(key, basic::globalDataSinkRegistry().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
         }
         return pollerIt;
     }
@@ -524,15 +524,15 @@ private:
             // and send snippets from their datasets to the individual subscribers
             if (mode == AcquisitionMode::Triggered) {
                 // clang-format off
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getTriggerPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getTriggerPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
                                                     {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .preSamples = key.pre_samples, .postSamples = key.post_samples, })).first; //
                 // clang-format on
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getSnapshotPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .delay = key.snapshot_delay})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getSnapshotPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .delay = key.snapshot_delay})).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getMultiplexedPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .maximumWindowSize = key.maximum_window_size})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getMultiplexedPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .maximumWindowSize = key.maximum_window_size})).first;
             } else if (mode == AcquisitionMode::DataSet) {
-                pollerIt = pollers.emplace(key, basic::DataSinkRegistry::instance().getDataSetPoller<SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getDataSetPoller<SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
             }
         }
         return pollerIt;

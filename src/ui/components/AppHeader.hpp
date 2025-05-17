@@ -6,7 +6,7 @@
 #include <string_view>
 
 #include <cmrc/cmrc.hpp>
-#include <fmt/chrono.h>
+#include <format>
 
 #include "../common/AppDefinitions.hpp"
 #include "../common/ImguiWrap.hpp"
@@ -101,8 +101,8 @@ public:
         const auto  timeT         = std::chrono::system_clock::to_time_t(now);
         std::tm     localTm       = *std::localtime(&timeT);
         std::tm     utcTm         = *std::gmtime(&timeT);
-        std::string localClock    = fmt::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02} (LOC)", localTm.tm_year + 1900, localTm.tm_mon + 1, localTm.tm_mday, localTm.tm_hour, localTm.tm_min, localTm.tm_sec);
-        std::string utcClock      = fmt::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
+        std::string localClock    = std::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02} (LOC)", localTm.tm_year + 1900, localTm.tm_mon + 1, localTm.tm_mday, localTm.tm_hour, localTm.tm_min, localTm.tm_sec);
+        std::string utcClock      = std::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
         const auto  utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
         const auto topLeft = ImGui::GetCursorPos();
@@ -158,7 +158,7 @@ public:
             }
 
             if (wasAlreadyOpen && !ImGui::IsItemHovered()) {
-                fmt::print("was already open -> closing\n");
+                std::print("was already open -> closing\n");
                 leftMenu.forceClose();
             }
         }
@@ -262,7 +262,7 @@ public:
                 rightMenu.addButton(
                     "",
                     [this, &rightMenu]() {
-                        fmt::print("requesting exit\n");
+                        std::print("requesting exit\n");
                         requestApplicationStop();
                         rightMenu.forceClose();
                     },

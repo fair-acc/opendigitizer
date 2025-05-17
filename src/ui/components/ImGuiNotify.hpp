@@ -22,7 +22,8 @@
 #include <string>
 #include <vector> // Vector for storing notifications list
 
-#include <fmt/format.h>
+#include <format>
+#include <print>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -358,7 +359,7 @@ inline std::vector<ImGuiToast> notifications;
  */
 inline void InsertNotification(const ImGuiToast& toast) {
 #if !defined(NDEBUG) || defined(PRINT_NOTIFICATIONS) // prints notifications to stdout for debug builds and if specifically requested
-    fmt::print("{} - {}\n", toast.getTitle(), toast.getContent());
+    std::print("{} - {}\n", toast.getTitle(), toast.getContent());
 #endif
     notifications.push_back(toast);
 }

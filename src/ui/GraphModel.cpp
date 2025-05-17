@@ -46,7 +46,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace block = gr::block::property;
 
     if (!message.data) {
-        DigitizerUi::components::Notification::error(fmt::format("Received an error: {}\n", message.data.error().message));
+        DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
         return false;
     }
 
@@ -110,7 +110,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         }
     } else {
         if (!message.data) {
-            DigitizerUi::components::Notification::error(fmt::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
+            DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
         }
         return false;
     }
@@ -340,7 +340,7 @@ void UiGraphModel::handleAvailableGraphBlockTypes(const gr::property_map& data) 
         }
     }
 
-    fmt::print("Known block types: {}\n", knownBlockTypes);
+    std::print("Known block types: {}\n", knownBlockTypes);
 }
 
 UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametrizationsFor(const std::string& fullBlockType) const {

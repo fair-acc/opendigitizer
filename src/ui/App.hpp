@@ -65,7 +65,7 @@ public:
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
-        std::string script = fmt::format("window.open('{}').focus()", executable);
+        std::string script = std::format("window.open('{}').focus()", executable);
         emscripten_run_script(script.c_str());
 #else
         if (fork() == 0) {
@@ -170,7 +170,7 @@ public:
         if (argc > 1) { // load dashboard if specified on the command line/query parameter
             const char* url = argv[1];
             if (strlen(url) > 0) {
-                fmt::print("Loading dashboard from '{}'\n", url);
+                std::print("Loading dashboard from '{}'\n", url);
                 loadDashboard(url);
             }
         } else if (!settings.defaultDashboard.empty()) {
@@ -181,7 +181,7 @@ public:
                 if (!basePath.empty() && !basePath.ends_with("/")) {
                     basePath += "/";
                 }
-                dashboardPath = fmt::format("{}://{}:{}/{}dashboards/{}", //
+                dashboardPath = std::format("{}://{}:{}/{}dashboards/{}", //
                     settings.disableHttps ? "http" : "https", settings.hostname, settings.port, basePath, dashboardPath);
             }
             loadDashboard(dashboardPath);
@@ -246,7 +246,7 @@ public:
             } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
                 openDashboardPage.draw(dashboard.get());
             } else {
-                auto msg = fmt::format("unknown view mode {}", static_cast<int>(mainViewMode));
+                auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
                 components::Notification::warning(msg);
             }
         }

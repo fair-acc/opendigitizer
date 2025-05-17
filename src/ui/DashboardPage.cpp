@@ -1,6 +1,6 @@
 #include "DashboardPage.hpp"
 
-#include <fmt/format.h>
+#include <format>
 #include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
 #include <memory>
@@ -97,7 +97,7 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
             }
         } else {
             // TODO: Remove the last added
-            components::Notification::warning(fmt::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
+            components::Notification::warning(std::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
             continue;
         }
     }
@@ -110,7 +110,7 @@ std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t id
     }
     const auto& cat = catOpt.value();
     if (!cat.quantity.empty() && !cat.unit.empty()) {
-        return fmt::format("{} [{}]", cat.quantity, cat.unit);
+        return std::format("{} [{}]", cat.quantity, cat.unit);
     }
     if (!cat.quantity.empty()) {
         return cat.quantity;
@@ -118,7 +118,7 @@ std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t id
     if (!cat.unit.empty()) {
         return cat.unit;
     }
-    return fmt::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1UZ); // fallback if both empty
+    return std::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1UZ); // fallback if both empty
 }
 
 void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3>& xCats, const std::array<std::optional<AxisCategory>, 3>& yCats) {
@@ -155,7 +155,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         if (fitCharCount < truncated.size()) {
             truncated = truncated.substr(truncated.size() - fitCharCount);
         }
-        return fmt::format("...{}", truncated);
+        return std::format("...{}", truncated);
     };
 
     auto setAxisScale = [](ImAxis axisID, AxisScale scale) {
@@ -277,7 +277,7 @@ DashboardPage::DashboardPage() {
 
         auto it = std::ranges::find_if(_addedSourceBlocksWaitingForSink, [&sink](const auto& kvp) { return kvp.second.signalData.signalName == sink.signalName(); });
         if (it == _addedSourceBlocksWaitingForSink.end()) {
-            fmt::print("[DashboardPage] Status: A sink added that is not connected to a remote source\n");
+            std::print("[DashboardPage] Status: A sink added that is not connected to a remote source\n");
             return;
         }
 
@@ -505,7 +505,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 ImGui::SameLine();
                 // Retrieve FPS and milliseconds per iteration
                 const float fps     = ImGui::GetIO().Framerate;
-                const auto  str     = fmt::format("FPS:{:5.0f}({:2}ms)", fps, LookAndFeel::instance().execTime.count());
+                const auto  str     = std::format("FPS:{:5.0f}({:2}ms)", fps, LookAndFeel::instance().execTime.count());
                 const auto  estSize = ImGui::CalcTextSize(str.c_str());
                 alignForWidth(estSize.x, 1.0);
                 ImGui::Text("%s", str.c_str());

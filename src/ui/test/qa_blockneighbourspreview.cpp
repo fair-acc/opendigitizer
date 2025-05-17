@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
 
     g_context.graphModel           = &graphModel;
     g_context.block                = &block;
-    g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { fmt::print("Block clicked.\n"); };
+    g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { std::print("Block clicked.\n"); };
 
     TestApp app(options);
     return app.runTests() ? 0 : 1;

@@ -1,8 +1,9 @@
 #include "../include/FAIR/DeviceNameHelper.hpp"
 #include <boost/ut.hpp>
 
-#include <fmt/core.h>
+#include <format>
 #include <numeric>
+#include <print>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -10,7 +11,7 @@
 namespace fair {
 
 void printOut(const DeviceInfo& deviceInfo) {                                                                    //
-    fmt::println("device name: {:10} -> machine: {:10}, section: {:15}, seqID: {:>3}, function: {:30}, pos: {}", //
+    std::println("device name: {:10} -> machine: {:10}, section: {:15}, seqID: {:>3}, function: {:30}, pos: {}", //
         deviceInfo.name, deviceInfo.location, deviceInfo.section, deviceInfo.sequence, deviceInfo.deviceFunction, deviceInfo.devicePosition);
 }
 
@@ -59,8 +60,8 @@ inline std::vector<SignalInfo> generateSignalTable() {
             table.emplace_back(SignalInfo{
                 //
                 std::string(deviceInfo.name),                                                                                            //
-                fmt::format("{}.{}.test-domain.io", deviceInfo.location, deviceInfo.name),                                               //
-                fmt::format("{}:{}{}@{}", deviceInfo.name, subDevice.empty() ? "" : fmt::format("{}:", subDevice), quantity, frequency), //
+                std::format("{}.{}.test-domain.io", deviceInfo.location, deviceInfo.name),                                               //
+                std::format("{}:{}{}@{}", deviceInfo.name, subDevice.empty() ? "" : std::format("{}:", subDevice), quantity, frequency), //
                 std::string(quantity), std::string(frequency), std::string(unit),                                                        //
                 std::string(deviceInfo.location), std::string(deviceInfo.deviceFunction)                                                 //
             });
@@ -102,7 +103,7 @@ void printSignalTable(const std::vector<SignalInfo>& table) {
     constexpr int acceleratorWidth     = 10;
     constexpr int deviceFunctionWidth  = 30;
 
-    fmt::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
+    std::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
         "device", deviceNameWidth,                                          //
         "digitizer_device", digitizerDeviceWidth,                           //
         "full_signal_name", fullSignalNameWidth,                            //
@@ -113,7 +114,7 @@ void printSignalTable(const std::vector<SignalInfo>& table) {
         "deviceFunction", deviceFunctionWidth);                             //
 
     for (const auto& entry : table) {
-        fmt::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
+        std::print("{:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}} {:<{}}\n", //
             entry.deviceName, deviceNameWidth,                                  //
             entry.digitizerDevice, digitizerDeviceWidth,                        //
             entry.fullSignalName, fullSignalNameWidth,                          //
@@ -123,9 +124,9 @@ void printSignalTable(const std::vector<SignalInfo>& table) {
             entry.accelerator, acceleratorWidth,                                //
             entry.deviceFunction, deviceFunctionWidth);
     }
-    fmt::print("number of devices: {}\n", table.size());
-    fmt::print("minimum memory usage: {} MB\n", (estimateMinimalMemoryUsage(table) >> 20));
-    fmt::print("total memory usage: {} MB\n", (estimateTotalMemoryUsage(table) >> 20));
+    std::print("number of devices: {}\n", table.size());
+    std::print("minimum memory usage: {} MB\n", (estimateMinimalMemoryUsage(table) >> 20));
+    std::print("total memory usage: {} MB\n", (estimateTotalMemoryUsage(table) >> 20));
 }
 
 } // namespace fair

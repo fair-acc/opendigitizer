@@ -40,10 +40,10 @@ private:
         template<typename... Args>
         explicit SchedulerImpl(Args&&... args) : _scheduler(std::forward<Args>(args)...) {
             if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
-                throw fmt::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
+                throw std::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
             }
             if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
-                throw fmt::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
+                throw std::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
             }
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
@@ -51,10 +51,10 @@ private:
 
             _thread = std::thread([this]() {
                 if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                    throw fmt::format("Failed to initialize flowgraph");
+                    throw std::format("Failed to initialize flowgraph");
                 }
                 if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                    throw fmt::format("Failed to start flowgraph processing");
+                    throw std::format("Failed to start flowgraph processing");
                 }
                 // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
                 // We once have to directly change the state to running, after this, all further state updates are performed via the msg API
@@ -81,19 +81,19 @@ private:
         }
 
         std::expected<void, gr::Error> start() final {
-            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
         }
         std::expected<void, gr::Error> stop() final {
-            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
         }
         std::expected<void, gr::Error> pause() final {
-            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE);
         }
         std::expected<void, gr::Error> resume() final {
-            fmt::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
         }
 

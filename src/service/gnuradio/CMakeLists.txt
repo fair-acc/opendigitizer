@@ -20,5 +20,4 @@ target_link_libraries(
   PRIVATE core
           client
           od_acquisition
-          fmt::fmt
           project_options)

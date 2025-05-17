@@ -1,7 +1,7 @@
 #ifndef OPENDIGITIZER_REMOTESOURCE_HPP
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
-#include <fmt/format.h>
+#include <format>
 #include <type_traits>
 #include <unordered_map>
 
@@ -187,11 +187,11 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     const gr::property_map& rootMap = yamlMap.value();
                     map.insert(rootMap.begin(), rootMap.end()); // Ignore duplicates (do not overwrite)
                 } else {
-                    // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
+                    // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
                 if (verbose_console) {
                     auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
-                    fmt::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name, tag_time, std::chrono::system_clock::now(), map);
+                    std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name, tag_time, std::chrono::system_clock::now(), map);
                 }
                 output.publishTag(map, cast_to_unsigned(idx - cast_to_signed(d.read)));
             }
@@ -220,7 +220,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     void startSubscription(const std::string& uri) {
-        fmt::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
+        std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
@@ -234,7 +234,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
             } else if (!rep.error.empty()) {
                 stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                            gr::Error(fmt::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
+                            gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
                 _reconnect = std::chrono::system_clock::now() + 5s;
                 auto queue = maybeQueue.lock();
                 if (!queue) {
@@ -272,7 +272,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                            gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+                            gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
         };
@@ -282,7 +282,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
+        //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
         const auto oldHost  = old_settings.find("host");
@@ -361,7 +361,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     }
 
     void startSubscription(const std::string& uri) {
-        fmt::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", uri);
+        std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
         command.topic            = resolveRelativeTopic(uri, host);
@@ -376,7 +376,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
             } else if (!rep.error.empty()) {
                 stopSubscription();
                 sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                    gr::Error(fmt::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
+                    gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
                 _reconnect = std::chrono::system_clock::now() + 5s;
                 return;
             }
@@ -426,14 +426,14 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                         const gr::property_map& rootMap = yamlMap.value();
                         ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
                     } else {
-                        // throw gr::exception(fmt::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
+                        // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                     }
                 }
 
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back(std::move(ds));
             } catch (opencmw::ProtocolException& e) {
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(fmt::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
         };
@@ -443,7 +443,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     fmt::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
+        //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
         const auto old_host = old_settings.find("host");

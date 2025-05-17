@@ -8,7 +8,7 @@
 #include <fstream>
 #include <thread>
 
-#include <fmt/core.h>
+#include <format>
 
 #include <gnuradio-4.0/Export.hpp>
 
@@ -38,9 +38,9 @@ void registerTestBlocks(Registry& registry) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
 
-    fmt::print("Available blocks:\n");
+    std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
-        fmt::print("  - {}\n", blockName);
+        std::print("  - {}\n", blockName);
     }
 }
 } // namespace
@@ -69,14 +69,14 @@ connections:
         std::ifstream     in(argv[1]);
         std::stringstream grcBuffer;
         if (!(grcBuffer << in.rdbuf())) {
-            fmt::println(stderr, "Could not read GRC file: {}", strerror(errno));
+            std::println(stderr, "Could not read GRC file: {}", strerror(errno));
             return 1;
         }
         grc = grcBuffer.str();
     }
 
     Digitizer::Settings& settings = Digitizer::Settings::instance();
-    fmt::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
+    std::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
     Broker broker("/PrimaryBroker");
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
@@ -86,7 +86,7 @@ connections:
     const auto requestedAddress    = URI<>("mds://127.0.0.1:12345");
     const auto brokerRouterAddress = broker.bind(requestedAddress);
     if (!brokerRouterAddress) {
-        fmt::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
+        std::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
         return 1;
     }
     std::jthread brokerThread([&broker] { broker.run(); });

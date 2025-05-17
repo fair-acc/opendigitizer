@@ -1,7 +1,7 @@
 #include <boost/ut.hpp>
 
 #include <atomic>
-#include <fmt/format.h>
+#include <format>
 #include <map>
 #include <vector>
 
@@ -29,27 +29,22 @@ const static boost::ut::suite state_machine = [] {
         using enum DigitizerUi::play_stop::State;
 
         std::map<State, std::vector<State>> allowedTransitions = {
-            { PlayStop, { Pause, Stopped } },
-            { Play, { Pause, Stopped } },
-            { PlayStream, { Pause, Stopped } },
-            { Pause, { PlayStop, Play, PlayStream, Stopped } },
-            { Stopped, { PlayStop, Play, PlayStream } },
-            { Error, { Stopped } },
+            {PlayStop, {Pause, Stopped}},
+            {Play, {Pause, Stopped}},
+            {PlayStream, {Pause, Stopped}},
+            {Pause, {PlayStop, Play, PlayStream, Stopped}},
+            {Stopped, {PlayStop, Play, PlayStream}},
+            {Error, {Stopped}},
         };
 
         magic_enum::enum_for_each<State>([&allowedTransitions](State fromState) {
             magic_enum::enum_for_each<State>([&fromState, &allowedTransitions](State toState) {
-                bool isAllowed = std::find(allowedTransitions[fromState].begin(), allowedTransitions[fromState].end(),
-                                         toState)
-                              != allowedTransitions[fromState].end();
+                bool isAllowed = std::find(allowedTransitions[fromState].begin(), allowedTransitions[fromState].end(), toState) != allowedTransitions[fromState].end();
 
                 bool isValid = isValidTransition(fromState, toState);
 
                 // Assert that the function's validity matches the expected validity
-                expect(isValid == isAllowed)
-                        << fmt::format("Transition from {} to {} should be {}", magic_enum::enum_name(fromState),
-                                   magic_enum::enum_name(toState),
-                                   isAllowed ? "allowed" : "disallowed");
+                expect(isValid == isAllowed) << std::format("Transition from {} to {} should be {}", magic_enum::enum_name(fromState), magic_enum::enum_name(toState), isAllowed ? "allowed" : "disallowed");
             });
         });
     };
@@ -60,5 +55,4 @@ const static boost::ut::suite state_machine = [] {
     // *
 };
 
-int main() { /* not needed for ut */
-}
+int main() { /* not needed for ut */ }

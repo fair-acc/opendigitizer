@@ -278,7 +278,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         ImGui::TextUnformatted(item.first->storageInfo->path.c_str());
         if (item.first->lastUsed) {
             std::chrono::year_month_day ymd  = std::chrono::floor<std::chrono::days>(item.first->lastUsed.value());
-            auto                        date = fmt::format("Last used: {:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+            auto                        date = std::format("Last used: {:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
             ImGui::TextUnformatted(date.c_str());
         } else {
             ImGui::TextUnformatted("Last used: never");
@@ -389,7 +389,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
 
         std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_date));
         char                        dateStr[11] = {};
-        fmt::format_to(dateStr, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+        std::format_to(dateStr, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
         if (ImGui::InputTextWithHint("##date", "today", dateStr, 11, ImGuiInputTextFlags_CallbackCharFilter,
                 [](ImGuiInputTextCallbackData* d) -> int {
                     if (d->EventChar == '/' || (d->EventChar >= '0' && d->EventChar <= '9')) {

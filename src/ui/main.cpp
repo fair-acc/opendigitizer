@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdio>
 
-#include <fmt/format.h>
+#include <format>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -93,9 +93,9 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrBasicBlocks(*registry);
     gr::blocklib::initGrFourierBlocks(*registry);
 
-    fmt::print("Available blocks:\n");
+    std::print("Available blocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().keys()) {
-        fmt::print("  - {}\n", blockName);
+        std::print("  - {}\n", blockName);
     }
 
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -131,12 +131,12 @@ int main(int argc, char** argv) {
     SDLState   sdlState;
     sdlState.window = SDL_CreateWindow("opendigitizer UI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     if (!sdlState.window) {
-        fmt::print(stderr, "Failed to create SDL window: {}!\n", SDL_GetError());
+        std::print(stderr, "Failed to create SDL window: {}!\n", SDL_GetError());
         return 1;
     }
     sdlState.glContext = SDL_GL_CreateContext(sdlState.window);
     if (!sdlState.glContext) {
-        fmt::print(stderr, "Failed to initialize GL context!\n");
+        std::print(stderr, "Failed to initialize GL context!\n");
         return 1;
     }
     // Setup Dear ImGui context
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
         float horizontalDPI = diagonalDPI;
         float verticalDPI   = diagonalDPI;
         if (SDL_GetDisplayDPI(0, &diagonalDPI, &horizontalDPI, &verticalDPI) != 0) {
-            auto msg = fmt::format("Failed to obtain DPI information for display 0: {}", SDL_GetError());
+            auto msg = std::format("Failed to obtain DPI information for display 0: {}", SDL_GetError());
             components::Notification::error(msg);
             return LookAndFeel::instance().defaultDPI;
         }

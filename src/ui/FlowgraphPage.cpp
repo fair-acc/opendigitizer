@@ -4,7 +4,7 @@
 
 #include <crude_json.h>
 #include <cstdint>
-#include <fmt/format.h>
+#include <format>
 
 #include "GraphModel.hpp"
 #include "common/ImguiWrap.hpp"
@@ -228,7 +228,7 @@ const FlowgraphPage::DataTypeStyle& FlowgraphPage::styleForDataType(std::string_
     auto& map = LookAndFeel::instance().style == LookAndFeel::Style::Light ? styleForDataTypeLight : styleForDataTypeDark;
     auto  it  = map.find(type);
     if (it == map.cend()) {
-        fmt::print("Warning: Color not defined for {}\n", type);
+        std::print("Warning: Color not defined for {}\n", type);
         static DataTypeStyle none{0x00000000};
         return none;
     } else {
@@ -286,7 +286,7 @@ std::string valToString(const pmtv::pmt& _val) {
                           [&](auto&& val) {
                               using T = std::remove_cvref_t<decltype(val)>;
                               if constexpr (std::integral<T>) {
-                                  std::string x = fmt::format("{}", val);
+                                  std::string x = std::format("{}", val);
                                   return std::to_string(val);
                               } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
                                   return std::string(val);
@@ -781,7 +781,7 @@ void FlowgraphPage::draw() noexcept {
                 // }
             } catch (const std::exception& e) {
                 // TODO show error message
-                auto msg = fmt::format("Error parsing YAML: {}", e.what());
+                auto msg = std::format("Error parsing YAML: {}", e.what());
                 components::Notification::error(msg);
             }
         }

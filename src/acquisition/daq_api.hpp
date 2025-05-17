@@ -94,7 +94,7 @@ inline gr::Message deserialiseMessage(const std::string& messageYaml) {
     using namespace gr;
     const auto yaml = pmtv::yaml::deserialize(messageYaml);
     if (!yaml) {
-        throw gr::exception(fmt::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, messageYaml));
+        throw gr::exception(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, messageYaml));
     }
 
     const property_map& rootMap = yaml.value();

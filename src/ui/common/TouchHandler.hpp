@@ -8,8 +8,7 @@
 #include <stack>
 #include <unordered_map>
 
-#include <fmt/core.h>
-#include <fmt/format.h>
+#include <format>
 
 #include "ImguiWrap.hpp"
 #include <implot_internal.h>
@@ -195,7 +194,7 @@ struct TouchHandler {
                 singleFingerClicked = true;
             }
             if (LookAndFeel::instance().touchDiagnostics) {
-                fmt::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
+                std::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
         case SDL_FINGERUP: {
@@ -237,7 +236,7 @@ struct TouchHandler {
             }
 
             if (LookAndFeel::instance().touchDiagnostics) {
-                fmt::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
+                std::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
         case SDL_FINGERMOTION: {
@@ -254,7 +253,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMousePosEvent(fingerPos[fingerIndex].x, fingerPos[fingerIndex].y);
             }
             if (LookAndFeel::instance().touchDiagnostics) {
-                fmt::print("touch: finger motion: {} fingerID: {} p:{} @({},{}) motion (dx,dy): ({}, {})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y, event.tfinger.dx, event.tfinger.dy);
+                std::print("touch: finger motion: {} fingerID: {} p:{} @({},{}) motion (dx,dy): ({}, {})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y, event.tfinger.dx, event.tfinger.dy);
             }
         } break;
             // ... [add any other cases you'd like to handle]
@@ -277,7 +276,7 @@ struct TouchHandler {
                 fingerUp            = true;
                 singleFingerClicked = false;
                 releaseFingerIndex(fingerIndex);
-                fmt::print("WARNING: probably lost SDL_FINGERUP event -> reset inactive fingerID {} out of {} - timeSinceLifted {}\n", fingerIndex, nFingers, timeSinceLastActive);
+                std::print("WARNING: probably lost SDL_FINGERUP event -> reset inactive fingerID {} out of {} - timeSinceLifted {}\n", fingerIndex, nFingers, timeSinceLastActive);
             }
         }
 
@@ -297,7 +296,7 @@ struct TouchHandler {
                     // ImGui::GetIO().AddMousePosEvent(gestureCentre.x, gestureCentre.y);
                     gestureDragActive = true;
                     if (LookAndFeel::instance().touchDiagnostics) {
-                        fmt::print("gesture: start two finger drag - centre ({},{}) move {} vs. threshold {}\n", gestureCentreUp.x, gestureCentreUp.y, std::hypot(gestureCentreDiff.x, gestureCentreDiff.y), ImGui::GetIO().MouseDragThreshold);
+                        std::print("gesture: start two finger drag - centre ({},{}) move {} vs. threshold {}\n", gestureCentreUp.x, gestureCentreUp.y, std::hypot(gestureCentreDiff.x, gestureCentreDiff.y), ImGui::GetIO().MouseDragThreshold);
                     }
                 }
             }
@@ -323,7 +322,7 @@ struct TouchHandler {
                 gestureDragActive = false;
 
                 if (LookAndFeel::instance().touchDiagnostics) {
-                    fmt::print("gesture: stop two finger drag - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
+                    std::print("gesture: stop two finger drag - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
                 }
             }
             if (gestureZoomActive) {
@@ -332,7 +331,7 @@ struct TouchHandler {
                 ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonRight, false);
                 ImGui::GetIO().AddMousePosEvent(0.f, 0.f);
                 if (LookAndFeel::instance().touchDiagnostics) {
-                    fmt::print("gesture: stop two finger zoom - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
+                    std::print("gesture: stop two finger zoom - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
                 }
             }
         }
@@ -360,7 +359,7 @@ struct TouchHandler {
         gestureRotationDeg = gestureRotationRad * (180.f / std::numbers::pi_v<float>);
 
         if (LookAndFeel::instance().touchDiagnostics) {
-            fmt::print("multi-gesture event -- {}: numFingers: {} @({},{} delta {},{}) pinchFactor:{} dTheta:{}\n", fingerTimeStamp[0], nFingers, fingerLastPos[0].x, fingerLastPos[0].y, fingerPosDiff[1].x, fingerPosDiff[1].y, pinchFactor, gestureRotationDeg);
+            std::print("multi-gesture event -- {}: numFingers: {} @({},{} delta {},{}) pinchFactor:{} dTheta:{}\n", fingerTimeStamp[0], nFingers, fingerLastPos[0].x, fingerLastPos[0].y, fingerPosDiff[1].x, fingerPosDiff[1].y, pinchFactor, gestureRotationDeg);
         }
     }
 
@@ -427,7 +426,7 @@ struct TouchHandler {
             gestureZoomActive = true;
             ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, false);
             if (LookAndFeel::instance().touchDiagnostics) {
-                fmt::print("gesture: start two finger zoom - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
+                std::print("gesture: start two finger zoom - centre ({},{})\n", gestureCentreUp.x, gestureCentreUp.y);
             }
         }
 

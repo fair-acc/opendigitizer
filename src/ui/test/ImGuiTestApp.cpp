@@ -12,8 +12,7 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fmt/core.h>
-#include <fmt/format.h>
+#include <format>
 #include <span>
 #include <string_view>
 
@@ -172,7 +171,7 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(args.cbegin(), args.cend(), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
-        fmt::println(stdout, "Usage: {} [--keep-gui][--interactive]", argv[0]);
+        std::println(stdout, "Usage: {} [--keep-gui][--interactive]", argv[0]);
     }
 
     TestOptions options;
@@ -184,12 +183,12 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
 
 void ImGuiTestApp::printWindows() {
     ImGuiContext& g = *GImGui;
-    fmt::println("printWindows:");
-    fmt::println("    popupLevel={}", g.BeginPopupStack.size());
-    fmt::println("    openPopups={}", g.OpenPopupStack.size());
+    std::println("printWindows:");
+    std::println("    popupLevel={}", g.BeginPopupStack.size());
+    std::println("    openPopups={}", g.OpenPopupStack.size());
 
     auto flagsString = [](ImGuiWindowFlags flags) -> std::string {
-        return fmt::format("ChildWindow={}, ToolTip={}, Popup={}, Modal={}, ChildMenu={}", //
+        return std::format("ChildWindow={}, ToolTip={}, Popup={}, Modal={}, ChildMenu={}", //
             flags & ImGuiWindowFlags_ChildWindow,                                          //
             flags & ImGuiWindowFlags_Tooltip,                                              //
             flags & ImGuiWindowFlags_Popup,                                                //
@@ -198,11 +197,11 @@ void ImGuiTestApp::printWindows() {
     };
 
     for (const ImGuiWindowStackData& data : g.CurrentWindowStack) {
-        fmt::println("    window name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
+        std::println("    window name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
     }
 
     for (const ImGuiPopupData& data : g.OpenPopupStack) {
-        fmt::println("    popup name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
+        std::println("    popup name={}; flags={}", data.Window->Name, flagsString(data.Window->Flags));
     }
 }
 
