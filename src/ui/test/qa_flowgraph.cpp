@@ -46,11 +46,50 @@ struct TestState {
 
     bool hasBlocks() const { return dashboard && !dashboard->graphModel().blocks().empty(); }
 
+    void deleteBlock(const std::string& blockName) { flowgraphPage.deleteBlock(blockName); }
+
+    std::string nameOfFirstBlock() const {
+        const auto& blocks = dashboard->graphModel().blocks();
+        if (blocks.empty()) {
+            return {};
+        }
+        return blocks[0].blockUniqueName;
+    }
+
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks()) {
             flowgraphPage.sortNodes(false);
             DigitizerUi::FlowgraphPage::drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail(), flowgraphPage.m_filterBlock);
+        }
+    }
+
+    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
+        if (dashboard->scheduler()->state() == gr::lifecycle::State::STOPPED || dashboard->scheduler()->state() == gr::lifecycle::State::IDLE) {
+            reload();
+        }
+
+        std::size_t count = 0;
+        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
+            // wait until scheduler is started
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            count++;
+        }
+        if (count >= maxCount) {
+            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
+        }
+    }
+
+    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.m_filterBlock = block; }
+
+    // Waits for the graph to have exactly expectedBlockCount blocks
+    // for testing topology changing messages
+    void waitForGraphModelUpdate(size_t expectedBlockCount, std::size_t maxCount = 20UZ) {
+        std::size_t count = 0;
+        while (dashboard->graphModel().blocks().size() != expectedBlockCount && count < maxCount) {
+            dashboard->handleMessages();
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            count++;
         }
     }
 
@@ -72,26 +111,6 @@ struct TestState {
 
         schedulerThreads.emplace_back([this] { startScheduler(); });
     }
-
-    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
-        if (dashboard->scheduler()->state() == gr::lifecycle::State::STOPPED || dashboard->scheduler()->state() == gr::lifecycle::State::IDLE) {
-            reload();
-        }
-
-        fmt::print("Waiting for scheduler to start... Current state: {}\n", int(dashboard->scheduler()->state()));
-
-        std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
-            // wait until scheduler is started
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            count++;
-        }
-        if (count >= maxCount) {
-            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
-        }
-    }
-
-    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.m_filterBlock = block; }
 };
 
 TestState g_state;
@@ -100,40 +119,96 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
-        ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "FlowgraphPage::drawNodeEditor");
-        t->SetVarsDataType<TestState>();
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "FlowgraphPage::drawNodeEditor");
+            t->SetVarsDataType<TestState>();
 
-        t->GuiFunc = [](ImGuiTestContext*) {
-            ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            t->GuiFunc = [](ImGuiTestContext*) {
+                ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-            ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(800, 800));
+                ImGui::SetWindowPos({0, 0});
+                ImGui::SetWindowSize(ImVec2(800, 800));
 
-            g_state.drawGraph();
+                g_state.drawGraph();
 
-            g_state.dashboard->handleMessages();
-            ImGui::End();
-        };
+                g_state.dashboard->handleMessages();
+                ImGui::End();
+            };
 
-        t->TestFunc = [](ImGuiTestContext* ctx) {
-            "FlowgraphPage::drawNodeEditor"_test = [ctx] {
-                ctx->SetRef("Test Window");
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                "FlowgraphPage::drawNodeEditor"_test = [ctx] {
+                    ctx->SetRef("Test Window");
 
-                g_state.waitForScheduler();
-                while (!g_state.hasBlocks()) {
-                    ImGuiTestEngine_Yield(ctx->Engine);
-                }
+                    g_state.waitForScheduler();
+                    while (!g_state.hasBlocks()) {
+                        ImGuiTestEngine_Yield(ctx->Engine);
+                    }
 
-                g_state.stopScheduler();
-                captureScreenshot(*ctx);
+                    std::string firstBlockName = g_state.nameOfFirstBlock();
+                    expect(that % !firstBlockName.empty()) << "There should be at least one block";
 
-                // Test filtering
-                if (!g_state.dashboard->graphModel().blocks().empty()) {
+                    // Delete the first block
+                    const auto numBlocksBefore = g_state.dashboard->graphModel().blocks().size();
+
+                    g_state.deleteBlock(firstBlockName);
+                    ctx->Yield(); // Give time for UI to update
+
+                    // deletion is async, let's wait for kBlockRemoved
+                    const auto expectedBlockCount = numBlocksBefore - 1;
+                    g_state.waitForGraphModelUpdate(expectedBlockCount);
+
+                    const auto numBlocksAfter = g_state.dashboard->graphModel().blocks().size();
+
+                    expect(that % (numBlocksAfter == numBlocksBefore - 1)) << "Exactly one block should be removed";
+
+                    ctx->Yield(); // Give time for UI to update
+
+                    g_state.stopScheduler();
+                    captureScreenshot(*ctx);
+
+                    // Test filtering
+                    if (!g_state.dashboard->graphModel().blocks().empty()) {
+                        g_state.setFilterBlock(&g_state.dashboard->graphModel().blocks()[0]);
+                        captureScreenshot(*ctx);
+                    }
+                };
+            };
+        }
+
+        { // Test for the "Remove Block"
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "FlowgraphPage remove block");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = [](ImGuiTestContext*) {
+                ImGui::Begin("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+                ImGui::SetWindowPos({0, 0});
+                ImGui::SetWindowSize(ImVec2(800, 800));
+
+                g_state.drawGraph();
+
+                g_state.dashboard->handleMessages();
+                ImGui::End();
+            };
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                "FlowgraphPage remove block"_test = [ctx] {
+                    ctx->SetRef("Test Window");
+
+                    g_state.waitForScheduler();
+                    while (!g_state.hasBlocks()) {
+                        ImGuiTestEngine_Yield(ctx->Engine);
+                    }
+
+                    g_state.stopScheduler();
+                    captureScreenshot(*ctx);
+
+                    // Test filtering
                     g_state.setFilterBlock(&g_state.dashboard->graphModel().blocks()[0]);
                     captureScreenshot(*ctx);
-                }
+                };
             };
-        };
+        }
     }
 };
 
