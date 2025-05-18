@@ -52,6 +52,9 @@ private:
 
     static void drawGraph(UiGraphModel& graphModel, const ImVec2& size, const UiGraphBlock*& filterBlock);
 
+    /// Sends a message to the scheduler so specified block is deleted
+    void deleteBlock(const std::string& blockName);
+
 public:
     struct DataTypeStyle {
         std::uint32_t color;
