@@ -6,6 +6,7 @@
 #include "components/Block.hpp"
 #include "components/BlockNeighboursPreview.hpp"
 #include <boost/ut.hpp>
+#include <memory>
 #include <string>
 
 #include "ImGuiTestApp.hpp"
@@ -54,50 +55,58 @@ int main(int argc, char* argv[]) {
     ax::NodeEditor::CreateEditor(&config);
     ax::NodeEditor::SetCurrentEditor(ax::NodeEditor::CreateEditor(&config));
 
-    DigitizerUi::UiGraphBlock block(&graphModel);
-    block.blockName = "Test Block";
+    auto block       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel);
+    block->blockName = "Test Block";
 
-    DigitizerUi::UiGraphBlock sourceBlock(&graphModel);
-    sourceBlock.blockName = "Source";
+    auto sourceBlock       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel);
+    sourceBlock->blockName = "Source";
 
-    DigitizerUi::UiGraphBlock destBlock(&graphModel);
-    destBlock.blockName = "Destination";
+    auto destBlock       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel);
+    destBlock->blockName = "Destination";
 
     auto& blocks = graphModel.blocks();
-    blocks       = {block, sourceBlock, destBlock};
+    blocks.clear();
+    blocks.push_back(std::move(block));
+    blocks.push_back(std::move(sourceBlock));
+    blocks.push_back(std::move(destBlock));
 
     g_context.graphModel = &graphModel;
 
-    DigitizerUi::UiGraphPort input(&block);
+    // Get pointers to blocks from the vector since we moved our local pointers
+    auto* mainBlock = graphModel.blocks()[0].get();
+    auto* srcBlock  = graphModel.blocks()[1].get();
+    auto* dstBlock  = graphModel.blocks()[2].get();
+
+    DigitizerUi::UiGraphPort input(mainBlock);
     input.portName      = "Input";
     input.portDirection = gr::PortDirection::INPUT;
-    block.inputPorts.push_back(input);
-    DigitizerUi::UiGraphPort output(&block);
+    mainBlock->inputPorts.push_back(input);
+    DigitizerUi::UiGraphPort output(mainBlock);
     output.portName      = "Output";
     output.portDirection = gr::PortDirection::OUTPUT;
-    block.outputPorts.push_back(output);
+    mainBlock->outputPorts.push_back(output);
 
-    DigitizerUi::UiGraphPort sourceOut(&sourceBlock);
-    input.portName      = "sourceOut";
-    input.portDirection = gr::PortDirection::OUTPUT;
-    sourceBlock.outputPorts.push_back(input);
-    DigitizerUi::UiGraphPort sinkIn(&destBlock);
-    output.portName      = "sinkIn";
-    output.portDirection = gr::PortDirection::INPUT;
-    block.inputPorts.push_back(output);
+    DigitizerUi::UiGraphPort sourceOut(srcBlock);
+    sourceOut.portName      = "sourceOut";
+    sourceOut.portDirection = gr::PortDirection::OUTPUT;
+    srcBlock->outputPorts.push_back(sourceOut);
+    DigitizerUi::UiGraphPort sinkIn(dstBlock);
+    sinkIn.portName      = "sinkIn";
+    sinkIn.portDirection = gr::PortDirection::INPUT;
+    dstBlock->inputPorts.push_back(sinkIn);
 
     // Edges:
     DigitizerUi::UiGraphEdge inEdge(&graphModel);
-    inEdge.edgeSourcePort      = &sourceOut;
-    inEdge.edgeDestinationPort = &input;
+    inEdge.edgeSourcePort      = &srcBlock->outputPorts.back();
+    inEdge.edgeDestinationPort = &mainBlock->inputPorts.back();
     graphModel.edges().push_back(inEdge);
     DigitizerUi::UiGraphEdge outEdge(&graphModel);
-    outEdge.edgeSourcePort      = &output;
-    outEdge.edgeDestinationPort = &sinkIn;
+    outEdge.edgeSourcePort      = &mainBlock->outputPorts.back();
+    outEdge.edgeDestinationPort = &dstBlock->inputPorts.back();
     graphModel.edges().push_back(outEdge);
 
     g_context.graphModel           = &graphModel;
-    g_context.block                = &block;
+    g_context.block                = mainBlock;
     g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { std::print("Block clicked.\n"); };
 
     TestApp app(options);

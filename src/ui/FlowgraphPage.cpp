@@ -28,7 +28,7 @@ using namespace std::string_literals;
 
 namespace DigitizerUi {
 
-inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::vector<UiGraphEdge>& edges) {
+inline auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, const std::vector<UiGraphEdge>& edges) {
     struct SortLevel {
         std::vector<const UiGraphBlock*> blocks;
     };
@@ -42,7 +42,7 @@ inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::
     std::vector<SortLevel>                                    result;
 
     for (const auto& block : blocks) {
-        graphConnections[std::addressof(block)];
+        graphConnections[block.get()];
     }
 
     for (const auto& edge : edges) {
@@ -338,10 +338,10 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         for (auto& block : graphModel.blocks()) {
             auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
 
-            const auto& inputPorts  = block.inputPorts;
-            const auto& outputPorts = block.outputPorts;
+            const auto& inputPorts  = block->inputPorts;
+            const auto& outputPorts = block->outputPorts;
 
-            const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
+            const bool filteredOut = filterBlock && !graphModel.blockInTree(*block.get(), *filterBlock);
 
             // If filteredOut, set opacity to 25% until we exit the scope
             float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
@@ -358,19 +358,19 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
                 // Draw block title
-                auto name = block.blockName;
+                auto name = block->blockName;
                 ImGui::TextUnformatted(name.c_str());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
                 // Draw block properties
                 {
                     IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
-                    for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                    for (const auto& [propertyKey, propertyValue] : block->blockSettings) {
                         if (propertyKey == "description" || propertyKey.contains("::")) {
                             continue;
                         }
 
-                        const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[propertyKey];
+                        const auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[propertyKey];
                         if (!currentPropertyMetaInformation.isVisible) {
                             continue;
                         }
@@ -380,17 +380,17 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
                     ImGui::Spacing();
 
-                    const bool isFilter = filterBlock == &block;
+                    const bool isFilter = filterBlock == block.get();
 
                     // Make radio-button a bit smaller since we also made the properties smaller, looks huge otherwise
                     IMW::StyleVar    styleVar(ImGuiStyleVar_FramePadding, GImGui->Style.FramePadding - ImVec2{0, 3});
-                    IMW::ChangeStrId changeId(block.blockUniqueName.c_str());
+                    IMW::ChangeStrId changeId(block->blockUniqueName.c_str());
 
                     if (ImGui::RadioButton("Filter", isFilter)) {
                         if (isFilter) {
                             filterBlock = nullptr;
                         } else {
-                            filterBlock = &block;
+                            filterBlock = block.get();
                         }
                     }
                 }
@@ -398,10 +398,10 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
                 // Update bounding box
-                if (block.view.has_value()) {
-                    auto position = ax::NodeEditor::GetNodePosition(blockId);
-                    block.view->x = position[0];
-                    block.view->y = position[1];
+                if (block->view.has_value()) {
+                    auto position  = ax::NodeEditor::GetNodePosition(blockId);
+                    block->view->x = position[0];
+                    block->view->y = position[1];
                     boundingBox.addRectangle(position, blockSize);
                 }
 
@@ -460,15 +460,15 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         }
 
         for (auto& block : graphModel.blocks()) {
-            if (!block.view.has_value()) {
+            if (!block->view.has_value()) {
                 auto blockId   = ax::NodeEditor::NodeId(std::addressof(block));
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-                block.view     = UiGraphBlock::ViewData{//
-                        .x      = boundingBox.minX,     //
-                        .y      = boundingBox.maxY,     //
-                        .width  = blockSize[0],         //
-                        .height = blockSize[1]};
-                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
+                block->view    = UiGraphBlock::ViewData{//
+                       .x      = boundingBox.minX,      //
+                       .y      = boundingBox.maxY,      //
+                       .width  = blockSize[0],          //
+                       .height = blockSize[1]};
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
             }
         }
