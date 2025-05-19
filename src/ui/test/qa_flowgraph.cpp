@@ -53,7 +53,7 @@ struct TestState {
         if (blocks.empty()) {
             return {};
         }
-        return blocks[0].blockUniqueName;
+        return blocks[0]->blockUniqueName;
     }
 
     void drawGraph() {
@@ -168,7 +168,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                     // Test filtering
                     if (!g_state.dashboard->graphModel().blocks().empty()) {
-                        g_state.setFilterBlock(&g_state.dashboard->graphModel().blocks()[0]);
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
                         captureScreenshot(*ctx);
                     }
                 };
@@ -204,7 +204,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    g_state.setFilterBlock(&g_state.dashboard->graphModel().blocks()[0]);
+                    g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
                     captureScreenshot(*ctx);
                 };
             };
