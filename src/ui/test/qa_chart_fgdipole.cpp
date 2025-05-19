@@ -46,7 +46,6 @@ struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard> dashboard;
     std::function<void()>                   stopFunction;
 
-    void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
 
     void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
@@ -163,8 +162,6 @@ int main(int argc, char* argv[]) {
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
             g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
         });
-
-    g_state.startScheduler();
 
     return app.runTests() ? 0 : 1;
 }

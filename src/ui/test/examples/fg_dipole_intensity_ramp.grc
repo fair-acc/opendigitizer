@@ -124,14 +124,14 @@ blocks:
   - name: toDipoleDataSet
     id: gr::basic::StreamToDataSet<float32, false>
     parameters:
-      filter: "[CMD_BP_START/FAIR.SELECTOR.C=-1]"
+      filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/^FAIR.SELECTOR.C=1:S=1:P=5]" # TODO: find a way to detect/filter when a new BPC starts (nominally via BPCTS and/or "CMD_BP_STOP" event
       n_pre: 100
       n_post: 0
       n_max: 100000 # needed to accumulate events
   - name: toIntensityDataSet
     id: gr::basic::StreamToDataSet<float32, false>
     parameters:
-      filter: "[CMD_BP_START/FAIR.SELECTOR.C=-1]"
+      filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/^FAIR.SELECTOR.C=1:S=1:P=5]" # TODO: find a way to detect/filter when a new BPC starts (nominally via BPCTS and/or "CMD_BP_STOP" event
       n_pre: 100
       n_post: 0
       n_max: 100000 # needed to accumulate events
