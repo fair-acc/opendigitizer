@@ -51,7 +51,8 @@ bool drawRemoveContextPopup(const std::string& context) {
 }
 
 void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
-    if (!panelContext.block) {
+    UiGraphBlock* block = panelContext.selectedBlock();
+    if (!block) {
         return;
     }
     using namespace DigitizerUi;
@@ -97,18 +98,18 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
     {
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::TextUnformatted(panelContext.block->blockName.c_str());
-        // std::string_view typeName = panelContext.block->blockTypeName;
+        ImGui::TextUnformatted(block->blockName.c_str());
+        // std::string_view typeName = block->blockTypeName;
 
-        const auto& activeContext = panelContext.block->activeContext;
+        const auto& activeContext = block->activeContext;
 
         const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
         if (auto combo = IMW::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
-            for (const auto& contextNameAndTime : panelContext.block->contexts) {
+            for (const auto& contextNameAndTime : block->contexts) {
                 const bool        selected = activeContext.context == contextNameAndTime.context;
                 const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
                 if (ImGui::Selectable(label.c_str(), selected)) {
-                    panelContext.block->setActiveContext(contextNameAndTime);
+                    block->setActiveContext(contextNameAndTime);
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
@@ -135,12 +136,12 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
         }
         IMW::detail::setItemTooltip("Add new context");
 
-        drawAddContextPopup(panelContext.block);
+        drawAddContextPopup(block);
         if (drawRemoveContextPopup(activeContext.context)) {
-            panelContext.block->removeContext(activeContext);
+            block->removeContext(activeContext);
         }
 
-        auto typeParams = panelContext.block->ownerGraph->availableParametrizationsFor(panelContext.block->blockTypeName);
+        auto typeParams = block->ownerGraph->availableParametrizationsFor(block->blockTypeName);
 
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
@@ -151,10 +152,10 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kReplaceBlock;
                             message.data     = gr::property_map{
-                                    {"uniqueName"s, panelContext.block->blockUniqueName},                 //
+                                    {"uniqueName"s, block->blockUniqueName},                              //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
-                            panelContext.block->ownerGraph->sendMessage(std::move(message));
+                            block->ownerGraph->sendMessage(std::move(message));
                         }
                         if (availableParametrization == typeParams.parametrization) {
                             ImGui::SetItemDefaultFocus();
@@ -168,7 +169,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
             BlockNeighboursPreview(panelContext, ImGui::GetContentRegionAvail());
         }
 
-        BlockSettingsControls(panelContext.block);
+        BlockSettingsControls(block);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
             panelContext.resetTime();
@@ -264,13 +265,22 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
 BlockControlsPanelContext::BlockControlsPanelContext() {
     blockClickedCallback = [this](UiGraphBlock* clickedBlock) {
         // Guaranteed by the caller
-        assert(clickedBlock && clickedBlock != this->block);
+        assert(clickedBlock && clickedBlock != selectedBlock());
 
-        this->block = clickedBlock;
+        this->graphModel->selectedBlock = clickedBlock;
         resetTime();
     };
 }
 
 void BlockControlsPanelContext::resetTime() { closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay; }
+
+UiGraphBlock* BlockControlsPanelContext::selectedBlock() const { return graphModel ? graphModel->selectedBlock : nullptr; }
+
+void BlockControlsPanelContext::setSelectedBlock(UiGraphBlock* block, UiGraphModel* model) {
+    graphModel = model;
+    if (graphModel) {
+        graphModel->selectedBlock = block;
+    }
+}
 
 } // namespace DigitizerUi::components

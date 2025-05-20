@@ -15,8 +15,9 @@ namespace DigitizerUi::components {
 
 struct BlockControlsPanelContext {
     BlockControlsPanelContext();
+    UiGraphBlock* selectedBlock() const;
+    void          setSelectedBlock(UiGraphBlock* block, UiGraphModel* model);
 
-    UiGraphBlock* block      = nullptr;
     UiGraphModel* graphModel = nullptr;
     enum class Mode { None, Insert, AddAndBranch };
 
