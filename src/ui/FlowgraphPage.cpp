@@ -637,14 +637,6 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (m_dashboard->scheduler()) {
-            auto state = m_dashboard->scheduler()->state();
-            // const bool    canModifyTopology = state == gr::lifecycle::State::STOPPED || !m_selectedBlock->isConnected();
-            // IMW::Disabled disabled(!canModifyTopology);
-
-            // if (!canModifyTopology) {
-            //     ImGui::MenuItem("Changing topology is disabled as scheduler is running");
-            // }
-
             if (ImGui::MenuItem("Delete this block")) {
                 deleteBlock(m_selectedBlock->blockUniqueName);
             }
@@ -737,53 +729,32 @@ void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
-        auto contentRegion = ImGui::GetContentRegionAvail();
+        m_currentTabIsFlowGraph = true;
+        auto contentRegion      = ImGui::GetContentRegionAvail();
         drawNodeEditor(contentRegion);
     }
 
     if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
-        if (ImGui::Button("Reset")) {
-            // localFlowgraphGrc = dashboard->localFlowGraph.grc();
+        if (ImGui::Button("Reset") || m_currentTabIsFlowGraph) {
+            // Reload yaml whenever "Local - YAML" tab is selected
+            m_currentTabIsFlowGraph = false;
+
+            gr::Message message;
+            message.cmd      = gr::message::Command::Get;
+            message.endpoint = gr::scheduler::property::kGraphGRC;
+            m_dashboard->graphModel().sendMessage(std::move(message));
         }
+
         ImGui::SameLine();
         if (ImGui::Button("Apply")) {
-
-            // auto sinkNames = [](const auto& blocks) {
-            //     using namespace std;
-            //     auto isPlotSink = [](const auto& b) { return b->type().isPlotSink(); };
-            //     auto getName    = [](const auto& b) { return b->name; };
-            //     auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
-            //     auto names      = std::vector(namesView.begin(), namesView.end());
-            //     ranges::sort(names);
-            //     names.erase(std::unique(names.begin(), names.end()), names.end());
-            //     return names;
-            // };
-
-            // const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-
-            try {
-                // app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                // const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-                // std::vector<std::string> toRemove;
-                // std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                // std::vector<std::string> toAdd;
-                // std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                // for (const auto& name : toRemove) {
-                //     app->dashboard->removeSinkFromPlots(name);
-                // }
-                // for (const auto& newName : toAdd) {
-                //     app->dashboardPage.newPlot(*app->dashboard);
-                //     app->dashboard->plots().back().sourceNames.push_back(newName);
-                // }
-            } catch (const std::exception& e) {
-                // TODO show error message
-                auto msg = std::format("Error parsing YAML: {}", e.what());
-                components::Notification::error(msg);
-            }
+            gr::Message message;
+            message.cmd      = gr::message::Command::Set;
+            message.endpoint = gr::scheduler::property::kGraphGRC;
+            message.data     = gr::property_map{{"value", m_dashboard->graphModel().m_localFlowgraphGrc}};
+            m_dashboard->graphModel().sendMessage(std::move(message));
         }
 
-        std::string localFlowgraphGrc;
-        ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+        ImGui::InputTextMultiline("##grc", &m_dashboard->graphModel().m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
     }
 
     for (auto& s : m_dashboard->remoteServices()) {

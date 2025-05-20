@@ -142,6 +142,8 @@ public:
     std::string blockName;
     std::string blockTypeName;
 
+    std::string m_localFlowgraphGrc;
+
     // Not a multimap as filtered lists like sequence collections
     std::map<std::string, std::set<std::string>> knownBlockTypes;
 
