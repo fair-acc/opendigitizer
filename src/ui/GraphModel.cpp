@@ -109,6 +109,14 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         if (message.clientRequestID == "add" || message.clientRequestID == "rm") {
             handleBlockAddOrRemoveContext(message.serviceName, data);
         }
+
+    } else if (message.endpoint == scheduler::kGraphGRC) {
+        if (message.cmd == gr::message::Command::Set) {
+            std::print("Setting GRC for local graph\n");
+        } else {
+            std::print("Reading GRC for local graph\n");
+        }
+        m_localFlowgraphGrc = std::get<std::string>(data.at("value"));
     } else {
         if (!message.data) {
             DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
