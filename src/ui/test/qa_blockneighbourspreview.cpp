@@ -105,8 +105,7 @@ int main(int argc, char* argv[]) {
     outEdge.edgeDestinationPort = &dstBlock->inputPorts.back();
     graphModel.edges().push_back(outEdge);
 
-    g_context.graphModel           = &graphModel;
-    g_context.block                = mainBlock;
+    g_context.setSelectedBlock(mainBlock, &graphModel);
     g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { std::print("Block clicked.\n"); };
 
     TestApp app(options);

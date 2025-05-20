@@ -82,7 +82,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         return;
     }
 
-    if (!context.block) {
+    if (!context.selectedBlock()) {
         // This does not happen, it would be a bug. Let it crash in debug mode so we notice.
         assert(false);
         return;
@@ -90,8 +90,8 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     ScaleFont font(0.7f);
 
-    auto leftEdges  = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.block; });
-    auto rightEdges = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.block; });
+    auto leftEdges  = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.selectedBlock(); });
+    auto rightEdges = context.graphModel->edges() | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.selectedBlock(); });
 
     auto leftBlocks  = leftEdges | std::views::transform([](const auto& edge) { return edge.edgeSourcePort->ownerBlock; }) | std::ranges::to<std::set>();
     auto rightBlocks = rightEdges | std::views::transform([](const auto& edge) { return edge.edgeDestinationPort->ownerBlock; }) | std::ranges::to<std::set>();
@@ -184,7 +184,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // Draw left ports first for middle block
     {
-        const auto ports = portsForBlock(*context.block, *context.graphModel, /*leftPorts=*/true);
+        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, /*leftPorts=*/true);
         size_t     i     = 0;
         // std::views::enumerate(ports)) TODO: Use once we bump to an EMSDK that supports it
         for (const auto& port : ports) {
@@ -198,7 +198,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // Draw right ports first for middle block
     {
-        const auto ports = portsForBlock(*context.block, *context.graphModel, /*leftPorts=*/false);
+        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, /*leftPorts=*/false);
         size_t     i     = 0;
         for (const auto& port : ports) {
             const float portY = centerBlockTopLeft.y + FlowgraphPage::pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
@@ -214,7 +214,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, 0.0f, 0, borderThickness);
     drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, 0.0f, 0, borderThickness);
     if (ImGui::IsMouseHoveringRect(centerBlockTopLeft, centerBlockBottomRight)) {
-        ImGui::SetTooltip("%s", context.block->blockName.c_str());
+        ImGui::SetTooltip("%s", context.selectedBlock()->blockName.c_str());
     }
 
     auto drawNeighbourBlock = [&](UiGraphBlock& block, bool isLeft, float blockX, size_t index) {
@@ -230,9 +230,9 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
             }
 
             if (isLeft) {
-                return edge.edgeSourcePort->ownerBlock == &block && edge.edgeDestinationPort->ownerBlock == context.block;
+                return edge.edgeSourcePort->ownerBlock == &block && edge.edgeDestinationPort->ownerBlock == context.selectedBlock();
             } else {
-                return edge.edgeDestinationPort->ownerBlock == &block && edge.edgeSourcePort->ownerBlock == context.block;
+                return edge.edgeDestinationPort->ownerBlock == &block && edge.edgeSourcePort->ownerBlock == context.selectedBlock();
             }
         });
 

@@ -336,7 +336,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphModel.blocks()) {
-            auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
+            auto blockId = ax::NodeEditor::NodeId(std::addressof(*block.get()));
 
             const auto& inputPorts  = block->inputPorts;
             const auto& outputPorts = block->outputPorts;
@@ -461,7 +461,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
         for (auto& block : graphModel.blocks()) {
             if (!block->view.has_value()) {
-                auto blockId   = ax::NodeEditor::NodeId(std::addressof(block));
+                auto blockId   = ax::NodeEditor::NodeId(std::addressof(*block.get()));
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 block->view    = UiGraphBlock::ViewData{//
                        .x      = boundingBox.minX,      //
@@ -542,7 +542,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPaneContext.block);
+    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPaneContext.selectedBlock());
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
@@ -565,12 +565,10 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
-            m_editPaneContext.block      = nullptr;
-            m_editPaneContext.graphModel = nullptr;
+            m_editPaneContext.setSelectedBlock(nullptr, nullptr);
         } else {
-            m_editPaneContext.block      = block;
-            m_editPaneContext.graphModel = &m_dashboard->graphModel();
-            m_editPaneContext.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            m_editPaneContext.setSelectedBlock(block, &m_dashboard->graphModel());
+            m_editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 
