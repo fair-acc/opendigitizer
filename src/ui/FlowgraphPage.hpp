@@ -31,7 +31,8 @@ private:
         Right,
     };
 
-    Dashboard* m_dashboard = nullptr;
+    Dashboard* m_dashboard             = nullptr;
+    bool       m_currentTabIsFlowGraph = false;
 
     const UiGraphBlock* m_filterBlock   = nullptr;
     UiGraphBlock*       m_selectedBlock = nullptr;
