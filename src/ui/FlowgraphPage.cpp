@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <format>
 
+#include <gnuradio-4.0/Scheduler.hpp>
+
 #include "GraphModel.hpp"
 #include "common/ImguiWrap.hpp"
 
@@ -26,7 +28,7 @@ using namespace std::string_literals;
 
 namespace DigitizerUi {
 
-inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::vector<UiGraphEdge>& edges) {
+inline auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, const std::vector<UiGraphEdge>& edges) {
     struct SortLevel {
         std::vector<const UiGraphBlock*> blocks;
     };
@@ -40,7 +42,7 @@ inline auto topologicalSort(const std::vector<UiGraphBlock>& blocks, const std::
     std::vector<SortLevel>                                    result;
 
     for (const auto& block : blocks) {
-        graphConnections[std::addressof(block)];
+        graphConnections[block.get()];
     }
 
     for (const auto& edge : edges) {
@@ -334,12 +336,12 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphModel.blocks()) {
-            auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
+            auto blockId = ax::NodeEditor::NodeId(std::addressof(*block.get()));
 
-            const auto& inputPorts  = block.inputPorts;
-            const auto& outputPorts = block.outputPorts;
+            const auto& inputPorts  = block->inputPorts;
+            const auto& outputPorts = block->outputPorts;
 
-            const bool filteredOut = filterBlock && !graphModel.blockInTree(block, *filterBlock);
+            const bool filteredOut = filterBlock && !graphModel.blockInTree(*block.get(), *filterBlock);
 
             // If filteredOut, set opacity to 25% until we exit the scope
             float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
@@ -356,19 +358,19 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
                 // Draw block title
-                auto name = block.blockName;
+                auto name = block->blockName;
                 ImGui::TextUnformatted(name.c_str());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
                 // Draw block properties
                 {
                     IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
-                    for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+                    for (const auto& [propertyKey, propertyValue] : block->blockSettings) {
                         if (propertyKey == "description" || propertyKey.contains("::")) {
                             continue;
                         }
 
-                        const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[propertyKey];
+                        const auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[propertyKey];
                         if (!currentPropertyMetaInformation.isVisible) {
                             continue;
                         }
@@ -378,17 +380,17 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
                     ImGui::Spacing();
 
-                    const bool isFilter = filterBlock == &block;
+                    const bool isFilter = filterBlock == block.get();
 
                     // Make radio-button a bit smaller since we also made the properties smaller, looks huge otherwise
                     IMW::StyleVar    styleVar(ImGuiStyleVar_FramePadding, GImGui->Style.FramePadding - ImVec2{0, 3});
-                    IMW::ChangeStrId changeId(block.blockUniqueName.c_str());
+                    IMW::ChangeStrId changeId(block->blockUniqueName.c_str());
 
                     if (ImGui::RadioButton("Filter", isFilter)) {
                         if (isFilter) {
                             filterBlock = nullptr;
                         } else {
-                            filterBlock = &block;
+                            filterBlock = block.get();
                         }
                     }
                 }
@@ -396,10 +398,10 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                 blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
                 // Update bounding box
-                if (block.view.has_value()) {
-                    auto position = ax::NodeEditor::GetNodePosition(blockId);
-                    block.view->x = position[0];
-                    block.view->y = position[1];
+                if (block->view.has_value()) {
+                    auto position  = ax::NodeEditor::GetNodePosition(blockId);
+                    block->view->x = position[0];
+                    block->view->y = position[1];
                     boundingBox.addRectangle(position, blockSize);
                 }
 
@@ -458,15 +460,15 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         }
 
         for (auto& block : graphModel.blocks()) {
-            if (!block.view.has_value()) {
-                auto blockId   = ax::NodeEditor::NodeId(std::addressof(block));
+            if (!block->view.has_value()) {
+                auto blockId   = ax::NodeEditor::NodeId(std::addressof(*block.get()));
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-                block.view     = UiGraphBlock::ViewData{//
-                        .x      = boundingBox.minX,     //
-                        .y      = boundingBox.maxY,     //
-                        .width  = blockSize[0],         //
-                        .height = blockSize[1]};
-                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
+                block->view    = UiGraphBlock::ViewData{//
+                       .x      = boundingBox.minX,      //
+                       .y      = boundingBox.maxY,      //
+                       .width  = blockSize[0],          //
+                       .height = blockSize[1]};
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
             }
         }
@@ -513,7 +515,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                             // AcceptNewItem() return true when user release mouse button.
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::graph::property::kEmplaceEdge;
+                            message.endpoint = gr::scheduler::property::kEmplaceEdge;
                             message.data     = gr::property_map{                                   //
                                 {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
                                 {"sourcePort"s, outputPort->portName},                         //
@@ -540,7 +542,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPaneContext.block);
+    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPaneContext.selectedBlock());
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
@@ -563,12 +565,10 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
         auto block = n.AsPointer<UiGraphBlock>();
 
         if (!block) {
-            m_editPaneContext.block      = nullptr;
-            m_editPaneContext.graphModel = nullptr;
+            m_editPaneContext.setSelectedBlock(nullptr, nullptr);
         } else {
-            m_editPaneContext.block      = block;
-            m_editPaneContext.graphModel = &m_dashboard->graphModel();
-            m_editPaneContext.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+            m_editPaneContext.setSelectedBlock(block, &m_dashboard->graphModel());
+            m_editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 
@@ -637,20 +637,8 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
         if (m_dashboard->scheduler()) {
-            auto          state             = m_dashboard->scheduler()->state();
-            const bool    canModifyTopology = state == gr::lifecycle::State::STOPPED || !m_selectedBlock->isConnected();
-            IMW::Disabled disabled(!canModifyTopology);
-
-            if (!canModifyTopology) {
-                ImGui::MenuItem("Changing topology is disabled as scheduler is running");
-            }
-
             if (ImGui::MenuItem("Delete this block")) {
-                // Send message to delete block
-                gr::Message message;
-                message.endpoint = gr::graph::property::kRemoveBlock;
-                message.data     = gr::property_map{{"uniqueName"s, m_selectedBlock->blockUniqueName}};
-                m_dashboard->graphModel().sendMessage(std::move(message));
+                deleteBlock(m_selectedBlock->blockUniqueName);
             }
 
             auto typeParams = m_dashboard->graphModel().availableParametrizationsFor(m_selectedBlock->blockTypeName);
@@ -662,7 +650,7 @@ void FlowgraphPage::drawNodeEditor(const ImVec2& size) {
                             if (ImGui::MenuItem(name.c_str())) {
                                 gr::Message message;
                                 message.cmd      = gr::message::Command::Set;
-                                message.endpoint = gr::graph::property::kReplaceBlock;
+                                message.endpoint = gr::scheduler::property::kReplaceBlock;
                                 message.data     = gr::property_map{
                                         {"uniqueName"s, m_selectedBlock->blockUniqueName},                    //
                                         {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
@@ -741,53 +729,32 @@ void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
-        auto contentRegion = ImGui::GetContentRegionAvail();
+        m_currentTabIsFlowGraph = true;
+        auto contentRegion      = ImGui::GetContentRegionAvail();
         drawNodeEditor(contentRegion);
     }
 
     if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
-        if (ImGui::Button("Reset")) {
-            // localFlowgraphGrc = dashboard->localFlowGraph.grc();
+        if (ImGui::Button("Reset") || m_currentTabIsFlowGraph) {
+            // Reload yaml whenever "Local - YAML" tab is selected
+            m_currentTabIsFlowGraph = false;
+
+            gr::Message message;
+            message.cmd      = gr::message::Command::Get;
+            message.endpoint = gr::scheduler::property::kGraphGRC;
+            m_dashboard->graphModel().sendMessage(std::move(message));
         }
+
         ImGui::SameLine();
         if (ImGui::Button("Apply")) {
-
-            // auto sinkNames = [](const auto& blocks) {
-            //     using namespace std;
-            //     auto isPlotSink = [](const auto& b) { return b->type().isPlotSink(); };
-            //     auto getName    = [](const auto& b) { return b->name; };
-            //     auto namesView  = blocks | views::filter(isPlotSink) | views::transform(getName);
-            //     auto names      = std::vector(namesView.begin(), namesView.end());
-            //     ranges::sort(names);
-            //     names.erase(std::unique(names.begin(), names.end()), names.end());
-            //     return names;
-            // };
-
-            // const auto oldNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-
-            try {
-                // app->dashboard->localFlowGraph.parse(localFlowgraphGrc);
-                // const auto               newNames = sinkNames(app->dashboard->localFlowGraph.blocks());
-                // std::vector<std::string> toRemove;
-                // std::ranges::set_difference(oldNames, newNames, std::back_inserter(toRemove));
-                // std::vector<std::string> toAdd;
-                // std::ranges::set_difference(newNames, oldNames, std::back_inserter(toAdd));
-                // for (const auto& name : toRemove) {
-                //     app->dashboard->removeSinkFromPlots(name);
-                // }
-                // for (const auto& newName : toAdd) {
-                //     app->dashboardPage.newPlot(*app->dashboard);
-                //     app->dashboard->plots().back().sourceNames.push_back(newName);
-                // }
-            } catch (const std::exception& e) {
-                // TODO show error message
-                auto msg = std::format("Error parsing YAML: {}", e.what());
-                components::Notification::error(msg);
-            }
+            gr::Message message;
+            message.cmd      = gr::message::Command::Set;
+            message.endpoint = gr::scheduler::property::kGraphGRC;
+            message.data     = gr::property_map{{"value", m_dashboard->graphModel().m_localFlowgraphGrc}};
+            m_dashboard->graphModel().sendMessage(std::move(message));
         }
 
-        std::string localFlowgraphGrc;
-        ImGui::InputTextMultiline("##grc", &localFlowgraphGrc, ImGui::GetContentRegionAvail());
+        ImGui::InputTextMultiline("##grc", &m_dashboard->graphModel().m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
     }
 
     for (auto& s : m_dashboard->remoteServices()) {
@@ -875,5 +842,13 @@ void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pin
         }
     }
 };
+
+void FlowgraphPage::deleteBlock(const std::string& blockName) {
+    // Send message to delete block
+    gr::Message message;
+    message.endpoint = gr::scheduler::property::kRemoveBlock;
+    message.data     = gr::property_map{{"uniqueName"s, blockName}};
+    m_dashboard->graphModel().sendMessage(std::move(message));
+}
 
 } // namespace DigitizerUi
