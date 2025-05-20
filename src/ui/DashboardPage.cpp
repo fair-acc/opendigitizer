@@ -416,7 +416,7 @@ void DashboardPage::draw(Mode mode) noexcept {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.block);
+    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !m_editPane.selectedBlock());
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
@@ -425,7 +425,7 @@ void DashboardPage::draw(Mode mode) noexcept {
         IMW::Child plotsChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth), false, ImGuiWindowFlags_NoScrollbar);
 
         if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-            m_editPane.block = nullptr;
+            m_editPane.setSelectedBlock(nullptr, nullptr);
         }
 
         // Plots
@@ -628,7 +628,7 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
 
                                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
                                     // TODO(NOW) which node was clicked -- it needs to have a sane way to get this?
-                                    m_editPane.block     = nullptr; // dashboard.localFlowGraph.findBlock(plotSinkBlock->blockName);
+                                    m_editPane.setSelectedBlock(nullptr, nullptr); // dashboard.localFlowGraph.findBlock(plotSinkBlock->blockName);
                                     m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                                 }
                                 break;
@@ -715,9 +715,8 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
             auto clickedMouseButton = LegendItem(color, label, signal.isVisible);
             if (clickedMouseButton == MouseClick::Right) {
-                m_editPane.graphModel = std::addressof(m_dashboard->graphModel());
-                m_editPane.block      = m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName);
-                m_editPane.closeTime  = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+                m_editPane.setSelectedBlock(m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
+                m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
             if (clickedMouseButton == MouseClick::Left) {
                 signal.isVisible = !signal.isVisible;

@@ -145,6 +145,8 @@ public:
     // Not a multimap as filtered lists like sequence collections
     std::map<std::string, std::set<std::string>> knownBlockTypes;
 
+    UiGraphBlock* selectedBlock = nullptr;
+
     const auto& blocks() const { return _blocks; }
     auto&       blocks() { return _blocks; }
 
