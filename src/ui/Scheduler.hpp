@@ -6,6 +6,7 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include "GraphModel.hpp"
+#include "components/ImGuiNotify.hpp"
 
 namespace DigitizerUi {
 
@@ -49,16 +50,83 @@ private:
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
             gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
 
-            _thread = std::thread([this]() {
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                    throw std::format("Failed to initialize flowgraph");
-                }
-                if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                    throw std::format("Failed to start flowgraph processing");
-                }
-                // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
-                // We once have to directly change the state to running, after this, all further state updates are performed via the msg API
-            });
+            startThread(gr::lifecycle::State::RUNNING);
+        }
+
+        /// Start the thread but allows to go to other active states than RUNNING, for example pause.
+        /// Example use-case
+        /// - Scheduler is paused
+        /// - Scheduler receives "kGraphGRC" SET message to set YAML
+        /// - Scheduler is stopped, now should go back to its original state, PAUSED
+        /// It's a bit awkward because lifecycle doesn't allow INITIALIZE->PAUSED
+        void startThread(gr::lifecycle::State toState) {
+            const auto currentState = _scheduler.state();
+
+            if (currentState == toState) {
+                return;
+            }
+
+            if (currentState != gr::lifecycle::State::STOPPED && currentState != gr::lifecycle::State::IDLE) {
+                std::println("Cannot start thread in state: {}", magic_enum::enum_name(currentState));
+                return;
+            }
+
+            // The old thread is stopped, clean it
+            if (_thread.joinable()) {
+                _thread.join();
+                std::println("Thread joined");
+            }
+
+            switch (toState) {
+            case gr::lifecycle::State::INITIALISED:
+            case gr::lifecycle::State::IDLE:
+            case gr::lifecycle::State::REQUESTED_STOP:
+            case gr::lifecycle::State::STOPPED:
+            case gr::lifecycle::State::ERROR: //
+                // Can't happen in practice and we have no use for this.
+                std::println("OD Scheduler::startThread: Ignoring moving from {} to {}", magic_enum::enum_name(currentState), magic_enum::enum_name(toState));
+                break;
+
+            case gr::lifecycle::State::RUNNING:
+                _thread = std::thread([this]() {
+                    if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
+                        if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
+                            throw std::format("Failed to initialize flowgraph");
+                        }
+                    }
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                        throw std::format("Failed to start flowgraph processing. state={}", magic_enum::enum_name(_scheduler.state()));
+                    }
+
+                    // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
+                    // We once have to directly change the state to running, after this, all further state updates are performed via the msg API
+                });
+                break;
+            case gr::lifecycle::State::REQUESTED_PAUSE:
+            case gr::lifecycle::State::PAUSED:
+                _thread = std::thread([this]() {
+                    // Lifecycle doesn't allow INITIALIZE->PAUSED
+                    if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
+                        if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
+                            throw std::format("Failed to initialize flowgraph");
+                        }
+                    }
+
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
+                        throw std::format("Failed to start flowgraph processing");
+                    }
+
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE); !e) {
+                        throw std::format("Failed to request pausing flowgraph processing");
+                    }
+
+                    // TODO: Not clear what to do, should we block here waiting ? Allowing INITIALIZE->PAUSED would be preferable
+                    if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::PAUSED); !e) {
+                        throw std::format("Failed to pause flowgraph processing");
+                    }
+                });
+                break;
+            }
         }
 
         std::string_view uniqueName() const final { return _scheduler.unique_name; }
@@ -74,7 +142,31 @@ private:
                 auto messages = _fromScheduler.streamReader().get(available);
 
                 for (const auto& message : messages) {
-                    graphModel.processMessage(message);
+                    if (message.endpoint == gr::scheduler::property::kGraphGRC) {
+
+                        if (!message.data) {
+                            DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
+                            continue;
+                        }
+
+                        const auto& data = *message.data;
+                        if (auto it = data.find("originalSchedulerState"); it != data.end()) {
+                            // Process reply to kGraphGRC SET message. We need to restart the scheduler
+
+                            const auto originalState = static_cast<gr::lifecycle::State>(std::get<int>(it->second));
+                            std::println("Setting Graph GRC finished in GR4, scheduler needs to resume to state {}", magic_enum::enum_name(originalState));
+
+                            startThread(originalState);
+
+                            graphModel.requestGraphUpdate();
+                        } else {
+                            // Process reply to kGraphGRC GET message
+                            graphModel.processMessage(message);
+                        }
+                    } else {
+                        // process all other messages
+                        graphModel.processMessage(message);
+                    }
                 }
                 std::ignore = messages.consume(available);
             }

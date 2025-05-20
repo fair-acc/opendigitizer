@@ -109,6 +109,14 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         if (message.clientRequestID == "add" || message.clientRequestID == "rm") {
             handleBlockAddOrRemoveContext(message.serviceName, data);
         }
+
+    } else if (message.endpoint == scheduler::kGraphGRC) {
+        if (auto valueIt = data.find("value"); valueIt != data.end()) {
+            std::println("Retrieved Graph GRC YAML");
+            m_localFlowgraphGrc = std::get<std::string>(valueIt->second);
+        } else {
+            assert(false);
+        }
     } else {
         if (!message.data) {
             DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
@@ -117,7 +125,6 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     return true;
-    //
 }
 
 void UiGraphModel::requestGraphUpdate() {
