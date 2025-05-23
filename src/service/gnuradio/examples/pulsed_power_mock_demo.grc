@@ -17,14 +17,14 @@ blocks:
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
   - name: SignalGeneratorB
     id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
       phase: 2.0944
   - name: SignalGeneratorC
@@ -32,7 +32,7 @@ blocks:
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
       phase: 4.18879
   - name: SignalGeneratorD
@@ -40,14 +40,14 @@ blocks:
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
   - name: SignalGeneratorE
     id: gr::basic::SignalGenerator<float32>
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
       phase: 2.0944
   - name: SignalGeneratorF
@@ -55,7 +55,7 @@ blocks:
     parameters:
       frequency: 50
       amplitude: 5
-      signal_type: Sine
+      signal_type: Sin
       sample_rate: 1000
       phase: 4.18879
   - name: SignalGeneratorG

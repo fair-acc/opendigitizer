@@ -11,7 +11,6 @@
 
 #include <boost/ut.hpp>
 #include <format>
-#include <magic_enum_format.hpp>
 #include <print>
 
 #include "GnuRadioAcquisitionWorker.hpp"

@@ -3,15 +3,9 @@
 
 #include <version>
 
-#if __cpp_lib_modules >= 202207L
-import std;
-#else
-
 #include <concepts>
 #include <cstring>
 #include <type_traits>
-
-#endif
 
 /**
  * @brief RAII wrapper for managing C-style resources in a C++ context, supporting various API schemas.
