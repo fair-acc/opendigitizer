@@ -19,6 +19,8 @@
 #include "common/LookAndFeel.hpp"
 #include "components/ImGuiNotify.hpp"
 
+#include "utils/EmscriptenHelper.hpp"
+
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
 #include <implot.h>
@@ -188,6 +190,7 @@ int main(int argc, char** argv) {
 
     // This function call won't return, and will engage in an infinite loop, processing events from the browser, and dispatching them.
 #ifdef __EMSCRIPTEN__
+    emscripten_set_visibilitychange_callback(nullptr, false, em_visibilitychange_callback); // keep rendering alive even on hidden browser tabs or minimised windows
     emscripten_set_main_loop_arg(main_loop, &app, 0, true);
 #else
     SDL_GL_SetSwapInterval(1); // Enable vsync

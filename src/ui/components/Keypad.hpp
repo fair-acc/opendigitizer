@@ -731,7 +731,7 @@ private:
             } else {
                 EdTy             converted = 0;
                 std::string_view a{_editBuffer};
-                auto [ptr, ec] = std::from_chars(a.begin(), a.end(), converted);
+                auto [ptr, ec] = std::from_chars(a.data(), a.data() + a.size(), converted);
                 if (ec != std::errc()) {
                     return false;
                 }

@@ -21,6 +21,7 @@ blocks:
     id: opendigitizer::ImPlotSink<float32>
     parameters:
       color: 0xffff00
+      required_size: 100000
 connections:
   - [sine source 1, 0, FFT, 0]
   - [FFT, 0, sink 1, 0]
