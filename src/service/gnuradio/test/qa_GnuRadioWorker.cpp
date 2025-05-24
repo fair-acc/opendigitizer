@@ -4,6 +4,7 @@
 #include <majordomo/Worker.hpp>
 #include <zmq/ZmqUtils.hpp>
 
+#include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/UnitTestHelper.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
@@ -40,6 +41,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
     gr::registerBlock<gr::testing::Delay, float>(registry);
+    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
 #pragma GCC diagnostic pop
 }
 
@@ -91,6 +93,78 @@ void waitWhile(auto condition) {
     expect(false);
 }
 
+template<typename T>
+std::span<T> samplesForSignalIndex(MultiArray<T, 2>& arr, size_t signalInd) {
+    const size_t nSamples = arr.dimensions()[1];
+    return std::span<T>(arr.elements().data() + signalInd * nSamples, nSamples);
+}
+
+template<typename T>
+std::span<const T> samplesForSignalIndex(const MultiArray<T, 2>& arr, size_t signalInd) {
+    const size_t nSamples = arr.dimensions()[1];
+    return std::span<const T>(arr.elements().data() + signalInd * nSamples, nSamples);
+}
+
+void checkAcquisitionMeta(const Acquisition& acq, std::size_t nSignals_, std::size_t nSamples_, const std::vector<std::string>& names, const std::vector<std::string>& units, const std::vector<std::string>& quantities, //
+    const std::vector<float>& rangeMin, const std::vector<float>& rangeMax, std::source_location location = std::source_location::current()) {
+    const auto nSignals = static_cast<std::uint32_t>(nSignals_);
+    const auto nSamples = static_cast<std::uint32_t>(nSamples_);
+
+    std::string loc = std::format("checkAcquisitionMeta() at {}:{}", location.file_name(), location.line());
+
+    expect(eq(acq.channelValues.n(0), nSignals)) << loc;
+    expect(eq(acq.channelValues.n(1), nSamples)) << loc;
+    expect(eq(acq.channelValues.elements().size(), nSignals * nSamples)) << loc;
+    expect(eq(acq.channelErrors.n(0), nSignals)) << loc;
+    expect(eq(acq.channelErrors.n(1), nSamples)) << loc;
+    expect(eq(acq.channelErrors.elements().size(), nSignals * nSamples)) << loc;
+
+    if (!names.empty()) {
+        expect(eq(acq.channelNames.size(), nSignals)) << loc;
+        expect(eq(acq.channelNames, names)) << loc;
+    }
+    if (!units.empty()) {
+        expect(eq(acq.channelUnits.size(), nSignals)) << loc;
+        expect(eq(acq.channelUnits, units)) << loc;
+    }
+    if (!rangeMin.empty()) {
+        expect(eq(acq.channelRangeMin.size(), nSignals)) << loc;
+        expect(eq(acq.channelRangeMin, rangeMin)) << loc;
+    }
+    if (!rangeMax.empty()) {
+        expect(eq(acq.channelRangeMax.size(), nSignals)) << loc;
+        expect(eq(acq.channelRangeMax, rangeMax)) << loc;
+    }
+}
+
+void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<SignalType> types, const std::vector<std::string> names, const std::vector<std::string> units, //
+    const std::vector<std::string> quantities, const std::vector<float> sampleRates, std::source_location location = std::source_location::current()) {
+
+    std::string loc = std::format("checkDnsEntries() at {}:{}", location.file_name(), location.line());
+
+    std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
+
+    if (!types.empty()) {
+        expect(eq(lastDnsEntries.size(), types.size())) << loc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.type; }), types)) << loc;
+    }
+    if (!names.empty()) {
+        expect(eq(lastDnsEntries.size(), names.size())) << loc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.name; }), names)) << loc;
+    }
+    if (!units.empty()) {
+        expect(eq(lastDnsEntries.size(), units.size())) << loc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.unit; }), units)) << loc;
+    }
+    if (!quantities.empty()) {
+        expect(eq(lastDnsEntries.size(), quantities.size())) << loc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.quantity; }), quantities)) << loc;
+    }
+    if (!sampleRates.empty()) {
+        expect(eq(lastDnsEntries.size(), sampleRates.size())) << loc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.sample_rate; }), sampleRates)) << loc;
+    }
+}
 } // namespace
 
 struct TestSetup {
@@ -188,7 +262,8 @@ blocks:
     id: CountSource<float32>
     parameters:
       n_samples: 100
-      signal_unit: up unit
+      signal_unit: "Unit_Up"
+      signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
   - name: delay_up
@@ -201,7 +276,8 @@ blocks:
       n_samples: 100
       initial_value: 99
       direction: down
-      signal_unit: down unit
+      signal_unit: "Unit_Down"
+      signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
   - name: delay_down
@@ -211,11 +287,11 @@ blocks:
   - name: test_sink_up
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count_up
+      signal_name: "Signal_Up"
   - name: test_sink_down
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count_down
+      signal_name: "Signal_Down"
 connections:
   - [count_up, 0, delay_up, 0]
   - [delay_up, 0, test_sink_up, 0]
@@ -237,22 +313,20 @@ connections:
         std::vector<float>       receivedUpData;
         std::atomic<std::size_t> receivedUpCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
-            expect(acq.channelUnit.value() == "up unit"sv);
-            expect(acq.channelRangeMin == 0.f);
-            expect(acq.channelRangeMax == 99.f);
-            receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_Up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_Up"}, {"Unit_Up"}, {"Quantity_Up"}, {0.f}, {99.f});
+            receivedUpData.insert(receivedUpData.end(), samples.begin(), samples.end());
             receivedUpCount = receivedUpData.size();
         });
 
         std::vector<float>       receivedDownData;
         std::atomic<std::size_t> receivedDownCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
-            expect(acq.channelUnit.value() == "down unit"sv);
-            expect(acq.channelRangeMin == 0.f);
-            expect(acq.channelRangeMax == 99.f);
-            receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_Down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_Down"}, {"Unit_Down"}, {"Quantity_Down"}, {0.f}, {99.f});
+            receivedDownData.insert(receivedDownData.end(), samples.begin(), samples.end());
             receivedDownCount = receivedDownData.size();
         });
 
@@ -265,16 +339,8 @@ connections:
         expect(eq(receivedUpData, expectedUpData));
         expect(eq(receivedDownData.size(), kExpectedSamples));
         expect(eq(receivedDownData, expectedDownData));
-        expect(eq(lastDnsEntries.size(), 2UZ));
-        std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
-        if (lastDnsEntries.size() >= 2UZ) {
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "count_down"sv));
-            expect(eq(lastDnsEntries[0].unit, "down unit"sv));
-            expect(eq(lastDnsEntries[1].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[1].name, "count_up"sv));
-            expect(eq(lastDnsEntries[1].unit, "up unit"sv));
-        }
+
+        checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {});
     };
 
     "Flow graph management"_test = [] {
@@ -284,6 +350,10 @@ blocks:
     id: CountSource<float32>
     parameters:
       n_samples: 100
+      signal_unit: "Unit_Up"
+      signal_quantity: "Quantity_Up"
+      signal_min: 0
+      signal_max: 99
   - name: delay
     id: gr::testing::Delay<float32>
     parameters:
@@ -291,7 +361,7 @@ blocks:
   - name: test_sink_up
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count_up
+      signal_name: "Signal_Up"
 connections:
   - [count_up, 0, delay, 0]
   - [delay, 0, test_sink_up, 0]
@@ -304,6 +374,10 @@ blocks:
       n_samples: 100
       initial_value: 99
       direction: down
+      signal_unit: "Unit_Down"
+      signal_quantity: "Quantity_Down"
+      signal_min: 0
+      signal_max: 99
   - name: delay
     id: gr::testing::Delay<float32>
     parameters:
@@ -311,7 +385,7 @@ blocks:
   - name: test_sink_down
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count_down
+      signal_name: "Signal_Down"
 connections:
   - [count_down, 0, delay, 0]
   - [delay, 0, test_sink_down, 0]
@@ -327,16 +401,20 @@ connections:
         std::vector<float>       receivedUpData;
         std::atomic<std::size_t> receivedUpCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
-            receivedUpData.insert(receivedUpData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_Up"), [&receivedUpData, &receivedUpCount](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_Up"}, {"Unit_Up"}, {"Quantity_Up"}, {0.f}, {99.f});
+            receivedUpData.insert(receivedUpData.end(), samples.begin(), samples.end());
             receivedUpCount = receivedUpData.size();
         });
 
         std::vector<float>       receivedDownData;
         std::atomic<std::size_t> receivedDownCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
-            receivedDownData.insert(receivedDownData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_Down"), [&receivedDownData, &receivedDownCount](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_Down"}, {"Unit_Down"}, {"Quantity_Down"}, {0.f}, {99.f});
+            receivedDownData.insert(receivedDownData.end(), samples.begin(), samples.end());
             receivedDownCount = receivedDownData.size();
         });
 
@@ -361,7 +439,10 @@ blocks:
   - name: test_sink1
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: test1
+      signal_name: "Signal_A"
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
+      sample_rate: 1234
 connections:
   - [source1, 0, test_sink1, 0]
 )";
@@ -372,7 +453,10 @@ blocks:
   - name: test_sink2
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: test2
+      signal_name: "Signal_B"
+      signal_unit: "Unit_B"
+      signal_quantity: "Quantity_B"
+      sample_rate: 123456
 connections:
   - [source2, 0, test_sink2, 0]
 )";
@@ -387,10 +471,18 @@ connections:
         });
 
         std::atomic<std::size_t> receivedCount1 = 0;
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test1"), [&receivedCount1](const auto& acq) { receivedCount1 += acq.channelValue.size(); });
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A"), [&receivedCount1](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {}, {});
+            receivedCount1 += samples.size();
+        });
 
         std::atomic<std::size_t> receivedCount2 = 0;
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=test2"), [&receivedCount2](const auto& acq) { receivedCount2 += acq.channelValue.size(); });
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_B"), [&receivedCount2](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {}, {});
+            receivedCount2 += samples.size();
+        });
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
@@ -398,9 +490,7 @@ connections:
 
         {
             std::lock_guard lock(dnsMutex);
-            expect(eq(lastDnsEntries.size(), 1UZ));
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "test1"sv));
+            checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f});
         }
         test.setGrc(grc2);
 
@@ -408,11 +498,7 @@ connections:
         waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
 
         std::lock_guard lock(dnsMutex);
-        expect(eq(lastDnsEntries.size(), 1UZ));
-        if (!lastDnsEntries.empty()) {
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "test2"sv));
-        }
+        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f});
     };
 
     "Trigger - tightly packed tags"_test = [] {
@@ -433,7 +519,9 @@ blocks:
   - name: test_sink
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count
+      signal_name: "Signal_A"
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
@@ -443,9 +531,11 @@ connections:
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(eq(acq.acqTriggerName.value(), "hello"sv));
-            receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
+            expect(eq(acq.refTriggerName.value(), "hello"sv));
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {}, {});
+            receivedData.insert(receivedData.end(), samples.begin(), samples.end());
             receivedCount = receivedData.size();
         });
 
@@ -476,7 +566,9 @@ blocks:
   - name: test_sink
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count
+      signal_name: "Signal_A"
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
@@ -486,9 +578,11 @@ connections:
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(eq(acq.acqTriggerName.value(), "hello"sv));
-            receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A&acquisitionModeFilter=triggered&triggerNameFilter=hello&preSamples=5&postSamples=15"), [&receivedData, &receivedCount](const auto& acq) {
+            expect(eq(acq.refTriggerName.value(), "hello"sv));
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {}, {});
+            receivedData.insert(receivedData.end(), samples.begin(), samples.end());
             receivedCount = receivedData.size();
         });
 
@@ -507,7 +601,6 @@ blocks:
     id: CountSource<float32>
     parameters:
       n_samples: 100
-      signal_unit: "A unit"
       sample_rate: 10.0
       timing_tags: !!str
         - 30,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
@@ -521,7 +614,9 @@ blocks:
   - name: test_sink
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count
+      signal_name: "Signal_A"
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
@@ -537,9 +632,10 @@ connections:
         std::atomic<std::size_t> receivedCount = 0;
 
         // filter "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3]" => samples [50..69]
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D3%5D"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(eq(acq.acqTriggerName.value(), "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"sv));
-            receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D3%5D"), [&receivedData, &receivedCount](const auto& acq) {
+            expect(eq(acq.refTriggerName.value(), "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"sv));
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            receivedData.insert(receivedData.end(), samples.begin(), samples.end());
             receivedCount = receivedData.size();
         });
 
@@ -549,13 +645,8 @@ connections:
         waitWhile([&] { return receivedCount < 20; });
 
         expect(eq(receivedData, getIota(20, 50)));
-        expect(eq(lastDnsEntries.size(), 1UZ));
-        if (!lastDnsEntries.empty()) {
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "count"sv));
-            expect(eq(lastDnsEntries[0].unit, "A unit"sv));
-            expect(eq(lastDnsEntries[0].sample_rate, 10.f));
-        }
+
+        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f});
     };
 
     "Snapshot"_test = [] {
@@ -566,7 +657,8 @@ blocks:
     parameters:
       n_samples: 100
       sample_rate: 10
-      signal_unit: A unit
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
       signal_min: -42
       signal_max: 42
       timing_tags: !!str
@@ -580,7 +672,7 @@ blocks:
   - name: test_sink
     id: gr::basic::DataSink<float32>
     parameters:
-      signal_name: count
+      signal_name: "Signal_A"
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
@@ -596,12 +688,11 @@ connections:
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count&acquisitionModeFilter=snapshot&triggerNameFilter=shoot&snapshotDelay=3000000000"), [&receivedData, &receivedCount](const auto& acq) {
-            expect(eq(acq.acqTriggerName.value(), "shoot"sv));
-            expect(eq(acq.channelUnit.value(), "A unit"sv));
-            expect(eq(acq.channelRangeMin, -42.f));
-            expect(eq(acq.channelRangeMax, 42.f));
-            receivedData.insert(receivedData.end(), acq.channelValue.begin(), acq.channelValue.end());
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A&acquisitionModeFilter=snapshot&triggerNameFilter=shoot&snapshotDelay=3000000000"), [&receivedData, &receivedCount](const auto& acq) {
+            expect(eq(acq.refTriggerName.value(), "shoot"s));
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {-42.f}, {42.f});
+            receivedData.insert(receivedData.end(), samples.begin(), samples.end());
             receivedCount = receivedData.size();
         });
 
@@ -612,16 +703,11 @@ connections:
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{80.f}));
-        expect(eq(lastDnsEntries.size(), 1UZ));
-        if (!lastDnsEntries.empty()) {
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "count"sv));
-            expect(eq(lastDnsEntries[0].unit, "A unit"sv));
-            expect(eq(lastDnsEntries[0].sample_rate, 10.f));
-        }
+
+        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f});
     };
 
-    "DataSet"_test = [] {
+    "DataSet FFT"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
   - name: count
@@ -654,11 +740,9 @@ connections:
 
         std::atomic<std::size_t> receivedCount = 0;
 
-        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal::3&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
-            expect(eq(acq.channelValue.size(), 512UZ));
-            expect(eq(acq.channelError.size(), 0UZ));
-            expect(eq(acq.channelName.value(), "FFTTestSignal"sv));
-            expect(eq(acq.channelUnit.value(), "Imtest unit"sv));
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal&acquisitionModeFilter=dataset"), [&receivedCount](const auto& acq) {
+            checkAcquisitionMeta(acq, 4UZ, 512UZ, {"Magnitude(test signal)", "Phase(test signal)", "Re(FFT(test signal))", "Im(FFT(test signal))"}, {"test unit/√Hz", "rad", "Retest unit", "Imtest unit"}, //
+                {"Magnitude(FFT)", "Phase(FFT)", "Re(FFT)", "Im(FFT)"}, {}, {});
             receivedCount++;
         });
 
@@ -668,15 +752,61 @@ connections:
         waitWhile([&receivedCount] { return receivedCount < 97UZ; });
         expect(eq(receivedCount.load(), 97UZ));
 
-        std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
+        checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {1.f});
+    };
 
-        expect(eq(lastDnsEntries.size(), 1UZ));
-        if (!lastDnsEntries.empty()) {
-            expect(eq(lastDnsEntries[0].type, SignalType::DataSet));
-            expect(eq(lastDnsEntries[0].name, "FFTTestSignal"sv));
-            expect(eq(lastDnsEntries[0].unit, ""sv));
-            expect(eq(lastDnsEntries[0].sample_rate, 1.f));
-        }
+    "DataSet signal values"_test = [] {
+        constexpr std::string_view grc = R"(
+blocks:
+  - name: count
+    id: CountSource<float32>
+    parameters:
+      n_samples: 100
+      timing_tags: !!str
+        - 20,mytrigger
+        - 50,mytrigger
+        - 70,mytrigger
+  - name: delay
+    id: gr::testing::Delay<float32>
+    parameters:
+      delay_ms: 600
+  - name: stream_to_dataset
+    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+    parameters:
+      filter: "mytrigger"
+      n_pre: 2
+      n_post: 2
+  - name: test_sink
+    id: gr::basic::DataSetSink<float32>
+    parameters:
+      signal_name: Signal_A
+connections:
+  - [count, 0, delay, 0]
+  - [delay, 0, stream_to_dataset, 0]
+  - [stream_to_dataset, 0, test_sink, 0]
+)";
+        std::vector<float>         receivedData;
+        std::atomic<std::size_t>   receivedCount        = 0;
+        std::atomic<std::size_t>   receivedDataSetCount = 0;
+        TestSetup                  test;
+        test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A&acquisitionModeFilter=dataset"), [&receivedCount, &receivedData, &receivedDataSetCount](const auto& acq) {
+            checkAcquisitionMeta(acq, 1UZ, 4UZ, {}, {}, {}, {}, {});
+            receivedCount++;
+
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            receivedData.insert(receivedData.end(), samples.begin(), samples.end());
+            receivedCount = receivedData.size();
+            receivedDataSetCount++;
+        });
+
+        std::this_thread::sleep_for(50ms);
+        test.setGrc(grc);
+
+        waitWhile([&receivedCount] { return receivedCount < 12UZ; });
+        expect(eq(receivedCount.load(), 12UZ));
+        expect(eq(receivedDataSetCount.load(), 3UZ));
+        std::vector<float> expectedData = {18.f, 19.f, 20.f, 21.f, 48.f, 49.f, 50.f, 51.f, 68.f, 69.f, 70.f, 71.f};
+        expect(eq(receivedData, expectedData));
     };
 
     "Flow graph handling - Unknown block"_test = [] {
@@ -716,8 +846,9 @@ blocks:
     id: CountSource<float32>
     parameters:
       n_samples: 0
-      signal_name: count_up
-      signal_unit: "Test unit A"
+      signal_name: "Signal_A"
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
       signal_min: -42
       signal_max: 42
   - name: count_down
@@ -725,20 +856,15 @@ blocks:
     parameters:
       n_samples: 0
       direction: down
-      signal_name: count_down
-      signal_unit: "Test unit B"
+      signal_name: "Signal_B"
+      signal_unit: "Unit_B"
+      signal_quantity: "Quantity_B"
       signal_min: 0
       signal_max: 100
   - name: test_sink_up
     id: gr::basic::DataSink<float32>
-    parameters:
-      signal_name: count_up
-      signal_unit: "Test unit A"
   - name: test_sink_down
     id: gr::basic::DataSink<float32>
-    parameters:
-      signal_name: count_down
-      signal_unit: "Test unit B"
 connections:
   - [count_up, 0, test_sink_up, 0]
   - [count_down, 0, test_sink_down, 0]
@@ -757,19 +883,15 @@ connections:
                 }
             });
 
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_up"), [&receivedUpCount](const Acquisition& acq) {
-                expect(eq(acq.channelName.value(), "count_up"sv));
-                expect(eq(acq.channelUnit.value(), "Test unit A"sv));
-                expect(eq(acq.channelRangeMin, -42.f));
-                expect(eq(acq.channelRangeMax, 42.f));
-                receivedUpCount += acq.channelValue.size();
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_A"), [&receivedUpCount](const Acquisition& acq) {
+                const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
+                checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {-42.f}, {42.f});
+                receivedUpCount += nSamples;
             });
-            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=count_down"), [&receivedDownCount](const Acquisition& acq) {
-                expect(eq(acq.channelName.value(), "count_down"sv));
-                expect(eq(acq.channelUnit.value(), "Test unit B"sv));
-                expect(eq(acq.channelRangeMin, 0.f));
-                expect(eq(acq.channelRangeMax, 100.f));
-                receivedDownCount += acq.channelValue.size();
+            test.subscribeClient(URI("mds://127.0.0.1:12345/GnuRadio/Acquisition?channelNameFilter=Signal_B"), [&receivedDownCount](const Acquisition& acq) {
+                const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
+                checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f});
+                receivedDownCount += nSamples;
             });
 
             test.setGrc(grc);
@@ -777,16 +899,8 @@ connections:
         }
         expect(receivedUpCount > 0);
         expect(receivedDownCount > 0);
-        std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
-        expect(eq(lastDnsEntries.size(), 2UZ));
-        if (lastDnsEntries.size() >= 2UZ) {
-            expect(eq(lastDnsEntries[0].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[0].name, "count_down"sv));
-            expect(eq(lastDnsEntries[0].unit, "Test unit B"sv));
-            expect(eq(lastDnsEntries[1].type, SignalType::Plain));
-            expect(eq(lastDnsEntries[1].name, "count_up"sv));
-            expect(eq(lastDnsEntries[1].unit, "Test unit A"sv));
-        }
+
+        checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_A", "Signal_B"}, {"Unit_A", "Unit_B"}, {"Quantity_A", "Quantity_B"}, {});
     };
 };
 
