@@ -30,13 +30,18 @@
 #include <Picoscope5000a.hpp>
 #include <TimingSource.hpp>
 
-#include <TimingSource.hpp>
-
 namespace {
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
+    gr::registerBlock<fair::picoscope::Picoscope3000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope4000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope5000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope3000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope4000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope5000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<gr::timing::TimingSource, "">(registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
