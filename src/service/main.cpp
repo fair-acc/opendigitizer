@@ -13,6 +13,12 @@
 #include <gnuradio-4.0/Export.hpp>
 
 #include <GrBasicBlocks.hpp>
+#include <GrElectricalBlocks.hpp>
+#include <GrFileIoBlocks.hpp>
+#include <GrFilterBlocks.hpp>
+#include <GrFourierBlocks.hpp>
+#include <GrHttpBlocks.hpp>
+#include <GrMathBlocks.hpp>
 #include <GrTestingBlocks.hpp>
 
 #include "FAIR/DeviceNameHelper.hpp"
@@ -30,13 +36,25 @@
 #include <Picoscope5000a.hpp>
 #include <TimingSource.hpp>
 
-#include <TimingSource.hpp>
-
 namespace {
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
     gr::blocklib::initGrBasicBlocks(registry);
+    gr::blocklib::initGrElectricalBlocks(registry);
+    gr::blocklib::initGrFileIoBlocks(registry);
+    gr::blocklib::initGrFilterBlocks(registry);
+    gr::blocklib::initGrFourierBlocks(registry);
+    gr::blocklib::initGrHttpBlocks(registry);
+    gr::blocklib::initGrMathBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
+    // TODO: make gr-digitizers a proper OOT module
+    gr::registerBlock<fair::picoscope::Picoscope3000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope4000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope5000a<float>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope3000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope4000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope5000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<gr::timing::TimingSource, "">(registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
