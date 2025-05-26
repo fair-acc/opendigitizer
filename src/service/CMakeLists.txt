@@ -134,5 +134,10 @@ target_link_libraries(
           gnuradio-core
           gnuradio-blocklib-core
           GrBasicBlocksShared
-          GrTestingBlocksShared
-          GrFourierBlocksShared)
+          GrElectricalBlocksShared
+          GrFileIoBlocksShared
+          GrFilterBlocksShared
+          GrFourierBlocksShared
+          GrHttpBlocksShared
+          GrMathBlocksShared
+          GrTestingBlocksShared)

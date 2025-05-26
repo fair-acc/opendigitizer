@@ -175,7 +175,13 @@ target_link_libraries(
          gnuradio-core
          gnuradio-blocklib-core
          GrBasicBlocksShared
-         GrFourierBlocksShared)
+         GrElectricalBlocksShared
+         GrFileIoBlocksShared
+         GrFilterBlocksShared
+         GrFourierBlocksShared
+         GrHttpBlocksShared
+         GrMathBlocksShared
+         GrTestingBlocksShared)
 target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(${target_name} PRIVATE ${target_name}lib)
