@@ -540,18 +540,19 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
 }
 
 void UiGraphBlock::updateBlockSettingsMetaInformation() {
-    for (const auto& [settingKey, _] : blockSettings) {
-        auto findMetaInformation = [this, &settingKey]<typename TDesired>(const std::string& key, const std::string& attr, TDesired defaultResult) -> TDesired {
-            const auto it = this->blockMetaInformation.find(key + "::" + attr);
-            if (const auto unitPtr = std::get_if<TDesired>(&it->second); unitPtr) {
-                return *unitPtr;
-            }
-            return defaultResult;
-        };
-        const auto description = findMetaInformation(settingKey, "description", settingKey);
-        const auto unit        = findMetaInformation(settingKey, "unit", std::string());
-        const auto isVisible   = findMetaInformation(settingKey, "visible", false);
+    // TODO: reimplement in a more efficient fashion without lots of allocations or add some caching. Existing code causes load spikes in the ui thread
+    // for (const auto& [settingKey, _] : blockSettings) {
+    //    auto findMetaInformation = [this, &settingKey]<typename TDesired>(const std::string& key, const std::string& attr, TDesired defaultResult) -> TDesired {
+    //        const auto it = this->blockMetaInformation.find(key + "::" + attr);
+    //        if (const auto unitPtr = std::get_if<TDesired>(&it->second); unitPtr) {
+    //            return *unitPtr;
+    //        }
+    //        return defaultResult;
+    //    };
+    //    const auto description = findMetaInformation(settingKey, "description", settingKey);
+    //    const auto unit        = findMetaInformation(settingKey, "unit", std::string());
+    //    const auto isVisible   = findMetaInformation(settingKey, "visible", false);
 
-        blockSettingsMetaInformation[settingKey] = SettingsMetaInformation{.unit = unit, .description = description, .isVisible = isVisible};
-    }
+    //    blockSettingsMetaInformation[settingKey] = SettingsMetaInformation{.unit = unit, .description = description, .isVisible = isVisible};
+    //}
 }
