@@ -12,7 +12,13 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include <GrBasicBlocks.hpp>
+#include <GrElectricalBlocks.hpp>
+#include <GrFileIoBlocks.hpp>
+#include <GrFilterBlocks.hpp>
 #include <GrFourierBlocks.hpp>
+#include <GrHttpBlocks.hpp>
+#include <GrMathBlocks.hpp>
+#include <GrTestingBlocks.hpp>
 
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"

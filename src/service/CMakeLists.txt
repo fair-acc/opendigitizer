@@ -133,6 +133,11 @@ target_link_libraries(
           digitizer_settings
           gnuradio-core
           gnuradio-blocklib-core
-          GrBasicBlocksShared
-          GrTestingBlocksShared
-          GrFourierBlocksShared)
+          GrBasicBlocksObject
+          GrElectricalBlocksObject
+          GrFileIoBlocksObject
+          GrFilterBlocksObject
+          GrFourierBlocksObject
+          GrHttpBlocksObject
+          GrMathBlocksObject
+          GrTestingBlocksObject)
