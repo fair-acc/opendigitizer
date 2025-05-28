@@ -99,7 +99,13 @@ int main(int argc, char** argv) {
     // TODO: Remove when GR gets proper blocks library
     auto* registry = grGlobalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(*registry);
+    gr::blocklib::initGrElectricalBlocks(*registry);
+    gr::blocklib::initGrFileIoBlocks(*registry);
+    gr::blocklib::initGrFilterBlocks(*registry);
     gr::blocklib::initGrFourierBlocks(*registry);
+    gr::blocklib::initGrHttpBlocks(*registry);
+    gr::blocklib::initGrMathBlocks(*registry);
+    gr::blocklib::initGrTestingBlocks(*registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : gr::globalBlockRegistry().keys()) {
