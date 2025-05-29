@@ -2,6 +2,7 @@
 #define GRAPHMODEL_H
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -75,6 +76,11 @@ struct UiGraphBlock {
 
     UiGraphBlock(UiGraphModel* owner) : ownerGraph(owner) {}
 
+    UiGraphBlock(const UiGraphBlock&)            = delete;
+    UiGraphBlock& operator=(const UiGraphBlock&) = delete;
+    UiGraphBlock(UiGraphBlock&&)                 = delete;
+    UiGraphBlock& operator=(UiGraphBlock&&)      = delete;
+
     void getAllContexts();
 
     void setActiveContext(const ContextTime& contextTime);
@@ -122,10 +128,10 @@ class UiGraphModel {
 private:
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
-    std::vector<UiGraphBlock> _blocks;
-    std::vector<UiGraphEdge>  _edges;
-    bool                      _newGraphDataBeingSet = false;
-    bool                      _rearrangeBlocks      = false;
+    std::vector<std::unique_ptr<UiGraphBlock>> _blocks;
+    std::vector<UiGraphEdge>                   _edges;
+    bool                                       _newGraphDataBeingSet = false;
+    bool                                       _rearrangeBlocks      = false;
 
 public:
     UiGraphModel() {}
@@ -136,8 +142,12 @@ public:
     std::string blockName;
     std::string blockTypeName;
 
+    std::string m_localFlowgraphGrc;
+
     // Not a multimap as filtered lists like sequence collections
     std::map<std::string, std::set<std::string>> knownBlockTypes;
+
+    UiGraphBlock* selectedBlock = nullptr;
 
     const auto& blocks() const { return _blocks; }
     auto&       blocks() { return _blocks; }

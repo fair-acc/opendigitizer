@@ -42,8 +42,9 @@ void updateFieldFrom(FieldType& field, const auto& data, const std::string& fiel
 } // namespace
 
 bool UiGraphModel::processMessage(const gr::Message& message) {
-    namespace graph = gr::graph::property;
-    namespace block = gr::block::property;
+    namespace graph     = gr::graph::property;
+    namespace scheduler = gr::scheduler::property;
+    namespace block     = gr::block::property;
 
     if (!message.data) {
         DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
@@ -61,13 +62,13 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         return std::get<std::string>(it->second);
     };
 
-    if (message.endpoint == graph::kBlockEmplaced) {
+    if (message.endpoint == scheduler::kBlockEmplaced) {
         handleBlockEmplaced(data);
 
-    } else if (message.endpoint == graph::kBlockRemoved) {
+    } else if (message.endpoint == scheduler::kBlockRemoved) {
         handleBlockRemoved(uniqueName());
 
-    } else if (message.endpoint == graph::kBlockReplaced) {
+    } else if (message.endpoint == scheduler::kBlockReplaced) {
         handleBlockRemoved(uniqueName("replacedBlockUniqueName"));
         handleBlockEmplaced(data);
 
@@ -82,10 +83,10 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // serviceNames is used for block's unique name in settings messages
         handleBlockSettingsStaged(message.serviceName, data);
 
-    } else if (message.endpoint == graph::kEdgeEmplaced) {
+    } else if (message.endpoint == scheduler::kEdgeEmplaced) {
         handleEdgeEmplaced(data);
 
-    } else if (message.endpoint == graph::kEdgeRemoved) {
+    } else if (message.endpoint == scheduler::kEdgeRemoved) {
         handleEdgeRemoved(data);
 
     } else if (message.endpoint == graph::kGraphInspected) {
@@ -96,6 +97,12 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
 
     } else if (message.endpoint == "LifecycleState") {
         // Nothing to do for lifecycle state changes
+        auto valueIt = data.find("state");
+        if (valueIt != data.end() && std::get<std::string>(valueIt->second) == "RUNNING") {
+            std::println("Lifecycle state changed to: RUNNING, requesting update");
+            requestGraphUpdate();
+            requestAvailableBlocksTypesUpdate();
+        }
 
     } else if (message.endpoint == block::kActiveContext) {
         handleBlockActiveContext(message.serviceName, data);
@@ -108,6 +115,14 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         if (message.clientRequestID == "add" || message.clientRequestID == "rm") {
             handleBlockAddOrRemoveContext(message.serviceName, data);
         }
+
+    } else if (message.endpoint == scheduler::kGraphGRC) {
+        if (auto valueIt = data.find("value"); valueIt != data.end()) {
+            std::println("Retrieved Graph GRC YAML");
+            m_localFlowgraphGrc = std::get<std::string>(valueIt->second);
+        } else {
+            assert(false);
+        }
     } else {
         if (!message.data) {
             DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
@@ -116,7 +131,6 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     return true;
-    //
 }
 
 void UiGraphModel::requestGraphUpdate() {
@@ -140,14 +154,14 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
 }
 
 auto UiGraphModel::findBlockIteratorByUniqueName(const std::string& uniqueName) {
-    auto it = std::ranges::find_if(_blocks, [&](const auto& block) { return block.blockUniqueName == uniqueName; });
+    auto it = std::ranges::find_if(_blocks, [&](const auto& block) { return block->blockUniqueName == uniqueName; });
     return std::make_pair(it, it != _blocks.end());
 }
 
 UiGraphBlock* UiGraphModel::findBlockByUniqueName(const std::string& uniqueName) {
     auto [it, found] = findBlockIteratorByUniqueName(uniqueName);
     if (found) {
-        return std::addressof(*it);
+        return it->get();
     } else {
         return nullptr;
     }
@@ -169,10 +183,15 @@ bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
         return false;
     }
 
-    // Delete edges for the removed block
-    removeEdgesForBlock(*blockIt);
+    removeEdgesForBlock(*blockIt->get());
+
+    if (blockIt->get() == selectedBlock) {
+        selectedBlock = nullptr;
+    }
+
     _blocks.erase(blockIt);
     _rearrangeBlocks = true;
+
     return true;
 }
 
@@ -180,10 +199,12 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
     const auto uniqueName  = getProperty<std::string>(blockData, "uniqueName"s);
     const auto [it, found] = findBlockIteratorByUniqueName(uniqueName);
     if (found) {
-        setBlockData(*it, blockData);
+        UiGraphBlock& block = *it->get();
+        setBlockData(block, blockData);
     } else {
-        auto& newBlock = _blocks.emplace_back(/*owner*/ this);
-        setBlockData(newBlock, blockData);
+        auto newBlock = std::make_unique<UiGraphBlock>(/*owner*/ this);
+        setBlockData(*newBlock, blockData);
+        _blocks.push_back(std::move(newBlock));
     }
 }
 
@@ -194,7 +215,8 @@ void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const g
         return;
     }
 
-    setBlockData(*blockIt, blockData);
+    UiGraphBlock& block = *blockIt->get();
+    setBlockData(block, blockData);
 }
 
 void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
@@ -205,8 +227,8 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     }
     for (const auto& [key, value] : data) {
         if (key != "unique_name"s) {
-            blockIt->blockSettings.insert_or_assign(key, value);
-            blockIt->updateBlockSettingsMetaInformation();
+            (*blockIt)->blockSettings.insert_or_assign(key, value);
+            (*blockIt)->updateBlockSettingsMetaInformation();
         }
     }
     _rearrangeBlocks = true;
@@ -224,7 +246,7 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
     const auto ctx  = std::get<std::string>(data.at("context"));
     auto       time = std::get<std::uint64_t>(data.at("time"));
 
-    blockIt->activeContext = UiGraphBlock::ContextTime{
+    (*blockIt)->activeContext = UiGraphBlock::ContextTime{
         .context = ctx,
         .time    = time,
     };
@@ -249,7 +271,7 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
             .time    = times[i],
         });
     }
-    blockIt->contexts = contextAndTimes;
+    (*blockIt)->contexts = contextAndTimes;
 
     _rearrangeBlocks = true;
 }
@@ -261,8 +283,8 @@ void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, 
         return;
     }
 
-    blockIt->getAllContexts();
-    blockIt->getActiveContext();
+    (*blockIt)->getAllContexts();
+    (*blockIt)->getActiveContext();
 
     _rearrangeBlocks = true;
 }
@@ -293,7 +315,7 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     for (const auto& [childUniqueName, blockData] : children) {
         const auto [blockIt, found] = findBlockIteratorByUniqueName(childUniqueName);
         if (found) {
-            setBlockData(*blockIt, std::get<gr::property_map>(blockData));
+            setBlockData(**blockIt, std::get<gr::property_map>(blockData));
         } else {
             handleBlockEmplaced(std::get<gr::property_map>(blockData));
         }
@@ -303,10 +325,10 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
     const auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& child) { //
-        return children.contains(child.blockUniqueName);
+        return children.contains(child->blockUniqueName);
     });
     for (auto it = toRemove; it != _blocks.end(); ++it) {
-        removeEdgesForBlock(*it);
+        removeEdgesForBlock(**it);
     }
 
     _blocks.erase(toRemove, _blocks.end());

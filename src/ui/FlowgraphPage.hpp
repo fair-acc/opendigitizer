@@ -31,7 +31,8 @@ private:
         Right,
     };
 
-    Dashboard* m_dashboard = nullptr;
+    Dashboard* m_dashboard             = nullptr;
+    bool       m_currentTabIsFlowGraph = false;
 
     const UiGraphBlock* m_filterBlock   = nullptr;
     UiGraphBlock*       m_selectedBlock = nullptr;
@@ -51,6 +52,9 @@ private:
     void drawNodeEditor(const ImVec2& size);
 
     static void drawGraph(UiGraphModel& graphModel, const ImVec2& size, const UiGraphBlock*& filterBlock);
+
+    /// Sends a message to the scheduler so specified block is deleted
+    void deleteBlock(const std::string& blockName);
 
 public:
     struct DataTypeStyle {
