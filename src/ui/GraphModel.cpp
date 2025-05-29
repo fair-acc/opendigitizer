@@ -97,6 +97,12 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
 
     } else if (message.endpoint == "LifecycleState") {
         // Nothing to do for lifecycle state changes
+        auto valueIt = data.find("state");
+        if (valueIt != data.end() && std::get<std::string>(valueIt->second) == "RUNNING") {
+            std::println("Lifecycle state changed to: RUNNING, requesting update");
+            requestGraphUpdate();
+            requestAvailableBlocksTypesUpdate();
+        }
 
     } else if (message.endpoint == block::kActiveContext) {
         handleBlockActiveContext(message.serviceName, data);
