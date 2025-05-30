@@ -11,5 +11,5 @@ set(GIT_SHA_UT
     CACHE STRING "" FORCE) # latest version as of 2024-04-03
 
 set(GIT_SHA_GR_DIGITIZERS
-    b620ef2d3242b32a46398e1809078208e739e34a
+    timingFixes
     CACHE STRING "" FORCE) # main as of 2025-05-23
