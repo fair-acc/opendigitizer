@@ -196,8 +196,6 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
         }
 
-        const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
-
         if (!isX && yCats[0].has_value()) {
             ImVec4 col = colorU32toImVec4(yCats[0]->color);
             // Colour the text & label
@@ -205,7 +203,12 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
         }
 
-        ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
+        if (scale == AxisScale::Time) {
+            ImPlot::SetupAxis(axisId, "", flags);
+        } else {
+            const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
+            ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
+        }
         if (finiteMin && finiteMax) {
             ImPlot::SetupAxisLimits(axisId, static_cast<double>(minVal), static_cast<double>(maxVal)); // TODO check and change axis range definitions to double
         }
