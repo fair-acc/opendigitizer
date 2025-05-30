@@ -55,11 +55,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope4000a<gr::DataSet<float>>, "">(registry);
     gr::registerBlock<fair::picoscope::Picoscope5000a<gr::DataSet<float>>, "">(registry);
     gr::registerBlock<gr::timing::TimingSource, "">(registry);
-
-    std::print("Available blocks:\n");
-    for (auto& blockName : registry.keys()) {
-        std::print("  - {}\n", blockName);
-    }
 }
 } // namespace
 
@@ -72,6 +67,25 @@ int main(int argc, char** argv) {
     using namespace opencmw::majordomo;
     using namespace opencmw::service;
     using namespace std::chrono_literals;
+
+    if (argc > 1 && strcmp(argv[1], "--help") == 0) {
+        std::println("opendigitizer [<path to flowgraph>]");
+        std::println("    launch opendigitizer with the provided flow graph or a default flowgraph if omitted");
+        std::println("opendigitizer --list-registered-blocks");
+        std::println("    List all blocks that are registered in the service");
+        std::println("opendigitizer --help");
+        std::println("    show this help message");
+        return 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--list-registered-blocks") == 0) {
+        gr::BlockRegistry registry;
+        registerTestBlocks(registry);
+        std::print("Available blocks:\n");
+        for (auto& blockName : registry.keys()) {
+            std::print("  - {}\n", blockName);
+        }
+        return 0;
+    }
 
     std::string grc = R"(blocks:
   - name: source
