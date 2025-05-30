@@ -13,6 +13,8 @@
 #include <gnuradio-4.0/Export.hpp>
 
 #include <GrBasicBlocks.hpp>
+#include <GrFourierBlocks.hpp>
+#include <GrMathBlocks.hpp>
 #include <GrTestingBlocks.hpp>
 
 #include "FAIR/DeviceNameHelper.hpp"
@@ -37,6 +39,8 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
+    gr::blocklib::initGrMathBlocks(registry);
+    gr::blocklib::initGrFourierBlocks(registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
