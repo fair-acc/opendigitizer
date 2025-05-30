@@ -107,11 +107,6 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
 
-    std::print("Available blocks:\n");
-    for (auto& blockName : gr::globalBlockRegistry().keys()) {
-        std::print("  - {}\n", blockName);
-    }
-
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     // GL ES 2.0 + GLSL 100
     const char* glsl_version = "#version 100";
