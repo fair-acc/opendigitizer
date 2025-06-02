@@ -256,7 +256,7 @@ private:
         std::string signalName() const override { return block->signal_name; }
         void        setSignalName(std::string name) override { block->signal_name = std::move(name); }
 
-        virtual gr::SettingsBase& settings() const { return block->settings(); }
+        gr::SettingsBase& settings() const override { return block->settings(); }
 
         gr::work::Result work(std::size_t count) override { return block->work(count); }
 
@@ -538,7 +538,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
                     for (std::size_t signalIdx = 0UZ; signalIdx < nsignals; ++signalIdx) {
                         ImPlot::SetNextLineStyle(lineColor);
-                        PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
+                        PlotLineContext ctx{xAxisDouble, dataSet.signalValues(signalIdx), axisScale, static_cast<ValueType>(signalIdx + historyIdx) * baseOffset};
                         ImPlot::PlotLineG(historyIdx == 0UZ ? dataSet.signal_names[signalIdx].c_str() : "", pointGetter, &ctx, static_cast<int>(npoints));
                     }
                 } else {
@@ -548,7 +548,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                     }
                     const auto signalIdx = static_cast<std::size_t>(dataset_index);
                     ImPlot::SetNextLineStyle(lineColor);
-                    PlotLineContext ctx{xAxisDouble, dataSet.signalValues(0UZ), axisScale};
+                    PlotLineContext ctx{xAxisDouble, dataSet.signalValues(signalIdx), axisScale};
                     ImPlot::PlotLineG(dataSet.signal_names[signalIdx].c_str(), pointGetter, &ctx, static_cast<int>(npoints));
                 }
             }
