@@ -12,13 +12,13 @@ FetchContent_Declare(
   opencmw-cpp
   GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
   GIT_TAG ${GIT_SHA_OPENCMW_CPP}
-  SYSTEM)
+  SYSTEM EXCLUDE_FROM_ALL)
 
 FetchContent_Declare(
   ut
   GIT_REPOSITORY https://github.com/boost-ext/ut.git
   GIT_TAG ${GIT_SHA_UT}
-  SYSTEM)
+  SYSTEM EXCLUDE_FROM_ALL)
 
 FetchContent_MakeAvailable(opencmw-cpp gnuradio4 ut)
 
