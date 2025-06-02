@@ -27,8 +27,9 @@ constexpr inline auto kGridHeight = 16u;
 struct AxisCategory {
     std::string quantity;
     std::string unit;
-    uint32_t    color = 0xAAAAAA;
-    AxisScale   scale = AxisScale::Linear;
+    uint32_t    color    = 0xAAAAAA;
+    AxisScale   scale    = AxisScale::Linear;
+    bool        plotTags = true;
 };
 
 std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
@@ -73,18 +74,30 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
         // quantity, unit
         std::string qStr, uStr;
         if (auto qOpt = grBlock->settings().get("signal_quantity")) {
-            qStr = std::get<std::string>(*qOpt);
+            if (auto strPtr = std::get_if<std::string>(&*qOpt)) {
+                qStr = *strPtr;
+            }
         }
         if (auto uOpt = grBlock->settings().get("signal_unit")) {
-            uStr = std::get<std::string>(*uOpt);
+            if (auto strPtr = std::get_if<std::string>(&*uOpt)) {
+                uStr = *strPtr;
+            }
         }
 
         // axis kind = X or Y
         AxisKind axisKind = AxisKind::Y; // default
         if (auto axisOpt = grBlock->settings().get("signal_axis")) {
-            std::string axisVal = std::get<std::string>(*axisOpt);
-            if (axisVal == "X") {
-                axisKind = AxisKind::X;
+            if (auto strPtr = std::get_if<std::string>(&*axisOpt)) {
+                if (*strPtr == "X") {
+                    axisKind = AxisKind::X;
+                }
+            }
+        }
+
+        bool plotTagFlag = true;
+        if (auto tagOpt = grBlock->settings().get("plot_tags")) {
+            if (auto boolPtr = std::get_if<bool>(&*tagOpt)) {
+                plotTagFlag = *boolPtr;
             }
         }
 
@@ -95,6 +108,7 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
             } else {
                 yAxisGroups[idx.value()].push_back(plotSinkBlock->name());
             }
+            xCats[idx.value()]->plotTags = plotTagFlag;
         } else {
             // TODO: Remove the last added
             components::Notification::warning(std::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
@@ -176,7 +190,8 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         }
     };
 
-    for (auto& [axisType, minVal, maxVal, scale, width] : plot.axes) {
+    const std::size_t nAxesY = std::ranges::count_if(yCats, [](const std::optional<AxisCategory>& cat) { return cat.has_value(); });
+    for (auto& [axisType, minVal, maxVal, scale, width, plotTags] : plot.axes) {
         const bool   isX    = (axisType == Axis::X);
         const ImAxis axisId = isX ? ImAxis_X1 : ImAxis_Y1;
 
@@ -196,23 +211,29 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
         }
 
-        const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
-
-        if (!isX && yCats[0].has_value()) {
+        bool needToPopColourSetting = false;
+        if (!isX && yCats[0].has_value() && nAxesY > 1) {
+            // set primary axis colour based on the first data set if there are more than one axes
             ImVec4 col = colorU32toImVec4(yCats[0]->color);
             // Colour the text & label
             ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
             ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
+            needToPopColourSetting = true;
         }
 
-        ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
+        if (scale == AxisScale::Time) {
+            ImPlot::SetupAxis(axisId, "", flags);
+        } else {
+            const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
+            ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
+        }
         if (finiteMin && finiteMax) {
             ImPlot::SetupAxisLimits(axisId, static_cast<double>(minVal), static_cast<double>(maxVal)); // TODO check and change axis range definitions to double
         }
 
         setAxisScale(axisId, scale);
 
-        if (!isX && yCats[0].has_value()) {
+        if (needToPopColourSetting) {
             ImPlot::PopStyleColor(2);
         }
     }
@@ -349,7 +370,8 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
                 xAxisID = i;
             }
         }
-        if (xAxisID == std::numeric_limits<std::size_t>::max()) { // default to X0 if not found
+        if (xAxisID == std::numeric_limits<std::size_t>::max()) {
+            // default to X0 if not found
             xAxisID = 0UZ;
         }
 
@@ -361,10 +383,14 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
                 yAxisID = i;
             }
         }
-        if (yAxisID == std::numeric_limits<std::size_t>::max()) { // default to Y0 if not found
+        if (yAxisID == std::numeric_limits<std::size_t>::max()) {
+            // default to Y0 if not found
             yAxisID = 0;
         }
 
+        if (!plot.axes[xAxisID].plotTags) {
+            drawTag = false;
+        }
         std::ignore = plotSinkBlock->draw({{"draw_tag", drawTag}, {"xAxisID", xAxisID}, {"yAxisID", yAxisID}, {"scale", std::string(magic_enum::enum_name(plot.axes[0].scale))}});
         drawTag     = false;
 

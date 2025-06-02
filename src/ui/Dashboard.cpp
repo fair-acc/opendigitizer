@@ -229,7 +229,8 @@ void Dashboard::load() {
         isInUse = true;
         fetch(
             m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
-            [this](std::array<std::string, 2>&& data) {                                //
+            [this](std::array<std::string, 2>&& data) {
+                //
                 loadAndThen(std::move(data[0]), std::move(data[1]), [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
                 isInUse = false;
             },
@@ -398,6 +399,13 @@ void Dashboard::doLoad(const std::string& desc) {
                     return (start < end) ? std::string(start, end) : std::string{};
                 };
                 axisData.scale = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
+
+                if (axisMap.contains("plot_tags")) {
+                    auto tagOpt = axisMap.at("plot_tags");
+                    if (auto boolPtr = std::get_if<bool>(&tagOpt)) {
+                        axisData.plotTags = *boolPtr;
+                    }
+                }
             }
         } else {
             // add default axes and ranges if not defined
@@ -455,10 +463,11 @@ void Dashboard::save() {
         std::vector<pmtv::pmt> plotAxes;
         for (const auto& axis : plot.axes) {
             property_map axisMap;
-            axisMap["axis"]  = axis.axis == Plot::AxisKind::X ? "X" : "Y";
-            axisMap["min"]   = axis.min;
-            axisMap["max"]   = axis.max;
-            axisMap["scale"] = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
+            axisMap["axis"]      = axis.axis == Plot::AxisKind::X ? "X" : "Y";
+            axisMap["min"]       = axis.min;
+            axisMap["max"]       = axis.max;
+            axisMap["scale"]     = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
+            axisMap["plot_tags"] = axis.plotTags;
             plotAxes.emplace_back(std::move(axisMap));
         }
         plotMap["axes"] = plotAxes;
@@ -582,6 +591,7 @@ void Dashboard::loadPlotSourcesFor(Plot& plot) {
         plot.plotSinkBlocks.push_back(&*plotSource);
     }
 }
+
 void Dashboard::loadPlotSources() {
     for (auto& plot : m_plots) {
         loadPlotSourcesFor(plot);
