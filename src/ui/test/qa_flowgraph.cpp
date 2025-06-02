@@ -93,14 +93,13 @@ struct TestState {
 
     /// Creates a fresh Scheduler and Graph so that tests are more individual and deterministics (i.e. not influenced by previous test runs)
     void reload() {
-        auto fs            = cmrc::sample_dashboards::get_filesystem();
-        auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");
-        auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
+        auto fs      = cmrc::sample_dashboards::get_filesystem();
+        auto grcFile = fs.open("assets/sampleDashboards/DemoDashboard.grc");
 
         auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
         dashboard                 = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
 
-        dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [this](gr::Graph&& grGraph) { //
+        dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [this](gr::Graph&& grGraph) { //
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
             dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
         });

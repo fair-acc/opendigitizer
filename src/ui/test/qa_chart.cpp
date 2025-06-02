@@ -133,13 +133,12 @@ int main(int argc, char* argv[]) {
 
     auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
 
-    auto fs            = cmrc::sample_dashboards::get_filesystem();
-    auto grcFile       = fs.open("assets/sampleDashboards/DemoDashboard.grc");
-    auto dashboardFile = fs.open("assets/sampleDashboards/DemoDashboard.yml");
+    auto fs      = cmrc::sample_dashboards::get_filesystem();
+    auto grcFile = fs.open("assets/sampleDashboards/DemoDashboard.grc");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [](gr::Graph&& grGraph) { //
+    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [](gr::Graph&& grGraph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
         g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
     });
