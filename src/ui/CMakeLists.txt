@@ -82,11 +82,8 @@ cmrc_add_resource_library(
   NAMESPACE
   sample_dashboards
   assets/sampleDashboards/dashboard.grc
-  assets/sampleDashboards/dashboard.yml
   assets/sampleDashboards/ExtendedDemoDashboard.grc
-  assets/sampleDashboards/ExtendedDemoDashboard.yml
-  assets/sampleDashboards/DemoDashboard.grc
-  assets/sampleDashboards/DemoDashboard.yml)
+  assets/sampleDashboards/DemoDashboard.grc)
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
