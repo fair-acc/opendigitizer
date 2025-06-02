@@ -23,6 +23,7 @@ CMRC_DECLARE(sample_dashboards);
 
 #include "components/ColourManager.hpp"
 #include "components/Docking.hpp"
+
 namespace detail {
 [[maybe_unused]] inline static opendigitizer::ColourManager& _colourManager = opendigitizer::ColourManager::instance();
 }
@@ -58,6 +59,7 @@ private:
 
 public:
     DashboardStorageInfo(std::string _path, PrivateTag) : path(std::move(_path)) {}
+
     ~DashboardStorageInfo() noexcept;
 
     std::string path;
@@ -73,12 +75,14 @@ public:
 struct DashboardDescription {
 private:
     struct PrivateTag {};
+
     using OptionalTimePoint = std::optional<std::chrono::time_point<std::chrono::system_clock>>;
 
     static std::vector<std::shared_ptr<DashboardDescription>> s_knownDashboards;
 
 public:
     DashboardDescription(PrivateTag, std::string _name, std::shared_ptr<DashboardStorageInfo> _storageInfo, std::string _filename, bool _isFavorite, OptionalTimePoint _lastUsed) : name(std::move(_name)), storageInfo(std::move(_storageInfo)), filename(std::move(_filename)), isFavorite(_isFavorite), lastUsed(std::move(_lastUsed)) {}
+
     static constexpr const char* fileExtension = ".ddd"; // ddd for "Digitizer Dashboard Description"
 
     std::string                           name;
@@ -110,11 +114,12 @@ public:
         enum class AxisKind { X = 0, Y };
 
         struct AxisData {
-            AxisKind  axis  = AxisKind::X;
-            float     min   = std::numeric_limits<float>::quiet_NaN();
-            float     max   = std::numeric_limits<float>::quiet_NaN();
-            AxisScale scale = AxisScale::Linear;
-            float     width = std::numeric_limits<float>::max();
+            AxisKind  axis     = AxisKind::X;
+            float     min      = std::numeric_limits<float>::quiet_NaN();
+            float     max      = std::numeric_limits<float>::quiet_NaN();
+            AxisScale scale    = AxisScale::Linear;
+            float     width    = std::numeric_limits<float>::max();
+            bool      plotTags = true;
         };
 
         std::string                                  name;
