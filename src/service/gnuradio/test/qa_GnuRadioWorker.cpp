@@ -565,8 +565,6 @@ blocks:
     id: CountSource<float32>
     parameters:
       n_samples: 100
-      sample_rate: 10
-      signal_unit: A unit
       signal_min: -42
       signal_max: 42
       timing_tags: !!str
@@ -581,6 +579,8 @@ blocks:
     id: gr::basic::DataSink<float32>
     parameters:
       signal_name: count
+      signal_unit: A unit
+      sample_rate: 10
 connections:
   - [count, 0, delay, 0]
   - [delay, 0, test_sink, 0]
@@ -771,7 +771,7 @@ connections:
                 expect(eq(acq.channelRangeMax, 100.f));
                 receivedDownCount += acq.channelValue.size();
             });
-
+            std::this_thread::sleep_for(50ms);
             test.setGrc(grc);
             waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
         }
