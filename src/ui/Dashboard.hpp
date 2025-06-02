@@ -143,7 +143,7 @@ public:
 
     void load();
 
-    void loadAndThen(const std::string& grcData, const std::string& dashboardData, std::function<void(gr::Graph&&)> assignScheduler);
+    void loadAndThen(const std::string& grcData, std::function<void(gr::Graph&&)> assignScheduler);
 
     void save();
 
@@ -200,7 +200,7 @@ public:
 
     std::function<void(Dashboard*)> requestClose;
 
-    void doLoad(const std::string& desc);
+    void doLoad(const gr::property_map& dashboard);
 
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
