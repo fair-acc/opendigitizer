@@ -771,7 +771,7 @@ connections:
                 expect(eq(acq.channelRangeMax, 100.f));
                 receivedDownCount += acq.channelValue.size();
             });
-
+            std::this_thread::sleep_for(50ms);
             test.setGrc(grc);
             waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
         }
