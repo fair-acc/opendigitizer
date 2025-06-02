@@ -336,7 +336,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphModel.blocks()) {
-            auto blockId = ax::NodeEditor::NodeId(std::addressof(*block.get()));
+            auto blockId = ax::NodeEditor::NodeId(block.get());
 
             const auto& inputPorts  = block->inputPorts;
             const auto& outputPorts = block->outputPorts;
@@ -461,7 +461,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
         for (auto& block : graphModel.blocks()) {
             if (!block->view.has_value()) {
-                auto blockId   = ax::NodeEditor::NodeId(std::addressof(*block.get()));
+                auto blockId   = ax::NodeEditor::NodeId(block.get());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 block->view    = UiGraphBlock::ViewData{//
                        .x      = boundingBox.minX,      //

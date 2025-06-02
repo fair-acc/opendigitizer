@@ -140,10 +140,8 @@ private:
             const auto available = _fromScheduler.streamReader().available();
             if (available > 0) {
                 auto messages = _fromScheduler.streamReader().get(available);
-
                 for (const auto& message : messages) {
                     if (message.endpoint == gr::scheduler::property::kGraphGRC) {
-
                         if (!message.data) {
                             DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));
                             continue;
