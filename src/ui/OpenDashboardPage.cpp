@@ -80,7 +80,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) {
         auto fs  = cmrc::sample_dashboards::get_filesystem();
         auto dir = fs.iterate_directory("assets/sampleDashboards/");
         for (auto d : dir) {
-            if (d.is_file() && d.filename().ends_with(".yml")) {
+            if (d.is_file() && d.filename().ends_with(".grc")) {
                 addDashboard(storageInfo, d.filename().substr(0, d.filename().size() - 4));
             }
         }
