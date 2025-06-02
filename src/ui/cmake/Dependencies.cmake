@@ -1,5 +1,6 @@
 include(FetchContent)
 include(DependenciesSHAs)
+include(CompileGr4Release)
 
 # Enable Unicode planes for icons used in notifications
 add_compile_definitions(IMGUI_USE_WCHAR32)
@@ -22,9 +23,8 @@ FetchContent_Declare(
 FetchContent_Declare(
   imgui-node-editor
   # GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git GIT_TAG         v0.9.3 # latest as of 2023-12-19
-  # Temporary until https://github.com/thedmd/imgui-node-editor/pull/291 is merged
-  # GIT_REPOSITORY https://github.com/ivan-cukic/wip-fork-imgui-node-editor.git
-  # GIT_TAG 2e4740361b7bddb924807f6d5be64818b72bf15e
+  # Temporary until https://github.com/thedmd/imgui-node-editor/pull/291 is merged GIT_REPOSITORY
+  # https://github.com/ivan-cukic/wip-fork-imgui-node-editor.git GIT_TAG 2e4740361b7bddb924807f6d5be64818b72bf15e
   # Temporary until https://github.com/ivan-cukic/wip-fork-imgui-node-editor/pull/1 is merged
   GIT_REPOSITORY https://github.com/dantti/wip-fork-imgui-node-editor.git
   GIT_TAG e1a4cf22a73a6ca8e15b2ab4602ac5870afb7b5d
@@ -64,6 +64,8 @@ FetchContent_MakeAvailable(
   opencmw-cpp
   plf_colony
   gnuradio4)
+
+od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 
 if(NOT EMSCRIPTEN)
   find_package(SDL2 REQUIRED)
@@ -129,8 +131,12 @@ endif()
 target_include_directories(imgui SYSTEM BEFORE PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 
 if(ENABLE_IMGUI_TEST_ENGINE)
-  target_compile_definitions(imgui PUBLIC IMGUI_ENABLE_TEST_ENGINE IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
-                                          IMGUI_APP_SDL2_GL3 IMGUI_TEST_ENGINE_ENABLE_CAPTURE)
+  target_compile_definitions(
+    imgui
+    PUBLIC IMGUI_ENABLE_TEST_ENGINE
+           IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
+           IMGUI_APP_SDL2_GL3
+           IMGUI_TEST_ENGINE_ENABLE_CAPTURE)
 
   target_compile_options(imgui PRIVATE -Wno-old-style-cast -Wno-deprecated-enum-enum-conversion -Wno-double-promotion)
 
