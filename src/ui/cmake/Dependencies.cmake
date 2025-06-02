@@ -8,8 +8,8 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.4-docking # latest as of 2024-10-23
-  SYSTEM)
+  GIT_TAG v1.91.4-docking # latest version still compatible with imgui-node-editor # v1.91.9b-docking # latest as of 2025-06-02
+  EXCLUDE_FROM_ALL SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
 add_compile_definitions("ImDrawIdx=unsigned int")
@@ -18,7 +18,7 @@ FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
   GIT_TAG v0.16 # latest as of 2024-10-23
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   imgui-node-editor
@@ -28,33 +28,33 @@ FetchContent_Declare(
   # Temporary until https://github.com/ivan-cukic/wip-fork-imgui-node-editor/pull/1 is merged
   GIT_REPOSITORY https://github.com/dantti/wip-fork-imgui-node-editor.git
   GIT_TAG e1a4cf22a73a6ca8e15b2ab4602ac5870afb7b5d
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   plf_colony
   GIT_REPOSITORY https://github.com/mattreecebentley/plf_colony.git
   GIT_TAG 41e387e281b8323ca5584e79f67d632964b24bbf # v7.11
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   # needed to load images in ImGui
   stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
   GIT_TAG 8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55 # master from Sep 2022
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 # TODO use proper release once available
 FetchContent_Declare(
   opencmw-cpp
   GIT_REPOSITORY https://github.com/fair-acc/opencmw-cpp.git
   GIT_TAG ${GIT_SHA_OPENCMW_CPP}
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   gnuradio4
   GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
   GIT_TAG ${GIT_SHA_GNURADIO4}
-  SYSTEM)
+  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_MakeAvailable(
   imgui
@@ -96,7 +96,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   FetchContent_Declare(
     imgui_test_engine
     GIT_REPOSITORY https://github.com/ocornut/imgui_test_engine.git
-    GIT_TAG v1.91.4 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
+    GIT_TAG v1.91.9 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
     SYSTEM)
 
   FetchContent_MakeAvailable(imgui_test_engine)
