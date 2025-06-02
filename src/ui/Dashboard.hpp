@@ -149,7 +149,7 @@ public:
 
     void load();
 
-    void loadAndThen(std::string_view grcData, std::string_view dashboardData, std::function<void(gr::Graph&&)> assignScheduler);
+    void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
 
     void save();
 
@@ -205,7 +205,11 @@ public:
 
     std::function<void(Dashboard*)> requestClose;
 
+<<<<<<< HEAD
     void doLoad(std::string_view desc);
+=======
+    void doLoad(const gr::property_map& dashboard);
+>>>>>>> b52afb3 (Merge dashboard grc and yml files)
 
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {

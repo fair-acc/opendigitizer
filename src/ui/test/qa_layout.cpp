@@ -97,13 +97,12 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
 
-    auto fs            = cmrc::ui_test_assets::get_filesystem();
-    auto grcFile       = fs.open("examples/qa_layout.grc");
-    auto dashboardFile = fs.open("examples/qa_layout.yml");
+    auto fs      = cmrc::ui_test_assets::get_filesystem();
+    auto grcFile = fs.open("examples/qa_layout.grc");
 
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state->dashboard        = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
-    g_state->dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), [&](gr::Graph&& graph) { //
+    g_state->dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
         g_state->dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(graph));
     });

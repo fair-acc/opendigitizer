@@ -32,9 +32,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     NAMESPACE
     ui_test_assets
     examples/fg_dipole_intensity_ramp.grc
-    examples/fg_dipole_intensity_ramp.yml
-    examples/qa_layout.grc
-    examples/qa_layout.yml)
+    examples/qa_layout.grc)
 
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)

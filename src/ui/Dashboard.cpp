@@ -38,7 +38,7 @@ ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 namespace DigitizerUi {
 
 namespace {
-enum class What { Header, Dashboard, Flowgraph };
+enum class What { Header, Flowgraph };
 
 template<typename T>
 struct arrsize;
@@ -62,7 +62,6 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
             whatStr += [&]() {
                 switch (what[i]) {
                 case What::Header: return "header";
-                case What::Dashboard: return "dashboard";
                 case What::Flowgraph: return "flowgraph";
                 }
                 return "header";
@@ -107,10 +106,6 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
         for (std::size_t i = 0UZ; i < N; ++i) {
             reply[i] = [&]() -> std::string {
                 switch (what[i]) {
-                case What::Dashboard: {
-                    auto file = fs.open(std::format("assets/sampleDashboards/{}.yml", name));
-                    return {file.begin(), file.end()};
-                }
                 case What::Flowgraph: {
                     auto file = fs.open(std::format("assets/sampleDashboards/{}.grc", name));
                     return {file.begin(), file.end()};
@@ -144,7 +139,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
             std::array<std::string, N> desc;
             for (std::size_t i = 0UZ; i < N; ++i) {
                 auto w = what[i];
-                stream.seekg(w == What::Header ? 0 : (w == What::Dashboard ? 8 : 16));
+                stream.seekg(w == What::Header ? 0 : 16);
 
                 uint32_t start, size;
                 stream.read(reinterpret_cast<char*>(&start), 4);
@@ -227,9 +222,10 @@ void Dashboard::load() {
         isInUse = true;
 
         fetch(
-            m_restClient, m_desc->storageInfo, m_desc->filename, {What::Flowgraph, What::Dashboard}, //
-            [this](std::array<std::string, 2>&& data) {
-                loadAndThen(data[0], data[1], [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
+            m_restClient, m_desc->storageInfo, m_desc->filename, {What::Flowgraph}, //
+            [this](std::array<std::string, 1>&& data) {
+                //
+                loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
                 isInUse = false;
             },
             [this]() {
@@ -244,11 +240,19 @@ void Dashboard::load() {
     }
 }
 
-void Dashboard::loadAndThen(std::string_view grcData, std::string_view dashboardData, std::function<void(gr::Graph&&)> assignScheduler) {
+void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler) {
     try {
-        gr::Graph grGraph = [this, &grcData]() -> gr::Graph {
+        const auto yaml = pmtv::yaml::deserialize(grcData);
+        if (!yaml) {
+            throw gr::exception(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, grcData));
+        }
+        const gr::property_map& rootMap = yaml.value();
+
+        gr::Graph grGraph = [this, &rootMap]() -> gr::Graph {
             try {
-                return gr::loadGrc(*pluginLoader, grcData);
+                gr::Graph resultGraph;
+                gr::detail::loadGraphFromMap(*pluginLoader, resultGraph, rootMap);
+                return resultGraph;
             } catch (const gr::exception& e) {
                 throw;
             } catch (const std::string& e) {
@@ -271,11 +275,12 @@ void Dashboard::loadAndThen(std::string_view grcData, std::string_view dashboard
         assignScheduler(std::move(grGraph));
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
-        doLoad(dashboardData);
+        const auto dashboard = std::get<gr::property_map>(rootMap.at("dashboard"));
+        doLoad(dashboard);
         m_isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
-        std::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e);
+        std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e);
 #endif
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
@@ -283,7 +288,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::string_view dashboard
         }
     } catch (const std::exception& e) {
 #ifndef NDEBUG
-        std::println(stderr, "Dashboard::load(const std::string& grcData,const std::string& dashboardData): error: {}", e.what());
+        std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e.what());
 #endif
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
@@ -292,25 +297,18 @@ void Dashboard::loadAndThen(std::string_view grcData, std::string_view dashboard
     }
 }
 
-void Dashboard::doLoad(std::string_view desc) {
+void Dashboard::doLoad(const gr::property_map& dashboard) {
     using namespace gr;
-    const auto yaml = pmtv::yaml::deserialize(desc);
-    if (!yaml) {
-        throw gr::exception(std::format("Could not parse yaml for Dashboard: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
-    }
-
-    const property_map& rootMap = yaml.value();
-
     auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
 
-    if (rootMap.contains("layout") && std::holds_alternative<std::string>(rootMap.at("layout"))) {
-        m_layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(rootMap.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+    if (dashboard.contains("layout") && std::holds_alternative<std::string>(dashboard.at("layout"))) {
+        m_layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(dashboard.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     }
 
-    if (!rootMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("sources"))) {
+    if (!dashboard.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("sources"))) {
         throw gr::exception("sources entry invalid");
     }
-    auto sources = std::get<std::vector<pmtv::pmt>>(rootMap.at("sources"));
+    auto sources = std::get<std::vector<pmtv::pmt>>(dashboard.at("sources"));
 
     for (const auto& src : sources) {
         if (!std::holds_alternative<property_map>(src)) {
@@ -335,10 +333,10 @@ void Dashboard::doLoad(std::string_view desc) {
         sink->setName(block);
     }
 
-    if (!rootMap.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(rootMap.at("plots"))) {
+    if (!dashboard.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("plots"))) {
         throw gr::exception("plots entry invalid");
     }
-    auto plots = std::get<std::vector<pmtv::pmt>>(rootMap.at("plots"));
+    auto plots = std::get<std::vector<pmtv::pmt>>(dashboard.at("plots"));
 
     for (const auto& plotPmt : plots) {
         if (!std::holds_alternative<property_map>(plotPmt)) {
@@ -420,7 +418,7 @@ void Dashboard::doLoad(std::string_view desc) {
 
     // if (m_fgItem) {
     // TODO: Port loading and saving flowgraph layouts
-    // const bool isGoodString = rootMap.contains("flowgraphLayout") && std::holds_alternative<std::string>(rootMap.at("flowgraphLayout"));
+    // const bool isGoodString = dashboard.contains("flowgraphLayout") && std::holds_alternative<std::string>(dashboard.at("flowgraphLayout"));
     // }
 
     loadPlotSources();
