@@ -2,30 +2,40 @@ blocks:
   - name: picoscope
     id: fair::picoscope::Picoscope4000a<float32>
     parameters:
-      acquisition_mode: Streaming
       auto_arm: true
       channel_couplings: !!str [ DC, DC, DC, DC]
       channel_ids: !!str [ A, B, C, D]
-      channel_names: !!str [ "test", "signal B", "signal C", "signal D"]
-      channel_ranges: !!float64 [ 5, 5, 5, 5]
-      channel_units: !!str [ "Test unit A", "Test unit B", "Test unit C", "Test unit D"]
+      channel_names: !!str [ "test", "SignalB", "SignalC", "SignalD"]
+      channel_ranges: !!float32 [ 5, 5, 5, 5]
+      channel_units: !!str [ "UnitA", "UnitB", "UnitC", "UnitD" ]
+      signal_quantities: !!str [ "QuantityA", "QuantityB", "QuantityC", "QuantityD"]
+      signal_scales: !!float32 [ 1, 1, 1, 1]
+      signal_offsets: !!float32 [ 0, 0, 0, 0]
       sample_rate: 10000
+      trigger_source: A
+      trigger_threshold: 0
+      trigger_direction: "Rising"
   - name: DummySinkPicoDigital # port needs to be connected or it will block the graph
-    id: gr::testing::TagSink<uint16, (gr::testing::ProcessFunction)0>
-    parameters:
-      logTags: false
-      logSamples: false
+    id: gr::testing::NullSink<uint16>
   - name: sinkA
     id: gr::basic::DataSink<float32>
+    parameters:
+      signal_name: test
   - name: sinkB
     id: gr::basic::DataSink<float32>
+    parameters:
+      signal_name: SignalB
   - name: sinkC
     id: gr::basic::DataSink<float32>
+    parameters:
+      signal_name: SignalC
   - name: sinkD
     id: gr::basic::DataSink<float32>
+    parameters:
+      signal_name: SignalD
 connections:
-  - [picoscope, [1, 0], sinkA, 0]
   - [picoscope, 0, DummySinkPicoDigital, 0]
+  - [picoscope, [1, 0], sinkA, 0]
   - [picoscope, [1, 1], sinkB, 0]
   - [picoscope, [1, 2], sinkC, 0]
   - [picoscope, [1, 3], sinkD, 0]
