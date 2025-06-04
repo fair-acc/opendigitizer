@@ -27,6 +27,8 @@
 #include "gnuradio/GnuRadioFlowgraphWorker.hpp"
 #include "rest/fileserverRestBackend.hpp"
 
+#include <version.hpp>
+
 // TODO instead of including and registering blocks manually here, rely on the plugin system
 #include "build_configuration.hpp"
 #include "settings.hpp"
@@ -72,7 +74,9 @@ int main(int argc, char** argv) {
         std::println("opendigitizer [<path to flowgraph>]");
         std::println("    launch opendigitizer with the provided flow graph or a default flowgraph if omitted");
         std::println("opendigitizer --list-registered-blocks");
-        std::println("    List all blocks that are registered in the service");
+        std::println("    list all blocks that are registered in the service");
+        std::println("opendigitizer --version");
+        std::println("    print version of the opendigitizer");
         std::println("opendigitizer --help");
         std::println("    show this help message");
         return 0;
@@ -84,6 +88,11 @@ int main(int argc, char** argv) {
         for (auto& blockName : registry.keys()) {
             std::print("  - {}\n", blockName);
         }
+        return 0;
+    }
+
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+        std::println("{}", kOpendigitizerVersion);
         return 0;
     }
 

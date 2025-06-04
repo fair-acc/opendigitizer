@@ -50,6 +50,8 @@
 #include "blocks/SineSource.hpp"
 #include "blocks/TagToSample.hpp"
 
+#include <version.hpp>
+
 namespace DigitizerUi {
 
 struct SDLState {
@@ -87,6 +89,21 @@ void setWindowMode(SDL_Window* window, const WindowMode& state) {
 }
 
 int main(int argc, char** argv) {
+#ifndef EMSCRIPTEN
+    if (argc > 1 && strcmp(argv[1], "--help") == 0) {
+        std::println("opendigitizer --version");
+        std::println("    print version of the opendigitizer-ui");
+        std::println("opendigitizer --help");
+        std::println("    show this help message");
+        return 0;
+    }
+
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+        std::println("{}", kOpendigitizerVersion);
+        return 0;
+    }
+#endif
+
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         printf("Error: %s\n", SDL_GetError());

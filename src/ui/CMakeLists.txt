@@ -159,6 +159,7 @@ target_link_libraries(
          imgui-node-editor
          od_acquisition
          services
+         opendigitizer_version
          plf_colony
          ui_assets
          core
