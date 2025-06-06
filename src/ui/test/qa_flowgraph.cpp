@@ -204,8 +204,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
-                    captureScreenshot(*ctx);
+                    if (!g_state.dashboard->graphModel().blocks().empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
+                        captureScreenshot(*ctx);
+                    }
                 };
             };
         }
