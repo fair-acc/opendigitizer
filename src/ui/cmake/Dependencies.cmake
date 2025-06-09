@@ -23,12 +23,9 @@ FetchContent_Declare(
 
 FetchContent_Declare(
   imgui-node-editor
-  # GIT_REPOSITORY  https://github.com/thedmd/imgui-node-editor.git GIT_TAG         v0.9.3 # latest as of 2023-12-19
-  # Temporary until https://github.com/thedmd/imgui-node-editor/pull/291 is merged GIT_REPOSITORY
-  # https://github.com/ivan-cukic/wip-fork-imgui-node-editor.git GIT_TAG 2e4740361b7bddb924807f6d5be64818b72bf15e
-  # Temporary until https://github.com/ivan-cukic/wip-fork-imgui-node-editor/pull/1 is merged
-  GIT_REPOSITORY https://github.com/dantti/wip-fork-imgui-node-editor.git
-  GIT_TAG e1a4cf22a73a6ca8e15b2ab4602ac5870afb7b5d
+  # Upstream https://github.com/thedmd/imgui-node-editor.git
+  GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
+  GIT_TAG e0788005f3280af4a93cdd1a7d55c16bb4ff3088
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
