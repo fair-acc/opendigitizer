@@ -75,19 +75,19 @@ struct DockSpace::Window {
     explicit Window(const std::string& n) : name(n) {}
 
     std::string           name;
-    int                   x      = 0;
-    int                   y      = 0;
-    int                   width  = 0;
-    int                   height = 0;
+    std::size_t           x      = 0UZ;
+    std::size_t           y      = 0UZ;
+    std::size_t           width  = 0UZ;
+    std::size_t           height = 0UZ;
     std::function<void()> renderFunc;
 
     void clearGeometry() { setGeometry({}, {}); }
 
     void setGeometry(ImVec2 pos, ImVec2 size) {
-        x      = static_cast<int>(pos.x);
-        y      = static_cast<int>(pos.y);
-        width  = static_cast<int>(size.x);
-        height = static_cast<int>(size.y);
+        x      = static_cast<std::size_t>(pos.x);
+        y      = static_cast<std::size_t>(pos.y);
+        width  = static_cast<std::size_t>(size.x);
+        height = static_cast<std::size_t>(size.y);
     }
 
     [[nodiscard]] bool hasSize() const { return width > 0 && height > 0; }

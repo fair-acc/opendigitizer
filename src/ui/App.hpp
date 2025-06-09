@@ -43,10 +43,9 @@ public:
     FlowgraphPage     flowgraphPage;
     OpenDashboardPage openDashboardPage;
 
-    SDLState* sdlState         = nullptr;
-    bool      isRunning        = true;
-    ViewMode  mainViewMode     = ViewMode::VIEW;
-    ViewMode  previousViewMode = ViewMode::VIEW;
+    std::atomic<bool> isRunning        = true;
+    ViewMode          mainViewMode     = ViewMode::VIEW;
+    ViewMode          previousViewMode = ViewMode::VIEW;
 
     std::vector<gr::BlockModel*> toolbarBlocks;
 

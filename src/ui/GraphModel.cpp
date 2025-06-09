@@ -361,8 +361,6 @@ void UiGraphModel::handleAvailableGraphBlockTypes(const gr::property_map& data) 
             knownBlockTypes[std::string(type)].emplace();
         }
     }
-
-    std::print("Known block types: {}\n", knownBlockTypes);
 }
 
 UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametrizationsFor(const std::string& fullBlockType) const {

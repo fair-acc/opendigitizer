@@ -77,19 +77,38 @@ jobs:
         source $EMSDK_HOME/emsdk_env.sh
         cmake --build ../build
 
+    - name: Install Xvfb
+      run: ( sudo apt-get update && sudo apt-get install -y xvfb || true )
+
     - name: execute tests
       if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
       timeout-minutes: 10
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: ctest --output-on-failure
+      env:
+        XDG_RUNTIME_DIR: /tmp/runtime-dir
+        SDL_VIDEODRIVER: x11
+        SDL_AUDIODRIVER: dummy
+      run: |
+        mkdir -p /tmp/runtime-dir
+        Xvfb :99 -screen 0 1600x1200x24 &
+        export DISPLAY=:99
+        ctest --output-on-failure
 
     - name: execute tests with coverage
       if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'
       timeout-minutes: 10
       working-directory: ${{runner.workspace}}/build
       shell: bash
-      run: cmake --build . --target opendigitizer_coverage
+      env:
+        XDG_RUNTIME_DIR: /tmp/runtime-dir
+        SDL_VIDEODRIVER: x11
+        SDL_AUDIODRIVER: dummy
+      run: |
+        mkdir -p /tmp/runtime-dir
+        Xvfb :99 -screen 0 1600x1200x24 &
+        export DISPLAY=:99
+        cmake --build . --target opendigitizer_coverage
 
     # only for Release, as this might generate PR comments (which we don't want to duplicate)
     - name: compare captures

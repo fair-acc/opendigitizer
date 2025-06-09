@@ -1,12 +1,9 @@
 #include "../ui/common/ImguiWrap.hpp"
-#include "imgui.h"
-#include "imgui_test_engine/imgui_te_context.h"
+#include "ImGuiTestApp.hpp"
 
 #include "components/Docking.hpp"
 #include <boost/ut.hpp>
 #include <format>
-
-#include "ImGuiTestApp.hpp"
 
 using namespace boost;
 using namespace DigitizerUi;
