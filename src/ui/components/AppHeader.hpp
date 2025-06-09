@@ -12,7 +12,7 @@
 #include "../common/ImguiWrap.hpp"
 #include "../components/ImGuiNotify.hpp"
 
-#include <SDL_opengl.h>
+#include <SDL3/SDL_opengl.h>
 #include <stb_image.h>
 
 #include "PopupMenu.hpp"
@@ -190,7 +190,7 @@ public:
         }();
 
         if ((devMenuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
-            using enum DigitizerUi::WindowMode;
+            using enum WindowMode;
 
             {
                 IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue

@@ -6,6 +6,9 @@
 #include <emscripten/html5.h>
 #include <emscripten/threading.h>
 #endif
+#include <cstdint>
+#include <format>
+#include <print>
 
 enum class ExecutionMode : std::uint8_t { Async = 0, Sync };
 
@@ -50,7 +53,7 @@ bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEvent* ev
 }
 #endif
 
-inline void listPersistentFiles(bool recursive = true) {
+inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
 #ifdef __EMSCRIPTEN__
     EM_ASM_(
         {

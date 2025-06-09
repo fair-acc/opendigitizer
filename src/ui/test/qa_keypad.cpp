@@ -1,8 +1,5 @@
 #include "ImGuiTestApp.hpp"
 #include "components/Keypad.hpp"
-#include "imgui.h"
-
-#include "imgui_test_engine/imgui_te_context.h"
 
 #include <boost/ut.hpp>
 
@@ -22,7 +19,7 @@ private:
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
+            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto& vars = ctx->GetVars<TestState>();
@@ -30,8 +27,6 @@ private:
                 // do not override with false every frame
                 vars.edited = true;
             }
-
-            ImGui::End();
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {

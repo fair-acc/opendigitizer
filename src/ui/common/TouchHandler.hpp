@@ -5,15 +5,17 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <format>
+#include <map>
+#include <numbers>
+#include <print>
 #include <stack>
 #include <unordered_map>
-
-#include <format>
 
 #include "ImguiWrap.hpp"
 #include <implot_internal.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "../common/LookAndFeel.hpp"
 #include "conversion.hpp"
@@ -159,8 +161,8 @@ struct TouchHandler {
         const auto  now         = ClockSourceType::now();
 
         switch (event.type) {
-        case SDL_FINGERDOWN: {
-            const std::size_t fingerIndex    = getOrAssignIndex(event.tfinger.fingerId);
+        case SDL_EVENT_FINGER_DOWN: {
+            const std::size_t fingerIndex    = getOrAssignIndex(event.tfinger.fingerID);
             touchActive                      = true;
             fingerDown                       = true;
             fingerTimeStamp[fingerIndex]     = now;
@@ -197,8 +199,8 @@ struct TouchHandler {
                 std::print("touch: finger down: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
-        case SDL_FINGERUP: {
-            const std::size_t fingerIndex  = getOrAssignIndex(event.tfinger.fingerId);
+        case SDL_EVENT_FINGER_UP: {
+            const std::size_t fingerIndex  = getOrAssignIndex(event.tfinger.fingerID);
             touchActive                    = true;
             fingerUp                       = true;
             fingerTimeStamp[fingerIndex]   = now;
@@ -212,7 +214,7 @@ struct TouchHandler {
             fingerWindowID[fingerIndex]    = event.tfinger.windowID;
             assert(nFingers > 0);
             --nFingers;
-            releaseIndex(event.tfinger.fingerId);
+            releaseIndex(event.tfinger.fingerID);
             if (nFingers == 0 && !gestureActive && !gestureDragActive && !gestureZoomActive) {
                 if (getFingerPressedDuration(fingerIndex) < std::chrono::milliseconds(500)) { // short click -> process as left click
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, true);
@@ -239,8 +241,8 @@ struct TouchHandler {
                 std::print("touch: finger up: {} fingerID: {} p:{} @({},{})\n", nFingers, fingerIndex, event.tfinger.pressure, event.tfinger.x, event.tfinger.y);
             }
         } break;
-        case SDL_FINGERMOTION: {
-            std::size_t fingerIndex      = getOrAssignIndex(event.tfinger.fingerId);
+        case SDL_EVENT_FINGER_MOTION: {
+            std::size_t fingerIndex      = getOrAssignIndex(event.tfinger.fingerID);
             touchActive                  = true;
             fingerTimeStamp[fingerIndex] = now;
             fingerPressed[fingerIndex]   = true;
@@ -276,7 +278,7 @@ struct TouchHandler {
                 fingerUp            = true;
                 singleFingerClicked = false;
                 releaseFingerIndex(fingerIndex);
-                std::print("WARNING: probably lost SDL_FINGERUP event -> reset inactive fingerID {} out of {} - timeSinceLifted {}\n", fingerIndex, nFingers, timeSinceLastActive);
+                std::print("WARNING: probably lost SDL_FINGER_UP event -> reset inactive fingerID {} out of {} - timeSinceLifted {}\n", fingerIndex, nFingers, timeSinceLastActive);
             }
         }
 

@@ -1,6 +1,4 @@
-#include "../ui/common/ImguiWrap.hpp"
-#include "imgui.h"
-#include "imgui_test_engine/imgui_te_context.h"
+#include "ImGuiTestApp.hpp"
 
 #include <boost/ut.hpp>
 
@@ -12,8 +10,6 @@
 #include <GrBasicBlocks.hpp>
 #include <GrTestingBlocks.hpp>
 
-#include "ImGuiTestApp.hpp"
-
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 
@@ -21,8 +17,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
-
-#include "imgui_test_engine/imgui_te_internal.h"
 
 #include <cmrc/cmrc.hpp>
 #include <memory.h>
@@ -47,8 +41,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            auto&                    vars = ctx->GetVars<TestState>();
-            DigitizerUi::IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            auto&       vars = ctx->GetVars<TestState>();
+            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
 
             ImGui::SetWindowPos({0, 0});
             ImGui::SetWindowSize(ImVec2(800, 800));

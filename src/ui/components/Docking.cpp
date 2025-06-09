@@ -171,12 +171,12 @@ void DockSpace::layoutInFree(const Windows& windows) {
     bool isOverlapDetected = false;
     for (std::size_t i = 0; i < windows.size(); i++) {
         const auto& w = windows[i];
-        for (int x = w->x; x < w->x + w->width; x++) {
-            for (int y = w->y; y < w->y + w->height; y++) {
+        for (std::size_t x = w->x; x < w->x + w->width; x++) {
+            for (std::size_t y = w->y; y < w->y + w->height; y++) {
                 if (grid[x][y] != -1) {
                     isOverlapDetected = true;
                 }
-                grid[x][y] = i;
+                grid[x][y] = static_cast<int>(i);
             }
         }
     }
@@ -198,8 +198,9 @@ void DockSpace::layoutInFree(const Windows& windows) {
 void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId) {
 
     // Check if entire region belongs to exactly one window ID
-    const int  firstId = grid[x0][y0];
-    const bool allSame = std::ranges::all_of( // x in [x0, x1)
+    assert(grid[x0][y0] >= 0);
+    const std::size_t firstId = static_cast<std::size_t>(grid[x0][y0]);
+    const bool        allSame = std::ranges::all_of( // x in [x0, x1)
         std::views::iota(x0, x1), [&](std::size_t x) {
             return std::ranges::all_of( // y in [y0, y1)
                 std::views::iota(y0, y1), [&](std::size_t y) { return grid[x][y] == firstId; });
