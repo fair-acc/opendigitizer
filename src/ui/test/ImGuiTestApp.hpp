@@ -1,11 +1,17 @@
 #ifndef OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 #define OPENDIGITIZER_UI_TEST_IMGUI_TEST_APP_HPP_
 
-// #pragma GCC diagnostic push
-// #pragma GCC diagnostic ignore "-Wold-style-cast"
+#include "../common/ImGuiHelperSDL.hpp"
+#include "../common/ImguiWrap.hpp"
+using namespace DigitizerUi; // TODO refactor namespaces in ImguiWrap.hpp
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
-// #pragma GCC diagnostic pop
+#include "imgui_test_engine/imgui_te_internal.h"
+#pragma GCC diagnostic pop
 
 #include <memory>
 
@@ -45,10 +51,10 @@ struct TestOptions {
    tests in registerTests() and then call runTests().
  */
 class ImGuiTestApp {
-    ImGuiApp*          _app      = nullptr;
-    ImGuiTestEngine*   _engine   = nullptr;
-    ImGuiTestEngineIO* _engineIO = nullptr;
-    const TestOptions  _options  = {};
+    std::unique_ptr<ImGuiApp> _app;
+    ImGuiTestEngine*          _engine   = nullptr;
+    ImGuiTestEngineIO*        _engineIO = nullptr;
+    const TestOptions         _options  = {};
 
 public:
     explicit ImGuiTestApp(const TestOptions& = {});

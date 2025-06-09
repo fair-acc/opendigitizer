@@ -1,10 +1,7 @@
-#include "imgui.h"
-#include "imgui_test_engine/imgui_te_context.h"
+#include "ImGuiTestApp.hpp"
 
 #include "components/FilterComboBoxes.hpp"
 #include <boost/ut.hpp>
-
-#include "ImGuiTestApp.hpp"
 
 using namespace boost;
 
@@ -34,6 +31,7 @@ private:
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
+            // IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 350));
 
@@ -85,7 +83,7 @@ private:
 
                 // click an item
                 ctx->ItemClick("//##Combo_00/one");
-                ut::expect(vars.lastItem.title == "one");
+                ut::expect(ut::eq(vars.lastItem.title, std::string("one")));
             };
         };
     }

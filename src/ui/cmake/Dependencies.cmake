@@ -8,7 +8,8 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.4-docking # latest version still compatible with imgui-node-editor # v1.91.9b-docking # latest as of 2025-06-02
+  GIT_TAG v1.91.4-docking # latest version still compatible with imgui-node-editor # v1.91.9b-docking # latest as of
+                          # 2025-06-02
   EXCLUDE_FROM_ALL SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
@@ -68,16 +69,37 @@ FetchContent_MakeAvailable(
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 
 if(NOT EMSCRIPTEN)
-  find_package(SDL2 REQUIRED)
+  find_package(SDL3 QUIET)
+
+  # cmake-format: off
+  if(SDL3_FOUND)
+    message(STATUS "SDL3 found system-wide.")
+  else()
+    message(STATUS "SDL3 not found system-wide; falling back to FetchContent.")
+    # set(SDL3_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+    set(SDL3_DISABLE_SDL3MAIN ON CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+      sdl3
+      OVERRIDE_FIND_PACKAGE
+      GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
+      GIT_TAG release-3.2.16
+      SYSTEM)
+
+    FetchContent_MakeAvailable(sdl3)
+  endif()
+  # cmake-format: on
+
+  find_package(SDL3 REQUIRED)
   find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-  FetchContent_Declare(
-    sdl2
-    OVERRIDE_FIND_PACKAGE
-    GIT_REPOSITORY "https://github.com/libsdl-org/SDL"
-    GIT_TAG release-2.30.8
-    SYSTEM)
-  FetchContent_MakeAvailable(sdl2)
+else() # Emscripten build
+  find_package(SDL3 REQUIRED)
+  find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 endif()
+message(STATUS "SDL3_FOUND: ${SDL3_FOUND}")
+message(STATUS "SDL3_INCLUDE_DIRS: ${SDL3_INCLUDE_DIRS}")
+message(STATUS "SDL3_LIBRARIES: ${SDL3_LIBRARIES}")
 
 set(IMGUI_SRCS
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -115,17 +137,19 @@ if(ENABLE_IMGUI_TEST_ENGINE)
       ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_ui.cpp
       ${imgui_test_engine_SOURCE_DIR}/imgui_test_engine/imgui_te_utils.cpp
       ${imgui_test_engine_SOURCE_DIR}/shared/imgui_app.cpp)
-else()
-  # Only link the backends if we're not building imgui_test_engine, as it already builds them
-  set(IMGUI_SRCS ${IMGUI_SRCS} ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-                 ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp)
 endif()
+
+list(
+  APPEND
+  IMGUI_SRCS
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
 
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
 add_library(imgui OBJECT ${IMGUI_SRCS})
 
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
-  target_link_libraries(imgui PUBLIC SDL2::SDL2 OpenGL::GL)
+  target_link_libraries(imgui PUBLIC SDL3::SDL3 OpenGL::GL)
 endif()
 
 target_include_directories(imgui SYSTEM BEFORE PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
@@ -135,7 +159,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     imgui
     PUBLIC IMGUI_ENABLE_TEST_ENGINE
            IMGUI_TEST_ENGINE_ENABLE_COROUTINE_STDTHREAD_IMPL=1
-           IMGUI_APP_SDL2_GL3
+           IMGUI_APP_SDL3_GL3
            IMGUI_TEST_ENGINE_ENABLE_CAPTURE)
 
   target_compile_options(imgui PRIVATE -Wno-old-style-cast -Wno-deprecated-enum-enum-conversion -Wno-double-promotion)

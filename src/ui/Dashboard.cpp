@@ -414,10 +414,10 @@ void Dashboard::doLoad(const std::string& desc) {
         }
 
         std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
-        plot.window->x      = pmtv::cast<int>(rect[0]);
-        plot.window->y      = pmtv::cast<int>(rect[1]);
-        plot.window->width  = pmtv::cast<int>(rect[2]);
-        plot.window->height = pmtv::cast<int>(rect[3]);
+        plot.window->x      = pmtv::cast<std::size_t>(rect[0]);
+        plot.window->y      = pmtv::cast<std::size_t>(rect[1]);
+        plot.window->width  = pmtv::cast<std::size_t>(rect[2]);
+        plot.window->height = pmtv::cast<std::size_t>(rect[3]);
     }
 
     // if (m_fgItem) {

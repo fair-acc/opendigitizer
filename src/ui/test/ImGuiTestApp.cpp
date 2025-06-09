@@ -1,10 +1,15 @@
 #include "ImGuiTestApp.hpp"
 
 #include "App.hpp"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
 #include "imgui_test_engine/imgui_te_exporters.h"
 #include "imgui_test_engine/imgui_te_internal.h"
 #include "imgui_test_engine/imgui_te_ui.h"
 #include "implot.h"
+#pragma GCC diagnostic pop
+
 #include "shared/imgui_app.h"
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
@@ -25,7 +30,82 @@ namespace {
 // makes it hard to access ImGuiTestApp. ImGui's suggested way is to pass in its "void *userData"
 // member, but let's rather be explicit and store it in a typed variable.
 
-ImGuiTestApp* g_testApp = nullptr;
+inline static ImGuiTestApp* g_testApp = nullptr;
+
+inline static bool ImGuiApp_CreateWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
+    std::string glslVersion;
+    if (!imgui_helper::initSDL(glslVersion, windowTitle, windowSize)) {
+        std::println(stderr, "[Main] SDL3 initialisation failed.");
+        return false;
+    }
+    if (!imgui_helper::initImGui(glslVersion)) {
+        std::println(stderr, "[Main] ImGui initialisation failed.");
+        return false;
+    }
+    return true;
+}
+
+inline static void ImGuiApp_InitBackends(ImGuiApp* app) {
+#ifdef IMGUI_HAS_VIEWPORT
+    ImGuiIO& io = ImGui::GetIO();
+    if (app->MockViewports && (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)) {
+        // ImGuiApp_InstallMockViewportsBackend(app);
+    }
+#endif
+}
+
+inline static bool ImGuiApp_NewFrame(ImGuiApp* /*app*/) {
+    if (!imgui_helper::processEvents()) {
+        std::println("[TestApp] requested close");
+        return false;
+    }
+    return imgui_helper::newFrame();
+}
+
+inline static void ImGuiApp_Render(ImGuiApp* app) {
+    imgui_helper::renderFrame();
+    SDL_GL_SetSwapInterval(app->Vsync ? 1 : 0);
+}
+
+inline static void ImGuiApp_ShutdownCloseWindow(ImGuiApp*) { imgui_helper::teardownSDL(); }
+inline static void ImGuiApp_ShutdownBackends(ImGuiApp*) { imgui_helper::teardownSDL(); }
+
+inline static bool ImGuiApp_ImplGL_CaptureFramebuffer(ImGuiApp* /*app*/, ImGuiViewport* /*viewport*/, int x, int y, int w, int h, unsigned int* pixels, void* /*user_data*/) {
+#ifdef __linux__
+    // Workaround: give compositor a moment to flush for accurate capture
+    std::this_thread::sleep_for(std::chrono::milliseconds(1)); // 1 ms delay
+#endif
+
+    // OpenGL reads from the bottom-left corner; need to flip
+    int y_flipped = static_cast<int>(ImGui::GetIO().DisplaySize.y) - (y + h);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(x, y_flipped, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+    // Vertical flip
+    const std::size_t bytes_per_pixel = 4UZ;
+    const std::size_t row_stride      = static_cast<std::size_t>(w) * bytes_per_pixel;
+    auto*             line_tmp        = new unsigned char[row_stride];
+    auto*             line_a          = reinterpret_cast<unsigned char*>(pixels);
+    auto*             line_b          = line_a + (row_stride * static_cast<std::size_t>(h - 1));
+    while (line_a < line_b) {
+        std::memcpy(line_tmp, line_a, row_stride);
+        std::memcpy(line_a, line_b, row_stride);
+        std::memcpy(line_b, line_tmp, row_stride);
+        line_a += row_stride;
+        line_b -= row_stride;
+    }
+    delete[] line_tmp;
+
+    return true;
+}
+
+inline static bool ImGuiApp_CaptureFramebuffer(ImGuiApp* app, ImGuiViewport* viewport, int x, int y, int w, int h, unsigned int* pixels, void* user_data) {
+    // Note: We are assuming the correct GL context is already current here.
+    // This avoids accessing internal PlatformUserData from the backend.
+    IM_UNUSED(viewport); // No backend-internal dereferencing
+
+    return ImGuiApp_ImplGL_CaptureFramebuffer(app, viewport, x, y, w, h, pixels, user_data);
+}
 
 } // namespace
 
@@ -36,31 +116,34 @@ ImGuiTestApp::ImGuiTestApp(const TestOptions& options) : _options(options) {
 
 ImGuiTestApp::~ImGuiTestApp() {
     ImGuiTestEngine_Stop(_engine);
-    _app->ShutdownBackends(_app);
-    _app->ShutdownCloseWindow(_app);
-    ImGui::DestroyContext();
-    ImPlot::DestroyContext();
+    _app->ShutdownBackends(&(*_app));
+    _app->ShutdownCloseWindow(&(*_app));
 
     ImGuiTestEngine_DestroyContext(_engine);
 
-    _app->Destroy(_app);
+    _app->Destroy(&(*_app));
 
     g_testApp = nullptr;
 }
 
 void ImGuiTestApp::initImGui() {
-    _app = ImGuiApp_ImplSdlGL3_Create();
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImPlot::CreateContext();
+    _app                      = std::make_unique<ImGuiApp>();
+    _app->InitCreateWindow    = ImGuiApp_CreateWindow;
+    _app->InitBackends        = ImGuiApp_InitBackends;
+    _app->NewFrame            = ImGuiApp_NewFrame;
+    _app->Render              = ImGuiApp_Render;
+    _app->ShutdownCloseWindow = ImGuiApp_ShutdownCloseWindow;
+    _app->ShutdownBackends    = ImGuiApp_ShutdownBackends;
+    _app->CaptureFramebuffer  = ImGuiApp_CaptureFramebuffer;
+    _app->Destroy             = [](ImGuiApp* /*app*/) { imgui_helper::teardownSDL(); };
 
     // Setup application. Values copied from upstream examples.
     // If some are interesting to change, consider adding them to our TestOptions struct
     _app->DpiAware        = false;
     _app->SrgbFramebuffer = false;
     _app->ClearColor      = ImVec4(0.120f, 0.120f, 0.120f, 1.000f);
-    _app->InitCreateWindow(_app, "Test", ImVec2(1600, 1000));
-    _app->InitBackends(_app);
+    _app->InitCreateWindow(&(*_app), "Test", ImVec2(1600, 1000));
+    _app->InitBackends(&(*_app));
 
     // Setup test engine
     _engine                           = ImGuiTestEngine_CreateContext();
@@ -70,7 +153,7 @@ void ImGuiTestApp::initImGui() {
     test_io.ConfigRunSpeed            = _options.speedMode;
     test_io.ConfigKeepGuiFunc         = _options.keepGui;
     test_io.ScreenCaptureFunc         = ImGuiApp_ScreenCaptureFunc;
-    test_io.ScreenCaptureUserData     = _app;
+    test_io.ScreenCaptureUserData     = &(*_app);
     test_io.ConfigCaptureOnError      = true;
     test_io.ConfigLogToTTY            = true;
     test_io.ConfigWatchdogWarning     = 60.0f;  // 1 minutes until a we get a warning that a test is taking too long
@@ -108,7 +191,7 @@ bool ImGuiTestApp::runTests() {
     }
 
     while (!aborted) {
-        if (!_app->NewFrame(_app)) {
+        if (!_app->NewFrame(&(*_app))) {
             aborted = true;
         }
 
@@ -125,8 +208,6 @@ bool ImGuiTestApp::runTests() {
             break;
         }
 
-        ImGui::NewFrame();
-
         if (_options.useInteractiveMode) {
             // Shows pretty dialog with list of test and results
             ImGuiTestEngine_ShowTestEngineWindows(_engine, nullptr);
@@ -135,7 +216,7 @@ bool ImGuiTestApp::runTests() {
         // Render and swap
         _app->Vsync = !ImGuiTestEngine_GetIO(_engine).IsRequestingMaxAppSpeed;
         ImGui::Render();
-        _app->Render(_app);
+        _app->Render(&(*_app));
 
         // Post-swap handler is REQUIRED in order to support screen capture
         ImGuiTestEngine_PostSwap(_engine);

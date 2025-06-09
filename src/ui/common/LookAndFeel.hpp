@@ -4,11 +4,11 @@
 #include <array>
 #include <chrono>
 
+enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
+
 struct ImFont;
 
 namespace DigitizerUi {
-
-enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
 
 struct LookAndFeel {
     enum class Style { Light, Dark };

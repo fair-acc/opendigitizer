@@ -30,13 +30,42 @@ if(Git_FOUND)
     OUTPUT_VARIABLE OPENDIGITIZER_GIT_DESCRIBE
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
+
+if(Git_FOUND)
+  # cmake-format: off
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+          "${CMAKE_CURRENT_SOURCE_DIR}/../../.git/HEAD"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../../.git/index"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../../.git/refs/heads/main"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../../.git/packed-refs"
+  )
+  # cmake-format: on
+endif()
+
+# Build timestamp
+string(TIMESTAMP OPENDIGITIZER_BUILD_TIME "%Y-%m-%d %H:%M:%S")
+
+if(EMSCRIPTEN)
+  set(OPENDIGITIZER_IS_EMSCRIPTEN "true")
+else()
+  set(OPENDIGITIZER_IS_EMSCRIPTEN "false")
+endif()
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "unknown")
+endif()
+
+string(
+  CONCAT OPENDIGITIZER_VERSION_INFO
+         "${OPENDIGITIZER_GIT_DESCRIBE} | "
+         "built: ${OPENDIGITIZER_BUILD_TIME} | "
+         "emscripten: ${OPENDIGITIZER_IS_EMSCRIPTEN} | "
+         "build-type: ${CMAKE_BUILD_TYPE}")
+
+# Configure version file
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version/version.cpp.in ${CMAKE_BINARY_DIR}/generated_version/version.cpp
                @ONLY)
-if(Git_FOUND)
-  set_property(
-    DIRECTORY
-    APPEND
-    PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../../.git/HEAD")
-endif()
+
 add_library(opendigitizer_version STATIC ${CMAKE_BINARY_DIR}/generated_version/version.cpp)
 target_include_directories(opendigitizer_version PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/version/include)
+target_include_directories(opendigitizer_version PUBLIC ${CMAKE_BINARY_DIR}/generated_version)
