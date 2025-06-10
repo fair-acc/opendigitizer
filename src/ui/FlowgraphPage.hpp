@@ -31,8 +31,9 @@ private:
         Right,
     };
 
-    Dashboard* m_dashboard             = nullptr;
-    bool       m_currentTabIsFlowGraph = false;
+    std::shared_ptr<opencmw::client::RestClient> m_restClient;
+    Dashboard*                                   m_dashboard             = nullptr;
+    bool                                         m_currentTabIsFlowGraph = false;
 
     const UiGraphBlock* m_filterBlock   = nullptr;
     UiGraphBlock*       m_selectedBlock = nullptr;
@@ -63,7 +64,7 @@ public:
         bool          datasetMarker  = false;
     };
 
-    FlowgraphPage();
+    explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~FlowgraphPage();
 
     void draw() noexcept;
