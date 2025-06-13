@@ -19,6 +19,7 @@ CMRC_DECLARE(sample_dashboards);
 #include <plf_colony.h>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
 #include "components/ColourManager.hpp"

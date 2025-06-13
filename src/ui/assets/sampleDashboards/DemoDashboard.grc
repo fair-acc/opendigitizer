@@ -1,38 +1,45 @@
 blocks:
-  - name: sum sigs
-    id: opendigitizer::Arithmetic<float32>
-  - name: FFT
-    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: opendigitizer::Arithmetic<float32>
     parameters:
+      name: sum sigs
+      ui_constraints:
+        x: 30
+        y: 40
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+    parameters:
+      name: FFT
       outputInDb: true
       outputInDeg: true
       unwrapPhase: true
-  - name: sine source 1
-    id: opendigitizer::SineSource<float32>
+  - id: opendigitizer::SineSource<float32>
     parameters:
+      name: sine source 1
       frequency: 2
-  - name: sine source 3
-    id: opendigitizer::SineSource<float32>
+  - id: opendigitizer::SineSource<float32>
     parameters:
+      name: sine source 3
       frequency: 5
-  - name: sinesSink
-    id: opendigitizer::ImPlotSink<float32>
+      ui_constraints:
+        x: 30
+        y: 40
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: sinesSink
       signal_name: value
       signal_quantity: voltage
       signal_unit: V
-  - name: fftSink
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: fftSink
       dataset_index: 0
       signal_name: fft
       abscissa_quantity: frequency
       abscissa_unit: Hz
       signal_quantity: magnitude
       signal_unit: dB
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       chunk_size: 20
       do_zero_order_hold: true
       n_samples_max: 0
@@ -57,9 +64,9 @@ blocks:
         - "CMD_DIAG_TRIGGER1"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
-  - name: DipoleCurrentGenerator
-    id: gr::basic::FunctionGenerator<float32>
+  - id: gr::basic::FunctionGenerator<float32>
     parameters:
+      name: DipoleCurrentGenerator
       sample_rate: 1000
       signal_type: Const
       start_value: 0
@@ -115,9 +122,9 @@ blocks:
           start_value: 100
           sample_rate: 1000
           signal_type: Const
-  - name: IntensityGenerator
-    id: gr::basic::FunctionGenerator<float32>
+  - id: gr::basic::FunctionGenerator<float32>
     parameters:
+      name: IntensityGenerator
       sample_rate: 1000
       signal_type: Const
       start_value: 0
@@ -152,17 +159,17 @@ blocks:
           start_value: 0
           sample_rate: 1000
           signal_type: Const
-  - name: DipoleCurrentSink
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: DipoleCurrentSink
       color: 0xC80000
       required_size: 16384
       signal_name: dipole current
       signal_quantity: DipoleCurrent
       signal_unit: A
-  - name: IntensitySink
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: IntensitySink
       color: 0x0000C8
       required_size: 16384
       signal_name: beam intensity

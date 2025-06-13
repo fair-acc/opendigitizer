@@ -224,7 +224,7 @@ connections:
     registerTestBlocks(registry);
     gr::PluginLoader                                       pluginLoader(registry, {});
     GrAcqWorker                                            grAcqWorker(broker, &pluginLoader, 50ms);
-    GrFgWorker                                             grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
+    GrFgWorker                                             grFgWorker(broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};
     if (loadTest) {
         loadTestWorker.emplace(broker);

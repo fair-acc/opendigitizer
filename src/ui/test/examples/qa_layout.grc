@@ -1,41 +1,41 @@
 blocks:
-  - name: ClockSource1
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource1
       do_zero_order_hold: true
       n_samples_max: 0
       sample_rate: 4096
       verbose_console: false
-  - name: SignalGenerator1
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGenerator1
       frequency: 1
       amplitude: 5
       sample_rate: 4096
       signal_type: Sin
-  - name: PlotSink1
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink1
       color: 0xFF0000
-  - name: PlotSink2
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink2
       color: 0x00FF00
-  - name: PlotSink3
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink3
       color: 0x0000FF
-  - name: PlotSink4
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink4
       color: 0xAAAA00
-  - name: PlotSink5
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink5
       color: 0x00AAAA
-  - name: PlotSink6
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSink6
       color: 0xAA00AA
 connections:
   - [ClockSource1, 0, SignalGenerator1, 0]

@@ -260,7 +260,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             } catch (const std::string& e) {
                 throw gr::exception(e);
             } catch (...) {
-                throw std::current_exception();
+                throw;
             }
         }();
 
@@ -293,6 +293,11 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e.what());
 #endif
         components::Notification::error(std::format("Error: {}", e.what()));
+        if (requestClose) {
+            requestClose(this);
+        }
+    } catch (...) {
+        components::Notification::error(std::format("Error: {}", "Unkonwn exception"));
         if (requestClose) {
             requestClose(this);
         }
@@ -442,7 +447,7 @@ void Dashboard::save() {
     std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
     headerYaml["lastUsed"] = std::string(lastUsed);
 
-    property_map dashboardYaml;
+    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler()->graph());
 
     std::vector<pmtv::pmt> sources;
     opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {

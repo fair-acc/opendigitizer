@@ -1,7 +1,7 @@
 blocks:
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       do_zero_order_hold: true
       n_samples_max: 0
       sample_rate: 1000
@@ -16,50 +16,51 @@ blocks:
         - "CMD_DIAG_TRIGGER1"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"
-  - name: SignalGenerator1
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGenerator1
       frequency: 30
       amplitude: 50
       sample_rate: 10000
       signal_type: Sin
-  - name: FFT
-    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
-  - name: StreamToDataSet1
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
     parameters:
+      name: FFT
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+    parameters:
+      name: StreamToDataSet1
       filter: "CMD_DIAG_TRIGGER1"
       n_pre: 200
       n_post: 600
-  - name: StreamToDataSet2
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSet2
       filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2]"
       n_pre: 100
       n_post: 100
-  - name: Sink1
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: Sink1
       signal_name: Signal1
-  - name: SinkFFT1
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkFFT1
       signal_name: SignalFFT1
-  - name: SinkDataSet1
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSet1
       signal_name: DataSet1
-  - name: SinkDataSet2
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSet2
       signal_name: DataSet2
-  - name: SinkTriggered
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkTriggered
       signal_name: SignalTriggered
-  - name: SinkMultiplexed
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkMultiplexed
       signal_name: SignalMultiplexed
 connections:
   - [ClockSource, 0, SignalGenerator1, 0]

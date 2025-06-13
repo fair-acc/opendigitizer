@@ -1,25 +1,25 @@
 blocks:
-  - name: GS04ME1E_SeptumVoltage
-    id: opendigitizer::RemoteStreamSource<float32>
+  - id: opendigitizer::RemoteStreamSource<float32>
     parameters:
+      name: GS04ME1E_SeptumVoltage
       remote_uri: https://fel0054.acc.gsi.de:80/GnuRadio/Acquisition?channelNameFilter=GS04ME1E_septum_voltage
       verbose_console: false
-  - name: GS04ME1E_ClearingVoltage
-    id: opendigitizer::RemoteStreamSource<float32>
+  - id: opendigitizer::RemoteStreamSource<float32>
     parameters:
+      name: GS04ME1E_ClearingVoltage
       remote_uri: https://fel0054.acc.gsi.de:80/GnuRadio/Acquisition?channelNameFilter=GS04ME1E_clearing_voltage
       verbose_console: false
-  - name: PlotSinkGS04ME1E_Septum_voltage
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSinkGS04ME1E_Septum_voltage
       dataset_index: 0
       signal_name: "GS04ME1E:septum_voltage"
       signal_quantity: voltage
       signal_unit: V
       required_size: 640000
-  - name: PlotSinkGS04ME1E_Clearing_voltage
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSinkGS04ME1E_Clearing_voltage
       dataset_index: 0
       signal_name: "GS04ME1E:clearing_voltage"
       signal_quantity: voltage

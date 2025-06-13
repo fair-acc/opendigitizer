@@ -460,16 +460,29 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         }
 
         for (auto& block : graphModel.blocks()) {
+            auto blockId = ax::NodeEditor::NodeId(block.get());
             if (!block->view.has_value()) {
-                auto blockId   = ax::NodeEditor::NodeId(block.get());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-                block->view    = UiGraphBlock::ViewData{//
-                       .x      = boundingBox.minX,      //
-                       .y      = boundingBox.maxY,      //
-                       .width  = blockSize[0],          //
-                       .height = blockSize[1]};
+                block->view    = UiGraphBlock::ViewData{
+                       .x      = block->storedXY.has_value() ? block->storedXY.value().x : boundingBox.minX,
+                       .y      = block->storedXY.has_value() ? block->storedXY.value().y : boundingBox.maxY,
+                       .width  = blockSize[0],
+                       .height = blockSize[1],
+                };
+                block->updatePosition = false;
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
+
+                graphModel.setRearrangeBlocks(true);
+            } else if (block->updatePosition) {
+                block->view->x        = block->storedXY.value().x;
+                block->view->y        = block->storedXY.value().y;
+                block->updatePosition = false;
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
+            } else if (ax::NodeEditor::GetWasUserPositioned(blockId)) {
+                if (!block->storedXY.has_value() || (block->storedXY.value().x != block->view->x || block->storedXY.value().y != block->view->y)) {
+                    block->storeXY();
+                }
             }
         }
 
@@ -796,7 +809,7 @@ void FlowgraphPage::sortNodes(bool all) {
         for (auto& block : level.blocks) {
 
             const auto blockId        = ax::NodeEditor::NodeId(block);
-            const bool userPositioned = ax::NodeEditor::GetWasUserPositioned(blockId);
+            const bool userPositioned = ax::NodeEditor::GetWasUserPositioned(blockId) || block->storedXY.has_value();
             if (all || !userPositioned) {
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
             }
@@ -808,7 +821,7 @@ void FlowgraphPage::sortNodes(bool all) {
         x += levelWidth + xSpacing;
     }
 
-    m_dashboard->graphModel().setRearrangedBlocks();
+    m_dashboard->graphModel().setRearrangeBlocks(false);
 }
 
 void FlowgraphPage::drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph) {

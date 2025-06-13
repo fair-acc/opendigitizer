@@ -1,7 +1,7 @@
 blocks:
-  - name: Picoscope4000
-    id: fair::picoscope::Picoscope4000a<float32>
+  - id: fair::picoscope::Picoscope4000a<float32>
     parameters:
+      name: Picoscope4000
       acquisition_mode: Streaming
       auto_arm: !!bool true
       channel_couplings: !!str [ DC, DC, DC, DC, DC, DC, DC, DC]
@@ -10,118 +10,120 @@ blocks:
       channel_ranges: !!float64 [ 5, 5, 5, 5, 5, 5, 5, 5]
       channel_units: !!str [ V, V, V, V, V, V, a.u, a.u]
       sample_rate: !!float32 1000
-  - name: DummySinkPicoDigital # port needs to be connected or it will block the graph
-    id: gr::testing::TagSink<uint16, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<uint16, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPicoDigital # port needs to be connected or it will block the graph
       logTags: false
       logSamples: false
-  - name: SinkA
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkA
       signal_name: U1
-  - name: SinkB
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkB
       signal_name: U2
-  - name: SinkC
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkC
       signal_name: U3
-  - name: SinkD
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkD
       signal_name: I1
-  - name: SinkE
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkE
       signal_name: I2
-  - name: SinkF
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkF
       signal_name: I3
-  - name: SinkG
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkG
       signal_name: PicoG
-  - name: SinkH
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkH
       signal_name: TT
-  - name: StreamToDataSetA
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetA
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetB
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetB
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetC
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetC
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetD
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetD
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetE
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetE
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetF
-    id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamFilterImpl<float32>
     parameters:
+      name: StreamToDataSetF
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: SinkDataSetA
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetA
       signal_name: DataSetU1
-  - name: SinkDataSetB
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetB
       signal_name: DataSetU2
-  - name: SinkDataSetC
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetC
       signal_name: DataSetU3
-  - name: SinkDataSetD
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetD
       signal_name: DataSetI1
-  - name: SinkDataSetE
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetE
       signal_name: DataSetI2
-  - name: SinkDataSetF
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetF
       signal_name: DataSetI3
-  - name: PowerMetrics
-    id: gr::electrical::PowerMetrics<float32, 3>
+  - id: gr::electrical::PowerMetrics<float32, 3>
     parameters:
+      name: PowerMetrics
       decim: 1
-  - name: SystemUnbalance
-    id: gr::electrical::SystemUnbalance<float32, 3>
-  - name: SinkTotalActivePower
-    id: gr::basic::DataSink<float32>
+  - id: gr::electrical::SystemUnbalance<float32, 3>
     parameters:
+      name: SystemUnbalance
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkTotalActivePower
       signal_name: TotalActivePower
-  - name: FrequencyEstimatorU1
+  - parameters:
     id: gr::filter::FrequencyEstimatorTimeDomain<float32>
-  - name: SinkFrequencyU1
-    id: gr::basic::DataSink<float32>
+      name: FrequencyEstimatorU1
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkFrequencyU1
       signal_name: FrequencyU1
 connections:
   - [Picoscope4000, 0, DummySinkPicoDigi0, 0]
