@@ -460,16 +460,26 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
         }
 
         for (auto& block : graphModel.blocks()) {
+            auto blockId = ax::NodeEditor::NodeId(block.get());
             if (!block->view.has_value()) {
-                auto blockId   = ax::NodeEditor::NodeId(block.get());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-                block->view    = UiGraphBlock::ViewData{//
-                       .x      = boundingBox.minX,      //
-                       .y      = boundingBox.maxY,      //
-                       .width  = blockSize[0],          //
-                       .height = blockSize[1]};
+                block->view    = UiGraphBlock::ViewData{
+                       .x      = boundingBox.minX,
+                       .y      = boundingBox.maxY,
+                       .width  = blockSize[0],
+                       .height = blockSize[1],
+                };
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
+            } else if (block->updatePosition) {
+                block->view->x        = block->storedX;
+                block->view->y        = block->storedY;
+                block->updatePosition = false;
+                ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
+            } else if (ax::NodeEditor::GetWasUserPositioned(blockId)) {
+                if (block->storedX != block->view->x || block->storedY != block->view->y) {
+                    block->storeXY();
+                }
             }
         }
 

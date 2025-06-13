@@ -225,8 +225,15 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         requestGraphUpdate();
         return;
     }
+
     for (const auto& [key, value] : data) {
-        if (key != "unique_name"s) {
+        if (key == "meta_information::block::position_x"s) {
+            (*blockIt)->storedX        = std::get<float>(value);
+            (*blockIt)->updatePosition = true;
+        } else if (key == "meta_information::block::position_y"s) {
+            (*blockIt)->storedY        = std::get<float>(value);
+            (*blockIt)->updatePosition = true;
+        } else if (key != "unique_name"s) {
             (*blockIt)->blockSettings.insert_or_assign(key, value);
             (*blockIt)->updateBlockSettingsMetaInformation();
         }
@@ -556,6 +563,23 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
         .clientRequestID = "rm",
         .endpoint        = gr::block::property::kSettingsCtx,
         .data            = gr::property_map{{"context", context}, {"time", time}},
+    });
+}
+
+void UiGraphBlock::storeXY() {
+    storedX = view->x;
+    storedY = view->y;
+
+    ownerGraph->sendMessage(gr::Message{
+        .cmd             = gr::Message::Set,
+        .serviceName     = blockUniqueName,
+        .clientRequestID = "meta_update",
+        .endpoint        = gr::block::property::kSetting,
+        .data =
+            gr::property_map{
+                {"meta_information::block::position_x", storedX},
+                {"meta_information::block::position_y", storedY},
+            },
     });
 }
 
