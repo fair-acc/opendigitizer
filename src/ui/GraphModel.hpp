@@ -55,6 +55,11 @@ struct UiGraphBlock {
     };
     std::optional<ViewData> view;
 
+    float storedX        = 0;
+    float storedY        = 0;
+    bool  updatePosition = false;
+    void  storeXY();
+
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
