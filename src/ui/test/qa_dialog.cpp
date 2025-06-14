@@ -1,10 +1,7 @@
-#include "imgui.h"
-#include "imgui_test_engine/imgui_te_context.h"
+#include "ImGuiTestApp.hpp"
 
 #include "components/Dialog.hpp"
 #include <boost/ut.hpp>
-
-#include "ImGuiTestApp.hpp"
 
 using namespace boost;
 using namespace DigitizerUi::components;
@@ -23,7 +20,7 @@ private:
         t->SetVarsDataType<TestState>();
 
         t->GuiFunc = [](ImGuiTestContext* ctx) {
-            ImGui::Begin("Test Window", NULL, ImGuiWindowFlags_NoSavedSettings);
+            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowSize(ImVec2(300, 300));
 
             auto&        vars   = ctx->GetVars<TestState>();
@@ -32,8 +29,6 @@ private:
             if (button != DialogButton::None) {
                 vars.pressedButton = button;
             }
-
-            ImGui::End();
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {

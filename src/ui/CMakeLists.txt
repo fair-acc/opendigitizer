@@ -25,10 +25,13 @@ if(EMSCRIPTEN)
     -Wformat
     -Os
     -fwasm-exceptions
-    "SHELL:-s USE_SDL=2"
+    "SHELL:-s USE_SDL=3"
     -pthread)
   add_link_options(
     "SHELL:-s WASM=1"
+    "SHELL:-sFULL_ES2=1"
+    "SHELL:-sMAX_WEBGL_VERSION=2"
+    "SHELL:-sMIN_WEBGL_VERSION=2"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s NO_EXIT_RUNTIME=0"
     "SHELL:-s ASSERTIONS=1"
@@ -38,10 +41,12 @@ if(EMSCRIPTEN)
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s PTHREAD_POOL_SIZE=30"
-    "SHELL:-s USE_SDL=2"
+    "SHELL:-s USE_SDL=3"
     -fwasm-exceptions
     -pthread
-    -sFETCH)
+    "-sFETCH=1" # needed for file_io
+    "--bind" # needed for Clipboard
+  )
 endif()
 
 # dependencies
@@ -97,7 +102,7 @@ if(EMSCRIPTEN)
 else() # native build
   set(target_name "opendigitizer-ui")
   add_executable(${target_name})
-  target_link_libraries(${target_name} PRIVATE SDL2) # for emscripten SDL is already included in the build
+  target_link_libraries(${target_name} PRIVATE SDL3::SDL3) # for emscripten SDL is already included in the build
 
   if(OPENDIGITIZER_ENABLE_ASAN)
     target_compile_options(${target_name} PRIVATE -fsanitize=address)
