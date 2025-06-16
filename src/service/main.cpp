@@ -122,7 +122,9 @@ connections:
     // REST backend
     auto fs           = cmrc::assets::get_filesystem();
     using RestBackend = FileServerRestBackend<HTTPS, decltype(fs)>;
-    RestBackend rest(broker, fs, settings.wasmServeDir != "" ? settings.wasmServeDir : SERVING_DIR, settings.serviceUrl().build());
+    RestBackend restHttps(broker, fs, settings.wasmServeDir != "" ? settings.wasmServeDir : SERVING_DIR, settings.serviceUrl().build());
+    using RestBackendPlain = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
+    RestBackendPlain restHttp(broker, fs, settings.wasmServeDir != "" ? settings.wasmServeDir : SERVING_DIR, settings.serviceUrlPlain().build());
 
     const auto requestedAddress    = URI<>("mds://127.0.0.1:12345");
     const auto brokerRouterAddress = broker.bind(requestedAddress);
@@ -132,7 +134,8 @@ connections:
     }
     std::jthread brokerThread([&broker] { broker.run(); });
 
-    std::jthread restThread([&rest] { rest.run(); });
+    std::jthread restThread([&restHttps] { restHttps.run(); });
+    std::jthread restThreadPlain([&restHttp] { restHttp.run(); });
 
     dns::DnsWorkerType dns_worker{broker, dns::DnsHandler{}};
     std::jthread       dnsThread([&dns_worker] { dns_worker.run(); });
@@ -215,6 +218,7 @@ connections:
 
     brokerThread.join();
     restThread.join();
+    restThreadPlain.join();
 
     client.stop();
 
