@@ -200,7 +200,6 @@ class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, 
     std::unique_ptr<gr::Graph>                                                    _pendingFlowGraph;
     std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>> _scheduler;
     std::mutex                                                                    _graphChangeMutex;
-    std::shared_ptr<thread_pool::BasicThreadPool>                                 _threadPool = std::make_shared<thread_pool::BasicThreadPool>("scheduler_Pool", gr::thread_pool::CPU_BOUND, 2, 2);
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
@@ -371,7 +370,7 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
-                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph), _threadPool);
+                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();
                     std::ignore            = _messagesToScheduler->connect(_scheduler->msgIn);
