@@ -332,6 +332,8 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                             gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
+            this->progress->incrementAndGet();
+            this->progress->notify_all();
         };
         _client.request(command);
     }
@@ -564,6 +566,8 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
                 return;
             }
+            this->progress->incrementAndGet();
+            this->progress->notify_all();
         };
         _client.request(command);
     }

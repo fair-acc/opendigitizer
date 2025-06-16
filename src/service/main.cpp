@@ -65,6 +65,11 @@ void registerTestBlocks(Registry& registry) {
 
 using namespace opencmw::majordomo;
 
+void registerDefaultThreadPool() {
+    using namespace gr::thread_pool;
+    Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 2U, 2U), "CPU"));
+}
+
 int main(int argc, char** argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
@@ -138,6 +143,9 @@ connections:
 
     Digitizer::Settings& settings = Digitizer::Settings::instance();
     std::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
+
+    registerDefaultThreadPool();
+
     Broker broker("/PrimaryBroker");
 
     const auto wasmServeDir = !settings.wasmServeDir.empty() ? settings.wasmServeDir : SERVING_DIR;

@@ -41,6 +41,11 @@
 
 #include <version.hpp>
 
+void registerDefaultThreadPool() {
+    using namespace gr::thread_pool;
+    Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 1U, 1U), "CPU"));
+}
+
 static void renderFrame(void* arg) {
     const auto startLoop = std::chrono::high_resolution_clock::now();
     auto*      app       = static_cast<App*>(arg);
@@ -67,6 +72,7 @@ static void renderFrame(void* arg) {
 }
 
 int main(int argc, char** argv) {
+    registerDefaultThreadPool();
     auto basename = [](std::string_view path) {
         if (std::size_t pos = path.rfind('/'); pos != std::string_view::npos) {
             return path.substr(pos + 1);

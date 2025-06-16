@@ -9,6 +9,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+option(OD_DISABLE_DEMO_FLOWGRAPHS "Disable adding the demo flowgraphs to UI" OFF)
+set(GR_MAX_WASM_THREAD_COUNT
+    60
+    CACHE STRING "Max number of threads for WASM pthread pool")
+
 if(EMSCRIPTEN)
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
@@ -39,7 +44,7 @@ if(EMSCRIPTEN)
     "SHELL:-s STACK_SIZE=5MB"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
-    "SHELL:-s PTHREAD_POOL_SIZE=30"
+    "SHELL:-s PTHREAD_POOL_SIZE=${GR_MAX_WASM_THREAD_COUNT}"
     "SHELL:-s USE_SDL=3"
     -fwasm-exceptions
     -pthread
@@ -48,10 +53,12 @@ if(EMSCRIPTEN)
   )
 endif()
 
-# dependencies
+# dependencies: needs to be after adding the emscripten option so they are applied to dependency targets as well
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
+
+add_compile_definitions(GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT}) # propagate to C++
 
 if(NOT TARGET od_acquisition)
   add_subdirectory(../acquisition acquisition)
