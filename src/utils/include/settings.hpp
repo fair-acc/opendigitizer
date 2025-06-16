@@ -47,7 +47,8 @@ inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
 
 struct Settings {
     std::string hostname{"localhost"};
-    uint16_t    port{8080};
+    uint16_t    port{8443};
+    uint16_t    portPlain{8080};
     std::string basePath;
     bool        disableHttps{false};
     bool        checkCertificates{true};
@@ -70,6 +71,7 @@ private:
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
         port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
+        portPlain         = getValueFromEnv("DIGITIZER_PORT_PLAIN", portPlain);                 // port for http
         basePath          = getValueFromEnv("DIGITIZER_PATH", basePath);                        // path
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
@@ -128,8 +130,8 @@ private:
         }
         disableHttps = url.scheme() == "http";
 #endif
-        std::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
-            disableHttps, darkMode, editableMode, checkCertificates, hostname, port, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
+        std::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, portPlain={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+            disableHttps, darkMode, editableMode, checkCertificates, hostname, port, portPlain, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:
@@ -139,6 +141,7 @@ public:
     }
 
     opencmw::URI<>::UriFactory serviceUrl() { return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port); }
+    opencmw::URI<>::UriFactory serviceUrlPlain() { return opencmw::URI<>::UriFactory().scheme("http").hostName(hostname).port(portPlain); }
 };
 } // namespace Digitizer
 
