@@ -21,7 +21,6 @@
 
 #include "GnuRadioAcquisitionWorker.hpp"
 #include "GnuRadioFlowgraphWorker.hpp"
-#include "fileserverRestBackend.hpp"
 
 #include "CountSource.hpp"
 
@@ -79,7 +78,7 @@ std::vector<float> getIota(std::size_t n, float first = 0.f) {
 client::ClientContext makeClient(zmq::Context& ctx) {
     std::vector<std::unique_ptr<client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<client::MDClientCtx>(ctx, 20ms, ""));
-    clients.emplace_back(std::make_unique<client::RestClient>(client::DefaultContentTypeHeader(MIME::BINARY)));
+    clients.emplace_back(std::make_unique<client::RestClient>(client::DefaultContentTypeHeader(MIME::BINARY), opencmw::client::VerifyServerCertificates(false)));
     return client::ClientContext{std::move(clients)};
 }
 
@@ -186,7 +185,8 @@ struct TestApp {
     using AcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data acquisition updates">>;
     using FgWorker  = GnuRadioFlowGraphWorker<AcqWorker, "/GnuRadio/FlowGraph", description<"Provides access to flow graph">>;
 
-    inline static constexpr std::string_view httpHost = "http://127.0.0.1:12347";
+    inline static constexpr std::uint16_t    httpPort = 12347;
+    inline static constexpr std::string_view httpHost = "https://127.0.0.1:12347";
     inline static constexpr std::string_view mdpHost  = "mdp://127.0.0.1:12346";
     inline static constexpr std::string_view mdsHost  = "mds://127.0.0.1:12345";
 
@@ -207,37 +207,43 @@ struct TestApp {
     zmq::Context          ctx;
     client::ClientContext client = makeClient(ctx);
 
-    cmrc::embedded_filesystem fs = cmrc::assets::get_filesystem();
-    using RestBackend            = FileServerRestBackend<PLAIN_HTTP, decltype(fs)>;
-    RestBackend  rest{broker, fs, "", URI<>(std::string(httpHost))};
-    std::jthread restThread;
-
-    // TODO: A second subscription uses always `mds` as a workaround due to a bug in RestClientNative, which prevents creating multiple subscriptions with a single client instance.
-    std::size_t _nSubscriptions = 0uz;
-
     explicit TestApp(std::function<void(std::vector<SignalEntry>)> dnsCallback = {}) {
         const auto brokerPubAddress = broker.bind(URI<>(std::string(mdsHost)));
         expect((brokerPubAddress.has_value() == "bound successful"_b));
         const auto brokerRouterAddress = broker.bind(URI<>(std::string(mdpHost)));
         expect((brokerRouterAddress.has_value() == "bound successful"_b));
+        using namespace opencmw::majordomo;
+        opencmw::majordomo::rest::Settings restSettings;
+
+        restSettings.certificateFilePath = getEnvironmentVariable("OPENCMW_REST_CERT_FILE", "demo_public.crt");
+        restSettings.keyFilePath         = getEnvironmentVariable("OPENCMW_REST_PRIVATE_KEY_FILE", "demo_private.key");
+        std::println("Using certificate file: {}", restSettings.certificateFilePath.string());
+        std::println("Using private key file: {}", restSettings.keyFilePath.string());
+        restSettings.port      = httpPort;
+        restSettings.protocols = opencmw::majordomo::rest::Protocol::Http2;
+        if (auto rc = broker.bindRest(restSettings); !rc) {
+            std::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
+        }
         acqWorker.setUpdateSignalEntriesCallback(std::move(dnsCallback));
 
         brokerThread    = std::jthread([this] { broker.run(); });
         acqWorkerThread = std::jthread([this] { acqWorker.run(); });
         fgWorkerThread  = std::jthread([this] { fgWorker.run(); });
-        restThread      = std::jthread([this] { rest.run(); });
         // let's give everyone some time to spin up and sort themselves
         std::this_thread::sleep_for(100ms);
     }
 
-    void subscribeClient(std::string_view relativeUri, std::function<void(const Acquisition&)>&& handlerFnc) {
-        _nSubscriptions++;
-        std::string_view host = config.protocol == TestConfig::Protocol::http ? httpHost : mdsHost;
-        // TODO: A second subscription uses always `mds` as a workaround due to a bug in RestClientNative, which prevents creating multiple subscriptions with a single client instance.
-        if (config.protocol == TestConfig::Protocol::http && _nSubscriptions >= 2) {
-            host = mdsHost;
+    std::string getEnvironmentVariable(const char* name, std::string_view defaultValue) {
+        if (auto value = std::getenv(name); value) {
+            return std::string(value);
+        } else {
+            return std::string(defaultValue);
         }
-        std::string serializerStr = "";
+    };
+
+    void subscribeClient(std::string_view relativeUri, std::function<void(const Acquisition&)>&& handlerFnc) {
+        std::string_view host          = config.protocol == TestConfig::Protocol::http ? httpHost : mdsHost;
+        std::string      serializerStr = "";
         if (config.serializer == TestConfig::Serializer::Json) {
             serializerStr = "&contentType=application/json";
         } else if (config.serializer == TestConfig::Serializer::CmwLight) {
@@ -246,7 +252,7 @@ struct TestApp {
         const auto uri = URI(std::format("{}{}{}", host, relativeUri, serializerStr));
 
         client.subscribe(uri, [cfg = config, handler = std::move(handlerFnc)](const mdp::Message& update) {
-            std::println("Client 'received message from service '{}' for topic '{}'", update.serviceName, update.topic.str());
+            std::println("Client 'received message protocol:{} from service '{}' for topic '{}'", update.protocolName, update.serviceName, update.topic.str());
             if (update.error != "") {
                 return;
             }
@@ -306,8 +312,6 @@ struct TestApp {
         brokerThread.join();
         acqWorkerThread.join();
         fgWorkerThread.join();
-        rest.shutdown();
-        restThread.join();
     }
 };
 
@@ -777,7 +781,7 @@ blocks:
   - name: count
     id: CountSource<float32>
     parameters:
-      n_samples: 20000
+      n_samples: 100000
       signal_name: test signal
       signal_unit: test unit
   - name: delay
@@ -814,14 +818,14 @@ connections:
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc);
 
-        waitWhile([&receivedCount] { return receivedCount < 19UZ; });
-        expect(eq(receivedCount.load(), 19UZ)) << config.toString();
+        waitWhile([&receivedCount] { return receivedCount < 97UZ; });
+        expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
         checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {1.f}, config.toString());
         //} | testConfigs;
         // TODO: There is an issue with the test configuration using HTTP where it can become blocked and fail to recover when no data is available.
         // This occurs more frequently with JSON and CmwLight serializers but also with Yas. Needs further investigation.
-    } | std::array{TestConfig{mds, YaS}, TestConfig{mds, Json}, TestConfig{mds, CmwLight}};
+    } | testConfigs; //| std::array{TestConfig{mds, YaS}, TestConfig{mds, Json}, TestConfig{mds, CmwLight}};
 
     "DataSet signal values"_test = [](auto config) {
         constexpr std::string_view grc = R"(
