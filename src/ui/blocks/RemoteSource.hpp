@@ -174,15 +174,16 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 if (idx < cast_to_signed(d.read)) { // this tag was already handled in a previous call
                     continue;
                 }
-                const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-                auto       latency = now - std::chrono::nanoseconds(timestamp);
                 auto       map     = gr::property_map{
-                    //
-                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},                               //
-                    {gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}}, //
-                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},                              //
-                    {"REMOTE_SOURCE_LATENCY", {latency.count()}}                                 // compares the current system time with the time inside the tag
+                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},
+                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},
                 };
+                if (timestamp != 0) {
+                    map.insert({gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}});
+                    const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+                    auto       latency = now - std::chrono::nanoseconds(timestamp);
+                    map.insert({"REMOTE_SOURCE_LATENCY", {latency.count()}}); // compares the current system time with the time inside the tag
+                }
                 const auto yamlMap = pmtv::yaml::deserialize(yaml);
                 if (yamlMap) {
                     const gr::property_map& rootMap = yamlMap.value();
@@ -228,10 +229,10 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         _subscribedUri           = command.topic.str();
         std::weak_ptr maybeQueue = _queue;
         command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
-            long           skipped_samples     = 0;
+            long           skipped_updates     = 0;
             constexpr auto skip_warning_prefix = "Warning: skipped ";
             if (rep.error.starts_with(skip_warning_prefix)) {
-                skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+                skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
             } else if (!rep.error.empty()) {
                 stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
@@ -245,7 +246,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 acq.channelValue.value()            = {0};
                 acq.triggerEventNames.value()       = {"SubscriptionInterrupted"};
                 acq.triggerIndices.value()          = {0};
-                acq.triggerTimestamps.value()       = {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
+                acq.triggerTimestamps.value()       = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
                 acq.triggerOffsets.value()          = {0.f};
                 acq.triggerYamlPropertyMaps.value() = {{"subscription-error", rep.error}};
                 std::lock_guard lock(queue->mutex);
@@ -263,9 +264,9 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 opendigitizer::acq::Acquisition acq;
                 auto                            buf = rep.data;
                 opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-                if (skipped_samples != 0) {
+                if (skipped_updates != 0) {
                     acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
-                    acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), acq.acqLocalTimeStamp.value());
+                    acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), 0);
                     acq.triggerEventNames.insert(acq.triggerEventNames.begin(), "WARNING_SAMPLES_DROPPED");
                     acq.triggerOffsets.insert(acq.triggerOffsets.begin(), 0.0f);
                 }
