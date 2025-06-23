@@ -171,6 +171,8 @@ connections:
                              }};
     };
 
+    restSettings.port = settings.port;
+
     restSettings.handlers = {
         rest::cmrcHandler("/assets/*", "", cmrcFs, ""),                     //
         rest::fileSystemHandler("/web/*", "/", wasmServeDir, extraHeaders), //
