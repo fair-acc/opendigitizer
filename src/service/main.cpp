@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     using namespace std::chrono_literals;
 
     if (argc > 1 && strcmp(argv[1], "--help") == 0) {
-        std::println("opendigitizer [<path to flowgraph>]");
+        std::println("opendigitizer [--enable-load-test] [<path to flowgraph>]");
         std::println("    launch opendigitizer with the provided flow graph or a default flowgraph if omitted");
         std::println("opendigitizer --list-registered-blocks");
         std::println("    list all blocks that are registered in the service");
@@ -99,6 +99,13 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    int  argi     = 1;
+    bool loadTest = false;
+    if (argc > 1 && strcmp(argv[1], "--enable-load-test-worker") == 0) {
+        loadTest = true;
+        argi++;
+    }
+
     std::string grc = R"(blocks:
   - name: ClockSource1
     id: gr::basic::ClockSource
@@ -119,8 +126,8 @@ connections:
   - [ClockSource1, 0, SignalGenerator1, 0]
   - [SignalGenerator1, 0, Sink, 0]
 )";
-    if (argc > 1) {
-        std::ifstream     in(argv[1]);
+    if (argc > argi) {
+        std::ifstream     in(argv[argi]);
         std::stringstream grcBuffer;
         if (!(grcBuffer << in.rdbuf())) {
             std::println(stderr, "Could not read GRC file: {}", strerror(errno));
@@ -205,10 +212,13 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                      pluginLoader(registry, {});
-    GrAcqWorker                           grAcqWorker(broker, &pluginLoader, 50ms);
-    GrFgWorker                            grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
-    opencmw::majordomo::load_test::Worker loadTestWorker(broker);
+    gr::PluginLoader                                       pluginLoader(registry, {});
+    GrAcqWorker                                            grAcqWorker(broker, &pluginLoader, 50ms);
+    GrFgWorker                                             grFgWorker(broker, &pluginLoader, {grc, {}}, grAcqWorker);
+    std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};
+    if (loadTest) {
+        loadTestWorker.emplace(broker);
+    }
 
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
@@ -270,9 +280,12 @@ connections:
         registeredSignals = std::move(signals);
     });
 
-    std::jthread grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
-    std::jthread grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
-    std::jthread loadTestWorkerThread([&loadTestWorker] { loadTestWorker.run(); });
+    std::jthread                grAcqWorkerThread([&grAcqWorker] { grAcqWorker.run(); });
+    std::jthread                grFgWorkerThread([&grFgWorker] { grFgWorker.run(); });
+    std::optional<std::jthread> loadTestWorkerThread{};
+    if (loadTestWorker && loadTest) {
+        loadTestWorkerThread.emplace([&loadTestWorker] { loadTestWorker->run(); });
+    }
 
     brokerThread.join();
     client.stop();
@@ -280,5 +293,7 @@ connections:
     dashboardWorkerThread.join();
     grAcqWorkerThread.join();
     grFgWorkerThread.join();
-    loadTestWorkerThread.join();
+    if (loadTestWorkerThread) {
+        loadTestWorkerThread->join();
+    }
 }
