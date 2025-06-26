@@ -40,8 +40,9 @@ using namespace boost;
 using namespace boost::ut;
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    std::function<void()>                   stopFunction;
+    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
+    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
+    std::function<void()>                        stopFunction;
 
     void stopScheduler() { dashboard->scheduler()->stop(); }
 
@@ -151,7 +152,7 @@ int main(int argc, char* argv[]) {
     auto dashboardFile = fs.open("examples/fg_dipole_intensity_ramp.yml");
 
     auto dashboardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(dashboardDescription);
+    g_state.dashboard         = DigitizerUi::Dashboard::create(g_state.restClient, dashboardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), std::string(dashboardFile.begin(), dashboardFile.end()), //
         [](gr::Graph&& grGraph) {
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;

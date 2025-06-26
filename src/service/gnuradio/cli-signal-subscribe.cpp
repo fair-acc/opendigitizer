@@ -1,3 +1,4 @@
+#include <ClientCommon.hpp>
 #include <daq_api.hpp>
 #include <format>
 
@@ -31,8 +32,6 @@ int main(int argc, char** argv) {
     using namespace opendigitizer::acq;
     using namespace std::chrono_literals;
 
-    opencmw::client::RestClient::CHECK_CERTIFICATES = false; // allow subscribing to local services with self-signed certificates
-
     if (argc <= 1) {
         std::print("Please provide subscription URL to AcquisitionWorker.\n");
         return 1;
@@ -41,7 +40,7 @@ int main(int argc, char** argv) {
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
-    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY), opencmw::client::MaxIoThreads(5)));
+    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY), opencmw::client::VerifyServerCertificates(false)));
     opencmw::client::ClientContext client{std::move(clients)};
 
     std::size_t samples_received = 0UZ;
