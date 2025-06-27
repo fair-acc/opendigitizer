@@ -480,23 +480,14 @@ private:
                         reply.acqTriggerName      = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
                         reply.acqTriggerTimeStamp = cast_to_signed(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
                     }
-                    reply.triggerIndices.push_back(cast_to_signed(idx));
-                    reply.triggerEventNames.push_back(std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())));
-                    reply.triggerTimestamps.push_back(static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))));
-                    if (tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey())) {
-                        reply.triggerOffsets.push_back(std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey())));
-                    } else {
-                        reply.triggerOffsets.push_back(0.0f);
-                    }
-                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
-                } else {
-                    reply.triggerIndices.push_back(cast_to_signed(idx));
-                    reply.triggerEventNames.push_back("");
-                    reply.triggerTimestamps.push_back(0ULL);
-                    reply.triggerOffsets.push_back(0.f);
-                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
                 }
+                reply.triggerIndices.push_back(cast_to_signed(idx));
+                reply.triggerEventNames.push_back(tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) ? std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())) : ""s);
+                reply.triggerTimestamps.push_back(tagMap.contains(gr::tag::TRIGGER_TIME.shortKey()) ? static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) : 0LL);
+                reply.triggerOffsets.push_back(tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey()) ? std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey())) : 0.0f);
+                reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
             }
+
             reply.triggerIndices.shrink_to_fit();
             reply.triggerEventNames.shrink_to_fit();
             reply.triggerTimestamps.shrink_to_fit();
