@@ -174,7 +174,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 if (idx < cast_to_signed(d.read)) { // this tag was already handled in a previous call
                     continue;
                 }
-                auto       map     = gr::property_map{
+                auto map = gr::property_map{
                     {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},
                     {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},
                 };
