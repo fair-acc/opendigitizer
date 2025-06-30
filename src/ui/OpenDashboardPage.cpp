@@ -71,7 +71,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) {
             });
         };
         // subscribe to get notified when the dashboards list is modified
-        m_restClient->request(command);
+        // m_restClient->request(command); // try to only get dashboard list via get, not via subscribe
 
         // also request the list to be sent immediately
         command.command = opencmw::mdp::Command::Get;
