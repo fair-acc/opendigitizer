@@ -31,7 +31,6 @@ template<units::basic_fixed_string serviceName, typename... Meta>
 class DashboardWorker : public BasicWorker<serviceName, Meta...> {
     std::vector<std::string> names;
     std::vector<Dashboard>   dashboards;
-    std::mutex               lock;
 
 public:
     using super_t = BasicWorker<serviceName, Meta...>;
