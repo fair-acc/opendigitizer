@@ -1,39 +1,8 @@
 blocks:
-  - name: sum sigs
-    id: opendigitizer::Arithmetic<float32>
-  - name: FFT
-    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
-    parameters:
-      outputInDb: true
-      outputInDeg: true
-      unwrapPhase: true
-  - name: sine source 1
-    id: opendigitizer::SineSource<float32>
-    parameters:
-      frequency: 2
-  - name: sine source 3
-    id: opendigitizer::SineSource<float32>
-    parameters:
-      frequency: 5
-  - name: sinesSink
-    id: opendigitizer::ImPlotSink<float32>
-    parameters:
-      signal_name: value
-      signal_quantity: voltage
-      signal_unit: V
-  - name: fftSink
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
-    parameters:
-      dataset_index: 0
-      signal_name: fft
-      abscissa_quantity: frequency
-      abscissa_unit: Hz
-      signal_quantity: magnitude
-      signal_unit: dB
   - name: ClockSource
     id: gr::basic::ClockSource
     parameters:
-      chunk_size: 20
+      chunk_size: 40
       do_zero_order_hold: true
       n_samples_max: 0
       repeat_period: 4000000000
@@ -57,6 +26,38 @@ blocks:
         - "CMD_DIAG_TRIGGER1"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
+  - name: sum sigs
+    id: opendigitizer::Arithmetic<float32>
+  - name: FFT
+    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+    parameters:
+      outputInDb: true
+      outputInDeg: true
+      unwrapPhase: true
+      fftSize: 2048
+  - name: sine source 1
+    id: gr::basic::SignalGenerator<float32>
+    parameters:
+      frequency: 2
+  - name: sine source 3
+    id: gr::basic::SignalGenerator<float32>
+    parameters:
+      frequency: 5
+  - name: sinesSink
+    id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      signal_name: value
+      signal_quantity: voltage
+      signal_unit: V
+  - name: fftSink
+    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      dataset_index: 0
+      signal_name: fft
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
   - name: DipoleCurrentGenerator
     id: gr::basic::FunctionGenerator<float32>
     parameters:
@@ -169,6 +170,8 @@ blocks:
       signal_quantity: BeamIntensity
       signal_unit: ppp
 connections:
+  - [ClockSource, 0, sine source 1, 0]
+  - [ClockSource, 0, sine source 3, 0]
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]
   - [sum sigs, 0, FFT, 0]
@@ -208,8 +211,8 @@ dashboard:
     - name: Plot 2
       axes:
         - axis: X
-          min: 0.0001
-          max: 0.5
+          min: 0.01
+          max: 500
           scale: Log10
           format: MetricInline # options: Auto, Metric, MetricInline, Scientific, None, Default
         - axis: Y

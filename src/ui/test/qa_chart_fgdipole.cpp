@@ -20,7 +20,6 @@
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/SineSource.hpp"
 
 #include <cmrc/cmrc.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
