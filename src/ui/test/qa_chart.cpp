@@ -18,7 +18,6 @@
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/SineSource.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -99,7 +98,6 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
-    gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
 
     std::print("Available blocks:\n");
