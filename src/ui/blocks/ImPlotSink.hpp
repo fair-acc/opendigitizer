@@ -357,7 +357,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         auto now = system_clock::now().time_since_epoch();
         return duration<double, std::nano>(now).count() * 1e-9;
     }(); // utc timestamp of the last tag or first sample
-    gr::HistoryBuffer<double> _xValues{required_size}; // needs to be 'double' because of required ns-level UTC timestamp precision
+    bool                      _xUtcOffsetInitialised = false; // set to true after first Tag with TRIGGER_TIME arrives and the _xUtcOffset is set
+    gr::HistoryBuffer<double> _xValues{required_size};        // needs to be 'double' because of required ns-level UTC timestamp precision
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
@@ -401,9 +402,10 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                 const double tagEventTime = utcTime * 1e-9 + offset; // [s]
                 bool         tagOK        = true;
 
-                if ((utcTime > 0.0 || tagEventTime > 0.0) && tagEventTime > _xUtcOffset) {
-                    _xUtcOffset   = tagEventTime;
-                    _sample_count = 0UZ;
+                if ((utcTime > 0.0 || tagEventTime > 0.0) && (tagEventTime > _xUtcOffset || !_xUtcOffsetInitialised)) {
+                    _xUtcOffset            = tagEventTime;
+                    _sample_count          = 0UZ;
+                    _xUtcOffsetInitialised = true;
                 } else {
                     tagOK = false; // mark fishy tag
                 }
@@ -416,11 +418,9 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                 }
             }
             this->_mergedInputTag.map.clear(); // TODO: provide proper API for clearing tags
-            _xValues.push_back(_xUtcOffset);
-        } else {
-            if constexpr (std::is_arithmetic_v<T>) {
-                _xValues.push_back(_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
-            }
+        }
+        if constexpr (std::is_arithmetic_v<T>) {
+            _xValues.push_back(_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
         }
         _yValues.push_back(input);
         _sample_count++;
