@@ -7,7 +7,8 @@
 
 #include "GraphModel.hpp"
 #include "components/ImGuiNotify.hpp"
-
+inline static std::atomic<int> schedCounter{0};  // TODO: remove this diagnostics
+inline static std::atomic<int> schedCounter2{0}; // TODO: remove this diagnostics
 namespace DigitizerUi {
 
 struct Scheduler {
@@ -60,6 +61,7 @@ private:
         /// - Scheduler is stopped, now should go back to its original state, PAUSED
         /// It's a bit awkward because lifecycle doesn't allow INITIALIZE->PAUSED
         void startThread(gr::lifecycle::State toState) {
+            gr::thread_pool::thread::setProcessName(std::format("Sched#{}", schedCounter2.fetch_add(1)));
             const auto currentState = _scheduler.state();
 
             if (currentState == toState) {
@@ -89,6 +91,9 @@ private:
 
             case gr::lifecycle::State::RUNNING:
                 _thread = std::thread([this]() {
+                    const int id = schedCounter.fetch_add(1);
+                    gr::thread_pool::thread::setProcessName(std::format("UiScheduler #{}", id));
+                    std::println("Spawning UiScheduler thread id = {}, tid = {} scheduler = {}", id, std::this_thread::get_id(), gr::meta::type_name<decltype(_scheduler)>());
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
                             throw std::format("Failed to initialize flowgraph");
@@ -105,6 +110,7 @@ private:
             case gr::lifecycle::State::REQUESTED_PAUSE:
             case gr::lifecycle::State::PAUSED:
                 _thread = std::thread([this]() {
+                    gr::thread_pool::thread::setProcessName("UiScheduler #2 (paused)");
                     // Lifecycle doesn't allow INITIALIZE->PAUSED
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
