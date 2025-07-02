@@ -357,7 +357,7 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     for (opendigitizer::ImPlotSinkModel* plotSinkBlock : plot.plotSinkBlocks) {
         if (!plotSinkBlock->isVisible) {
             // consume data if hidden
-            std::ignore = plotSinkBlock->work(std::numeric_limits<std::size_t>::max());
+            std::ignore = plotSinkBlock->invokeWork();
             continue;
         }
 

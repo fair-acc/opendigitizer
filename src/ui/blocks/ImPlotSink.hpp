@@ -222,6 +222,7 @@ struct ImPlotSinkModel {
     virtual gr::SettingsBase& settings() const = 0;
 
     virtual gr::work::Result work(std::size_t count) = 0;
+    virtual gr::work::Status invokeWork()            = 0;
 
     virtual void* raw() const = 0;
 
@@ -259,6 +260,7 @@ private:
         gr::SettingsBase& settings() const override { return block->settings(); }
 
         gr::work::Result work(std::size_t count) override { return block->work(count); }
+        gr::work::Status invokeWork() override { return block->invokeWork(); }
 
         void* raw() const override { return static_cast<void*>(block); }
 
