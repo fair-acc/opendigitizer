@@ -171,7 +171,8 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
             }
 
             for (const auto& [idx, trigger, timestamp, offset, yaml] : std::views::zip(d.acq.triggerIndices.value(), d.acq.triggerEventNames.value(), d.acq.triggerTimestamps.value(), d.acq.triggerOffsets.value(), d.acq.triggerYamlPropertyMaps.value())) {
-                if (idx < cast_to_signed(d.read)) { // this tag was already handled in a previous call
+                // this tag was already handled in a previous call OR it will be published in the next call
+                if (idx < cast_to_signed(d.read) || static_cast<std::size_t>(idx - cast_to_signed(d.read)) >= in.size()) {
                     continue;
                 }
                 auto map = gr::property_map{
@@ -195,7 +196,8 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
                     std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name, tag_time, std::chrono::system_clock::now(), map);
                 }
-                output.publishTag(map, cast_to_unsigned(idx - cast_to_signed(d.read)));
+                const auto tagIndex = written + static_cast<std::size_t>(idx - cast_to_signed(d.read));
+                output.publishTag(map, tagIndex);
             }
             written += in.size();
             d.read += in.size();
