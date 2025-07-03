@@ -355,7 +355,8 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // draw each source on the correct axis
     bool drawTag = true;
     for (opendigitizer::ImPlotSinkModel* plotSinkBlock : plot.plotSinkBlocks) {
-        if (!plotSinkBlock->isVisible) {
+        // if tab is invisible work() function does the job in Scheduler thread
+        if (!plotSinkBlock->isVisible && isTabVisible()) {
             // consume data if hidden
             std::ignore = plotSinkBlock->invokeWork();
             continue;

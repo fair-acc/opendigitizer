@@ -39,7 +39,7 @@ inline bool isTabVisible() {
 }
 
 #ifdef __EMSCRIPTEN__
-bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEvent* evt, void*) {
+inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEvent* evt, void*) {
     constexpr int visibleFPS = 0; // 0 = requestAnimationFrame
     constexpr int hiddenFPS  = 5; // ~200ms refresh when hidden
     if (evt->hidden) {

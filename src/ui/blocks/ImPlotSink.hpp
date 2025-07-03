@@ -24,6 +24,8 @@
 #include "conversion.hpp"
 #include "meta.hpp"
 
+#include "../utils/EmscriptenHelper.hpp"
+
 namespace opendigitizer {
 
 constexpr std::string_view kFishyTagKey = "ui_fishy_tag";
@@ -260,7 +262,7 @@ private:
         gr::SettingsBase& settings() const override { return block->settings(); }
 
         gr::work::Result work(std::size_t count) override { return block->work(count); }
-        gr::work::Status invokeWork() override { return block->invokeWork(); }
+        gr::work::Status invokeWork() override { return block->invokeWorkWithGuard(); }
 
         void* raw() const override { return static_cast<void*>(block); }
 
@@ -328,6 +330,16 @@ using namespace gr;
 
 GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>)
 
+// TODO: use on_scope_exit from gr4/meta/utils.hpp (update of GR4 is needed)
+namespace details {
+template<typename Fn>
+struct on_scope_exit {
+    Fn function;
+    on_scope_exit(Fn fn) : function(std::move(fn)) {}
+    ~on_scope_exit() { function(); };
+};
+} // namespace details
+
 template<typename T>
 struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     using ValueType = gr::meta::fundamental_base_value_type_t<T>;
@@ -367,6 +379,10 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     double      _sample_period = 1.0 / static_cast<double>(sample_rate);
     std::size_t _sample_count  = 0UZ;
 
+    // true while either work() or draw() is running; synchronizes calls between the two threads:
+    // work() executes in the scheduler thread when the tab is invisible, draw() executes in the UI thread when the tab is visible
+    std::atomic_flag _isWorkRunning = false;
+
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) {}
 
     ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
@@ -392,6 +408,27 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
         _sample_period = 1.0 / static_cast<double>(sample_rate);
         ImPlotSinkManager::instance().registerPlotSink(this);
+    }
+
+    template<typename = void>
+    gr::work::Result work(std::size_t requestedWork = std::numeric_limits<std::size_t>::max()) noexcept {
+        if (isTabVisible()) {
+            return {requestedWork, 0uz, gr::work::Status::OK};
+        }
+        if (_isWorkRunning.test_and_set(std::memory_order_acquire)) {
+            return {requestedWork, 0uz, gr::work::Status::OK};
+        }
+        details::on_scope_exit _   = [&] { _isWorkRunning.clear(std::memory_order_release); };
+        auto                   res = this->workInternal(requestedWork);
+        return res;
+    }
+
+    gr::work::Status invokeWorkWithGuard() {
+        if (_isWorkRunning.test_and_set(std::memory_order_acquire)) {
+            return gr::work::Status::OK;
+        }
+        details::on_scope_exit _ = [&] { _isWorkRunning.clear(std::memory_order_release); };
+        return this->invokeWork();
     }
 
     constexpr void processOne(const T& input) noexcept {
@@ -431,6 +468,16 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         using DigitizerUi::AxisScale;
         using enum DigitizerUi::AxisScale;
+
+        if (!isTabVisible()) {
+            return gr::work::Status::OK;
+        }
+        if (_isWorkRunning.test_and_set(std::memory_order_acquire)) {
+            return gr::work::Status::OK;
+        }
+
+        details::on_scope_exit _ = [&] { _isWorkRunning.clear(std::memory_order_release); };
+
         [[maybe_unused]] const gr::work::Status status = this->invokeWork();
 
         setAxisFromConfig(config);
