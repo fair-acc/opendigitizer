@@ -205,6 +205,20 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
         auto newBlock = std::make_unique<UiGraphBlock>(/*owner*/ this);
         setBlockData(*newBlock, blockData);
         _blocks.push_back(std::move(newBlock));
+
+        if (uniqueName.starts_with("opendigitizer::SineSource<float32>")) {
+            std::println("handleBlockEmplaced uniqueName {}", uniqueName);
+            for (const auto& [key, value] : blockData) {
+                std::println("blockData blockData {}", key);
+
+                if (key == "settings") {
+                    const auto settings = std::get<gr::property_map>(value);
+                    for (const auto& [key, value] : settings) {
+                        std::println("blockData settings {}", key);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -226,13 +240,20 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         return;
     }
 
+    if (uniqueName.starts_with("opendigitizer::SineSource<float32>")) {
+        std::println("handleBlockSettingsChanged uniqueName {} X {} Y {}", uniqueName, (*blockIt)->storedX, (*blockIt)->storedY);
+    }
+
     for (const auto& [key, value] : data) {
-        if (key == "meta_information::block::position_x"s) {
-            (*blockIt)->storedX        = std::get<float>(value);
-            (*blockIt)->updatePosition = true;
-        } else if (key == "meta_information::block::position_y"s) {
-            (*blockIt)->storedY        = std::get<float>(value);
-            (*blockIt)->updatePosition = true;
+        if (key == "ui_constraints"s) {
+            const auto map = std::get<gr::property_map>(value);
+            if (!map.empty()) {
+                (*blockIt)->storedX = std::get<float>(map.at("x"));
+                (*blockIt)->storedY = std::get<float>(map.at("y"));
+
+                std::println("Store uniqueName {} X {} Y {}", uniqueName, (*blockIt)->storedX, (*blockIt)->storedY);
+                (*blockIt)->updatePosition = true;
+            }
         } else if (key != "unique_name"s) {
             (*blockIt)->blockSettings.insert_or_assign(key, value);
             (*blockIt)->updateBlockSettingsMetaInformation();
@@ -573,12 +594,17 @@ void UiGraphBlock::storeXY() {
     ownerGraph->sendMessage(gr::Message{
         .cmd             = gr::Message::Set,
         .serviceName     = blockUniqueName,
-        .clientRequestID = "meta_update",
+        .clientRequestID = "ui_constraints",
         .endpoint        = gr::block::property::kSetting,
         .data =
             gr::property_map{
-                {"meta_information::block::position_x", storedX},
-                {"meta_information::block::position_y", storedY},
+                {
+                    "ui_constraints",
+                    gr::property_map{
+                        {"x", storedX},
+                        {"y", storedY},
+                    },
+                },
             },
     });
 }
