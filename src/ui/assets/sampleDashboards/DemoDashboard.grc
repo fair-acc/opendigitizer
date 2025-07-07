@@ -1,6 +1,13 @@
 blocks:
   - name: sum sigs
     id: opendigitizer::Arithmetic<float32>
+    parameters:
+      ui_constraints:
+        x: 30
+        y: 40
+    ui_constraints:
+      x: 30
+      y: 40
   - name: FFT
     id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
     parameters:
@@ -15,6 +22,12 @@ blocks:
     id: opendigitizer::SineSource<float32>
     parameters:
       frequency: 5
+      ui_constraints:
+        x: 30
+        y: 40
+    ui_constraints:
+      x: 30
+      y: 40
   - name: sinesSink
     id: opendigitizer::ImPlotSink<float32>
     parameters:
