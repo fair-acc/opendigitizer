@@ -191,7 +191,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         }
     };
 
-    const std::size_t nAxesY = std::ranges::count_if(yCats, [](const std::optional<AxisCategory>& cat) { return cat.has_value(); });
+    const std::size_t nAxesY = static_cast<std::size_t>(std::ranges::count_if(yCats, [](const std::optional<AxisCategory>& cat) { return cat.has_value(); }));
     for (auto& [axisType, minVal, maxVal, scale, width, plotTags] : plot.axes) {
         const bool   isX    = (axisType == Axis::X);
         const ImAxis axisId = isX ? ImAxis_X1 : ImAxis_Y1;
