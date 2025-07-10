@@ -27,3 +27,61 @@ connections:
   - [FFT, 0, sink 1, 0]
   - [sine source 1, 0, sink 2, 0]
   - [remote source 1, 0, sink 3, 0]
+dashboard:
+  sources:
+    - name: sink 3
+      block: sink 3
+      color: !!uint32 0xff0000
+    - name: sink 1
+      block: sink 1
+      color: !!uint32 0x00ff00
+    - name: sink 2
+      block: sink 2
+      color: !!uint32 0x0000ff
+  plots:
+    - name: Plot 1
+      axes:
+        - axis: X
+          min: -15.
+          max: 600.
+        - axis: Y
+          min: -1.5
+          max: 1.5
+      sources:
+        - sink 2
+      rect:
+        - 0
+        - 0
+        - 8
+        - 6
+    - name: Plot 2
+      axes:
+        - axis: X
+          min: -5.
+          max: 440.
+        - axis: Y
+          min: -2.
+          max: 2.
+      sources:
+        - sink 1
+      rect:
+        - 0
+        - 6
+        - 12
+        - 9
+    - name: Plot 3
+      axes:
+        - axis: X
+          min: -2.
+          max: 60.
+        - axis: Y
+          min: 0
+          max: 1
+      sources:
+        - sink 3
+      rect:
+        - 8
+        - 0
+        - 8
+        - 6
+  flowgraphLayout: ""
