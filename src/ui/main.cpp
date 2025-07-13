@@ -100,16 +100,6 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
 
-    // UI init
-    LookAndFeel::mutableInstance().verticalDPI = []() {
-        if (float scale = SDL_GetDisplayContentScale(0); scale > 0.f) {
-            return LookAndFeel::instance().defaultDPI * scale;
-        }
-        auto msg = std::format("[Main] Failed to obtain content scale for display 0: {}", SDL_GetError());
-        components::Notification::error(msg);
-        return LookAndFeel::instance().defaultDPI;
-    }();
-
     // EMSCRIPTEN ends main before it enters the main loop,
     // app needs to live forever, so it is static
     static App app;

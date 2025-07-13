@@ -386,15 +386,17 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
                     return;
                 }
 
-                axisData.min         = axisMap.contains("min") ? pmtv::cast<float>(axisMap.at("min")) : std::numeric_limits<float>::quiet_NaN();
-                axisData.max         = axisMap.contains("max") ? pmtv::cast<float>(axisMap.at("max")) : std::numeric_limits<float>::quiet_NaN();
-                std::string scaleStr = axisMap.contains("scale") ? std::get<std::string>(axisMap.at("scale")) : "Linear";
-                auto        trim     = [](const std::string& str) {
+                axisData.min          = axisMap.contains("min") ? pmtv::cast<float>(axisMap.at("min")) : std::numeric_limits<float>::quiet_NaN();
+                axisData.max          = axisMap.contains("max") ? pmtv::cast<float>(axisMap.at("max")) : std::numeric_limits<float>::quiet_NaN();
+                std::string scaleStr  = axisMap.contains("scale") ? std::get<std::string>(axisMap.at("scale")) : "Linear";
+                std::string formatStr = axisMap.contains("format") ? std::get<std::string>(axisMap.at("format")) : "Auto";
+                auto        trim      = [](const std::string& str) {
                     auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
                     auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
                     return (start < end) ? std::string(start, end) : std::string{};
                 };
-                axisData.scale = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
+                axisData.scale  = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
+                axisData.format = magic_enum::enum_cast<LabelFormat>(trim(formatStr), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
 
                 if (axisMap.contains("plot_tags")) {
                     auto tagOpt = axisMap.at("plot_tags");
@@ -463,6 +465,7 @@ void Dashboard::save() {
             axisMap["min"]       = axis.min;
             axisMap["max"]       = axis.max;
             axisMap["scale"]     = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
+            axisMap["format"]    = std::string(magic_enum::enum_name<LabelFormat>(axis.format));
             axisMap["plot_tags"] = axis.plotTags;
             plotAxes.emplace_back(std::move(axisMap));
         }

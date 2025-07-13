@@ -66,51 +66,51 @@ blocks:
       - context: "FAIR.SELECTOR.C=1:S=1:P=1"
         time: !!uint64 0
         parameters:
-          start_value: 1
+          start_value: 100
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=2"  # start pre-ramp
         time: !!uint64 0
         parameters:
           duration: 0.1
-          start_value: 1
-          final_value: 5
+          start_value: 100
+          final_value: 500
           round_off_time: 0.02
           sample_rate: 1000
           signal_type: ParabolicRamp
       - context: "FAIR.SELECTOR.C=1:S=1:P=3"  # lower-plateau
         time: !!uint64 0
         parameters:
-          start_value: 5
+          start_value: 500
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
         time: !!uint64 0
         parameters:
           duration: 0.5
-          start_value: 5
-          final_value: 30
+          start_value: 500
+          final_value: 3000
           round_off_time: 0.2
           sample_rate: 1000
           signal_type: ParabolicRamp
       - context: "FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
         time: !!uint64 0
         parameters:
-          start_value: 30
+          start_value: 3000
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
         time: !!uint64 0
         parameters:
           duration: 0.3
-          start_value: 30
-          final_value: 1
+          start_value: 3000
+          final_value: 100
           sample_rate: 1000
           signal_type: CubicSpline
       - context: "FAIR.SELECTOR.C=1:S=1:P=7" # upper-plateau
         time: !!uint64 0
         parameters:
-          start_value: 1
+          start_value: 100
           sample_rate: 1000
           signal_type: Const
   - name: IntensityGenerator
@@ -197,8 +197,9 @@ dashboard:
           max: NaN # enables auto-range
           scale: LinearReverse
         - axis: Y
-          min: NaN # enables auto-range
-          max: NaN # enables auto-range
+          min: NaN # enables auto-range for first axis
+          max: NaN # enables auto-range for first axis
+          format: Default # options: Auto, Metric, Scientific, Default
       sources:
         - sinesSink
       rect: [0, 0, 1, 1]
@@ -221,8 +222,12 @@ dashboard:
           max: NaN # auto-range max
           scale: Time # UTC time axis, other options: Linear, LinearReverse, Time, Log10, SymLog
         - axis: Y
-          min: NaN # auto-range min
-          max: NaN # auto-range max
+          min: NaN # enables auto-range for first axis
+          max: NaN # enables auto-range for first axis
+        - axis: Y
+          min: -100. # second axis min
+          max: NaN # second axis max
+          format: Metric # options: Auto, Metric, Scientific, Default
       sources:
         - IntensitySink
         - DipoleCurrentSink
