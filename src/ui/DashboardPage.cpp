@@ -106,19 +106,18 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
         if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, color); idx) {
             if (axisKind == AxisKind::X) {
                 xAxisGroups[idx.value()].push_back(plotSinkBlock->name());
+                xCats[idx.value()]->plotTags = plotTagFlag;
             } else {
                 yAxisGroups[idx.value()].push_back(plotSinkBlock->name());
+                yCats[idx.value()]->plotTags = plotTagFlag;
             }
-            xCats[idx.value()]->plotTags = plotTagFlag;
         } else {
-            // TODO: Remove the last added
             components::Notification::warning(std::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
-            continue;
         }
     }
 }
 
-std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t idx, bool isX) {
+std::string buildLabel(const std::optional<AxisCategory>& catOpt, bool isX) {
     if (!catOpt.has_value()) {
         // fallback
         return isX ? "time" : "y-axis [a.u.]";
@@ -133,73 +132,100 @@ std::string buildLabel(const std::optional<AxisCategory>& catOpt, std::size_t id
     if (!cat.unit.empty()) {
         return cat.unit;
     }
-    return std::format("{}-axis #{}", (isX ? "X" : "Y"), idx + 1UZ); // fallback if both empty
+    return std::format("{}-axis", (isX ? "X" : "Y")); // fallback if both empty
+}
+
+template<typename Result>
+int enforceNullTerminate(char* buff, int size, const Result& result) {
+    if ((result.out - buff) < static_cast<ptrdiff_t>(size)) {
+        *result.out = '\0';
+    } else if (size > 0) {
+        buff[size - 1] = '\0';
+    }
+    return static_cast<int>(result.out - buff); // number of characters written (excluding null terminator)
+}
+
+inline constexpr std::string_view boundedStringView(const char* ptr, std::size_t maxLength) {
+    if (!ptr) {
+        return "";
+    }
+
+    for (std::size_t i = 0UZ; i < maxLength; ++i) {
+        if (ptr[i] == '\0') {
+            return std::string_view(ptr, i);
+        }
+    }
+    return ""; // null terminator not found
+}
+
+inline int formatMetric(double value, char* buff, int size, void* data) {
+    constexpr std::array<double, 11>      kScales{1e15, 1e12, 1e9, 1e6, 1e3, 1.0, 1e-3, 1e-6, 1e-9, 1e-12, 1e-15};
+    constexpr std::array<const char*, 11> kPrefixes{"P", "T", "G", "M", "k", "", "m", "u", "n", "p", "f"};
+    constexpr std::size_t                 maxUnitLength = 10UZ;
+
+    const std::string_view unit = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+
+    if (value == 0.0) {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "0{}", unit));
+    }
+
+    std::string_view prefix      = kPrefixes.back();
+    double           scaledValue = value / kScales.back(); // fallback if no match
+
+    for (auto [scale, p] : std::views::zip(kScales, kPrefixes)) {
+        if (std::abs(value) >= scale) {
+            scaledValue = value / scale;
+            prefix      = p;
+            break;
+        }
+    }
+
+    return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:g}{}{}", scaledValue, prefix, unit));
+}
+
+inline int formatScientific(double value, char* buff, int size, void* data) {
+    constexpr std::size_t  maxUnitLength = 10UZ;
+    const std::string_view unit          = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+
+    if (value == 0.0) {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "0{}", unit));
+    }
+
+    const double absVal = std::abs(value);
+    if (absVal >= 1e-3 && absVal < 10.0) {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:.3g}{}", value, unit));
+    } else {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:.3g}E{:}", value / std::pow(10.0, std::floor(std::log10(absVal))), static_cast<int>(std::floor(std::log10(absVal)))));
+    }
+}
+
+inline int formatDefault(double value, char* buff, int size, void* data) {
+    constexpr std::size_t  maxUnitLength = 10UZ;
+    const std::string_view unit          = boundedStringView(static_cast<const char*>(data), maxUnitLength);
+
+    if (value == 0.0) {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "0{}", unit));
+    }
+
+    return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:g}{}", value, unit));
 }
 
 void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3>& xCats, const std::array<std::optional<AxisCategory>, 3>& yCats) {
     using Axis = Dashboard::Plot::AxisKind;
 
-    static constexpr ImAxis kXs[3] = {ImAxis_X1, ImAxis_X2, ImAxis_X3};
-    static constexpr ImAxis kYs[3] = {ImAxis_Y1, ImAxis_Y2, ImAxis_Y3};
-
-    auto colorU32toImVec4 = [](uint32_t c) -> ImVec4 {
-        const float r = float((c >> 16) & 0xFF) / 255.f;
-        const float g = float((c >> 8) & 0xFF) / 255.f;
-        const float b = float((c >> 0) & 0xFF) / 255.f;
-        return ImVec4(r, g, b, 1.f);
-    };
-
-    auto truncateLabel = [&](std::string_view original, float availableWidth) -> std::string {
-        // truncate label if it won't fit into the available `width`
-        const float textWidth = ImGui::CalcTextSize(original.data()).x;
-        if (textWidth <= availableWidth) {
-            return std::string(original);
-        }
-
-        static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
-        if (availableWidth <= ellipsisWidth + 1.0f) {
-            // not enough space for a partial string
-            return "...";
-        }
-
-        // shrink text to fit and prepend "..."
-        float       scaleFactor  = (availableWidth - ellipsisWidth) / std::max(1.0f, textWidth);
-        std::size_t fitCharCount = static_cast<std::size_t>(std::floor(scaleFactor * static_cast<float>(original.size())));
-
-        std::string truncated(original);
-        if (fitCharCount < truncated.size()) {
-            truncated = truncated.substr(truncated.size() - fitCharCount);
-        }
-        return std::format("...{}", truncated);
-    };
-
-    auto setAxisScale = [](ImAxis axisID, AxisScale scale) {
-        using enum AxisScale;
-        switch (scale) {
-
-        case Log10: ImPlot::SetupAxisScale(axisID, ImPlotScale_Log10); return;
-        case SymLog: ImPlot::SetupAxisScale(axisID, ImPlotScale_SymLog); return;
-        case Time: {
-            ImPlot::SetupAxisScale(axisID, ImPlotScale_Time);
-            ImPlot::GetStyle().UseISO8601     = true;
-            ImPlot::GetStyle().Use24HourClock = true;
-        }
+    const std::size_t nAxesX          = static_cast<std::size_t>(std::ranges::count_if(xCats, [](const auto& c) { return c.has_value(); }));
+    const std::size_t nAxesY          = static_cast<std::size_t>(std::ranges::count_if(yCats, [](const auto& c) { return c.has_value(); }));
+    const auto        setupSingleAxis = [&nAxesX, &nAxesY, &plot](ImAxis axisId, const std::optional<AxisCategory>& cat, float axisWidth, std::optional<Dashboard::Plot::AxisData*> axisConfigInfo = std::nullopt) {
+        if (axisId != ImAxis_X1 && !cat.has_value()) { // workaround for missing xCats definition
             return;
-        case Linear:
-        case LinearReverse:
-        default: ImPlot::SetupAxisScale(axisID, ImPlotScale_Linear);
         }
-    };
 
-    const std::size_t nAxesY = std::ranges::count_if(yCats, [](const std::optional<AxisCategory>& cat) { return cat.has_value(); });
-    for (auto& [axisType, minVal, maxVal, scale, width, plotTags] : plot.axes) {
-        const bool   isX    = (axisType == Axis::X);
-        const ImAxis axisId = isX ? ImAxis_X1 : ImAxis_Y1;
+        const bool      isX       = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
+        const bool      finiteMin = axisConfigInfo.has_value() ? std::isfinite(axisConfigInfo.value()->min) : false;
+        const bool      finiteMax = axisConfigInfo.has_value() ? std::isfinite(axisConfigInfo.value()->max) : false;
+        const AxisScale scale     = axisConfigInfo.has_value() ? axisConfigInfo.value()->scale : cat->scale;
 
-        // compute flags
-        ImPlotAxisFlags flags     = ImPlotAxisFlags_None;
-        bool            finiteMin = std::isfinite(minVal);
-        bool            finiteMax = std::isfinite(maxVal);
+        ImPlotAxisFlags flags = ImPlotAxisFlags_None;
         if (finiteMin && !finiteMax) {
             flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin;
         } else if (!finiteMin && finiteMax) {
@@ -207,62 +233,117 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         } else if (!finiteMin && !finiteMax) {
             flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
         } // else both limits set -> no auto-fit
-
-        if (isX && scale == AxisScale::Time) {
-            flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+        if ((axisId == ImAxis_X2) || (axisId == ImAxis_X3) || (axisId == ImAxis_Y2) || (axisId == ImAxis_Y3)) {
+            flags |= ImPlotAxisFlags_Opposite;
         }
 
-        bool needToPopColourSetting = false;
-        if (!isX && yCats[0].has_value() && nAxesY > 1) {
-            // set primary axis colour based on the first data set if there are more than one axes
-            ImVec4 col = colorU32toImVec4(yCats[0]->color);
-            // Colour the text & label
+        bool pushedColor = false;
+        if (cat && (isX ? nAxesX > 1 : nAxesY > 1) && !isX) { // axis colour handling isn't enabled for the x-axis for the time being.
+            const auto   colorU32toImVec4 = [](uint32_t c) { return ImVec4{float((c >> 16) & 0xFF) / 255.f, float((c >> 8) & 0xFF) / 255.f, float((c >> 0) & 0xFF) / 255.f, 1.f}; };
+            const ImVec4 col              = colorU32toImVec4(cat->color);
             ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
             ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
-            needToPopColourSetting = true;
+            pushedColor = true;
         }
 
-        if (scale == AxisScale::Time) {
-            ImPlot::SetupAxis(axisId, "", flags);
-        } else {
-            const std::string axisLabel = truncateLabel(buildLabel(isX ? xCats[0] : yCats[0], 0UZ, isX), width);
-            ImPlot::SetupAxis(axisId, axisLabel.c_str(), flags);
-        }
-        if (finiteMin && finiteMax) {
-            ImPlot::SetupAxisLimits(axisId, static_cast<double>(minVal), static_cast<double>(maxVal)); // TODO check and change axis range definitions to double
+        const auto truncateLabel = [](std::string_view original, float availableWidth) -> std::string {
+            const float textWidth = ImGui::CalcTextSize(original.data()).x;
+            if (textWidth <= availableWidth) {
+                return std::string(original);
+            }
+            static const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+            if (availableWidth <= ellipsisWidth + 1.f) {
+                return "...";
+            }
+            const float       scaleFactor  = (availableWidth - ellipsisWidth) / std::max(1.f, textWidth);
+            const std::size_t fitCharCount = static_cast<std::size_t>(std::floor(scaleFactor * static_cast<float>(original.size())));
+            return std::format("...{}", original.substr(original.size() - fitCharCount));
+        };
+
+        const std::string label = (scale == AxisScale::Time) ? "" : truncateLabel(buildLabel(cat, isX), axisWidth);
+        ImPlot::SetupAxis(axisId, label.c_str(), flags);
+
+        if (scale != AxisScale::Time) {
+            constexpr std::array kMetricUnits{"s", "m", "A", "K", "V", "g", "eV", "Hz"};
+            constexpr std::array kLinearUnits{"dB"}; // do not use exponential
+            const auto&          unit = (cat && !cat->unit.empty()) ? cat->unit : "";
+
+            const LabelFormat format = axisConfigInfo.has_value() ? axisConfigInfo.value()->format : LabelFormat::Auto;
+            using enum LabelFormat;
+            switch (format) {
+            case Auto:
+                if (std::ranges::contains(kMetricUnits, unit)) {
+                    ImPlot::SetupAxisFormat(axisId, formatMetric, nullptr);
+                } else if (std::ranges::contains(kLinearUnits, unit)) {
+                    ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
+                } else {
+                    ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr);
+                }
+                break;
+            case Metric: ImPlot::SetupAxisFormat(axisId, formatMetric, nullptr); break;
+            case Scientific: ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr); break;
+            case Default:
+            default: ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
+            }
         }
 
-        setAxisScale(axisId, scale);
+        switch (scale) {
+            using enum AxisScale;
+        case Log10: ImPlot::SetupAxisScale(axisId, ImPlotScale_Log10); break;
+        case SymLog: ImPlot::SetupAxisScale(axisId, ImPlotScale_SymLog); break;
+        case Time:
+            ImPlot::GetStyle().UseISO8601     = true;
+            ImPlot::GetStyle().Use24HourClock = true;
+            ImPlot::SetupAxisScale(axisId, ImPlotScale_Time);
+            break;
+        default: ImPlot::SetupAxisScale(axisId, ImPlotScale_Linear); break;
+        }
 
-        if (needToPopColourSetting) {
+        if (axisConfigInfo.has_value()) {
+            const auto& info = *axisConfigInfo.value();
+            if (finiteMin && finiteMax) {
+                ImPlot::SetupAxisLimits(axisId, static_cast<double>(info.min), static_cast<double>(info.max));
+            } else if (finiteMin || finiteMax) {
+                assert(flags & ImPlotAxisFlags_LockMin || flags & ImPlotAxisFlags_LockMax);
+                const double minConstraint = finiteMin ? static_cast<double>(info.min) : -std::numeric_limits<double>::infinity();
+                const double maxConstraint = finiteMax ? static_cast<double>(info.max) : +std::numeric_limits<double>::infinity();
+                ImPlot::SetupAxisLimitsConstraints(axisId, minConstraint, maxConstraint);
+            }
+        }
+
+        if (pushedColor) {
             ImPlot::PopStyleColor(2);
         }
+    };
+
+    float xAxisWidth = 100.f;
+    float yAxisWidth = 100.f;
+    for (auto& axis : plot.axes) {
+        if (axis.axis == Axis::X) {
+            xAxisWidth = axis.width;
+        } else {
+            yAxisWidth = axis.width;
+        }
     }
 
-    for (std::size_t i = 1UZ; i < xCats.size(); ++i) {
-        // set up X2/X3 from xCats[1..2]
-        if (!xCats[i].has_value()) {
-            continue;
+    auto getAxisByKind = [&plot](Dashboard::Plot::AxisKind kind, std::size_t index) -> std::optional<Dashboard::Plot::AxisData*> {
+        std::size_t count = 0UZ;
+        for (auto& axis : plot.axes) {
+            if (axis.axis == kind) {
+                if (count++ == index) {
+                    return &axis;
+                }
+            }
         }
-        ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on top
-        std::string     lbl   = buildLabel(xCats[i], i, /*isX=*/true);
-        ImPlot::SetupAxis(kXs[i], lbl.c_str(), flags);
-        setAxisScale(kXs[i], xCats[i]->scale);
+        return std::nullopt; // not found
+    };
+
+    for (std::size_t i = 0UZ; i < xCats.size(); ++i) {
+        setupSingleAxis(static_cast<ImAxis>(ImAxis_X1 + i), xCats[i], xAxisWidth, getAxisByKind(Dashboard::Plot::AxisKind::X, i));
     }
 
-    for (std::size_t i = 1UZ; i < yCats.size(); ++i) {
-        // set up Y2/Y3 from yCats[1..2]
-        if (!yCats[i].has_value()) {
-            continue;
-        }
-        ImVec4 col = colorU32toImVec4(yCats[i]->color);
-        ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
-        ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
-        ImPlotAxisFlags flags = ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_Opposite; // on right
-        std::string     lbl   = buildLabel(yCats[i], i, /*isX=*/false);
-        ImPlot::SetupAxis(kYs[i], lbl.c_str(), flags);
-        ImPlot::PopStyleColor(2);
-        setAxisScale(kYs[i], yCats[i]->scale);
+    for (std::size_t i = 0UZ; i < yCats.size(); ++i) {
+        setupSingleAxis(static_cast<ImAxis>(ImAxis_Y1 + i), yCats[i], yAxisWidth, getAxisByKind(Dashboard::Plot::AxisKind::Y, i));
     }
 }
 } // namespace
@@ -599,19 +680,19 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
 
                 // update plot.axes if auto-fit is not used
                 ImPlotRect rect = ImPlot::GetPlotLimits();
-                for (auto& a : plot.axes) {
-                    const bool      isX              = (a.axis == Dashboard::Plot::AxisKind::X);
+                for (auto& axis : plot.axes) {
+                    const bool      isX              = (axis.axis == Dashboard::Plot::AxisKind::X);
                     const ImAxis    axisId           = isX ? ImAxis_X1 : ImAxis_Y1; // TODO multi-axis extension
                     ImPlotAxisFlags axisFlags        = ImPlot::GetCurrentPlot()->Axes[axisId].Flags;
                     bool            isAutoOrRangeFit = (axisFlags & (ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit)) != 0;
                     if (!isAutoOrRangeFit) {
                         // store back min/max from the actual final plot region
-                        if (a.axis == Dashboard::Plot::AxisKind::X) {
-                            a.min = static_cast<float>(rect.X.Min);
-                            a.max = static_cast<float>(rect.X.Max);
+                        if (axis.axis == Dashboard::Plot::AxisKind::X) {
+                            axis.min = static_cast<float>(rect.X.Min);
+                            axis.max = static_cast<float>(rect.X.Max);
                         } else {
-                            a.min = static_cast<float>(rect.Y.Min);
-                            a.max = static_cast<float>(rect.Y.Max);
+                            axis.min = static_cast<float>(rect.Y.Min);
+                            axis.max = static_cast<float>(rect.Y.Max);
                         }
                     }
                 }

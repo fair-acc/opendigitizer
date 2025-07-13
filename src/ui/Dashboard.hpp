@@ -53,6 +53,8 @@ enum class AxisScale : std::uint8_t {
     SymLog,        /// symmetric log scale
 };
 
+enum class LabelFormat : std::uint8_t { Auto = 0U, Metric, Scientific, Default };
+
 // Defines where the dashboard is stored and fetched from
 struct DashboardStorageInfo {
 private:
@@ -115,12 +117,13 @@ public:
         enum class AxisKind { X = 0, Y };
 
         struct AxisData {
-            AxisKind  axis     = AxisKind::X;
-            float     min      = std::numeric_limits<float>::quiet_NaN();
-            float     max      = std::numeric_limits<float>::quiet_NaN();
-            AxisScale scale    = AxisScale::Linear;
-            float     width    = std::numeric_limits<float>::max();
-            bool      plotTags = true;
+            AxisKind    axis     = AxisKind::X;
+            float       min      = std::numeric_limits<float>::quiet_NaN();
+            float       max      = std::numeric_limits<float>::quiet_NaN();
+            AxisScale   scale    = AxisScale::Linear;
+            LabelFormat format   = LabelFormat::Auto;
+            float       width    = std::numeric_limits<float>::max();
+            bool        plotTags = true;
         };
 
         std::string                                  name;
