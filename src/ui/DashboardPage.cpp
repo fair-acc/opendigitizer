@@ -429,6 +429,85 @@ DashboardPage::DashboardPage() {
 
 DashboardPage::~DashboardPage() { opendigitizer::ImPlotSinkManager::instance().removeListener(this); }
 
+inline void formatAxisValue(const ImPlotAxis& axis, double value, char* buf, int size) {
+    if (axis.Scale == ImPlotScale_Time) {
+        const auto formatIsoTime = [](double timestamp, char* buffer, std::size_t size_) noexcept {
+            using Clock          = std::chrono::system_clock;
+            const auto timePoint = Clock::time_point(std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(timestamp)));
+            const auto secs      = std::chrono::time_point_cast<std::chrono::seconds>(timePoint);
+            const auto ms        = std::chrono::duration_cast<std::chrono::milliseconds>(timePoint - secs).count();
+
+            auto result = std::format_to_n(buffer, static_cast<int>(size_) - 1, "{:%Y-%m-%dT%H:%M:%S}.{:03}", secs, ms);
+
+            buffer[std::min(static_cast<std::size_t>(result.size), size_ - 1UZ)] = '\0'; // ensure null-termination
+        };
+        formatIsoTime(value, buf, static_cast<std::size_t>(size));
+    } else if (axis.Formatter) {
+        axis.Formatter(value, buf, size, axis.FormatterData);
+    } else {
+        // do nothing
+    }
+}
+
+inline void showPlotMouseTooltip(double on_delay_s = 1.0f, double off_delay_s = 30.0f) {
+    if (!ImPlot::IsPlotHovered()) {
+        return;
+    }
+
+    ImPlotContext* ctx  = ImPlot::GetCurrentContext();
+    ImPlotPlot*    plot = ImPlot::GetCurrentPlot();
+    if (!ctx || !plot) {
+        return;
+    }
+
+    const ImVec2  px = ImGui::GetMousePos();
+    static ImVec2 lastPX{0, 0};
+    static double lastTime = 0.0;
+    const double  now      = ImGui::GetTime();
+
+    constexpr float epsilon = 10.0f;
+    const bool      samePos = std::abs(px.x - lastPX.x) < epsilon && std::abs(px.y - lastPX.y) < epsilon;
+
+    if (!samePos) {
+        lastPX   = px;
+        lastTime = now;
+        return;
+    }
+
+    if ((now - lastTime) < on_delay_s || (now - lastTime) > off_delay_s) {
+        return;
+    }
+
+    auto drawAxisTooltip = [](ImPlotPlot* plot_, ImAxis axisIdx) {
+        ImPlotAxis& axis = plot_->Axes[axisIdx];
+        if (!axis.Enabled) {
+            return;
+        }
+
+        const auto mousePos = ImPlot::GetPlotMousePos(axis.Vertical ? IMPLOT_AUTO : axisIdx, axis.Vertical ? axisIdx : IMPLOT_AUTO);
+
+        char buf[128UZ];
+        formatAxisValue(axis, axis.Vertical ? mousePos.y : mousePos.x, buf, sizeof(buf));
+
+        std::string_view label = plot_->GetAxisLabel(axis);
+        if (label.empty()) {
+            ImGui::Text("%s", buf);
+        } else {
+            ImGui::Text("%s: %s", label.data(), buf);
+        }
+    };
+
+    // draw actual tooltip
+    IMW::Font    font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode ? 1UZ : 0UZ]);
+    IMW::ToolTip tooltip;
+    for (int i = 0; i < 3; ++i) {
+        drawAxisTooltip(plot, ImAxis_X1 + i);
+    }
+    for (int i = 0; i < 3; ++i) {
+        drawAxisTooltip(plot, ImAxis_Y1 + i);
+    }
+}
+
 // Draw the multi-axis plot
 void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // 1) Build up two sets of categories for X & Y
@@ -442,6 +521,9 @@ void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // 2) Setup up to 3 X axes & 3 Y axes
     setupPlotAxes(plot, xCats, yCats);
     ImPlot::SetupFinish();
+
+    // show tool-tip
+    showPlotMouseTooltip();
 
     // compute axis pixel width or height
     {
@@ -675,7 +757,7 @@ void DashboardPage::drawPlots(DigitizerUi::DashboardPage::Mode mode) {
             const float offset = (mode == Mode::Layout) ? 5.f : 0.f;
 
             const bool  showTitle = false; // TODO: make this and the title itself a configurable/editable entity
-            ImPlotFlags plotFlags = ImPlotFlags_NoChild;
+            ImPlotFlags plotFlags = ImPlotFlags_NoChild | ImPlotFlags_NoMouseText;
             plotFlags |= showTitle ? ImPlotFlags_None : ImPlotFlags_NoTitle;
             plotFlags |= mode == Mode::Layout ? ImPlotFlags_None : ImPlotFlags_NoLegend;
 
