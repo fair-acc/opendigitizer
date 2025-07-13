@@ -53,6 +53,7 @@ using ModalPopup = stdex::c_resource<bool, ImGui::BeginPopupModal, ImGui::EndPop
 using Combo      = stdex::c_resource<bool, ImGui::BeginCombo, ImGui::EndCombo>;
 using Table      = stdex::c_resource<bool, ImGui::BeginTable, ImGui::EndTable>;
 using ListBox    = stdex::c_resource<bool, ImGui::BeginListBox, ImGui::EndListBox>;
+using ToolTip    = stdex::c_resource<bool, ImGui::BeginTooltip, ImGui::EndTooltip>;
 
 using OverrideId  = stdex::c_resource<void, ImGui::PushOverrideID, ImGui::PopID, true>;
 using ChangeId    = stdex::c_resource<void, static_cast<void (*)(int)>(ImGui::PushID), ImGui::PopID, true>;
