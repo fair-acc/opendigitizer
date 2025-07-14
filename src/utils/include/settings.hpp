@@ -90,7 +90,10 @@ private:
             return stringOnWasmHeap;
                }));
         std::string finalURL{finalURLChar, strlen(finalURLChar)};
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdollar-in-identifier-extension"
         EM_ASM({_free($0)}, finalURLChar);
+#pragma GCC diagnostic push
         auto url = opencmw::URI<opencmw::STRICT>(finalURL);
         if (url.port().has_value()) {
             port = url.port().value();
