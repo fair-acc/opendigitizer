@@ -39,7 +39,7 @@ if(EMSCRIPTEN)
     "SHELL:-s STACK_SIZE=5MB"
     --shell-file
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
-    "SHELL:-s PTHREAD_POOL_SIZE=30"
+    "SHELL:-s PTHREAD_POOL_SIZE=${GR_MAX_WASM_THREAD_COUNT}"
     "SHELL:-s USE_SDL=3"
     -fwasm-exceptions
     -pthread
@@ -47,6 +47,7 @@ if(EMSCRIPTEN)
     "--bind" # needed for Clipboard
   )
 endif()
+add_compile_definitions(GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT}) # propagate to C++
 
 # dependencies
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")

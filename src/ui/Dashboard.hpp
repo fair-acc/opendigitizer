@@ -37,7 +37,7 @@ class Graph;
 }
 
 namespace opendigitizer {
-class ImPlotSinkModel;
+struct ImPlotSinkModel;
 }
 
 namespace DigitizerUi {
