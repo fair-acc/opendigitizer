@@ -408,20 +408,20 @@ UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametriza
 }
 
 void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) {
-    updateFieldFrom(block.blockUniqueName, blockData, "uniqueName"s);
+    updateFieldFrom(block.blockUniqueName, blockData, "unique_name"s);
     updateFieldFrom(block.blockName, blockData, "name"s);
-    updateFieldFrom(block.blockTypeName, blockData, "typeName"s);
+    updateFieldFrom(block.blockTypeName, blockData, "type_name"s);
 
     if constexpr (std::is_same_v<std::remove_cvref_t<decltype(block)>, UiGraphBlock>) {
         updateFieldFrom(block.blockSettings, blockData, "settings"s);
-        updateFieldFrom(block.blockMetaInformation, blockData, "metaInformation"s);
+        updateFieldFrom(block.blockMetaInformation, blockData, "meta_information"s);
 
         block.blockSettings.erase("unique_name"s);
         block.updateBlockSettingsMetaInformation();
 
-        updateFieldFrom(block.blockCategory, blockData, "blockCategory"s);
-        updateFieldFrom(block.blockUiCategory, blockData, "uiCategory"s);
-        updateFieldFrom(block.blockIsBlocking, blockData, "isBlocking"s);
+        updateFieldFrom(block.blockCategory, blockData, "block_category"s);
+        updateFieldFrom(block.blockUiCategory, blockData, "ui_category"s);
+        updateFieldFrom(block.blockIsBlocking, blockData, "is_blocking"s);
 
         auto processPorts = [&block, &blockData](auto& portsCollection, std::string portsField, gr::PortDirection direction) {
             portsCollection.clear();
@@ -434,8 +434,8 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
             }
         };
 
-        processPorts(block.inputPorts, "inputPorts"s, gr::PortDirection::INPUT);
-        processPorts(block.outputPorts, "outputPorts"s, gr::PortDirection::OUTPUT);
+        processPorts(block.inputPorts, "input_ports"s, gr::PortDirection::INPUT);
+        processPorts(block.outputPorts, "output_ports"s, gr::PortDirection::OUTPUT);
 
         block.getAllContexts();
         block.getActiveContext();
@@ -449,22 +449,22 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
 }
 
 bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
-    updateFieldFrom(edge.edgeSourceBlockName, edgeData, "sourceBlock"s);
-    updateFieldFrom(edge.edgeDestinationBlockName, edgeData, "destinationBlock"s);
+    updateFieldFrom(edge.edgeSourceBlockName, edgeData, "source_block"s);
+    updateFieldFrom(edge.edgeDestinationBlockName, edgeData, "destination_block"s);
 
     auto portDefinitionFor = [&edgeData](const std::string& key) -> gr::PortDefinition {
         auto stringPortDefinition = getOptionalProperty<std::string>(edgeData, key);
         if (stringPortDefinition) {
             return gr::PortDefinition(*stringPortDefinition);
         } else {
-            auto topLevel = getProperty<std::size_t>(edgeData, key + ".topLevel");
-            auto subIndex = getProperty<std::size_t>(edgeData, key + ".subIndex");
+            auto topLevel = getProperty<std::size_t>(edgeData, key + ".top_level");
+            auto subIndex = getProperty<std::size_t>(edgeData, key + ".sub_index");
             return gr::PortDefinition(topLevel, subIndex);
         }
     };
 
-    edge.edgeSourcePortDefinition      = portDefinitionFor("sourcePort"s);
-    edge.edgeDestinationPortDefinition = portDefinitionFor("destinationPort"s);
+    edge.edgeSourcePortDefinition      = portDefinitionFor("source_port"s);
+    edge.edgeDestinationPortDefinition = portDefinitionFor("destination_port"s);
 
     auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
         auto [it, found] = findBlockIteratorByUniqueName(currentBlockName);
@@ -505,13 +505,13 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
     }
 
     updateFieldFrom(edge.edgeWeight, edgeData, "weight"s);
-    updateFieldFrom(edge.edgeName, edgeData, "edgeName"s);
-    updateFieldFrom(edge.edgeType, edgeData, "edgeType"s);
-    updateFieldFrom(edge.edgeMinBufferSize, edgeData, "minBufferSize"s);
-    updateFieldFrom(edge.edgeBufferSize, edgeData, "bufferSize"s);
-    updateFieldFrom(edge.edgeState, edgeData, "edgeState"s);
-    updateFieldFrom(edge.edgeNReaders, edgeData, "nReaders"s);
-    updateFieldFrom(edge.edgeNWriters, edgeData, "nWriters"s);
+    updateFieldFrom(edge.edgeName, edgeData, "edge_name"s);
+    updateFieldFrom(edge.edgeType, edgeData, "edge_type"s);
+    updateFieldFrom(edge.edgeMinBufferSize, edgeData, "min_buffer_size"s);
+    updateFieldFrom(edge.edgeBufferSize, edgeData, "buffer_size"s);
+    updateFieldFrom(edge.edgeState, edgeData, "edge_state"s);
+    updateFieldFrom(edge.edgeNReaders, edgeData, "n_readers"s);
+    updateFieldFrom(edge.edgeNWriters, edgeData, "n_writers"s);
     return true;
 }
 

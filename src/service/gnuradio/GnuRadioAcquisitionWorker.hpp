@@ -362,6 +362,10 @@ private:
                 }
 
                 if (pendingFlowGraph) {
+                    gr::graph::forEachBlock<gr::block::Category::All>(pendingFlowGraph, [&signalEntryBySink](const auto& block) {
+                        if (block.typeName().starts_with("gr::basic::DataSink")) {
+                        }
+                    });
                     pendingFlowGraph->forEachBlock([&signalEntryBySink](const auto& block) {
                         if (block.typeName().starts_with("gr::basic::DataSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block.uniqueName())];
