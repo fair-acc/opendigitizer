@@ -183,6 +183,26 @@ inline int formatMetric(double value, char* buff, int size, void* data) {
     return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:g}{}{}", scaledValue, prefix, unit));
 }
 
+inline std::string formatMinimalScientific(double value, int maxDecimals = 2) {
+    if (value == 0.0) {
+        return "0";
+    }
+
+    const int    exponent = static_cast<int>(std::floor(std::log10(std::abs(value))));
+    const double mantissa = value / std::pow(10.0, exponent);
+
+    std::string mantissaStr = std::format("{:.{}f}", mantissa, maxDecimals);
+    // trim trailing zeros and '.'
+    while (!mantissaStr.empty() && mantissaStr.back() == '0') {
+        mantissaStr.pop_back();
+    }
+    if (!mantissaStr.empty() && mantissaStr.back() == '.') {
+        mantissaStr.pop_back();
+    }
+
+    return std::format("{}E{}", mantissaStr, exponent);
+}
+
 inline int formatScientific(double value, char* buff, int size, void* data) {
     constexpr std::size_t  maxUnitLength = 10UZ;
     const std::string_view unit          = boundedStringView(static_cast<const char*>(data), maxUnitLength);
@@ -192,10 +212,10 @@ inline int formatScientific(double value, char* buff, int size, void* data) {
     }
 
     const double absVal = std::abs(value);
-    if (absVal >= 1e-3 && absVal < 10.0) {
+    if (absVal >= 1e-3 && absVal < 10000.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:.3g}{}", value, unit));
     } else {
-        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:.3g}E{:}", value / std::pow(10.0, std::floor(std::log10(absVal))), static_cast<int>(std::floor(std::log10(absVal)))));
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{}{}", formatMinimalScientific(value), unit));
     }
 }
 
