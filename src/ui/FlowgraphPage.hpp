@@ -18,7 +18,7 @@
 struct TestState;
 
 namespace opendigitizer {
-class ImPlotSinkModel;
+struct ImPlotSinkModel;
 }
 
 namespace DigitizerUi {
