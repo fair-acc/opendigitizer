@@ -472,6 +472,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
             } else if (block->updatePosition) {
+                std::println("update position {} {}", block->storedX, block->storedY);
+                std::flush(std::cout);
                 block->view->x        = block->storedX;
                 block->view->y        = block->storedY;
                 block->updatePosition = false;

@@ -248,11 +248,17 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         if (key == "ui_constraints"s) {
             const auto map = std::get<gr::property_map>(value);
             if (!map.empty()) {
-                (*blockIt)->storedX = std::get<float>(map.at("x"));
-                (*blockIt)->storedY = std::get<float>(map.at("y"));
+                float x = std::get<float>(map.at("x"));
+                float y = std::get<float>(map.at("y"));
 
-                std::println("Store uniqueName {} X {} Y {}", uniqueName, (*blockIt)->storedX, (*blockIt)->storedY);
-                (*blockIt)->updatePosition = true;
+                if ((*blockIt)->storedX != x || (*blockIt)->storedY != y) {
+                    (*blockIt)->storedX        = x;
+                    (*blockIt)->storedY        = y;
+                    (*blockIt)->updatePosition = true;
+
+                    std::println("StoredXY changed uniqueName {} X {} Y {}", uniqueName, (*blockIt)->storedX, (*blockIt)->storedY);
+                    std::flush(std::cout);
+                }
             }
         } else if (key != "unique_name"s) {
             (*blockIt)->blockSettings.insert_or_assign(key, value);
