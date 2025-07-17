@@ -53,7 +53,7 @@ enum class AxisScale : std::uint8_t {
     SymLog,        /// symmetric log scale
 };
 
-enum class LabelFormat : std::uint8_t { Auto = 0U, Metric, Scientific, Default };
+enum class LabelFormat : std::uint8_t { Auto = 0U, Metric, MetricInline, Scientific, None, Default };
 
 // Defines where the dashboard is stored and fetched from
 struct DashboardStorageInfo {

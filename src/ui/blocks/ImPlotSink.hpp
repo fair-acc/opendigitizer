@@ -236,6 +236,7 @@ struct ImPlotSinkModel {
 class ImPlotSinkManager {
 private:
     ImPlotSinkManager() = default;
+
     ~ImPlotSinkManager() {
         // Clear it now, otherwise sink dtor calls ImPlotSinkManager::unregisterPlotSink() but
         // ImPlotSinkManager would be partially-deleted already
@@ -335,7 +336,9 @@ namespace details {
 template<typename Fn>
 struct on_scope_exit {
     Fn function;
+
     on_scope_exit(Fn fn) : function(std::move(fn)) {}
+
     ~on_scope_exit() { function(); };
 };
 } // namespace details
@@ -353,6 +356,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     A<uint32_t, "plot color", Doc<"RGB color for the plot">>                                                                                              color         = 0U;
     A<gr::Size_t, "required buffer size", Doc<"Minimum number of samples to retain">>                                                                     required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
     A<std::string, "signal name", Visible, Doc<"Human-readable identifier for the signal">>                                                               signal_name;
+    A<std::string, "abscissa quantity", Visible, Doc<"Physical quantity of the primary (X) axis">>                                                        abscissa_quantity = "time";
+    A<std::string, "abscissa unit", Visible, Doc<"Unit of measurement of the primary (X) axis">>                                                          abscissa_unit     = "s";
     A<std::string, "signal quantity", Visible, Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
     A<std::string, "signal unit", Visible, Doc<"Unit of measurement for the signal values">>                                                              signal_unit;
     A<float, "signal min", Doc<"Minimum expected value for the signal">, Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min     = std::numeric_limits<float>::lowest();
@@ -363,7 +368,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     A<float, "history offset", Doc<"Time offset for historical data display">, Unit<"s">, Limits<float(0.0), std::numeric_limits<float>::max()>>          history_offset = 0.01f;
     A<bool, "plot tags", Doc<"true: draw the timing tags">>                                                                                               plot_tags      = true;
 
-    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
+    GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, abscissa_quantity, abscissa_unit, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
         dataset_index, n_history, history_offset, plot_tags);
 
     double _xUtcOffset = [] {
@@ -432,7 +437,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     }
 
     constexpr void processOne(const T& input) noexcept {
-        if (this->inputTagsPresent()) { // received tag
+        if (this->inputTagsPresent()) {
+            // received tag
             const gr::property_map& tag = this->_mergedInputTag.map;
 
             if (tag.contains(gr::tag::TRIGGER_TIME.shortKey())) {
@@ -516,7 +522,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             case LinearReverse: {
                 if constexpr (gr::DataSetLike<T>) {
                     return {xVal, yVal};
-                } else { // fundamental types
+                } else {
+                    // fundamental types
                     double xMax = ctx->xValues.back();
                     return {xVal - xMax, yVal};
                 }
@@ -528,7 +535,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             default: {
                 if constexpr (gr::DataSetLike<T>) {
                     return {xVal, yVal};
-                } else { // fundamental types
+                } else {
+                    // fundamental types
                     double xMin = ctx->xValues.front();
                     return {xVal - xMin, yVal};
                 }
@@ -552,7 +560,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if xValues can have long values
         } else if constexpr (gr::DataSetLike<T>) {
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
-            for (std::size_t historyIdx = nMax; historyIdx-- > 0;) { // draw newest DataSet last -> on top
+            for (std::size_t historyIdx = nMax; historyIdx-- > 0;) {
+                // draw newest DataSet last -> on top
                 const gr::DataSet<ValueType>& dataSet = _yValues.at(historyIdx);
                 // dimension checks
                 const std::size_t nsignals = dataSet.size();
@@ -564,7 +573,8 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
                 ImPlot::SetNextLineStyle(lineColor);
 
                 std::vector<double> xAxisDouble;
-                if constexpr (!std::is_same_v<ValueType, double>) { // TODO: find a smarter zero-copy solution
+                if constexpr (!std::is_same_v<ValueType, double>) {
+                    // TODO: find a smarter zero-copy solution
                     if (!dataSet.axis_values.empty()) {
                         auto xSpan = dataSet.axisValues(0UZ);
                         xAxisDouble.assign(xSpan.begin(), xSpan.end());
