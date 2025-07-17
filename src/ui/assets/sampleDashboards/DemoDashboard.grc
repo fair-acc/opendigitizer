@@ -26,6 +26,8 @@ blocks:
     parameters:
       dataset_index: 0
       signal_name: fft
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
       signal_quantity: magnitude
       signal_unit: dB
   - name: ClockSource
@@ -199,7 +201,7 @@ dashboard:
         - axis: Y
           min: NaN # enables auto-range for first axis
           max: NaN # enables auto-range for first axis
-          format: Default # options: Auto, Metric, Scientific, Default
+          format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
       sources:
         - sinesSink
       rect: [0, 0, 1, 1]
@@ -209,6 +211,7 @@ dashboard:
           min: 0.0001
           max: 0.5
           scale: Log10
+          format: MetricInline # options: Auto, Metric, MetricInline, Scientific, None, Default
         - axis: Y
           min: NaN
           max: NaN
@@ -227,7 +230,7 @@ dashboard:
         - axis: Y
           min: -100. # second axis min
           max: NaN # second axis max
-          format: Metric # options: Auto, Metric, Scientific, Default
+          format: Metric # options: Auto, Metric, MetricInline, Scientific, None, Default
       sources:
         - IntensitySink
         - DipoleCurrentSink

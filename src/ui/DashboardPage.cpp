@@ -33,13 +33,13 @@ struct AxisCategory {
     bool        plotTags = true;
 };
 
-std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
+std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCategory>, 3UZ>& cats, std::string_view qStr, std::string_view uStr, uint32_t colorDef) {
     for (std::size_t i = 0UZ; i < cats.size(); ++i) {
         // see if it already exists
         if (cats[i].has_value()) {
             const auto& cat = cats[i].value();
             if (cat.quantity == qStr && cat.unit == uStr) {
-                return static_cast<int>(i); // found match
+                return i; // found match
             }
         }
     }
@@ -54,7 +54,7 @@ std::optional<std::size_t> findOrCreateCategory(std::array<std::optional<AxisCat
     return std::nullopt; // no slot left
 }
 
-void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, std::array<std::optional<AxisCategory>, 3>& xCats, std::array<std::vector<std::string>, 3>& xAxisGroups, std::array<std::optional<AxisCategory>, 3>& yCats, std::array<std::vector<std::string>, 3>& yAxisGroups) {
+void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, std::array<std::optional<AxisCategory>, 3UZ>& xCats, std::array<std::vector<std::string>, 3UZ>& xAxisGroups, std::array<std::optional<AxisCategory>, 3UZ>& yCats, std::array<std::vector<std::string>, 3UZ>& yAxisGroups) {
     enum class AxisKind { X = 0, Y };
 
     xCats.fill(std::nullopt);
@@ -72,47 +72,36 @@ void assignSourcesToAxes(const Dashboard::Plot& plot, Dashboard& /*dashboard*/, 
             continue;
         }
 
-        // quantity, unit
-        std::string qStr, uStr;
-        if (auto qOpt = grBlock->settings().get("signal_quantity")) {
-            if (auto strPtr = std::get_if<std::string>(&*qOpt)) {
-                qStr = *strPtr;
-            }
-        }
-        if (auto uOpt = grBlock->settings().get("signal_unit")) {
-            if (auto strPtr = std::get_if<std::string>(&*uOpt)) {
-                uStr = *strPtr;
-            }
-        }
-
-        // axis kind = X or Y
-        AxisKind axisKind = AxisKind::Y; // default
-        if (auto axisOpt = grBlock->settings().get("signal_axis")) {
-            if (auto strPtr = std::get_if<std::string>(&*axisOpt)) {
-                if (*strPtr == "X") {
-                    axisKind = AxisKind::X;
+        const gr::property_map& settings   = grBlock->settings().get();
+        auto                    getSetting = [&settings]<typename T>(const T& defaultVal, std::string key) -> T {
+            if (auto it = settings.find(std::string{key}); it != settings.end()) {
+                if (const T* val = std::get_if<T>(&it->second)) {
+                    return *val;
                 }
             }
-        }
+            return defaultVal;
+        };
 
-        bool plotTagFlag = true;
-        if (auto tagOpt = grBlock->settings().get("plot_tags")) {
-            if (auto boolPtr = std::get_if<bool>(&*tagOpt)) {
-                plotTagFlag = *boolPtr;
-            }
-        }
+        // quantity, unit
+        std::array<std::string, 2UZ> qStr;
+        std::array<std::string, 2UZ> uStr;
+
+        qStr[0UZ]              = getSetting(""s, "abscissa_quantity");
+        uStr[0UZ]              = getSetting(""s, "abscissa_unit");
+        qStr[1UZ]              = getSetting(""s, "signal_quantity");
+        uStr[1UZ]              = getSetting(""s, "signal_unit");
+        const bool plotTagFlag = getSetting(true, "plot_tags");
 
         auto color = plotSinkBlock->color();
-        if (auto idx = findOrCreateCategory(axisKind == AxisKind::X ? xCats : yCats, qStr, uStr, color); idx) {
-            if (axisKind == AxisKind::X) {
-                xAxisGroups[idx.value()].push_back(plotSinkBlock->name());
-                xCats[idx.value()]->plotTags = plotTagFlag;
+        for (std::size_t axisID = 0UZ; axisID < 2UZ; ++axisID) {
+            std::array<std::optional<AxisCategory>, 3UZ>& cats       = axisID == 0UZ ? xCats : yCats;
+            std::array<std::vector<std::string>, 3UZ>&    axisGroups = axisID == 0UZ ? xAxisGroups : yAxisGroups;
+            if (auto idx = findOrCreateCategory(cats, qStr[axisID], uStr[axisID], color); idx) {
+                axisGroups[idx.value()].push_back(plotSinkBlock->name());
+                cats[idx.value()]->plotTags = plotTagFlag;
             } else {
-                yAxisGroups[idx.value()].push_back(plotSinkBlock->name());
-                yCats[idx.value()]->plotTags = plotTagFlag;
+                components::Notification::warning(std::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", axisID == 0UZ ? AxisKind::X : AxisKind::Y, plotSinkBlock->name(), qStr[axisID], uStr[axisID]));
             }
-        } else {
-            components::Notification::warning(std::format("No free slots for {} axis. Ignoring plotSinkBlock '{}' (q='{}', u='{}')\n", (axisKind == AxisKind::X ? "X" : "Y"), plotSinkBlock->name(), qStr, uStr));
         }
     }
 }
@@ -159,12 +148,11 @@ inline constexpr std::string_view boundedStringView(const char* ptr, std::size_t
 }
 
 inline int formatMetric(double value, char* buff, int size, void* data) {
-    constexpr std::array<double, 11>      kScales{1e15, 1e12, 1e9, 1e6, 1e3, 1.0, 1e-3, 1e-6, 1e-9, 1e-12, 1e-15};
-    constexpr std::array<const char*, 11> kPrefixes{"P", "T", "G", "M", "k", "", "m", "u", "n", "p", "f"};
-    constexpr std::size_t                 maxUnitLength = 10UZ;
+    constexpr std::array<double, 11UZ>      kScales{1e15, 1e12, 1e9, 1e6, 1e3, 1.0, 1e-3, 1e-6, 1e-9, 1e-12, 1e-15};
+    constexpr std::array<const char*, 11UZ> kPrefixes{"P", "T", "G", "M", "k", "", "m", "u", "n", "p", "f"};
+    constexpr std::size_t                   maxUnitLength = 10UZ;
 
     const std::string_view unit = boundedStringView(static_cast<const char*>(data), maxUnitLength);
-
     if (value == 0.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "0{}", unit));
     }
@@ -230,20 +218,21 @@ inline int formatDefault(double value, char* buff, int size, void* data) {
     return enforceNullTerminate(buff, size, std::format_to_n(buff, size, "{:g}{}", value, unit));
 }
 
-void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3>& xCats, const std::array<std::optional<AxisCategory>, 3>& yCats) {
+void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCategory>, 3UZ>& xCats, const std::array<std::optional<AxisCategory>, 3UZ>& yCats) {
     using Axis = Dashboard::Plot::AxisKind;
 
     const std::size_t nAxesX          = static_cast<std::size_t>(std::ranges::count_if(xCats, [](const auto& c) { return c.has_value(); }));
     const std::size_t nAxesY          = static_cast<std::size_t>(std::ranges::count_if(yCats, [](const auto& c) { return c.has_value(); }));
     const auto        setupSingleAxis = [&nAxesX, &nAxesY, &plot](ImAxis axisId, const std::optional<AxisCategory>& cat, float axisWidth, std::optional<Dashboard::Plot::AxisData*> axisConfigInfo = std::nullopt) {
-        if (axisId != ImAxis_X1 && !cat.has_value()) { // workaround for missing xCats definition
+        if (!cat.has_value()) {
+            // workaround for missing xCats definition
             return;
         }
 
         const bool      isX       = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
         const bool      finiteMin = axisConfigInfo.has_value() ? std::isfinite(axisConfigInfo.value()->min) : false;
         const bool      finiteMax = axisConfigInfo.has_value() ? std::isfinite(axisConfigInfo.value()->max) : false;
-        const AxisScale scale     = axisConfigInfo.has_value() ? axisConfigInfo.value()->scale : cat->scale;
+        const AxisScale scale     = axisConfigInfo.has_value() ? axisConfigInfo.value()->scale : cat.has_value() ? cat->scale : AxisScale::Linear;
 
         ImPlotAxisFlags flags = ImPlotAxisFlags_None;
         if (finiteMin && !finiteMax) {
@@ -258,7 +247,8 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         }
 
         bool pushedColor = false;
-        if (cat && (isX ? nAxesX > 1 : nAxesY > 1) && !isX) { // axis colour handling isn't enabled for the x-axis for the time being.
+        if (cat && (isX ? nAxesX > 1 : nAxesY > 1) && !isX) {
+            // axis colour handling isn't enabled for the x-axis for the time being.
             const auto   colorU32toImVec4 = [](uint32_t c) { return ImVec4{float((c >> 16) & 0xFF) / 255.f, float((c >> 8) & 0xFF) / 255.f, float((c >> 0) & 0xFF) / 255.f, 1.f}; };
             const ImVec4 col              = colorU32toImVec4(cat->color);
             ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
@@ -280,15 +270,15 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
             return std::format("...{}", original.substr(original.size() - fitCharCount));
         };
 
-        const std::string label = (scale == AxisScale::Time) ? "" : truncateLabel(buildLabel(cat, isX), axisWidth);
+        const LabelFormat format = axisConfigInfo.has_value() ? axisConfigInfo.value()->format : LabelFormat::Auto;
+        const std::string label  = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) ? "" : truncateLabel(buildLabel(cat, isX), axisWidth);
         ImPlot::SetupAxis(axisId, label.c_str(), flags);
 
         if (scale != AxisScale::Time) {
             constexpr std::array kMetricUnits{"s", "m", "A", "K", "V", "g", "eV", "Hz"};
             constexpr std::array kLinearUnits{"dB"}; // do not use exponential
-            const auto&          unit = (cat && !cat->unit.empty()) ? cat->unit : "";
+            const std::string&   unit = (cat && !cat->unit.empty()) ? cat->unit : "";
 
-            const LabelFormat format = axisConfigInfo.has_value() ? axisConfigInfo.value()->format : LabelFormat::Auto;
             using enum LabelFormat;
             switch (format) {
             case Auto:
@@ -297,11 +287,21 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
                 } else if (std::ranges::contains(kLinearUnits, unit)) {
                     ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
                 } else {
-                    ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr);
+                    if (isX) {
+                        constexpr const char* str = "s";
+                        ImPlot::SetupAxisFormat(axisId, formatMetric, (void*)str); // present workaround until x-axis category has been established.
+                    } else {
+                        ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr);
+                    }
                 }
                 break;
             case Metric: ImPlot::SetupAxisFormat(axisId, formatMetric, nullptr); break;
+            case MetricInline: {
+                const char* str = cat && !cat->unit.empty() ? cat->unit.c_str() : "";
+                ImPlot::SetupAxisFormat(axisId, formatMetric, (void*)str);
+            } break;
             case Scientific: ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr); break;
+            case None:
             case Default:
             default: ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
             }
@@ -508,13 +508,18 @@ inline void showPlotMouseTooltip(double on_delay_s = 1.0f, double off_delay_s = 
     }
 }
 
+// for inter-frame storage
+static std::map<Dashboard::Plot*, std::array<std::optional<AxisCategory>, 3UZ>> xCatsMap{};
+static std::map<Dashboard::Plot*, std::array<std::optional<AxisCategory>, 3UZ>> yCatsMap{};
+
 // Draw the multi-axis plot
 void DashboardPage::drawPlot(Dashboard::Plot& plot) noexcept {
     // 1) Build up two sets of categories for X & Y
-    std::array<std::optional<AxisCategory>, 3> xCats{};
-    std::array<std::vector<std::string>, 3>    xAxisGroups{};
-    std::array<std::optional<AxisCategory>, 3> yCats{};
-    std::array<std::vector<std::string>, 3>    yAxisGroups{};
+    std::array<std::optional<AxisCategory>, 3UZ> xCats = xCatsMap[&plot];
+    std::array<std::vector<std::string>, 3UZ>    xAxisGroups{};
+    std::array<std::optional<AxisCategory>, 3UZ> yCats = xCatsMap[&plot];
+    ;
+    std::array<std::vector<std::string>, 3UZ> yAxisGroups{};
 
     assignSourcesToAxes(plot, *m_dashboard, xCats, xAxisGroups, yCats, yAxisGroups);
 
