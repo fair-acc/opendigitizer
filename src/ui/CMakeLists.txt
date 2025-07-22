@@ -173,7 +173,6 @@ target_link_libraries(
          core
          client
          stb
-         sample_dashboards
          fonts
          digitizer_settings
          digitizer_common_utils
@@ -191,6 +190,11 @@ target_link_libraries(
          GrHttpBlocksShared
          GrMathBlocksShared
          GrTestingBlocksShared)
+if(OD_DISABLE_DEMO_FLOWGRAPHS)
+  target_compile_definitions(${target_name}lib PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
+else()
+  target_link_libraries(${target_name}lib PUBLIC sample_dashboards)
+endif()
 target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(${target_name} PRIVATE ${target_name}lib)
