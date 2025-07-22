@@ -76,6 +76,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) {
         // also request the list to be sent immediately
         command.command = opencmw::mdp::Command::Get;
         m_restClient->request(command);
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
     } else if (path.starts_with("example://")) {
         auto fs  = cmrc::sample_dashboards::get_filesystem();
         auto dir = fs.iterate_directory("assets/sampleDashboards/");
@@ -84,6 +85,7 @@ void OpenDashboardPage::addDashboard(std::string_view path) {
                 addDashboard(storageInfo, d.filename().substr(0, d.filename().size() - 4));
             }
         }
+#endif
     } else {
 #ifndef EMSCRIPTEN
         namespace fs = std::filesystem;

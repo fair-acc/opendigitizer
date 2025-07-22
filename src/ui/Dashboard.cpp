@@ -100,6 +100,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
 
         client->request(command);
         return;
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
     } else if (storageInfo->path.starts_with("example://")) {
         std::array<std::string, N> reply;
         auto                       fs = cmrc::sample_dashboards::get_filesystem();
@@ -117,6 +118,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
         }
         cb(std::move(reply));
         return;
+#endif
     } else {
 #ifndef EMSCRIPTEN
         auto          path = std::filesystem::path(storageInfo->path) / name;
