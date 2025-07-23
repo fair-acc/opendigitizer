@@ -6,22 +6,15 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/../../demo_sslcert/demo_public.crt" DESTI
 
 target_link_directories(qa_GnuRadioWorker PRIVATE ${CMAKE_BINARY_DIR}/_deps/ngtcp2-install/lib)
 
-find_package(OpenSSL REQUIRED)
-
 target_link_libraries(
   qa_GnuRadioWorker
   PRIVATE ut
-          ngtcp2
-          ngtcp2_crypto_ossl
-          OpenSSL::SSL
-          OpenSSL::Crypto
           gr-fourier
           gr-testing
           gnuradio-blocklib-core
           od_gnuradio_worker
           digitizer_common_utils
           services
-          core
           client
           od_rest
           zmq)
