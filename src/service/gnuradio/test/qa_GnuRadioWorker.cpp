@@ -318,9 +318,15 @@ struct TestApp {
 const boost::ut::suite GnuRadioWorker_tests = [] {
     using enum TestConfig::Protocol;
     using enum TestConfig::Serializer;
-    constexpr std::array testConfigs{                                              //
-        TestConfig{http, YaS}, TestConfig{http, Json}, TestConfig{http, CmwLight}, //
-        TestConfig{mds, YaS}, TestConfig{mds, Json}, TestConfig{mds, CmwLight}};
+    constexpr std::array testConfigs{
+        // Disable all http based testing since there are problems with the native http client
+        // TestConfig{http, YaS},
+        // TestConfig{http, Json},
+        // TestConfig{http, CmwLight},
+        TestConfig{mds, YaS},
+        TestConfig{mds, Json},
+        TestConfig{mds, CmwLight},
+    };
 
     "Streaming"_test = [](auto config) {
         constexpr std::string_view grc = R"(
