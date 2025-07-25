@@ -100,6 +100,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
 
         client->request(command);
         return;
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
     } else if (storageInfo->path.starts_with("example://")) {
         std::array<std::string, N> reply;
         auto                       fs = cmrc::sample_dashboards::get_filesystem();
@@ -117,6 +118,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
         }
         cb(std::move(reply));
         return;
+#endif
     } else {
 #ifndef EMSCRIPTEN
         auto          path = std::filesystem::path(storageInfo->path) / name;
@@ -264,9 +266,9 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
 
         if (const auto dashboardUri = opencmw::URI<>(std::string(m_desc->storageInfo->path)); dashboardUri.hostName().has_value()) {
             const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
-            grGraph.forEachBlockMutable([&remoteUri](auto& block) {
-                if (block.typeName().starts_with("opendigitizer::RemoteStreamSource") || block.typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
-                    auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block.raw());
+            gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri, this](auto& block) {
+                if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
+                    auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
                     sourceBlock->host = remoteUri.str();
                 }
             });

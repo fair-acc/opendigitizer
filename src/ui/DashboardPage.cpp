@@ -249,7 +249,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
         bool pushedColor = false;
         if (cat && (isX ? nAxesX > 1 : nAxesY > 1) && !isX) {
             // axis colour handling isn't enabled for the x-axis for the time being.
-            const auto   colorU32toImVec4 = [](uint32_t c) { return ImVec4{float((c >> 16) & 0xFF) / 255.f, float((c >> 8) & 0xFF) / 255.f, float((c >> 0) & 0xFF) / 255.f, 1.f}; };
+            const auto   colorU32toImVec4 = [](uint32_t c) { return ImVec4{float((c >> 0) & 0xFF) / 255.f, float((c >> 8) & 0xFF) / 255.f, float((c >> 16) & 0xFF) / 255.f, 1.f}; };
             const ImVec4 col              = colorU32toImVec4(cat->color);
             ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
             ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);

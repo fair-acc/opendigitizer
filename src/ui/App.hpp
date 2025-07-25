@@ -156,7 +156,9 @@ public:
             }
         };
         openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
         openDashboardPage.addDashboard("example://builtin-samples");
+#endif
 
         // Flowgraph page
         flowgraphPage.requestBlockControlsPanel = [&](components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool horizontalSplit) {

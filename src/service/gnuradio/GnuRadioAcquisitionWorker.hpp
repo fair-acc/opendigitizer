@@ -70,9 +70,9 @@ inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property
 }
 
 template<typename T>
-inline std::optional<T> getSetting(const gr::BlockModel& block, const std::string& key) {
+inline std::optional<T> getSetting(const std::shared_ptr<gr::BlockModel>& block, const std::string& key) {
     try {
-        const auto setting = block.settings().get(key);
+        const auto setting = block->settings().get(key);
         if (!setting) {
             return {};
         }
@@ -205,7 +205,6 @@ class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, 
     std::unique_ptr<gr::Graph>                                                    _pendingFlowGraph;
     std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>> _scheduler;
     std::mutex                                                                    _graphChangeMutex;
-    std::shared_ptr<thread_pool::BasicThreadPool>                                 _threadPool = std::make_shared<thread_pool::BasicThreadPool>("scheduler_Pool", gr::thread_pool::CPU_BOUND, 2, 2);
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
@@ -362,16 +361,16 @@ private:
                 }
 
                 if (pendingFlowGraph) {
-                    pendingFlowGraph->forEachBlock([&signalEntryBySink](const auto& block) {
-                        if (block.typeName().starts_with("gr::basic::DataSink")) {
-                            SignalEntry& entry = signalEntryBySink[std::string(block.uniqueName())];
+                    gr::graph::forEachBlock<gr::block::Category::NormalBlock>(*pendingFlowGraph, [&signalEntryBySink](const auto& block) {
+                        if (block->typeName().starts_with("gr::basic::DataSink")) {
+                            SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::Plain;
                             entry.name         = detail::getSetting<std::string>(block, "signal_name").value_or("");
                             entry.quantity     = detail::getSetting<std::string>(block, "signal_quantity").value_or("");
                             entry.unit         = detail::getSetting<std::string>(block, "signal_unit").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
-                        } else if (block.typeName().starts_with("gr::basic::DataSetSink")) {
-                            SignalEntry& entry = signalEntryBySink[std::string(block.uniqueName())];
+                        } else if (block->typeName().starts_with("gr::basic::DataSetSink")) {
+                            SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::DataSet;
                             entry.name         = detail::getSetting<std::string>(block, "signal_name").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
@@ -381,7 +380,7 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
-                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph), _threadPool);
+                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();
                     std::ignore            = _messagesToScheduler->connect(_scheduler->msgIn);

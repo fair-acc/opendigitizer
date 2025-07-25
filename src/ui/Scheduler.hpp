@@ -12,9 +12,6 @@ namespace DigitizerUi {
 
 struct Scheduler {
 private:
-    // The thread limit here is mainly for emscripten because the default thread pool will exhaust the browser's limits and be recreated for every new scheduler
-    std::shared_ptr<gr::thread_pool::BasicThreadPool> schedulerThreadPool = std::make_shared<gr::thread_pool::BasicThreadPool>("scheduler-pool", gr::thread_pool::CPU_BOUND, 1, 1);
-
     // TODO: When GR gets a type-erased scheduler, this will be replaced with it
     struct SchedulerModel {
         virtual ~SchedulerModel() noexcept                        = default;
@@ -200,7 +197,7 @@ private:
 public:
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
-        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)..., schedulerThreadPool);
+        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)...);
     }
 
     template<typename... Args>

@@ -21,7 +21,6 @@ using namespace std::string_literals;
 
 struct Dashboard {
     std::string header;
-    std::string dashboard;
     std::string flowgraph;
 };
 
@@ -94,9 +93,7 @@ public:
                         while (true) {
                             auto             split = view.find(',');
                             std::string_view w(view.data(), split != view.npos ? split : view.size());
-                            if (w == "dashboard") {
-                                append(ds->dashboard);
-                            } else if (w == "flowgraph") {
+                            if (w == "flowgraph") {
                                 append(ds->flowgraph);
                             } else {
                                 append(ds->header);
@@ -133,10 +130,7 @@ public:
                     memcpy(&size, body.data(), 4);
                     std::string data = std::string(reinterpret_cast<char*>(body.data()) + 4, std::size_t(size - 1));
 
-                    if (what == "dashboard") {
-                        ds->dashboard = std::move(data);
-                        ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(ds->dashboard));
-                    } else if (what == "flowgraph") {
+                    if (what == "flowgraph") {
                         ds->flowgraph = std::move(data);
                         ctx.reply.data.put<opencmw::IoBuffer::WITHOUT>(std::move(ds->flowgraph));
                     } else {
@@ -174,13 +168,12 @@ public:
         auto& settings = Digitizer::Settings::instance();
         try {
             for (const auto& dir : std::filesystem::directory_iterator(settings.remoteDashboards)) {
-                if (!dir.is_directory() || !exists(dir.path() / "header") || !exists(dir.path() / "dashboard") || !exists(dir.path() / "flowgraph")) {
+                if (!dir.is_directory() || !exists(dir.path() / "header") || !exists(dir.path() / "flowgraph")) {
                     continue;
                 }
                 std::string name = dir.path().filename();
                 Dashboard   dashboard;
                 readFile(dir.path() / "header", dashboard.header);
-                readFile(dir.path() / "dashboard", dashboard.dashboard);
                 readFile(dir.path() / "flowgraph", dashboard.flowgraph);
                 names.push_back(name);
                 dashboards.push_back(dashboard);
