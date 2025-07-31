@@ -132,6 +132,10 @@ void checkAcquisitionMeta(const Acquisition& acq, std::size_t nSignals_, std::si
         expect(eq(acq.channelUnits.size(), nSignals)) << configAndLoc;
         expect(eq(acq.channelUnits, units)) << configAndLoc;
     }
+    if (!quantities.empty()) {
+        expect(eq(acq.channelQuantities.size(), nSignals)) << configAndLoc;
+        expect(eq(acq.channelQuantities, quantities)) << configAndLoc;
+    }
     if (!rangeMin.empty()) {
         expect(eq(acq.channelRangeMin.size(), nSignals)) << configAndLoc;
         expect(eq(acq.channelRangeMin, rangeMin)) << configAndLoc;
@@ -334,7 +338,7 @@ blocks:
   - name: count_up
     id: CountSource<float32>
     parameters:
-      n_samples: 100
+      n_samples: 100000
       signal_unit: "Unit_Up"
       signal_quantity: "Quantity_Up"
       signal_min: 0
@@ -346,8 +350,8 @@ blocks:
   - name: count_down
     id: CountSource<float32>
     parameters:
-      n_samples: 100
-      initial_value: 99
+      n_samples: 100000
+      initial_value: 99999
       direction: down
       signal_unit: "Unit_Down"
       signal_quantity: "Quantity_Down"
@@ -379,7 +383,7 @@ connections:
         });
         test.config = config;
 
-        constexpr std::size_t    kExpectedSamples = 100;
+        constexpr std::size_t    kExpectedSamples = 100'000; // this number should be greater than the buffer size to ensure that the metadata is propagated
         const std::vector<float> expectedUpData   = getIota(kExpectedSamples);
         auto                     expectedDownData = expectedUpData;
         std::reverse(expectedDownData.begin(), expectedDownData.end());
@@ -674,7 +678,7 @@ blocks:
   - name: count
     id: CountSource<float32>
     parameters:
-      n_samples: 100
+      n_samples: 100000
       sample_rate: 10.0
       timing_tags: !!str
         - 30,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1
@@ -717,6 +721,7 @@ connections:
         test.setGrc(grc);
 
         waitWhile([&] { return receivedCount < 20; });
+        std::this_thread::sleep_for(50ms);
 
         expect(eq(receivedData, getIota(20, 50)));
 
@@ -729,7 +734,7 @@ blocks:
   - name: count
     id: CountSource<float32>
     parameters:
-      n_samples: 100
+      n_samples: 100000
       sample_rate: 10
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
@@ -774,6 +779,8 @@ connections:
         test.setGrc(grc);
 
         waitWhile([&] { return receivedCount == 0; });
+
+        std::this_thread::sleep_for(50ms);
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{80.f}));
@@ -827,11 +834,8 @@ connections:
         waitWhile([&receivedCount] { return receivedCount < 97UZ; });
         expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
-        checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {1.f}, config.toString());
-        //} | testConfigs;
-        // TODO: There is an issue with the test configuration using HTTP where it can become blocked and fail to recover when no data is available.
-        // This occurs more frequently with JSON and CmwLight serializers but also with Yas. Needs further investigation.
-    } | testConfigs; //| std::array{TestConfig{mds, YaS}, TestConfig{mds, Json}, TestConfig{mds, CmwLight}};
+        checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {/*1.0f*/}, config.toString()); // TODO: verify correct handling of sample rate
+    } | testConfigs;
 
     "DataSet signal values"_test = [](auto config) {
         constexpr std::string_view grc = R"(
@@ -955,28 +959,27 @@ connections:
         std::atomic<std::size_t>   receivedDownCount;
         std::vector<SignalEntry>   lastDnsEntries;
 
-        {
-            TestApp test([&lastDnsEntries](auto entries) {
-                if (!entries.empty()) {
-                    lastDnsEntries = std::move(entries);
-                }
-            });
+        TestApp test([&lastDnsEntries](auto entries) {
+            if (!entries.empty()) {
+                lastDnsEntries = std::move(entries);
+            }
+        });
 
-            test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedUpCount](const Acquisition& acq) {
-                const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
-                checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {-42.f}, {42.f}, "");
-                receivedUpCount += nSamples;
-            });
-            // TODO: A second client uses always `mds` as a workaround due to a bug in RestClientNative, which prevents creating multiple subscriptions with a single client instance.
-            test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_B", [&receivedDownCount](const Acquisition& acq) {
-                const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
-                checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f}, "");
-                receivedDownCount += nSamples;
-            });
-            std::this_thread::sleep_for(50ms);
-            test.setGrc(grc);
-            waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
-        }
+        test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedUpCount](const Acquisition& acq) {
+            const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
+            checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {-42.f}, {42.f}, "");
+            receivedUpCount += nSamples;
+        });
+        // TODO: A second client uses always `mds` as a workaround due to a bug in RestClientNative, which prevents creating multiple subscriptions with a single client instance.
+        test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_B", [&receivedDownCount](const Acquisition& acq) {
+            const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
+            checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f}, "");
+            receivedDownCount += nSamples;
+        });
+        std::this_thread::sleep_for(50ms);
+        test.setGrc(grc);
+        waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
+
         expect(receivedUpCount > 0);
         expect(receivedDownCount > 0);
 

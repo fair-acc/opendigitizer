@@ -30,6 +30,12 @@ namespace {
 // makes it hard to access ImGuiTestApp. ImGui's suggested way is to pass in its "void *userData"
 // member, but let's rather be explicit and store it in a typed variable.
 
+void registerDefaultThreadPool() {
+    using namespace gr::thread_pool;
+    Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 1U, 1U), "CPU"));
+    Manager::instance().replacePool(std::string(kDefaultIoPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultIoPoolId), TaskType::IO_BOUND, 0U), "IO"));
+}
+
 inline static ImGuiTestApp* g_testApp = nullptr;
 
 inline static bool ImGuiApp_CreateWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
@@ -111,6 +117,7 @@ inline static bool ImGuiApp_CaptureFramebuffer(ImGuiApp* app, ImGuiViewport* vie
 
 ImGuiTestApp::ImGuiTestApp(const TestOptions& options) : _options(options) {
     assert(g_testApp == nullptr);
+    registerDefaultThreadPool();
     g_testApp = this;
 }
 
