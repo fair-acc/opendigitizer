@@ -169,19 +169,23 @@ private:
 
         std::expected<void, gr::Error> start() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
-            return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
+            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
+            return {};
         }
         std::expected<void, gr::Error> stop() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
-            return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");
+            return {};
         }
         std::expected<void, gr::Error> pause() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
-            return _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE);
+            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_PAUSE))}}, "UI");
+            return {};
         }
         std::expected<void, gr::Error> resume() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
-            return _scheduler.changeStateTo(gr::lifecycle::State::RUNNING);
+            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
+            return {};
         }
 
         gr::lifecycle::State state() const final { return _scheduler.state(); }
