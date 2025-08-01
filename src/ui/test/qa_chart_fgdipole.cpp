@@ -122,6 +122,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(implotIntensitySink->state() == gr::lifecycle::STOPPED) << "implotIntensitySink not in STOPPED state";
                 expect(implotDipoleDataSetSink->state() == gr::lifecycle::STOPPED) << "implotDipoleDataSetSink not in STOPPED state";
                 g_state.stopScheduler();
+                std::this_thread::sleep_for(50ms); // allow the scheduler to change it's state to stopped, since this is now message based and not immediate
                 expect(g_state.dashboard->scheduler()->state() == gr::lifecycle::STOPPED) << "g_state.scheduler not in STOPPED state";
                 captureScreenshot(*ctx);
             };
