@@ -323,10 +323,9 @@ const boost::ut::suite GnuRadioWorker_tests = [] {
     using enum TestConfig::Protocol;
     using enum TestConfig::Serializer;
     constexpr std::array testConfigs{
-        // Disable all http based testing since there are problems with the native http client
-        // TestConfig{http, YaS},
-        // TestConfig{http, Json},
-        // TestConfig{http, CmwLight},
+        TestConfig{http, YaS},
+        TestConfig{http, Json},
+        TestConfig{http, CmwLight},
         TestConfig{mds, YaS},
         TestConfig{mds, Json},
         TestConfig{mds, CmwLight},
@@ -417,6 +416,7 @@ connections:
         expect(eq(receivedDownData.size(), kExpectedSamples)) << config.toString();
         expect(eq(receivedDownData, expectedDownData)) << config.toString();
 
+        std::this_thread::sleep_for(50ms);
         checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {}, config.toString());
     } | testConfigs;
 
