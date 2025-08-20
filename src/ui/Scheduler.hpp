@@ -7,7 +7,8 @@
 
 #include "GraphModel.hpp"
 #include "components/ImGuiNotify.hpp"
-
+inline static std::atomic<int> schedCounter{0};  // remove this diagnostics eventually
+inline static std::atomic<int> schedCounter2{0}; // remove this diagnostics eventually
 namespace DigitizerUi {
 
 struct Scheduler {
@@ -86,6 +87,8 @@ private:
 
             case gr::lifecycle::State::RUNNING:
                 _thread = std::thread([this]() {
+                    const int id = schedCounter.fetch_add(1);
+                    gr::thread_pool::thread::setProcessName(std::format("UiScheduler #{}", id));
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
                             throw std::format("Failed to initialize flowgraph");
@@ -102,6 +105,7 @@ private:
             case gr::lifecycle::State::REQUESTED_PAUSE:
             case gr::lifecycle::State::PAUSED:
                 _thread = std::thread([this]() {
+                    gr::thread_pool::thread::setProcessName("UiScheduler #2 (paused)");
                     // Lifecycle doesn't allow INITIALIZE->PAUSED
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
@@ -201,7 +205,7 @@ private:
 public:
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {
-        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)...);
+        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)..., gr::thread_pool::kDefaultCpuPoolId);
     }
 
     template<typename... Args>

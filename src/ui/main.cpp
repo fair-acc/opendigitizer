@@ -36,7 +36,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
-#include "blocks/SineSource.hpp"
 #include "blocks/TagToSample.hpp"
 
 #include <version.hpp>
@@ -114,6 +113,7 @@ int main(int argc, char** argv) {
 #else
     app.executable = argv[0];
 #endif
+    gr::thread_pool::thread::setProcessName(std::format("main: {}", app.executable));
 
     LookAndFeel::mutableInstance().loadFonts();
 
