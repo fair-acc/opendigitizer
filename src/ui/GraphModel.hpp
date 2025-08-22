@@ -56,8 +56,8 @@ struct UiGraphBlock {
     std::optional<ViewData> view;
 
     struct StoredXY {
-        long x = 0;
-        long y = 0;
+        float x = 0;
+        float y = 0;
     };
     std::optional<StoredXY> storedXY;
 

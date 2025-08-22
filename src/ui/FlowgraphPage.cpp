@@ -464,8 +464,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
             if (!block->view.has_value()) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 block->view    = UiGraphBlock::ViewData{
-                       .x      = block->storedXY.has_value() ? block->storedXY.value().x : boundingBox.minX,
-                       .y      = block->storedXY.has_value() ? block->storedXY.value().y : boundingBox.maxY,
+                       .x      = block->storedXY.has_value() ? block->storedXY->x : boundingBox.minX,
+                       .y      = block->storedXY.has_value() ? block->storedXY->y : boundingBox.maxY,
                        .width  = blockSize[0],
                        .height = blockSize[1],
                 };
@@ -475,8 +475,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
                 graphModel.setRearrangeBlocks(true);
             } else if (block->updatePosition) {
-                block->view->x        = block->storedXY.value().x;
-                block->view->y        = block->storedXY.value().y;
+                block->view->x        = block->storedXY.has_value() ? block->storedXY->x : boundingBox.minX;
+                block->view->y        = block->storedXY.has_value() ? block->storedXY->y : boundingBox.maxY;
                 block->updatePosition = false;
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
             } else if (ax::NodeEditor::GetWasUserPositioned(blockId)) {

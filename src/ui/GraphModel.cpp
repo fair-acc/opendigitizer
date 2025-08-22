@@ -48,24 +48,31 @@ void pretty_print_map(const gr::property_map& map, std::size_t level = 0) {
     }
 }
 
-template<typename T>
+template<typename T, bool allow_conversion = false>
 inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName) {
     auto it = map.find(propertyName);
     if (it == map.cend()) {
         return std::unexpected(gr::Error(std::format("Missing field {} in YAML object", propertyName)));
     }
 
-    auto* value = std::get_if<T>(&it->second);
-    if (value == nullptr) {
-        std::println("WARNING: Wrong type of {} in:", propertyName);
-        pretty_print_map(map, 1);
-        return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type index={} instead of {}", propertyName, it->second.index(), gr::meta::type_name<T>())));
-    }
+    if constexpr (!allow_conversion) {
+        auto* value = std::get_if<T>(&it->second);
+        if (value == nullptr) {
+            std::println("WARNING: Wrong type of {} in:", propertyName);
+            pretty_print_map(map, 1);
+            return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type index={} instead of {}", propertyName, it->second.index(), gr::meta::type_name<T>())));
+        }
 
-    return {*value};
+        return {*value};
+    } else {
+        return std::visit(gr::meta::overloaded(                                                                         //
+                              [](std::convertible_to<T> auto value) -> std::expected<T, gr::Error> { return {value}; }, //
+                              [&](auto) -> std::expected<T, gr::Error> { return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type index={} instead of {}", propertyName, it->second.index(), gr::meta::type_name<T>()))); }),
+            it->second);
+    }
 }
 
-template<typename T>
+template<typename T, bool allow_conversion = false>
 inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName, auto... propertySubNames)
 requires(sizeof...(propertySubNames) > 0)
 {
@@ -80,7 +87,7 @@ requires(sizeof...(propertySubNames) > 0)
         return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type index={} instead of gr::property_map", propertyName, it->second.index())));
     }
 
-    return getOptionalProperty<T>(*value, propertySubNames...);
+    return getOptionalProperty<T, allow_conversion>(*value, propertySubNames...);
 }
 
 template<typename T, typename... Keys>
@@ -285,9 +292,9 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     for (const auto& [key, value] : data) {
         if (key == "ui_constraints"s) {
             const auto map = std::get<gr::property_map>(value);
-            if (!map.empty() && std::holds_alternative<long>(map.at("x")) && std::holds_alternative<long>(map.at("y"))) {
-                auto x = std::get<long>(map.at("x"));
-                auto y = std::get<long>(map.at("y"));
+            if (!map.empty()) {
+                const auto x = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto x) { return static_cast<float>(x); }, [](auto) { return 0.0f; }), map.at("x"));
+                const auto y = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto y) { return static_cast<float>(y); }, [](auto) { return 0.0f; }), map.at("y"));
 
                 if (!(*blockIt)->storedXY.has_value() || ((*blockIt)->storedXY.value().x != x || (*blockIt)->storedXY.value().y != y)) {
                     (*blockIt)->storedXY = UiGraphBlock::StoredXY{
@@ -490,8 +497,8 @@ void UiGraphModel::setBlockData(auto& block, const gr::property_map& blockData) 
                 if (auto uiConstraintsIt = parameters->find("ui_constraints"); uiConstraintsIt != parameters->end()) {
                     const auto* uiConstraints = std::get_if<gr::property_map>(&(uiConstraintsIt->second));
                     if (uiConstraints) {
-                        auto x = getOptionalProperty<long>(*uiConstraints, "x");
-                        auto y = getOptionalProperty<long>(*uiConstraints, "y");
+                        auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
+                        auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
 
                         if (x && y && (!block.storedXY.has_value() || (block.storedXY->x != *x || block.storedXY->y != *y))) {
                             block.storedXY = UiGraphBlock::StoredXY{
@@ -654,8 +661,8 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
 
 void UiGraphBlock::storeXY() {
     storedXY = UiGraphBlock::StoredXY{
-        .x = static_cast<long>(view->x),
-        .y = static_cast<long>(view->y),
+        .x = view->x,
+        .y = view->y,
     };
 
     ownerGraph->sendMessage(gr::Message{
