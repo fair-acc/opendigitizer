@@ -16,38 +16,6 @@
 using namespace std::string_literals;
 
 namespace {
-void pretty_print_map(const gr::property_map& map, std::size_t level = 0) {
-    for (const auto& [k, v] : map) {
-        std::print("{}{} -> ", std::string(4 * level, ' '), k);
-        std::visit(gr::meta::overloaded(
-                       [level](const gr::property_map& sub) {
-                           std::println();
-                           pretty_print_map(sub, level + 1);
-                       },
-                       [](const std::string& val) {
-                           auto newline = std::ranges::find(val, '\n');
-                           std::print("'{}'", std::string(val.begin(), newline));
-                           if (newline == val.cend()) {
-                               std::println("...");
-                           } else {
-                               std::println(".");
-                           }
-                       },
-                       []<typename T>(const T& val) {
-                           if constexpr (std::is_integral_v<T>) {
-                               std::println("{}", val);
-                           } else if constexpr (std::is_same_v<T, float>) {
-                               std::println("{}", val);
-                           } else if constexpr (std::is_same_v<T, double>) {
-                               std::println("{}", val);
-                           } else {
-                               std::println("[unsup.]");
-                           }
-                       }),
-            v);
-    }
-}
-
 template<typename T, bool allow_conversion = false>
 inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName) {
     auto it = map.find(propertyName);
@@ -58,8 +26,6 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
     if constexpr (!allow_conversion) {
         auto* value = std::get_if<T>(&it->second);
         if (value == nullptr) {
-            std::println("WARNING: Wrong type of {} in:", propertyName);
-            pretty_print_map(map, 1);
             return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type index={} instead of {}", propertyName, it->second.index(), gr::meta::type_name<T>())));
         }
 
@@ -114,10 +80,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
 
     const auto& data = *message.data;
 
-    auto uniqueName = [&data](const std::string& key = "unique_name"s) {
+    auto uniqueName = [&data](const std::string_view& key = gr::serialization_fields::BLOCK_UNIQUE_NAME) {
         auto it = data.find(key);
         if (it == data.end()) {
-            std::println("GREPME error {} has no {}", data, key);
             return std::string();
         }
 
@@ -293,8 +258,8 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         if (key == "ui_constraints"s) {
             const auto map = std::get<gr::property_map>(value);
             if (!map.empty()) {
-                const auto x = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto x) { return static_cast<float>(x); }, [](auto) { return 0.0f; }), map.at("x"));
-                const auto y = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto y) { return static_cast<float>(y); }, [](auto) { return 0.0f; }), map.at("y"));
+                const auto x = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto _x) { return static_cast<float>(_x); }, [](auto) { return 0.0f; }), map.at("x"));
+                const auto y = std::visit(gr::meta::overloaded([](std::convertible_to<float> auto _y) { return static_cast<float>(_y); }, [](auto) { return 0.0f; }), map.at("y"));
 
                 if (!(*blockIt)->storedXY.has_value() || ((*blockIt)->storedXY.value().x != x || (*blockIt)->storedXY.value().y != y)) {
                     (*blockIt)->storedXY = UiGraphBlock::StoredXY{
@@ -306,7 +271,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
                     _rearrangeBlocks = true;
                 }
             }
-        } else if (key != "unique_name"s) {
+        } else if (key != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
             (*blockIt)->blockSettings.insert_or_assign(key, value);
             (*blockIt)->updateBlockSettingsMetaInformation();
         }
