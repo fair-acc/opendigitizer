@@ -55,6 +55,15 @@ struct UiGraphBlock {
     };
     std::optional<ViewData> view;
 
+    struct StoredXY {
+        float x = 0;
+        float y = 0;
+    };
+    std::optional<StoredXY> storedXY;
+
+    bool updatePosition = false;
+    void storeXY();
+
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
@@ -187,7 +196,7 @@ public:
      */
     bool rearrangeBlocks() const;
 
-    void setRearrangedBlocks();
+    void setRearrangeBlocks(bool rearrange);
 
 private:
     auto findBlockIteratorByUniqueName(const std::string& uniqueName);

@@ -1,7 +1,7 @@
 blocks:
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       do_zero_order_hold: true
       n_samples_max: 0
       sample_rate: 1000
@@ -12,210 +12,212 @@ blocks:
         - 1000000000
       tag_values: !!str
         - "systemtime"
-  - name: SignalGeneratorA
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGeneratorA
       frequency: 50
       amplitude: 5
       signal_type: Sin
       sample_rate: 1000
-  - name: SignalGeneratorB
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
-      frequency: 50
-      amplitude: 5
-      signal_type: Sin
-      sample_rate: 1000
-      phase: 2.0944
-  - name: SignalGeneratorC
-    id: gr::basic::SignalGenerator<float32>
-    parameters:
-      frequency: 50
-      amplitude: 5
-      signal_type: Sin
-      sample_rate: 1000
-      phase: 4.18879
-  - name: SignalGeneratorD
-    id: gr::basic::SignalGenerator<float32>
-    parameters:
-      frequency: 50
-      amplitude: 5
-      signal_type: Sin
-      sample_rate: 1000
-  - name: SignalGeneratorE
-    id: gr::basic::SignalGenerator<float32>
-    parameters:
+      name: SignalGeneratorB
       frequency: 50
       amplitude: 5
       signal_type: Sin
       sample_rate: 1000
       phase: 2.0944
-  - name: SignalGeneratorF
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGeneratorC
       frequency: 50
       amplitude: 5
       signal_type: Sin
       sample_rate: 1000
       phase: 4.18879
-  - name: SignalGeneratorG
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGeneratorD
+      frequency: 50
+      amplitude: 5
+      signal_type: Sin
+      sample_rate: 1000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGeneratorE
+      frequency: 50
+      amplitude: 5
+      signal_type: Sin
+      sample_rate: 1000
+      phase: 2.0944
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGeneratorF
+      frequency: 50
+      amplitude: 5
+      signal_type: Sin
+      sample_rate: 1000
+      phase: 4.18879
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGeneratorG
       amplitude: 1
       signal_type: Const
       sample_rate: 1000
-  - name: SignalGeneratorH
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGeneratorH
       amplitude: 1
       signal_type: Const
       sample_rate: 1000
-  - name: SinkA
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkA
       signal_name: U1
-  - name: SinkB
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkB
       signal_name: U2
-  - name: SinkC
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkC
       signal_name: U3
-  - name: SinkD
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkD
       signal_name: I1
-  - name: SinkE
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkE
       signal_name: I2
-  - name: SinkF
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkF
       signal_name: I3
-  - name: SinkG
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkG
       signal_name: PicoG
-  - name: SinkH
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: SinkH
       signal_name: TT
-  - name: StreamToDataSetA
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetA
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetB
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetB
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetC
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetC
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetD
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetD
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetE
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetE
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: StreamToDataSetF
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: StreamToDataSetF
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - name: SinkDataSetA
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetA
       signal_name: DataSetU1
-  - name: SinkDataSetB
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetB
       signal_name: DataSetU2
-  - name: SinkDataSetC
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetC
       signal_name: DataSetU3
-  - name: SinkDataSetD
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetD
       signal_name: DataSetI1
-  - name: SinkDataSetE
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetE
       signal_name: DataSetI2
-  - name: SinkDataSetF
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: SinkDataSetF
       signal_name: DataSetI3
-  - name: PowerMetrics
-    id: gr::electrical::PowerMetrics<float32, 3ul>
+  - id: gr::electrical::PowerMetrics<float32, 3ul>
     parameters:
+      name: PowerMetrics
       decim: 1
-  - name: SystemUnbalance
-    id: gr::electrical::SystemUnbalance<float32, 3ul>
-  - name: SinkTotalActivePower
-    id: gr::basic::DataSink<float32>
+  - id: gr::electrical::SystemUnbalance<float32, 3ul>
     parameters:
+      name: SystemUnbalance
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkTotalActivePower
       signal_name: TotalActivePower
-  - name: FrequencyEstimatorU1
-    id: gr::filter::FrequencyEstimatorTimeDomain<float32>
-  - name: SinkFrequencyU1
-    id: gr::basic::DataSink<float32>
+  - id: gr::filter::FrequencyEstimatorTimeDomain<float32>
     parameters:
+      name: FrequencyEstimatorU1
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkFrequencyU1
       signal_name: FrequencyU1
-  - name: DummySinkPQS10
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS10
       logTags: false
       logSamples: false
-  - name: DummySinkPQS11
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS11
       logTags: false
       logSamples: false
-  - name: DummySinkPQS12
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS12
       logTags: false
       logSamples: false
-  - name: DummySinkPQS20
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS20
       logTags: false
       logSamples: false
-  - name: DummySinkPQS21
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS21
       logTags: false
       logSamples: false
-  - name: DummySinkPQS22
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkPQS22
       logTags: false
       logSamples: false
-  - name: DummySinkUnbalance1
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkUnbalance1
       logTags: false
       logSamples: false
-  - name: DummySinkUnbalance2
-    id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
+  - id: gr::testing::TagSink<float32, (gr::testing::ProcessFunction)0>
     parameters:
+      name: DummySinkUnbalance2
       logTags: false
       logSamples: false
 connections:

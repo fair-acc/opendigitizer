@@ -1,7 +1,7 @@
 blocks:
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       do_zero_order_hold: true
       n_samples_max: 0
       repeat_period: 2000000000
@@ -27,9 +27,9 @@ blocks:
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=8"
-  - name: FunctionGenerator
-    id: gr::basic::FunctionGenerator<float32>
+  - id: gr::basic::FunctionGenerator<float32>
     parameters:
+      name: FunctionGenerator
       sample_rate: 1000
       signal_type: Const
       start_value: 0
@@ -92,9 +92,9 @@ blocks:
           sample_rate: 1000
           signal_type: ImpulseResponse
           start_value: 5
-  - name: DataSink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: DataSink
       signal_name: test
 connections:
   - [ClockSource, 0, FunctionGenerator, 0]

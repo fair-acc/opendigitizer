@@ -1,21 +1,21 @@
 blocks:
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       do_zero_order_hold: true
       n_samples_max: 0
       sample_rate: 1000
       verbose_console: false
-  - name: SignalGenerator1
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGenerator1
       frequency: 0.5
       amplitude: 20
       sample_rate: 1000
       signal_type: Triangle
-  - name: DataSink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: DataSink
       signal_name: test
 connections:
   - [ClockSource, 0, SignalGenerator1, 0]

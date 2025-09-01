@@ -1,7 +1,7 @@
 blocks:
-  - name: ClockSource
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource
       chunk_size: 20
       do_zero_order_hold: true
       n_samples_max: 10000
@@ -26,9 +26,9 @@ blocks:
         - "CMD_DIAG_TRIGGER1"
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
         - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
-  - name: DipoleCurrentGenerator
-    id: gr::basic::FunctionGenerator<float32>
+  - id: gr::basic::FunctionGenerator<float32>
     parameters:
+      name: DipoleCurrentGenerator
       sample_rate: 1000
       signal_type: Const
       start_value: 0
@@ -84,9 +84,9 @@ blocks:
           start_value: 1
           sample_rate: 1000
           signal_type: Const
-  - name: IntensityGenerator
-    id: gr::basic::FunctionGenerator<float32>
+  - id: gr::basic::FunctionGenerator<float32>
     parameters:
+      name: IntensityGenerator
       sample_rate: 1000
       signal_type: Const
       start_value: 0
@@ -121,31 +121,31 @@ blocks:
           start_value: 0
           sample_rate: 1000
           signal_type: Const
-  - name: toDipoleDataSet
-    id: gr::basic::StreamToDataSet<float32, false>
+  - id: gr::basic::StreamToDataSet<float32, false>
     parameters:
+      name: toDipoleDataSet
       filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/^FAIR.SELECTOR.C=1:S=1:P=5]" # TODO: find a way to detect/filter when a new BPC starts (nominally via BPCTS and/or "CMD_BP_STOP" event
       n_pre: 100
       n_post: 0
       n_max: 100000 # needed to accumulate events
-  - name: toIntensityDataSet
-    id: gr::basic::StreamToDataSet<float32, false>
+  - id: gr::basic::StreamToDataSet<float32, false>
     parameters:
+      name: toIntensityDataSet
       filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2, CMD_BP_START/^FAIR.SELECTOR.C=1:S=1:P=5]" # TODO: find a way to detect/filter when a new BPC starts (nominally via BPCTS and/or "CMD_BP_STOP" event
       n_pre: 100
       n_post: 0
       n_max: 100000 # needed to accumulate events
-  - name: DipoleCurrentSink
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: DipoleCurrentSink
       color: 0xC80000
       required_size: 8192
       signal_name: dipole current
       signal_quantity: DipoleCurrent
       signal_unit: A
-  - name: DipoleCurrentDataSetSink
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: DipoleCurrentDataSetSink
       color: 0xC80000
       required_size: 32
       signal_name: dipole current - cycle
@@ -153,17 +153,17 @@ blocks:
       signal_unit: A
       n_history: 3 # show the last three DataSets
       history_offset: 0.02 # 2% offset between each
-  - name: IntensitySink
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: IntensitySink
       color: 0x0000C8
       required_size: 8192
       signal_name: beam intensity
       signal_quantity: BeamIntensity
       signal_unit: ppp
-  - name: IntensityDataSetSink
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: IntensityDataSetSink
       color: 0x0000C8
       required_size: 32
       signal_name: beam intensity - cycle

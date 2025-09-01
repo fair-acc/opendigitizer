@@ -1,7 +1,7 @@
 blocks:
-  - name: picoscope
-    id: fair::picoscope::Picoscope4000a<float32>
+  - id: fair::picoscope::Picoscope4000a<float32>
     parameters:
+      name: picoscope
       auto_arm: true
       channel_couplings: !!str [ DC, DC, DC, DC]
       channel_ids: !!str [ A, B, C, D]
@@ -15,23 +15,24 @@ blocks:
       trigger_source: A
       trigger_threshold: 0
       trigger_direction: "Rising"
-  - name: DummySinkPicoDigital # port needs to be connected or it will block the graph
-    id: gr::testing::NullSink<uint16>
-  - name: sinkA
-    id: gr::basic::DataSink<float32>
+  - id: gr::testing::NullSink<uint16>
     parameters:
+      name: DummySinkPicoDigital # port needs to be connected or it will block the graph
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: sinkA
       signal_name: test
-  - name: sinkB
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: sinkB
       signal_name: SignalB
-  - name: sinkC
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: sinkC
       signal_name: SignalC
-  - name: sinkD
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: sinkD
       signal_name: SignalD
 connections:
   - [picoscope, 0, DummySinkPicoDigital, 0]

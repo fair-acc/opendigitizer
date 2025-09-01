@@ -334,21 +334,21 @@ const boost::ut::suite GnuRadioWorker_tests = [] {
     "Streaming"_test = [](auto config) {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count_up
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_up
       n_samples: 100000
       signal_unit: "Unit_Up"
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - name: delay_up
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay_up
       delay_ms: 600
-  - name: count_down
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_down
       n_samples: 100000
       initial_value: 99999
       direction: down
@@ -356,17 +356,17 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - name: delay_down
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay_down
       delay_ms: 600
-  - name: test_sink_up
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_up
       signal_name: "Signal_Up"
-  - name: test_sink_down
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_down
       signal_name: "Signal_Down"
 connections:
   - [count_up, 0, delay_up, 0]
@@ -423,21 +423,21 @@ connections:
     "Flow graph management"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
-  - name: count_up
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_up
       n_samples: 100
       signal_unit: "Unit_Up"
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink_up
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_up
       signal_name: "Signal_Up"
 connections:
   - [count_up, 0, delay, 0]
@@ -445,9 +445,9 @@ connections:
 )";
         constexpr std::string_view grc2 = R"(
 blocks:
-  - name: count_down
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_down
       n_samples: 100
       initial_value: 99
       direction: down
@@ -455,13 +455,13 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink_down
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_down
       signal_name: "Signal_Down"
 connections:
   - [count_down, 0, delay, 0]
@@ -510,11 +510,12 @@ connections:
     "Flow graph management non-terminating graphs"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
-  - name: source1
-    id: ForeverSource<float32>
-  - name: test_sink1
-    id: gr::basic::DataSink<float32>
+  - id: ForeverSource<float32>
     parameters:
+      name: source1
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: test_sink1
       signal_name: "Signal_A"
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
@@ -524,11 +525,12 @@ connections:
 )";
         constexpr std::string_view grc2 = R"(
 blocks:
-  - name: source2
-    id: ForeverSource<float32>
-  - name: test_sink2
-    id: gr::basic::DataSink<float32>
+  - id: ForeverSource<float32>
     parameters:
+      name: source2
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: test_sink2
       signal_name: "Signal_B"
       signal_unit: "Unit_B"
       signal_quantity: "Quantity_B"
@@ -580,21 +582,21 @@ connections:
     "Trigger - tightly packed tags"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 100
       timing_tags: !!str
         - 40,notatrigger
         - 50,hello
         - 60,ignoreme
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink
       signal_name: "Signal_A"
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
@@ -628,21 +630,21 @@ connections:
         // Tests that tags detection and offsets work when the tag data is spread among multiple threads
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 10000000
       timing_tags: !!str
         - 1000,notatrigger
         - 800000,hello
         - 900000,ignoreme
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink
       signal_name: "Signal_A"
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
@@ -675,9 +677,9 @@ connections:
     "Multiplexed"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 100000
       sample_rate: 10.0
       timing_tags: !!str
@@ -685,13 +687,13 @@ blocks:
         - 50,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
         - 70,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
         - 80,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink
       signal_name: "Signal_A"
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
@@ -731,9 +733,9 @@ connections:
     "Snapshot"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 100000
       sample_rate: 10
       signal_unit: "Unit_A"
@@ -744,13 +746,13 @@ blocks:
         - 40,hello
         - 50,shoot
         - 60,world
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink
       signal_name: "Signal_A"
 connections:
   - [count, 0, delay, 0]
@@ -791,21 +793,22 @@ connections:
     "DataSet FFT"_test = [](auto config) {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 100000
       signal_name: test signal
       signal_unit: test unit
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: fft
-    id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
-  - name: test_sink
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
     parameters:
+      name: fft
+  - id: gr::basic::DataSetSink<float32>
+    parameters:
+      name: test_sink
       signal_name: FFTTestSignal
 connections:
   - [count, 0, delay, 0]
@@ -840,27 +843,27 @@ connections:
     "DataSet signal values"_test = [](auto config) {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count
       n_samples: 100
       timing_tags: !!str
         - 20,mytrigger
         - 50,mytrigger
         - 70,mytrigger
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: gr::testing::Delay<float32>
     parameters:
+      name: delay
       delay_ms: 600
-  - name: stream_to_dataset
-    id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
+      name: stream_to_dataset
       filter: "mytrigger"
       n_pre: 2
       n_post: 2
-  - name: test_sink
-    id: gr::basic::DataSetSink<float32>
+  - id: gr::basic::DataSetSink<float32>
     parameters:
+      name: test_sink
       signal_name: Signal_A
 connections:
   - [count, 0, delay, 0]
@@ -895,15 +898,16 @@ connections:
     "Flow graph handling - Unknown block"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: unknown
-    id: UnknownBlock<float32>
-  - name: delay
-    id: gr::testing::Delay<float32>
+  - id: UnknownBlock<float32>
     parameters:
+      name: unknown
+  - id: gr::testing::Delay<float32>
+    parameters:
+      name: delay
       delay_ms: 600
-  - name: test_sink
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink
       signal_name: count
 connections:
   - [unknown, 0, delay, 0]
@@ -926,28 +930,28 @@ connections:
     "Dynamic signal metadata"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
-  - name: count_up
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_up
       n_samples: 0
       signal_min: -42
       signal_max: 42
-  - name: count_down
-    id: CountSource<float32>
+  - id: CountSource<float32>
     parameters:
+      name: count_down
       n_samples: 0
       direction: down
       signal_min: 0
       signal_max: 100
-  - name: test_sink_up
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_up
       signal_name: "Signal_A"
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
-  - name: test_sink_down
-    id: gr::basic::DataSink<float32>
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: test_sink_down
       signal_name: "Signal_B"
       signal_unit: "Unit_B"
       signal_quantity: "Quantity_B"

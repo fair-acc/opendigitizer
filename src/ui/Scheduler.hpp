@@ -24,6 +24,8 @@ private:
         virtual std::expected<void, gr::Error> pause()  = 0;
         virtual std::expected<void, gr::Error> resume() = 0;
 
+        virtual const gr::Graph& graph() const = 0;
+
         virtual gr::lifecycle::State state() const = 0;
     };
 
@@ -187,6 +189,8 @@ private:
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
             return {};
         }
+
+        const gr::Graph& graph() const final { return _scheduler.graph(); }
 
         gr::lifecycle::State state() const final { return _scheduler.state(); }
 
