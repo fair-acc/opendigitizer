@@ -181,8 +181,8 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
 }
 
 auto UiGraphModel::findBlockIteratorByUniqueName(const std::string& uniqueName) {
-    auto it = std::ranges::find_if(_blocks, [&](const auto& block) { return block->blockUniqueName == uniqueName; });
-    return std::make_pair(it, it != _blocks.end());
+    auto it = std::ranges::find_if(_contents.blocks, [&](const auto& block) { return block->blockUniqueName == uniqueName; });
+    return std::make_pair(it, it != _contents.blocks.end());
 }
 
 UiGraphBlock* UiGraphModel::findBlockByUniqueName(const std::string& uniqueName) {
@@ -216,7 +216,7 @@ bool UiGraphModel::handleBlockRemoved(const std::string& uniqueName) {
         selectedBlock = nullptr;
     }
 
-    _blocks.erase(blockIt);
+    _contents.blocks.erase(blockIt);
     _rearrangeBlocks = true;
 
     return true;
@@ -231,7 +231,7 @@ void UiGraphModel::handleBlockEmplaced(const gr::property_map& blockData) {
     } else {
         auto newBlock = std::make_unique<UiGraphBlock>(/*owner*/ this);
         setBlockData(*newBlock, blockData);
-        _blocks.push_back(std::move(newBlock));
+        _contents.blocks.push_back(std::move(newBlock));
     }
     _rearrangeBlocks = true;
 }
@@ -336,7 +336,7 @@ void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, 
 void UiGraphModel::handleEdgeEmplaced(const gr::property_map& data) {
     UiGraphEdge edge(this);
     if (setEdgeData(edge, data)) {
-        _edges.emplace_back(std::move(edge));
+        _contents.edges.emplace_back(std::move(edge));
     } else {
         // Failed to read edge data
         requestGraphUpdate();
@@ -368,24 +368,24 @@ void UiGraphModel::handleGraphRedefined(const gr::property_map& data) {
     // Delete blocks that GR doesn't know about.
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
-    const auto toRemove = std::partition(_blocks.begin(), _blocks.end(), [&children](const auto& child) { //
+    const auto toRemove = std::partition(_contents.blocks.begin(), _contents.blocks.end(), [&children](const auto& child) { //
         return children.contains(child->blockUniqueName);
     });
-    for (auto it = toRemove; it != _blocks.end(); ++it) {
+    for (auto it = toRemove; it != _contents.blocks.end(); ++it) {
         removeEdgesForBlock(**it);
     }
 
-    _blocks.erase(toRemove, _blocks.end());
+    _contents.blocks.erase(toRemove, _contents.blocks.end());
 
     // Establish new edges
-    _edges.clear();
+    _contents.edges.clear();
     const auto& edges = getProperty<gr::property_map>(data, "edges"s);
     for (const auto& [index, edgeData_] : edges) {
         const auto edgeData = std::get<gr::property_map>(edgeData_);
 
         UiGraphEdge edge(this);
         if (setEdgeData(edge, edgeData)) {
-            _edges.emplace_back(std::move(edge));
+            _contents.edges.emplace_back(std::move(edge));
         } else {
             components::Notification::error("Invalid edge ignored");
         }
@@ -553,7 +553,7 @@ bool UiGraphModel::setEdgeData(auto& edge, const gr::property_map& edgeData) {
 }
 
 void UiGraphModel::removeEdgesForBlock(UiGraphBlock& block) {
-    std::erase_if(_edges, [blockPtr = std::addressof(block)](const auto& edge) {
+    std::erase_if(_contents.edges, [blockPtr = std::addressof(block)](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
     });
@@ -569,7 +569,7 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
     const UiGraphPort::Role role1 = direction == UiGraphPort::Role::Source ? UiGraphPort::Role::Destination : UiGraphPort::Role::Source;
     const UiGraphPort::Role role2 = direction;
 
-    auto edges = _edges | std::views::filter([&](const auto& edge) { return edge.getBlock(role1) == &tree; });
+    auto edges = _contents.edges | std::views::filter([&](const auto& edge) { return edge.getBlock(role1) == &tree; });
     for (auto edge : edges) {
         auto neighbourBlock = edge.getBlock(role2);
         if (neighbourBlock && blockInTree(block, *neighbourBlock, direction)) {
