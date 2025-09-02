@@ -44,7 +44,7 @@ struct TestState {
 
     bool hasBlocks() const { return dashboard && !dashboard->graphModel().blocks().empty(); }
 
-    void deleteBlock(const std::string& blockName) { flowgraphPage.deleteBlock(blockName); }
+    void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
 
     std::string nameOfFirstBlock() const {
         const auto& blocks = dashboard->graphModel().blocks();
@@ -57,8 +57,9 @@ struct TestState {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks()) {
-            flowgraphPage.sortNodes(false);
-            DigitizerUi::FlowgraphPage::drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail(), flowgraphPage.m_filterBlock);
+            auto& editor = flowgraphPage.currentEditor();
+            editor.sortNodes(false);
+            editor.drawGraph(ImGui::GetContentRegionAvail());
         }
     }
 
@@ -78,7 +79,7 @@ struct TestState {
         }
     }
 
-    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.m_filterBlock = block; }
+    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.currentEditor().setFilterBlock(block); }
 
     // Waits for the graph to have exactly expectedBlockCount blocks
     // for testing topology changing messages

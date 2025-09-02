@@ -179,7 +179,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor);
 
     auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, UiGraphPort& port) { //
-        FlowgraphPage::drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType, /*mainFlowGraph=*/false);
+        drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType, /*mainFlowGraph=*/false);
     };
 
     // Draw left ports first for middle block
@@ -188,7 +188,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         size_t     i     = 0;
         // std::views::enumerate(ports)) TODO: Use once we bump to an EMSDK that supports it
         for (const auto& port : ports) {
-            const float portY = centerBlockTopLeft.y + FlowgraphPage::pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
+            const float portY = centerBlockTopLeft.y + pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
             const float portX = centerBlockTopLeft.x - portWidth;
             drawPort({portX, portY}, *port);
             portPositions[port] = {portX, portY + portHeight / 2};
@@ -201,7 +201,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, /*leftPorts=*/false);
         size_t     i     = 0;
         for (const auto& port : ports) {
-            const float portY = centerBlockTopLeft.y + FlowgraphPage::pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
+            const float portY = centerBlockTopLeft.y + pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
             const float portX = centerBlockBottomRight.x;
             drawPort({portX, portY}, *port);
             portPositions[port] = {portX + portWidth, portY + portHeight / 2};
@@ -246,7 +246,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         for (auto port : ports) {
             const float portPositionX = rectMin.x + (isLeft ? blockWidth - 1.0f //
                                                             : -portWidth + 1.0f);
-            const float portPositionY = rectMin.y + FlowgraphPage::pinLocalPositionY(portIndex, ports.size(), blockHeight, portHeight);
+            const float portPositionY = rectMin.y + pinLocalPositionY(portIndex, ports.size(), blockHeight, portHeight);
 
             drawPort({portPositionX, portPositionY}, *port);
             portPositions[port] = {portPositionX + (isLeft ? portWidth : 0), portPositionY + portHeight / 2};

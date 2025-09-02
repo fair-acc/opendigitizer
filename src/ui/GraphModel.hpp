@@ -27,80 +27,6 @@ struct UiGraphPort {
     UiGraphPort(UiGraphBlock* owner) : ownerBlock(owner) {}
 };
 
-// TODO: Merge UiGraphBlock and UiGraphModel for nested graph
-// support
-struct UiGraphBlock {
-    UiGraphModel* ownerGraph = nullptr;
-
-    struct ContextTime {
-        std::string   context;
-        std::uint64_t time = 1;
-    };
-    ContextTime              activeContext;
-    std::vector<ContextTime> contexts;
-
-    std::string blockUniqueName;
-    std::string blockName;
-    std::string blockTypeName;
-    std::string blockCategory;
-    std::string blockUiCategory;
-
-    bool blockIsBlocking = false;
-
-    struct ViewData {
-        float x      = 0;
-        float y      = 0;
-        float width  = 0;
-        float height = 0;
-    };
-    std::optional<ViewData> view;
-
-    struct StoredXY {
-        float x = 0;
-        float y = 0;
-    };
-    std::optional<StoredXY> storedXY;
-
-    bool updatePosition = false;
-    void storeXY();
-
-    gr::property_map blockSettings;
-    gr::property_map blockMetaInformation;
-
-    struct SettingsMetaInformation {
-        std::string unit;
-        std::string description;
-        bool        isVisible;
-    };
-
-    std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
-    void                                           updateBlockSettingsMetaInformation();
-
-    std::vector<UiGraphPort> inputPorts;
-    std::vector<UiGraphPort> outputPorts;
-
-    // TODO when nested graphs support gets here
-    // std::vector<UiGraphBlock> children
-    // std::vector<UiGraphEdge> edges
-
-    UiGraphBlock(UiGraphModel* owner) : ownerGraph(owner) {}
-
-    UiGraphBlock(const UiGraphBlock&)            = delete;
-    UiGraphBlock& operator=(const UiGraphBlock&) = delete;
-    UiGraphBlock(UiGraphBlock&&)                 = delete;
-    UiGraphBlock& operator=(UiGraphBlock&&)      = delete;
-
-    void getAllContexts();
-
-    void setActiveContext(const ContextTime& contextTime);
-    void getActiveContext();
-
-    void addContext(const ContextTime& contextTime);
-    void removeContext(const ContextTime& contextTime);
-
-    bool isConnected() const;
-};
-
 struct UiGraphEdge {
     UiGraphModel* ownerGraph = nullptr;
 
@@ -133,14 +59,101 @@ struct UiGraphEdge {
     }
 };
 
-class UiGraphModel {
-private:
+struct UiGraphData {
+    std::optional<std::string> managedGraphType;
+
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
-    std::vector<std::unique_ptr<UiGraphBlock>> _blocks;
-    std::vector<UiGraphEdge>                   _edges;
-    bool                                       _newGraphDataBeingSet = false;
-    bool                                       _rearrangeBlocks      = false;
+    std::vector<std::unique_ptr<UiGraphBlock>> blocks;
+    std::vector<UiGraphEdge>                   edges;
+};
+
+struct UiGraphBlock {
+    UiGraphModel* ownerGraph = nullptr;
+
+    std::string blockUniqueName;
+    std::string blockName;
+    std::string blockTypeName;
+    std::string blockCategory;
+    std::string blockUiCategory;
+
+    bool blockIsBlocking = false;
+
+    std::vector<UiGraphPort> inputPorts;
+    std::vector<UiGraphPort> outputPorts;
+
+    // Nested blocks and sub-graph info
+
+    std::optional<UiGraphData> subgraph;
+
+    // Settings and contexts
+
+    struct ContextTime {
+        std::string   context;
+        std::uint64_t time = 1;
+    };
+    ContextTime              activeContext;
+    std::vector<ContextTime> contexts;
+
+    gr::property_map blockSettings;
+    gr::property_map blockMetaInformation;
+
+    struct SettingsMetaInformation {
+        std::string unit;
+        std::string description;
+        bool        isVisible;
+    };
+
+    std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
+    void                                           updateBlockSettingsMetaInformation();
+
+    // UI-related data
+
+    struct ViewData {
+        float x      = 0;
+        float y      = 0;
+        float width  = 0;
+        float height = 0;
+    };
+    std::optional<ViewData> view;
+
+    struct StoredXY {
+        float x = 0;
+        float y = 0;
+    };
+    std::optional<StoredXY> storedXY;
+
+    bool updatePosition = false;
+    void storeXY();
+
+    // TODO when nested graphs support gets here
+    // std::vector<UiGraphBlock> children
+    // std::vector<UiGraphEdge> edges
+
+    UiGraphBlock(UiGraphModel* owner) : ownerGraph(owner) {}
+
+    UiGraphBlock(const UiGraphBlock&)            = delete;
+    UiGraphBlock& operator=(const UiGraphBlock&) = delete;
+    UiGraphBlock(UiGraphBlock&&)                 = delete;
+    UiGraphBlock& operator=(UiGraphBlock&&)      = delete;
+
+    void getAllContexts();
+
+    void setActiveContext(const ContextTime& contextTime);
+    void getActiveContext();
+
+    void addContext(const ContextTime& contextTime);
+    void removeContext(const ContextTime& contextTime);
+
+    bool isConnected() const;
+};
+
+class UiGraphModel {
+private:
+    UiGraphData _contents;
+
+    bool _newGraphDataBeingSet = false;
+    bool _rearrangeBlocks      = false;
 
 public:
     UiGraphModel() {}
@@ -158,15 +171,15 @@ public:
 
     UiGraphBlock* selectedBlock = nullptr;
 
-    const auto& blocks() const { return _blocks; }
-    auto&       blocks() { return _blocks; }
+    const auto& blocks() const { return _contents.blocks; }
+    auto&       blocks() { return _contents.blocks; }
 
-    const auto& edges() const { return _edges; }
-    auto&       edges() { return _edges; }
+    const auto& edges() const { return _contents.edges; }
+    auto&       edges() { return _contents.edges; }
 
     void reset() {
-        _blocks.clear();
-        _edges.clear();
+        _contents.blocks.clear();
+        _contents.edges.clear();
     }
 
     /**

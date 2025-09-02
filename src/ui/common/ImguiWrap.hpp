@@ -76,5 +76,11 @@ using Deletion = stdex::c_resource<bool, ax::NodeEditor::BeginDelete, ax::NodeEd
 using Node     = stdex::c_resource<void, ax::NodeEditor::BeginNode, ax::NodeEditor::EndNode, true>;
 } // namespace NodeEditor
 
+struct PushCursorPosition {
+    ImVec2 saved;
+    PushCursorPosition() { saved = ImGui::GetCursorScreenPos(); }
+    ~PushCursorPosition() { ImGui::SetCursorScreenPos(saved); }
+};
+
 } // namespace DigitizerUi::IMW
 #endif
