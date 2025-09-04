@@ -515,10 +515,12 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     const float     ratio             = components::Splitter(contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
 
     const auto clicked = drawButtons(contentTopLeft, contentSize,
-        {.openNewBlockDialog          = true, //
-            .openRemoteSignalSelector = true, //
-            .rearrangeBlocks          = true, //
-            .closeWindow              = static_cast<bool>(closeRequestedCallback)},
+        {
+            .openNewBlockDialog       = static_cast<bool>(openNewBlockSelectorCallback),
+            .openRemoteSignalSelector = static_cast<bool>(openAddRemoteSignalCallback),
+            .rearrangeBlocks          = true,
+            .closeWindow              = static_cast<bool>(closeRequestedCallback),
+        },
         horizontalSplit ? (ratio) : 1.0f);
 
     if (clicked.rearrangeBlocks) {
@@ -530,21 +532,18 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         return;
     }
 
-    // TODO: Move to these components to the editor
-    // if (clicked.openNewBlockDialog) {
-    //     _newBlockSelector.open();
-    // }
-    //
-    // if (m_remoteSignalSelector) {
-    //     if (clicked.openRemoteSignalSelector) {
-    //         m_remoteSignalSelector->open();
-    //     }
-    //
-    //     for (const auto& selectedRemoteSignal : m_remoteSignalSelector->drawAndReturnSelected()) {
-    //         m_dashboard->addRemoteSignal(selectedRemoteSignal);
-    //     }
-    // }
-    // m_newBlockSelector.draw(_graphModel->knownBlockTypes);
+    if (openNewBlockSelectorCallback && clicked.openNewBlockDialog) {
+        //     _newBlockSelector.open();
+        openNewBlockSelectorCallback(_graphModel);
+    }
+
+    if (openAddRemoteSignalCallback) {
+        // if (_remoteSignalSelector) {
+        if (clicked.openRemoteSignalSelector) {
+            openAddRemoteSignalCallback(_graphModel);
+            // _remoteSignalSelector->open();
+        }
+    }
 
     if (_graphModel->rearrangeBlocks()) {
         sortNodes(false);
@@ -610,32 +609,32 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
 
-        // if (m_dashboard->scheduler()) {
-        //     auto state = m_dashboard->scheduler()->state();
+        // if (_dashboard->scheduler()) {
+        //     auto state = _dashboard->scheduler()->state();
         //
         //     if (state == gr::lifecycle::State::RUNNING) {
         //         if (ImGui::MenuItem("Pause scheduler")) {
-        //             m_dashboard->scheduler()->pause();
+        //             _dashboard->scheduler()->pause();
         //         }
         //         if (ImGui::MenuItem("Stop scheduler")) {
-        //             m_dashboard->scheduler()->stop();
+        //             _dashboard->scheduler()->stop();
         //         }
         //
         //     } else if (state == gr::lifecycle::State::PAUSED) {
         //         if (ImGui::MenuItem("Resume scheduler")) {
-        //             m_dashboard->scheduler()->resume();
+        //             _dashboard->scheduler()->resume();
         //         }
         //
         //     } else if (state == gr::lifecycle::State::STOPPED) {
         //         if (ImGui::MenuItem("Start scheduler")) {
-        //             m_dashboard->scheduler()->start();
+        //             _dashboard->scheduler()->start();
         //         }
         //     }
         // }
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
-        // if (m_dashboard->scheduler()) {
+        // if (_dashboard->scheduler()) {
         if (ImGui::MenuItem("Delete this block")) {
             requestBlockDeletion(_selectedBlock->blockUniqueName);
         }
@@ -717,25 +716,22 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     _graphModel->sendMessage(std::move(message));
 }
 
-FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : m_restClient{std::move(restClient)} {}
+FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
 FlowgraphPage::~FlowgraphPage() = default;
 
 void FlowgraphPage::reset() {
-    if (m_dashboard) {
-        m_dashboard->graphModel().reset();
+    if (_dashboard) {
+        _dashboard->graphModel().reset();
     }
 
-    m_editors.clear();
+    _editors.clear();
 
     // For testing purposes
     if (auto* levelsString = ::getenv("OD_TEST_EDITOR_LEVELS")) {
         auto levels = static_cast<std::size_t>(atoi(levelsString));
         for (std::size_t i = 0UZ; i < levels; i++) {
             pushEditor("root node editor");
-            if (i > 0) {
-                m_editors.back().closeRequestedCallback = [&] { m_editors.pop_back(); };
-            }
         }
     } else {
         pushEditor("root node editor");
@@ -744,20 +740,25 @@ void FlowgraphPage::reset() {
 
 void FlowgraphPage::pushEditor(std::string name) {
 
-    auto& editor = m_editors.emplace_back(name, m_dashboard->graphModel());
+    auto& editor = _editors.emplace_back(name, _dashboard->graphModel());
     editor.setStyle(LookAndFeel::instance().style);
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
+
+    editor.openNewBlockSelectorCallback = [this](UiGraphModel* graphModel) { _newBlockSelector.open(); };
+
+    if (_remoteSignalSelector) {
+        editor.openAddRemoteSignalCallback = [&](UiGraphModel* graphModel) { _remoteSignalSelector->open(); };
+    }
+
+    if (_editors.size() > 1) {
+        editor.closeRequestedCallback = [&] { _editors.pop_back(); };
+    }
 }
 
-void FlowgraphPage::popEditor() {
-    m_editors.pop_back();
-    // if (m_editors.size() > 0) {
-    //     m_editors.back().makeCurrent();
-    // }
-}
+void FlowgraphPage::popEditor() { _editors.pop_back(); }
 
 void FlowgraphPage::setStyle(LookAndFeel::Style style) {
-    for (auto& editor : m_editors) {
+    for (auto& editor : _editors) {
         editor.setStyle(style);
     }
 }
@@ -870,36 +871,39 @@ void FlowgraphPage::drawNodeEditorTab() {
     auto contentTopLeft = ImGui::GetCursorPos();
 
     std::size_t level = 0UZ;
-    for (auto& editor : m_editors) {
-        auto _ = [&] -> std::optional<IMW::Window> {
+    for (auto& editor : _editors) {
+        {
             level++;
-            if (level == 1) {
-                return {};
-            } else {
+            if (level != 1) {
                 static constexpr float levelPadding = 32.0f;
                 contentTopLeft += ImVec2(levelPadding, levelPadding);
                 contentSize -= ImVec2(2 * levelPadding, 2 * levelPadding);
                 ImGui::SetNextWindowSize(contentSize, ImGuiCond_Once);
-                // return std::optional<IMW::Window>(std::in_place, "Subgraph", nullptr, //
-                //     ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
-                return {};
             }
-        }();
+        }
 
         IMW::ChangeStrId newId(std::format("editor_level_{}", level).data());
-        editor.draw(contentTopLeft, contentSize, &editor == &m_editors.back());
+        editor.draw(contentTopLeft, contentSize, &editor == &_editors.back());
+
+        if (_remoteSignalSelector) {
+            for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
+                _dashboard->addRemoteSignal(selectedRemoteSignal);
+            }
+        }
+
+        _newBlockSelector.draw(editor.graphModel()->knownBlockTypes);
     }
 }
 
 void FlowgraphPage::drawLocalYamlTab() {
-    if (ImGui::Button("Reset") || m_currentTabIsFlowGraph) {
+    if (ImGui::Button("Reset") || _currentTabIsFlowGraph) {
         // Reload yaml whenever "Local - YAML" tab is selected
-        m_currentTabIsFlowGraph = false;
+        _currentTabIsFlowGraph = false;
 
         gr::Message message;
         message.cmd      = gr::message::Command::Get;
         message.endpoint = gr::scheduler::property::kGraphGRC;
-        m_dashboard->graphModel().sendMessage(std::move(message));
+        _dashboard->graphModel().sendMessage(std::move(message));
     }
 
     ImGui::SameLine();
@@ -907,11 +911,11 @@ void FlowgraphPage::drawLocalYamlTab() {
         gr::Message message;
         message.cmd      = gr::message::Command::Set;
         message.endpoint = gr::scheduler::property::kGraphGRC;
-        message.data     = gr::property_map{{"value", m_dashboard->graphModel().m_localFlowgraphGrc}};
-        m_dashboard->graphModel().sendMessage(std::move(message));
+        message.data     = gr::property_map{{"value", _dashboard->graphModel().m_localFlowgraphGrc}};
+        _dashboard->graphModel().sendMessage(std::move(message));
     }
 
-    ImGui::InputTextMultiline("##grc", &m_dashboard->graphModel().m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
+    ImGui::InputTextMultiline("##grc", &_dashboard->graphModel().m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
 }
 
 void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
@@ -942,7 +946,7 @@ void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     IMW::TabBar tabBar("maintabbar", 0);
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
-        m_currentTabIsFlowGraph = true;
+        _currentTabIsFlowGraph = true;
         drawNodeEditorTab();
     }
 
@@ -950,7 +954,7 @@ void FlowgraphPage::draw() noexcept {
         drawLocalYamlTab();
     }
 
-    for (auto& service : m_dashboard->remoteServices()) {
+    for (auto& service : _dashboard->remoteServices()) {
         drawRemoteYamlTab(service);
     }
 }

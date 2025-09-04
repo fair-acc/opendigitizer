@@ -52,7 +52,9 @@ private:
     }
 
 public:
-    std::function<void()> closeRequestedCallback;
+    std::function<void()>              closeRequestedCallback;
+    std::function<void(UiGraphModel*)> openNewBlockSelectorCallback;
+    std::function<void(UiGraphModel*)> openAddRemoteSignalCallback;
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _graphModel(&graphModel), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) { makeCurrent(); }
 
@@ -101,6 +103,8 @@ public:
 
     void setFilterBlock(const UiGraphBlock* block) { _filterBlock = block; }
 
+    UiGraphModel* graphModel() const { return _graphModel; }
+
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 };
 
@@ -112,14 +116,14 @@ private:
         Right,
     };
 
-    std::shared_ptr<opencmw::client::RestClient> m_restClient;
-    Dashboard*                                   m_dashboard             = nullptr;
-    bool                                         m_currentTabIsFlowGraph = false;
+    std::shared_ptr<opencmw::client::RestClient> _restClient;
+    Dashboard*                                   _dashboard             = nullptr;
+    bool                                         _currentTabIsFlowGraph = false;
 
-    std::deque<FlowgraphEditor> m_editors;
+    std::deque<FlowgraphEditor> _editors;
 
-    std::unique_ptr<SignalSelector> m_remoteSignalSelector;
-    NewBlockSelector                m_newBlockSelector;
+    std::unique_ptr<SignalSelector> _remoteSignalSelector;
+    NewBlockSelector                _newBlockSelector;
 
     void drawNodeEditorTab();
     void drawLocalYamlTab();
@@ -141,12 +145,12 @@ public:
     void draw() noexcept;
 
     void setDashboard(Dashboard* dashboard) {
-        m_dashboard = dashboard;
-        m_newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel()) : nullptr);
+        _dashboard = dashboard;
+        _newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel()) : nullptr);
         if (dashboard) {
-            m_remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel());
+            _remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel());
         } else {
-            m_remoteSignalSelector.reset();
+            _remoteSignalSelector.reset();
         }
         reset();
     }
@@ -158,7 +162,7 @@ public:
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
-    FlowgraphEditor& currentEditor() { return m_editors.back(); }
+    FlowgraphEditor& currentEditor() { return _editors.back(); }
 };
 
 } // namespace DigitizerUi
