@@ -42,12 +42,12 @@ struct TestState {
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
 
-    bool hasBlocks() const { return dashboard && !dashboard->graphModel().blocks().empty(); }
+    bool hasBlocks() const { return dashboard && !dashboard->graphModel().graph().blocks.empty(); }
 
     void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
 
     std::string nameOfFirstBlock() const {
-        const auto& blocks = dashboard->graphModel().blocks();
+        const auto& blocks = dashboard->graphModel().graph().blocks;
         if (blocks.empty()) {
             return {};
         }
@@ -85,7 +85,7 @@ struct TestState {
     // for testing topology changing messages
     void waitForGraphModelUpdate(size_t expectedBlockCount, std::size_t maxCount = 20UZ) {
         std::size_t count = 0;
-        while (dashboard->graphModel().blocks().size() != expectedBlockCount && count < maxCount) {
+        while (dashboard->graphModel().graph().blocks.size() != expectedBlockCount && count < maxCount) {
             dashboard->handleMessages();
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             count++;
@@ -145,7 +145,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(that % !firstBlockName.empty()) << "There should be at least one block";
 
                     // Delete the first block
-                    const auto numBlocksBefore = g_state.dashboard->graphModel().blocks().size();
+                    const auto numBlocksBefore = g_state.dashboard->graphModel().graph().blocks.size();
 
                     g_state.deleteBlock(firstBlockName);
                     ctx->Yield(); // Give time for UI to update
@@ -154,7 +154,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto expectedBlockCount = numBlocksBefore - 1;
                     g_state.waitForGraphModelUpdate(expectedBlockCount);
 
-                    const auto numBlocksAfter = g_state.dashboard->graphModel().blocks().size();
+                    const auto numBlocksAfter = g_state.dashboard->graphModel().graph().blocks.size();
 
                     expect(that % (numBlocksAfter == numBlocksBefore - 1)) << "Exactly one block should be removed";
 
@@ -164,8 +164,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().blocks().empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
+                    if (!g_state.dashboard->graphModel().graph().blocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().graph().blocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };
@@ -201,8 +201,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().blocks().empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
+                    if (!g_state.dashboard->graphModel().graph().blocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().graph().blocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };

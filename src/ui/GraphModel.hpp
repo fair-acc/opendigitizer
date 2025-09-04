@@ -171,11 +171,8 @@ public:
 
     UiGraphBlock* selectedBlock = nullptr;
 
-    const auto& blocks() const { return _contents.blocks; }
-    auto&       blocks() { return _contents.blocks; }
-
-    const auto& edges() const { return _contents.edges; }
-    auto&       edges() { return _contents.edges; }
+    const auto& graph() const { return _contents; }
+    auto&       graph() { return _contents; }
 
     void reset() {
         _contents.blocks.clear();

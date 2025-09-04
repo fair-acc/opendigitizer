@@ -581,10 +581,10 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
 }
 
 bool UiGraphBlock::isConnected() const {
-    return std::ranges::find_if(ownerGraph->edges(), [blockPtr = this](const auto& edge) {
+    return std::ranges::find_if(ownerGraph->graph().edges, [blockPtr = this](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
-    }) != ownerGraph->edges().cend();
+    }) != ownerGraph->graph().edges.cend();
 }
 
 void UiGraphBlock::getAllContexts() { ownerGraph->sendMessage(gr::Message{.cmd = gr::Message::Get, .serviceName = blockUniqueName, .clientRequestID = "all", .endpoint = gr::block::property::kSettingsContexts, .data = {}}); }

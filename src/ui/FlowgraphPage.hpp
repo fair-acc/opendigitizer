@@ -33,6 +33,7 @@ private:
     ax::NodeEditor::Config _editorConfig;
     std::string            _editorName;
     UiGraphModel*          _graphModel = nullptr;
+    UiGraphBlock*          _rootBlock  = nullptr;
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
 
@@ -56,7 +57,7 @@ public:
     std::function<void(UiGraphModel*)> openNewBlockSelectorCallback;
     std::function<void(UiGraphModel*)> openAddRemoteSignalCallback;
 
-    FlowgraphEditor(std::string name, UiGraphModel& graphModel) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _graphModel(&graphModel), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) { makeCurrent(); }
+    FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock = nullptr) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) { makeCurrent(); }
 
     ~FlowgraphEditor() {
         makeCurrent();
@@ -129,7 +130,7 @@ private:
     void drawLocalYamlTab();
     void drawRemoteYamlTab(Dashboard::Service& service);
 
-    void pushEditor(std::string name);
+    void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock = nullptr);
     void popEditor();
 
 public:

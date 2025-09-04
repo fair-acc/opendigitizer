@@ -279,11 +279,11 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         std::vector<ax::NodeEditor::NodeId> filteredOutNodes;
 
         // over-reserved, but minimizes allocations
-        filteredOutNodes.reserve(_filterBlock ? _graphModel->blocks().size() : 0);
+        filteredOutNodes.reserve(_filterBlock ? _graphModel->graph().blocks.size() : 0);
 
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
-        for (auto& block : _graphModel->blocks()) {
+        for (auto& block : _graphModel->graph().blocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
 
             const auto& inputPorts  = block->inputPorts;
@@ -407,7 +407,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             }
         }
 
-        for (auto& block : _graphModel->blocks()) {
+        for (auto& block : _graphModel->graph().blocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
             if (!block->view.has_value()) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
@@ -435,7 +435,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         }
 
         const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
-        for (auto& edge : _graphModel->edges()) {
+        for (auto& edge : _graphModel->graph().edges) {
             const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
             const auto destinationBlockId = ax::NodeEditor::NodeId(edge.edgeDestinationPort->ownerBlock);
             if (!std::any_of(filteredOutNodes.begin(), filteredOutNodes.end(), [&](const ax::NodeEditor::NodeId& nodeId) { //
@@ -495,6 +495,10 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 }
 
 void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor) {
+    // ImGui::SetNextWindowPos(contentTopLeft);
+    // ImGui::SetNextWindowSize(contentSize);
+    // IMW::Window _(std::format("editor_window_{}", contentTopLeft.x).c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
+
     makeCurrent();
 
     IMW::PushCursorPosition origCursorPos;
@@ -680,7 +684,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 }
 
 void FlowgraphEditor::sortNodes(bool all) {
-    auto blockLevels = topologicalSort(_graphModel->blocks(), _graphModel->edges());
+    auto blockLevels = topologicalSort(_graphModel->graph().blocks, _graphModel->graph().edges);
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
@@ -731,16 +735,16 @@ void FlowgraphPage::reset() {
     if (auto* levelsString = ::getenv("OD_TEST_EDITOR_LEVELS")) {
         auto levels = static_cast<std::size_t>(atoi(levelsString));
         for (std::size_t i = 0UZ; i < levels; i++) {
-            pushEditor("root node editor");
+            pushEditor("root node editor", _dashboard->graphModel());
         }
     } else {
-        pushEditor("root node editor");
+        pushEditor("root node editor", _dashboard->graphModel());
     }
 }
 
-void FlowgraphPage::pushEditor(std::string name) {
+void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock) {
 
-    auto& editor = _editors.emplace_back(name, _dashboard->graphModel());
+    auto& editor = _editors.emplace_back(name, graphModel, rootBlock);
     editor.setStyle(LookAndFeel::instance().style);
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
 
