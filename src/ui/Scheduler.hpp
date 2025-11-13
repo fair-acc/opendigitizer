@@ -39,7 +39,8 @@ private:
         gr::MsgPortOut _toScheduler;
 
         template<typename... Args>
-        explicit SchedulerImpl(Args&&... args) : _scheduler(std::forward<Args>(args)...) {
+        explicit SchedulerImpl(Args&&... args) : _scheduler() {
+            std::ignore = _scheduler.exchange(std::forward<Args>(args)...);
             if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
                 throw std::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
             }

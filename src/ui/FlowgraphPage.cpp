@@ -484,7 +484,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                             gr::Message message;
                             message.cmd         = gr::message::Command::Set;
                             message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-                            message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+                            message.serviceName = rootBlock()->schedulerUniqueName.value_or("");
                             message.data        = gr::property_map{                                   //
                                 {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
                                 {"sourcePort"s, outputPort->portName},                         //
@@ -630,7 +630,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                             gr::Message message;
                             message.cmd         = gr::message::Command::Set;
                             message.endpoint    = gr::scheduler::property::kReplaceBlock;
-                            message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+                            message.serviceName = rootBlock()->schedulerUniqueName.value_or("");
                             message.data        = gr::property_map{
                                        {"uniqueName"s, _selectedBlock->blockUniqueName},                     //
                                        {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
@@ -698,7 +698,7 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
     gr::Message message;
     message.endpoint    = gr::scheduler::property::kRemoveBlock;
-    message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+    message.serviceName = rootBlock()->schedulerUniqueName.value_or("");
     message.data        = gr::property_map{{"uniqueName"s, blockName}};
     if (_rootBlock) {
         (*message.data)["_targetGraph"] = _rootBlock->blockUniqueName;
@@ -881,7 +881,7 @@ void FlowgraphPage::drawNodeEditorTab() {
     auto contentSize    = ImGui::GetContentRegionAvail();
     auto contentTopLeft = ImGui::GetCursorPos();
 
-    for (const auto& [level, editor] : std::views::enumerate(_editors)) {
+    for (const auto& [level, editor] : std::views::zip(std::views::iota(0L), _editors)) {
         if (level != 0) {
             static constexpr float levelPadding = 16.0f;
             contentTopLeft += ImVec2(levelPadding, levelPadding);
@@ -911,7 +911,7 @@ void FlowgraphPage::drawLocalYamlTab() {
             gr::Message message;
             message.cmd         = gr::message::Command::Get;
             message.endpoint    = gr::scheduler::property::kGraphGRC;
-            message.serviceName = _editors.front().rootBlock()->schedulerUniqueName.value_or({});
+            message.serviceName = _editors.front().rootBlock()->schedulerUniqueName.value_or("");
             _dashboard->graphModel().sendMessage(std::move(message));
         }
     }

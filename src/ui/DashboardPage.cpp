@@ -276,7 +276,7 @@ void setupPlotAxes(Dashboard::Plot& plot, const std::array<std::optional<AxisCat
 
         if (scale != AxisScale::Time) {
             constexpr std::array kMetricUnits{"s", "m", "A", "K", "V", "g", "eV", "Hz"};
-            constexpr std::array kLinearUnits{"dB"}; // do not use exponential
+            constexpr std::array<const char*, 1> kLinearUnits{"dB"}; // do not use exponential
             const std::string&   unit = (cat && !cat->unit.empty()) ? cat->unit : "";
 
             using enum LabelFormat;
@@ -411,7 +411,7 @@ DashboardPage::DashboardPage() {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-        message.serviceName = m_dashboard->graphModel().rootBlock.schedulerUniqueName.value_or({});
+        message.serviceName = m_dashboard->graphModel().rootBlock.schedulerUniqueName.value_or("");
         message.data        = gr::property_map{                       //
             {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
             {"sourcePort"s, "out"},                            //
