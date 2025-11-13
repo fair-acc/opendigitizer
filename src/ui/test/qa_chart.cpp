@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrTestingBlocks(registry);
     registerTestBlocks(registry);
 
-    gr::PluginLoader pluginLoader(registry, {});
+    gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);

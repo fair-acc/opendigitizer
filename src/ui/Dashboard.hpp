@@ -111,7 +111,7 @@ public:
         // TODO set correct paths
         pluginPaths.push_back(std::filesystem::current_path() / "plugins");
 #endif
-        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
+        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), pluginPaths);
     }();
 
     struct Plot {
