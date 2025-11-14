@@ -1,6 +1,7 @@
 #ifndef GRAPHMODEL_H
 #define GRAPHMODEL_H
 
+#include <generator>
 #include <map>
 #include <memory>
 #include <string>
@@ -79,6 +80,8 @@ struct UiGraphBlock {
     std::vector<UiGraphPort> inputPorts;
     std::vector<UiGraphPort> outputPorts;
 
+    bool externalBlock = false;
+
     // TODO when nested graphs support gets here
     // std::vector<UiGraphBlock> children
     // std::vector<UiGraphEdge> edges
@@ -143,7 +146,25 @@ private:
     bool                                       _rearrangeBlocks      = false;
 
 public:
-    UiGraphModel() {}
+    UiGraphModel() : externalInput(this), externalOutput(this) {
+        externalInput.blockName       = "INPUT";
+        externalInput.blockUniqueName = "UiGraphModel_INPUT";
+        externalInput.externalBlock   = true;
+
+        UiGraphPort input(&externalInput);
+        input.portDirection = gr::PortDirection::INPUT;
+        input.portType      = "uint8";
+        externalInput.outputPorts.emplace_back(std::move(input));
+
+        externalOutput.blockName       = "OUTPUT";
+        externalOutput.blockUniqueName = "UiGraphModel_OUTPUT";
+        externalOutput.externalBlock   = true;
+
+        UiGraphPort output(&externalInput);
+        output.portDirection = gr::PortDirection::OUTPUT;
+        output.portType      = "uint8";
+        externalOutput.inputPorts.emplace_back(std::move(output));
+    }
 
     std::function<void(gr::Message)> sendMessage;
 
@@ -152,6 +173,9 @@ public:
     std::string blockTypeName;
 
     std::string m_localFlowgraphGrc;
+
+    UiGraphBlock externalInput;
+    UiGraphBlock externalOutput;
 
     // Not a multimap as filtered lists like sequence collections
     std::map<std::string, std::set<std::string>> knownBlockTypes;
@@ -197,6 +221,16 @@ public:
     bool rearrangeBlocks() const;
 
     void setRearrangeBlocks(bool rearrange);
+
+    /**
+     * @return yields blocks to be drawn
+     */
+    std::generator<UiGraphBlock*> blocksForDrawing();
+
+    /**
+     * @return yields each sorted level as a list of blocks
+     */
+    std::generator<std::span<const UiGraphBlock*>> topologicalSortedBlocks() const;
 
 private:
     auto findBlockIteratorByUniqueName(const std::string& uniqueName);

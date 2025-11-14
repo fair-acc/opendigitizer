@@ -198,6 +198,80 @@ bool UiGraphModel::rearrangeBlocks() const { return _rearrangeBlocks; }
 
 void UiGraphModel::setRearrangeBlocks(bool rearrange) { _rearrangeBlocks = rearrange; }
 
+std::generator<UiGraphBlock*> UiGraphModel::blocksForDrawing() {
+    co_yield &externalInput;
+
+    for (auto& block : _blocks) {
+        co_yield block.get();
+    }
+
+    co_yield &externalOutput;
+}
+
+std::generator<std::span<const DigitizerUi::UiGraphBlock*>> UiGraphModel::topologicalSortedBlocks() const {
+    auto inputs = std::array{&externalInput};
+    co_yield inputs;
+
+    struct SortLevel {
+        std::vector<const UiGraphBlock*> blocks;
+    };
+    struct BlockConnections {
+        std::unordered_set<const UiGraphBlock*> parents;
+        std::unordered_set<const UiGraphBlock*> children;
+    };
+
+    std::unordered_map<const UiGraphBlock*, BlockConnections> graphConnections;
+    std::vector<SortLevel>                                    result;
+
+    for (const auto& block : _blocks) {
+        graphConnections[block.get()];
+    }
+
+    for (const auto& edge : _edges) {
+        graphConnections[edge.edgeSourcePort->ownerBlock].children.insert(edge.edgeDestinationPort->ownerBlock);
+        graphConnections[edge.edgeDestinationPort->ownerBlock].parents.insert(edge.edgeSourcePort->ownerBlock);
+    }
+
+    while (!graphConnections.empty()) {
+        SortLevel newLevel;
+        for (const auto& [block, connections] : graphConnections) {
+            if (connections.parents.empty()) {
+                newLevel.blocks.push_back(block);
+            }
+        }
+
+        for (const auto* block : newLevel.blocks) {
+            graphConnections.erase(block);
+            for (auto& [_, connections] : graphConnections) {
+                connections.parents.erase(block);
+                // TODO(NOW) Proper top sort would use this to initialize the next level blocks
+            }
+        }
+
+        if (newLevel.blocks.empty()) {
+            break;
+        }
+
+        std::ranges::reverse(newLevel.blocks);
+
+        result.push_back(std::move(newLevel));
+    }
+
+    // If there are blocks in graphConnections, we have at lease one cycle,
+    // those blocks will not be sorted. Put them in the last level.
+    if (!graphConnections.empty()) {
+        SortLevel newLevel;
+        std::ranges::transform(graphConnections, std::back_inserter(newLevel.blocks), [](const auto& kvp) { return kvp.first; });
+    }
+
+    for (auto& level : result) {
+        co_yield level.blocks;
+    }
+
+    auto outputs = std::array{&externalOutput};
+    co_yield outputs;
+}
+
 auto UiGraphModel::findPortIteratorByName(auto& ports, const std::string& portName) {
     auto it = std::ranges::find_if(ports, [&](const auto& port) { return port.portName == portName; });
     return std::make_pair(it, it != ports.end());

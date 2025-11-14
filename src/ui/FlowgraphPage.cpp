@@ -28,63 +28,6 @@ using namespace std::string_literals;
 
 namespace DigitizerUi {
 
-inline auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, const std::vector<UiGraphEdge>& edges) {
-    struct SortLevel {
-        std::vector<const UiGraphBlock*> blocks;
-    };
-
-    struct BlockConnections {
-        std::unordered_set<const UiGraphBlock*> parents;
-        std::unordered_set<const UiGraphBlock*> children;
-    };
-
-    std::unordered_map<const UiGraphBlock*, BlockConnections> graphConnections;
-    std::vector<SortLevel>                                    result;
-
-    for (const auto& block : blocks) {
-        graphConnections[block.get()];
-    }
-
-    for (const auto& edge : edges) {
-        graphConnections[edge.edgeSourcePort->ownerBlock].children.insert(edge.edgeDestinationPort->ownerBlock);
-        graphConnections[edge.edgeDestinationPort->ownerBlock].parents.insert(edge.edgeSourcePort->ownerBlock);
-    }
-
-    while (!graphConnections.empty()) {
-        SortLevel newLevel;
-        for (const auto& [block, connections] : graphConnections) {
-            if (connections.parents.empty()) {
-                newLevel.blocks.push_back(block);
-            }
-        }
-
-        for (const auto* block : newLevel.blocks) {
-            graphConnections.erase(block);
-            for (auto& [_, connections] : graphConnections) {
-                connections.parents.erase(block);
-                // TODO(NOW) Proper top sort would use this to initialize the next level blocks
-            }
-        }
-
-        if (newLevel.blocks.empty()) {
-            break;
-        }
-
-        std::ranges::reverse(newLevel.blocks);
-
-        result.push_back(std::move(newLevel));
-    }
-
-    // If there are blocks in graphConnections, we have at lease one cycle,
-    // those blocks will not be sorted. Put them in the last level.
-    if (!graphConnections.empty()) {
-        SortLevel newLevel;
-        std::ranges::transform(graphConnections, std::back_inserter(newLevel.blocks), [](const auto& kvp) { return kvp.first; });
-    }
-
-    return result;
-}
-
 static void setEditorStyle(ax::NodeEditor::EditorContext* ed, LookAndFeel::Style s) {
     ax::NodeEditor::SetCurrentEditor(ed);
     auto& style        = ax::NodeEditor::GetStyle();
@@ -335,13 +278,13 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
-        for (auto& block : graphModel.blocks()) {
-            auto blockId = ax::NodeEditor::NodeId(block.get());
+        for (auto* block : graphModel.blocksForDrawing()) {
+            auto blockId = ax::NodeEditor::NodeId(block);
 
             const auto& inputPorts  = block->inputPorts;
             const auto& outputPorts = block->outputPorts;
 
-            const bool filteredOut = filterBlock && !graphModel.blockInTree(*block.get(), *filterBlock);
+            const bool filteredOut = filterBlock && !graphModel.blockInTree(*block, *filterBlock);
 
             // If filteredOut, set opacity to 25% until we exit the scope
             float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
@@ -380,7 +323,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
 
                     ImGui::Spacing();
 
-                    const bool isFilter = filterBlock == block.get();
+                    const bool isFilter = filterBlock == block;
 
                     // Make radio-button a bit smaller since we also made the properties smaller, looks huge otherwise
                     IMW::StyleVar    styleVar(ImGuiStyleVar_FramePadding, GImGui->Style.FramePadding - ImVec2{0, 3});
@@ -390,7 +333,7 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
                         if (isFilter) {
                             filterBlock = nullptr;
                         } else {
-                            filterBlock = block.get();
+                            filterBlock = block;
                         }
                     }
                 }
@@ -459,8 +402,8 @@ void FlowgraphPage::drawGraph(UiGraphModel& graphModel, const ImVec2& size, cons
             }
         }
 
-        for (auto& block : graphModel.blocks()) {
-            auto blockId = ax::NodeEditor::NodeId(block.get());
+        for (auto* block : graphModel.blocksForDrawing()) {
+            auto blockId = ax::NodeEditor::NodeId(block);
             if (!block->view.has_value()) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 block->view    = UiGraphBlock::ViewData{
@@ -796,18 +739,15 @@ void FlowgraphPage::draw() noexcept {
 }
 
 void FlowgraphPage::sortNodes(bool all) {
-    auto blockLevels = topologicalSort(m_dashboard->graphModel().blocks(), m_dashboard->graphModel().edges());
-
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
 
     float x = 0;
-    for (auto& level : blockLevels) {
+    for (const auto blocks : m_dashboard->graphModel().topologicalSortedBlocks()) {
         float y          = 0;
         float levelWidth = 0;
 
-        for (auto& block : level.blocks) {
-
+        for (auto& block : blocks) {
             const auto blockId        = ax::NodeEditor::NodeId(block);
             const bool userPositioned = ax::NodeEditor::GetWasUserPositioned(blockId) || block->storedXY.has_value();
             if (all || !userPositioned) {
