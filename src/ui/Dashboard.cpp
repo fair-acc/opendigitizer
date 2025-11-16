@@ -11,11 +11,12 @@
 
 #include <implot.h>
 
+#include <opencmw.hpp>
+
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
 #include <daq_api.hpp>
-#include <opencmw.hpp>
 
 #include "App.hpp"
 #include "GraphModel.hpp"
