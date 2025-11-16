@@ -42,12 +42,12 @@ struct TestState {
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
 
-    bool hasBlocks() const { return dashboard && !dashboard->graphModel().graph().blocks.empty(); }
+    bool hasBlocks() const { return dashboard && !dashboard->graphModel().rootBlock.childBlocks.empty(); }
 
     void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
 
     std::string nameOfFirstBlock() const {
-        const auto& blocks = dashboard->graphModel().graph().blocks;
+        const auto& blocks = dashboard->graphModel().rootBlock.childBlocks;
         if (blocks.empty()) {
             return {};
         }
@@ -85,7 +85,7 @@ struct TestState {
     // for testing topology changing messages
     void waitForGraphModelUpdate(size_t expectedBlockCount, std::size_t maxCount = 20UZ) {
         std::size_t count = 0;
-        while (dashboard->graphModel().graph().blocks.size() != expectedBlockCount && count < maxCount) {
+        while (dashboard->graphModel().rootBlock.childBlocks.size() != expectedBlockCount && count < maxCount) {
             dashboard->handleMessages();
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             count++;
@@ -102,7 +102,8 @@ struct TestState {
 
         dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [this](gr::Graph&& grGraph) { //
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
-            dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
+            dashboard->emplaceScheduler<TScheduler>();
+            dashboard->scheduler()->setGraph(std::move(grGraph));
         });
 
         flowgraphPage.setDashboard(dashboard.get());
@@ -145,7 +146,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(that % !firstBlockName.empty()) << "There should be at least one block";
 
                     // Delete the first block
-                    const auto numBlocksBefore = g_state.dashboard->graphModel().graph().blocks.size();
+                    const auto numBlocksBefore = g_state.dashboard->graphModel().rootBlock.childBlocks.size();
 
                     g_state.deleteBlock(firstBlockName);
                     ctx->Yield(); // Give time for UI to update
@@ -154,7 +155,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto expectedBlockCount = numBlocksBefore - 1;
                     g_state.waitForGraphModelUpdate(expectedBlockCount);
 
-                    const auto numBlocksAfter = g_state.dashboard->graphModel().graph().blocks.size();
+                    const auto numBlocksAfter = g_state.dashboard->graphModel().rootBlock.childBlocks.size();
 
                     expect(that % (numBlocksAfter == numBlocksBefore - 1)) << "Exactly one block should be removed";
 
@@ -164,8 +165,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().graph().blocks.empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().graph().blocks[0].get());
+                    if (!g_state.dashboard->graphModel().rootBlock.childBlocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().rootBlock.childBlocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };
@@ -201,8 +202,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().graph().blocks.empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().graph().blocks[0].get());
+                    if (!g_state.dashboard->graphModel().rootBlock.childBlocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().rootBlock.childBlocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };
@@ -240,7 +241,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrTestingBlocks(registry);
     registerTestBlocks(registry);
 
-    gr::PluginLoader pluginLoader(registry, {});
+    gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), {});
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);

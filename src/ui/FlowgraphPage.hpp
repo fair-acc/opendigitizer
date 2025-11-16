@@ -32,8 +32,9 @@ class FlowgraphEditor {
 private:
     ax::NodeEditor::Config _editorConfig;
     std::string            _editorName;
-    UiGraphModel*          _graphModel = nullptr;
-    UiGraphBlock*          _rootBlock  = nullptr;
+
+    UiGraphModel* _graphModel = nullptr;
+    UiGraphBlock* _rootBlock  = nullptr;
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
 
@@ -55,6 +56,7 @@ private:
 public:
     std::function<void()>              closeRequestedCallback;
     std::function<void(UiGraphModel*)> openNewBlockSelectorCallback;
+    std::function<void(UiGraphModel*)> openNewSubGraphSelectorCallback;
     std::function<void(UiGraphModel*)> openAddRemoteSignalCallback;
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock = nullptr) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) { makeCurrent(); }
@@ -91,6 +93,7 @@ public:
 
     struct Buttons {
         bool openNewBlockDialog : 1       = false;
+        bool openNewSubGraphDialog : 1    = false;
         bool openRemoteSignalSelector : 1 = false;
         bool rearrangeBlocks : 1          = false;
         bool closeWindow : 1              = false;
@@ -106,7 +109,11 @@ public:
 
     UiGraphModel* graphModel() const { return _graphModel; }
 
+    auto* rootBlock() const { return _rootBlock; }
+
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
+
+    std::function<void(UiGraphBlock*)> requestGraphEdit;
 };
 
 class FlowgraphPage {
@@ -130,7 +137,7 @@ private:
     void drawLocalYamlTab();
     void drawRemoteYamlTab(Dashboard::Service& service);
 
-    void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock = nullptr);
+    void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock);
     void popEditor();
 
 public:

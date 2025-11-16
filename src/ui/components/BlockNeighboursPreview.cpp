@@ -46,14 +46,14 @@ std::string_view shortBlockTitle(std::string_view title) {
 }
 
 /// returns the left ports or the right ports of a block
-std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, bool leftPorts) {
+std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, gr::PortDirection portDirection) {
 
-    auto edges = model.graph().edges | std::views::filter([&](const auto& edge) {
+    auto edges = model.rootBlock.childEdges | std::views::filter([&](const auto& edge) {
         if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
             return false;
         }
 
-        if (leftPorts) {
+        if (portDirection == gr::PortDirection::INPUT) {
             return edge.edgeDestinationPort->ownerBlock == &block;
         } else {
             return edge.edgeSourcePort->ownerBlock == &block;
@@ -61,7 +61,7 @@ std::set<UiGraphPort*> portsForBlock(UiGraphBlock& block, UiGraphModel& model, b
     });
 
     return edges | std::views::transform([&](const auto& edge) {
-        return leftPorts ? edge.edgeDestinationPort : //
+        return portDirection == gr::PortDirection::INPUT ? edge.edgeDestinationPort : //
                    edge.edgeSourcePort;
     }) | std::ranges::to<std::set>();
 }
@@ -90,8 +90,8 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     ScaleFont font(0.7f);
 
-    auto leftEdges  = context.graphModel->graph().edges | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.selectedBlock(); });
-    auto rightEdges = context.graphModel->graph().edges | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.selectedBlock(); });
+    auto leftEdges  = context.graphModel->rootBlock.childEdges | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock == context.selectedBlock(); });
+    auto rightEdges = context.graphModel->rootBlock.childEdges | std::views::filter([&context](const auto& edge) { return edge.edgeSourcePort && edge.edgeDestinationPort && edge.edgeSourcePort->ownerBlock == context.selectedBlock(); });
 
     auto leftBlocks  = leftEdges | std::views::transform([](const auto& edge) { return edge.edgeSourcePort->ownerBlock; }) | std::ranges::to<std::set>();
     auto rightBlocks = rightEdges | std::views::transform([](const auto& edge) { return edge.edgeDestinationPort->ownerBlock; }) | std::ranges::to<std::set>();
@@ -184,7 +184,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // Draw left ports first for middle block
     {
-        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, /*leftPorts=*/true);
+        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, gr::PortDirection::INPUT);
         size_t     i     = 0;
         // std::views::enumerate(ports)) TODO: Use once we bump to an EMSDK that supports it
         for (const auto& port : ports) {
@@ -198,7 +198,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // Draw right ports first for middle block
     {
-        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, /*leftPorts=*/false);
+        const auto ports = portsForBlock(*context.selectedBlock(), *context.graphModel, gr::PortDirection::OUTPUT);
         size_t     i     = 0;
         for (const auto& port : ports) {
             const float portY = centerBlockTopLeft.y + pinLocalPositionY(i, ports.size(), centerBlockHeight, portHeight);
@@ -224,7 +224,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         const ImVec2 rectMax    = rectMin + ImVec2(blockWidth, blockHeight);
 
         // All edges connected to this neighbor
-        auto edges = context.graphModel->graph().edges | std::views::filter([&](const auto& edge) { //
+        auto edges = context.graphModel->rootBlock.childEdges | std::views::filter([&](const auto& edge) { //
             if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
                 return false;
             }

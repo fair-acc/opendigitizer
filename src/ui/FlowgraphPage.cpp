@@ -206,15 +206,20 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
 
             if (buttons.openNewBlockDialog) {
                 if (ImGui::Button("Add block...")) {
-                    std::println("Add block... button clicked");
                     result.openNewBlockDialog = true;
+                }
+                ImGui::SameLine();
+            }
+
+            if (buttons.openNewSubGraphDialog) {
+                if (ImGui::Button("Add sub graph...")) {
+                    result.openNewSubGraphDialog = true;
                 }
                 ImGui::SameLine();
             }
 
             if (buttons.openRemoteSignalSelector) {
                 if (ImGui::Button("Add remote signal...")) {
-                    std::println("Add remote signal... button clicked");
                     result.openRemoteSignalSelector = true;
                 }
                 ImGui::SameLine();
@@ -228,7 +233,6 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
 
                 bool clicked = false;
                 if (ImGui::Button(text)) {
-                    std::println("{} button clicked", text);
                     clicked = true;
                 }
                 ImGui::SameLine();
@@ -250,6 +254,9 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
 }
 
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
+    const auto& graphBlocks = _rootBlock->childBlocks;
+    const auto& graphEdges  = _rootBlock->childEdges;
+
     makeCurrent();
 
     IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
@@ -279,11 +286,11 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         std::vector<ax::NodeEditor::NodeId> filteredOutNodes;
 
         // over-reserved, but minimizes allocations
-        filteredOutNodes.reserve(_filterBlock ? _graphModel->graph().blocks.size() : 0);
+        filteredOutNodes.reserve(_filterBlock ? graphBlocks.size() : 0);
 
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
-        for (auto& block : _graphModel->graph().blocks) {
+        for (auto& block : graphBlocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
 
             const auto& inputPorts  = block->inputPorts;
@@ -407,7 +414,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             }
         }
 
-        for (auto& block : _graphModel->graph().blocks) {
+        for (auto& block : graphBlocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
             if (!block->view.has_value()) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
@@ -421,7 +428,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
                 boundingBox.minX += blockSize[0] + padding.x;
 
-                _graphModel->setRearrangeBlocks(true);
+                _rootBlock->shouldRearrangeBlocks = true;
             } else if (block->updatePosition) {
                 block->view->x        = block->storedXY.has_value() ? block->storedXY->x : boundingBox.minX;
                 block->view->y        = block->storedXY.has_value() ? block->storedXY->y : boundingBox.maxY;
@@ -435,7 +442,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         }
 
         const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
-        for (auto& edge : _graphModel->graph().edges) {
+        for (auto& edge : graphEdges) {
             const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
             const auto destinationBlockId = ax::NodeEditor::NodeId(edge.edgeDestinationPort->ownerBlock);
             if (!std::any_of(filteredOutNodes.begin(), filteredOutNodes.end(), [&](const ax::NodeEditor::NodeId& nodeId) { //
@@ -485,6 +492,10 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                                 {"minBufferSize"s, gr::Size_t(4096)},                          //
                                 {"weight"s, 1},                                                //
                                 {"edgeName"s, std::string()}};
+
+                            if (_rootBlock) {
+                                (*message.data)["_targetGraph"] = _rootBlock->blockUniqueName;
+                            }
                             _graphModel->sendMessage(std::move(message));
                         }
                     }
@@ -521,6 +532,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     const auto clicked = drawButtons(contentTopLeft, contentSize,
         {
             .openNewBlockDialog       = static_cast<bool>(openNewBlockSelectorCallback),
+            .openNewSubGraphDialog    = static_cast<bool>(openNewSubGraphSelectorCallback),
             .openRemoteSignalSelector = static_cast<bool>(openAddRemoteSignalCallback),
             .rearrangeBlocks          = true,
             .closeWindow              = static_cast<bool>(closeRequestedCallback),
@@ -537,19 +549,18 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 
     if (openNewBlockSelectorCallback && clicked.openNewBlockDialog) {
-        //     _newBlockSelector.open();
         openNewBlockSelectorCallback(_graphModel);
     }
 
-    if (openAddRemoteSignalCallback) {
-        // if (_remoteSignalSelector) {
-        if (clicked.openRemoteSignalSelector) {
-            openAddRemoteSignalCallback(_graphModel);
-            // _remoteSignalSelector->open();
-        }
+    if (openNewSubGraphSelectorCallback && clicked.openNewSubGraphDialog) {
+        openNewSubGraphSelectorCallback(_graphModel);
     }
 
-    if (_graphModel->rearrangeBlocks()) {
+    if (openAddRemoteSignalCallback && clicked.openRemoteSignalSelector) {
+        openAddRemoteSignalCallback(_graphModel);
+    }
+
+    if (_rootBlock->shouldRearrangeBlocks) {
         sortNodes(false);
     }
 
@@ -559,8 +570,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     // don't open properties pane if just clicking on the radio button
     const bool filterRadioPressed = originalFilterBlock != _filterBlock;
 
-    auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
-    auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
+    const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
+    const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
     if (!filterRadioPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
@@ -595,52 +606,22 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         _contextMenuPosition = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     }
 
-    bool openNewBlockDialog       = false;
-    bool openRemoteSignalSelector = false;
-
     if (auto menu = IMW::Popup("ctx_menu", 0)) {
-        if (ImGui::MenuItem("Add block...")) {
-            openNewBlockDialog = true;
-        }
-        if (ImGui::MenuItem("Add remote signal...")) {
-            openRemoteSignalSelector = true;
-        }
-        if (ImGui::MenuItem("Rearrange blocks")) {
-            sortNodes(true);
-        }
         if (ImGui::MenuItem("Refresh graph")) {
             _graphModel->requestGraphUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
-
-        // if (_dashboard->scheduler()) {
-        //     auto state = _dashboard->scheduler()->state();
-        //
-        //     if (state == gr::lifecycle::State::RUNNING) {
-        //         if (ImGui::MenuItem("Pause scheduler")) {
-        //             _dashboard->scheduler()->pause();
-        //         }
-        //         if (ImGui::MenuItem("Stop scheduler")) {
-        //             _dashboard->scheduler()->stop();
-        //         }
-        //
-        //     } else if (state == gr::lifecycle::State::PAUSED) {
-        //         if (ImGui::MenuItem("Resume scheduler")) {
-        //             _dashboard->scheduler()->resume();
-        //         }
-        //
-        //     } else if (state == gr::lifecycle::State::STOPPED) {
-        //         if (ImGui::MenuItem("Start scheduler")) {
-        //             _dashboard->scheduler()->start();
-        //         }
-        //     }
-        // }
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
-        // if (_dashboard->scheduler()) {
         if (ImGui::MenuItem("Delete this block")) {
             requestBlockDeletion(_selectedBlock->blockUniqueName);
+        }
+
+        if (_selectedBlock->blockCategory == "TransparentBlockGroup" || _selectedBlock->blockCategory == "ScheduledBlockGroup") {
+            if (ImGui::MenuItem("Edit block graph...")) {
+                requestGraphEdit(_selectedBlock);
+            }
         }
 
         auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
@@ -657,12 +638,15 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                                     {"uniqueName"s, _selectedBlock->blockUniqueName},                     //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
+                            if (_rootBlock) {
+                                (*message.data)["_targetGraph"] = _rootBlock->blockUniqueName;
+                            }
                             _graphModel->sendMessage(std::move(message));
                         }
                     }
                 }
             }
-            // }
+        }
         }
     }
 

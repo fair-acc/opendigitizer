@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     auto destBlock       = std::make_unique<DigitizerUi::UiGraphBlock>(&graphModel);
     destBlock->blockName = "Destination";
 
-    auto& blocks = graphModel.graph().blocks;
+    auto& blocks = graphModel.rootBlock.childBlocks;
     blocks.clear();
     blocks.push_back(std::move(block));
     blocks.push_back(std::move(sourceBlock));
@@ -70,9 +70,9 @@ int main(int argc, char* argv[]) {
     g_context.graphModel = &graphModel;
 
     // Get pointers to blocks from the vector since we moved our local pointers
-    auto* mainBlock = graphModel.graph().blocks[0].get();
-    auto* srcBlock  = graphModel.graph().blocks[1].get();
-    auto* dstBlock  = graphModel.graph().blocks[2].get();
+    auto* mainBlock = graphModel.rootBlock.childBlocks[0].get();
+    auto* srcBlock  = graphModel.rootBlock.childBlocks[1].get();
+    auto* dstBlock  = graphModel.rootBlock.childBlocks[2].get();
 
     DigitizerUi::UiGraphPort input(mainBlock);
     input.portName      = "Input";
@@ -93,14 +93,14 @@ int main(int argc, char* argv[]) {
     dstBlock->inputPorts.push_back(sinkIn);
 
     // Edges:
-    DigitizerUi::UiGraphEdge inEdge(&graphModel);
+    DigitizerUi::UiGraphEdge inEdge;
     inEdge.edgeSourcePort      = &srcBlock->outputPorts.back();
     inEdge.edgeDestinationPort = &mainBlock->inputPorts.back();
-    graphModel.graph().edges.push_back(inEdge);
-    DigitizerUi::UiGraphEdge outEdge(&graphModel);
+    graphModel.rootBlock.childEdges.push_back(inEdge);
+    DigitizerUi::UiGraphEdge outEdge;
     outEdge.edgeSourcePort      = &mainBlock->outputPorts.back();
     outEdge.edgeDestinationPort = &dstBlock->inputPorts.back();
-    graphModel.graph().edges.push_back(outEdge);
+    graphModel.rootBlock.childEdges.push_back(outEdge);
 
     g_context.setSelectedBlock(mainBlock, &graphModel);
     g_context.blockClickedCallback = [](DigitizerUi::UiGraphBlock*) { std::print("Block clicked.\n"); };

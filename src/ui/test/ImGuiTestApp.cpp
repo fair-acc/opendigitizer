@@ -296,6 +296,6 @@ void ImGuiTestApp::printWindows() {
 ImGuiTestContext* ImGuiTestApp::testContext() const { return _engine ? _engine->TestContext : nullptr; }
 
 std::shared_ptr<gr::PluginLoader> ImGuiTestApp::createPluginLoader() {
-    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), std::span<const std::filesystem::path>());
+    auto loader = std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::filesystem::path>());
     return loader;
 }

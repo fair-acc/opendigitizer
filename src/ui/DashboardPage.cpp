@@ -409,9 +409,10 @@ DashboardPage::DashboardPage() {
         _addedSourceBlocksWaitingForSink.erase(it);
 
         gr::Message message;
-        message.cmd      = gr::message::Command::Set;
-        message.endpoint = gr::scheduler::property::kEmplaceEdge;
-        message.data     = gr::property_map{                       //
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kEmplaceEdge;
+        message.serviceName = m_dashboard->graphModel().rootBlock.blockUniqueName;
+        message.data        = gr::property_map{                       //
             {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
             {"sourcePort"s, "out"},                            //
             {"destinationBlock"s, sink.uniqueName},            //
@@ -699,7 +700,9 @@ void DashboardPage::draw(Mode mode) noexcept {
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kEmplaceBlock;
-                            message.data     = gr::property_map{
+                            // The root block needs to be a scheduler
+                            message.serviceName = m_dashboard->graphModel().rootBlock.schedulerUniqueName.value();
+                            message.data        = gr::property_map{
                                 //
                                 {"type"s, sinkBlockType + sinkBlockParams}, //
                                 {
@@ -904,7 +907,7 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
             auto clickedMouseButton = LegendItem(color, label, signal.isVisible);
             if (clickedMouseButton == MouseClick::Right) {
-                m_editPane.setSelectedBlock(m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
+                m_editPane.setSelectedBlock(m_dashboard->graphModel().rootBlock.findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
             if (clickedMouseButton == MouseClick::Left) {

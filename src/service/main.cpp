@@ -222,7 +222,7 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                                       pluginLoader(registry, {});
+    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), {});
     GrAcqWorker                                            grAcqWorker(broker, &pluginLoader, 50ms);
     GrFgWorker                                             grFgWorker(broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};

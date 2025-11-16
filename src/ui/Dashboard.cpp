@@ -656,6 +656,10 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::scheduler::property::kEmplaceBlock;
+
+    // We can add remote signals only to the root block. And the root block
+    // has to be a scheduler
+    message.serviceName = graphModel().rootBlock.schedulerUniqueName.value();
     gr::property_map properties{
         {"remote_uri"s, uriStr},                 //
         {"signal_name"s, signalData.signalName}, //
