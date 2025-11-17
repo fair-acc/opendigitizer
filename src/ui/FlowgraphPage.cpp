@@ -482,9 +482,10 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                         if (ax::NodeEditor::AcceptNewItem()) {
                             // AcceptNewItem() return true when user release mouse button.
                             gr::Message message;
-                            message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::scheduler::property::kEmplaceEdge;
-                            message.data     = gr::property_map{                                   //
+                            message.cmd         = gr::message::Command::Set;
+                            message.endpoint    = gr::scheduler::property::kEmplaceEdge;
+                            message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+                            message.data        = gr::property_map{                                   //
                                 {"sourceBlock"s, outputPort->ownerBlock->blockUniqueName},     //
                                 {"sourcePort"s, outputPort->portName},                         //
                                 {"destinationBlock"s, inputPort->ownerBlock->blockUniqueName}, //
@@ -506,10 +507,6 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 }
 
 void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor) {
-    // ImGui::SetNextWindowPos(contentTopLeft);
-    // ImGui::SetNextWindowSize(contentSize);
-    // IMW::Window _(std::format("editor_window_{}", contentTopLeft.x).c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
-
     makeCurrent();
 
     IMW::PushCursorPosition origCursorPos;
@@ -625,18 +622,18 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
 
         auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
-        if (typeParams.availableParametrizations) {
-            if (typeParams.availableParametrizations->size() > 1) {
+        if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
+            if (IMW::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
                 for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                     if (availableParametrization != typeParams.parametrization) {
-                        auto name = std::string{"Change Type to "} + availableParametrization;
-                        if (ImGui::MenuItem(name.c_str())) {
+                        if (ImGui::MenuItem(availableParametrization.c_str())) {
                             gr::Message message;
-                            message.cmd      = gr::message::Command::Set;
-                            message.endpoint = gr::scheduler::property::kReplaceBlock;
-                            message.data     = gr::property_map{
-                                    {"uniqueName"s, _selectedBlock->blockUniqueName},                     //
-                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                            message.cmd         = gr::message::Command::Set;
+                            message.endpoint    = gr::scheduler::property::kReplaceBlock;
+                            message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+                            message.data        = gr::property_map{
+                                       {"uniqueName"s, _selectedBlock->blockUniqueName},                     //
+                                       {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
                             if (_rootBlock) {
                                 (*message.data)["_targetGraph"] = _rootBlock->blockUniqueName;
@@ -646,7 +643,6 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                     }
                 }
             }
-        }
         }
     }
 
@@ -668,14 +664,16 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 }
 
 void FlowgraphEditor::sortNodes(bool all) {
-    auto blockLevels = topologicalSort(_graphModel->graph().blocks, _graphModel->graph().edges);
+    auto blockLevels = topologicalSort(_rootBlock->childBlocks, _rootBlock->childEdges);
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
 
-    float x = 0;
+    // We don't want the nodes to be glued to the left edge, same for top edge and y
+    static const float padding = 16.f;
+    float              x       = padding;
     for (auto& level : blockLevels) {
-        float y          = 0;
+        float y          = padding;
         float levelWidth = 0;
 
         for (auto& block : level.blocks) {
@@ -693,14 +691,18 @@ void FlowgraphEditor::sortNodes(bool all) {
         x += levelWidth + xSpacing;
     }
 
-    _graphModel->setRearrangeBlocks(false);
+    _rootBlock->shouldRearrangeBlocks = false;
 }
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
     gr::Message message;
-    message.endpoint = gr::scheduler::property::kRemoveBlock;
-    message.data     = gr::property_map{{"uniqueName"s, blockName}};
+    message.endpoint    = gr::scheduler::property::kRemoveBlock;
+    message.serviceName = rootBlock()->schedulerUniqueName.value_or({});
+    message.data        = gr::property_map{{"uniqueName"s, blockName}};
+    if (_rootBlock) {
+        (*message.data)["_targetGraph"] = _rootBlock->blockUniqueName;
+    }
     _graphModel->sendMessage(std::move(message));
 }
 
@@ -710,20 +712,12 @@ FlowgraphPage::~FlowgraphPage() = default;
 
 void FlowgraphPage::reset() {
     if (_dashboard) {
-        _dashboard->graphModel().reset();
+        _dashboard->graphModel().rootBlock.childEdges.clear();
+        _dashboard->graphModel().rootBlock.childBlocks.clear();
     }
 
     _editors.clear();
-
-    // For testing purposes
-    if (auto* levelsString = ::getenv("OD_TEST_EDITOR_LEVELS")) {
-        auto levels = static_cast<std::size_t>(atoi(levelsString));
-        for (std::size_t i = 0UZ; i < levels; i++) {
-            pushEditor("root node editor", _dashboard->graphModel());
-        }
-    } else {
-        pushEditor("root node editor", _dashboard->graphModel());
-    }
+    pushEditor("rootBlock node editor", _dashboard->graphModel(), std::addressof(_dashboard->graphModel().rootBlock));
 }
 
 void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock) {
@@ -732,10 +726,39 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     editor.setStyle(LookAndFeel::instance().style);
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
 
-    editor.openNewBlockSelectorCallback = [this](UiGraphModel* graphModel) { _newBlockSelector.open(); };
+    editor.requestGraphEdit = [&](UiGraphBlock* block) { pushEditor(block->blockUniqueName, graphModel, block); };
 
-    if (_remoteSignalSelector) {
-        editor.openAddRemoteSignalCallback = [&](UiGraphModel* graphModel) { _remoteSignalSelector->open(); };
+    // This lambda is owned by editor, so it is safe to take it by reference
+    editor.openNewBlockSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
+        _newBlockSelector.data = editor.graphModel()->knownBlockTypes;
+        if (editor.rootBlock()->schedulerUniqueName) {
+            // This is an editor for a scheduler block
+            _newBlockSelector.open(editor.rootBlock()->schedulerUniqueName.value(), {});
+        } else {
+            // This is an editor for a graph block, when sending a message,
+            // we need the uniqueName of the scheduler and the graph we want
+            // to add the block to
+            _newBlockSelector.open(editor.rootBlock()->ownerSchedulerUniqueName, editor.rootBlock()->blockUniqueName);
+        }
+    };
+
+    // This lambda is owned by editor, so it is safe to take it by reference
+    editor.openNewSubGraphSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
+        _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
+        if (editor.rootBlock()->schedulerUniqueName) {
+            // This is an editor for a scheduler block
+            _newBlockSelector.open(editor.rootBlock()->schedulerUniqueName.value(), {});
+        } else {
+            // This is an editor for a graph block, when sending a message,
+            // we need the uniqueName of the scheduler and the graph we want
+            // to add the block to
+            _newBlockSelector.open(editor.rootBlock()->ownerSchedulerUniqueName, editor.rootBlock()->blockUniqueName);
+        }
+    };
+
+    // We can add remote signals only to the root graph
+    if (_remoteSignalSelector && _editors.size() == 1) {
+        editor.openAddRemoteSignalCallback = [&](UiGraphModel* /*_graphModel*/) { _remoteSignalSelector->open(); };
     }
 
     if (_editors.size() > 1) {
@@ -858,28 +881,24 @@ void FlowgraphPage::drawNodeEditorTab() {
     auto contentSize    = ImGui::GetContentRegionAvail();
     auto contentTopLeft = ImGui::GetCursorPos();
 
-    std::size_t level = 0UZ;
-    for (auto& editor : _editors) {
-        {
-            level++;
-            if (level != 1) {
-                static constexpr float levelPadding = 32.0f;
-                contentTopLeft += ImVec2(levelPadding, levelPadding);
-                contentSize -= ImVec2(2 * levelPadding, 2 * levelPadding);
-                ImGui::SetNextWindowSize(contentSize, ImGuiCond_Once);
-            }
+    for (const auto& [level, editor] : std::views::enumerate(_editors)) {
+        if (level != 0) {
+            static constexpr float levelPadding = 16.0f;
+            contentTopLeft += ImVec2(levelPadding, levelPadding);
+            contentSize -= ImVec2(2 * levelPadding, 2 * levelPadding);
         }
 
-        IMW::ChangeStrId newId(std::format("editor_level_{}", level).data());
-        editor.draw(contentTopLeft, contentSize, &editor == &_editors.back());
+        if (&editor == &_editors.back()) {
+            editor.draw(contentTopLeft, contentSize, &editor == &_editors.back());
 
-        if (_remoteSignalSelector) {
-            for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
-                _dashboard->addRemoteSignal(selectedRemoteSignal);
+            if (_remoteSignalSelector) {
+                for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
+                    _dashboard->addRemoteSignal(selectedRemoteSignal);
+                }
             }
-        }
 
-        _newBlockSelector.draw(editor.graphModel()->knownBlockTypes);
+            _newBlockSelector.draw();
+        }
     }
 }
 
@@ -888,10 +907,13 @@ void FlowgraphPage::drawLocalYamlTab() {
         // Reload yaml whenever "Local - YAML" tab is selected
         _currentTabIsFlowGraph = false;
 
-        gr::Message message;
-        message.cmd      = gr::message::Command::Get;
-        message.endpoint = gr::scheduler::property::kGraphGRC;
-        _dashboard->graphModel().sendMessage(std::move(message));
+        if (!_editors.empty()) {
+            gr::Message message;
+            message.cmd         = gr::message::Command::Get;
+            message.endpoint    = gr::scheduler::property::kGraphGRC;
+            message.serviceName = _editors.front().rootBlock()->schedulerUniqueName.value_or({});
+            _dashboard->graphModel().sendMessage(std::move(message));
+        }
     }
 
     ImGui::SameLine();

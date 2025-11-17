@@ -411,7 +411,7 @@ DashboardPage::DashboardPage() {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-        message.serviceName = m_dashboard->graphModel().rootBlock.blockUniqueName;
+        message.serviceName = m_dashboard->graphModel().rootBlock.schedulerUniqueName.value_or({});
         message.data        = gr::property_map{                       //
             {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
             {"sourcePort"s, "out"},                            //

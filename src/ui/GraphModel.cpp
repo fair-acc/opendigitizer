@@ -189,7 +189,6 @@ void UiGraphBlock::setBlockData(const gr::property_map& blockData) {
     processPorts(inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
     processPorts(outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
 
-
     if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
         const auto* parameters = std::get_if<gr::property_map>(&(parametersIt->second));
         if (parameters) {
