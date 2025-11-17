@@ -18,6 +18,12 @@ namespace DigitizerUi {
 
 class DashboardPage {
 public:
+    enum class Mode { View, Layout };
+    struct DndItem {
+        Dashboard::Plot*                plot;
+        opendigitizer::ImPlotSinkModel* plotSource;
+    };
+
 private:
     ImVec2 pane_size{0, 0};     // updated by drawPlots(...)
     ImVec2 legend_box{500, 40}; // updated by drawLegend(...)
@@ -36,12 +42,16 @@ private:
     };
     std::unordered_map<std::string, SourceBlockInWaiting> _addedSourceBlocksWaitingForSink;
 
-public:
-    enum class Mode { View, Layout };
-    struct DndItem {
-        Dashboard::Plot*                plot;
-        opendigitizer::ImPlotSinkModel* plotSource;
-    };
+    DockSpace                             m_dockSpace;
+    components::BlockControlsPanelContext m_editPane;
+    std::unique_ptr<SignalSelector>       m_remoteSignalSelector;
+
+    Dashboard* m_dashboard = nullptr;
+
+    void drawPlots(DigitizerUi::DashboardPage::Mode mode);
+    void drawGrid(float w, float h);
+    void drawGlobalLegend(const Mode& mode) noexcept;
+    void drawPlot(DigitizerUi::Dashboard::Plot& plot) noexcept;
 
 public:
     DashboardPage();
@@ -61,18 +71,6 @@ public:
         m_remoteSignalSelector = std::make_unique<SignalSelector>(dashboard.graphModel());
 #endif
     }
-
-private:
-    void drawPlots(DigitizerUi::DashboardPage::Mode mode);
-    void drawGrid(float w, float h);
-    void drawGlobalLegend(const Mode& mode) noexcept;
-    void drawPlot(DigitizerUi::Dashboard::Plot& plot) noexcept;
-
-    DockSpace                             m_dockSpace;
-    components::BlockControlsPanelContext m_editPane;
-    std::unique_ptr<SignalSelector>       m_remoteSignalSelector;
-
-    Dashboard* m_dashboard = nullptr;
 };
 
 } // namespace DigitizerUi

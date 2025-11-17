@@ -202,7 +202,7 @@ class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, 
     std::unique_ptr<MsgPortOut>                   _messagesToScheduler;
     std::unique_ptr<MsgPortIn>                    _messagesFromScheduler;
 
-    std::unique_ptr<gr::Graph>                                                    _pendingFlowGraph;
+    std::optional<gr::meta::indirect<gr::Graph>>                                  _pendingFlowGraph;
     std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>> _scheduler;
     std::mutex                                                                    _graphChangeMutex;
 
@@ -226,7 +226,7 @@ public:
         _notifyThread.join();
     }
 
-    void scheduleGraphChange(std::unique_ptr<gr::Graph> fg) {
+    void scheduleGraphChange(gr::meta::indirect<gr::Graph> fg) {
         std::lock_guard lg{_graphChangeMutex};
         _pendingFlowGraph = std::move(fg);
     }
@@ -269,7 +269,7 @@ private:
                     return std::exchange(_pendingFlowGraph, {});
                 }();
                 const auto hasScheduler      = schedulerThread.joinable();
-                const bool stopScheduler     = hasScheduler && (aboutToFinish || pendingFlowGraph);
+                const bool stopScheduler     = hasScheduler && (aboutToFinish || pendingFlowGraph.has_value());
                 bool       schedulerFinished = false;
 
                 if (stopScheduler) {
@@ -360,8 +360,8 @@ private:
                     continue;
                 }
 
-                if (pendingFlowGraph) {
-                    gr::graph::forEachBlock<gr::block::Category::NormalBlock>(*pendingFlowGraph, [&signalEntryBySink](const auto& block) {
+                if (pendingFlowGraph.has_value()) {
+                    gr::graph::forEachBlock<gr::block::Category::NormalBlock>(*pendingFlowGraph.value(), [&signalEntryBySink](const auto& block) {
                         if (block->typeName().starts_with("gr::basic::DataSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::Plain;
@@ -380,7 +380,11 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
-                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>(std::move(*pendingFlowGraph));
+
+                    _scheduler = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>();
+
+                    // We do not need the old empty graph
+                    std::ignore            = _scheduler->exchange(std::move(*pendingFlowGraph.value()));
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();
                     std::ignore            = _messagesToScheduler->connect(_scheduler->msgIn);
