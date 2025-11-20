@@ -112,20 +112,20 @@ int main(int argc, char** argv) {
     }
 
     std::string grc = R"(blocks:
-  - name: ClockSource1
-    id: gr::basic::ClockSource
+  - id: gr::basic::ClockSource
     parameters:
+      name: ClockSource1
       n_samples_max: 0
-  - name: SignalGenerator1
-    id: gr::basic::SignalGenerator<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
+      name: SignalGenerator1
       frequency: 1
       amplitude: 5
       sample_rate: 4096
-      signal_type: Sine
-  - name: Sink
-    id: gr::basic::DataSink<float32>
+      signal_type: Sin
+  - id: gr::basic::DataSink<float32>
     parameters:
+      name: Sink
       signal_name: test
 connections:
   - [ClockSource1, 0, SignalGenerator1, 0]
