@@ -327,6 +327,10 @@ private:
                                 }
                             }
                         }
+                        if (!message.data.has_value()) {
+                            const auto& error = message.data.error();
+                            std::println("error from scheduler {}:L{} {}", error.message, error.sourceLocation.file_name(), error.sourceLocation.line());
+                        }
                     }
 
                     std::ignore = messages.consume(messages.size());
