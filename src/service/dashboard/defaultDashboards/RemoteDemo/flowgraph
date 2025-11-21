@@ -1,56 +1,56 @@
 blocks:
-  - name: RemoteSignal1
-    id: opendigitizer::RemoteStreamSource<float32>
+  -id: opendigitizer::RemoteStreamSource<float32>
     parameters:
+      name: RemoteSignal1
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=Signal1
-  - name: RemoteSignalFFT1
-    id: opendigitizer::RemoteDataSetSource<float32>
+  - id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
+      name: RemoteSignalFFT1
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalFFT1&acquisitionModeFilter=dataset
-  - name: RemoteDataSet1
-    id: opendigitizer::RemoteDataSetSource<float32>
+  - id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
+      name: RemoteDataSet1
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSet1&acquisitionModeFilter=dataset
-  - name: RemoteDataSet2
-    id: opendigitizer::RemoteDataSetSource<float32>
+  - id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
+      name: RemoteDataSet2
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSet2&acquisitionModeFilter=dataset
-  - name: RemoteTriggered
-    id: opendigitizer::RemoteDataSetSource<float32>
+  - id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
+      name: RemoteTriggered
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalTriggered&acquisitionModeFilter=triggered&preSamples=200&postSamples=600&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
-  - name: RemoteMultiplexed
-    id: opendigitizer::RemoteDataSetSource<float32>
+  - id: opendigitizer::RemoteDataSetSource<float32>
     parameters:
+      name: RemoteMultiplexed
       remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalMultiplexed&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D1%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%5D
-  - name: PlotSignal1
-    id: opendigitizer::ImPlotSink<float32>
+  - id: opendigitizer::ImPlotSink<float32>
     parameters:
+      name: PlotSignal1
       required_size: 5000
       signal_name: Signal1
-  - name: PlotSignalFFT1
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: PlotSignalFFT1
       signal_name: FFT1
       required_size: 1
-  - name: PlotDataSet1
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: PlotDataSet1
       dataset_index: 0
       signal_name: DataSet1
-  - name: PlotDataSet2
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: PlotDataSet2
       dataset_index: 0
       signal_name: DataSet2
-  - name: PlotTriggered
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: PlotTriggered
       dataset_index: 0
       signal_name: Triggered
-  - name: PlotMultiplexed
-    id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
+      name: PlotMultiplexed
       dataset_index: 0
       signal_name: Multiplexed
 connections:
