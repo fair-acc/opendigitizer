@@ -12,7 +12,7 @@
 using namespace std::string_literals;
 
 namespace DigitizerUi {
-void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& knownBlockTypes) {
+void NewBlockSelector::draw() {
     auto windowSize = ImGui::GetIO().DisplaySize - ImVec2(32, 32);
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
     auto x = ImGui::GetCursorPosX();
@@ -21,7 +21,7 @@ void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& 
     if (auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         auto listSize = windowSize - ImVec2(64, 64);
         listSize.x /= 2;
-        auto ret = components::FilteredListBox("blocks", listSize, knownBlockTypes, [index = 0](auto& knownBlockTypesItem) mutable -> std::pair<int, std::string> {
+        auto ret = components::FilteredListBox("blocks", listSize, data, [index = 0](auto& knownBlockTypesItem) mutable -> std::pair<int, std::string> {
             index++;
             return std::pair{index, knownBlockTypesItem.first};
         });
@@ -38,7 +38,7 @@ void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& 
         }
 
         if (!selectedType.empty()) {
-            if (auto typeIt = knownBlockTypes.find(selectedType); typeIt != knownBlockTypes.cend()) {
+            if (auto typeIt = data.find(selectedType); typeIt != data.cend()) {
                 ImGui::SameLine();
 
                 if (selectedType != m_previouslySelectedType) {
@@ -61,12 +61,16 @@ void NewBlockSelector::draw(const std::map<std::string, std::set<std::string>>& 
         if (components::DialogButtons() == components::DialogButton::Ok) {
             if (!selectedType.empty() && selectedParametrization) {
                 gr::Message message;
-                std::string type = std::move(selectedType) + selectedParametrization.value_or(std::string());
-                message.cmd      = gr::message::Command::Set;
-                message.endpoint = gr::scheduler::property::kEmplaceBlock;
-                message.data     = gr::property_map{
-                        {"type"s, std::move(type)}, //
+                std::string type    = std::move(selectedType) + selectedParametrization.value_or(std::string());
+                message.cmd         = gr::message::Command::Set;
+                message.endpoint    = gr::scheduler::property::kEmplaceBlock;
+                message.serviceName = m_targetSchedulerUniqueName;
+                message.data        = gr::property_map{
+                           {"type"s, std::move(type)}, //
                 };
+                if (!m_targetGraphUniqueName.empty()) {
+                    (*message.data)["_targetGraph"s] = m_targetGraphUniqueName;
+                }
                 m_graphModel->sendMessage(message);
             }
         }

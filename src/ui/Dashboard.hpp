@@ -105,15 +105,6 @@ public:
 
 class Dashboard {
 public:
-    std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        std::vector<std::filesystem::path> pluginPaths;
-#ifndef __EMSCRIPTEN__
-        // TODO set correct paths
-        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
-#endif
-        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), pluginPaths);
-    }();
-
     struct Plot {
         enum class AxisKind { X = 0, Y };
 
@@ -140,6 +131,45 @@ public:
             window       = std::make_shared<DockSpace::Window>(name);
         }
     };
+
+    struct Service {
+        Service(std::shared_ptr<opencmw::client::RestClient> client, std::string n, std::string u) : restClient{std::move(client)}, name(std::move(n)), uri(std::move(u)) {}
+
+        std::shared_ptr<opencmw::client::RestClient> restClient;
+        std::string                                  name;
+        std::string                                  uri;
+        std::string                                  layout;
+        std::string                                  grc;
+
+        void reload();
+
+        void execute();
+
+        void emplaceBlock(std::string type, std::string params);
+    };
+
+private:
+    std::shared_ptr<opencmw::client::RestClient> m_restClient;
+    std::shared_ptr<const DashboardDescription>  m_desc = nullptr;
+    std::vector<Plot>                            m_plots;
+    DockingLayoutType                            m_layout;
+    std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
+    plf::colony<Service>                         m_services;
+    std::atomic<bool>                            m_isInitialised = false;
+
+    Scheduler m_scheduler;
+
+    UiGraphModel m_graphModel;
+
+public:
+    std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
+        std::vector<std::filesystem::path> pluginPaths;
+#ifndef __EMSCRIPTEN__
+        // TODO set correct paths
+        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
+#endif
+        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), pluginPaths);
+    }();
 
 private:
     class PrivateTag {};
@@ -170,22 +200,6 @@ public:
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
 
     inline std::shared_ptr<const DashboardDescription> description() const { return m_desc; }
-
-    struct Service {
-        Service(std::shared_ptr<opencmw::client::RestClient> client, std::string n, std::string u) : restClient{std::move(client)}, name(std::move(n)), uri(std::move(u)) {}
-
-        std::shared_ptr<opencmw::client::RestClient> restClient;
-        std::string                                  name;
-        std::string                                  uri;
-        std::string                                  layout;
-        std::string                                  grc;
-
-        void reload();
-
-        void execute();
-
-        void emplaceBlock(std::string type, std::string params);
-    };
 
     void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
 
@@ -226,19 +240,6 @@ public:
     void handleMessages() { m_scheduler.handleMessages(m_graphModel); }
 
     [[nodiscard]] bool isInitialised() const noexcept { return m_isInitialised.load(std::memory_order_acquire); }
-
-private:
-    std::shared_ptr<opencmw::client::RestClient> m_restClient;
-    std::shared_ptr<const DashboardDescription>  m_desc = nullptr;
-    std::vector<Plot>                            m_plots;
-    DockingLayoutType                            m_layout;
-    std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
-    plf::colony<Service>                         m_services;
-    std::atomic<bool>                            m_isInitialised = false;
-
-    Scheduler m_scheduler;
-
-    UiGraphModel m_graphModel;
 };
 } // namespace DigitizerUi
 

@@ -106,7 +106,7 @@ private:
 
         try {
             std::lock_guard lockGuard(_flowgraphLock);
-            auto            grGraph = std::make_unique<gr::Graph>(gr::loadGrc(*_pluginLoader, initialFlowGraph.serialisedFlowgraph));
+            auto            grGraph = gr::loadGrc(*_pluginLoader, initialFlowGraph.serialisedFlowgraph);
             _flowgraph              = std::move(initialFlowGraph);
             _acquisitionWorker.scheduleGraphChange(std::move(grGraph));
         } catch (const std::string& e) {
@@ -127,7 +127,7 @@ private:
         {
             std::lock_guard lockGuard(_flowgraphLock);
             try {
-                auto grGraph = std::make_unique<gr::Graph>(gr::loadGrc(*_pluginLoader, in.serialisedFlowgraph));
+                auto grGraph = gr::loadGrc(*_pluginLoader, in.serialisedFlowgraph);
                 _flowgraph   = in;
                 out          = in;
 

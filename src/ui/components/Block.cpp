@@ -151,9 +151,11 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kReplaceBlock;
-                            message.data     = gr::property_map{
-                                    {"uniqueName"s, block->blockUniqueName},                              //
-                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                            // TODO: We have this in two places, unify or remove
+                            // (here and the context menu for blocks)
+                            message.data = gr::property_map{
+                                {"uniqueName"s, block->blockUniqueName},                              //
+                                {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
                             };
                             block->ownerGraph->sendMessage(std::move(message));
                         }

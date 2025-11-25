@@ -1,4 +1,20 @@
 blocks:
+  - id: SUBGRAPH
+    parameters:
+      name: grouped_blocks
+    graph:
+      blocks:
+        - id: gr::testing::Copy<float64>
+          parameters:
+            name: copy1
+        - id: gr::testing::Copy<float64>
+          parameters:
+            name: copy2
+      connections:
+        - [copy1, 0, copy2, 0]
+      exported_ports:
+        - [copy1, INPUT, in]
+        - [copy2, OUTPUT, out]
   - id: opendigitizer::Arithmetic<float32>
     parameters:
       name: sum sigs
