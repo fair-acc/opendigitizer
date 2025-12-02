@@ -201,7 +201,7 @@ struct TestApp {
         registerTestBlocks(r);
         return r;
     }();
-    gr::PluginLoader      pluginLoader = gr::PluginLoader(registry, {});
+    gr::PluginLoader      pluginLoader = gr::PluginLoader(registry, gr::globalSchedulerRegistry(), {});
     majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
     AcqWorker             acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
     FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);

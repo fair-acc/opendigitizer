@@ -36,10 +36,12 @@
 #include "build_configuration.hpp"
 #include "settings.hpp"
 
-#include <Picoscope3000a.hpp>
-#include <Picoscope4000a.hpp>
-#include <Picoscope5000a.hpp>
-#include <TimingSource.hpp>
+#include <fair/picoscope/Picoscope.hpp>
+#include <fair/picoscope/Picoscope3000a.hpp>
+#include <fair/picoscope/Picoscope4000a.hpp>
+#include <fair/picoscope/Picoscope5000a.hpp>
+#include <fair/picoscope/Picoscope6000.hpp>
+#include <fair/timing/TimingSource.hpp>
 
 namespace {
 template<typename Registry>
@@ -53,12 +55,14 @@ void registerTestBlocks(Registry& registry) {
     gr::blocklib::initGrMathBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
     // TODO: make gr-digitizers a proper OOT module
-    gr::registerBlock<fair::picoscope::Picoscope3000a<float>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope4000a<float>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope5000a<float>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope3000a<gr::DataSet<float>>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope4000a<gr::DataSet<float>>, "">(registry);
-    gr::registerBlock<fair::picoscope::Picoscope5000a<gr::DataSet<float>>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope3000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope5000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope6000>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope3000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope5000a>, "">(registry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope6000>, "">(registry);
     gr::registerBlock<gr::timing::TimingSource, "">(registry);
 }
 } // namespace
@@ -222,7 +226,7 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                                       pluginLoader(registry, {});
+    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), {});
     GrAcqWorker                                            grAcqWorker(broker, &pluginLoader, 50ms);
     GrFgWorker                                             grFgWorker(broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};
