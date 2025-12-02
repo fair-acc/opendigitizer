@@ -177,7 +177,6 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
-         fftw
          vir
          pmtv
          gnuradio-core
