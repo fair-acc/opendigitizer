@@ -380,7 +380,10 @@ private:
                         auto entries = signalEntryBySink | std::views::values;
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
-                    _scheduler             = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>();
+
+                    _scheduler = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>();
+
+                    // We do not need the old empty graph
                     std::ignore            = _scheduler->exchange(std::move(*pendingFlowGraph.value()));
                     _messagesToScheduler   = std::make_unique<MsgPortOut>();
                     _messagesFromScheduler = std::make_unique<MsgPortIn>();

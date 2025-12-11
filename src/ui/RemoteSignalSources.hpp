@@ -1,13 +1,16 @@
 #ifndef OPENDIGITIZER_REMOTESIGNALSOURCES_H
 #define OPENDIGITIZER_REMOTESIGNALSOURCES_H
 
-#include <ClientCommon.hpp>
 #include <list>
+
 #include <refl.hpp>
+
+#include <ClientCommon.hpp>
 
 #include "common/ImguiWrap.hpp"
 
 #include "RestClient.hpp"
+
 #include "services/dns_client.hpp"
 #include "services/dns_types.hpp"
 #include "settings.hpp"

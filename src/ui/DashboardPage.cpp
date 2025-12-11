@@ -409,16 +409,17 @@ DashboardPage::DashboardPage() {
         _addedSourceBlocksWaitingForSink.erase(it);
 
         gr::Message message;
-        message.cmd      = gr::message::Command::Set;
-        message.endpoint = gr::scheduler::property::kEmplaceEdge;
-        message.data     = gr::property_map{                       //
-            {"sourceBlock"s, sourceInWaiting.sourceBlockName}, //
-            {"sourcePort"s, "out"},                            //
-            {"destinationBlock"s, sink.uniqueName},            //
-            {"destinationPort"s, "in"},                        //
-            {"minBufferSize"s, gr::Size_t(4096)},              //
-            {"weight"s, 1},                                    //
-            {"edgeName"s, std::string()}};
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kEmplaceEdge;
+        message.serviceName = m_dashboard->graphModel().rootBlock.ownerSchedulerUniqueName();
+        message.data        = gr::property_map{                                                                 //
+            {std::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName}, //
+            {std::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                            //
+            {std::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), sink.uniqueName},            //
+            {std::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                        //
+            {std::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},             //
+            {std::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                     //
+            {std::string(gr::serialization_fields::EDGE_NAME), std::string()}};
         m_dashboard->graphModel().sendMessage(std::move(message));
 
         auto& plot = m_dashboard->newPlot(0, 0, 1, 1);
@@ -699,7 +700,9 @@ void DashboardPage::draw(Mode mode) noexcept {
                             gr::Message message;
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kEmplaceBlock;
-                            message.data     = gr::property_map{
+                            // The root block needs to be a scheduler
+                            message.serviceName = m_dashboard->graphModel().rootBlock.ownerSchedulerUniqueName();
+                            message.data        = gr::property_map{
                                 //
                                 {"type"s, sinkBlockType + sinkBlockParams}, //
                                 {
@@ -904,7 +907,7 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
             auto clickedMouseButton = LegendItem(color, label, signal.isVisible);
             if (clickedMouseButton == MouseClick::Right) {
-                m_editPane.setSelectedBlock(m_dashboard->graphModel().findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
+                m_editPane.setSelectedBlock(m_dashboard->graphModel().rootBlock.findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
             if (clickedMouseButton == MouseClick::Left) {
