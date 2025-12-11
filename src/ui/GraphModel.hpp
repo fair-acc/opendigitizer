@@ -79,7 +79,7 @@ struct UiGraphBlock {
         return std::visit(gr::meta::overloaded{[this](const SchedulerBlockInfo&) { return blockUniqueName; }, //
                               [](std::monostate) {
                                   assert(false && "monostate can not be info for an initialized block");
-                                  return ""s;
+                                  return std::string();
                               }, //
                               [](const auto& info) { return info.ownerSchedulerUniqueName; }},
             blockCategoryInfo);
@@ -201,7 +201,9 @@ class UiGraphModel {
 public:
     UiGraphModel() : rootBlock(this, nullptr) {}
 
-    std::function<void(gr::Message)> sendMessage;
+    std::function<void(gr::Message, std::source_location)> sendMessage_;
+
+    void sendMessage(gr::Message message, std::source_location location = std::source_location::current()) { sendMessage_(std::move(message), std::move(location)); }
 
     UiGraphBlock rootBlock;
 

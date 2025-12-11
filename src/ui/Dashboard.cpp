@@ -210,7 +210,7 @@ Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> re
     LookAndFeel::mutableInstance().style         = style;
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
-    m_graphModel.sendMessage = [this](gr::Message message) { m_scheduler.sendMessage(std::move(message)); };
+    m_graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { m_scheduler.sendMessage(std::move(message), std::move(location)); };
 }
 
 Dashboard::~Dashboard() {}

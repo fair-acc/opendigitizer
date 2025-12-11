@@ -778,6 +778,21 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     _graphModel->sendMessage(std::move(message));
 }
 
+void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
+    gr::Message message;
+
+    message.cmd         = gr::message::Command::Set;
+    message.endpoint    = gr::graph::property::kSubgraphExportPort;
+    message.serviceName = _exportPortTargetBlock->blockUniqueName;
+    message.data        = gr::property_map{                   //
+        {"uniqueBlockName"s, request.uniqueBlockName}, //
+        {"portDirection"s, request.portDirection},     //
+        {"portName"s, request.portName},               //
+        {"exportedName"s, request.exportedName},       //
+        {"exportFlag"s, request.exportFlag}};
+    graphModel()->sendMessage(std::move(message));
+}
+
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
 FlowgraphPage::~FlowgraphPage() = default;
@@ -948,7 +963,9 @@ void FlowgraphPage::drawNodeEditorTab() {
     auto contentSize    = ImGui::GetContentRegionAvail();
     auto contentTopLeft = ImGui::GetCursorPos();
 
-    for (const auto& [level, editor] : std::views::enumerate(_editors)) {
+    std::size_t level = 0UZ;
+    // for (const auto& [level, editor] : std::views::enumerate(_editors)) { TODO: Use once we bump to an EMSDK that supports it
+    for (auto& editor : _editors) {
         if (level != 0) {
             static constexpr float levelPadding = 16.0f;
             contentTopLeft += ImVec2(levelPadding, levelPadding);
@@ -966,6 +983,7 @@ void FlowgraphPage::drawNodeEditorTab() {
 
             _newBlockSelector.draw();
         }
+        level++;
     }
 }
 

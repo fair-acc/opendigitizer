@@ -71,20 +71,7 @@ public:
     };
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
-    void                                 requestExportPort(const ExportPortMessageData& request) {
-        gr::Message message;
-
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::graph::property::kSubgraphExportPort;
-        message.serviceName = _exportPortTargetBlock->blockUniqueName;
-        message.data        = gr::property_map{                   //
-            {"uniqueBlockName"s, request.uniqueBlockName}, //
-            {"portDirection"s, request.portDirection},     //
-            {"portName"s, request.portName},               //
-            {"exportedName"s, request.exportedName},       //
-            {"exportFlag"s, request.exportFlag}};
-        graphModel()->sendMessage(std::move(message));
-    }
+    void                                 requestExportPort(const ExportPortMessageData& request);
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
@@ -192,9 +179,6 @@ private:
     void drawLocalYamlTab();
     void drawRemoteYamlTab(Dashboard::Service& service);
 
-    void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock);
-    void popEditor();
-
 public:
     struct DataTypeStyle {
         std::uint32_t color;
@@ -218,6 +202,10 @@ public:
         reset();
     }
     void reset();
+
+    auto editorCount() const { return _editors.size(); }
+    void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock);
+    void popEditor();
 
     void setStyle(LookAndFeel::Style style);
 

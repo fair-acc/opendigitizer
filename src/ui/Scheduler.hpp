@@ -223,7 +223,7 @@ public:
 
     std::string_view schedulerUniqueName() const { return _scheduler->uniqueName(); }
 
-    void sendMessage(gr::Message message) {
+    void sendMessage(gr::Message message, std::source_location) {
         if (_scheduler) {
             _scheduler->sendMessage(std::move(message));
         }

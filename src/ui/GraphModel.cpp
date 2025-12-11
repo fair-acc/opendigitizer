@@ -529,21 +529,24 @@ void UiGraphBlock::requestBlockUpdate() {
 
     // If we are updating a nested scheduler, we need to send the
     // introspection message to its parent
-    if (parentBlock && blockUniqueName == ownerSchedulerUniqueName()) {
-        {
-            gr::Message message;
-            message.cmd         = gr::message::Command::Get;
-            message.endpoint    = gr::scheduler::property::kSchedulerInspect;
-            message.serviceName = parentBlock->blockUniqueName;
-            ownerGraph->sendMessage(std::move(message));
-        }
-        {
-            gr::Message message;
-            message.cmd         = gr::message::Command::Get;
-            message.endpoint    = gr::graph::property::kInspectBlock;
-            message.serviceName = parentBlock->blockUniqueName;
-            message.data        = gr::property_map{{"uniqueName", blockUniqueName}};
-            ownerGraph->sendMessage(std::move(message));
+    if (blockUniqueName == ownerSchedulerUniqueName()) {
+        if (parentBlock) {
+            // This is a nested scheduler, so it is a scheduler *and* a block
+            {
+                gr::Message message;
+                message.cmd         = gr::message::Command::Get;
+                message.endpoint    = gr::scheduler::property::kSchedulerInspect;
+                message.serviceName = parentBlock ? parentBlock->blockUniqueName : blockUniqueName;
+                ownerGraph->sendMessage(std::move(message));
+            }
+            {
+                gr::Message message;
+                message.cmd         = gr::message::Command::Get;
+                message.endpoint    = gr::graph::property::kInspectBlock;
+                message.serviceName = parentBlock->blockUniqueName;
+                message.data        = gr::property_map{{"uniqueName", blockUniqueName}};
+                ownerGraph->sendMessage(std::move(message));
+            }
         }
     } else {
         gr::Message message;
