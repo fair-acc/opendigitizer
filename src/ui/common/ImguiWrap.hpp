@@ -49,6 +49,7 @@ using TabBar     = stdex::c_resource<bool, ImGui::BeginTabBar, ImGui::EndTabBar>
 using TabItem    = stdex::c_resource<bool, ImGui::BeginTabItem, ImGui::EndTabItem>;
 using Group      = stdex::c_resource<void, ImGui::BeginGroup, ImGui::EndGroup, true>;
 using Popup      = stdex::c_resource<bool, ImGui::BeginPopup, ImGui::EndPopup>;
+using Menu       = stdex::c_resource<bool, ImGui::BeginMenu, ImGui::EndMenu>;
 using ModalPopup = stdex::c_resource<bool, ImGui::BeginPopupModal, ImGui::EndPopup>;
 using Combo      = stdex::c_resource<bool, ImGui::BeginCombo, ImGui::EndCombo>;
 using Table      = stdex::c_resource<bool, ImGui::BeginTable, ImGui::EndTable>;
@@ -75,6 +76,12 @@ using Creation = stdex::c_resource<bool, ax::NodeEditor::BeginCreate, ax::NodeEd
 using Deletion = stdex::c_resource<bool, ax::NodeEditor::BeginDelete, ax::NodeEditor::EndDelete, true>;
 using Node     = stdex::c_resource<void, ax::NodeEditor::BeginNode, ax::NodeEditor::EndNode, true>;
 } // namespace NodeEditor
+
+struct PushCursorPosition {
+    ImVec2 saved;
+    PushCursorPosition() { saved = ImGui::GetCursorScreenPos(); }
+    ~PushCursorPosition() { ImGui::SetCursorScreenPos(saved); }
+};
 
 } // namespace DigitizerUi::IMW
 #endif

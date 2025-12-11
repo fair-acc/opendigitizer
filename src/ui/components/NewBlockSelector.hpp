@@ -18,12 +18,21 @@ private:
 
     std::string m_previouslySelectedType;
     std::string m_selectedTypeParametrizationListName;
+    std::string m_targetSchedulerUniqueName;
+    std::string m_targetGraphUniqueName;
 
     UiGraphModel* m_graphModel = nullptr;
 
 public:
-    void open() { ImGui::OpenPopup(m_windowName.c_str()); }
-    void draw(const std::map<std::string, std::set<std::string>>& knownBlockTypes);
+    std::map<std::string, std::set<std::string>> data;
+
+    void open(std::string targetSchedulerUniqueName, std::string targetGraphUniqueName) {
+        m_targetSchedulerUniqueName = targetSchedulerUniqueName;
+        m_targetGraphUniqueName     = targetGraphUniqueName;
+        assert(!m_targetGraphUniqueName.empty() && !m_targetSchedulerUniqueName.empty());
+        ImGui::OpenPopup(m_windowName.c_str());
+    }
+    void draw();
 
     void setGraphModel(UiGraphModel* newModel) { m_graphModel = newModel; }
 };

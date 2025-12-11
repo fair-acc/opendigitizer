@@ -242,7 +242,7 @@ public:
             } else if (mainViewMode == ViewMode::FLOWGRAPH) {
                 if (dashboard != nullptr && dashboard->isInitialised()) {
                     if (previousViewMode != ViewMode::FLOWGRAPH) {
-                        dashboard->graphModel().requestGraphUpdate();
+                        dashboard->graphModel().requestFullUpdate();
                         dashboard->graphModel().requestAvailableBlocksTypesUpdate();
                     }
 

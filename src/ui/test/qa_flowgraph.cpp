@@ -42,12 +42,12 @@ struct TestState {
     void startScheduler() { dashboard->scheduler()->start(); }
     void stopScheduler() { dashboard->scheduler()->stop(); }
 
-    bool hasBlocks() const { return dashboard && !dashboard->graphModel().blocks().empty(); }
+    bool hasBlocks() const { return dashboard && !dashboard->graphModel().rootBlock.childBlocks.empty(); }
 
-    void deleteBlock(const std::string& blockName) { flowgraphPage.deleteBlock(blockName); }
+    void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
 
     std::string nameOfFirstBlock() const {
-        const auto& blocks = dashboard->graphModel().blocks();
+        const auto& blocks = dashboard->graphModel().rootBlock.childBlocks;
         if (blocks.empty()) {
             return {};
         }
@@ -57,8 +57,9 @@ struct TestState {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks()) {
-            flowgraphPage.sortNodes(false);
-            DigitizerUi::FlowgraphPage::drawGraph(dashboard->graphModel(), ImGui::GetContentRegionAvail(), flowgraphPage.m_filterBlock);
+            auto& editor = flowgraphPage.currentEditor();
+            editor.sortNodes(false);
+            editor.drawGraph(ImGui::GetContentRegionAvail());
         }
     }
 
@@ -78,13 +79,13 @@ struct TestState {
         }
     }
 
-    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.m_filterBlock = block; }
+    void setFilterBlock(const DigitizerUi::UiGraphBlock* block) { flowgraphPage.currentEditor().setFilterBlock(block); }
 
     // Waits for the graph to have exactly expectedBlockCount blocks
     // for testing topology changing messages
     void waitForGraphModelUpdate(size_t expectedBlockCount, std::size_t maxCount = 20UZ) {
         std::size_t count = 0;
-        while (dashboard->graphModel().blocks().size() != expectedBlockCount && count < maxCount) {
+        while (dashboard->graphModel().rootBlock.childBlocks.size() != expectedBlockCount && count < maxCount) {
             dashboard->handleMessages();
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             count++;
@@ -101,7 +102,8 @@ struct TestState {
 
         dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [this](gr::Graph&& grGraph) { //
             using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
-            dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
+            dashboard->emplaceScheduler<TScheduler>();
+            dashboard->scheduler()->setGraph(std::move(grGraph));
         });
 
         flowgraphPage.setDashboard(dashboard.get());
@@ -144,7 +146,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(that % !firstBlockName.empty()) << "There should be at least one block";
 
                     // Delete the first block
-                    const auto numBlocksBefore = g_state.dashboard->graphModel().blocks().size();
+                    const auto numBlocksBefore = g_state.dashboard->graphModel().rootBlock.childBlocks.size();
 
                     g_state.deleteBlock(firstBlockName);
                     ctx->Yield(); // Give time for UI to update
@@ -153,7 +155,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto expectedBlockCount = numBlocksBefore - 1;
                     g_state.waitForGraphModelUpdate(expectedBlockCount);
 
-                    const auto numBlocksAfter = g_state.dashboard->graphModel().blocks().size();
+                    const auto numBlocksAfter = g_state.dashboard->graphModel().rootBlock.childBlocks.size();
 
                     expect(that % (numBlocksAfter == numBlocksBefore - 1)) << "Exactly one block should be removed";
 
@@ -163,8 +165,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().blocks().empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
+                    if (!g_state.dashboard->graphModel().rootBlock.childBlocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().rootBlock.childBlocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };
@@ -200,8 +202,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     captureScreenshot(*ctx);
 
                     // Test filtering
-                    if (!g_state.dashboard->graphModel().blocks().empty()) {
-                        g_state.setFilterBlock(g_state.dashboard->graphModel().blocks()[0].get());
+                    if (!g_state.dashboard->graphModel().rootBlock.childBlocks.empty()) {
+                        g_state.setFilterBlock(g_state.dashboard->graphModel().rootBlock.childBlocks[0].get());
                         captureScreenshot(*ctx);
                     }
                 };

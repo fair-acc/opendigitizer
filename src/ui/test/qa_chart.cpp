@@ -140,7 +140,8 @@ int main(int argc, char* argv[]) {
     g_state.dashboard         = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [](gr::Graph&& grGraph) { //
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-        g_state.dashboard->emplaceScheduler<TScheduler, gr::Graph>(std::move(grGraph));
+        g_state.dashboard->emplaceScheduler<TScheduler>();
+        g_state.dashboard->scheduler()->setGraph(std::move(grGraph));
     });
 
     g_state.startScheduler();
