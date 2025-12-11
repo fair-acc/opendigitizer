@@ -106,6 +106,9 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
 
+    // Register schedulers
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>();
+
     // EMSCRIPTEN ends main before it enters the main loop,
     // app needs to live forever, so it is static
     static App app;

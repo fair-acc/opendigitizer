@@ -11,11 +11,12 @@
 
 #include <implot.h>
 
+#include <opencmw.hpp>
+
 #include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
 #include <daq_api.hpp>
-#include <opencmw.hpp>
 
 #include "App.hpp"
 #include "GraphModel.hpp"
@@ -656,6 +657,10 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
     gr::Message message;
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::scheduler::property::kEmplaceBlock;
+
+    // We can add remote signals only to the root block. And the root block
+    // has to be a scheduler
+    message.serviceName = graphModel().rootBlock.ownerSchedulerUniqueName();
     gr::property_map properties{
         {"remote_uri"s, uriStr},                 //
         {"signal_name"s, signalData.signalName}, //

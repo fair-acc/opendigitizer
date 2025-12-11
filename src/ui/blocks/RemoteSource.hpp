@@ -10,10 +10,11 @@
 
 #include <daq_api.hpp>
 
+#include <opencmw.hpp>
+
 #include <IoSerialiserYaS.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
-#include <opencmw.hpp>
 
 #include "conversion.hpp"
 #include "settings.hpp"
