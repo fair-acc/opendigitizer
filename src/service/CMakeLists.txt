@@ -143,3 +143,13 @@ target_link_libraries(
           GrHttpBlocksShared
           GrMathBlocksShared
           GrTestingBlocksShared)
+
+add_custom_target(
+  run-opendigitizer
+  USES_TERMINAL
+  COMMAND
+    ${CMAKE_COMMAND} -E env
+    OPENCMW_REST_CERT_FILE="${CMAKE_BINARY_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-cert.pem"
+    OPENCMW_REST_PRIVATE_KEY_FILE="${CMAKE_BINARY_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-key.pem"
+    DIGITIZER_CHECK_CERTIFICATES=0 DIGITIZER_HOSTNAME=localhost DIGITIZER_WASM_SERVE_DIR="${CMAKE_BINARY_DIR}/ui-wasm"
+    DIGITIZER_REMOTE_DASHBOARDS="${PROJECT_SOURCE_DIR}/dashboard/defaultDashboards" "\"$<TARGET_FILE:opendigitizer>\"")
