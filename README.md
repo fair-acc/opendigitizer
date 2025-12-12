@@ -49,16 +49,19 @@ assets.
 
 ## Running
 
+Running the service for webassembly UI
+
 ```shell
-export DIGITIZER_CHECK_CERTIFICATES=0                   # to disable certificate checking, if wanted
-export DIGITIZER_HOSTNAME=localhost           # set a custom host
-export OPENCMW_REST_CERT_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-cert.pem
-export OPENCMW_REST_PRIVATE_KEY_FILE=${BUILD_DIR}/_deps/opencmw-cpp-src/src/client/test/assets/server-key.pem
-build/src/service/opendigitizer &              # launches the service
-build/src/ui/opendigitizer-ui &                # launches the native digitizer UI
-xdg-open https://localhost:8080/web/index.html # launches the webassembly UI
-xdg-open https://localhost:8080/flowchart      # launches the html based web ui for the flowgraph property
-xdg-open https://localhost:8080/acquisition    # launches the html based web ui for the acquisition property
+cmake --build . --target run-opendigitizer
+xdg-open https://localhost:8443/web/index.html # launches the webassembly UI
+xdg-open https://localhost:8443/flowchart      # launches the html based web ui for the flowgraph property
+xdg-open https://localhost:8443/acquisition    # launches the html based web ui for the acquisition property
+```
+
+Running the native digitizer UI
+
+```shell
+build/src/ui/opendigitizer-ui
 ```
 
 ## Sustainable, FAIR, Clean- and Lean- Principles
