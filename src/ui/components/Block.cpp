@@ -149,12 +149,12 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                     for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                         if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                             gr::Message message;
+                            assert(!panelContext.targetGraph.empty());
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kReplaceBlock;
-                            message.data     = gr::property_map{
-                                    {"uniqueName"s, block->blockUniqueName},                              //
+                            message.data     = gr::property_map{{"uniqueName"s, block->blockUniqueName},  //
                                     {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
-                            };
+                                    {"_targetGraph", panelContext.targetGraph}};
                             block->ownerGraph->sendMessage(std::move(message));
                         }
                         if (availableParametrization == typeParams.parametrization) {

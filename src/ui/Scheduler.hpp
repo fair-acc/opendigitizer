@@ -24,7 +24,8 @@ private:
         virtual std::expected<void, gr::Error> pause()  = 0;
         virtual std::expected<void, gr::Error> resume() = 0;
 
-        virtual const gr::Graph& graph() const = 0;
+        virtual const gr::Graph& graph() const               = 0;
+        virtual void             setGraph(gr::Graph&& graph) = 0;
 
         virtual gr::lifecycle::State state() const = 0;
     };
@@ -156,7 +157,7 @@ private:
 
                             startThread(originalState);
 
-                            graphModel.requestGraphUpdate();
+                            graphModel.requestFullUpdate();
                         } else {
                             // Process reply to kGraphGRC GET message
                             graphModel.processMessage(message);
@@ -193,6 +194,11 @@ private:
 
         const gr::Graph& graph() const final { return _scheduler.graph(); }
 
+        void setGraph(gr::Graph&& graph) final {
+            // we do not need the old graph
+            std::ignore = _scheduler.exchange(std::move(graph));
+        }
+
         gr::lifecycle::State state() const final { return _scheduler.state(); }
 
         ~SchedulerImpl() noexcept final {
@@ -204,20 +210,20 @@ private:
     std::unique_ptr<SchedulerModel> _scheduler;
 
 public:
-    template<typename TScheduler, typename... Args>
-    void emplaceScheduler(Args&&... args) {
-        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::forward<Args>(args)...);
+    template<typename TScheduler>
+    void emplaceScheduler(gr::property_map initParams = {}) {
+        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::move(initParams));
     }
 
-    template<typename... Args>
-    void emplaceGraph(Args&&... args) {
+    void emplaceGraph(gr::Graph&& graph) {
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
-        emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
+        emplaceScheduler<TScheduler>();
+        _scheduler->setGraph(std::move(graph));
     }
 
     std::string_view schedulerUniqueName() const { return _scheduler->uniqueName(); }
 
-    void sendMessage(gr::Message message) {
+    void sendMessage(gr::Message message, std::source_location) {
         if (_scheduler) {
             _scheduler->sendMessage(std::move(message));
         }

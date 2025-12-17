@@ -19,6 +19,7 @@ struct BlockControlsPanelContext {
     void          setSelectedBlock(UiGraphBlock* block, UiGraphModel* model);
 
     UiGraphModel* graphModel = nullptr;
+    std::string   targetGraph;
     enum class Mode { None, Insert, AddAndBranch };
 
     Mode mode = Mode::None;

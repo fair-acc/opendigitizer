@@ -232,6 +232,10 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
 std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
     auto parentSize = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowSize(parentSize - ImVec2(32, 32), ImGuiCond_Once);
+    ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_Once);
+    auto x = ImGui::GetCursorPosX();
+    ImGui::SetCursorPosX(x + 32);
+
     if (auto menu = IMW::ModalPopup(m_windowName.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         float windowWidth = ImGui::GetWindowWidth();
         float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
