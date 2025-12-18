@@ -255,7 +255,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
             }
         }
         output.publish(written);
-        return gr::work::Status::OK;
+        return written == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
     void stopSubscription() {
@@ -404,7 +404,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
             _queue->data.pop_front();
         }
         output.publish(n);
-        return gr::work::Status::OK;
+        return n == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
     void stopSubscription() {

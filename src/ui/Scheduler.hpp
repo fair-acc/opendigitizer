@@ -6,6 +6,7 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include "GraphModel.hpp"
+#include "common/FramePacer.hpp"
 #include "components/ImGuiNotify.hpp"
 
 namespace DigitizerUi {
@@ -32,8 +33,10 @@ private:
 
     template<typename TScheduler>
     struct SchedulerImpl final : SchedulerModel {
-        TScheduler  _scheduler;
-        std::thread _thread;
+        TScheduler       _scheduler;
+        std::thread      _thread;
+        std::atomic_bool _uiUpdateRunning{false};
+        std::atomic_bool _uiUpdateShutdown{false};
 
         gr::MsgPortIn  _fromScheduler;
         gr::MsgPortOut _toScheduler;
@@ -42,10 +45,10 @@ private:
         explicit SchedulerImpl(Args&&... args) : _scheduler() {
             std::ignore = _scheduler.exchange(std::forward<Args>(args)...);
             if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
-                throw std::format("Failed to connect _toScheduler -> _scheduler.msgIn\n");
+                throw gr::exception("Failed to connect _toScheduler -> _scheduler.msgIn");
             }
             if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
-                throw std::format("Failed to connect _scheduler.msgOut -> _fromScheduler\n");
+                throw gr::exception("Failed to connect _scheduler.msgOut -> _fromScheduler");
             }
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
@@ -72,6 +75,32 @@ private:
                 return;
             }
 
+            // start UI update thread
+            gr::thread_pool::Manager::defaultIoPool()->execute([this]() {
+                if (_uiUpdateRunning) {
+                    return;
+                }
+                gr::thread_pool::thread::setThreadName("ui-FramePacer");
+                _uiUpdateRunning        = true;
+                std::size_t oldProgress = _scheduler.graph().progress().value();
+                while (_uiUpdateRunning && !_uiUpdateShutdown) {
+                    if (_scheduler.state() == gr::lifecycle::State::PAUSED) {
+                        DigitizerUi::components::Notification::info("Scheduler is paused");
+                    }
+                    if (gr::lifecycle::isActive(_scheduler.state())) {
+                        std::size_t newProgress = _scheduler.graph().progress().value();
+                        if (oldProgress != newProgress) {
+                            DigitizerUi::globalFramePacer().requestFrame(); // updated data -> request UI frame update
+                        } else {
+                            _scheduler.graph().progress().wait(oldProgress);
+                        }
+                        oldProgress = newProgress;
+                    }
+                }
+                _uiUpdateRunning = false;
+                _uiUpdateRunning.notify_all();
+            });
+
             // The old thread is stopped, clean it
             if (_thread.joinable()) {
                 _thread.join();
@@ -90,13 +119,14 @@ private:
 
             case gr::lifecycle::State::RUNNING:
                 _thread = std::thread([this]() {
+                    gr::thread_pool::thread::setThreadName("ui-sched#1");
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                            throw std::format("Failed to initialize flowgraph");
+                            throw gr::exception("Failed to initialize flowgraph");
                         }
                     }
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                        throw std::format("Failed to start flowgraph processing. state={}", magic_enum::enum_name(_scheduler.state()));
+                        throw gr::exception(std::format("Failed to start flowgraph processing. state={}", magic_enum::enum_name(_scheduler.state())));
                     }
 
                     // NOTE: the single threaded scheduler runs its main loop inside its start() function and only returns after its state changes to non-active
@@ -106,24 +136,25 @@ private:
             case gr::lifecycle::State::REQUESTED_PAUSE:
             case gr::lifecycle::State::PAUSED:
                 _thread = std::thread([this]() {
+                    gr::thread_pool::thread::setThreadName("ui-sched#2");
                     // Lifecycle doesn't allow INITIALIZE->PAUSED
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
-                            throw std::format("Failed to initialize flowgraph");
+                            throw gr::exception("Failed to initialize flowgraph");
                         }
                     }
 
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
-                        throw std::format("Failed to start flowgraph processing");
+                        throw gr::exception("Failed to start flowgraph processing");
                     }
 
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_PAUSE); !e) {
-                        throw std::format("Failed to request pausing flowgraph processing");
+                        throw gr::exception("Failed to request pausing flowgraph processing");
                     }
 
                     // TODO: Not clear what to do, should we block here waiting ? Allowing INITIALIZE->PAUSED would be preferable
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::PAUSED); !e) {
-                        throw std::format("Failed to pause flowgraph processing");
+                        throw gr::exception("Failed to pause flowgraph processing");
                     }
                 });
                 break;
@@ -202,8 +233,12 @@ private:
         gr::lifecycle::State state() const final { return _scheduler.state(); }
 
         ~SchedulerImpl() noexcept final {
+            _uiUpdateShutdown = true;
+            _uiUpdateShutdown.notify_all();
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");
+            _scheduler.graph()._progress->incrementAndGet();
             _thread.join();
+            _uiUpdateRunning.wait(true);
         }
     };
 
@@ -217,7 +252,10 @@ public:
 
     void emplaceGraph(gr::Graph&& graph) {
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
-        emplaceScheduler<TScheduler>();
+        emplaceScheduler<TScheduler>({
+            {"timeout_ms", 2000U},
+            {"watchdog_timeout", 2000U},
+        });
         _scheduler->setGraph(std::move(graph));
     }
 

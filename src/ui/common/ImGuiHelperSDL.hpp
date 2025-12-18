@@ -156,12 +156,24 @@ inline void setWindowMode(SDL_Window* window, const WindowMode& state) {
     }
 }
 
+inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
+    const auto my = SDL_GetWindowID(w);
+    switch (e.type) {
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_MINIMIZED:
+    case SDL_EVENT_WINDOW_MAXIMIZED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_RESIZED: return e.window.windowID && e.window.windowID != my;
+    default: return false;
+    }
+}
+
 [[maybe_unused]] inline bool processEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         ImGui_ImplSDL3_ProcessEvent(&event);
-        // filter to the current window
-        if (event.window.windowID && event.window.windowID != SDL_GetWindowID(imgui_helper::g_Window)) {
+        if (isWindowEventForOtherWindow(event, imgui_helper::g_Window)) {
             continue;
         }
 
