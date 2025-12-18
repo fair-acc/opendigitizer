@@ -40,7 +40,7 @@ blocks:
   - id: gr::basic::ClockSource
     parameters:
       name: ClockSource
-      chunk_size: 20
+      chunk_size: 40
       do_zero_order_hold: true
       n_samples_max: 0
       repeat_period: 4000000000
