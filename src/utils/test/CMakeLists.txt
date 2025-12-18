@@ -12,3 +12,9 @@ add_test(NAME qa_c_wrapper COMMAND qa_c_wrapper)
 
 target_link_libraries(qa_DeviceNameHelper PRIVATE ut)
 add_test(NAME qa_DeviceNameHelper COMMAND qa_DeviceNameHelper)
+
+add_executable(qa_PeriodicTimer qa_PeriodicTimer.cpp)
+target_include_directories(qa_PeriodicTimer INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
+        $<INSTALL_INTERFACE:include/>)
+add_test(NAME qa_PeriodicTimer COMMAND qa_PeriodicTimer)
+target_link_libraries(qa_PeriodicTimer PRIVATE ut gnuradio-core)
