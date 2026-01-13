@@ -32,14 +32,16 @@ to the current wall-clock position.)"">;
 
     using ClockSourceType = std::chrono::system_clock;
     using TimePoint       = std::chrono::time_point<ClockSourceType>;
+    template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
+    using A = gr::Annotated<U, description, Arguments...>;
 
     PortOut<T> out;
 
-    Annotated<float, "frequency", Unit<"Hz">, Visible>                                   frequency   = 1.f;
-    Annotated<float, "amplitude", Unit<"a.u.">>                                          amplitude   = 1.f;
-    Annotated<float, "phase", Unit<"°">>                                                 phase       = 0.f;
-    Annotated<float, "sample_rate", Unit<"Hz">, Doc<"output sample rate">, Visible>      sample_rate = 1000.f;
-    Annotated<float, "update_rate", Unit<"Hz">, Doc<"timer rate, 0=on-demand">, Visible> update_rate = 0.f;
+    A<float, "frequency", Unit<"Hz">, Visible>                                   frequency   = 1.f;
+    A<float, "amplitude", Unit<"a.u.">>                                          amplitude   = 1.f;
+    A<float, "phase", Unit<"°">>                                                 phase       = 0.f;
+    A<float, "sample_rate", Unit<"Hz">, Doc<"output sample rate">, Visible>      sample_rate = 1000.f;
+    A<float, "update_rate", Unit<"Hz">, Doc<"timer rate, 0=on-demand">, Visible> update_rate = 0.f;
 
     GR_MAKE_REFLECTABLE(SineSource, out, frequency, amplitude, phase, sample_rate, update_rate);
 
