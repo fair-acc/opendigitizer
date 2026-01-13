@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <print>
 #include <ranges>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,18 +20,18 @@ namespace Digitizer {
 namespace detail {
 
 template<typename T>
-inline auto toType(std::string string) {
+auto toType(std::string string) {
     return T{string};
 }
 template<typename T>
 requires std::is_arithmetic_v<T>
-inline T toType(std::string string) {
+T toType(std::string string) {
     return static_cast<T>(std::stod(string.c_str()));
 }
 } // namespace detail
 
 template<typename T>
-inline T getValueFromEnv(std::string variableName, T defaultValue) {
+T getValueFromEnv(std::string variableName, T defaultValue) {
     if (auto valueString = std::getenv(variableName.c_str()); valueString) {
         return detail::toType<T>(valueString);
     } else {
@@ -51,13 +52,11 @@ inline bool getValueFromEnv(std::string variableName, bool defaultValue) {
 }
 
 struct Settings {
-    std::string hostname{"localhost"};
-    uint16_t    port{8443};
-    uint16_t    portPlain{8080};
-    std::string basePath;
-    bool        disableHttps{false};
-    bool        checkCertificates{true};
-    bool        darkMode{false};
+    std::string           hostname{"localhost"};
+    std::set<std::string> bindAddresses{"mdp://*:12340", "mds://*:12350", "https://*:8443"};
+    std::string           basePath;
+    bool                  checkCertificates{true};
+    bool                  darkMode{false};
 #ifdef EMSCRIPTEN
     bool editableMode{false};
 #else
@@ -70,13 +69,31 @@ struct Settings {
 private:
     Settings() {
         using std::operator""sv;
-        disableHttps      = getValueFromEnv("DIGITIZER_DISABLE_HTTPS", disableHttps);           // use http instead of https
+        using std::operator""s;
+        // handle legacy configuration values
+        if (getValueFromEnv("DIGITIZER_DISABLE_HTTPS", false)) {
+            std::println("DIGITIZER_DISABLE_HTTPS is deprecated, use DIGITIZER_BIND_ADDRESSES instead, disableHttps is true");
+            bindAddresses.erase("https://*:8443");
+            bindAddresses.insert(std::format("http://*:8080"));
+        }
+        if (std::uint16_t port = getValueFromEnv("DIGITIZER_PORT", static_cast<std::uint16_t>(0u)); port != 0u) {
+            std::println("DIGITIZER_PORT is deprecated, use DIGITIZER_BIND_ADDRESSES instead, port={}", port);
+            bindAddresses.erase("https://*:8443");
+            bindAddresses.insert(std::format("https://*:{}", port));
+        }
+        if (std::uint16_t port = getValueFromEnv("DIGITIZER_PORT_PLAIN", static_cast<std::uint16_t>(0u)); port != 0u) {
+            std::println("DIGITIZER_PORT_PLAIN is deprecated, use DIGITIZER_BIND_ADDRESSES instead, port={}", port);
+            bindAddresses.erase("http://*:8080");
+            bindAddresses.insert(std::format("http://*:{}", port));
+        }
+
+        if (std::string bindAddressesString = getValueFromEnv("DIGITIZER_BIND_ADDRESSES", ""s); !bindAddressesString.empty()) {
+            bindAddresses = bindAddressesString | std::views::split(';') | std::views::transform([](auto&& s) { return s | std::ranges::to<std::string>(); }) | std::ranges::to<std::set>();
+        }
         darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enable 'dark mode'
         editableMode      = getValueFromEnv("DIGITIZER_EDIT_MODE", editableMode);               // enable 'editable mode'
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
-        port              = getValueFromEnv("DIGITIZER_PORT", port);                            // port
-        portPlain         = getValueFromEnv("DIGITIZER_PORT_PLAIN", portPlain);                 // port for http
         basePath          = getValueFromEnv("DIGITIZER_PATH", basePath);                        // path
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
@@ -95,16 +112,13 @@ private:
         EM_ASM({_free($0)}, finalURLChar);
 #pragma GCC diagnostic push
         auto url = opencmw::URI<opencmw::STRICT>(finalURL);
-        if (url.port().has_value()) {
-            port = url.port().value();
-        } else {
-            if (url.scheme().has_value()) {
-                if (url.scheme().value() == "https") {
-                    port = 443;
-                } else if (url.scheme().value() == "http") {
-                    port = 80;
-                }
+        if (url.scheme().has_value()) {
+            if (url.scheme().value() == "https") {
+                bindAddresses.erase("https://*:8443");
+            } else if (url.scheme().value() == "http") {
+                bindAddresses.erase("http://*:8080");
             }
+            bindAddresses.insert(std::format("{}://{}:{}", url.scheme().value(), url.hostName().value_or(""), url.port().value_or(url.scheme().value() == "https" ? 443 : 80)));
         }
         hostname                 = url.hostName().value_or(hostname);
         basePath                 = url.path().value_or(basePath);
@@ -134,10 +148,9 @@ private:
                 editableMode = true;
             }
         }
-        disableHttps = url.scheme() == "http";
 #endif
-        std::println("settings loaded: disableHttps={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, port={}, portPlain={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
-            disableHttps, darkMode, editableMode, checkCertificates, hostname, port, portPlain, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
+        std::println("settings loaded: bindAddresses={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+            bindAddresses, darkMode, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:
@@ -146,8 +159,36 @@ public:
         return settings;
     }
 
-    opencmw::URI<>::UriFactory serviceUrl() { return opencmw::URI<>::UriFactory().scheme(disableHttps ? "http" : "https").hostName(hostname).port(port); }
-    opencmw::URI<>::UriFactory serviceUrlPlain() { return opencmw::URI<>::UriFactory().scheme("http").hostName(hostname).port(portPlain); }
+    opencmw::URI<>::UriFactory serviceUrl() const {
+        using std::operator""s;
+        std::string fallback;
+        for (std::string_view bindAddress : bindAddresses) {
+            if (bindAddress.starts_with("https://")) {
+                const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                // we need to set the full authority here, if we only set the port, the constructed url will have the authority of bindUrl and the port will be ignored
+                return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(443)));
+            }
+            if (fallback.empty() && bindAddress.starts_with("http://")) {
+                fallback = bindAddress;
+            }
+        }
+        if (!fallback.empty()) {
+            const auto bindUri = opencmw::URI<>(std::string(fallback));
+            return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(80)));
+        }
+        return opencmw::URI<>::UriFactory(opencmw::URI<>(""s));
+    }
+
+    opencmw::URI<>::UriFactory serviceUrlPlain() const {
+        using std::operator""s;
+        for (std::string_view bindAddress : bindAddresses) {
+            if (bindAddress.starts_with("http://")) {
+                const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(80)));
+            }
+        }
+        return opencmw::URI<>::UriFactory(opencmw::URI<>(""s));
+    }
 };
 } // namespace Digitizer
 

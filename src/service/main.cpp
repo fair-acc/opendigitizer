@@ -74,6 +74,78 @@ void registerDefaultThreadPool() {
     Manager::instance().replacePool(std::string(kDefaultCpuPoolId), std::make_shared<ThreadPoolWrapper>(std::make_unique<BasicThreadPool>(std::string(kDefaultCpuPoolId), TaskType::CPU_BOUND, 2U, 2U), "CPU"));
 }
 
+std::unique_ptr<Broker<>> setupBroker(const Digitizer::Settings& settings) {
+    auto broker = std::make_unique<Broker<>>("/PrimaryBroker");
+
+    const auto wasmServeDir = !settings.wasmServeDir.empty() ? settings.wasmServeDir : SERVING_DIR;
+
+    auto getEnvironmentVariable = [](const char* name, std::string_view defaultValue) {
+        if (const auto value = std::getenv(name); value) {
+            return std::string(value);
+        }
+        return std::string(defaultValue);
+    };
+
+    bool           httpInitialized  = false;
+    bool           httpsInitialized = false;
+    rest::Settings restSettings;
+    for (auto& bindAddress : settings.bindAddresses) {
+        opencmw::URI<> bindUrl{bindAddress};
+        if (bindAddress.starts_with("mdp://") || bindAddress.starts_with("mds://") || bindAddress.starts_with("tcp://") || bindAddress.starts_with("inproc://")) {
+            const auto brokerRouterAddress = broker->bind(bindUrl);
+            if (!brokerRouterAddress) {
+                std::println(std::cerr, "Could not bind to broker address {}", bindAddress);
+            }
+            continue;
+        }
+        if (bindAddress.starts_with("http://") || bindAddress.starts_with("https://")) {
+            if (!httpInitialized) {
+                std::vector<std::pair<std::string, std::string>> extraHeaders = {
+                    {"cross-origin-opener-policy", "same-origin"},
+                    {"cross-origin-embedder-policy", "require-corp"},
+                    {"cache-control", "public, max-age=3600"},
+                };
+
+                auto       cmrcFs   = std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem());
+                const auto mainPath = std::format("web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : "");
+
+                auto redirectHandler = [](auto from, auto to) {
+                    return rest::Handler{.method = "GET", .path = from, .handler = [to](const rest::Request&) {
+                                             rest::Response response;
+                                             response.headers = {{"location", to}};
+                                             response.code    = 302;
+                                             return response;
+                                         }};
+                };
+                restSettings.handlers = {
+                    rest::cmrcHandler("/assets/*", "", cmrcFs, ""),                     //
+                    rest::fileSystemHandler("/web/*", "/", wasmServeDir, extraHeaders), //
+                    redirectHandler("/", mainPath),                                     //
+                    redirectHandler("/index.html", mainPath)                            //
+                };
+                httpInitialized = true;
+            }
+        }
+        if (bindAddress.starts_with("https://")) {
+            if (!httpsInitialized) {
+                restSettings.certificateFilePath = getEnvironmentVariable("OPENCMW_REST_CERT_FILE", "demo_public.crt");
+                restSettings.keyFilePath         = getEnvironmentVariable("OPENCMW_REST_PRIVATE_KEY_FILE", "demo_private.key");
+                std::println(std::cout, "Using certificate file: {}", restSettings.certificateFilePath.string());
+                std::println(std::cout, "Using private key file: {}", restSettings.keyFilePath.string());
+                httpsInitialized = true;
+            }
+            restSettings.port = bindUrl.port().value();
+        }
+    }
+    if (httpInitialized) {
+        if (auto rc = broker->bindRest(restSettings); !rc) {
+            std::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
+        }
+    }
+
+    return broker;
+};
+
 int main(int argc, char** argv) {
     using opencmw::URI;
     using namespace opendigitizer::acq;
@@ -146,80 +218,20 @@ connections:
     }
 
     Digitizer::Settings& settings = Digitizer::Settings::instance();
-    std::print("Settings: host/port: {}:{}, {} {}\nwasmServeDir: {}\n", settings.hostname, settings.port, settings.disableHttps ? "(http disabled), " : "", settings.checkCertificates ? "(cert check disabled), " : "", settings.wasmServeDir);
 
     registerDefaultThreadPool();
-
-    Broker broker("/PrimaryBroker");
-
-    const auto wasmServeDir = !settings.wasmServeDir.empty() ? settings.wasmServeDir : SERVING_DIR;
-
-    auto getEnvironmentVariable = [](const char* name, std::string_view defaultValue) {
-        if (auto value = std::getenv(name); value) {
-            return std::string(value);
-        } else {
-            return std::string(defaultValue);
-        }
-    };
-
-    using namespace opencmw::majordomo;
-    rest::Settings restSettings;
-
-    std::vector<std::pair<std::string, std::string>> extraHeaders = {
-        {"cross-origin-opener-policy", "same-origin"},
-        {"cross-origin-embedder-policy", "require-corp"},
-        {"cache-control", "public, max-age=3600"},
-    };
-
-    auto       cmrcFs   = std::make_shared<cmrc::embedded_filesystem>(cmrc::assets::get_filesystem());
-    const auto mainPath = std::format("web/index.html#dashboard={}{}", settings.defaultDashboard, settings.darkMode ? "&darkMode=true" : "");
-
-    auto redirectHandler = [](auto from, auto to) {
-        return rest::Handler{.method = "GET", .path = from, .handler = [to](const rest::Request&) {
-                                 rest::Response response;
-                                 response.headers = {{"location", to}};
-                                 response.code    = 302;
-                                 return response;
-                             }};
-    };
-
-    restSettings.port = settings.port;
-
-    restSettings.handlers = {
-        rest::cmrcHandler("/assets/*", "", cmrcFs, ""),                     //
-        rest::fileSystemHandler("/web/*", "/", wasmServeDir, extraHeaders), //
-        redirectHandler("/", mainPath),                                     //
-        redirectHandler("/index.html", mainPath)                            //
-    };
-
-    if (!settings.disableHttps) {
-        restSettings.certificateFilePath = getEnvironmentVariable("OPENCMW_REST_CERT_FILE", "demo_public.crt");
-        restSettings.keyFilePath         = getEnvironmentVariable("OPENCMW_REST_PRIVATE_KEY_FILE", "demo_private.key");
-        std::println(std::cout, "Using certificate file: {}", restSettings.certificateFilePath.string());
-        std::println(std::cout, "Using private key file: {}", restSettings.keyFilePath.string());
-    }
-
-    if (auto rc = broker.bindRest(restSettings); !rc) {
-        std::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
+    auto broker = setupBroker(settings);
+    if (broker == nullptr) {
         return 1;
     }
+    std::jthread brokerThread([&broker] { broker->run(); });
 
-    // TODO check what functionality from fileserverRestBackend.hpp we need
-
-    const auto requestedAddress    = URI<>("mds://127.0.0.1:12350");
-    const auto brokerRouterAddress = broker.bind(requestedAddress);
-    if (!brokerRouterAddress) {
-        std::println(std::cerr, "Could not bind to broker address {}", requestedAddress.str());
-        return 1;
-    }
-    std::jthread brokerThread([&broker] { broker.run(); });
-
-    dns::DnsWorkerType dns_worker{broker, dns::DnsHandler{}};
+    dns::DnsWorkerType dns_worker{*broker, dns::DnsHandler{}};
     std::jthread       dnsThread([&dns_worker] { dns_worker.run(); });
 
     // dashboard worker (mock)
     using DsWorker = DashboardWorker<"/dashboards", description<"Provides R/W access to the dashboard as a yaml serialized string">>;
-    DsWorker     dashboardWorker(broker);
+    DsWorker     dashboardWorker(*broker);
     std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
 
     using GrAcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data from a GnuRadio flow graph execution">>;
@@ -227,11 +239,11 @@ connections:
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
     gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), {});
-    GrAcqWorker                                            grAcqWorker(broker, &pluginLoader, 50ms);
-    GrFgWorker                                             grFgWorker(broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
+    GrAcqWorker                                            grAcqWorker(*broker, &pluginLoader, 50ms);
+    GrFgWorker                                             grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};
     if (loadTest) {
-        loadTestWorker.emplace(broker);
+        loadTestWorker.emplace(*broker);
     }
 
     const opencmw::zmq::Context                               zctx{};
