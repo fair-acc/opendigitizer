@@ -18,10 +18,6 @@
 
 struct TestState;
 
-namespace opendigitizer {
-struct ImPlotSinkModel;
-}
-
 namespace DigitizerUi {
 
 // Returns the pin positionY relative to the block

@@ -188,7 +188,7 @@ public:
                 }
                 for (const std::string& bindAddress : settings.bindAddresses) {
                     if (bindAddress.starts_with("https://") || bindAddress.starts_with("http://")) {
-                        const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                        const auto bindUri = opencmw::URI<>(std::string(bindAddress));
                         dashboardPath      = std::format("{}://{}:{}/{}dashboards/{}", bindUri.scheme().value(), settings.hostname, bindUri.port().value(), basePath, dashboardPath);
                         break;
                     }

@@ -33,12 +33,15 @@ namespace detail {
 #include "Scheduler.hpp"
 #include "settings.hpp"
 
+#include "charts/Charts.hpp"
+
 namespace gr {
 class Graph;
-}
+class BlockModel;
+} // namespace gr
 
 namespace opendigitizer {
-struct ImPlotSinkModel;
+class SignalSink; // Forward declaration for SignalSink interface
 }
 
 namespace DigitizerUi {
@@ -46,15 +49,9 @@ namespace DigitizerUi {
 struct DashboardDescription;
 struct SignalData;
 
-enum class AxisScale : std::uint8_t {
-    Linear = 0U,   /// default linear scale [t0, .., tn]
-    LinearReverse, /// reverse linear scale [t0-tn, ..., 0]
-    Time,          /// date/timescale
-    Log10,         /// base 10 logarithmic scale
-    SymLog,        /// symmetric log scale
-};
-
-enum class LabelFormat : std::uint8_t { Auto = 0U, Metric, MetricInline, Scientific, None, Default };
+// Use axis types from charts namespace (avoid duplication)
+using AxisScale   = opendigitizer::charts::AxisScale;
+using LabelFormat = opendigitizer::charts::LabelFormat;
 
 // Defines where the dashboard is stored and fetched from
 struct DashboardStorageInfo {
@@ -105,23 +102,82 @@ public:
 
 class Dashboard {
 public:
+    // Alias for axis configuration (defined in ChartUtils.hpp)
+    using AxisConfig = opendigitizer::charts::DashboardAxisConfig;
+
+    /**
+     * @brief UIWindow - Maps a UI block to its layout window.
+     *
+     * Generic window-to-block mapping for all drawable UI elements (charts, toolbars, etc.).
+     * The block is the source of truth; the window provides layout/docking information.
+     * Sink management is done via the block's settings interface (data_sinks property).
+     */
+    struct UIWindow {
+        std::shared_ptr<DockSpace::Window> window;
+        std::shared_ptr<gr::BlockModel>    block; // Shared ownership with m_uiGraph
+
+        UIWindow() = default;
+        explicit UIWindow(std::shared_ptr<gr::BlockModel> blk, std::string_view name = "")
+            : window(std::make_shared<DockSpace::Window>(name.empty() ? std::string(blk->uniqueName()) : std::string(name)))
+            , block(std::move(blk)) {}
+
+        [[nodiscard]] bool hasBlock() const noexcept { return block != nullptr; }
+        [[nodiscard]] bool isChart() const noexcept { return uiCategory() == gr::UICategory::ChartPane; }
+        [[nodiscard]] gr::UICategory uiCategory() const noexcept {
+            return block ? block->uiCategory() : gr::UICategory::None;
+        }
+
+        // TODO(deprecated): Remove sinkNames()/setSinkNames() - chart-specific code that shouldn't be in Dashboard.
+        // Sink management belongs exclusively in charts. These helpers exist temporarily for backward compatibility
+        // with the 'sources:' section in .grc files (doLoad transfers 'sources:' to block's 'data_sinks' setting).
+        // Once 'sources:' is deprecated and charts define 'data_sinks' directly in their 'parameters:' section,
+        // these helpers and related Dashboard code (loadUIWindowSources, removeSinkFromPlots) should be removed.
+
+        /// @brief Get sink names from the block's data_sinks property
+        /// @deprecated Use chart's data_sinks setting directly
+        [[nodiscard]] std::vector<std::string> sinkNames() const {
+            if (!block) {
+                return {};
+            }
+            const auto& settings = block->settings().get();
+            if (auto it = settings.find("data_sinks"); it != settings.end()) {
+                if (auto* vec = std::get_if<std::vector<std::string>>(&it->second)) {
+                    return *vec;
+                }
+            }
+            return {};
+        }
+
+        /// @brief Set sink names via the block's data_sinks property
+        /// @deprecated Use chart's data_sinks setting directly
+        void setSinkNames(const std::vector<std::string>& names) {
+            if (block) {
+                block->settings().set({{"data_sinks", names}});
+            }
+        }
+    };
+
+    // Legacy Plot struct - to be removed after migration to UIWindow
     struct Plot {
-        enum class AxisKind { X = 0, Y };
+        std::string              name;
+        std::string              chartTypeName = "XYChart"; // String-based chart type
+        std::vector<std::string> sourceNames;
 
-        struct AxisData {
-            AxisKind    axis     = AxisKind::X;
-            float       min      = std::numeric_limits<float>::quiet_NaN();
-            float       max      = std::numeric_limits<float>::quiet_NaN();
-            AxisScale   scale    = AxisScale::Linear;
-            LabelFormat format   = LabelFormat::Auto;
-            float       width    = std::numeric_limits<float>::max();
-            bool        plotTags = true;
-        };
+        // Chart block pointers (owned by Dashboard::m_uiGraph)
+        gr::BlockModel*               chartBlock = nullptr; // BlockModel interface (for draw(), uiCategory())
+        opendigitizer::charts::Chart* chart      = nullptr; // ChartInterface (for signal management)
 
-        std::string                                  name;
-        std::vector<std::string>                     sourceNames;
-        std::vector<opendigitizer::ImPlotSinkModel*> plotSinkBlocks; // Not owned by us
-        std::vector<AxisData>                        axes;
+        std::vector<AxisConfig> axes;
+
+        // Helper to check if chart is valid
+        [[nodiscard]] bool hasChart() const noexcept { return chart != nullptr && chartBlock != nullptr; }
+
+        // Helper to clear signal sinks from chart
+        void clearChartSinks() {
+            if (chart) {
+                chart->clearSignalSinks();
+            }
+        }
 
         std::shared_ptr<DockSpace::Window> window;
 
@@ -151,13 +207,18 @@ public:
 private:
     std::shared_ptr<opencmw::client::RestClient> m_restClient;
     std::shared_ptr<const DashboardDescription>  m_desc = nullptr;
-    std::vector<Plot>                            m_plots;
+    std::vector<Plot>                            m_plots;      // Legacy - to be removed
+    std::vector<UIWindow>                        m_uiWindows;  // New: window-block mapping for all UI elements
     DockingLayoutType                            m_layout;
     std::unordered_map<std::string, std::string> m_flowgraphUriByRemoteSource;
     plf::colony<Service>                         m_services;
     std::atomic<bool>                            m_isInitialised = false;
 
     Scheduler m_scheduler;
+
+    // UI Graph: holds drawable blocks (charts, legends) rendered during UI loop
+    // Separate from the signal processing graph managed by m_scheduler
+    gr::Graph m_uiGraph;
 
     UiGraphModel m_graphModel;
 
@@ -173,6 +234,10 @@ private:
 private:
     class PrivateTag {};
 
+    // Helper to create chart blocks in the UI Graph
+    // Returns {BlockModel*, ChartInterface*} - both point to the same block
+    std::pair<gr::BlockModel*, opendigitizer::charts::Chart*> emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
+
 public:
     explicit Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> restClient, const std::shared_ptr<const DashboardDescription>& desc);
 
@@ -186,9 +251,32 @@ public:
 
     void save();
 
-    DigitizerUi::Dashboard::Plot& newPlot(int x, int y, int w, int h);
+    /// @brief Create a new chart and return the UIWindow (new API)
+    UIWindow& newChart(int x, int y, int w, int h, std::string_view chartType = "XYChart");
+
+    /// @brief Legacy: Create a new plot (wraps newChart for backward compatibility)
+    /// @deprecated Use newChart() instead
+    DigitizerUi::Dashboard::Plot& newPlot(int x, int y, int w, int h, std::string_view chartType = "XYChart");
 
     void deletePlot(Plot* plot);
+
+    /// @brief Delete a chart by UIWindow
+    void deleteChart(UIWindow* uiWindow);
+
+    /**
+     * @brief Transmute a chart to a different type while preserving signals.
+     *
+     * @param plot The plot to transmute
+     * @param newChartType Target chart type (e.g., "XYChart", "YYChart")
+     * @return true if transmutation succeeded, false otherwise
+     */
+    bool transmuteChart(Plot& plot, std::string_view newChartType);
+
+    /**
+     * @brief Transmute a UIWindow's chart to a different type.
+     * New API using UIWindow instead of Plot.
+     */
+    bool transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);
 
     void removeSinkFromPlots(std::string_view sinkName);
 
@@ -216,6 +304,9 @@ public:
 
     void loadPlotSourcesFor(Plot& plot);
 
+    /// @brief Load signal sinks for all UIWindows from the SinkRegistry
+    void loadUIWindowSources();
+
     UiGraphModel& graphModel();
 
     std::atomic<bool> isInUse = false;
@@ -239,6 +330,66 @@ public:
     void handleMessages() { m_scheduler.handleMessages(m_graphModel); }
 
     [[nodiscard]] bool isInitialised() const noexcept { return m_isInitialised.load(std::memory_order_acquire); }
+
+    // UI Graph accessors for drawable blocks (charts, legends, etc.)
+    [[nodiscard]] gr::Graph&       uiGraph() noexcept { return m_uiGraph; }
+    [[nodiscard]] const gr::Graph& uiGraph() const noexcept { return m_uiGraph; }
+
+    // Find Plot by its chartBlock pointer (for uiGraph iteration) - Legacy
+    [[nodiscard]] Plot* findPlotByBlock(gr::BlockModel* block) noexcept {
+        if (!block) {
+            return nullptr;
+        }
+        for (auto& plot : m_plots) {
+            if (plot.chartBlock == block) {
+                return &plot;
+            }
+        }
+        return nullptr;
+    }
+
+    // --- UIWindow management (new API) ---
+
+    /// Access all UI windows
+    [[nodiscard]] std::vector<UIWindow>&       uiWindows() noexcept { return m_uiWindows; }
+    [[nodiscard]] const std::vector<UIWindow>& uiWindows() const noexcept { return m_uiWindows; }
+
+    /// Find UIWindow by block (returns nullptr if not found)
+    [[nodiscard]] UIWindow* findUIWindow(const std::shared_ptr<gr::BlockModel>& block) noexcept {
+        if (!block) {
+            return nullptr;
+        }
+        for (auto& uiWindow : m_uiWindows) {
+            if (uiWindow.block == block) {
+                return &uiWindow;
+            }
+        }
+        return nullptr;
+    }
+
+    /// Find UIWindow by block unique name
+    [[nodiscard]] UIWindow* findUIWindowByName(std::string_view uniqueName) noexcept {
+        for (auto& uiWindow : m_uiWindows) {
+            if (uiWindow.block && uiWindow.block->uniqueName() == uniqueName) {
+                return &uiWindow;
+            }
+        }
+        return nullptr;
+    }
+
+    /// Get or create UIWindow for a block (lazy creation)
+    UIWindow& getOrCreateUIWindow(const std::shared_ptr<gr::BlockModel>& block) {
+        if (auto* existing = findUIWindow(block)) {
+            return *existing;
+        }
+        m_uiWindows.emplace_back(block);
+        return m_uiWindows.back();
+    }
+
+    /// Remove UIWindow for a block
+    void removeUIWindow(const std::shared_ptr<gr::BlockModel>& block) {
+        std::erase_if(m_uiWindows, [&block](const UIWindow& w) { return w.block == block; });
+    }
 };
 } // namespace DigitizerUi
 

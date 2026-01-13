@@ -94,35 +94,36 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto getUiSink = [](auto typeTag, std::string_view name) {
-                    using SinkType      = decltype(typeTag);
-                    auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([name](const auto& sink) { return sink.name() == name; });
+                // Find sinks using the SignalSink interface
+                auto dipoleSink        = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                auto intensitySink     = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "IntensitySink"; });
+                auto dipoleDataSetSink = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentDataSetSink"; });
 
-                    ut::expect(implotSinkRaw);
-                    return reinterpret_cast<opendigitizer::ImPlotSink<SinkType>*>(implotSinkRaw->raw());
-                };
-
-                auto implotDipoleSink        = getUiSink(float{}, "DipoleCurrentSink");
-                auto implotIntensitySink     = getUiSink(float{}, "IntensitySink");
-                auto implotDipoleDataSetSink = getUiSink(float{}, "DipoleCurrentDataSetSink");
+                ut::expect(dipoleSink != nullptr) << "DipoleCurrentSink not found";
+                ut::expect(intensitySink != nullptr) << "IntensitySink not found";
+                ut::expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
 
                 g_state.waitForScheduler(10);
 
+                // Wait for scheduler to become active
                 std::size_t count = 0UZ;
-                while (!isActive(implotDipoleSink->state()) || count < 20) { // wait until scheduler is started
+                while (!isActive(g_state.dashboard->scheduler()->state()) && count < 20) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     count++;
                 }
 
-                while (isActive(implotDipoleSink->state()) || isActive(implotIntensitySink->state()) || isActive(implotDipoleDataSetSink->state())) {
+                // Wait for scheduler to complete (finite source will stop)
+                while (isActive(g_state.dashboard->scheduler()->state())) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 
-                expect(implotDipoleSink->state() == gr::lifecycle::STOPPED) << "implotDipoleSink not in STOPPED state";
-                expect(implotIntensitySink->state() == gr::lifecycle::STOPPED) << "implotIntensitySink not in STOPPED state";
-                expect(implotDipoleDataSetSink->state() == gr::lifecycle::STOPPED) << "implotDipoleDataSetSink not in STOPPED state";
+                // Verify sinks received data
+                expect(dipoleSink->size() > 0) << "DipoleCurrentSink has no data";
+                expect(intensitySink->size() > 0) << "IntensitySink has no data";
+                expect(dipoleDataSetSink->dataSetCount() > 0) << "DipoleCurrentDataSetSink has no datasets";
+
                 g_state.stopScheduler();
-                std::this_thread::sleep_for(50ms); // allow the scheduler to change it's state to stopped, since this is now message based and not immediate
+                std::this_thread::sleep_for(50ms); // allow the scheduler to change its state to stopped
                 expect(g_state.dashboard->scheduler()->state() == gr::lifecycle::STOPPED) << "g_state.scheduler not in STOPPED state";
                 captureScreenshot(*ctx);
             };

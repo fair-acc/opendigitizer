@@ -24,16 +24,13 @@
 #include "conversion.hpp"
 #include "meta.hpp"
 
+#include "../charts/SignalSink.hpp"   // For SignalSink, SinkAdapter, PlotPoint, PlotData
+#include "../charts/SinkRegistry.hpp" // For SinkRegistry
 #include "../utils/EmscriptenHelper.hpp"
 
 namespace opendigitizer {
 
 constexpr std::string_view kFishyTagKey = "ui_fishy_tag";
-
-struct TagData {
-    double           timestamp;
-    gr::property_map map;
-};
 
 template<typename T>
 T getValueOrDefault(const gr::property_map& map, const std::string& key, const T& defaultValue, std::source_location location = std::source_location::current()) {
@@ -207,123 +204,6 @@ inline void setAxisFromConfig(const gr::property_map& config) {
     ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
 }
 
-struct ImPlotSinkModel {
-    std::string uniqueName;
-
-    ImPlotSinkModel(std::string _uniqueName) : uniqueName(std::move(_uniqueName)) {}
-
-    virtual ~ImPlotSinkModel() {}
-
-    virtual gr::work::Status draw(const gr::property_map& config = {}) noexcept = 0;
-
-    virtual std::string name() const                    = 0;
-    virtual void        setName(std::string name)       = 0;
-    virtual std::string signalName() const              = 0;
-    virtual void        setSignalName(std::string name) = 0;
-
-    virtual gr::SettingsBase& settings() const = 0;
-
-    virtual gr::work::Result work(std::size_t count) = 0;
-    virtual gr::work::Status invokeWork()            = 0;
-
-    virtual void* raw() const = 0;
-
-    virtual std::uint32_t color() const = 0;
-
-    bool isVisible = true;
-};
-
-class ImPlotSinkManager {
-private:
-    ImPlotSinkManager() = default;
-
-    ~ImPlotSinkManager() {
-        // Clear it now, otherwise sink dtor calls ImPlotSinkManager::unregisterPlotSink() but
-        // ImPlotSinkManager would be partially-deleted already
-        _knownSinks.clear();
-    }
-
-    ImPlotSinkManager(const ImPlotSinkManager&)            = delete;
-    ImPlotSinkManager& operator=(const ImPlotSinkManager&) = delete;
-
-    std::unordered_map<std::string, std::unique_ptr<ImPlotSinkModel>>      _knownSinks;
-    std::unordered_map<void*, std::function<void(ImPlotSinkModel&, bool)>> _listeners;
-
-    template<typename TBlock>
-    struct SinkWrapper : ImPlotSinkModel {
-        SinkWrapper(TBlock* _block) : ImPlotSinkModel(_block->unique_name), block(_block) {}
-
-        gr::work::Status draw(const gr::property_map& config = {}) noexcept override { return block->draw(config); }
-
-        std::string name() const override { return block->name; }
-        void        setName(std::string name) override { block->name = std::move(name); }
-        std::string signalName() const override { return block->signal_name; }
-        void        setSignalName(std::string name) override { block->signal_name = std::move(name); }
-
-        gr::SettingsBase& settings() const override { return block->settings(); }
-
-        gr::work::Result work(std::size_t count) override { return block->work(count); }
-        gr::work::Status invokeWork() override { return block->invokeWorkWithGuard(); }
-
-        void* raw() const override { return static_cast<void*>(block); }
-
-        std::uint32_t color() const override { return block->_colour.colour(); }
-
-        TBlock* block = nullptr;
-    };
-
-    void notifyListeners(ImPlotSinkModel& sink, bool isAdded) {
-        for (auto& [_, listener] : _listeners) {
-            listener(sink, isAdded);
-        }
-    }
-
-public:
-    static ImPlotSinkManager& instance() {
-        static ImPlotSinkManager s_instance;
-        return s_instance;
-    }
-
-    template<typename TBlock>
-    void registerPlotSink(TBlock* block) {
-        auto& wrapper = _knownSinks[block->unique_name];
-        if (wrapper != nullptr) {
-            return;
-        }
-        wrapper = std::make_unique<SinkWrapper<TBlock>>(block);
-        notifyListeners(*wrapper, true);
-    }
-
-    template<typename TBlock>
-    void unregisterPlotSink(TBlock* block) {
-        // might not exist because registerPlotSink() isn't called in ctor but later
-        auto it = _knownSinks.find(block->unique_name);
-        if (it != _knownSinks.end()) {
-            notifyListeners(*it->second, false);
-            _knownSinks.erase(it);
-        }
-    }
-
-    template<typename Pred>
-    ImPlotSinkModel* findSink(Pred pred) const {
-        auto it = std::ranges::find_if(_knownSinks, [&](const auto& kvp) { return pred(*kvp.second.get()); });
-        if (it == _knownSinks.cend()) {
-            return nullptr;
-        }
-        return it->second.get();
-    }
-
-    template<typename Fn>
-    void forEach(Fn function) {
-        for (const auto& [_, sinkPtr] : _knownSinks) {
-            function(*sinkPtr.get());
-        }
-    }
-
-    void addListener(void* owner, std::function<void(ImPlotSinkModel&, bool)> listener) { _listeners[owner] = std::move(listener); }
-    void removeListener(void* owner) { _listeners.erase(owner); }
-};
-
 template<typename TBlock>
 using ImPlotSinkBase = gr::Block<TBlock, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>;
 
@@ -345,7 +225,10 @@ struct on_scope_exit {
 
 template<typename T>
 struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
-    using ValueType = gr::meta::fundamental_base_value_type_t<T>;
+    using ValueType                   = gr::meta::fundamental_base_value_type_t<T>;
+    static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
+    static constexpr bool IsDataSet   = gr::DataSetLike<T>;
+
     // optional shortening
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
@@ -354,7 +237,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
 
     ManagedColour                                                                                                                                         _colour;
     A<uint32_t, "plot color", Doc<"RGB color for the plot">>                                                                                              color         = 0U;
-    A<gr::Size_t, "required buffer size", Doc<"Minimum number of samples to retain">>                                                                     required_size = gr::DataSetLike<T> ? 10U : 2048U; // TODO: make this a multi-consumer/vector property
+    A<gr::Size_t, "required buffer size", Doc<"Minimum number of samples to retain">>                                                                     required_size = gr::DataSetLike<T> ? 10U : 2048U;
     A<std::string, "signal name", Visible, Doc<"Human-readable identifier for the signal">>                                                               signal_name;
     A<std::string, "abscissa quantity", Visible, Doc<"Physical quantity of the primary (X) axis">>                                                        abscissa_quantity = "time";
     A<std::string, "abscissa unit", Visible, Doc<"Unit of measurement of the primary (X) axis">>                                                          abscissa_unit     = "s";
@@ -384,13 +267,32 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
     double      _sample_period = 1.0 / static_cast<double>(sample_rate);
     std::size_t _sample_count  = 0UZ;
 
-    // true while either work() or draw() is running; synchronizes calls between the two threads:
-    // work() executes in the scheduler thread when the tab is invisible, draw() executes in the UI thread when the tab is visible
+    // true while either work() or draw() is running; synchronizes calls between the two threads
     std::atomic_flag _isWorkRunning = false;
+
+    // Mutex for thread-safe data access (used by SinkWrapper::acquireDataLock)
+    mutable std::mutex _dataMutex;
+
+    // Capacity request tracking with auto-expiry
+    struct CapacityRequest {
+        std::size_t                                        capacity;
+        std::chrono::time_point<std::chrono::steady_clock> expiryTime;
+    };
+    std::unordered_map<std::string, CapacityRequest> _capacityRequests;
+
+    // DataSet cache for float conversion
+    mutable std::vector<gr::DataSet<float>> _dsCache;
+
+    // Adapter for SinkRegistry registration (shared ownership with registry)
+    std::shared_ptr<SinkAdapter<ImPlotSink<T>>> _sinkAdapter;
 
     ImPlotSink(gr::property_map initParameters) : ImPlotSinkBase<ImPlotSink<T>>(std::move(initParameters)) {}
 
-    ~ImPlotSink() { ImPlotSinkManager::instance().unregisterPlotSink(this); }
+    ~ImPlotSink() {
+        if (_sinkAdapter) {
+            charts::SinkRegistry::instance().unregisterSink(this->unique_name);
+        }
+    }
 
     void settingsChanged(const gr::property_map& /* oldSettings */, const gr::property_map& newSettings) {
         if (newSettings.contains("color") || color == 0U) {
@@ -412,8 +314,263 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         }
 
         _sample_period = 1.0 / static_cast<double>(sample_rate);
-        ImPlotSinkManager::instance().registerPlotSink(this);
+
+        // Register with SinkRegistry (only once)
+        if (!_sinkAdapter) {
+            _sinkAdapter = std::make_shared<SinkAdapter<ImPlotSink<T>>>(*this);
+            charts::SinkRegistry::instance().registerSink(_sinkAdapter);
+        }
     }
+
+    // --- SignalSink interface methods (delegated by SinkWrapper via blockRef()) ---
+
+    [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? this->name.value : signal_name.value; }
+    [[nodiscard]] std::uint32_t    color_() const noexcept { return _colour.colour(); } // Named color_() to avoid conflict with color member
+    [[nodiscard]] float            sampleRate_() const noexcept { return sample_rate; }
+
+    [[nodiscard]] std::string_view signalQuantity() const noexcept { return signal_quantity; }
+    [[nodiscard]] std::string_view signalUnit() const noexcept { return signal_unit; }
+    [[nodiscard]] std::string_view abscissaQuantity() const noexcept { return abscissa_quantity; }
+    [[nodiscard]] std::string_view abscissaUnit() const noexcept { return abscissa_unit; }
+    [[nodiscard]] float            signalMin() const noexcept { return signal_min; }
+    [[nodiscard]] float            signalMax() const noexcept { return signal_max; }
+
+    [[nodiscard]] std::size_t totalSampleCount() const noexcept { return _sample_count; }
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        if constexpr (IsStreaming) {
+            return _xValues.size();
+        } else if constexpr (IsDataSet) {
+            if (_yValues.empty()) {
+                return 0;
+            }
+            const auto& ds = _yValues.at(0);
+            if (ds.axis_values.empty()) {
+                return 0;
+            }
+            return ds.axis_values[0].size();
+        }
+        return 0;
+    }
+
+    [[nodiscard]] double xAt(std::size_t i) const {
+        if constexpr (IsStreaming) {
+            return _xValues.get_span(0)[i];
+        } else if constexpr (IsDataSet) {
+            if (_yValues.empty()) {
+                return 0.0;
+            }
+            const auto& ds = _yValues.at(0);
+            if (ds.axis_values.empty() || i >= ds.axis_values[0].size()) {
+                return 0.0;
+            }
+            return static_cast<double>(ds.axis_values[0][i]);
+        }
+        return 0.0;
+    }
+
+    [[nodiscard]] float yAt(std::size_t i) const {
+        if constexpr (IsStreaming) {
+            return static_cast<float>(_yValues.get_span(0)[i]);
+        } else if constexpr (IsDataSet) {
+            if (_yValues.empty()) {
+                return 0.0f;
+            }
+            const auto& ds         = _yValues.at(0);
+            auto        signalIdx  = static_cast<std::size_t>(dataset_index);
+            const auto  numSignals = ds.size();
+            if (numSignals == 0) {
+                return 0.0f;
+            }
+            if (signalIdx >= numSignals) {
+                signalIdx = 0;
+            }
+            auto signalValues = ds.signalValues(signalIdx);
+            if (i >= signalValues.size()) {
+                return 0.0f;
+            }
+            return static_cast<float>(signalValues[i]);
+        }
+        return 0.0f;
+    }
+
+    [[nodiscard]] PlotData plotData() const {
+        if constexpr (IsStreaming) {
+            static auto getter = +[](int idx, void* userData) -> PlotPoint {
+                auto* self  = static_cast<const ImPlotSink*>(userData);
+                auto  xSpan = self->_xValues.get_span(0);
+                auto  ySpan = self->_yValues.get_span(0);
+                return {xSpan[static_cast<std::size_t>(idx)], static_cast<double>(ySpan[static_cast<std::size_t>(idx)])};
+            };
+            return {getter, const_cast<ImPlotSink*>(this), static_cast<int>(_xValues.size())};
+        } else if constexpr (IsDataSet) {
+            static auto getter = +[](int idx, void* userData) -> PlotPoint {
+                auto* self = static_cast<const ImPlotSink*>(userData);
+                return {self->xAt(static_cast<std::size_t>(idx)), static_cast<double>(self->yAt(static_cast<std::size_t>(idx)))};
+            };
+            return {getter, const_cast<ImPlotSink*>(this), static_cast<int>(size())};
+        }
+        return {nullptr, nullptr, 0};
+    }
+
+    [[nodiscard]] bool        hasDataSets() const noexcept { return IsDataSet && _yValues.size() > 0; }
+    [[nodiscard]] std::size_t dataSetCount() const noexcept { return IsDataSet ? _yValues.size() : 0; }
+
+    [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const {
+        if constexpr (IsDataSet) {
+            auto span = _yValues.get_span(0);
+            if constexpr (std::is_same_v<T, gr::DataSet<float>>) {
+                return span;
+            } else {
+                _dsCache.clear();
+                for (const auto& ds : span) {
+                    gr::DataSet<float> converted;
+                    converted.timestamp    = ds.timestamp;
+                    converted.signal_names = ds.signal_names;
+                    converted.signal_units = ds.signal_units;
+                    converted.axis_names   = ds.axis_names;
+                    converted.axis_units   = ds.axis_units;
+                    converted.extents      = ds.extents;
+                    converted.signal_values.assign(ds.signal_values.begin(), ds.signal_values.end());
+                    for (const auto& av : ds.axis_values) {
+                        converted.axis_values.emplace_back(av.begin(), av.end());
+                    }
+                    _dsCache.push_back(std::move(converted));
+                }
+                return _dsCache;
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] bool hasStreamingTags() const noexcept { return IsStreaming && !_tagValues.empty(); }
+
+    [[nodiscard]] std::pair<double, double> tagTimeRange() const noexcept {
+        if constexpr (IsStreaming) {
+            if (_tagValues.empty()) {
+                return {0.0, 0.0};
+            }
+            return {_tagValues.front().timestamp, _tagValues.back().timestamp};
+        }
+        return {0.0, 0.0};
+    }
+
+    void forEachTag(std::function<void(double, const gr::property_map&)> callback) const {
+        if constexpr (IsStreaming) {
+            for (const auto& tag : _tagValues) {
+                callback(tag.timestamp, tag.map);
+            }
+        }
+    }
+
+    [[nodiscard]] double timeFirst() const noexcept {
+        if constexpr (IsStreaming) {
+            return _xValues.empty() ? 0.0 : _xValues.get_span(0).front();
+        }
+        return 0.0;
+    }
+
+    [[nodiscard]] double timeLast() const noexcept {
+        if constexpr (IsStreaming) {
+            return _xValues.empty() ? 0.0 : _xValues.get_span(0).back();
+        }
+        return 0.0;
+    }
+
+    [[nodiscard]] std::size_t bufferCapacity() const noexcept { return static_cast<std::size_t>(required_size); }
+
+    void requestCapacity(std::string_view source, std::size_t capacity, std::chrono::seconds timeout = std::chrono::seconds{60}) {
+        auto expiryTime                        = std::chrono::steady_clock::now() + timeout;
+        _capacityRequests[std::string(source)] = CapacityRequest{capacity, expiryTime};
+
+        // Update required_size to maximum of all active requests
+        std::size_t maxCapacity = 0;
+        for (const auto& [_, request] : _capacityRequests) {
+            maxCapacity = std::max(maxCapacity, request.capacity);
+        }
+        if (maxCapacity > required_size) {
+            required_size = static_cast<gr::Size_t>(maxCapacity);
+        }
+    }
+
+    void expireCapacityRequests() {
+        auto now = std::chrono::steady_clock::now();
+
+        // Remove expired requests
+        std::erase_if(_capacityRequests, [now](const auto& pair) { return pair.second.expiryTime < now; });
+
+        // Recalculate required_size from remaining requests
+        std::size_t maxCapacity = gr::DataSetLike<T> ? 10UZ : 2048UZ; // minimum default
+        for (const auto& [_, request] : _capacityRequests) {
+            maxCapacity = std::max(maxCapacity, request.capacity);
+        }
+        required_size = static_cast<gr::Size_t>(maxCapacity);
+    }
+
+    [[nodiscard]] SignalSink::DataRange getXRange(double tMin, double tMax) const {
+        if constexpr (IsStreaming) {
+            if (_xValues.empty()) {
+                return {0, 0};
+            }
+            auto xSpan = _xValues.get_span(0);
+            // Binary search for range bounds
+            auto itBegin = std::lower_bound(xSpan.begin(), xSpan.end(), tMin);
+            auto itEnd   = std::upper_bound(xSpan.begin(), xSpan.end(), tMax);
+            if (itBegin >= itEnd) {
+                return {0, 0};
+            }
+            std::size_t startIdx = static_cast<std::size_t>(std::distance(xSpan.begin(), itBegin));
+            std::size_t count    = static_cast<std::size_t>(std::distance(itBegin, itEnd));
+            return {startIdx, count};
+        }
+        return {0, 0};
+    }
+
+    [[nodiscard]] SignalSink::DataRange getTagRange(double tMin, double tMax) const {
+        if constexpr (IsStreaming) {
+            if (_tagValues.empty()) {
+                return {0, 0};
+            }
+            // Find first tag >= tMin
+            auto itBegin = std::find_if(_tagValues.begin(), _tagValues.end(), [tMin](const TagData& tag) { return tag.timestamp >= tMin; });
+            // Find first tag > tMax
+            auto itEnd = std::find_if(itBegin, _tagValues.end(), [tMax](const TagData& tag) { return tag.timestamp > tMax; });
+            if (itBegin >= itEnd) {
+                return {0, 0};
+            }
+            std::size_t startIdx = static_cast<std::size_t>(std::distance(_tagValues.begin(), itBegin));
+            std::size_t count    = static_cast<std::size_t>(std::distance(itBegin, itEnd));
+            return {startIdx, count};
+        }
+        return {0, 0};
+    }
+
+    [[nodiscard]] std::mutex& dataMutex() const { return _dataMutex; }
+
+    // --- UI-specific methods (accessed via blockRef() when needed) ---
+
+    void drawTags(DigitizerUi::AxisScale axisScale) {
+        if constexpr (IsStreaming) {
+            if (_tagValues.empty() || _xValues.empty()) {
+                return;
+            }
+            auto [minX, maxX] = std::ranges::minmax(_xValues.get_span(0));
+            ImVec4 lineColor  = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(_colour.colour()));
+            ImVec4 tagColor   = lineColor;
+            tagColor.w *= 0.35f; // semi-transparent tags
+            drawAndPruneTags<ValueType>(_tagValues, minX, maxX, axisScale, tagColor);
+        }
+    }
+
+    gr::work::Status invokeWorkWithGuard() {
+        if (_isWorkRunning.test_and_set(std::memory_order_acquire)) {
+            return gr::work::Status::OK;
+        }
+        details::on_scope_exit _ = [&] { _isWorkRunning.clear(std::memory_order_release); };
+        return this->invokeWork();
+    }
+
+    // --- Standard GR4 block methods ---
 
     template<typename = void>
     gr::work::Result work(std::size_t requestedWork = std::numeric_limits<std::size_t>::max()) noexcept {
@@ -426,14 +583,6 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
         details::on_scope_exit _   = [&] { _isWorkRunning.clear(std::memory_order_release); };
         auto                   res = this->workInternal(requestedWork);
         return res;
-    }
-
-    gr::work::Status invokeWorkWithGuard() {
-        if (_isWorkRunning.test_and_set(std::memory_order_acquire)) {
-            return gr::work::Status::OK;
-        }
-        details::on_scope_exit _ = [&] { _isWorkRunning.clear(std::memory_order_release); };
-        return this->invokeWork();
     }
 
     constexpr void processOne(const T& input) noexcept {
@@ -544,7 +693,7 @@ struct ImPlotSink : ImPlotSinkBase<ImPlotSink<T>> {
             }
         };
 
-        auto lineColor = ImGui::ColorConvertU32ToFloat4(_colour.colour() | 0xFF000000);
+        auto lineColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(_colour.colour()));
         if constexpr (std::is_arithmetic_v<T>) {
             ImPlot::SetNextLineStyle(lineColor);
 

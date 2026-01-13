@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <print>
 #include <ranges>
 
 #include <format>
@@ -25,6 +26,8 @@
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
 
+#include "charts/Charts.hpp"
+#include "charts/SinkRegistry.hpp"
 #include "conversion.hpp"
 
 using namespace std::string_literals;
@@ -331,14 +334,15 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         auto block = std::get<std::string>(srcMap.at("block"));
         auto name  = std::get<std::string>(srcMap.at("name"));
 
-        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
-        if (!sink) {
+        auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& s) { return s.name() == block; });
+        if (!sinkPtr) {
             auto msg = std::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        sink->setName(block);
+        // Signal name is set via block properties during initialization
+        // SignalSink interface is read-only for name
     }
 
     if (!dashboard.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("plots"))) {
@@ -365,65 +369,67 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
             throw gr::exception("invalid plot definition rect.size() != 4");
         }
 
-        m_plots.emplace_back();
-        auto& plot = m_plots.back();
-        plot.name  = name;
-
-        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
-            auto axes = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
-            for (const auto& axisPmt : axes) {
-                if (!std::holds_alternative<property_map>(axisPmt)) {
-                    throw gr::exception("axis is not a property_map");
-                }
-                const property_map axisMap = std::get<property_map>(axisPmt);
-
-                if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis"))) {
-                    throw gr::exception("invalid axis definition");
-                }
-
-                plot.axes.push_back({});
-                auto& axisData = plot.axes.back();
-
-                auto axis = std::get<std::string>(axisMap.at("axis"));
-                if (axis == "X" || axis == "x") {
-                    axisData.axis = Plot::AxisKind::X;
-                } else if (axis == "Y" || axis == "y") {
-                    axisData.axis = Plot::AxisKind::Y;
-                } else {
-                    components::Notification::warning(std::format("Unknown axis {}", axis));
-                    return;
-                }
-
-                axisData.min          = axisMap.contains("min") ? pmtv::cast<float>(axisMap.at("min")) : std::numeric_limits<float>::quiet_NaN();
-                axisData.max          = axisMap.contains("max") ? pmtv::cast<float>(axisMap.at("max")) : std::numeric_limits<float>::quiet_NaN();
-                std::string scaleStr  = axisMap.contains("scale") ? std::get<std::string>(axisMap.at("scale")) : "Linear";
-                std::string formatStr = axisMap.contains("format") ? std::get<std::string>(axisMap.at("format")) : "Auto";
-                auto        trim      = [](const std::string& str) {
-                    auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
-                    auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
-                    return (start < end) ? std::string(start, end) : std::string{};
-                };
-                axisData.scale  = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
-                axisData.format = magic_enum::enum_cast<LabelFormat>(trim(formatStr), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
-
-                if (axisMap.contains("plot_tags")) {
-                    auto tagOpt = axisMap.at("plot_tags");
-                    if (auto boolPtr = std::get_if<bool>(&tagOpt)) {
-                        axisData.plotTags = *boolPtr;
-                    }
-                }
-            }
-        } else {
-            // add default axes and ranges if not defined
-            plot.axes.push_back({Plot::AxisKind::X});
-            plot.axes.push_back({Plot::AxisKind::Y});
+        std::string chartTypeName = "XYChart";
+        if (plotMap.contains("type") && std::holds_alternative<std::string>(plotMap.at("type"))) {
+            chartTypeName = std::get<std::string>(plotMap.at("type"));
         }
 
-        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
-        plot.window->x      = pmtv::cast<std::size_t>(rect[0]);
-        plot.window->y      = pmtv::cast<std::size_t>(rect[1]);
-        plot.window->width  = pmtv::cast<std::size_t>(rect[2]);
-        plot.window->height = pmtv::cast<std::size_t>(rect[3]);
+        // Parse chart parameters from .grc (e.g., show_legend, show_grid, etc.)
+        gr::property_map chartParameters;
+        if (plotMap.contains("parameters") && std::holds_alternative<property_map>(plotMap.at("parameters"))) {
+            chartParameters = std::get<property_map>(plotMap.at("parameters"));
+        }
+
+        // TODO(deprecated): Transfer 'sources:' to 'data_sinks' for backward compatibility with older .grc files.
+        // The 'sources:' section in .grc will eventually be deprecated. Charts should define their signals
+        // directly via the 'data_sinks' field in the 'parameters:' section. Once all .grc files are migrated,
+        // this transfer code and the 'sources:' parsing above can be removed.
+        std::vector<std::string> dataSinks;
+        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(dataSinks), [](const auto& elem) { return std::get<std::string>(elem); });
+        chartParameters["data_sinks"] = dataSinks;
+
+        // Parse axes config (will be set on block's uiConstraints after creation)
+        std::vector<pmtv::pmt> axesConfig;
+        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
+            axesConfig = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
+        }
+
+        // Create chart block in UI Graph with parameters
+        auto [blockPtr, chartPtr] = emplaceChartBlock(chartTypeName, name, chartParameters);
+
+        if (!blockPtr) {
+            components::Notification::warning(std::format("Failed to create chart block of type '{}'", chartTypeName));
+            continue;
+        }
+
+        // Set uiConstraints on the block (axes config and window layout for chart to read in draw())
+        blockPtr->uiConstraints()["axes"] = axesConfig;
+        blockPtr->uiConstraints()["window"] = gr::property_map{
+            {"x", pmtv::cast<std::size_t>(rect[0])},
+            {"y", pmtv::cast<std::size_t>(rect[1])},
+            {"width", pmtv::cast<std::size_t>(rect[2])},
+            {"height", pmtv::cast<std::size_t>(rect[3])}
+        };
+
+        // Find the shared_ptr for this block in uiGraph
+        std::shared_ptr<gr::BlockModel> blockShared;
+        for (auto& blk : m_uiGraph.blocks()) {
+            if (blk.get() == blockPtr) {
+                blockShared = blk;
+                break;
+            }
+        }
+
+        // Create UIWindow for this chart (sink management done via settings interface)
+        UIWindow uiWindow(blockShared, name);
+        if (uiWindow.window) {
+            uiWindow.window->x      = pmtv::cast<std::size_t>(rect[0]);
+            uiWindow.window->y      = pmtv::cast<std::size_t>(rect[1]);
+            uiWindow.window->width  = pmtv::cast<std::size_t>(rect[2]);
+            uiWindow.window->height = pmtv::cast<std::size_t>(rect[3]);
+        }
+
+        m_uiWindows.push_back(std::move(uiWindow));
     }
 
     // if (m_fgItem) {
@@ -431,7 +437,8 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
     // const bool isGoodString = dashboard.contains("flowgraphLayout") && std::holds_alternative<std::string>(dashboard.at("flowgraphLayout"));
     // }
 
-    loadPlotSources();
+    // Load sinks for all UIWindows (sinks should be registered in SinkRegistry by now)
+    loadUIWindowSources();
 }
 
 void Dashboard::save() {
@@ -451,10 +458,11 @@ void Dashboard::save() {
     property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler()->graph());
 
     std::vector<pmtv::pmt> sources;
-    opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {
+    // Use SinkRegistry with SignalSink interface for serialization
+    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
         // TODO: Port saving and loading flowgraph layouts
         property_map map;
-        map["name"]  = sink.name();
+        map["name"]  = std::string(sink.name());
         map["color"] = sink.color();
 
         sources.emplace_back(std::move(map));
@@ -462,34 +470,53 @@ void Dashboard::save() {
     dashboardYaml["sources"] = sources;
 
     std::vector<pmtv::pmt> plots;
-    for (auto& plot : m_plots) {
-        property_map plotMap;
-        plotMap["name"] = plot.name;
+    // Iterate UIWindows for chart serialization (new API)
+    for (const auto& uiWindow : m_uiWindows) {
+        if (!uiWindow.isChart() || !uiWindow.block) {
+            continue;
+        }
 
+        property_map plotMap;
+        plotMap["name"] = uiWindow.window ? uiWindow.window->name : std::string(uiWindow.block->uniqueName());
+        // Extract short chart type name from fully-qualified name (e.g., "opendigitizer::charts::XYChart" -> "XYChart")
+        std::string fullTypeName = std::string(uiWindow.block->typeName());
+        if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+            plotMap["type"] = fullTypeName.substr(pos + 2);
+        } else {
+            plotMap["type"] = fullTypeName;
+        }
+
+        // Serialize axes from uiConstraints
         std::vector<pmtv::pmt> plotAxes;
-        for (const auto& axis : plot.axes) {
-            property_map axisMap;
-            axisMap["axis"]      = axis.axis == Plot::AxisKind::X ? "X" : "Y";
-            axisMap["min"]       = axis.min;
-            axisMap["max"]       = axis.max;
-            axisMap["scale"]     = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
-            axisMap["format"]    = std::string(magic_enum::enum_name<LabelFormat>(axis.format));
-            axisMap["plot_tags"] = axis.plotTags;
-            plotAxes.emplace_back(std::move(axisMap));
+        const auto&            constraints = uiWindow.block->uiConstraints();
+        if (constraints.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(constraints.at("axes"))) {
+            plotAxes = std::get<std::vector<pmtv::pmt>>(constraints.at("axes"));
         }
         plotMap["axes"] = plotAxes;
 
+        // Serialize signal sinks from data_sinks property
         std::vector<pmtv::pmt> plotSinkBlockNames;
-        for (auto& plotSinkBlock : plot.plotSinkBlocks) {
-            plotSinkBlockNames.emplace_back(plotSinkBlock->name());
+        for (const auto& sinkName : uiWindow.sinkNames()) {
+            plotSinkBlockNames.emplace_back(sinkName);
         }
         plotMap["sources"] = plotSinkBlockNames;
 
+        // Serialize window rect from uiConstraints or DockSpace::Window
         std::vector<int> plotRect;
-        plotRect.emplace_back(plot.window->x);
-        plotRect.emplace_back(plot.window->y);
-        plotRect.emplace_back(plot.window->width);
-        plotRect.emplace_back(plot.window->height);
+        if (constraints.contains("window") && std::holds_alternative<property_map>(constraints.at("window"))) {
+            const auto& windowMap = std::get<property_map>(constraints.at("window"));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("x"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("y"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("width"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("height"))));
+        } else if (uiWindow.window) {
+            plotRect.emplace_back(uiWindow.window->x);
+            plotRect.emplace_back(uiWindow.window->y);
+            plotRect.emplace_back(uiWindow.window->width);
+            plotRect.emplace_back(uiWindow.window->height);
+        } else {
+            plotRect = {0, 0, 1, 1}; // Default
+        }
         plotMap["rect"] = plotRect;
 
         plots.emplace_back(plotMap);
@@ -559,21 +586,240 @@ void Dashboard::save() {
     }
 }
 
-DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h) {
+DigitizerUi::Dashboard::UIWindow& Dashboard::newChart(int x, int y, int w, int h, std::string_view chartType) {
+    std::string chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
+
+    // Generate a unique name for the chart
+    static int chartCounter = 1;
+    std::string chartName = std::format("Chart {}", chartCounter++);
+
+    // Create chart block in UI Graph
+    auto [blockPtr, chartPtr] = emplaceChartBlock(chartTypeName, chartName);
+
+    if (!blockPtr) {
+        // Return a reference to an empty UIWindow on failure (shouldn't happen with known types)
+        static UIWindow emptyWindow;
+        return emptyWindow;
+    }
+
+    // Store window layout and default axes in uiConstraints
+    blockPtr->uiConstraints()["window"] = gr::property_map{
+        {"x", static_cast<std::size_t>(x)},
+        {"y", static_cast<std::size_t>(y)},
+        {"width", static_cast<std::size_t>(w)},
+        {"height", static_cast<std::size_t>(h)}
+    };
+
+    // Find the shared_ptr for this block in uiGraph
+    std::shared_ptr<gr::BlockModel> blockShared;
+    for (auto& blk : m_uiGraph.blocks()) {
+        if (blk.get() == blockPtr) {
+            blockShared = blk;
+            break;
+        }
+    }
+
+    // Create UIWindow for this chart
+    UIWindow uiWindow(blockShared, chartName);
+    if (uiWindow.window) {
+        uiWindow.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
+    }
+    m_uiWindows.push_back(std::move(uiWindow));
+
+    return m_uiWindows.back();
+}
+
+DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h, std::string_view chartType) {
+    // Legacy wrapper - creates a UIWindow and returns a placeholder Plot
+    // TODO: Remove this once all callers are migrated to newChart()
+    auto& uiWindow = newChart(x, y, w, h, chartType);
+
+    // Create a legacy Plot entry for backward compatibility
     m_plots.push_back({});
     auto& p = m_plots.back();
-    p.axes.push_back({Plot::AxisKind::X});
-    p.axes.push_back({Plot::AxisKind::Y});
+    if (uiWindow.window) {
+        p.name = uiWindow.window->name;
+    }
+    // Extract short chart type name from block's fully-qualified type name
+    std::string fullTypeName = std::string(uiWindow.block->typeName());
+    if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+        p.chartTypeName = fullTypeName.substr(pos + 2);
+    } else {
+        p.chartTypeName = fullTypeName;
+    }
+    p.chartBlock = uiWindow.block.get();
+    p.chart      = nullptr; // Legacy: Chart* is no longer maintained via UIWindow
+    p.axes.push_back({AxisConfig::AxisKind::X});
+    p.axes.push_back({AxisConfig::AxisKind::Y});
     p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
+
     return p;
 }
 
 void Dashboard::deletePlot(Plot* plot) {
+    if (!plot) {
+        return;
+    }
+    // Also remove the corresponding UIWindow if it exists
+    if (plot->chartBlock) {
+        // Find and remove UIWindow with matching block
+        std::erase_if(m_uiWindows, [plot](const UIWindow& w) {
+            return w.block && w.block.get() == plot->chartBlock;
+        });
+        // Remove block from UI graph
+        m_uiGraph.removeBlockByName(plot->chartBlock->uniqueName());
+    }
     auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot& p) { return plot == &p; });
-    m_plots.erase(it);
+    if (it != m_plots.end()) {
+        m_plots.erase(it);
+    }
+}
+
+void Dashboard::deleteChart(UIWindow* uiWindow) {
+    if (!uiWindow || !uiWindow->block) {
+        return;
+    }
+    // Remove block from UI graph
+    m_uiGraph.removeBlockByName(uiWindow->block->uniqueName());
+    // Remove the UIWindow
+    std::erase_if(m_uiWindows, [uiWindow](const UIWindow& w) { return &w == uiWindow; });
+}
+
+bool Dashboard::transmuteChart(Plot& plot, std::string_view newChartType) {
+    using namespace opendigitizer::charts;
+
+    // Skip if same type
+    if (plot.chartTypeName == newChartType) {
+        return true;
+    }
+
+    // Save current state from old chart
+    std::vector<std::shared_ptr<SignalSink>> savedSinks;
+    gr::property_map                         savedUiConstraints;
+    std::string                              oldUniqueName;
+
+    if (plot.hasChart()) {
+        // Save signal sinks
+        for (const auto& sink : plot.chart->signalSinks()) {
+            savedSinks.push_back(sink);
+        }
+        // Save uiConstraints (axes config, window layout)
+        savedUiConstraints = plot.chartBlock->uiConstraints();
+        oldUniqueName      = std::string(plot.chart->uniqueId());
+    }
+
+    // Remove old block from UI graph
+    if (!oldUniqueName.empty()) {
+        m_uiGraph.removeBlockByName(oldUniqueName);
+    }
+
+    // Create new chart block
+    gr::property_map chartParameters;
+    // Convert saved sinks to data_sinks property
+    std::vector<std::string> dataSinks;
+    for (const auto& sink : savedSinks) {
+        if (sink) {
+            dataSinks.push_back(std::string(sink->name()));
+        }
+    }
+    if (!dataSinks.empty()) {
+        chartParameters["data_sinks"] = dataSinks;
+    }
+
+    auto [blockPtr, chartPtr] = emplaceChartBlock(newChartType, plot.name, chartParameters);
+    if (!blockPtr || !chartPtr) {
+        // Transmutation failed - unknown chart type
+        return false;
+    }
+
+    // Restore uiConstraints
+    blockPtr->uiConstraints() = savedUiConstraints;
+
+    // Note: Signal sinks are transferred via the data_sinks property which triggers
+    // settingsChanged -> syncSinksFromNames. We don't manually add them here to avoid
+    // duplicates which can cause deadlocks when acquiring data locks.
+
+    // Update plot references
+    plot.chartTypeName = std::string(newChartType);
+    plot.chartBlock    = blockPtr;
+    plot.chart         = chartPtr;
+
+    return true;
+}
+
+bool Dashboard::transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType) {
+    if (!uiWindow.block) {
+        return false;
+    }
+
+    // Get current chart type name from block's fully-qualified type name
+    std::string fullTypeName = std::string(uiWindow.block->typeName());
+    std::string currentTypeName;
+    if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+        currentTypeName = fullTypeName.substr(pos + 2);
+    } else {
+        currentTypeName = fullTypeName;
+    }
+
+    // Skip if same type
+    if (currentTypeName == newChartType) {
+        return true;
+    }
+
+    // Save current state
+    std::vector<std::string> savedSinkNames    = uiWindow.sinkNames();
+    gr::property_map         savedUiConstraints = uiWindow.block->uiConstraints();
+    std::string              oldUniqueName     = std::string(uiWindow.block->uniqueName());
+    std::string              windowName        = uiWindow.window ? uiWindow.window->name : oldUniqueName;
+
+    // Remove old block from UI graph
+    m_uiGraph.removeBlockByName(oldUniqueName);
+
+    // Create new chart block with preserved sink names
+    gr::property_map chartParameters;
+    if (!savedSinkNames.empty()) {
+        chartParameters["data_sinks"] = savedSinkNames;
+    }
+
+    auto [blockPtr, chartPtr] = emplaceChartBlock(newChartType, windowName, chartParameters);
+    if (!blockPtr) {
+        // Transmutation failed - unknown chart type
+        return false;
+    }
+
+    // Restore uiConstraints
+    blockPtr->uiConstraints() = savedUiConstraints;
+
+    // Find the shared_ptr for the new block in uiGraph
+    std::shared_ptr<gr::BlockModel> newBlockShared;
+    for (auto& blk : m_uiGraph.blocks()) {
+        if (blk.get() == blockPtr) {
+            newBlockShared = blk;
+            break;
+        }
+    }
+
+    // Update UIWindow block reference
+    uiWindow.block = newBlockShared;
+
+    return true;
 }
 
 void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
+    // Remove from UIWindows via settings interface
+    for (auto& uiWindow : m_uiWindows) {
+        if (uiWindow.isChart()) {
+            auto names = uiWindow.sinkNames();
+            std::erase(names, std::string(sinkName));
+            uiWindow.setSinkNames(names);
+        }
+    }
+    // Remove UIWindows with no sinks
+    std::erase_if(m_uiWindows, [](const UIWindow& w) {
+        return w.isChart() && w.sinkNames().empty();
+    });
+
+    // Legacy: Also update m_plots (for backward compatibility during transition)
     for (auto& plot : m_plots) {
         std::erase(plot.sourceNames, std::string(sinkName));
     }
@@ -581,26 +827,51 @@ void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
 }
 
 void Dashboard::loadPlotSourcesFor(Plot& plot) {
-    plot.plotSinkBlocks.clear();
+    // Clear existing sinks from chart
+    if (plot.hasChart()) {
+        plot.clearChartSinks();
+    }
 
     for (const auto& name : plot.sourceNames) {
-        auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) {
-            // TODO: We should probably rely on block unique names for sink searching,
-            // not 'signal names'
-            return sink.signalName() == name || sink.name() == name;
-        });
-        if (!plotSource) {
-            auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
-            components::Notification::warning(msg);
+        // Find sink in SinkRegistry for proper shared ownership
+        auto sinkSharedPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&name](const auto& sink) { return sink.signalName() == name || sink.name() == name; });
+
+        if (sinkSharedPtr) {
+            // Add to chart with shared ownership
+            if (plot.hasChart()) {
+                plot.chart->addSignalSink(sinkSharedPtr);
+            }
             continue;
         }
-        plot.plotSinkBlocks.push_back(&*plotSource);
+
+        // Sink not found in SinkRegistry
+        auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
+        components::Notification::warning(msg);
     }
 }
 
 void Dashboard::loadPlotSources() {
     for (auto& plot : m_plots) {
         loadPlotSourcesFor(plot);
+    }
+}
+
+void Dashboard::loadUIWindowSources() {
+    std::println("[Dashboard::loadUIWindowSources] called with {} UIWindows, SinkRegistry has {} sinks",
+                 m_uiWindows.size(), opendigitizer::charts::SinkRegistry::instance().sinkCount());
+
+    for (auto& uiWindow : m_uiWindows) {
+        if (!uiWindow.isChart() || !uiWindow.block) {
+            continue;
+        }
+
+        // Re-set the data_sinks property to trigger settingsChanged() which calls syncSinksFromNames()
+        auto sinkNames = uiWindow.sinkNames();
+        std::println("[Dashboard::loadUIWindowSources] UIWindow '{}' has {} sinkNames",
+                     uiWindow.block->uniqueName(), sinkNames.size());
+        if (!sinkNames.empty()) {
+            uiWindow.setSinkNames(sinkNames);
+        }
     }
 }
 
@@ -723,6 +994,43 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
 }
 
 UiGraphModel& Dashboard::graphModel() { return m_graphModel; }
+
+std::pair<gr::BlockModel*, opendigitizer::charts::Chart*> Dashboard::emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters) {
+    using namespace opendigitizer::charts;
+
+    // Handle both short names ("XYChart") and fully-qualified names ("opendigitizer::charts::XYChart")
+    auto matchesType = [](std::string_view fullName, std::string_view shortName) {
+        if (fullName == shortName) {
+            return true;
+        }
+        const std::string suffix = std::string("::") + std::string(shortName);
+        return fullName.size() > suffix.size() && fullName.substr(fullName.size() - suffix.size()) == suffix;
+    };
+
+    // Build initParams: start with chart name, then merge any additional parameters
+    gr::property_map initParams;
+    if (!chartName.empty()) {
+        initParams["chart_name"] = chartName;
+    }
+    // Merge chart parameters (from .grc parameters: section)
+    for (const auto& [key, value] : chartParameters) {
+        initParams[key] = value;
+    }
+
+    if (matchesType(chartTypeName, "XYChart")) {
+        auto& chart = m_uiGraph.emplaceBlock<XYChart>(initParams);
+        // Get BlockModel* from the last added block (emplaceBlock adds to back)
+        gr::BlockModel* blockModel = m_uiGraph.blocks().back().get();
+        return {blockModel, static_cast<Chart*>(&chart)};
+    }
+    if (matchesType(chartTypeName, "YYChart")) {
+        auto&           chart      = m_uiGraph.emplaceBlock<YYChart>(initParams);
+        gr::BlockModel* blockModel = m_uiGraph.blocks().back().get();
+        return {blockModel, static_cast<Chart*>(&chart)};
+    }
+
+    return {nullptr, nullptr};
+}
 
 void Dashboard::Service::execute() {
     opencmw::client::Command command;

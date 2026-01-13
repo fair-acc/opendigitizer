@@ -166,7 +166,7 @@ public:
         std::string fallback;
         for (std::string_view bindAddress : bindAddresses) {
             if (bindAddress.starts_with("https://")) {
-                const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                const auto bindUri = opencmw::URI<>(std::string(bindAddress));
                 // we need to set the full authority here, if we only set the port, the constructed url will have the authority of bindUrl and the port will be ignored
                 return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(443)));
             }
@@ -185,7 +185,7 @@ public:
         using std::operator""s;
         for (std::string_view bindAddress : bindAddresses) {
             if (bindAddress.starts_with("http://")) {
-                const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                const auto bindUri = opencmw::URI<>(std::string(bindAddress));
                 return opencmw::URI<>::UriFactory(bindUri).authority(std::format("{}:{}", hostname, bindUri.port().value_or(80)));
             }
         }

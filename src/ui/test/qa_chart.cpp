@@ -75,14 +75,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
-                ut::expect(implotSinkRaw);
-                auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
+                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                ut::expect(sinkPtr != nullptr);
 
-                // g_state.waitForScheduler();
-
-                const int maxSamples = 3000;
-                while (implotSink->_yValues.size() < maxSamples) {
+                // Wait for samples to accumulate using the SignalSink interface
+                const std::size_t maxSamples = 3000;
+                while (sinkPtr->size() < maxSamples) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 

@@ -1,5 +1,30 @@
 # define unit-tests
 
+# Headless chart abstraction tests (no ImGui/ImPlot rendering required)
+add_executable(qa_SignalSink qa_SignalSink.cpp)
+target_link_libraries(
+        qa_SignalSink
+        PRIVATE ut
+        gnuradio-core
+        gnuradio-meta)
+target_include_directories(qa_SignalSink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_SignalSink COMMAND qa_SignalSink)
+
+# Chart abstraction tests for SignalSink/SinkRegistry/Chart mixin APIs
+# Note: gr::Graph integration tests moved to qa_chart.cpp (requires full ImGui context)
+add_executable(qa_ChartAbstraction qa_ChartAbstraction.cpp)
+target_link_libraries(
+        qa_ChartAbstraction
+        PRIVATE ut
+        gnuradio-core
+        gnuradio-meta
+        implot
+        imgui-node-editor
+        raii_wrapper)
+target_compile_definitions(qa_ChartAbstraction PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
+target_include_directories(qa_ChartAbstraction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_ChartAbstraction COMMAND qa_ChartAbstraction)
+
 add_executable(qa_play_stop_bar qa_play_stop_bar.cpp)
 target_include_directories(qa_play_stop_bar INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
                                                       $<INSTALL_INTERFACE:include/>)
