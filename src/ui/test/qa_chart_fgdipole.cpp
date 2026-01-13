@@ -95,10 +95,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
 
                 auto getUiSink = [](auto typeTag, std::string_view name) {
-                    using SinkType      = decltype(typeTag);
-                    auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([name](const auto& sink) { return sink.name() == name; });
-
-                    ut::expect(implotSinkRaw);
+                    using SinkType = decltype(typeTag);
+                    auto sinkPtr   = opendigitizer::charts::SinkRegistry::instance().findSink([name](const auto& sink) { return sink.blockName() == name; });
+                    ut::expect(sinkPtr != nullptr);
+                    auto* implotSinkRaw = dynamic_cast<opendigitizer::ImPlotSinkModel*>(sinkPtr.get());
+                    ut::expect(implotSinkRaw != nullptr);
                     return reinterpret_cast<opendigitizer::ImPlotSink<SinkType>*>(implotSinkRaw->raw());
                 };
 

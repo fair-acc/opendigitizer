@@ -125,6 +125,7 @@ add_library(
   Dashboard.cpp
   Dashboard.hpp
   DashboardPage.cpp
+        charts/SignalSink.cpp
   DashboardPage.hpp
   OpenDashboardPage.cpp
   OpenDashboardPage.hpp

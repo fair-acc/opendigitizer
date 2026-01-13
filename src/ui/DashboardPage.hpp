@@ -19,16 +19,24 @@ namespace DigitizerUi {
 class DashboardPage {
 public:
     enum class Mode { View, Layout };
-    struct DndItem {
-        Dashboard::Plot*                plot       = nullptr;
-        opendigitizer::ImPlotSinkModel* plotSource = nullptr;
+
+    /**
+     * @brief Drag & drop payload for signal sink transfers.
+     *
+     * This struct is memcpy-safe (fixed-size char arrays) for ImGui's SetDragDropPayload.
+     * Uses string-based lookup: target finds sink by name in SinkRegistry,
+     * and removes from source chart by ID.
+     */
+    struct DndPayload {
+        char sinkUniqueName[256] = {}; // Sink's uniqueName for lookup in SinkRegistry
+        char sourceChartId[64]   = {}; // Source chart's uniqueId (empty = global legend, no removal needed)
     };
 
 private:
     ImVec2 pane_size{0, 0};     // updated by drawPlots(...)
     ImVec2 legend_box{500, 40}; // updated by drawLegend(...)
 
-    static constexpr inline auto* dnd_type = "DND_SOURCE";
+    static constexpr inline auto* dnd_type = "SIGNAL_SINK_DND";
 
     // Signals which are schedulerd to be added
     // (source block creation requested)
@@ -48,6 +56,10 @@ private:
 
     Dashboard* m_dashboard = nullptr;
 
+    // Modal dialog state for new plot creation
+    bool        _showNewPlotModal  = false;
+    std::string _selectedChartType = "XYChart";
+
     void drawPlots(DigitizerUi::DashboardPage::Mode mode);
     void drawGrid(float w, float h);
     void drawGlobalLegend(const Mode& mode) noexcept;
@@ -60,7 +72,8 @@ public:
     void draw(Mode mode = Mode::View) noexcept;
     void setLayoutType(DockingLayoutType);
 
-    /* no optional of ref yet */ DigitizerUi::Dashboard::Plot* newPlot();
+    /* no optional of ref yet */ DigitizerUi::Dashboard::Plot* newPlot(std::string_view chartType = "XYChart");
+    void                                                       drawNewPlotModal();
 
     void setDashboard(Dashboard& dashboard) {
         m_dashboard = std::addressof(dashboard);

@@ -75,8 +75,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
-                ut::expect(implotSinkRaw);
+                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.blockName() == "DipoleCurrentSink"; });
+                ut::expect(sinkPtr != nullptr);
+                auto* implotSinkRaw = dynamic_cast<opendigitizer::ImPlotSinkModel*>(sinkPtr.get());
+                ut::expect(implotSinkRaw != nullptr);
                 auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
 
                 // g_state.waitForScheduler();

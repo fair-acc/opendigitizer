@@ -25,6 +25,8 @@
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
 
+#include "charts/Charts.hpp"
+#include "charts/SinkRegistry.hpp"
 #include "conversion.hpp"
 
 using namespace std::string_literals;
@@ -331,14 +333,15 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         auto block = std::get<std::string>(srcMap.at("block"));
         auto name  = std::get<std::string>(srcMap.at("name"));
 
-        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
-        if (!sink) {
+        auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& s) { return s.name() == block; });
+        if (!sinkPtr) {
             auto msg = std::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        sink->setName(block);
+        // Signal name is set via block properties during initialization
+        // SignalSink interface is read-only for name
     }
 
     if (!dashboard.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("plots"))) {
@@ -369,6 +372,16 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         auto& plot = m_plots.back();
         plot.name  = name;
 
+        if (plotMap.contains("type") && std::holds_alternative<std::string>(plotMap.at("type"))) {
+            plot.chartTypeName = std::get<std::string>(plotMap.at("type"));
+        }
+
+        // Create chart instance based on type name
+        using namespace opendigitizer::charts;
+        auto [storage, chartPtr] = makeChartByType(plot.chartTypeName, plot.name);
+        plot.chartStorage        = std::move(storage);
+        plot.chart               = chartPtr;
+
         if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
             auto axes = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
             for (const auto& axisPmt : axes) {
@@ -386,9 +399,9 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
 
                 auto axis = std::get<std::string>(axisMap.at("axis"));
                 if (axis == "X" || axis == "x") {
-                    axisData.axis = Plot::AxisKind::X;
+                    axisData.axis = AxisConfig::AxisKind::X;
                 } else if (axis == "Y" || axis == "y") {
-                    axisData.axis = Plot::AxisKind::Y;
+                    axisData.axis = AxisConfig::AxisKind::Y;
                 } else {
                     components::Notification::warning(std::format("Unknown axis {}", axis));
                     return;
@@ -415,8 +428,8 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
             }
         } else {
             // add default axes and ranges if not defined
-            plot.axes.push_back({Plot::AxisKind::X});
-            plot.axes.push_back({Plot::AxisKind::Y});
+            plot.axes.push_back({AxisConfig::AxisKind::X});
+            plot.axes.push_back({AxisConfig::AxisKind::Y});
         }
 
         std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
@@ -451,10 +464,11 @@ void Dashboard::save() {
     property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler()->graph());
 
     std::vector<pmtv::pmt> sources;
-    opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {
+    // Use SinkRegistry with SignalSink interface for serialization
+    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
         // TODO: Port saving and loading flowgraph layouts
         property_map map;
-        map["name"]  = sink.name();
+        map["name"]  = std::string(sink.name());
         map["color"] = sink.color();
 
         sources.emplace_back(std::move(map));
@@ -465,11 +479,12 @@ void Dashboard::save() {
     for (auto& plot : m_plots) {
         property_map plotMap;
         plotMap["name"] = plot.name;
+        plotMap["type"] = plot.chartTypeName;
 
         std::vector<pmtv::pmt> plotAxes;
         for (const auto& axis : plot.axes) {
             property_map axisMap;
-            axisMap["axis"]      = axis.axis == Plot::AxisKind::X ? "X" : "Y";
+            axisMap["axis"]      = axis.axis == AxisConfig::AxisKind::X ? "X" : "Y";
             axisMap["min"]       = axis.min;
             axisMap["max"]       = axis.max;
             axisMap["scale"]     = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
@@ -480,8 +495,10 @@ void Dashboard::save() {
         plotMap["axes"] = plotAxes;
 
         std::vector<pmtv::pmt> plotSinkBlockNames;
-        for (auto& plotSinkBlock : plot.plotSinkBlocks) {
-            plotSinkBlockNames.emplace_back(plotSinkBlock->name());
+        if (plot.hasChart()) {
+            for (const auto& sink : plot.chart->signalSinks()) {
+                plotSinkBlockNames.emplace_back(std::string(sink->name()));
+            }
         }
         plotMap["sources"] = plotSinkBlockNames;
 
@@ -559,12 +576,20 @@ void Dashboard::save() {
     }
 }
 
-DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h) {
+DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h, std::string_view chartType) {
     m_plots.push_back({});
     auto& p = m_plots.back();
-    p.axes.push_back({Plot::AxisKind::X});
-    p.axes.push_back({Plot::AxisKind::Y});
+    p.axes.push_back({AxisConfig::AxisKind::X});
+    p.axes.push_back({AxisConfig::AxisKind::Y});
     p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
+
+    // Create chart instance
+    p.chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
+    using namespace opendigitizer::charts;
+    auto [storage, chartPtr] = makeChartByType(p.chartTypeName, p.name);
+    p.chartStorage           = std::move(storage);
+    p.chart = chartPtr;
+
     return p;
 }
 
@@ -581,20 +606,26 @@ void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
 }
 
 void Dashboard::loadPlotSourcesFor(Plot& plot) {
-    plot.plotSinkBlocks.clear();
+    // Clear existing sinks from chart
+    if (plot.hasChart()) {
+        plot.clearChartSinks();
+    }
 
     for (const auto& name : plot.sourceNames) {
-        auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) {
-            // TODO: We should probably rely on block unique names for sink searching,
-            // not 'signal names'
-            return sink.signalName() == name || sink.name() == name;
-        });
-        if (!plotSource) {
-            auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
-            components::Notification::warning(msg);
+        // Find sink in SinkRegistry for proper shared ownership
+        auto sinkSharedPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&name](const auto& sink) { return sink.signalName() == name || sink.name() == name; });
+
+        if (sinkSharedPtr) {
+            // Add to chart with shared ownership
+            if (plot.hasChart()) {
+                plot.chart->addSignalSink(sinkSharedPtr);
+            }
             continue;
         }
-        plot.plotSinkBlocks.push_back(&*plotSource);
+
+        // Sink not found in SinkRegistry
+        auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
+        components::Notification::warning(msg);
     }
 }
 

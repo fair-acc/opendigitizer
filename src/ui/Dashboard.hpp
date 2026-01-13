@@ -33,12 +33,14 @@ namespace detail {
 #include "Scheduler.hpp"
 #include "settings.hpp"
 
+#include "charts/Charts.hpp"
+
 namespace gr {
 class Graph;
 }
 
 namespace opendigitizer {
-struct ImPlotSinkModel;
+class SignalSink; // Forward declaration for SignalSink interface
 }
 
 namespace DigitizerUi {
@@ -46,15 +48,9 @@ namespace DigitizerUi {
 struct DashboardDescription;
 struct SignalData;
 
-enum class AxisScale : std::uint8_t {
-    Linear = 0U,   /// default linear scale [t0, .., tn]
-    LinearReverse, /// reverse linear scale [t0-tn, ..., 0]
-    Time,          /// date/timescale
-    Log10,         /// base 10 logarithmic scale
-    SymLog,        /// symmetric log scale
-};
-
-enum class LabelFormat : std::uint8_t { Auto = 0U, Metric, MetricInline, Scientific, None, Default };
+// Use axis types from charts namespace (avoid duplication)
+using AxisScale   = opendigitizer::charts::AxisScale;
+using LabelFormat = opendigitizer::charts::LabelFormat;
 
 // Defines where the dashboard is stored and fetched from
 struct DashboardStorageInfo {
@@ -105,23 +101,50 @@ public:
 
 class Dashboard {
 public:
+    // Alias for axis configuration (defined in ChartUtils.hpp)
+    using AxisConfig = opendigitizer::charts::DashboardAxisConfig;
+
     struct Plot {
-        enum class AxisKind { X = 0, Y };
-
-        struct AxisData {
-            AxisKind    axis     = AxisKind::X;
-            float       min      = std::numeric_limits<float>::quiet_NaN();
-            float       max      = std::numeric_limits<float>::quiet_NaN();
-            AxisScale   scale    = AxisScale::Linear;
-            LabelFormat format   = LabelFormat::Auto;
-            float       width    = std::numeric_limits<float>::max();
-            bool        plotTags = true;
-        };
-
         std::string                                  name;
+        std::string                                  chartTypeName = "XYChart"; // String-based chart type
         std::vector<std::string>                     sourceNames;
-        std::vector<opendigitizer::ImPlotSinkModel*> plotSinkBlocks; // Not owned by us
-        std::vector<AxisData>                        axes;
+
+        // Chart storage and interface
+        std::shared_ptr<void>                      chartStorage;    // Owns the chart (type-erased)
+        opendigitizer::charts::ChartInterface* chart = nullptr; // Polymorphic interface
+
+        std::vector<AxisConfig> axes;
+
+        // Helper to check if chart is valid
+        [[nodiscard]] bool hasChart() const noexcept { return chart != nullptr; }
+
+        // Helper to clear signal sinks from chart
+        void clearChartSinks() {
+            if (chart) {
+                chart->clearSignalSinks();
+            }
+        }
+
+        // Helper to build axis categories
+        void buildChartAxisCategories() {
+            if (chart) {
+                chart->buildAxisCategories();
+            }
+        }
+
+        // Helper to set dashboard axis config
+        void setChartDashboardAxisConfig(std::vector<opendigitizer::charts::DashboardAxisConfig> configs) {
+            if (chart) {
+                chart->setDashboardAxisConfig(std::move(configs));
+            }
+        }
+
+        // Helper to setup all axes
+        void setupChartAllAxes() {
+            if (chart) {
+                chart->setupAllAxes();
+            }
+        }
 
         std::shared_ptr<DockSpace::Window> window;
 
@@ -186,7 +209,7 @@ public:
 
     void save();
 
-    DigitizerUi::Dashboard::Plot& newPlot(int x, int y, int w, int h);
+    DigitizerUi::Dashboard::Plot& newPlot(int x, int y, int w, int h, std::string_view chartType = "XYChart");
 
     void deletePlot(Plot* plot);
 
