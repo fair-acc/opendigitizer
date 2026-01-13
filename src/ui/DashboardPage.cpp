@@ -16,6 +16,7 @@
 
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
+#include "charts/SignalSink.hpp"
 
 namespace DigitizerUi {
 
@@ -415,7 +416,7 @@ DashboardPage::DashboardPage() {
         message.data        = gr::property_map{                                                                 //
             {std::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName}, //
             {std::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                            //
-            {std::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), sink.uniqueName},            //
+            {std::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::string(sink.uniqueName())}, //
             {std::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                        //
             {std::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},             //
             {std::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                     //
@@ -896,7 +897,7 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
             IMW::ChangeId itemId(index++);
             auto          color = signal.color();
 
-            const std::string& label = signal.signalName().empty() ? signal.name() : signal.signalName();
+            const std::string label = signal.signalName().empty() ? signal.name() : std::string(signal.signalName());
 
             const auto widthEstimate = ImGui::CalcTextSize(label.c_str()).x + 20 /* icon width */;
             if ((legend_box.x + widthEstimate) < 0.9f * pane_size.x) {
@@ -907,7 +908,7 @@ void DashboardPage::drawGlobalLegend([[maybe_unused]] const DashboardPage::Mode&
 
             auto clickedMouseButton = LegendItem(color, label, signal.isVisible);
             if (clickedMouseButton == MouseClick::Right) {
-                m_editPane.setSelectedBlock(m_dashboard->graphModel().rootBlock.findBlockByUniqueName(signal.uniqueName), std::addressof(m_dashboard->graphModel()));
+                m_editPane.setSelectedBlock(m_dashboard->graphModel().rootBlock.findBlockByUniqueName(std::string(signal.uniqueName())), std::addressof(m_dashboard->graphModel()));
                 m_editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
             }
             if (clickedMouseButton == MouseClick::Left) {

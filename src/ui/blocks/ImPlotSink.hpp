@@ -24,6 +24,7 @@
 #include "conversion.hpp"
 #include "meta.hpp"
 
+#include "../charts/SignalSink.hpp"
 #include "../utils/EmscriptenHelper.hpp"
 
 namespace opendigitizer {
@@ -207,18 +208,22 @@ inline void setAxisFromConfig(const gr::property_map& config) {
     ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
 }
 
-struct ImPlotSinkModel {
-    std::string uniqueName;
+struct ImPlotSinkModel : ui::charts::SignalSinkBase {
+    std::string _uniqueName;
+    bool        isVisible = true;
 
-    ImPlotSinkModel(std::string _uniqueName) : uniqueName(std::move(_uniqueName)) {}
+    ImPlotSinkModel(std::string name) : _uniqueName(std::move(name)) {}
 
-    virtual ~ImPlotSinkModel() {}
+    virtual ~ImPlotSinkModel() = default;
 
+    // SignalSinkBase identity
+    [[nodiscard]] std::string_view uniqueName() const noexcept override { return _uniqueName; }
+
+    // Block-specific methods
     virtual gr::work::Status draw(const gr::property_map& config = {}) noexcept = 0;
 
     virtual std::string name() const                    = 0;
     virtual void        setName(std::string name)       = 0;
-    virtual std::string signalName() const              = 0;
     virtual void        setSignalName(std::string name) = 0;
 
     virtual gr::SettingsBase& settings() const = 0;
@@ -227,10 +232,6 @@ struct ImPlotSinkModel {
     virtual gr::work::Status invokeWork()            = 0;
 
     virtual void* raw() const = 0;
-
-    virtual std::uint32_t color() const = 0;
-
-    bool isVisible = true;
 };
 
 class ImPlotSinkManager {
@@ -251,25 +252,149 @@ private:
 
     template<typename TBlock>
     struct SinkWrapper : ImPlotSinkModel {
-        SinkWrapper(TBlock* _block) : ImPlotSinkModel(_block->unique_name), block(_block) {}
+        using InputType                   = typename decltype(TBlock::in)::value_type;
+        static constexpr bool IsStreaming = std::is_arithmetic_v<InputType>;
+        static constexpr bool IsDataSet   = gr::DataSetLike<InputType>;
 
+        TBlock*                                 block = nullptr;
+        mutable std::vector<float>              _yCache;
+        mutable std::vector<gr::DataSet<float>> _dsCache;
+
+        SinkWrapper(TBlock* b) : ImPlotSinkModel(b->unique_name), block(b) {}
+
+        // Block-specific methods
         gr::work::Status draw(const gr::property_map& config = {}) noexcept override { return block->draw(config); }
 
-        std::string name() const override { return block->name; }
-        void        setName(std::string name) override { block->name = std::move(name); }
-        std::string signalName() const override { return block->signal_name; }
-        void        setSignalName(std::string name) override { block->signal_name = std::move(name); }
+        [[nodiscard]] std::string name() const override { return block->name; }
+        void                      setName(std::string n) override { block->name = std::move(n); }
+        void                      setSignalName(std::string n) override { block->signal_name = std::move(n); }
 
-        gr::SettingsBase& settings() const override { return block->settings(); }
+        [[nodiscard]] gr::SettingsBase& settings() const override { return block->settings(); }
+        [[nodiscard]] gr::work::Result  work(std::size_t count) override { return block->work(count); }
+        [[nodiscard]] gr::work::Status  invokeWork() override { return block->invokeWorkWithGuard(); }
+        [[nodiscard]] void*             raw() const override { return static_cast<void*>(block); }
 
-        gr::work::Result work(std::size_t count) override { return block->work(count); }
-        gr::work::Status invokeWork() override { return block->invokeWorkWithGuard(); }
+        // SignalSinkBase interface - identity
+        [[nodiscard]] std::string_view signalName() const noexcept override { return block->signal_name; }
 
-        void* raw() const override { return static_cast<void*>(block); }
+        // SignalSinkBase interface - minimal metadata
+        [[nodiscard]] std::uint32_t color() const noexcept override { return block->_colour.colour(); }
+        [[nodiscard]] float         sampleRate() const noexcept override { return block->sample_rate; }
 
-        std::uint32_t color() const override { return block->_colour.colour(); }
+        // SignalSinkBase interface - indexed access
+        [[nodiscard]] std::size_t size() const noexcept override {
+            if constexpr (IsStreaming) {
+                return block->_xValues.size();
+            } else {
+                return 0;
+            }
+        }
 
-        TBlock* block = nullptr;
+        [[nodiscard]] double xAt(std::size_t i) const override {
+            if constexpr (IsStreaming) {
+                return block->_xValues.get_span(0)[i];
+            } else {
+                return 0.0;
+            }
+        }
+
+        [[nodiscard]] float yAt(std::size_t i) const override {
+            if constexpr (IsStreaming) {
+                return static_cast<float>(block->_yValues.get_span(0)[i]);
+            } else {
+                return 0.0f;
+            }
+        }
+
+        // SignalSinkBase interface - PlotData accessor
+        [[nodiscard]] ui::charts::PlotData plotData() const override {
+            if constexpr (IsStreaming) {
+                static auto getter = +[](int idx, void* userData) -> ui::charts::PlotPoint {
+                    auto* self  = static_cast<const SinkWrapper*>(userData);
+                    auto  xSpan = self->block->_xValues.get_span(0);
+                    auto  ySpan = self->block->_yValues.get_span(0);
+                    return {xSpan[static_cast<std::size_t>(idx)], static_cast<double>(ySpan[static_cast<std::size_t>(idx)])};
+                };
+                return {getter, const_cast<SinkWrapper*>(this), static_cast<int>(block->_xValues.size())};
+            } else {
+                return {nullptr, nullptr, 0};
+            }
+        }
+
+        // SignalSinkBase interface - DataSet support
+        [[nodiscard]] bool hasDataSets() const noexcept override {
+            if constexpr (IsDataSet) {
+                return block->_yValues.size() > 0;
+            } else {
+                return false;
+            }
+        }
+
+        [[nodiscard]] std::size_t dataSetCount() const noexcept override {
+            if constexpr (IsDataSet) {
+                return block->_yValues.size();
+            } else {
+                return 0;
+            }
+        }
+
+        [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const override {
+            if constexpr (IsDataSet) {
+                auto span = block->_yValues.get_span(0);
+                if constexpr (std::is_same_v<InputType, gr::DataSet<float>>) {
+                    return span;
+                } else {
+                    _dsCache.clear();
+                    for (const auto& ds : span) {
+                        gr::DataSet<float> converted;
+                        converted.timestamp    = ds.timestamp;
+                        converted.signal_names = ds.signal_names;
+                        converted.signal_units = ds.signal_units;
+                        converted.axis_names   = ds.axis_names;
+                        converted.axis_units   = ds.axis_units;
+                        converted.extents      = ds.extents;
+                        converted.signal_values.assign(ds.signal_values.begin(), ds.signal_values.end());
+                        for (const auto& av : ds.axis_values) {
+                            converted.axis_values.emplace_back(av.begin(), av.end());
+                        }
+                        _dsCache.push_back(std::move(converted));
+                    }
+                    return _dsCache;
+                }
+            } else {
+                return {};
+            }
+        }
+
+        // SignalSinkBase interface - time range
+        [[nodiscard]] double timeFirst() const noexcept override {
+            if constexpr (IsStreaming) {
+                return block->_xValues.empty() ? 0.0 : block->_xValues.get_span(0).front();
+            } else {
+                return 0.0;
+            }
+        }
+
+        [[nodiscard]] double timeLast() const noexcept override {
+            if constexpr (IsStreaming) {
+                return block->_xValues.empty() ? 0.0 : block->_xValues.get_span(0).back();
+            } else {
+                return 0.0;
+            }
+        }
+
+        // SignalSinkBase interface - buffer control
+        [[nodiscard]] std::size_t bufferCapacity() const noexcept override { return static_cast<std::size_t>(block->required_size); }
+
+        void requestCapacity(void* /*owner*/, std::size_t minSamples) override {
+            if (minSamples > block->required_size) {
+                block->required_size = static_cast<gr::Size_t>(minSamples);
+            }
+        }
+
+        void releaseCapacity(void* /*owner*/) override {
+            // Could track per-owner requirements, simplified for now
+        }
     };
 
     void notifyListeners(ImPlotSinkModel& sink, bool isAdded) {
@@ -292,13 +417,14 @@ public:
         }
         wrapper = std::make_unique<SinkWrapper<TBlock>>(block);
         notifyListeners(*wrapper, true);
+        ui::charts::SignalSinkManager::instance().registerSink(wrapper.get());
     }
 
     template<typename TBlock>
     void unregisterPlotSink(TBlock* block) {
-        // might not exist because registerPlotSink() isn't called in ctor but later
         auto it = _knownSinks.find(block->unique_name);
         if (it != _knownSinks.end()) {
+            ui::charts::SignalSinkManager::instance().unregisterSink(it->second.get());
             notifyListeners(*it->second, false);
             _knownSinks.erase(it);
         }
