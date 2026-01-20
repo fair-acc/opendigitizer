@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+#include <gnuradio-4.0/meta/formatter.hpp>
+
 #ifdef EMSCRIPTEN
 #include <emscripten.h>
 #endif
@@ -150,7 +152,7 @@ private:
         }
 #endif
         std::println("settings loaded: bindAddresses={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
-            bindAddresses, darkMode, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
+            gr::join(bindAddresses), darkMode, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:
