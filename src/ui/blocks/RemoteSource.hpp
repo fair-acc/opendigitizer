@@ -273,6 +273,9 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
     void startSubscription(const std::string& uri) {
+        if (!_subscribedUri.empty()) {
+            return;
+        }
         std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
@@ -339,15 +342,13 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         _client.request(command);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
         //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
-        const auto oldHost  = old_settings.find("host");
-        const auto oldValue = old_settings.find("remote_uri");
-        if ((oldValue != old_settings.end() || oldHost == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+        if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
             RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
             startSubscription(remote_uri);
@@ -425,6 +426,9 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     }
 
     void startSubscription(const std::string& uri) {
+        if (!_subscribedUri.empty()) {
+            return;
+        }
         std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", uri);
         opencmw::client::Command command;
         command.command          = opencmw::mdp::Command::Subscribe;
@@ -573,15 +577,13 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         _client.request(command);
     }
 
-    void settingsChanged(const gr::property_map& old_settings, const gr::property_map& /*new_settings*/) {
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
         // GR doesn't set the state for a block added after the scheduler started
         // if (Parent::state() != gr::lifecycle::State::RUNNING) {
         //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
         //     return; // early return, only apply settings for the running flowgraph
         // }
-        const auto old_host = old_settings.find("host");
-        const auto oldValue = old_settings.find("remote_uri");
-        if ((oldValue != old_settings.end() || old_host == old_settings.end()) && !host.empty() && !remote_uri.empty()) {
+        if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
             RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
             startSubscription(remote_uri);
