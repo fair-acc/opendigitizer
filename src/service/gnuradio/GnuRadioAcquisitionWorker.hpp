@@ -202,9 +202,9 @@ class GnuRadioAcquisitionWorker : public Worker<serviceName, TimeDomainContext, 
     std::unique_ptr<MsgPortOut>                   _messagesToScheduler;
     std::unique_ptr<MsgPortIn>                    _messagesFromScheduler;
 
-    std::optional<gr::meta::indirect<gr::Graph>>                                  _pendingFlowGraph;
-    std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>> _scheduler;
-    std::mutex                                                                    _graphChangeMutex;
+    std::optional<gr::meta::indirect<gr::Graph>>                                           _pendingFlowGraph;
+    std::unique_ptr<scheduler::Simple<scheduler::ExecutionPolicy::singleThreadedBlocking>> _scheduler;
+    std::mutex                                                                             _graphChangeMutex;
 
 public:
     using super_t = Worker<serviceName, TimeDomainContext, Empty, Acquisition, Meta...>;
@@ -381,7 +381,7 @@ private:
                         _updateSignalEntriesCallback(std::vector(entries.begin(), entries.end()));
                     }
 
-                    _scheduler = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::multiThreaded>>();
+                    _scheduler = std::make_unique<scheduler::Simple<scheduler::ExecutionPolicy::singleThreadedBlocking>>();
 
                     // We do not need the old empty graph
                     std::ignore            = _scheduler->exchange(std::move(*pendingFlowGraph.value()));
