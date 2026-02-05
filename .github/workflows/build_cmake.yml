@@ -77,7 +77,7 @@ jobs:
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
-        cmake --build ../build
+        cmake --build ../build --target qa_GnuRadioWorker
 
     - name: Install Xvfb
       run: ( sudo apt-get update && sudo apt-get install -y xvfb || true )
