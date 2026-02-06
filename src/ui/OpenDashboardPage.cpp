@@ -19,6 +19,8 @@
 #include "scope_exit.hpp"
 #include "settings.hpp"
 
+#include <charconv>
+
 namespace DigitizerUi {
 
 namespace {
@@ -119,8 +121,8 @@ static constexpr float indent = 20;
 void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
 
-    if (optionalDashboard != nullptr && optionalDashboard->isInitialised()) {
-        auto desc = optionalDashboard->description();
+    if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
+        auto desc = optionalDashboard->description;
         ImGui::Text("%s (%s)", desc->name.c_str(), desc->storageInfo->path.c_str());
     } else {
         ImGui::Text("-");
@@ -128,12 +130,12 @@ void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
 
     ImGui::Dummy({indent, 20});
     ImGui::SameLine();
-    const bool dashboardLoaded = optionalDashboard != nullptr && optionalDashboard->isInitialised();
+    const bool dashboardLoaded = optionalDashboard != nullptr && optionalDashboard->isInitialised;
 
     IMW::Disabled disabled(!dashboardLoaded);
 
     {
-        IMW::Disabled innerDisabled(dashboardLoaded && optionalDashboard->description()->storageInfo->isInMemoryDashboardStorage());
+        IMW::Disabled innerDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
         if (dashboardLoaded && ImGui::Button("Save")) {
             optionalDashboard->save();
         }
@@ -159,7 +161,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
         ImGui::SameLine();
-        auto                                         desc = optionalDashboard != nullptr && optionalDashboard->isInitialised() ? optionalDashboard->description() : nullptr;
+        auto                                         desc = optionalDashboard != nullptr && optionalDashboard->isInitialised ? optionalDashboard->description : nullptr;
         static std::string                           name;
         static std::shared_ptr<DashboardStorageInfo> storageInfo;
         if (ImGui::IsWindowAppearing() && desc != nullptr) {
@@ -193,7 +195,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
             newDesc->storageInfo = storageInfo;
             m_dashboards.push_back(newDesc);
 
-            if (optionalDashboard != nullptr && optionalDashboard->isInitialised()) {
+            if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
                 optionalDashboard->setNewDescription(newDesc);
                 optionalDashboard->save();
             }
@@ -305,7 +307,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
 
             const auto& name              = item.first->name;
             const auto& storageInfo       = item.first->storageInfo;
-            bool        isDashboardActive = optionalDashboard != nullptr && optionalDashboard->isInitialised() && optionalDashboard->description() && name == optionalDashboard->description()->name && storageInfo == optionalDashboard->description()->storageInfo;
+            bool        isDashboardActive = optionalDashboard != nullptr && optionalDashboard->isInitialised && optionalDashboard->description && name == optionalDashboard->description->name && storageInfo == optionalDashboard->description->storageInfo;
 
             {
                 IMW::Font font(isDashboardActive ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
@@ -402,10 +404,12 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
                     }
                     return 1;
                 }) &&
-            strnlen(dateStr, sizeof(dateStr)) == 10) {
-            unsigned                    day   = static_cast<unsigned>(std::atoi(dateStr));
-            unsigned                    month = static_cast<unsigned>(std::atoi(dateStr + 3));
-            int                         year  = std::atoi(dateStr + 6);
+            std::string_view(dateStr).size() == 10) {
+            unsigned day = 0, month = 0;
+            int      year = 0;
+            std::from_chars(dateStr, dateStr + 2, day);
+            std::from_chars(dateStr + 3, dateStr + 5, month);
+            std::from_chars(dateStr + 6, dateStr + 10, year);
             std::chrono::year_month_day ldate{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
             if (ldate.ok()) {
                 m_date = std::chrono::sys_days(ldate);

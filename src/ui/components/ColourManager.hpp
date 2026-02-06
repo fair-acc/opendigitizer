@@ -206,11 +206,7 @@ struct ColourManager {
         return p.size() - 1;
     }
 
-    static std::string toHex(std::uint32_t c) {
-        char buf[10];
-        std::snprintf(buf, sizeof(buf), "%06X", c);
-        return std::string(buf);
-    }
+    static std::string toHex(std::uint32_t c) { return std::format("{:06X}", c); }
 };
 
 struct ManagedColour {

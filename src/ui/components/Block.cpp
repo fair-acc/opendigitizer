@@ -2,6 +2,8 @@
 #include "BlockNeighboursPreview.hpp"
 #include "Keypad.hpp"
 
+#include <format>
+
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -216,7 +218,8 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
             // Column 2: Input
             ImGui::TableSetColumnIndex(1);
             char label[64];
-            snprintf(label, sizeof(label), "##parameter_%d", i);
+            auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", i);
+            *labelResult.out = '\0';
 
             auto sendSetSettingMessage = [block](auto blockUniqueName, auto keyToUpdate, auto updatedValue) {
                 gr::Message message;

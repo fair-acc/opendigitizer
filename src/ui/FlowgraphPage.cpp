@@ -799,8 +799,8 @@ FlowgraphPage::~FlowgraphPage() = default;
 
 void FlowgraphPage::reset() {
     if (_dashboard) {
-        _dashboard->graphModel().rootBlock.childEdges.clear();
-        _dashboard->graphModel().rootBlock.childBlocks.clear();
+        _dashboard->graphModel.rootBlock.childEdges.clear();
+        _dashboard->graphModel.rootBlock.childBlocks.clear();
     }
 
     _editors.clear();
@@ -998,7 +998,7 @@ void FlowgraphPage::drawLocalYamlTab() {
             message.endpoint    = gr::scheduler::property::kGraphGRC;
             auto owner          = _editors.front().ownersForRoot();
             message.serviceName = owner.scheduler;
-            _dashboard->graphModel().sendMessage(std::move(message));
+            _dashboard->graphModel.sendMessage(std::move(message));
         }
     }
 
@@ -1007,11 +1007,11 @@ void FlowgraphPage::drawLocalYamlTab() {
         gr::Message message;
         message.cmd      = gr::message::Command::Set;
         message.endpoint = gr::scheduler::property::kGraphGRC;
-        message.data     = gr::property_map{{"value", _dashboard->graphModel().m_localFlowgraphGrc}};
-        _dashboard->graphModel().sendMessage(std::move(message));
+        message.data     = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+        _dashboard->graphModel.sendMessage(std::move(message));
     }
 
-    ImGui::InputTextMultiline("##grc", &_dashboard->graphModel().m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
+    ImGui::InputTextMultiline("##grc", &_dashboard->graphModel.m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
 }
 
 void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
@@ -1046,9 +1046,9 @@ void FlowgraphPage::draw() noexcept {
         if (!_editors.empty()) {
             _currentTabIsFlowGraph = true;
             drawNodeEditorTab();
-        } else if (!_dashboard->graphModel().rootBlock.blockUniqueName.empty()) {
+        } else if (!_dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
             // We don't have an editor until the root graph is loaded
-            pushEditor("rootBlock node editor", _dashboard->graphModel(), std::addressof(_dashboard->graphModel().rootBlock));
+            pushEditor("rootBlock node editor", _dashboard->graphModel, std::addressof(_dashboard->graphModel.rootBlock));
         }
     }
 
@@ -1056,7 +1056,7 @@ void FlowgraphPage::draw() noexcept {
         drawLocalYamlTab();
     }
 
-    for (auto& service : _dashboard->remoteServices()) {
+    for (auto& service : _dashboard->services) {
         drawRemoteYamlTab(service);
     }
 }

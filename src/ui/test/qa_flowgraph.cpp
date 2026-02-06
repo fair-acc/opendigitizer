@@ -17,6 +17,7 @@
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
+#include "blocks/GlobalSignalLegend.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
 
@@ -36,20 +37,16 @@ struct TestState {
 
     TestState() : flowgraphPage(restClient) {}
 
-    /// In case the tests create more than 1 scheduler, we'll need to wait for them at the end
-    std::vector<std::jthread> schedulerThreads;
-
-    void startScheduler() { dashboard->scheduler()->start(); }
-    void stopScheduler() { dashboard->scheduler()->stop(); }
+    void stopScheduler() { dashboard->scheduler->stop(); }
 
     const auto& blocks() const {
         assert(dashboard);
-        auto& rootChildren = dashboard->graphModel().rootBlock.childBlocks;
+        auto& rootChildren = dashboard->graphModel.rootBlock.childBlocks;
         assert(rootChildren.size() == 1);
         return rootChildren[0]->childBlocks;
     }
 
-    bool hasBlocks() const { return dashboard && !dashboard->graphModel().rootBlock.childBlocks.empty() && !blocks().empty(); }
+    bool hasBlocks() const { return dashboard && !dashboard->graphModel.rootBlock.childBlocks.empty() && !blocks().empty(); }
 
     void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
 
@@ -70,8 +67,8 @@ struct TestState {
         }
     }
 
-    void waitForScheduler(std::size_t maxCount = 10UZ, std::source_location location = std::source_location::current()) {
-        if (dashboard->scheduler()->state() == gr::lifecycle::State::STOPPED || dashboard->scheduler()->state() == gr::lifecycle::State::IDLE) {
+    void waitForScheduler(std::size_t maxCount = 30UZ, std::source_location location = std::source_location::current()) {
+        if (dashboard->scheduler->state() == gr::lifecycle::State::STOPPED || dashboard->scheduler->state() == gr::lifecycle::State::IDLE) {
             reload();
         }
 
@@ -82,11 +79,12 @@ struct TestState {
         std::println("Waiting for scheduler to start...");
         while (count < maxCount && state != SchedulerInspected) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            dashboard->handleMessages();
             count++;
 
             switch (state) {
             case SchedulerNotRunning:
-                if (gr::lifecycle::isActive(dashboard->scheduler()->state())) {
+                if (gr::lifecycle::isActive(dashboard->scheduler->state())) {
                     if (flowgraphPage.editorCount() == 0) {
                         std::println("Scheduler started, sending kSchedulerInspect message");
                         state = RequestedSchedulerInspection;
@@ -94,7 +92,7 @@ struct TestState {
                         message.cmd      = gr::message::Command::Get;
                         message.endpoint = gr::scheduler::property::kSchedulerInspect;
                         message.data     = gr::property_map{};
-                        dashboard->graphModel().sendMessage(std::move(message));
+                        dashboard->graphModel.sendMessage(std::move(message));
                     } else {
                         std::println("We got a root editor from earlier");
                         state = SchedulerInspected;
@@ -103,9 +101,9 @@ struct TestState {
                 break;
 
             case RequestedSchedulerInspection:
-                if (!dashboard->graphModel().rootBlock.blockUniqueName.empty()) {
+                if (!dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
                     std::println("We got a root editor");
-                    flowgraphPage.pushEditor("rootBlock node editor", dashboard->graphModel(), std::addressof(dashboard->graphModel().rootBlock));
+                    flowgraphPage.pushEditor("rootBlock node editor", dashboard->graphModel, std::addressof(dashboard->graphModel.rootBlock));
                     state = SchedulerInspected;
                 }
                 break;
@@ -141,14 +139,10 @@ struct TestState {
         dashboard                 = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [this](gr::Graph&& grGraph) { //
-            using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>;
-            dashboard->emplaceScheduler<TScheduler>();
-            dashboard->scheduler()->setGraph(std::move(grGraph));
+            dashboard->emplaceGraph(std::move(grGraph));
         });
 
         flowgraphPage.setDashboard(dashboard.get());
-
-        schedulerThreads.emplace_back([this] { startScheduler(); });
     }
 };
 
@@ -259,5 +253,7 @@ int main(int argc, char* argv[]) {
 
     g_state.reload();
 
-    return app.runTests() ? 0 : 1;
+    auto result = app.runTests();
+    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
+    return result ? 0 : 1;
 }

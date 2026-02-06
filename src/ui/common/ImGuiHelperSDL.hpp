@@ -2,6 +2,9 @@
 #define IMGUIHELPERSDL_HPP
 
 #include <SDL3/SDL.h>
+#ifndef GL_GLEXT_PROTOTYPES
+#define GL_GLEXT_PROTOTYPES // required by ImguiXKCD.hpp for GL 2.0+ function prototypes
+#endif
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_video.h>
 
@@ -14,6 +17,9 @@
 
 #include "Events.hpp"
 #include "TouchHandler.hpp"
+
+#define IMGUI_XKCD_IMPLEMENTATION
+#include "ImguiXKCD.hpp"
 
 #include <format>
 #include <print>
@@ -129,6 +135,7 @@ inline bool initImGui(const std::string& glslVersion) {
         SDL_Quit();
         return false;
     }
+    ImXkcd::Init();
     g_ImGuiSDL3Initialised = true;
     return true;
 }
@@ -219,6 +226,9 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
 
 [[maybe_unused]] inline bool renderFrame() {
     ImGui::Render();
+    if (DigitizerUi::LookAndFeel::instance().prototypeMode) {
+        ImXkcd::Apply(ImGui::GetDrawData());
+    }
     if (!SDL_GL_MakeCurrent(g_Window, g_GLContext)) {
         std::println("[Main] SDL_GL_MakeCurrent failed: '{}'", SDL_GetError());
         return false;
@@ -240,7 +250,7 @@ inline bool teardownSDL() {
     if (g_GLContext == nullptr) {
         return false;
     }
-    // IMGUI & SDL Cleanup
+    ImXkcd::Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();

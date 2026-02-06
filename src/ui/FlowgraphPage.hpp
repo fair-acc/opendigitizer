@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <span>
 #include <stack>
 #include <vector>
 
@@ -17,10 +16,6 @@
 #include "GraphModel.hpp"
 
 struct TestState;
-
-namespace opendigitizer {
-struct ImPlotSinkModel;
-}
 
 namespace DigitizerUi {
 
@@ -193,9 +188,9 @@ public:
 
     void setDashboard(Dashboard* dashboard) {
         _dashboard = dashboard;
-        _newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel()) : nullptr);
+        _newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
         if (dashboard) {
-            _remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel());
+            _remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel);
         } else {
             _remoteSignalSelector.reset();
         }

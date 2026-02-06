@@ -2,6 +2,9 @@
 
 #include "common/ImguiWrap.hpp"
 
+#include <charconv>
+#include <cstdlib>
+
 #include <misc/cpp/imgui_stdlib.h>
 
 void QueryFilterElement::drawFilterLine() {
@@ -91,9 +94,11 @@ void SignalList::update() {
         auto& strValue = it->filterText;
         if (it != filters.end() && strValue != "") {
             if constexpr (std::is_integral_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
-                member(queryEntry) = std::atoi(strValue.c_str());
+                std::remove_cvref_t<decltype(member(queryEntry))> val{};
+                std::from_chars(strValue.data(), strValue.data() + strValue.size(), val);
+                member(queryEntry) = val;
             } else if constexpr (std::is_floating_point_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
-                member(queryEntry) = std::stof(strValue);
+                member(queryEntry) = static_cast<std::remove_cvref_t<decltype(member(queryEntry))>>(std::strtod(strValue.c_str(), nullptr));
             } else {
                 member(queryEntry) = strValue;
             }

@@ -3,8 +3,22 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
+
+/**
+ * @brief Convert RGB color (0xRRGGBB) to ImGui's ABGR format (0xAABBGGRR).
+ * @param rgb Color in RGB format (0xRRGGBB)
+ * @param alpha Alpha value (default 0xFF for fully opaque)
+ * @return Color in ImGui's ABGR format
+ */
+constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0xFF) {
+    const std::uint32_t r = (rgb >> 16) & 0xFF;
+    const std::uint32_t g = (rgb >> 8) & 0xFF;
+    const std::uint32_t b = (rgb >> 0) & 0xFF;
+    return (static_cast<std::uint32_t>(alpha) << 24) | (b << 16) | (g << 8) | r;
+}
 
 struct ImFont;
 

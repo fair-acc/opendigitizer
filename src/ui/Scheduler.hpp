@@ -235,9 +235,19 @@ private:
         ~SchedulerImpl() noexcept final {
             _uiUpdateShutdown = true;
             _uiUpdateShutdown.notify_all();
-            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");
-            _scheduler.graph()._progress->incrementAndGet();
-            _thread.join();
+
+            // Direct state change (same approach as GR4's ~SchedulerBase).
+            // The message-based stop() requires the scheduler's main loop to process
+            // it, which may be blocked on waitUntilChanged.  changeStateTo sets the
+            // atomic state directly so the main loop exits on its next iteration check.
+            if (gr::lifecycle::isActive(_scheduler.state())) {
+                std::ignore = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+            }
+            _scheduler.graph()._progress->incrementAndGet(); // wake any blocked wait
+
+            if (_thread.joinable()) {
+                _thread.join();
+            }
             _uiUpdateRunning.wait(true);
         }
     };

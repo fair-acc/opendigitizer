@@ -26,6 +26,7 @@ bin/
 build/
 out/
 cmake-build-*/
+build*/
 
 # Annoying OS Generated Files
 .DS_Store
