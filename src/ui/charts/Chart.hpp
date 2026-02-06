@@ -59,22 +59,21 @@ enum class HistoryUnit : int {
     samples = 1  // sample-count-based history depth
 };
 
-struct AxisConfig {
-    enum class AxisKind { X = 0, Y, Z };
+enum class AxisKind { X = 0, Y, Z };
 
-    AxisKind    axis     = AxisKind::X;
-    float       min      = std::numeric_limits<float>::quiet_NaN();
-    float       max      = std::numeric_limits<float>::quiet_NaN();
-    AxisScale   scale    = AxisScale::Linear;
-    LabelFormat format   = LabelFormat::Auto;
-    float       width    = std::numeric_limits<float>::max();
-    bool        plotTags = true;
+[[nodiscard]] inline ImVec4 sinkColor(std::uint32_t rgb) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb)); }
+
+struct AxisConfig {
+    AxisKind                 axis = AxisKind::X;
+    float                    min  = std::numeric_limits<float>::quiet_NaN();
+    float                    max  = std::numeric_limits<float>::quiet_NaN();
+    std::optional<AxisScale> scale;
+    LabelFormat              format   = LabelFormat::Auto;
+    float                    width    = std::numeric_limits<float>::max();
+    bool                     plotTags = true;
 };
 
-[[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, bool isX, std::size_t index = 0) {
-    using AxisKind            = AxisConfig::AxisKind;
-    const AxisKind targetKind = isX ? AxisKind::X : AxisKind::Y;
-
+[[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, AxisKind targetKind, std::size_t index = 0) {
     auto axesIt = constraints.find("axes");
     if (axesIt == constraints.end()) {
         return std::nullopt;
@@ -98,7 +97,12 @@ struct AxisConfig {
         if (!axisStr) {
             continue;
         }
-        AxisKind parsedKind = (*axisStr == "X" || *axisStr == "x") ? AxisKind::X : AxisKind::Y;
+        AxisKind parsedKind = AxisKind::Y;
+        if (*axisStr == "X" || *axisStr == "x") {
+            parsedKind = AxisKind::X;
+        } else if (*axisStr == "Z" || *axisStr == "z") {
+            parsedKind = AxisKind::Z;
+        }
         if (parsedKind != targetKind) {
             continue;
         }
@@ -133,6 +137,23 @@ struct AxisConfig {
         return cfg;
     }
     return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, bool isX, std::size_t index = 0) { return parseAxisConfig(constraints, isX ? AxisKind::X : AxisKind::Y, index); }
+
+[[nodiscard]] inline std::pair<double, double> effectiveColourRange(const gr::property_map& uiConstraints, double autoScaleMin, double autoScaleMax) {
+    auto zCfg = parseAxisConfig(uiConstraints, AxisKind::Z);
+    if (zCfg) {
+        bool autoMin = !std::isfinite(zCfg->min);
+        bool autoMax = !std::isfinite(zCfg->max);
+        if (!autoMin && !autoMax) {
+            return {static_cast<double>(zCfg->min), static_cast<double>(zCfg->max)};
+        }
+        double cMin = autoMin ? autoScaleMin : static_cast<double>(zCfg->min);
+        double cMax = autoMax ? autoScaleMax : static_cast<double>(zCfg->max);
+        return {cMin, cMax};
+    }
+    return {autoScaleMin, autoScaleMax};
 }
 
 struct AxisCategory {
@@ -262,7 +283,7 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     return std::format("...{}", original.substr(original.size() - fitCharCount));
 }
 
-inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6>& unitStringStorage, bool showGrid = true) {
+inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always) {
     if (!category.has_value()) {
         return;
     }
@@ -273,6 +294,9 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
     const AxisScale scale     = scaleOverride;
 
     ImPlotAxisFlags flags = showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines;
+    if (foreground) {
+        flags |= ImPlotAxisFlags_Foreground;
+    }
     if (finiteMin && !finiteMax) {
         flags |= ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin;
     } else if (!finiteMin && finiteMax) {
@@ -339,8 +363,7 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
     }
 
     if (finiteMin && finiteMax) {
-        // Use ImPlotCond_Always to ensure limits from context menu are applied every frame
-        ImPlot::SetupAxisLimits(axisId, minLimit, maxLimit, ImPlotCond_Always);
+        ImPlot::SetupAxisLimits(axisId, minLimit, maxLimit, limitsCond);
     } else if (finiteMin || finiteMax) {
         const double minConstraint = finiteMin ? minLimit : -std::numeric_limits<double>::infinity();
         const double maxConstraint = finiteMax ? maxLimit : +std::numeric_limits<double>::infinity();
@@ -386,8 +409,8 @@ inline void buildAxisCategories(const std::vector<std::shared_ptr<SignalSink>>& 
     }
 }
 
-inline std::size_t findAxisForSink(std::string_view sinkName, bool isXAxis, const std::array<std::vector<std::string>, 3>& xAxisGroups, const std::array<std::vector<std::string>, 3>& yAxisGroups) {
-    const auto& groups  = isXAxis ? xAxisGroups : yAxisGroups;
+inline std::size_t findAxisForSink(std::string_view sinkName, bool isX, const std::array<std::vector<std::string>, 3>& xAxisGroups, const std::array<std::vector<std::string>, 3>& yAxisGroups) {
+    const auto& groups  = isX ? xAxisGroups : yAxisGroups;
     auto        foundIt = std::ranges::find_if(groups, [sinkName](const auto& group) { return std::ranges::contains(group, sinkName); });
     return foundIt != groups.end() ? static_cast<std::size_t>(std::distance(groups.begin(), foundIt)) : 0;
 }
@@ -615,8 +638,11 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     };
 
     auto drawAxisTooltip = [&formatAxisValue](ImPlotPlot* plot_, ImAxis axisIdx) {
+        if (axisIdx < 0 || axisIdx >= ImAxis_COUNT) {
+            return;
+        }
         ImPlotAxis& axis = plot_->Axes[axisIdx];
-        if (!axis.Enabled) {
+        if (!axis.Enabled || !axis.HasRange) {
             return;
         }
 
@@ -624,13 +650,7 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
 
         char buf[128];
         formatAxisValue(axis, axis.Vertical ? mousePos.y : mousePos.x, buf, sizeof(buf));
-
-        std::string_view label = plot_->GetAxisLabel(axis);
-        if (label.empty()) {
-            ImGui::Text("%s", buf);
-        } else {
-            ImGui::Text("%s: %s", label.data(), buf);
-        }
+        ImGui::Text("%s", buf);
     };
 
     {
@@ -780,6 +800,7 @@ inline constexpr const char* kCheckOn    = "\uf14a"; // square-check
 inline constexpr const char* kCheckOff   = "\uf0c8"; // square
 inline constexpr const char* kHistory    = "\uf1da"; // clock-rotate-left
 inline constexpr const char* kArrow      = "\uf061"; // arrow-right
+inline constexpr const char* kFormat     = "\uf031"; // font
 
 /// Renders icon followed by text, using fontIconsSolid for the icon portion.
 inline void iconText(const char* icon, const char* text) {
@@ -879,13 +900,11 @@ struct Chart {
     static constexpr double      kCapacityRefreshIntervalSeconds = 30.0; // refresh before 60s timeout
     static constexpr double      kCapacityDebounceSeconds        = 0.3;  // debounce resize to avoid discontinuities
 
-protected:
     std::vector<std::shared_ptr<SignalSink>> _signalSinks;
     double                                   _lastCapacityRefreshTime = 0.0;
     double                                   _pendingResizeTime       = 0.0;                  // 0 = no pending resize
     HistoryUnit                              _historyDisplayUnit      = HistoryUnit::seconds; // UI-only, not persisted
 
-public:
     template<typename Self>
     void addSignalSink(this Self& self, std::shared_ptr<SignalSink> sink) {
         if (!sink) {
@@ -911,6 +930,17 @@ public:
     [[nodiscard]] std::size_t                                     signalSinkCount() const noexcept { return _signalSinks.size(); }
     [[nodiscard]] const std::vector<std::shared_ptr<SignalSink>>& signalSinks() const noexcept { return _signalSinks; }
     [[nodiscard]] std::vector<std::shared_ptr<SignalSink>>&       signalSinks() noexcept { return _signalSinks; }
+
+    [[nodiscard]] std::pair<std::string, std::string> sinkAxisInfo(bool isX) const {
+        for (const auto& sink : _signalSinks) {
+            auto quantity = isX ? sink->abscissaQuantity() : sink->signalQuantity();
+            auto unit     = isX ? sink->abscissaUnit() : sink->signalUnit();
+            if (!quantity.empty() || !unit.empty()) {
+                return {std::string(quantity), std::string(unit)};
+            }
+        }
+        return isX ? std::pair{std::string("Frequency"), std::string("Hz")} : std::pair{std::string("magnitude"), std::string("dB")};
+    }
 
     void syncSinksFromNames(const std::vector<std::string>& sinkNames) {
         std::set<std::string> desired(sinkNames.begin(), sinkNames.end());
@@ -1083,73 +1113,76 @@ public:
 
     /// draws axis submenu (scale selector, auto-fit toggle, min/max editors)
     template<typename Self>
-    void drawAxisSubmenu(this Self& self, bool isXAxis) {
-        const char* label = isXAxis ? "x-Axis" : "y-Axis";
-        const char* icon  = isXAxis ? menu_icons::kXAxis : menu_icons::kYAxis;
+    void drawAxisSubmenu(this Self& self, AxisKind axis) {
+        const bool  isX   = (axis == AxisKind::X);
+        const char* label = isX ? "x-Axis" : "y-Axis";
+        const char* icon  = isX ? menu_icons::kXAxis : menu_icons::kYAxis;
 
         if (menu_icons::beginMenuWithIcon(icon, label)) {
-            self.drawAxisSubmenuContent(isXAxis);
+            self.drawAxisSubmenuContent(axis);
             ImGui::EndMenu();
         }
     }
 
     /// Axis submenu content with scale, auto-fit, and min/max controls
     template<typename Self>
-    void drawAxisSubmenuContent(this Self& self, bool isXAxis) {
+    void drawAxisSubmenuContent(this Self& self, AxisKind axis) {
+        const bool      isX        = (axis == AxisKind::X);
         constexpr float kDragWidth = 70.0f;
 
         // Get current plot limits from ImPlot (actual displayed range)
         const auto   plotLimits = ImPlot::GetPlotLimits();
-        const auto&  axisLimits = isXAxis ? plotLimits.X : plotLimits.Y;
+        const auto&  axisLimits = isX ? plotLimits.X : plotLimits.Y;
         const double plotMin    = axisLimits.Min;
         const double plotMax    = axisLimits.Max;
 
-        // Row 1: Scale/transform combo (alone)
-        if constexpr (requires {
-                          self.getAxisScale(true);
-                          self.setAxisScale(true, AxisScale::Linear);
-                      }) {
-            AxisScale currentScale = self.getAxisScale(isXAxis);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                ImGui::TextUnformatted(menu_icons::kScale);
-            }
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            ImGui::TextUnformatted("scale:");
+        auto drawEnumCombo = [&]<typename E>(const char* icon, const char* text, const char* comboId, E current, auto&& setter) {
+            menu_icons::iconText(icon, text);
             ImGui::SameLine();
-
-            static const float comboWidth = [] {
-                float maxWidth = 0.0f;
-                for (auto scale : magic_enum::enum_values<AxisScale>()) {
-                    float w  = ImGui::CalcTextSize(magic_enum::enum_name(scale).data()).x;
-                    maxWidth = std::max(maxWidth, w);
+            static const float w = [] {
+                float maxW = 0.0f;
+                for (auto e : magic_enum::enum_values<E>()) {
+                    maxW = std::max(maxW, ImGui::CalcTextSize(magic_enum::enum_name(e).data()).x);
                 }
-                return maxWidth + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+                return maxW + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
             }();
-            ImGui::SetNextItemWidth(comboWidth);
-            if (ImGui::BeginCombo("##scale", magic_enum::enum_name(currentScale).data())) {
-                for (auto scale : magic_enum::enum_values<AxisScale>()) {
-                    bool isSelected = (scale == currentScale);
-                    if (ImGui::Selectable(magic_enum::enum_name(scale).data(), isSelected)) {
-                        self.setAxisScale(isXAxis, scale);
+            ImGui::SetNextItemWidth(w);
+            if (ImGui::BeginCombo(comboId, magic_enum::enum_name(current).data())) {
+                for (auto e : magic_enum::enum_values<E>()) {
+                    if (ImGui::Selectable(magic_enum::enum_name(e).data(), e == current)) {
+                        setter(e);
                     }
-                    if (isSelected) {
+                    if (e == current) {
                         ImGui::SetItemDefaultFocus();
                     }
                 }
                 ImGui::EndCombo();
             }
             detail::onScrollWheel([&](float wheel) {
-                auto values = magic_enum::enum_values<AxisScale>();
-                auto it     = std::ranges::find(values, currentScale);
-                if (it != values.end()) {
-                    if (wheel > 0.0f && std::next(it) != values.end()) {
-                        self.setAxisScale(isXAxis, *std::next(it));
-                    } else if (wheel < 0.0f && it != values.begin()) {
-                        self.setAxisScale(isXAxis, *std::prev(it));
-                    }
+                auto values = magic_enum::enum_values<E>();
+                auto it     = std::ranges::find(values, current);
+                if (it == values.end()) {
+                    return;
+                }
+                if (wheel > 0.0f && std::next(it) != values.end()) {
+                    setter(*std::next(it));
+                } else if (wheel < 0.0f && it != values.begin()) {
+                    setter(*std::prev(it));
                 }
             });
+        };
+
+        if constexpr (requires {
+                          self.getAxisScale(AxisKind::X);
+                          self.setAxisScale(AxisKind::X, AxisScale::Linear);
+                      }) {
+            drawEnumCombo(menu_icons::kScale, "scale:", "##scale", self.getAxisScale(axis).value_or(AxisScale::Linear), [&](AxisScale s) { self.setAxisScale(axis, s); });
+        }
+        if constexpr (requires {
+                          self.getAxisFormat(AxisKind::X);
+                          self.setAxisFormat(AxisKind::X, LabelFormat::Auto);
+                      }) {
+            drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis), [&](LabelFormat f) { self.setAxisFormat(axis, f); });
         }
 
         // Row 2: Auto-fit checkbox (icon only) + min/max spinners with +/- buttons
@@ -1161,7 +1194,7 @@ public:
                           self.x_auto_scale;
                           self.y_auto_scale;
                       }) {
-            bool       autoFit    = isXAxis ? self.x_auto_scale.value : self.y_auto_scale.value;
+            bool       autoFit    = isX ? self.x_auto_scale.value : self.y_auto_scale.value;
             const bool wasAutoFit = autoFit;
 
             // Auto-fit checkbox with icon (no text label)
@@ -1171,14 +1204,14 @@ public:
             }
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
             if (ImGui::Checkbox("##auto", &autoFit)) {
-                if (isXAxis) {
+                if (isX) {
                     self.x_auto_scale = autoFit;
                 } else {
                     self.y_auto_scale = autoFit;
                 }
                 // When switching from auto-fit to manual, initialize limits from current plot
                 if (wasAutoFit && !autoFit) {
-                    if (isXAxis) {
+                    if (isX) {
                         self.x_min = plotMin;
                         self.x_max = plotMax;
                     } else {
@@ -1198,112 +1231,67 @@ public:
             }
 
             // Use current plot limits when in auto-fit mode, otherwise use stored values
-            double minVal = autoFit ? plotMin : static_cast<double>(isXAxis ? self.x_min.value : self.y_min.value);
-            double maxVal = autoFit ? plotMax : static_cast<double>(isXAxis ? self.x_max.value : self.y_max.value);
+            double minVal = autoFit ? plotMin : static_cast<double>(isX ? self.x_min.value : self.y_min.value);
+            double maxVal = autoFit ? plotMax : static_cast<double>(isX ? self.x_max.value : self.y_max.value);
 
             // Calculate increment based on current range (1% of range, or 0.1 if range is invalid)
             const double range     = std::abs(maxVal - minVal);
             const double increment = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
             const float  dragSpeed = static_cast<float>(increment * 0.1);
 
-            // Min value with +/- buttons (same pattern as Block settings)
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf146##minDec")) { // minus-square
-                    minVal -= increment;
-                    if (isXAxis) {
-                        self.x_min = minVal;
-                    } else {
-                        self.y_min = minVal;
+            auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
+                const std::string decId  = std::format("\uf146##{}_dec", id);
+                const std::string incId  = std::format("\uf0fe##{}_inc", id);
+                const std::string dragId = std::format("##{}", id);
+                {
+                    DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+                    if (ImGui::Button(decId.c_str())) {
+                        val -= increment;
+                        assign(val);
                     }
                 }
-            }
-            ImGui::SameLine(0.0f, 2.0f);
-            ImGui::SetNextItemWidth(kDragWidth);
-            if (ImGui::DragScalar("##min", ImGuiDataType_Double, &minVal, dragSpeed, nullptr, nullptr, "%.4g")) {
-                if (isXAxis) {
-                    self.x_min = minVal;
-                } else {
-                    self.y_min = minVal;
+                ImGui::SameLine(0.0f, 2.0f);
+                ImGui::SetNextItemWidth(kDragWidth);
+                if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
+                    assign(val);
                 }
-            }
-            detail::onScrollWheel([&](float wheel) {
-                minVal += static_cast<double>(wheel) * increment;
-                if (isXAxis) {
-                    self.x_min = minVal;
-                } else {
-                    self.y_min = minVal;
-                }
-            });
-            ImGui::SameLine(0.0f, 2.0f);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf0fe##minInc")) { // plus-square
-                    minVal += increment;
-                    if (isXAxis) {
-                        self.x_min = minVal;
-                    } else {
-                        self.y_min = minVal;
+                detail::onScrollWheel([&](float wheel) {
+                    val += static_cast<double>(wheel) * increment;
+                    assign(val);
+                });
+                ImGui::SameLine(0.0f, 2.0f);
+                {
+                    DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+                    if (ImGui::Button(incId.c_str())) {
+                        val += increment;
+                        assign(val);
                     }
                 }
-            }
+            };
 
+            auto setMin = [&](double v) {
+                if (isX) {
+                    self.x_min = v;
+                } else {
+                    self.y_min = v;
+                }
+            };
+            auto setMax = [&](double v) {
+                if (isX) {
+                    self.x_max = v;
+                } else {
+                    self.y_max = v;
+                }
+            };
+
+            drawSpinner("min", minVal, setMin);
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
             menu_icons::iconText(menu_icons::kArrow, "");
-
-            // Max value with +/- buttons
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf146##maxDec")) { // minus-square
-                    maxVal -= increment;
-                    if (isXAxis) {
-                        self.x_max = maxVal;
-                    } else {
-                        self.y_max = maxVal;
-                    }
-                }
-            }
-            ImGui::SameLine(0.0f, 2.0f);
-            ImGui::SetNextItemWidth(kDragWidth);
-            if (ImGui::DragScalar("##max", ImGuiDataType_Double, &maxVal, dragSpeed, nullptr, nullptr, "%.4g")) {
-                if (isXAxis) {
-                    self.x_max = maxVal;
-                } else {
-                    self.y_max = maxVal;
-                }
-            }
-            detail::onScrollWheel([&](float wheel) {
-                maxVal += static_cast<double>(wheel) * increment;
-                if (isXAxis) {
-                    self.x_max = maxVal;
-                } else {
-                    self.y_max = maxVal;
-                }
-            });
-            ImGui::SameLine(0.0f, 2.0f);
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf0fe##maxInc")) { // plus-square
-                    maxVal += increment;
-                    if (isXAxis) {
-                        self.x_max = maxVal;
-                    } else {
-                        self.y_max = maxVal;
-                    }
-                }
-            }
+            drawSpinner("max", maxVal, setMax);
 
             if (autoFit) {
                 ImGui::EndDisabled();
-            }
-        }
-
-        // History depth control (only for x-axis)
-        if constexpr (requires { self.n_history; }) {
-            if (isXAxis) {
-                ImGui::Separator();
-                self.drawHistoryDepthWidget();
             }
         }
     }
@@ -1312,8 +1300,8 @@ public:
     /// n_history (gr::Size_t, samples) is the persistent property; display unit is UI-only state
     template<typename Self>
     void drawHistoryDepthWidget(this Self& self) {
-        constexpr float      kDragWidth  = 90.0f;
-        constexpr float      kComboWidth = 80.0f;
+        constexpr float      kDragWidth  = 60.0f;
+        constexpr float      kComboWidth = 65.0f;
         constexpr gr::Size_t kMinSamples = 4U;
         constexpr gr::Size_t kMaxSamples = 1'000'000U;
 
@@ -1622,27 +1610,35 @@ public:
     }
 
     template<typename Self>
-    [[nodiscard]] AxisScale getAxisScale(this const Self& self, bool isX) noexcept {
-        if (auto cfg = parseAxisConfig(self.ui_constraints.value, isX)) {
+    [[nodiscard]] std::optional<AxisScale> getAxisScale(this const Self& self, AxisKind axis) noexcept {
+        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis)) {
             return cfg->scale;
         }
-        return AxisScale::Linear;
+        return std::nullopt;
     }
 
     template<typename Self>
-    void setAxisScale(this Self& self, bool isX, AxisScale scale) {
-        auto& constraints = self.ui_constraints.value;
-        auto  axesIt      = constraints.find("axes");
+    [[nodiscard]] LabelFormat getAxisFormat(this const Self& self, AxisKind axis) noexcept {
+        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis)) {
+            return cfg->format;
+        }
+        return LabelFormat::Auto;
+    }
+
+    template<typename Self, typename E>
+    void setAxisConstraintField(this Self& self, AxisKind axis, std::string_view key, E value) {
+        static constexpr std::array kAxisNames  = {"X", "Y", "Z"};
+        auto&                       constraints = self.ui_constraints.value;
 
         std::vector<pmtv::pmt> axesVec;
-        if (axesIt != constraints.end()) {
-            if (const auto* existing = std::get_if<std::vector<pmtv::pmt>>(&axesIt->second)) {
+        if (auto it = constraints.find("axes"); it != constraints.end()) {
+            if (const auto* existing = std::get_if<std::vector<pmtv::pmt>>(&it->second)) {
                 axesVec = *existing;
             }
         }
 
-        std::string targetAxis = isX ? "X" : "Y";
-        bool        found      = false;
+        const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
+        bool              found      = false;
         for (auto& axisPmt : axesVec) {
             auto* axisMap = std::get_if<gr::property_map>(&axisPmt);
             if (!axisMap) {
@@ -1653,20 +1649,30 @@ public:
                 continue;
             }
             const auto* axisStr = std::get_if<std::string>(&axisStrIt->second);
-            if (axisStr && (*axisStr == targetAxis || *axisStr == (isX ? "x" : "y"))) {
-                (*axisMap)["scale"] = std::string(magic_enum::enum_name(scale));
-                found               = true;
+            if (axisStr && (*axisStr == targetAxis || (axisStr->size() == 1 && std::tolower((*axisStr)[0]) == std::tolower(targetAxis[0])))) {
+                (*axisMap)[std::string(key)] = std::string(magic_enum::enum_name(value));
+                found                        = true;
                 break;
             }
         }
         if (!found) {
             gr::property_map newAxis;
-            newAxis["axis"]  = targetAxis;
-            newAxis["scale"] = std::string(magic_enum::enum_name(scale));
+            newAxis["axis"]           = targetAxis;
+            newAxis[std::string(key)] = std::string(magic_enum::enum_name(value));
             axesVec.push_back(newAxis);
         }
         constraints["axes"] = axesVec;
-        std::ignore         = self.settings().set({{"ui_constraints", constraints}});
+        self.settings().set({{"ui_constraints", constraints}});
+    }
+
+    template<typename Self>
+    void setAxisScale(this Self& self, AxisKind axis, AxisScale scale) {
+        self.setAxisConstraintField(axis, "scale", scale);
+    }
+
+    template<typename Self>
+    void setAxisFormat(this Self& self, AxisKind axis, LabelFormat format) {
+        self.setAxisConstraintField(axis, "format", format);
     }
 
     template<typename Self>
@@ -1709,8 +1715,6 @@ public:
             if (ImGui::Checkbox(label.c_str(), &val)) {
                 field = val;
             }
-            ImGui::SameLine();
-            ImGui::TextUnformatted(FieldType::description().data());
         } else if constexpr (std::is_floating_point_v<ValueType>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             float val = static_cast<float>(field.value);
@@ -1737,40 +1741,79 @@ public:
                     field = static_cast<ValueType>(val);
                 });
             }
-            ImGui::SameLine();
-            ImGui::TextUnformatted(FieldType::description().data());
         } else if constexpr (std::is_integral_v<ValueType> && !std::is_same_v<ValueType, bool>) {
-            ImGui::SetNextItemWidth(kWidgetWidth);
-            int val = static_cast<int>(field.value);
-            if constexpr (hasLimits) {
-                constexpr int lo = static_cast<int>(LimitType::MinRange);
-                constexpr int hi = static_cast<int>(LimitType::MaxRange);
-                if (ImGui::SliderInt(label.c_str(), &val, lo, hi, "%d", sliderFlags)) {
-                    field = static_cast<ValueType>(val);
-                }
-                detail::onScrollWheel([&](float wheel) {
-                    if constexpr (useLog) {
-                        int newVal = static_cast<int>(std::round(static_cast<float>(val) * std::pow(1.1f, wheel)));
-                        if (newVal == val) {
-                            newVal += (wheel > 0.0f) ? 1 : -1;
-                        }
-                        val = std::clamp(newVal, lo, hi);
-                    } else {
-                        val = std::clamp(val + static_cast<int>(wheel) * std::max(1, (hi - lo) / 100), lo, hi);
+            bool isColourPicker = false;
+            if constexpr (std::is_same_v<ValueType, std::uint32_t>) {
+                if (FieldType::description().find("colo") != std::string_view::npos) {
+                    isColourPicker = true;
+                    ImVec4 col     = sinkColor(field.value);
+                    float  rgb[3]{col.x, col.y, col.z};
+                    if (ImGui::ColorEdit3(label.c_str(), rgb, ImGuiColorEditFlags_NoInputs)) {
+                        field = (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f);
                     }
-                    field = static_cast<ValueType>(val);
-                });
-            } else {
-                if (ImGui::DragInt(label.c_str(), &val, 1.0f)) {
-                    field = static_cast<ValueType>(val);
                 }
-                detail::onScrollWheel([&](float wheel) {
-                    val += static_cast<int>(wheel) * std::max(1, std::abs(val) / 20);
-                    field = static_cast<ValueType>(val);
-                });
             }
-            ImGui::SameLine();
-            ImGui::TextUnformatted(FieldType::description().data());
+            if (!isColourPicker) {
+                ImGui::SetNextItemWidth(kWidgetWidth);
+                int val = static_cast<int>(field.value);
+                if constexpr (hasLimits) {
+                    constexpr int lo = static_cast<int>(LimitType::MinRange);
+                    constexpr int hi = static_cast<int>(LimitType::MaxRange);
+                    if (ImGui::SliderInt(label.c_str(), &val, lo, hi, "%d", sliderFlags)) {
+                        field = static_cast<ValueType>(val);
+                    }
+                    detail::onScrollWheel([&](float wheel) {
+                        if constexpr (useLog) {
+                            int newVal = static_cast<int>(std::round(static_cast<float>(val) * std::pow(1.1f, wheel)));
+                            if (newVal == val) {
+                                newVal += (wheel > 0.0f) ? 1 : -1;
+                            }
+                            val = std::clamp(newVal, lo, hi);
+                        } else {
+                            val = std::clamp(val + static_cast<int>(wheel) * std::max(1, (hi - lo) / 100), lo, hi);
+                        }
+                        field = static_cast<ValueType>(val);
+                    });
+                } else {
+                    if (ImGui::DragInt(label.c_str(), &val, 1.0f)) {
+                        field = static_cast<ValueType>(val);
+                    }
+                    detail::onScrollWheel([&](float wheel) {
+                        val += static_cast<int>(wheel) * std::max(1, std::abs(val) / 20);
+                        field = static_cast<ValueType>(val);
+                    });
+                }
+            }
+        } else if constexpr (std::is_same_v<ValueType, ImPlotColormap_>) {
+            ImGui::SetNextItemWidth(kWidgetWidth);
+            auto current = static_cast<ImPlotColormap>(field.value);
+            if (ImGui::BeginCombo(label.c_str(), ImPlot::GetColormapName(current))) {
+                const float gradientWidth = ImGui::GetContentRegionAvail().x;
+                const float lineHeight    = ImGui::GetTextLineHeight();
+                for (int i = 0; i < ImPlot::GetColormapCount(); ++i) {
+                    bool   selected = (i == current);
+                    ImVec2 pos      = ImGui::GetCursorScreenPos();
+                    if (ImGui::Selectable(std::format("##{}", i).c_str(), selected, 0, ImVec2(gradientWidth, lineHeight))) {
+                        field = static_cast<ImPlotColormap_>(i);
+                    }
+                    auto*       drawList = ImGui::GetWindowDrawList();
+                    const float step     = gradientWidth / 32.0f;
+                    for (int s = 0; s < 32; ++s) {
+                        float  t0 = static_cast<float>(s) / 32.0f;
+                        float  t1 = static_cast<float>(s + 1) / 32.0f;
+                        ImVec4 c0 = ImPlot::SampleColormap(t0, i);
+                        ImVec4 c1 = ImPlot::SampleColormap(t1, i);
+                        drawList->AddRectFilledMultiColor(ImVec2(pos.x + step * static_cast<float>(s), pos.y), ImVec2(pos.x + step * static_cast<float>(s + 1), pos.y + lineHeight), ImGui::GetColorU32(c0), ImGui::GetColorU32(c1), ImGui::GetColorU32(c1), ImGui::GetColorU32(c0));
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("%s", ImPlot::GetColormapName(i));
+                    }
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
         } else if constexpr (std::is_enum_v<ValueType>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             auto current = field.value;
@@ -1786,8 +1829,6 @@ public:
                 }
                 ImGui::EndCombo();
             }
-            ImGui::SameLine();
-            ImGui::TextUnformatted(FieldType::description().data());
         } else if constexpr (std::is_same_v<ValueType, std::string>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             std::array<char, 256> buf{};
@@ -1795,9 +1836,9 @@ public:
             if (ImGui::InputText(label.c_str(), buf.data(), buf.size())) {
                 field = std::string(buf.data());
             }
-            ImGui::SameLine();
-            ImGui::TextUnformatted(FieldType::description().data());
         }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(FieldType::description().data());
     }
 
     template<typename Self>
@@ -1837,8 +1878,11 @@ public:
 
     template<typename Self>
     void drawCommonContextMenuItems(this Self& self) {
-        self.drawAxisSubmenu(true);
-        self.drawAxisSubmenu(false);
+        self.drawAxisSubmenu(AxisKind::X);
+        self.drawAxisSubmenu(AxisKind::Y);
+        if constexpr (requires { self.n_history; }) {
+            self.drawHistoryDepthWidget();
+        }
         ImGui::Separator();
 
         self.drawSettingsSubmenu();

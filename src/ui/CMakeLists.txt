@@ -34,7 +34,7 @@ if(EMSCRIPTEN)
     -pthread)
   add_link_options(
     "SHELL:-s WASM=1"
-    "SHELL:-sFULL_ES2=1"
+    "SHELL:-sFULL_ES3=1"
     "SHELL:-sMAX_WEBGL_VERSION=2"
     "SHELL:-sMIN_WEBGL_VERSION=2"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
@@ -197,6 +197,9 @@ else()
 endif()
 target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+if(NOT EMSCRIPTEN)
+  target_compile_definitions(${target_name}lib PUBLIC GL_GLEXT_PROTOTYPES)
+endif()
 target_link_libraries(${target_name} PRIVATE ${target_name}lib)
 
 if(OPENDIGITIZER_ENABLE_TESTING)

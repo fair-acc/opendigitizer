@@ -143,7 +143,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : xAxisWidth;
-            const AxisScale   scale  = dashCfg ? dashCfg->scale : AxisScale::Linear;
+            const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
             // Update category scale to match dashboard config (used by drawStreamingSignal)
             if (_xCategories[i].has_value()) {
@@ -168,7 +168,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
             const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : yAxisWidth;
-            const AxisScale   scale  = dashCfg ? dashCfg->scale : AxisScale::Linear;
+            const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
             // Update category scale to match dashboard config
             if (_yCategories[i].has_value()) {
@@ -200,7 +200,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
             auto dataLock = sink->dataGuard();
 
             if (sink->size() > 0) {
-                ImVec4 baseColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sink->color()));
+                ImVec4 baseColor = sinkColor(sink->color());
 
                 if (sink->hasDataSets()) {
                     drawDataSetSignal(*sink);
@@ -250,7 +250,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
             offset    = totalCount - dataCount;
         }
 
-        ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sink.color()));
+        ImVec4 lineColor = sinkColor(sink.color());
         ImPlot::SetNextLineStyle(lineColor);
 
         double xMin = sink.xAt(offset);
@@ -287,7 +287,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
             return;
         }
 
-        ImVec4      baseColor   = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sink.color()));
+        ImVec4      baseColor   = sinkColor(sink.color());
         std::size_t historySize = std::min(allDataSets.size(), static_cast<std::size_t>(max_history_count.value));
         std::string baseName    = std::string(sink.signalName());
 
@@ -300,7 +300,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
             DataSetPlotContext ctx{&ds, 0};
 
             const bool isNewest = (i == historySize - 1);
-            float      opacity  = isNewest ? 1.0f : (0.2f + (static_cast<float>(i) / static_cast<float>(historySize - 1)) * 0.8f);
+            float      opacity  = isNewest ? 1.0f : (0.2f + (static_cast<float>(i) / static_cast<float>(std::max(historySize, std::size_t{2}) - 1)) * 0.8f);
 
             ImVec4 lineColor = baseColor;
             lineColor.w      = opacity;

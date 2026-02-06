@@ -126,9 +126,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartP
     // DataSet cache for float conversion
     mutable std::vector<gr::DataSet<float>> _dsCache;
 
-    // Y values cache for float conversion (used by getY() when T != float)
-    mutable std::vector<float> _yFloatCache;
-
     // Adapter for SinkRegistry registration (shared ownership with registry)
     std::shared_ptr<SignalSink> _sinkAdapter;
 
@@ -442,18 +439,17 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartP
             std::size_t startIdx = static_cast<std::size_t>(xResult.data.data() - xSpan.data());
             std::size_t count    = xResult.data.size();
 
-            // Get Y values as float span
             if constexpr (std::is_same_v<ValueType, float>) {
                 auto ySpan = _yValues.get_span(0);
                 return {ySpan.subspan(startIdx, count), xResult.actual_t_min, xResult.actual_t_max};
             } else {
-                // For non-float types, we need to convert - use cached conversion
-                _yFloatCache.resize(count);
-                auto ySpan = _yValues.get_span(0);
+                // non-float: convert to owned float storage so the span is self-contained
+                auto storage = std::make_shared<std::vector<float>>(count);
+                auto ySpan   = _yValues.get_span(0);
                 for (std::size_t i = 0; i < count; ++i) {
-                    _yFloatCache[i] = static_cast<float>(ySpan[startIdx + i]);
+                    (*storage)[i] = static_cast<float>(ySpan[startIdx + i]);
                 }
-                return {std::span<const float>(_yFloatCache), xResult.actual_t_min, xResult.actual_t_max};
+                return {std::span<const float>(*storage), xResult.actual_t_min, xResult.actual_t_max, std::move(storage)};
             }
         }
         return {{}, 0.0, 0.0};

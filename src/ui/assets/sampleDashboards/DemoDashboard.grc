@@ -189,6 +189,33 @@ blocks:
       signal_name: sine 5Hz
       signal_quantity: voltage
       signal_unit: V
+  - id: gr::basic::ClockSource
+    parameters:
+      name: SpectrumClock
+      sample_rate: 25
+      chunk_size: 1
+      n_samples_max: 0
+  - id: opendigitizer::TestSpectrumGenerator<float32>
+    parameters:
+      name: SpectrumGenerator
+      spectrum_size: 4096
+      center_freq: 100e6
+      signal_bandwidth: 1e6
+      clock_rate: 25
+      seed: 42
+      show_schottky: true
+      show_interference_lines: true
+      show_sweep_line: true
+      log_interval: 0
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrumSink
+      dataset_index: 0
+      signal_name: spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]
@@ -201,6 +228,8 @@ connections:
   - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
   - [ClockSource, 0, IntensityGenerator, 0]
   - [IntensityGenerator, 0, IntensitySink, 0]
+  - [SpectrumClock, 0, SpectrumGenerator, 0]
+  - [SpectrumGenerator, 0, spectrumSink, 0]
 dashboard:
   layout: Free
   sources:
@@ -218,6 +247,8 @@ dashboard:
       block: sineSink1
     - name: sineSink3
       block: sineSink3
+    - name: spectrumSink
+      block: spectrumSink
   plots:
     - name: Raw Signal
       parameters:
@@ -279,4 +310,28 @@ dashboard:
       sources:
         - IntensitySink
         - DipoleCurrentSink
-      rect: [ 0, 1, 3, 1 ] # x, y, width, height - spans all 3 columns
+      rect: [ 0, 1, 3, 1 ] # x, y, width, height - spans 3 columns
+    - name: Spectrum View
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        show_max_hold: true
+        show_min_hold: true
+        show_average: true
+        decay_tau_frames: 120
+        n_history: 256
+        colormap: ImPlotColormap_Viridis
+        top_pane_ratio: 0.4
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          format: MetricInline
+        - axis: Y
+          min: NaN
+          max: NaN
+        - axis: Z
+          min: -85
+          max: -55
+      sources:
+        - spectrumSink
+      rect: [ 3, 0, 2, 2 ] # 2 columns wide, spans 2 rows

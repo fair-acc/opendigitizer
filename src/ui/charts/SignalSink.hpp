@@ -162,9 +162,10 @@ struct SignalSink {
     };
 
     struct YRangeResult {
-        std::span<const float> data;         // Y values in the requested range
-        double                 actual_t_min; // actual start time of returned data
-        double                 actual_t_max; // actual end time of returned data
+        std::span<const float>                    data;         // Y values in the requested range
+        double                                    actual_t_min; // actual start time of returned data
+        double                                    actual_t_max; // actual end time of returned data
+        std::shared_ptr<const std::vector<float>> _storage;     // keeps converted data alive when T != float
 
         [[nodiscard]] bool empty() const noexcept { return data.empty(); }
     };

@@ -42,6 +42,7 @@
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
 #include "blocks/TagToSample.hpp"
+#include "blocks/TestSpectrumGenerator.hpp"
 
 #include <version.hpp>
 
