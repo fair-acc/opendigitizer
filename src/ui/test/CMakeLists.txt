@@ -13,6 +13,12 @@ target_link_libraries(qa_ChartAbstraction PRIVATE ut opendigitizer-uilib)
 target_include_directories(qa_ChartAbstraction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_ChartAbstraction COMMAND qa_ChartAbstraction)
 
+add_executable(qa_TestSpectrumGenerator qa_TestSpectrumGenerator.cpp)
+target_link_libraries(qa_TestSpectrumGenerator PRIVATE ut gnuradio-core gnuradio-blocklib-core)
+target_include_directories(qa_TestSpectrumGenerator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
+                                                            ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
+add_test(NAME qa_TestSpectrumGenerator COMMAND qa_TestSpectrumGenerator)
+
 add_executable(qa_play_stop_bar qa_play_stop_bar.cpp)
 target_include_directories(qa_play_stop_bar INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
                                                       $<INSTALL_INTERFACE:include/>)

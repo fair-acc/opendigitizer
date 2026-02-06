@@ -117,8 +117,8 @@ int main() {
         expect(eq(sink->dataSetCount(), 1UZ));
         expect(eq(sink->size(), 5UZ));
 
-        expect(std::abs(sink->xAt(0) - 0.0f) < 1e-6);
-        expect(std::abs(sink->yAt(0) - 1.0f) < 1e-6);
+        expect(approx(sink->xAt(0), 0.0, 1e-6));
+        expect(approx(sink->yAt(0), 1.0, 1e-6));
 
         auto pd = sink->plotData();
         expect(!pd.empty());

@@ -5,6 +5,10 @@
 
 #include "Chart.hpp"
 #include "SignalSink.hpp"
+#include "SpectrumDensity.hpp"
+#include "SpectrumPlot.hpp"
+#include "SpectrumView.hpp"
+#include "WaterfallPlot.hpp"
 #include "XYChart.hpp"
 #include "YYChart.hpp"
 

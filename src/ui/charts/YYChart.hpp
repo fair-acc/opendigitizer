@@ -78,10 +78,10 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
         return gr::work::Status::OK;
     }
 
-    [[nodiscard]] AxisScale getAxisScale(bool isX) const noexcept { return static_cast<AxisScale>(isX ? x_axis_scale.value : y_axis_scale.value); }
+    [[nodiscard]] std::optional<AxisScale> getAxisScale(AxisKind axis) const noexcept { return static_cast<AxisScale>((axis == AxisKind::X) ? x_axis_scale.value : y_axis_scale.value); }
 
-    void setAxisScale(bool isX, AxisScale scale) {
-        if (isX) {
+    void setAxisScale(AxisKind axis, AxisScale scale) {
+        if (axis == AxisKind::X) {
             x_axis_scale = static_cast<int>(scale);
             std::ignore  = this->settings().set({{"x_axis_scale", x_axis_scale.value}});
         } else {
@@ -145,7 +145,7 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
         setupAxisScales();
         ImPlot::SetupFinish();
 
-        ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sinkPtr->color()));
+        ImVec4 lineColor = sinkColor(sinkPtr->color());
         ImPlot::SetNextLineStyle(lineColor);
 
         // clamp to n_history: show only the most recent samples
@@ -223,7 +223,7 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
 
         // Plot X signal as dummy to create legend entry for D&D
         {
-            ImVec4 xColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sinkXPtr->color()));
+            ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
             double      dummyX = static_cast<double>(sinkXPtr->yAt(offset));
             double      dummyY = static_cast<double>(sinkYPtr->yAt(offset));
@@ -232,7 +232,7 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
         }
 
         // Plot correlation line with Y signal's name as legend entry
-        ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sinkYPtr->color()));
+        ImVec4 lineColor = sinkColor(sinkYPtr->color());
         ImPlot::SetNextLineStyle(lineColor);
 
         struct CorrelationContext {
@@ -340,7 +340,7 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
         // dummy plot for sink[0] legend entry (D&D support)
         {
             auto   lockX  = sinkXPtr->dataGuard();
-            ImVec4 xColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sinkXPtr->color()));
+            ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
             double      dummyX = static_cast<double>(sinkXPtr->yAt(0));
             double      dummyY = static_cast<double>(sinkXPtr->yAt(0));
@@ -380,7 +380,7 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
             std::size_t yAxisIdx = axis::findAxisForSink(sinkYPtr->uniqueName(), false, std::array<std::vector<std::string>, 3>{}, yAxisGroups);
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
-            ImVec4 lineColor = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(sinkYPtr->color()));
+            ImVec4 lineColor = sinkColor(sinkYPtr->color());
             ImPlot::SetNextLineStyle(lineColor);
 
             PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};

@@ -20,6 +20,7 @@
 #include "blocks/GlobalSignalLegend.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
+#include "blocks/TestSpectrumGenerator.hpp"
 
 #include <cmrc/cmrc.hpp>
 
