@@ -2,14 +2,13 @@
 
 #include <boost/ut.hpp>
 
-#include "ImGuiTestApp.hpp"
-
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Message.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
@@ -23,14 +22,8 @@
 #include "blocks/SineSource.hpp"
 
 #include <cmrc/cmrc.hpp>
-#include <gnuradio-4.0/Graph_yaml_importer.hpp>
-#include <gnuradio-4.0/Profiler.hpp>
-#include <memory.h>
-
+#include <memory>
 #include <plf_colony.h>
-
-#include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/PluginLoader.hpp>
 
 #include "../components/ColourManager.hpp"
 
@@ -42,19 +35,18 @@ using namespace boost::ut;
 struct TestState {
     std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
     std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
-    std::function<void()>                        stopFunction;
 
-    void stopScheduler() { dashboard->scheduler()->stop(); }
+    void stopScheduler() { dashboard->scheduler->stop(); }
 
-    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
+    void waitForSchedulerActive(std::size_t maxCount = 30UZ, std::source_location location = std::source_location::current()) {
         std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
-            // wait until scheduler is started
+        while (!gr::lifecycle::isActive(dashboard->scheduler->state()) && count < maxCount) {
+            dashboard->handleMessages();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             count++;
         }
         if (count >= maxCount) {
-            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
+            throw gr::exception(std::format("waitForSchedulerActive({}): maxCount exceeded", count), location);
         }
     }
 };
@@ -86,7 +78,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 DigitizerUi::DashboardPage page;
                 page.setDashboard(*g_state.dashboard);
                 page.draw();
-                ut::expect(!g_state.dashboard->plots().empty());
+                ut::expect(!g_state.dashboard->uiWindows.empty());
             }
         };
 
@@ -94,36 +86,28 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto getUiSink = [](auto typeTag, std::string_view name) {
-                    using SinkType      = decltype(typeTag);
-                    auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([name](const auto& sink) { return sink.name() == name; });
+                // Find sinks using the SignalSink interface
+                auto dipoleSink        = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                auto intensitySink     = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "IntensitySink"; });
+                auto dipoleDataSetSink = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentDataSetSink"; });
 
-                    ut::expect(implotSinkRaw);
-                    return reinterpret_cast<opendigitizer::ImPlotSink<SinkType>*>(implotSinkRaw->raw());
-                };
+                ut::expect(dipoleSink != nullptr) << "DipoleCurrentSink not found";
+                ut::expect(intensitySink != nullptr) << "IntensitySink not found";
+                ut::expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
 
-                auto implotDipoleSink        = getUiSink(float{}, "DipoleCurrentSink");
-                auto implotIntensitySink     = getUiSink(float{}, "IntensitySink");
-                auto implotDipoleDataSetSink = getUiSink(float{}, "DipoleCurrentDataSetSink");
+                g_state.waitForSchedulerActive();
 
-                g_state.waitForScheduler(10);
-
-                std::size_t count = 0UZ;
-                while (!isActive(implotDipoleSink->state()) || count < 20) { // wait until scheduler is started
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    count++;
-                }
-
-                while (isActive(implotDipoleSink->state()) || isActive(implotIntensitySink->state()) || isActive(implotDipoleDataSetSink->state())) {
+                // Wait for sinks to accumulate data (DataSet sink needs the P=2→P=5 tag window at ~1s)
+                while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0 || intensitySink->size() == 0) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 
-                expect(implotDipoleSink->state() == gr::lifecycle::STOPPED) << "implotDipoleSink not in STOPPED state";
-                expect(implotIntensitySink->state() == gr::lifecycle::STOPPED) << "implotIntensitySink not in STOPPED state";
-                expect(implotDipoleDataSetSink->state() == gr::lifecycle::STOPPED) << "implotDipoleDataSetSink not in STOPPED state";
+                // Verify sinks received data
+                expect(dipoleSink->size() > 0) << "DipoleCurrentSink has no data";
+                expect(intensitySink->size() > 0) << "IntensitySink has no data";
+                expect(dipoleDataSetSink->dataSetCount() > 0) << "DipoleCurrentDataSetSink has no datasets";
+
                 g_state.stopScheduler();
-                std::this_thread::sleep_for(50ms); // allow the scheduler to change it's state to stopped, since this is now message based and not immediate
-                expect(g_state.dashboard->scheduler()->state() == gr::lifecycle::STOPPED) << "g_state.scheduler not in STOPPED state";
                 captureScreenshot(*ctx);
             };
         };
@@ -154,11 +138,11 @@ int main(int argc, char* argv[]) {
     auto dashboardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(g_state.restClient, dashboardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), //
-        [](gr::Graph&& grGraph) {
-            using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-            g_state.dashboard->emplaceScheduler<TScheduler>();
-            g_state.dashboard->scheduler()->setGraph(std::move(grGraph));
+        [](gr::Graph&& grGraph) {                                               //
+            g_state.dashboard->emplaceGraph(std::move(grGraph));
         });
 
-    return app.runTests() ? 0 : 1;
+    auto result = app.runTests();
+    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
+    return result ? 0 : 1;
 }

@@ -72,7 +72,7 @@ public:
     requires(storageType != StorageType::ATOMIC)
         : _state(other._state) {} // plain enum
 
-    [[nodiscard]] std::expected<void, gr::Error> changeToolStateTo(State newState, const std::source_location location = std::source_location::current()) {
+    [[nodiscard]] std::expected<void, gr::Error> changeToolStateTo([[maybe_unused]] State newState, [[maybe_unused]] const std::source_location location = std::source_location::current()) {
 #if 0 // TODO port to new messaging architecture
         const State oldState = _state;
         if (isValidTransition(oldState, newState)) {
@@ -130,7 +130,7 @@ struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBloc
 
     GR_MAKE_REFLECTABLE(PlayStopToolbarBlock, ctrlOut);
 
-    gr::work::Status draw(const gr::property_map& config = {}) noexcept {
+    gr::work::Status draw([[maybe_unused]] const gr::property_map& config = {}) noexcept {
         const gr::work::Status status = gr::work::Status::OK; // this->invokeWork(); // calls work(...) -> processOne(...) (all in the same thread as this 'draw()'
         using namespace gr::message;
 

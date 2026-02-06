@@ -65,10 +65,10 @@ void LookAndFeel::loadFonts() {
 
     auto loadDefaultFont = [](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar>& ranges = {}) {
         auto loadFont = [&primaryFont, &secondaryFont, &ranges](float loadFontSize) {
-            const auto resultFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), int(primaryFont.size()), loadFontSize, &config);
+            const auto resultFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), static_cast<int>(primaryFont.size()), loadFontSize, &config);
             if (!ranges.empty()) {
                 config.MergeMode = true;
-                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), int(secondaryFont.size()), loadFontSize, &config, ranges.data());
+                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), static_cast<int>(secondaryFont.size()), loadFontSize, &config, ranges.data());
                 config.MergeMode = false;
             }
             return resultFont;

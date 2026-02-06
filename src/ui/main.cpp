@@ -286,6 +286,8 @@ int main(int argc, char** argv) {
     }
 #endif
 
+    app.closeDashboard();
+    app.restClient.reset();
     imgui_helper::teardownSDL();
     return 0;
 }

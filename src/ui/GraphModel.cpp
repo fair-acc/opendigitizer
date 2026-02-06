@@ -718,7 +718,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         targetBlock.block->handleChildBlockEmplaced(data);
 
     } else if (message.endpoint == scheduler::kBlockRemoved) {
-        targetBlock.block->handleChildBlockRemoved(uniqueName());
+        targetBlock.block->handleChildBlockRemoved(uniqueName("uniqueName"));
 
     } else if (message.endpoint == scheduler::kBlockReplaced) {
         targetBlock.block->handleChildBlockRemoved(uniqueName("replacedBlockUniqueName"));

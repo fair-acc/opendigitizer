@@ -22,7 +22,7 @@
 
 #include <cmrc/cmrc.hpp>
 
-#include <memory.h>
+#include <memory>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -32,12 +32,12 @@ using namespace boost::ut;
 struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard> dashboard;
 
-    void startScheduler() { dashboard->scheduler()->start(); }
-    void stopScheduler() { dashboard->scheduler()->stop(); }
+    void startScheduler() { dashboard->scheduler->start(); }
+    void stopScheduler() { dashboard->scheduler->stop(); }
 
     void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
         std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler()->state()) && count < maxCount) {
+        while (!gr::lifecycle::isActive(dashboard->scheduler->state()) && count < maxCount) {
             // wait until scheduler is started
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             count++;
@@ -67,7 +67,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 DigitizerUi::DashboardPage page;
                 page.setDashboard(*g_state.dashboard);
                 page.draw();
-                ut::expect(!g_state.dashboard->plots().empty());
+                ut::expect(!g_state.dashboard->uiWindows.empty());
             }
         };
 
@@ -75,14 +75,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto* implotSinkRaw = opendigitizer::ImPlotSinkManager::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
-                ut::expect(implotSinkRaw);
-                auto implotSink = reinterpret_cast<opendigitizer::ImPlotSink<float>*>(implotSinkRaw->raw());
+                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                ut::expect(sinkPtr != nullptr);
 
-                // g_state.waitForScheduler();
-
-                const int maxSamples = 3000;
-                while (implotSink->_yValues.size() < maxSamples) {
+                // Wait for samples to accumulate using the SignalSink interface
+                const std::size_t maxSamples = 3000;
+                while (sinkPtr->size() < maxSamples) {
                     ImGuiTestEngine_Yield(ctx->Engine);
                 }
 
@@ -139,12 +137,12 @@ int main(int argc, char* argv[]) {
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state.dashboard         = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
     g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [](gr::Graph&& grGraph) { //
-        using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>;
-        g_state.dashboard->emplaceScheduler<TScheduler>();
-        g_state.dashboard->scheduler()->setGraph(std::move(grGraph));
+        g_state.dashboard->emplaceGraph(std::move(grGraph));
     });
 
     g_state.startScheduler();
 
-    return app.runTests() ? 0 : 1;
+    auto result = app.runTests();
+    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
+    return result ? 0 : 1;
 }

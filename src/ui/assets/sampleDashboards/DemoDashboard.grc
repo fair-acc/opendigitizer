@@ -26,7 +26,7 @@ blocks:
     parameters:
       name: sinesSink
       signal_name: value
-      signal_quantity: voltage
+      signal_quantity: sum voltage
       signal_unit: V
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
@@ -175,9 +175,25 @@ blocks:
       signal_name: beam intensity
       signal_quantity: BeamIntensity
       signal_unit: ppp
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      color: 0x00C800
+      signal_name: sine 2Hz
+      signal_quantity: voltage
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink3
+      color: 0xC800C8
+      signal_name: sine 5Hz
+      signal_quantity: voltage
+      signal_unit: V
 connections:
   - [sine source 1, 0, sum sigs, 0]
   - [sine source 3, 0, sum sigs, 1]
+  - [ sine source 1, 0, sineSink1, 0 ]
+  - [ sine source 3, 0, sineSink3, 0 ]
   - [sum sigs, 0, FFT, 0]
   - [sum sigs, 0, sinesSink, 0]
   - [FFT, 0, fftSink, 0]
@@ -198,8 +214,14 @@ dashboard:
     - name: IntensitySink
       block: IntensitySink
       port: 0
+    - name: sineSink1
+      block: sineSink1
+    - name: sineSink3
+      block: sineSink3
   plots:
-    - name: Plot 1
+    - name: Raw Signal
+      parameters:
+        show_legend: true
       axes:
         - axis: X
           min: NaN # enables auto-range
@@ -212,7 +234,21 @@ dashboard:
       sources:
         - sinesSink
       rect: [0, 0, 1, 1]
-    - name: Plot 2
+    - name: Correlation
+      type: opendigitizer::charts::YYChart
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - sineSink1
+        - sineSink3
+        - sinesSink
+      rect: [ 1, 0, 1, 1 ]
+    - name: FFT Spectrum
       axes:
         - axis: X
           min: 0.0001
@@ -224,8 +260,10 @@ dashboard:
           max: NaN
       sources:
         - fftSink
-      rect: [1, 0, 1, 1]
-    - name: Plot 3
+      rect: [ 2, 0, 1, 1 ]
+    - name: Function Generators
+      parameters:
+        n_history: 10000 # number of samples to plot
       axes:
         - axis: X
           min: NaN # auto-range min
@@ -241,4 +279,4 @@ dashboard:
       sources:
         - IntensitySink
         - DipoleCurrentSink
-      rect: [0, 1, 2, 1] # x, y, width, height
+      rect: [ 0, 1, 3, 1 ] # x, y, width, height - spans all 3 columns

@@ -90,17 +90,13 @@ inline static bool ImGuiApp_ImplGL_CaptureFramebuffer(ImGuiApp* /*app*/, ImGuiVi
     // Vertical flip
     const std::size_t bytes_per_pixel = 4UZ;
     const std::size_t row_stride      = static_cast<std::size_t>(w) * bytes_per_pixel;
-    auto*             line_tmp        = new unsigned char[row_stride];
-    auto*             line_a          = reinterpret_cast<unsigned char*>(pixels);
-    auto*             line_b          = line_a + (row_stride * static_cast<std::size_t>(h - 1));
-    while (line_a < line_b) {
-        std::memcpy(line_tmp, line_a, row_stride);
-        std::memcpy(line_a, line_b, row_stride);
-        std::memcpy(line_b, line_tmp, row_stride);
-        line_a += row_stride;
-        line_b -= row_stride;
+    auto*             lineA           = reinterpret_cast<unsigned char*>(pixels);
+    auto*             lineB           = lineA + (row_stride * static_cast<std::size_t>(h - 1));
+    while (lineA < lineB) {
+        std::swap_ranges(lineA, lineA + row_stride, lineB);
+        lineA += row_stride;
+        lineB -= row_stride;
     }
-    delete[] line_tmp;
 
     return true;
 }

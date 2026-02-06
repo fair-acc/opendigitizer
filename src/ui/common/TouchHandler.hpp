@@ -392,17 +392,24 @@ struct TouchHandler {
             }
         }
 
+        // Apply standard plot styles: no plot/label padding, 5% vertical fit padding
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2{0, 0});
+        ImPlot::PushStyleVar(ImPlotStyleVar_LabelPadding, ImVec2{3, 1});
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
+
         if (ImPlot::BeginPlot(plotName.c_str(), size, flags)) {
             return true;
         }
+        ImPlot::PopStyleVar(3);
         zoomablePlotInit = 0UL;
         return false;
     }
 
     static void EndZoomablePlot() {
         Digitizer::utils::scope_exit guard = [&] {
-            zoomablePlotInit = 0UL;
             ImPlot::EndPlot();
+            ImPlot::PopStyleVar(3);
+            zoomablePlotInit = 0UL;
         };
 
         if (!gestureActive || gestureDragActive || nFingers != 2) {

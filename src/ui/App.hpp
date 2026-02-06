@@ -1,10 +1,17 @@
 #ifndef APP_H
 #define APP_H
 
+#include <atomic>
+#include <format>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
 #include "components/AppHeader.hpp"
+#include "components/Toolbar.hpp"
 
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
@@ -12,9 +19,6 @@
 #include "OpenDashboardPage.hpp"
 
 #include "settings.hpp"
-
-#include "components/AppHeader.hpp"
-#include "components/Toolbar.hpp"
 
 #include <IoSerialiserYaS.hpp>
 #include <LoadTest.hpp>
@@ -87,8 +91,8 @@ public:
                 bool wait = false;
                 if (dashboard->isInUse) {
                     wait = true;
-                } else if (dashboard->scheduler() && dashboard->scheduler()->state() != gr::lifecycle::State::STOPPED) {
-                    dashboard->scheduler()->stop();
+                } else if (dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
+                    dashboard->scheduler->stop();
                     wait = true;
                 }
 
@@ -123,7 +127,15 @@ public:
         });
     }
 
-    void closeDashboard() { dashboard = {}; }
+    void closeDashboard() {
+        if (dashboard && dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
+            dashboard->scheduler->stop();
+        }
+        dashboardPage.reset();
+        flowgraphPage.setDashboard(nullptr);
+        loadedDashboard = nullptr;
+        dashboard       = {};
+    }
 
     static void setImGuiStyle(LookAndFeel::Style style) {
         switch (style) {
@@ -188,7 +200,7 @@ public:
                 }
                 for (const std::string& bindAddress : settings.bindAddresses) {
                     if (bindAddress.starts_with("https://") || bindAddress.starts_with("http://")) {
-                        const auto bindUri = opencmw::URI<>(std::string(std::string(bindAddress)));
+                        const auto bindUri = opencmw::URI<>(std::string(bindAddress));
                         dashboardPath      = std::format("{}://{}:{}/{}dashboards/{}", bindUri.scheme().value(), settings.hostname, bindUri.port().value(), basePath, dashboardPath);
                         break;
                     }
@@ -205,7 +217,7 @@ public:
         {
             IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-            const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description()->name.data() : "OpenDigitizer";
+            const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
 
             if (prepareForANewDashboardToLoad) {
@@ -230,25 +242,25 @@ public:
             }
 
             if (dashboard != nullptr) {
-                if (loadedDashboard != dashboard.get() && dashboard->isInitialised()) {
+                if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
                     // Are we in the process of changing the dashboard?
                     loadedDashboard = dashboard.get();
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
-                    dashboardPage->setLayoutType(loadedDashboard->layout());
+                    dashboardPage->setLayoutType(loadedDashboard->layout);
                     flowgraphPage.reset();
                 }
             }
 
             if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
-                if (dashboard != nullptr && dashboard->isInitialised()) {
+                if (dashboard != nullptr && dashboard->isInitialised) {
                     dashboardPage->draw(mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
                 }
             } else if (mainViewMode == ViewMode::FLOWGRAPH) {
-                if (dashboard != nullptr && dashboard->isInitialised()) {
+                if (dashboard != nullptr && dashboard->isInitialised) {
                     if (previousViewMode != ViewMode::FLOWGRAPH) {
-                        dashboard->graphModel().requestFullUpdate();
-                        dashboard->graphModel().requestAvailableBlocksTypesUpdate();
+                        dashboard->graphModel.requestFullUpdate();
+                        dashboard->graphModel.requestAvailableBlocksTypesUpdate();
                     }
 
                     flowgraphPage.draw();

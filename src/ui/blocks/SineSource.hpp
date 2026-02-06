@@ -11,8 +11,6 @@
 
 #include <PeriodicTimer.hpp>
 
-using namespace gr::profiling;
-// static inline auto sinProfiler = gr::profiling::Profiler{gr::profiling::Options{}}; // TODO: use this once GR4 is bumped, then remove
 static inline auto sinProfiler = gr::profiling::null::Profiler{};
 
 namespace opendigitizer {
@@ -21,7 +19,7 @@ GR_REGISTER_BLOCK(opendigitizer::SineSource, [ float, double ]);
 template<typename T>
 requires std::is_arithmetic_v<T>
 struct SineSource : public gr::Block<SineSource<T>> {
-    using Description = Doc<R""(@brief source block generating a continuous sine wave synchronized to wall-clock time.
+    using Description = gr::Doc<R""(@brief source block generating a continuous sine wave synchronized to wall-clock time.
 
 Two operating modes controlled by update_rate:
 - update_rate == 0: Generates samples on-demand in processBulk based on elapsed wall-clock time
@@ -35,13 +33,13 @@ to the current wall-clock position.)"">;
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
-    PortOut<T> out;
+    gr::PortOut<T> out;
 
-    A<float, "frequency", Unit<"Hz">, Visible>                                   frequency   = 1.f;
-    A<float, "amplitude", Unit<"a.u.">>                                          amplitude   = 1.f;
-    A<float, "phase", Unit<"°">>                                                 phase       = 0.f;
-    A<float, "sample_rate", Unit<"Hz">, Doc<"output sample rate">, Visible>      sample_rate = 1000.f;
-    A<float, "update_rate", Unit<"Hz">, Doc<"timer rate, 0=on-demand">, Visible> update_rate = 0.f;
+    A<float, "frequency", gr::Unit<"Hz">, gr::Visible>                                       frequency   = 1.f;
+    A<float, "amplitude", gr::Unit<"a.u.">>                                                  amplitude   = 1.f;
+    A<float, "phase", gr::Unit<"°">>                                                         phase       = 0.f;
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"output sample rate">, gr::Visible>      sample_rate = 1000.f;
+    A<float, "update_rate", gr::Unit<"Hz">, gr::Doc<"timer rate, 0=on-demand">, gr::Visible> update_rate = 0.f;
 
     GR_MAKE_REFLECTABLE(SineSource, out, frequency, amplitude, phase, sample_rate, update_rate);
 
@@ -57,15 +55,15 @@ to the current wall-clock position.)"">;
 
     void stop() { _timerDone.wait(false); }
 
-    void settingsChanged(const property_map& /*oldSettings*/, const property_map& newSettings) {
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
         if (newSettings.contains("update_rate")) {
             startTimerIfNeeded();
         }
     }
 
-    work::Status processBulk(OutputSpanLike auto& output) {
+    gr::work::Status processBulk(gr::OutputSpanLike auto& output) {
         using namespace std::chrono_literals;
-        thread_local static profiling::PeriodicTimer timer{sinProfiler.forThisThread(), "SineSource", "processBulk", 2000ms, true};
+        thread_local static gr::profiling::PeriodicTimer timer{sinProfiler.forThisThread(), "SineSource", "processBulk", 2000ms, true};
         timer.begin();
 
         const TimePoint now            = ClockSourceType::now();
@@ -75,7 +73,7 @@ to the current wall-clock position.)"">;
 
         if (nSamples == 0UZ) {
             output.publish(0UZ);
-            return work::Status::INSUFFICIENT_OUTPUT_ITEMS;
+            return gr::work::Status::INSUFFICIENT_OUTPUT_ITEMS;
         }
 
         const double baseTime     = std::chrono::duration<double>(_lastUpdateTime - _startTime).count();
@@ -93,7 +91,7 @@ to the current wall-clock position.)"">;
         output.publish(nSamples);
         timer.snapshot("generate");
 
-        return work::Status::OK;
+        return gr::work::Status::OK;
     }
 
     void startTimerIfNeeded() {
@@ -102,16 +100,16 @@ to the current wall-clock position.)"">;
         }
 
         _timerDone = false;
-        thread_pool::Manager::defaultIoPool()->execute([this]() {
-            thread_pool::thread::setThreadName(std::format("timer:{}", this->name));
+        gr::thread_pool::Manager::defaultIoPool()->execute([this]() {
+            gr::thread_pool::thread::setThreadName(std::format("timer:{}", this->name));
 
             TimePoint nextWakeUp = ClockSourceType::now();
 
-            while (update_rate > 0.f && lifecycle::isActive(this->state())) {
+            while (update_rate > 0.f && gr::lifecycle::isActive(this->state())) {
                 nextWakeUp += std::chrono::microseconds(static_cast<long>(1e6f / update_rate));
                 std::this_thread::sleep_until(nextWakeUp);
 
-                if (this->state() != lifecycle::State::PAUSED) {
+                if (this->state() != gr::lifecycle::State::PAUSED) {
                     this->progress->incrementAndGet();
                     this->progress->notify_all();
                 }

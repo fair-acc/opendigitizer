@@ -1,7 +1,9 @@
 #include "Dashboard.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <fstream>
+#include <print>
 #include <ranges>
 
 #include <format>
@@ -25,7 +27,8 @@
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
 
-#include "conversion.hpp"
+#include "charts/Charts.hpp"
+#include "charts/SinkRegistry.hpp"
 
 using namespace std::string_literals;
 
@@ -82,11 +85,12 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
                     std::string_view sv(s, e);
                     auto             p = sv.find(';');
                     assert(p != sv.npos);
-                    std::size_t size = std::stoul(std::string(s, p));
+                    std::size_t size = 0;
+                    std::from_chars(s, s + p, size);
                     s += p + 1; // the +1 is for the ';'
 
                     reply[i].resize(size);
-                    memcpy(reply[i].data(), s, size);
+                    std::copy_n(s, size, reply[i].data());
                     s += size;
                 }
             }
@@ -199,8 +203,8 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
-Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> restClient, const std::shared_ptr<const DashboardDescription>& desc) : m_restClient(std::move(restClient)), m_desc(desc) {
-    m_desc->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) : restClient(std::move(client)), description(desc) {
+    description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
     const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
     switch (style) {
@@ -210,29 +214,32 @@ Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> re
     LookAndFeel::mutableInstance().style         = style;
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
-    m_graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { m_scheduler.sendMessage(std::move(message), std::move(location)); };
+    graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { scheduler.sendMessage(std::move(message), std::move(location)); };
+
+    // Create the GlobalSignalLegend in uiGraph (Toolbar block showing all sinks)
+    uiGraph.emplaceBlock("DigitizerUi::GlobalSignalLegend", {});
 }
 
 Dashboard::~Dashboard() {}
 
 std::unique_ptr<Dashboard> Dashboard::create(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) { return std::make_unique<Dashboard>(PrivateTag{}, client, desc); }
 
-void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { m_desc = desc; }
+void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { description = desc; }
 
 void Dashboard::load() {
-    if (!m_desc->storageInfo->isInMemoryDashboardStorage()) {
-        m_isInitialised.store(false, std::memory_order_release);
+    if (!description->storageInfo->isInMemoryDashboardStorage()) {
+        isInitialised.store(false, std::memory_order_release);
         isInUse = true;
 
         fetch(
-            m_restClient, m_desc->storageInfo, m_desc->filename, {What::Flowgraph}, //
+            restClient, description->storageInfo, description->filename, {What::Flowgraph}, //
             [this](std::array<std::string, 1>&& data) {
                 //
-                loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { m_scheduler.emplaceGraph(std::move(graph)); });
+                loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { scheduler.emplaceGraph(std::move(graph)); });
                 isInUse = false;
             },
             [this]() {
-                auto error = std::format("Invalid flowgraph for dashboard {}/{}", m_desc->storageInfo->path, m_desc->filename);
+                auto error = std::format("Invalid flowgraph for dashboard {}/{}", description->storageInfo->path, description->filename);
                 components::Notification::error(error);
 
                 isInUse = false;
@@ -265,7 +272,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             }
         }();
 
-        if (const auto dashboardUri = opencmw::URI<>(std::string(m_desc->storageInfo->path)); dashboardUri.hostName().has_value()) {
+        if (const auto dashboardUri = opencmw::URI<>(std::string(description->storageInfo->path)); dashboardUri.hostName().has_value()) {
             const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
             gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri, this](auto& block) {
                 if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
@@ -280,7 +287,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         // Load is called after parsing the flowgraph so that we already have the list of sources
         const auto dashboard = std::get<gr::property_map>(rootMap.at("dashboard"));
         doLoad(dashboard);
-        m_isInitialised.store(true, std::memory_order_release);
+        isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
         std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e);
@@ -307,10 +314,10 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
 
 void Dashboard::doLoad(const gr::property_map& dashboard) {
     using namespace gr;
-    auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
+    auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
 
     if (dashboard.contains("layout") && std::holds_alternative<std::string>(dashboard.at("layout"))) {
-        m_layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(dashboard.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+        layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(dashboard.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     }
 
     if (!dashboard.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("sources"))) {
@@ -331,14 +338,15 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         auto block = std::get<std::string>(srcMap.at("block"));
         auto name  = std::get<std::string>(srcMap.at("name"));
 
-        auto* sink = opendigitizer::ImPlotSinkManager::instance().findSink([&](const auto& s) { return s.name() == block; });
-        if (!sink) {
+        auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& s) { return s.name() == block; });
+        if (!sinkPtr) {
             auto msg = std::format("Unable to find the plot source -- sink: '{}'", block);
             components::Notification::warning(msg);
             continue;
         }
 
-        sink->setName(block);
+        // Signal name is set via block properties during initialization
+        // SignalSink interface is read-only for name
     }
 
     if (!dashboard.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("plots"))) {
@@ -365,96 +373,87 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
             throw gr::exception("invalid plot definition rect.size() != 4");
         }
 
-        m_plots.emplace_back();
-        auto& plot = m_plots.back();
-        plot.name  = name;
-
-        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
-            auto axes = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
-            for (const auto& axisPmt : axes) {
-                if (!std::holds_alternative<property_map>(axisPmt)) {
-                    throw gr::exception("axis is not a property_map");
-                }
-                const property_map axisMap = std::get<property_map>(axisPmt);
-
-                if (!axisMap.contains("axis") || !std::holds_alternative<std::string>(axisMap.at("axis"))) {
-                    throw gr::exception("invalid axis definition");
-                }
-
-                plot.axes.push_back({});
-                auto& axisData = plot.axes.back();
-
-                auto axis = std::get<std::string>(axisMap.at("axis"));
-                if (axis == "X" || axis == "x") {
-                    axisData.axis = Plot::AxisKind::X;
-                } else if (axis == "Y" || axis == "y") {
-                    axisData.axis = Plot::AxisKind::Y;
-                } else {
-                    components::Notification::warning(std::format("Unknown axis {}", axis));
-                    return;
-                }
-
-                axisData.min          = axisMap.contains("min") ? pmtv::cast<float>(axisMap.at("min")) : std::numeric_limits<float>::quiet_NaN();
-                axisData.max          = axisMap.contains("max") ? pmtv::cast<float>(axisMap.at("max")) : std::numeric_limits<float>::quiet_NaN();
-                std::string scaleStr  = axisMap.contains("scale") ? std::get<std::string>(axisMap.at("scale")) : "Linear";
-                std::string formatStr = axisMap.contains("format") ? std::get<std::string>(axisMap.at("format")) : "Auto";
-                auto        trim      = [](const std::string& str) {
-                    auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
-                    auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
-                    return (start < end) ? std::string(start, end) : std::string{};
-                };
-                axisData.scale  = magic_enum::enum_cast<AxisScale>(trim(scaleStr), magic_enum::case_insensitive).value_or(AxisScale::Linear);
-                axisData.format = magic_enum::enum_cast<LabelFormat>(trim(formatStr), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
-
-                if (axisMap.contains("plot_tags")) {
-                    auto tagOpt = axisMap.at("plot_tags");
-                    if (auto boolPtr = std::get_if<bool>(&tagOpt)) {
-                        axisData.plotTags = *boolPtr;
-                    }
-                }
-            }
-        } else {
-            // add default axes and ranges if not defined
-            plot.axes.push_back({Plot::AxisKind::X});
-            plot.axes.push_back({Plot::AxisKind::Y});
+        std::string chartTypeName = "XYChart";
+        if (plotMap.contains("type") && std::holds_alternative<std::string>(plotMap.at("type"))) {
+            chartTypeName = std::get<std::string>(plotMap.at("type"));
         }
 
-        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(plot.sourceNames), [](const auto& elem) { return std::get<std::string>(elem); });
-        plot.window->x      = pmtv::cast<std::size_t>(rect[0]);
-        plot.window->y      = pmtv::cast<std::size_t>(rect[1]);
-        plot.window->width  = pmtv::cast<std::size_t>(rect[2]);
-        plot.window->height = pmtv::cast<std::size_t>(rect[3]);
+        // Parse chart parameters from .grc (e.g., show_legend, show_grid, etc.)
+        gr::property_map chartParameters;
+        if (plotMap.contains("parameters") && std::holds_alternative<property_map>(plotMap.at("parameters"))) {
+            chartParameters = std::get<property_map>(plotMap.at("parameters"));
+        }
+
+        // Transfer 'sources:' to 'data_sinks' (see grc_compat namespace in Dashboard.hpp)
+        std::vector<std::string> dataSinks;
+        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(dataSinks), [](const auto& elem) { return std::get<std::string>(elem); });
+        chartParameters["data_sinks"] = dataSinks;
+
+        // Parse axes config (will be set on block's uiConstraints after creation)
+        std::vector<pmtv::pmt> axesConfig;
+        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
+            axesConfig = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
+        }
+
+        // Create chart block in UI Graph with parameters
+        auto* blockPtr = emplaceChartBlock(chartTypeName, name, chartParameters);
+
+        if (!blockPtr) {
+            components::Notification::warning(std::format("Failed to create chart block of type '{}'", chartTypeName));
+            continue;
+        }
+
+        // Set uiConstraints on the block (axes config and window layout for chart to read in draw())
+        blockPtr->uiConstraints()["axes"]   = axesConfig;
+        blockPtr->uiConstraints()["window"] = gr::property_map{{"x", pmtv::cast<std::size_t>(rect[0])}, {"y", pmtv::cast<std::size_t>(rect[1])}, {"width", pmtv::cast<std::size_t>(rect[2])}, {"height", pmtv::cast<std::size_t>(rect[3])}};
+
+        // Find the shared_ptr for this block in uiGraph
+        std::shared_ptr<gr::BlockModel> blockShared;
+        for (auto& blk : uiGraph.blocks()) {
+            if (blk.get() == blockPtr) {
+                blockShared = blk;
+                break;
+            }
+        }
+
+        // Create UIWindow for this chart (sink management done via settings interface)
+        UIWindow uiWindow(blockShared, name);
+        if (uiWindow.window) {
+            uiWindow.window->x      = pmtv::cast<std::size_t>(rect[0]);
+            uiWindow.window->y      = pmtv::cast<std::size_t>(rect[1]);
+            uiWindow.window->width  = pmtv::cast<std::size_t>(rect[2]);
+            uiWindow.window->height = pmtv::cast<std::size_t>(rect[3]);
+        }
+
+        uiWindows.push_back(std::move(uiWindow));
     }
 
-    // if (m_fgItem) {
-    // TODO: Port loading and saving flowgraph layouts
-    // const bool isGoodString = dashboard.contains("flowgraphLayout") && std::holds_alternative<std::string>(dashboard.at("flowgraphLayout"));
-    // }
-
-    loadPlotSources();
+    // Load sinks for all UIWindows (sinks should be registered in SinkRegistry by now)
+    loadUIWindowSources();
 }
 
 void Dashboard::save() {
     using namespace gr;
 
-    if (m_desc->storageInfo->isInMemoryDashboardStorage()) {
+    if (description->storageInfo->isInMemoryDashboardStorage()) {
         return;
     }
 
     property_map headerYaml;
-    headerYaml["favorite"] = m_desc->isFavorite;
-    std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(m_desc->lastUsed.value()));
+    headerYaml["favorite"] = description->isFavorite;
+    std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(description->lastUsed.value()));
     char                        lastUsed[11];
     std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
     headerYaml["lastUsed"] = std::string(lastUsed);
 
-    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler()->graph());
+    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
 
     std::vector<pmtv::pmt> sources;
-    opendigitizer::ImPlotSinkManager::instance().forEach([&](auto& sink) {
+    // Use SinkRegistry with SignalSink interface for serialization
+    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
         // TODO: Port saving and loading flowgraph layouts
         property_map map;
-        map["name"]  = sink.name();
+        map["name"]  = std::string(sink.name());
         map["color"] = sink.color();
 
         sources.emplace_back(std::move(map));
@@ -462,73 +461,87 @@ void Dashboard::save() {
     dashboardYaml["sources"] = sources;
 
     std::vector<pmtv::pmt> plots;
-    for (auto& plot : m_plots) {
-        property_map plotMap;
-        plotMap["name"] = plot.name;
+    // Iterate UIWindows for chart serialization (new API)
+    for (const auto& w : uiWindows) {
+        if (!w.isChart() || !w.block) {
+            continue;
+        }
 
+        property_map plotMap;
+        plotMap["name"] = w.window ? w.window->name : std::string(w.block->uniqueName());
+        // Extract short chart type name from fully-qualified name (e.g., "opendigitizer::charts::XYChart" -> "XYChart")
+        std::string fullTypeName = std::string(w.block->typeName());
+        if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+            plotMap["type"] = fullTypeName.substr(pos + 2);
+        } else {
+            plotMap["type"] = fullTypeName;
+        }
+
+        // Serialize axes from uiConstraints
         std::vector<pmtv::pmt> plotAxes;
-        for (const auto& axis : plot.axes) {
-            property_map axisMap;
-            axisMap["axis"]      = axis.axis == Plot::AxisKind::X ? "X" : "Y";
-            axisMap["min"]       = axis.min;
-            axisMap["max"]       = axis.max;
-            axisMap["scale"]     = std::string(magic_enum::enum_name<AxisScale>(axis.scale));
-            axisMap["format"]    = std::string(magic_enum::enum_name<LabelFormat>(axis.format));
-            axisMap["plot_tags"] = axis.plotTags;
-            plotAxes.emplace_back(std::move(axisMap));
+        const auto&            constraints = w.block->uiConstraints();
+        if (constraints.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(constraints.at("axes"))) {
+            plotAxes = std::get<std::vector<pmtv::pmt>>(constraints.at("axes"));
         }
         plotMap["axes"] = plotAxes;
 
+        // Serialize signal sinks from data_sinks property
         std::vector<pmtv::pmt> plotSinkBlockNames;
-        for (auto& plotSinkBlock : plot.plotSinkBlocks) {
-            plotSinkBlockNames.emplace_back(plotSinkBlock->name());
+        for (const auto& sinkName : grc_compat::getBlockSinkNames(w.block.get())) {
+            plotSinkBlockNames.emplace_back(sinkName);
         }
         plotMap["sources"] = plotSinkBlockNames;
 
+        // Serialize window rect from uiConstraints or DockSpace::Window
         std::vector<int> plotRect;
-        plotRect.emplace_back(plot.window->x);
-        plotRect.emplace_back(plot.window->y);
-        plotRect.emplace_back(plot.window->width);
-        plotRect.emplace_back(plot.window->height);
+        if (constraints.contains("window") && std::holds_alternative<property_map>(constraints.at("window"))) {
+            const auto& windowMap = std::get<property_map>(constraints.at("window"));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("x"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("y"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("width"))));
+            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("height"))));
+        } else if (w.window) {
+            plotRect.emplace_back(w.window->x);
+            plotRect.emplace_back(w.window->y);
+            plotRect.emplace_back(w.window->width);
+            plotRect.emplace_back(w.window->height);
+        } else {
+            plotRect = {0, 0, 1, 1}; // Default
+        }
         plotMap["rect"] = plotRect;
 
         plots.emplace_back(plotMap);
     }
     dashboardYaml["plots"] = plots;
 
-    // if (m_fgItem) {
-    // TODO: Port loading and saving flowgraph layouts
-    // dashboardYaml["flowgraphLayout"] = m_fgItem->settings(&localFlowGraph);
-    // }
-
-    if (m_desc->storageInfo->path.starts_with("http://") || m_desc->storageInfo->path.starts_with("https://")) {
-        auto path = std::filesystem::path(m_desc->storageInfo->path) / m_desc->filename;
+    if (description->storageInfo->path.starts_with("http://") || description->storageInfo->path.starts_with("https://")) {
+        auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
 
         opencmw::client::Command hcommand;
         hcommand.command          = opencmw::mdp::Command::Set;
         std::string headerYamlStr = pmtv::yaml::serialize(headerYaml);
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
         hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
-        m_restClient->request(hcommand);
+        restClient->request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command             = opencmw::mdp::Command::Set;
         std::string dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
         dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
         dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
-        m_restClient->request(dcommand);
+        restClient->request(dcommand);
 
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
         fcommand.data.put(stream.str());
         fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
-        m_restClient->request(fcommand);
+        restClient->request(fcommand);
     } else {
 #ifndef EMSCRIPTEN
-        auto path = std::filesystem::path(m_desc->storageInfo->path);
+        auto path = std::filesystem::path(description->storageInfo->path);
 
-        std::ofstream stream(path / (m_desc->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
+        std::ofstream stream(path / (description->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
         if (!stream.is_open()) {
             auto msg = std::format("can't open file for writing");
             components::Notification::warning(msg);
@@ -549,58 +562,203 @@ void Dashboard::save() {
         stream.seekp(headerStart);
         stream << headerYamlStr.c_str() << '\n';
         stream << dashboardYamlStr.c_str() << '\n';
-        // auto flowgraphStart = static_cast<std::uint32_t>(stream.tellp());
-        // auto flowgraphSize  = static_cast<std::uint32_t>(localFlowGraph.save(stream));
-        // stream.seekp(16);
-        // stream.write(reinterpret_cast<char*>(&flowgraphStart), 4);
-        // stream.write(reinterpret_cast<char*>(&flowgraphSize), 4);
-        stream << '\n';
 #endif
     }
 }
 
-DigitizerUi::Dashboard::Plot& Dashboard::newPlot(int x, int y, int w, int h) {
-    m_plots.push_back({});
-    auto& p = m_plots.back();
-    p.axes.push_back({Plot::AxisKind::X});
-    p.axes.push_back({Plot::AxisKind::Y});
-    p.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
-    return p;
+DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int h, std::string_view chartType) {
+    std::string chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
+
+    // Generate a unique name for the chart
+    static int  chartCounter = 1;
+    std::string chartName    = std::format("Chart {}", chartCounter++);
+
+    // Create chart block in UI Graph
+    auto* blockPtr = emplaceChartBlock(chartTypeName, chartName);
+
+    if (!blockPtr) {
+        // Return a reference to an empty UIWindow on failure (shouldn't happen with known types)
+        static UIWindow emptyWindow;
+        return emptyWindow;
+    }
+
+    // Store window layout and default axes in uiConstraints
+    blockPtr->uiConstraints()["window"] = gr::property_map{{"x", static_cast<std::size_t>(x)}, {"y", static_cast<std::size_t>(y)}, {"width", static_cast<std::size_t>(w)}, {"height", static_cast<std::size_t>(h)}};
+
+    // Find the shared_ptr for this block in uiGraph
+    std::shared_ptr<gr::BlockModel> blockShared;
+    for (auto& blk : uiGraph.blocks()) {
+        if (blk.get() == blockPtr) {
+            blockShared = blk;
+            break;
+        }
+    }
+
+    // Create UIWindow for this chart
+    UIWindow win(blockShared, chartName);
+    if (win.window) {
+        win.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
+    }
+    uiWindows.push_back(std::move(win));
+
+    return uiWindows.back();
 }
 
-void Dashboard::deletePlot(Plot* plot) {
-    auto it = std::find_if(m_plots.begin(), m_plots.end(), [=](const Plot& p) { return plot == &p; });
-    m_plots.erase(it);
+void Dashboard::deleteChart(UIWindow* win) {
+    if (!win || !win->block) {
+        return;
+    }
+    // Remove block from UI graph
+    uiGraph.removeBlockByName(win->block->uniqueName());
+    // Remove the UIWindow
+    std::erase_if(uiWindows, [win](const UIWindow& w) { return &w == win; });
+}
+
+Dashboard::UIWindow* Dashboard::copyChart(std::string_view sourceChartId) {
+    // Find source block
+    gr::BlockModel* sourceBlock = nullptr;
+    for (auto& w : uiWindows) {
+        if (w.block && w.block->uniqueName() == sourceChartId) {
+            sourceBlock = w.block.get();
+            break;
+        }
+    }
+    if (!sourceBlock) {
+        return nullptr;
+    }
+
+    // Get source settings
+    gr::property_map settings = sourceBlock->settings().getStored().value_or(gr::property_map{});
+
+    // Generate unique name by appending suffix
+    std::string baseName = sourceBlock->name().empty() ? std::string(sourceChartId) : std::string(sourceBlock->name());
+    std::string newName  = baseName + "_copy";
+    int         suffix   = 2;
+    while (findUIWindowByName(newName) != nullptr) {
+        newName = baseName + "_" + std::to_string(suffix++);
+    }
+
+    // Get chart type name
+    std::string typeName = std::string(sourceBlock->typeName());
+
+    // Create new block with same type and copied settings
+    gr::property_map chartParameters;
+    // Copy data_sinks setting if present
+    auto sinkNames = grc_compat::getBlockSinkNames(sourceBlock);
+    if (!sinkNames.empty()) {
+        chartParameters["data_sinks"] = sinkNames;
+    }
+
+    auto* newBlock = emplaceChartBlock(typeName, newName, chartParameters);
+    if (!newBlock) {
+        return nullptr;
+    }
+
+    // Copy uiConstraints (axes config) but not window position (let DockSpace place it like a new chart)
+    newBlock->uiConstraints() = sourceBlock->uiConstraints();
+    newBlock->uiConstraints().erase("window");
+
+    // Find the shared_ptr for the new block in the uiGraph
+    std::shared_ptr<gr::BlockModel> newBlockPtr;
+    for (auto& blk : uiGraph.blocks()) {
+        if (blk.get() == newBlock) {
+            newBlockPtr = blk;
+            break;
+        }
+    }
+    if (!newBlockPtr) {
+        return nullptr;
+    }
+
+    // Create UIWindow for the new chart
+    return &getOrCreateUIWindow(newBlockPtr);
+}
+
+bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) {
+    if (!win.block) {
+        return false;
+    }
+
+    // Get current chart type name from block's fully-qualified type name
+    std::string fullTypeName = std::string(win.block->typeName());
+    std::string currentTypeName;
+    if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+        currentTypeName = fullTypeName.substr(pos + 2);
+    } else {
+        currentTypeName = fullTypeName;
+    }
+
+    // Skip if same type
+    if (currentTypeName == newChartType) {
+        return true;
+    }
+
+    // Save current state
+    std::vector<std::string> savedSinkNames     = grc_compat::getBlockSinkNames(win.block.get());
+    gr::property_map         savedUiConstraints = win.block->uiConstraints();
+    std::string              oldUniqueName      = std::string(win.block->uniqueName());
+    std::string              windowName         = win.window ? win.window->name : oldUniqueName;
+
+    // Remove old block from UI graph
+    uiGraph.removeBlockByName(oldUniqueName);
+
+    // Create new chart block with preserved sink names
+    gr::property_map chartParameters;
+    if (!savedSinkNames.empty()) {
+        chartParameters["data_sinks"] = savedSinkNames;
+    }
+
+    auto* blockPtr = emplaceChartBlock(newChartType, windowName, chartParameters);
+    if (!blockPtr) {
+        // Transmutation failed - unknown chart type
+        return false;
+    }
+
+    // Restore uiConstraints
+    blockPtr->uiConstraints() = savedUiConstraints;
+
+    // Find the shared_ptr for the new block in uiGraph
+    std::shared_ptr<gr::BlockModel> newBlockShared;
+    for (auto& blk : uiGraph.blocks()) {
+        if (blk.get() == blockPtr) {
+            newBlockShared = blk;
+            break;
+        }
+    }
+
+    if (!newBlockShared) {
+        return false;
+    }
+
+    // Update UIWindow block reference
+    win.block = newBlockShared;
+
+    return true;
 }
 
 void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
-    for (auto& plot : m_plots) {
-        std::erase(plot.sourceNames, std::string(sinkName));
+    for (auto& w : uiWindows) {
+        if (w.isChart() && w.block) {
+            auto names = grc_compat::getBlockSinkNames(w.block.get());
+            std::erase(names, std::string(sinkName));
+            grc_compat::setBlockSinkNames(w.block.get(), names);
+        }
     }
-    std::erase_if(m_plots, [](const Plot& p) { return p.sourceNames.empty(); });
+    std::erase_if(uiWindows, [](const UIWindow& w) { return w.isChart() && w.block && grc_compat::getBlockSinkNames(w.block.get()).empty(); });
 }
 
-void Dashboard::loadPlotSourcesFor(Plot& plot) {
-    plot.plotSinkBlocks.clear();
+void Dashboard::loadUIWindowSources() {
+    std::println("[Dashboard::loadUIWindowSources] {} UIWindows, {} sinks in registry", uiWindows.size(), opendigitizer::charts::SinkRegistry::instance().sinkCount());
 
-    for (const auto& name : plot.sourceNames) {
-        auto plotSource = opendigitizer::ImPlotSinkManager::instance().findSink([&name](const auto& sink) {
-            // TODO: We should probably rely on block unique names for sink searching,
-            // not 'signal names'
-            return sink.signalName() == name || sink.name() == name;
-        });
-        if (!plotSource) {
-            auto msg = std::format("Unable to find plot source -- sink: '{}'", name);
-            components::Notification::warning(msg);
+    for (auto& w : uiWindows) {
+        if (!w.isChart() || !w.block) {
             continue;
         }
-        plot.plotSinkBlocks.push_back(&*plotSource);
-    }
-}
-
-void Dashboard::loadPlotSources() {
-    for (auto& plot : m_plots) {
-        loadPlotSourcesFor(plot);
+        // Re-set data_sinks to trigger settingsChanged() -> syncSinksFromNames()
+        auto names = grc_compat::getBlockSinkNames(w.block.get());
+        if (!names.empty()) {
+            grc_compat::setBlockSinkNames(w.block.get(), names);
+        }
     }
 }
 
@@ -611,25 +769,25 @@ void Dashboard::registerRemoteService(std::string_view blockName, std::optional<
 
     const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
     std::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
-    m_flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
+    flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
 
-    const auto it = std::ranges::find_if(m_services, [&](const auto& s) { return s.uri == flowgraphUri; });
-    if (it == m_services.end()) {
+    const auto it = std::ranges::find_if(services, [&](const auto& s) { return s.uri == flowgraphUri; });
+    if (it == services.end()) {
         auto msg = std::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
         components::Notification::warning(msg);
-        auto& s = *m_services.emplace(m_restClient, flowgraphUri, flowgraphUri);
+        auto& s = *services.emplace(restClient, flowgraphUri, flowgraphUri);
         s.reload();
     }
     removeUnusedRemoteServices();
 }
 
 void Dashboard::unregisterRemoteService(std::string_view blockName) {
-    m_flowgraphUriByRemoteSource.erase(std::string{blockName});
+    flowgraphUriByRemoteSource.erase(std::string{blockName});
     removeUnusedRemoteServices();
 }
 
 void Dashboard::removeUnusedRemoteServices() {
-    std::erase_if(m_services, [&](const auto& s) { return std::ranges::none_of(m_flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
+    std::erase_if(services, [&](const auto& s) { return std::ranges::none_of(flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
 }
 
 void Dashboard::addRemoteSignal(const SignalData& signalData) {
@@ -660,7 +818,7 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
 
     // We can add remote signals only to the root block. And the root block
     // has to be a scheduler
-    message.serviceName = graphModel().rootBlock.ownerSchedulerUniqueName();
+    message.serviceName = graphModel.rootBlock.ownerSchedulerUniqueName();
     gr::property_map properties{
         {"remote_uri"s, uriStr},                 //
         {"signal_name"s, signalData.signalName}, //
@@ -670,7 +828,7 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
         {"type"s, std::move(blockType) + std::move(blockParams)}, //
         {"properties"s, std::move(properties)}};
 
-    graphModel().sendMessage(std::move(message));
+    graphModel.sendMessage(std::move(message));
 }
 
 void Dashboard::Service::reload() {
@@ -722,7 +880,51 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     restClient->request(command);
 }
 
-UiGraphModel& Dashboard::graphModel() { return m_graphModel; }
+gr::BlockModel* Dashboard::emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters) {
+    using namespace opendigitizer::charts;
+
+    // Build initParams: start with chart name, then merge any additional parameters
+    gr::property_map initParams;
+    if (!chartName.empty()) {
+        initParams["chart_name"] = chartName;
+    }
+    for (const auto& [key, value] : chartParameters) {
+        initParams[key] = value;
+    }
+
+    // Resolve chart type name - try exact match first, then search registered types
+    std::string resolvedTypeName;
+    if (pluginLoader->isBlockAvailable(chartTypeName)) {
+        resolvedTypeName = std::string(chartTypeName);
+    } else {
+        // Search for a matching chart type (case-insensitive partial match)
+        std::string lowerRequestedType(chartTypeName);
+        std::transform(lowerRequestedType.begin(), lowerRequestedType.end(), lowerRequestedType.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        for (const auto& registeredType : registeredChartTypes()) {
+            std::string lowerRegistered = registeredType;
+            std::transform(lowerRegistered.begin(), lowerRegistered.end(), lowerRegistered.begin(), [](unsigned char c) { return std::tolower(c); });
+            // Match if registered type ends with the requested type (e.g., "XYChart" matches "opendigitizer::charts::XYChart")
+            if (lowerRegistered.ends_with(lowerRequestedType) || lowerRequestedType.ends_with(lowerRegistered.substr(lowerRegistered.rfind("::") + 2))) {
+                resolvedTypeName = registeredType;
+                break;
+            }
+        }
+    }
+
+    // Fall back to default chart type if not found
+    if (resolvedTypeName.empty()) {
+        resolvedTypeName = std::string(kDefaultChartType);
+    }
+
+    // Create block via registry
+    auto& blockModelRef = uiGraph.emplaceBlock(resolvedTypeName, initParams);
+    if (!blockModelRef) {
+        return nullptr;
+    }
+
+    return blockModelRef.get();
+}
 
 void Dashboard::Service::execute() {
     opencmw::client::Command command;
@@ -771,9 +973,12 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
                 if (str.size() < 10) {
                     return {};
                 }
-                int      year  = std::atoi(str.data());
-                unsigned month = cast_to_unsigned(std::atoi(str.c_str() + 5UZ));
-                unsigned day   = cast_to_unsigned(std::atoi(str.c_str() + 8UZ));
+                int      year  = 0;
+                unsigned month = 0;
+                unsigned day   = 0;
+                std::from_chars(str.data(), str.data() + 4, year);
+                std::from_chars(str.data() + 5, str.data() + 7, month);
+                std::from_chars(str.data() + 8, str.data() + 10, day);
 
                 std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
                 return std::chrono::sys_days(date);
