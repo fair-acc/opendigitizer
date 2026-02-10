@@ -496,7 +496,7 @@ connections:
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
-        std::this_thread::sleep_for(1200ms);
+        std::this_thread::sleep_for(2000ms);
         test.setGrc(grc2);
 
         waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; });
@@ -564,7 +564,7 @@ connections:
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
-        std::this_thread::sleep_for(1200ms);
+        std::this_thread::sleep_for(2000ms);
 
         {
             std::lock_guard lock(dnsMutex);
