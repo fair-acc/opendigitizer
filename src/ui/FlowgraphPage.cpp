@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <format>
 
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
 #include "GraphModel.hpp"
@@ -165,21 +166,21 @@ void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std
     }
 };
 
-std::string valToString(const pmtv::pmt& _val) {
-    return std::visit(gr::meta::overloaded{                                //
-                          [&](double val) { return std::to_string(val); }, //
-                          [&](float val) { return std::to_string(val); },  //
-                          [&](auto&& val) {
-                              using T = std::remove_cvref_t<decltype(val)>;
-                              if constexpr (std::integral<T>) {
-                                  std::string x = std::format("{}", val);
-                                  return std::to_string(val);
-                              } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                  return std::string(val);
-                              }
-                              return ""s;
-                          }},
-        _val);
+std::string valToString(const gr::pmt::Value& val) {
+    std::string out;
+    gr::pmt::ValueVisitor([&]<typename TArg>(const TArg& arg) {
+        using T = std::decay_t<TArg>;
+        if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
+            out = std::string(arg);
+        } else if constexpr (std::same_as<T, bool>) {
+            out = arg ? "true" : "false";
+        } else if constexpr (std::integral<T> || std::floating_point<T>) {
+            out = std::to_string(arg);
+        } else {
+            out.clear();
+        }
+    }).visit(val);
+    return out;
 }
 
 FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
@@ -324,7 +325,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                             continue;
                         }
 
-                        const auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[propertyKey];
+                        const auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[std::string(propertyKey)];
                         if (!currentPropertyMetaInformation.isVisible) {
                             continue;
                         }
@@ -486,15 +487,15 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                             auto owner          = ownersForRoot();
                             message.serviceName = owner.scheduler;
 
-                            message.data = gr::property_map{                                                                             //
-                                {"_targetGraph", owner.graph},                                                                           //
-                                {std::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), outputPort->ownerBlock->blockUniqueName},     //
-                                {std::string(gr::serialization_fields::EDGE_SOURCE_PORT), outputPort->portName},                         //
-                                {std::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), inputPort->ownerBlock->blockUniqueName}, //
-                                {std::string(gr::serialization_fields::EDGE_DESTINATION_PORT), inputPort->portName},                     //
-                                {std::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                         //
-                                {std::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                                 //
-                                {std::string(gr::serialization_fields::EDGE_NAME), std::string()}};
+                            message.data = gr::property_map{                                                                                  //
+                                {"_targetGraph", owner.graph},                                                                                //
+                                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), outputPort->ownerBlock->blockUniqueName},     //
+                                {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), outputPort->portName},                         //
+                                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), inputPort->ownerBlock->blockUniqueName}, //
+                                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), inputPort->portName},                     //
+                                {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                         //
+                                {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                                 //
+                                {std::pmr::string(gr::serialization_fields::EDGE_NAME), std::string()}};
 
                             _graphModel->sendMessage(std::move(message));
                         }
@@ -660,9 +661,9 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                             message.endpoint    = gr::scheduler::property::kReplaceBlock;
                             auto owner          = ownersForRoot();
                             message.serviceName = owner.scheduler;
-                            message.data        = gr::property_map{                                          //
-                                {"uniqueName"s, _selectedBlock->blockUniqueName},                     //
-                                {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                            message.data        = gr::property_map{                                         //
+                                {"uniqueName", _selectedBlock->blockUniqueName},                     //
+                                {"type", std::move(typeParams.baseType) + availableParametrization}, //
                                 {"_targetGraph", owner.graph}};
 
                             _graphModel->sendMessage(std::move(message));
@@ -773,7 +774,7 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     auto owner          = ownersForRoot();
     message.serviceName = owner.scheduler;
     message.data        = gr::property_map{//
-        {"uniqueName"s, blockName}, //
+        {"uniqueName", blockName},  //
         {"_targetGraph", owner.graph}};
     _graphModel->sendMessage(std::move(message));
 }
@@ -784,12 +785,12 @@ void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
     message.cmd         = gr::message::Command::Set;
     message.endpoint    = gr::graph::property::kSubgraphExportPort;
     message.serviceName = _exportPortTargetBlock->blockUniqueName;
-    message.data        = gr::property_map{                   //
-        {"uniqueBlockName"s, request.uniqueBlockName}, //
-        {"portDirection"s, request.portDirection},     //
-        {"portName"s, request.portName},               //
-        {"exportedName"s, request.exportedName},       //
-        {"exportFlag"s, request.exportFlag}};
+    message.data        = gr::property_map{                  //
+        {"uniqueBlockName", request.uniqueBlockName}, //
+        {"portDirection", request.portDirection},     //
+        {"portName", request.portName},               //
+        {"exportedName", request.exportedName},       //
+        {"exportFlag", request.exportFlag}};
     graphModel()->sendMessage(std::move(message));
 }
 

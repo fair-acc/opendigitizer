@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
 #include <format>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 
@@ -233,7 +234,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     auto       latency = now - std::chrono::nanoseconds(timestamp);
                     map.insert({"REMOTE_SOURCE_LATENCY", {latency.count()}}); // compares the current system time with the time inside the tag
                 }
-                const auto yamlMap = pmtv::yaml::deserialize(yaml);
+                const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                 if (yamlMap) {
                     const gr::property_map& rootMap = yamlMap.value();
                     map.insert(rootMap.begin(), rootMap.end()); // Ignore duplicates (do not overwrite)
@@ -241,7 +242,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
                 }
                 if (verbose_console) {
-                    auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
+                    const auto tag_time = std::chrono::system_clock::time_point() + std::chrono::nanoseconds(timestamp);
                     std::print("RemoteStreamSource: {} publish tag (tag-time: {}, systemtime: {}): {}\n", this->name.value, gr::time::getIsoTime(tag_time), gr::time::getIsoTime(), gr::join(map));
                 }
                 const auto tagIndex = written + static_cast<std::size_t>(idx - cast_to_signed(d.read));
@@ -307,7 +308,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 acq.triggerTimestamps.value()          = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
                 acq.triggerOffsets                     = {0.f};
                 const gr::property_map yamlPropertyMap = {{"subscription-error", rep.error}};
-                acq.triggerYamlPropertyMaps            = {pmtv::yaml::serialize(yamlPropertyMap)};
+                acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
                 return;
@@ -556,7 +557,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 ds.timing_events.resize(1UZ);
 
                 for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
-                    const auto yamlMap = pmtv::yaml::deserialize(yaml);
+                    const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                     if (yamlMap) {
                         const gr::property_map& rootMap = yamlMap.value();
                         ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);

@@ -19,8 +19,8 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
     T processOne(T) noexcept {
         if (this->inputTagsPresent()) {
             const gr::property_map& tagMap = this->mergedInputTag().map;
-            if (tagMap.contains(key_filter) && std::holds_alternative<std::string>(tagMap.at(key_filter))) {
-                _currentValue = static_cast<T>(std::stod(std::get<std::string>(tagMap.at(key_filter))));
+            if (const auto it = tagMap.find(key_filter); it != tagMap.end() && it->second.is_string()) {
+                _currentValue = static_cast<T>(std::stod(it->second.value_or(std::string())));
             }
         }
         return _currentValue;

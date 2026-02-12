@@ -22,7 +22,7 @@
 
 namespace opendigitizer::charts {
 
-struct SpectrumPlot : gr::Block<SpectrumPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>, Chart {
+struct SpectrumPlot : gr::Block<SpectrumPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Spectrum magnitude plot with optional max-hold, min-hold, and average traces.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>

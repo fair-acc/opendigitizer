@@ -183,12 +183,16 @@ private:
                         if (auto it = data.find("originalSchedulerState"); it != data.end()) {
                             // Process reply to kGraphGRC SET message. We need to restart the scheduler
 
-                            const auto originalState = static_cast<gr::lifecycle::State>(std::get<int>(it->second));
-                            std::println("Setting Graph GRC finished in GR4, scheduler needs to resume to state {}", magic_enum::enum_name(originalState));
+                            if (const auto* originalStateValue = it->second.get_if<int>()) {
+                                const auto originalState = static_cast<gr::lifecycle::State>(*originalStateValue);
+                                std::println("Setting Graph GRC finished in GR4, scheduler needs to resume to state {}", magic_enum::enum_name(originalState));
 
-                            startThread(originalState);
+                                startThread(originalState);
 
-                            graphModel.requestFullUpdate();
+                                graphModel.requestFullUpdate();
+                            } else {
+                                DigitizerUi::components::Notification::error(std::format("Invalid originalSchedulerState type in {}", message.endpoint));
+                            }
                         } else {
                             // Process reply to kGraphGRC GET message
                             graphModel.processMessage(message);

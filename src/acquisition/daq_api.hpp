@@ -35,8 +35,8 @@ struct SerialisedFlowgraphMessage {
 
 inline void storeFlowgraphToMessage(const flowgraph::Flowgraph& outFlowgraph, gr::Message& message) {
     message.data = gr::property_map{
-        {"serialisedFlowgraph"s, outFlowgraph.serialisedFlowgraph}, //
-        {"serialisedUiLayout"s, outFlowgraph.serialisedUiLayout}    //
+        {"serialisedFlowgraph", outFlowgraph.serialisedFlowgraph}, //
+        {"serialisedUiLayout", outFlowgraph.serialisedUiLayout}    //
     };
 }
 
@@ -47,20 +47,18 @@ inline std::expected<flowgraph::Flowgraph, std::string> getFlowgraphFromMessage(
         return std::unexpected("serialisedFlowgraph field not specified"s);
     }
 
-    const auto* source = std::get_if<std::string>(&it->second);
-    if (!source) {
+    if (!it->second.is_string()) {
         return std::unexpected("serialisedFlowgraph field is not a string"s);
     }
+    const auto source = it->second.value_or(std::string{});
 
     std::string serialisedUiLayout;
     it = dataMap.find("serialisedUiLayout"s);
-    if (it != dataMap.end()) {
-        if (const auto* uiLayout = std::get_if<std::string>(&it->second); uiLayout) {
-            serialisedUiLayout = *uiLayout;
-        }
+    if (it != dataMap.end() && it->second.is_string()) {
+        serialisedUiLayout = it->second.value_or(std::string());
     }
 
-    return flowgraph::Flowgraph{.serialisedFlowgraph = *source, .serialisedUiLayout = serialisedUiLayout};
+    return flowgraph::Flowgraph{.serialisedFlowgraph = source, .serialisedUiLayout = serialisedUiLayout};
 }
 
 } // namespace opendigitizer::flowgraph
@@ -87,12 +85,12 @@ inline std::string serialiseMessage(const gr::Message& message) {
         yaml["dataError"] = message.data.error().message;
     }
 
-    return pmtv::yaml::serialize(yaml);
+    return pmt::yaml::serialize(yaml);
 }
 
 inline gr::Message deserialiseMessage(const std::string& messageYaml) {
     using namespace gr;
-    const auto yaml = pmtv::yaml::deserialize(messageYaml);
+    const auto yaml = pmt::yaml::deserialize(messageYaml);
     if (!yaml) {
         throw gr::exception(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, messageYaml));
     }
@@ -100,21 +98,26 @@ inline gr::Message deserialiseMessage(const std::string& messageYaml) {
     const property_map& rootMap = yaml.value();
 
     gr::Message message;
-    auto        optionalCmd = magic_enum::enum_cast<gr::message::Command>(std::get<std::string>(rootMap.at("cmd")));
-    if (optionalCmd) {
-        message.cmd = *optionalCmd;
+    if (const auto cmd = rootMap.at("cmd").value_or(std::string()); !cmd.empty()) {
+        if (auto optionalCmd = magic_enum::enum_cast<gr::message::Command>(cmd)) {
+            message.cmd = *optionalCmd;
+        }
     }
 
-    message.protocol        = std::get<std::string>(rootMap.at("protocol"));
-    message.serviceName     = std::get<std::string>(rootMap.at("serviceName"));
-    message.clientRequestID = std::get<std::string>(rootMap.at("clientRequestID"));
-    message.endpoint        = std::get<std::string>(rootMap.at("endpoint"));
-    message.rbac            = std::get<std::string>(rootMap.at("rbac"));
+    message.protocol        = rootMap.at("protocol").value_or(std::string());
+    message.serviceName     = rootMap.at("serviceName").value_or(std::string());
+    message.clientRequestID = rootMap.at("clientRequestID").value_or(std::string());
+    message.endpoint        = rootMap.at("endpoint").value_or(std::string());
+    message.rbac            = rootMap.at("rbac").value_or(std::string());
 
-    if (rootMap.contains("data") && std::holds_alternative<property_map>(rootMap.at("data"))) {
-        message.data = std::get<property_map>(rootMap.at("data"));
+    if (rootMap.contains("data")) {
+        if (auto* dataPtr = rootMap.at("data").get_if<property_map>(); dataPtr != nullptr) {
+            message.data = *dataPtr;
+        } else {
+            message.data = std::unexpected(gr::Error("Invalid type for 'data': expected property_map"));
+        }
     } else if (rootMap.contains("dataError")) {
-        message.data = std::unexpected(gr::Error(std::get<std::string>(rootMap.at("dataError"))));
+        message.data = std::unexpected(gr::Error(rootMap.at("dataError").value_or(std::string())));
     }
 
     return message;

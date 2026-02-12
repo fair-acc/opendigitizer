@@ -26,7 +26,7 @@ enum class TopPaneMode : int {
     Density  = 1  // 2-D histogram heatmap
 };
 
-struct SpectrumView : gr::Block<SpectrumView, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>, Chart {
+struct SpectrumView : gr::Block<SpectrumView, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Composite spectrum display: magnitude plot or density (top) + waterfall (bottom) with synchronised X-axis.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>

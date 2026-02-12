@@ -65,11 +65,9 @@ void NewBlockSelector::draw() {
                 message.cmd         = gr::message::Command::Set;
                 message.endpoint    = gr::scheduler::property::kEmplaceBlock;
                 message.serviceName = m_targetSchedulerUniqueName;
-                message.data        = gr::property_map{
-                           {"type"s, std::move(type)}, //
-                };
+                message.data        = gr::property_map{{"type", std::move(type)}};
                 if (!m_targetGraphUniqueName.empty()) {
-                    (*message.data)["_targetGraph"s] = m_targetGraphUniqueName;
+                    (*message.data)["_targetGraph"] = m_targetGraphUniqueName;
                 }
                 m_graphModel->sendMessage(message);
             }

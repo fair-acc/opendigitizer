@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <fstream>
 #include <print>
 #include <ranges>
 
 #include <format>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
@@ -252,7 +254,7 @@ void Dashboard::load() {
 
 void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler) {
     try {
-        const auto yaml = pmtv::yaml::deserialize(grcData);
+        const auto yaml = gr::pmt::yaml::deserialize(grcData);
         if (!yaml) {
             throw gr::exception(std::format("Could not parse yaml: {}:{}\n{}", yaml.error().message, yaml.error().line, grcData));
         }
@@ -285,8 +287,11 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         assignScheduler(std::move(grGraph));
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
-        const auto dashboard = std::get<gr::property_map>(rootMap.at("dashboard"));
-        doLoad(dashboard);
+        if (const auto* dashboard = rootMap.at("dashboard").get_if<gr::property_map>()) {
+            doLoad(*dashboard);
+        } else {
+            throw gr::exception("dashboard field is not a property_map");
+        }
         isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
@@ -316,27 +321,45 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
     using namespace gr;
     auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
 
-    if (dashboard.contains("layout") && std::holds_alternative<std::string>(dashboard.at("layout"))) {
-        layout = magic_enum::enum_cast<DockingLayoutType>(std::get<std::string>(dashboard.at("layout")), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+    const auto readField = []<typename T>(const gr::property_map& m, std::string_view key, bool required = true) -> std::optional<T> {
+        auto it = m.find(std::pmr::string(key));
+        if (it == m.end()) {
+            if (!required) {
+                return std::nullopt;
+            }
+            throw gr::exception(std::format("Missing required key '{}'", key));
+        }
+
+        if constexpr (std::same_as<T, std::string>) {
+            if (!it->second.is_string()) {
+                throw gr::exception(std::format("Key '{}' must be string", key));
+            }
+            return it->second.value_or(std::string{});
+        } else {
+            if (const auto* p = it->second.get_if<T>()) {
+                return *p;
+            }
+
+            std::string actualType = "<unknown>";
+            pmt::ValueVisitor([&actualType]<typename T0>(const T0& arg) { actualType = gr::meta::type_name<std::decay_t<T0>>(); }).visit(it->second);
+            throw gr::exception(std::format("Key '{}' has invalid type: expected '{}', got '{}'", key, gr::meta::type_name<T>(), actualType));
+        }
+    };
+
+    if (dashboard.contains("layout") && dashboard.at("layout").is_string()) {
+        layout = magic_enum::enum_cast<DockingLayoutType>(dashboard.at("layout").value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     }
 
-    if (!dashboard.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("sources"))) {
-        throw gr::exception("sources entry invalid");
-    }
-    auto sources = std::get<std::vector<pmtv::pmt>>(dashboard.at("sources"));
+    auto sources = *readField.operator()<Tensor<pmt::Value>>(dashboard, "sources");
 
     for (const auto& src : sources) {
-        if (!std::holds_alternative<property_map>(src)) {
+        if (!src.holds<property_map>()) {
             throw gr::exception("source is not a property_map");
         }
-        const property_map srcMap = std::get<property_map>(src);
+        const property_map srcMap = src.value_or(property_map{});
 
-        if (!srcMap.contains("block") || !std::holds_alternative<std::string>(srcMap.at("block")) //
-            || !srcMap.contains("name") || !std::holds_alternative<std::string>(srcMap.at("name"))) {
-            throw std::runtime_error("invalid source name definition");
-        }
-        auto block = std::get<std::string>(srcMap.at("block"));
-        auto name  = std::get<std::string>(srcMap.at("name"));
+        const auto block = *readField.operator()<std::string>(srcMap, "block");
+        const auto name  = *readField.operator()<std::string>(srcMap, "name");
 
         auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& s) { return s.name() == block; });
         if (!sinkPtr) {
@@ -349,50 +372,46 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         // SignalSink interface is read-only for name
     }
 
-    if (!dashboard.contains("plots") || !std::holds_alternative<std::vector<pmtv::pmt>>(dashboard.at("plots"))) {
-        throw gr::exception("plots entry invalid");
-    }
-    auto plots = std::get<std::vector<pmtv::pmt>>(dashboard.at("plots"));
+    const auto plots = *readField.operator()<Tensor<pmt::Value>>(dashboard, "plots");
 
     for (const auto& plotPmt : plots) {
-        if (!std::holds_alternative<property_map>(plotPmt)) {
+        if (!plotPmt.holds<property_map>()) {
             throw gr::exception("plot is not a property_map");
         }
-        const property_map plotMap = std::get<property_map>(plotPmt);
+        const property_map plotMap = plotPmt.value_or(property_map{});
 
-        if (!plotMap.contains("name") || !std::holds_alternative<std::string>(plotMap.at("name"))                     //
-            || !plotMap.contains("sources") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("sources")) //
-            || !plotMap.contains("rect") || !std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("rect"))) {
-            throw gr::exception("invalid plot definition");
-        }
-
-        auto name        = std::get<std::string>(plotMap.at("name"));
-        auto plotSources = std::get<std::vector<pmtv::pmt>>(plotMap.at("sources"));
-        auto rect        = std::get<std::vector<pmtv::pmt>>(plotMap.at("rect"));
+        const auto name        = *readField.operator()<std::string>(plotMap, "name");
+        const auto plotSources = *readField.operator()<Tensor<pmt::Value>>(plotMap, "sources");
+        const auto rect        = *readField.operator()<Tensor<pmt::Value>>(plotMap, "rect");
         if (rect.size() != 4) {
             throw gr::exception("invalid plot definition rect.size() != 4");
         }
 
         std::string chartTypeName = "XYChart";
-        if (plotMap.contains("type") && std::holds_alternative<std::string>(plotMap.at("type"))) {
-            chartTypeName = std::get<std::string>(plotMap.at("type"));
+        if (const auto type = readField.operator()<std::string>(plotMap, "type", false); type) {
+            chartTypeName = *type;
         }
 
         // Parse chart parameters from .grc (e.g., show_legend, show_grid, etc.)
         gr::property_map chartParameters;
-        if (plotMap.contains("parameters") && std::holds_alternative<property_map>(plotMap.at("parameters"))) {
-            chartParameters = std::get<property_map>(plotMap.at("parameters"));
+        if (const auto parameters = readField.operator()<property_map>(plotMap, "parameters", false); parameters) {
+            chartParameters = *parameters;
         }
 
         // Transfer 'sources:' to 'data_sinks' (see grc_compat namespace in Dashboard.hpp)
-        std::vector<std::string> dataSinks;
-        std::transform(plotSources.begin(), plotSources.end(), std::back_inserter(dataSinks), [](const auto& elem) { return std::get<std::string>(elem); });
-        chartParameters["data_sinks"] = dataSinks;
+        gr::Tensor<gr::pmt::Value> dataSinksTensor(gr::extents_from, {plotSources.size()});
+        for (std::size_t i = 0; i < plotSources.size(); ++i) {
+            if (!plotSources[i].is_string()) {
+                throw gr::exception("plot.sources elements must be strings");
+            }
+            dataSinksTensor[i] = plotSources[i].value_or(std::string());
+        }
+        chartParameters[std::pmr::string("data_sinks")] = std::move(dataSinksTensor);
 
         // Parse axes config (will be set on block's uiConstraints after creation)
-        std::vector<pmtv::pmt> axesConfig;
-        if (plotMap.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(plotMap.at("axes"))) {
-            axesConfig = std::get<std::vector<pmtv::pmt>>(plotMap.at("axes"));
+        gr::Tensor<gr::pmt::Value> axesConfig;
+        if (const auto axes = readField.operator()<gr::Tensor<gr::pmt::Value>>(plotMap, "axes", false); axes) {
+            axesConfig = *axes;
         }
 
         // Create chart block in UI Graph with parameters
@@ -404,8 +423,14 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
 
         // Set uiConstraints on the block (axes config and window layout for chart to read in draw())
-        blockPtr->uiConstraints()["axes"]   = axesConfig;
-        blockPtr->uiConstraints()["window"] = gr::property_map{{"x", pmtv::cast<std::size_t>(rect[0])}, {"y", pmtv::cast<std::size_t>(rect[1])}, {"width", pmtv::cast<std::size_t>(rect[2])}, {"height", pmtv::cast<std::size_t>(rect[3])}};
+        blockPtr->uiConstraints()["axes"] = axesConfig;
+        auto rectValue                    = [](const gr::pmt::Value& v) -> std::uint64_t {
+            if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
+                return *converted;
+            }
+            return 0ULL;
+        };
+        blockPtr->uiConstraints()["window"] = gr::property_map{{"x", rectValue(rect[0])}, {"y", rectValue(rect[1])}, {"width", rectValue(rect[2])}, {"height", rectValue(rect[3])}};
 
         // Find the shared_ptr for this block in uiGraph
         std::shared_ptr<gr::BlockModel> blockShared;
@@ -419,10 +444,10 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         // Create UIWindow for this chart (sink management done via settings interface)
         UIWindow uiWindow(blockShared, name);
         if (uiWindow.window) {
-            uiWindow.window->x      = pmtv::cast<std::size_t>(rect[0]);
-            uiWindow.window->y      = pmtv::cast<std::size_t>(rect[1]);
-            uiWindow.window->width  = pmtv::cast<std::size_t>(rect[2]);
-            uiWindow.window->height = pmtv::cast<std::size_t>(rect[3]);
+            uiWindow.window->x      = static_cast<std::size_t>(rectValue(rect[0]));
+            uiWindow.window->y      = static_cast<std::size_t>(rectValue(rect[1]));
+            uiWindow.window->width  = static_cast<std::size_t>(rectValue(rect[2]));
+            uiWindow.window->height = static_cast<std::size_t>(rectValue(rect[3]));
         }
 
         uiWindows.push_back(std::move(uiWindow));
@@ -448,7 +473,7 @@ void Dashboard::save() {
 
     property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
 
-    std::vector<pmtv::pmt> sources;
+    gr::Tensor<gr::pmt::Value> sources;
     // Use SinkRegistry with SignalSink interface for serialization
     opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
         // TODO: Port saving and loading flowgraph layouts
@@ -460,7 +485,7 @@ void Dashboard::save() {
     });
     dashboardYaml["sources"] = sources;
 
-    std::vector<pmtv::pmt> plots;
+    gr::Tensor<gr::pmt::Value> plots;
     // Iterate UIWindows for chart serialization (new API)
     for (const auto& w : uiWindows) {
         if (!w.isChart() || !w.block) {
@@ -478,37 +503,47 @@ void Dashboard::save() {
         }
 
         // Serialize axes from uiConstraints
-        std::vector<pmtv::pmt> plotAxes;
-        const auto&            constraints = w.block->uiConstraints();
-        if (constraints.contains("axes") && std::holds_alternative<std::vector<pmtv::pmt>>(constraints.at("axes"))) {
-            plotAxes = std::get<std::vector<pmtv::pmt>>(constraints.at("axes"));
+        gr::Tensor<gr::pmt::Value> plotAxes;
+        const auto&                constraints = w.block->uiConstraints();
+        if (constraints.contains("axes")) {
+            plotAxes = constraints.at("axes").value_or(gr::Tensor<gr::pmt::Value>{});
         }
         plotMap["axes"] = plotAxes;
 
         // Serialize signal sinks from data_sinks property
-        std::vector<pmtv::pmt> plotSinkBlockNames;
+        gr::Tensor<gr::pmt::Value> plotSinkBlockNames;
         for (const auto& sinkName : grc_compat::getBlockSinkNames(w.block.get())) {
             plotSinkBlockNames.emplace_back(sinkName);
         }
         plotMap["sources"] = plotSinkBlockNames;
 
         // Serialize window rect from uiConstraints or DockSpace::Window
-        std::vector<int> plotRect;
-        if (constraints.contains("window") && std::holds_alternative<property_map>(constraints.at("window"))) {
-            const auto& windowMap = std::get<property_map>(constraints.at("window"));
-            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("x"))));
-            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("y"))));
-            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("width"))));
-            plotRect.emplace_back(static_cast<int>(pmtv::cast<std::size_t>(windowMap.at("height"))));
+        gr::Tensor<gr::pmt::Value> rectTensor(gr::extents_from, {std::size_t(4)});
+        if (constraints.contains("window")) {
+            if (const auto* windowMap = constraints.at("window").get_if<property_map>()) {
+                auto toUInt64 = [](const gr::pmt::Value& v) -> std::uint64_t {
+                    if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
+                        return *converted;
+                    }
+                    return 0ULL;
+                };
+                rectTensor[0] = toUInt64(windowMap->at("x"));
+                rectTensor[1] = toUInt64(windowMap->at("y"));
+                rectTensor[2] = toUInt64(windowMap->at("width"));
+                rectTensor[3] = toUInt64(windowMap->at("height"));
+            }
         } else if (w.window) {
-            plotRect.emplace_back(w.window->x);
-            plotRect.emplace_back(w.window->y);
-            plotRect.emplace_back(w.window->width);
-            plotRect.emplace_back(w.window->height);
+            rectTensor[0] = static_cast<std::uint64_t>(w.window->x);
+            rectTensor[1] = static_cast<std::uint64_t>(w.window->y);
+            rectTensor[2] = static_cast<std::uint64_t>(w.window->width);
+            rectTensor[3] = static_cast<std::uint64_t>(w.window->height);
         } else {
-            plotRect = {0, 0, 1, 1}; // Default
+            rectTensor[0] = std::uint64_t{0};
+            rectTensor[1] = std::uint64_t{0};
+            rectTensor[2] = std::uint64_t{1};
+            rectTensor[3] = std::uint64_t{1};
         }
-        plotMap["rect"] = plotRect;
+        plotMap["rect"] = std::move(rectTensor);
 
         plots.emplace_back(plotMap);
     }
@@ -519,14 +554,14 @@ void Dashboard::save() {
 
         opencmw::client::Command hcommand;
         hcommand.command          = opencmw::mdp::Command::Set;
-        std::string headerYamlStr = pmtv::yaml::serialize(headerYaml);
+        std::string headerYamlStr = pmt::yaml::serialize(headerYaml);
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
         hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
         restClient->request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command             = opencmw::mdp::Command::Set;
-        std::string dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
+        std::string dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
         dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
         dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
         restClient->request(dcommand);
@@ -549,8 +584,8 @@ void Dashboard::save() {
         }
 
         uint32_t      headerStart      = 32;
-        std::string   headerYamlStr    = pmtv::yaml::serialize(headerYaml);
-        std::string   dashboardYamlStr = pmtv::yaml::serialize(dashboardYaml);
+        std::string   headerYamlStr    = pmt::yaml::serialize(headerYaml);
+        std::string   dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
         std::uint32_t headerSize       = static_cast<uint32_t>(headerYamlStr.size());
         std::uint32_t dashboardStart   = headerStart + headerSize + 1;
         std::uint32_t dashboardSize    = static_cast<uint32_t>(dashboardYamlStr.size());
@@ -583,7 +618,12 @@ DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int
     }
 
     // Store window layout and default axes in uiConstraints
-    blockPtr->uiConstraints()["window"] = gr::property_map{{"x", static_cast<std::size_t>(x)}, {"y", static_cast<std::size_t>(y)}, {"width", static_cast<std::size_t>(w)}, {"height", static_cast<std::size_t>(h)}};
+    blockPtr->uiConstraints()["window"] = gr::property_map{
+        {"x", static_cast<std::uint64_t>(x)},
+        {"y", static_cast<std::uint64_t>(y)},
+        {"width", static_cast<std::uint64_t>(w)},
+        {"height", static_cast<std::uint64_t>(h)},
+    };
 
     // Find the shared_ptr for this block in uiGraph
     std::shared_ptr<gr::BlockModel> blockShared;
@@ -646,7 +686,11 @@ Dashboard::UIWindow* Dashboard::copyChart(std::string_view sourceChartId) {
     // Copy data_sinks setting if present
     auto sinkNames = grc_compat::getBlockSinkNames(sourceBlock);
     if (!sinkNames.empty()) {
-        chartParameters["data_sinks"] = sinkNames;
+        gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {sinkNames.size()});
+        for (std::size_t i = 0; i < sinkNames.size(); ++i) {
+            sinks[i] = sinkNames[i];
+        }
+        chartParameters[std::pmr::string("data_sinks")] = std::move(sinks);
     }
 
     auto* newBlock = emplaceChartBlock(typeName, newName, chartParameters);
@@ -705,7 +749,11 @@ bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) 
     // Create new chart block with preserved sink names
     gr::property_map chartParameters;
     if (!savedSinkNames.empty()) {
-        chartParameters["data_sinks"] = savedSinkNames;
+        gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {savedSinkNames.size()});
+        for (std::size_t i = 0; i < savedSinkNames.size(); ++i) {
+            sinks[i] = savedSinkNames[i];
+        }
+        chartParameters[std::pmr::string("data_sinks")] = std::move(sinks);
     }
 
     auto* blockPtr = emplaceChartBlock(newChartType, windowName, chartParameters);
@@ -820,13 +868,13 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
     // has to be a scheduler
     message.serviceName = graphModel.rootBlock.ownerSchedulerUniqueName();
     gr::property_map properties{
-        {"remote_uri"s, uriStr},                 //
-        {"signal_name"s, signalData.signalName}, //
-        {"signal_unit"s, signalData.unit}        //
+        {"remote_uri", uriStr},                 //
+        {"signal_name", signalData.signalName}, //
+        {"signal_unit", signalData.unit}        //
     }; //
-    message.data = gr::property_map{                              //
-        {"type"s, std::move(blockType) + std::move(blockParams)}, //
-        {"properties"s, std::move(properties)}};
+    message.data = gr::property_map{                             //
+        {"type", std::move(blockType) + std::move(blockParams)}, //
+        {"properties", std::move(properties)}};
 
     graphModel.sendMessage(std::move(message));
 }
@@ -860,8 +908,8 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     message.cmd      = gr::message::Command::Set;
     message.endpoint = gr::scheduler::property::kEmplaceBlock;
     message.data     = gr::property_map{
-            {"type"s, std::move(type)},        //
-            {"parameters"s, std::move(params)} //
+            {"type", std::move(type)},        //
+            {"parameters", std::move(params)} //
     };
 
     opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage{opendigitizer::gnuradio::serialiseMessage(message)};
@@ -962,12 +1010,12 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
     fetch(
         client, storageInfo, name, {What::Header},
         [cb, name, storageInfo](std::array<std::string, 1>&& desc) {
-            const auto yaml = pmtv::yaml::deserialize(desc[0]);
+            const auto yaml = gr::pmt::yaml::deserialize(desc[0]);
             if (!yaml) {
                 throw gr::exception(std::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
             }
             const gr::property_map& rootMap    = yaml.value();
-            bool                    isFavorite = rootMap.contains("favorite") && std::holds_alternative<bool>(rootMap.at("favorite")) && std::get<bool>(rootMap.at("favorite"));
+            bool                    isFavorite = rootMap.contains("favorite") && rootMap.at("favorite").value_or(false);
 
             auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
                 if (str.size() < 10) {
@@ -984,7 +1032,7 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
                 return std::chrono::sys_days(date);
             };
 
-            auto lastUsed = rootMap.contains("lastUsed") && std::holds_alternative<bool>(rootMap.at("lastUsed")) ? getDate(std::get<std::string>(rootMap.at("lastUsed"))) : std::nullopt;
+            auto lastUsed = rootMap.contains("lastUsed") && rootMap.at("lastUsed").is_string() ? getDate(rootMap.at("lastUsed").value_or(std::string())) : std::nullopt;
 
             cb(std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed));
         },

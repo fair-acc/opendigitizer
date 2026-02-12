@@ -103,7 +103,7 @@ struct Dashboard {
         explicit UIWindow(std::shared_ptr<gr::BlockModel> blk, std::string_view name = "") : window(std::make_shared<DockSpace::Window>(name.empty() ? std::string(blk->uniqueName()) : std::string(name))), block(std::move(blk)) {}
 
         [[nodiscard]] bool           hasBlock() const noexcept { return block != nullptr; }
-        [[nodiscard]] bool           isChart() const noexcept { return uiCategory() == gr::UICategory::ChartPane; }
+        [[nodiscard]] bool           isChart() const noexcept { return uiCategory() == gr::UICategory::Content; }
         [[nodiscard]] gr::UICategory uiCategory() const noexcept { return block ? block->uiCategory() : gr::UICategory::None; }
     };
 
@@ -223,8 +223,13 @@ inline std::vector<std::string> getBlockSinkNames(const gr::BlockModel* block) {
     }
     const auto& settings = block->settings().get();
     if (auto it = settings.find("data_sinks"); it != settings.end()) {
-        if (auto* vec = std::get_if<std::vector<std::string>>(&it->second)) {
-            return *vec;
+        if (auto* sinks = it->second.get_if<gr::Tensor<gr::pmt::Value>>()) {
+            std::vector<std::string> result;
+            result.reserve(sinks->size());
+            for (const auto& sink : *sinks) {
+                result.push_back(sink.value_or(std::string()));
+            }
+            return result;
         }
     }
     return {};
@@ -232,7 +237,11 @@ inline std::vector<std::string> getBlockSinkNames(const gr::BlockModel* block) {
 
 inline void setBlockSinkNames(gr::BlockModel* block, const std::vector<std::string>& names) {
     if (block) {
-        std::ignore = block->settings().set({{"data_sinks", names}});
+        gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {names.size()});
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            sinks[i] = names[i];
+        }
+        std::ignore = block->settings().set(gr::property_map{{std::pmr::string("data_sinks"), sinks}});
         std::ignore = block->settings().activateContext();
         std::ignore = block->settings().applyStagedParameters();
     }

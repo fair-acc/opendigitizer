@@ -21,7 +21,7 @@
 
 namespace opendigitizer::charts {
 
-struct WaterfallPlot : gr::Block<WaterfallPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>, Chart {
+struct WaterfallPlot : gr::Block<WaterfallPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Scrolling spectrogram using a GPU ring-buffer texture with single-row updates.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
