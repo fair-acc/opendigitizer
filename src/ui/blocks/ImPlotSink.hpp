@@ -53,7 +53,7 @@ template<typename T>
 T getValueOrDefault(const gr::property_map& map, const std::string& key, const T& defaultValue, std::source_location location = std::source_location::current()) {
     if (auto it = map.find(key); it != map.end()) {
         constexpr bool                strictChecks   = false;
-        std::expected<T, std::string> convertedValue = pmtv::convert_safely<T, strictChecks>(it->second);
+        std::expected<T, std::string> convertedValue = gr::pmt::convert_safely<T, strictChecks>(it->second);
         if (!convertedValue) {
             throw gr::exception(std::format("failed to convert value for key {} - error: {}", key, convertedValue.error()), location);
         }
@@ -68,7 +68,7 @@ using charts::tags::drawTags;
 GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>)
 
 template<typename T>
-struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">> {
+struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">> {
     using ValueType                   = gr::meta::fundamental_base_value_type_t<T>;
     static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
     static constexpr bool IsDataSet   = gr::DataSetLike<T>;
@@ -129,7 +129,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartP
     // Adapter for SinkRegistry registration (shared ownership with registry)
     std::shared_ptr<SignalSink> _sinkAdapter;
 
-    ImPlotSink(gr::property_map initParameters) : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>(std::move(initParameters)) {}
+    ImPlotSink(gr::property_map initParameters) : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
     ~ImPlotSink() {
         if (_sinkAdapter) {
@@ -517,7 +517,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartP
                 if (plot_tags) {
                     _tagValues.push_back({.timestamp = _xUtcOffset, .map = tagMap});
                     if (!tagOK) {
-                        _tagValues.back().map[std::string(kFishyTagKey)] = true;
+                        _tagValues.back().map[std::pmr::string(kFishyTagKey)] = true;
                     }
                 }
             }
@@ -553,7 +553,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::ChartP
             ImPlot::SetAxis(xAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
             ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
-        std::string scaleStr = config.contains("scale") ? std::get<std::string>(config.at("scale")) : "Linear";
+        std::string scaleStr = config.contains("scale") ? config.at("scale").value_or(std::string("Linear")) : "Linear";
         auto        trim     = [](const std::string& str) {
             auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
             auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();

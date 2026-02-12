@@ -39,7 +39,7 @@ struct DataSetPlotContext {
 /// XYChart - standard X-Y line/scatter chart as a GR4 block.
 /// Plots Y-values against a common X-axis with support for multiple axes, automatic signal grouping,
 /// various X-axis modes (UTC/relative time, sample index), tag rendering, and DataSet history fading.
-struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>, Chart {
+struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     // annotated type alias for cleaner declarations
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
@@ -76,7 +76,7 @@ struct XYChart : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
-    explicit XYChart(gr::property_map initParameters = {}) : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>(std::move(initParameters)) {}
+    explicit XYChart(gr::property_map initParameters = {}) : gr::Block<XYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 

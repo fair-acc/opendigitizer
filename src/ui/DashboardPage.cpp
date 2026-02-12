@@ -72,14 +72,14 @@ DashboardPage::DashboardPage() {
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kEmplaceEdge;
         message.serviceName = _dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
-        message.data        = gr::property_map{                                                                     //
-            {std::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName},     //
-            {std::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                                //
-            {std::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::string(sink.uniqueName())}, //
-            {std::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                            //
-            {std::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                 //
-            {std::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                         //
-            {std::string(gr::serialization_fields::EDGE_NAME), std::string()}};
+        message.data        = gr::property_map{                                                                          //
+            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName},     //
+            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                                //
+            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::string(sink.uniqueName())}, //
+            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                            //
+            {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                 //
+            {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                         //
+            {std::pmr::string(gr::serialization_fields::EDGE_NAME), std::string()}};
         _dashboard->graphModel.sendMessage(std::move(message));
 
         auto& uiWindow = _dashboard->newUIBlock(0, 0, 1, 1);
@@ -140,7 +140,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
             // Iterate uiGraph blocks filtered by ChartPane category
             for (auto& blockPtr : _dashboard->uiGraph.blocks()) {
-                if (blockPtr->uiCategory() != gr::UICategory::ChartPane) {
+                if (blockPtr->uiCategory() != gr::UICategory::Content) {
                     continue;
                 }
 
@@ -277,14 +277,12 @@ void DashboardPage::draw(Mode mode) noexcept {
                             // The root block needs to be a scheduler
                             message.serviceName = _dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
                             message.data        = gr::property_map{
-                                //
-                                {"type"s, sinkBlockType + sinkBlockParams}, //
-                                {
-                                    "properties"s,
+                                       {"type", sinkBlockType + sinkBlockParams}, //
+                                       {
+                                    "properties",
                                     gr::property_map{
-                                        //
-                                        {"signal_name"s, selectedRemoteSignal.signalName}, //
-                                        {"signal_unit"s, selectedRemoteSignal.unit}        //
+                                               {"signal_name", selectedRemoteSignal.signalName}, //
+                                               {"signal_unit", selectedRemoteSignal.unit}        //
                                     } //
                                 } //
                             };

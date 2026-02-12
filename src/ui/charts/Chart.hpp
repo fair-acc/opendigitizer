@@ -15,6 +15,7 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 
 #include <algorithm>
@@ -78,29 +79,29 @@ struct AxisConfig {
     if (axesIt == constraints.end()) {
         return std::nullopt;
     }
-    const auto* axesVec = std::get_if<std::vector<pmtv::pmt>>(&axesIt->second);
-    if (!axesVec) {
+    const auto* axesVec = axesIt->second.get_if<gr::Tensor<gr::pmt::Value>>();
+    if (axesVec == nullptr) {
         return std::nullopt;
     }
 
     std::size_t count = 0;
     for (const auto& axisPmt : *axesVec) {
-        const auto* axisMap = std::get_if<gr::property_map>(&axisPmt);
-        if (!axisMap) {
+        const auto* axisMap = axisPmt.get_if<gr::property_map>();
+        if (axisMap == nullptr) {
             continue;
         }
         auto axisStrIt = axisMap->find("axis");
         if (axisStrIt == axisMap->end()) {
             continue;
         }
-        const auto* axisStr = std::get_if<std::string>(&axisStrIt->second);
-        if (!axisStr) {
+        if (!axisStrIt->second.is_string()) {
             continue;
         }
-        AxisKind parsedKind = AxisKind::Y;
-        if (*axisStr == "X" || *axisStr == "x") {
+        const auto axisStr    = axisStrIt->second.value_or(std::string_view{});
+        AxisKind   parsedKind = AxisKind::Y;
+        if (axisStr == "X" || axisStr == "x") {
             parsedKind = AxisKind::X;
-        } else if (*axisStr == "Z" || *axisStr == "z") {
+        } else if (axisStr == "Z" || axisStr == "z") {
             parsedKind = AxisKind::Z;
         }
         if (parsedKind != targetKind) {
@@ -114,25 +115,23 @@ struct AxisConfig {
         AxisConfig cfg;
         cfg.axis = parsedKind;
         if (auto it = axisMap->find("min"); it != axisMap->end()) {
-            cfg.min = pmtv::cast<float>(it->second);
+            cfg.min = it->second.value_or(std::numeric_limits<float>::quiet_NaN());
         }
         if (auto it = axisMap->find("max"); it != axisMap->end()) {
-            cfg.max = pmtv::cast<float>(it->second);
+            cfg.max = it->second.value_or(std::numeric_limits<float>::quiet_NaN());
         }
         if (auto it = axisMap->find("scale"); it != axisMap->end()) {
-            if (const auto* s = std::get_if<std::string>(&it->second)) {
-                cfg.scale = magic_enum::enum_cast<AxisScale>(*s, magic_enum::case_insensitive).value_or(AxisScale::Linear);
+            if (it->second.is_string()) {
+                cfg.scale = magic_enum::enum_cast<AxisScale>(it->second.value_or(std::string()), magic_enum::case_insensitive).value_or(AxisScale::Linear);
             }
         }
         if (auto it = axisMap->find("format"); it != axisMap->end()) {
-            if (const auto* s = std::get_if<std::string>(&it->second)) {
-                cfg.format = magic_enum::enum_cast<LabelFormat>(*s, magic_enum::case_insensitive).value_or(LabelFormat::Auto);
+            if (it->second.is_string()) {
+                cfg.format = magic_enum::enum_cast<LabelFormat>(it->second.value_or(std::string()), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
             }
         }
         if (auto it = axisMap->find("plot_tags"); it != axisMap->end()) {
-            if (const auto* b = std::get_if<bool>(&it->second)) {
-                cfg.plotTags = *b;
-            }
+            cfg.plotTags = it->second.value_or(true);
         }
         return cfg;
     }
@@ -489,9 +488,9 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
         // suppress tag labels if too close to previous or to axis extremities
         if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
             std::string triggerLabel = "TRIGGER";
-            if (auto it = properties.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); it != properties.end()) {
-                if (auto* str = std::get_if<std::string>(&it->second)) {
-                    triggerLabel = *str;
+            if (const auto it = properties.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); it != properties.end()) {
+                if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
+                    triggerLabel = str;
                 }
             }
 
@@ -500,9 +499,9 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
                 lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
 
                 std::string triggerCtx;
-                if (auto it = properties.find(std::string(gr::tag::CONTEXT.shortKey())); it != properties.end()) {
-                    if (auto* str = std::get_if<std::string>(&it->second)) {
-                        triggerCtx = *str;
+                if (const auto it = properties.find(std::string(gr::tag::CONTEXT.shortKey())); it != properties.end()) {
+                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
+                        triggerCtx = str;
                     }
                 }
                 if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
@@ -555,8 +554,8 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
             if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
                 std::string triggerLabel = "TRIGGER";
                 if (auto it = tagMap.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); it != tagMap.end()) {
-                    if (auto* str = std::get_if<std::string>(&it->second)) {
-                        triggerLabel = *str;
+                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
+                        triggerLabel = str;
                     }
                 }
 
@@ -569,9 +568,9 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
 
                 // Render CONTEXT tag label below trigger label if present and different
                 std::string triggerCtx;
-                if (auto it = tagMap.find(std::string(gr::tag::CONTEXT.shortKey())); it != tagMap.end()) {
-                    if (auto* str = std::get_if<std::string>(&it->second)) {
-                        triggerCtx = *str;
+                if (const auto it = tagMap.find(std::string(gr::tag::CONTEXT.shortKey())); it != tagMap.end()) {
+                    if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
+                        triggerCtx = str;
                     }
                 }
                 if (!triggerCtx.empty() && triggerCtx != triggerLabel) {
@@ -1015,7 +1014,11 @@ struct Chart {
         }
         // erase by both the DnD name and the resolved block name
         std::erase_if(self.data_sinks.value, [&sinkName, &blockName](const std::string& entry) { return entry == sinkName || (!blockName.empty() && entry == blockName); });
-        std::ignore = self.settings().set({{"data_sinks", self.data_sinks.value}});
+        gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
+        for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
+            sinks[i] = self.data_sinks.value[i];
+        }
+        std::ignore = self.settings().set(gr::property_map{{std::pmr::string("data_sinks"), std::move(sinks)}});
         std::ignore = self.settings().applyStagedParameters();
     }
 
@@ -1025,7 +1028,11 @@ struct Chart {
         std::string canonicalName = sink ? std::string(sink->name()) : std::string(sinkName);
         if (std::find(self.data_sinks.value.begin(), self.data_sinks.value.end(), canonicalName) == self.data_sinks.value.end()) {
             self.data_sinks.value.push_back(canonicalName);
-            std::ignore = self.settings().set({{"data_sinks", self.data_sinks.value}});
+            gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
+            for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
+                sinks[i] = self.data_sinks.value[i];
+            }
+            std::ignore = self.settings().set(gr::property_map{{std::pmr::string("data_sinks"), std::move(sinks)}});
             std::ignore = self.settings().applyStagedParameters();
         }
         self.addSignalSink(std::move(sink));
@@ -1571,10 +1578,8 @@ struct Chart {
         self.refreshCapacityIfNeeded();
 
         bool layoutMode = false;
-        if (auto it = config.find("layoutMode"); it != config.end()) {
-            if (const auto* val = std::get_if<bool>(&it->second)) {
-                layoutMode = *val;
-            }
+        if (const auto it = config.find("layoutMode"); it != config.end()) {
+            layoutMode = it->second.value_or(false);
         }
 
         bool effectiveShowLegend = false;
@@ -1630,9 +1635,9 @@ struct Chart {
         static constexpr std::array kAxisNames  = {"X", "Y", "Z"};
         auto&                       constraints = self.ui_constraints.value;
 
-        std::vector<pmtv::pmt> axesVec;
-        if (auto it = constraints.find("axes"); it != constraints.end()) {
-            if (const auto* existing = std::get_if<std::vector<pmtv::pmt>>(&it->second)) {
+        gr::Tensor<gr::pmt::Value> axesVec;
+        if (const auto it = constraints.find("axes"); it != constraints.end()) {
+            if (const auto* existing = it->second.template get_if<gr::Tensor<gr::pmt::Value>>()) {
                 axesVec = *existing;
             }
         }
@@ -1640,25 +1645,28 @@ struct Chart {
         const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
         bool              found      = false;
         for (auto& axisPmt : axesVec) {
-            auto* axisMap = std::get_if<gr::property_map>(&axisPmt);
-            if (!axisMap) {
+            auto* axisMap = axisPmt.get_if<gr::property_map>();
+            if (axisMap == nullptr) {
                 continue;
             }
             auto axisStrIt = axisMap->find("axis");
             if (axisStrIt == axisMap->end()) {
                 continue;
             }
-            const auto* axisStr = std::get_if<std::string>(&axisStrIt->second);
-            if (axisStr && (*axisStr == targetAxis || (axisStr->size() == 1 && std::tolower((*axisStr)[0]) == std::tolower(targetAxis[0])))) {
-                (*axisMap)[std::string(key)] = std::string(magic_enum::enum_name(value));
-                found                        = true;
+            if (!axisStrIt->second.is_string()) {
+                continue;
+            }
+            const auto axisStr = axisStrIt->second.value_or(std::string_view{});
+            if (axisStr == targetAxis || (axisStr.size() == 1 && std::tolower(axisStr[0]) == std::tolower(targetAxis[0]))) {
+                (*axisMap)[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
+                found                             = true;
                 break;
             }
         }
         if (!found) {
             gr::property_map newAxis;
-            newAxis["axis"]           = targetAxis;
-            newAxis[std::string(key)] = std::string(magic_enum::enum_name(value));
+            newAxis["axis"]                = targetAxis;
+            newAxis[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
             axesVec.push_back(newAxis);
         }
         constraints["axes"] = axesVec;

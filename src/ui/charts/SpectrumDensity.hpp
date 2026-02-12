@@ -19,7 +19,7 @@
 
 namespace opendigitizer::charts {
 
-struct SpectrumDensity : gr::Block<SpectrumDensity, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::ChartPane, "ImGui">>, Chart {
+struct SpectrumDensity : gr::Block<SpectrumDensity, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"2D persistence display showing spectrum amplitude density over time.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>

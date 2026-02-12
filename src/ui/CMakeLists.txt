@@ -179,7 +179,6 @@ target_link_libraries(
          digitizer_common_utils
          raii_wrapper
          vir
-         pmtv
          gnuradio-core
          gnuradio-blocklib-core
          GrBasicBlocksShared

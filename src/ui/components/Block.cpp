@@ -4,6 +4,7 @@
 
 #include <format>
 
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -154,8 +155,8 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
                             assert(!panelContext.targetGraph.empty());
                             message.cmd      = gr::message::Command::Set;
                             message.endpoint = gr::scheduler::property::kReplaceBlock;
-                            message.data     = gr::property_map{{"uniqueName"s, block->blockUniqueName},  //
-                                    {"type"s, std::move(typeParams.baseType) + availableParametrization}, //
+                            message.data     = gr::property_map{{"uniqueName", block->blockUniqueName},  //
+                                    {"type", std::move(typeParams.baseType) + availableParametrization}, //
                                     {"_targetGraph", panelContext.targetGraph}};
                             block->ownerGraph->sendMessage(std::move(message));
                         }
@@ -191,18 +192,14 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
         int i = 0;
         for (const auto& [key, value] : block->blockSettings) {
             // Do we know how to edit this type?
-            if (!std::visit(gr::meta::overloaded{//
-                                [&](float) { return true; },
-                                [&]([[maybe_unused]] auto&& val) {
-                                    using T = std::decay_t<decltype(val)>;
-                                    if constexpr (std::integral<T>) {
-                                        return true;
-                                    } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                        return true;
-                                    }
-                                    return false;
-                                }},
-                    value)) {
+            bool isEditable = false;
+            gr::pmt::ValueVisitor([&](const auto& arg) {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string> || std::floating_point<T> || std::integral<T>) {
+                    isEditable = true;
+                }
+            }).visit(value);
+            if (!isEditable) {
                 continue;
             };
 
@@ -213,7 +210,8 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
 
             // Column 1: Label
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(block->blockSettingsMetaInformation[key].description.c_str());
+            auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[std::string(key)];
+            ImGui::TextUnformatted(currentPropertyMetaInformation.description.c_str());
 
             // Column 2: Input
             ImGui::TableSetColumnIndex(1);
@@ -226,39 +224,37 @@ void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
                 message.serviceName = blockUniqueName;
                 message.endpoint    = gr::block::property::kSetting;
                 message.cmd         = gr::message::Command::Set;
-                message.data        = gr::property_map{{keyToUpdate, updatedValue}};
+                message.data        = gr::property_map{{std::pmr::string(keyToUpdate), updatedValue}};
                 block->ownerGraph->sendMessage(std::move(message));
             };
 
-            const auto getUnit = [block, &key]() -> std::string_view { return block->blockSettingsMetaInformation[key].unit; };
+            const auto getUnit = [&currentPropertyMetaInformation]() -> std::string_view { return currentPropertyMetaInformation.unit; };
 
             InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
 
-            std::visit(gr::meta::overloaded{[&](float val) {
-                                                ImGui::SetNextItemWidth(editorFieldWidth);
-                                                float temp = val;
-                                                if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
-                                                    sendSetSettingMessage(block->blockUniqueName, key, temp);
-                                                }
-                                            },
-                           [&](auto&& val) {
-                               using T = std::decay_t<decltype(val)>;
-                               if constexpr (std::integral<T>) {
-                                   ImGui::SetNextItemWidth(editorFieldWidth);
-                                   int temp = int(val);
-                                   if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
-                                       sendSetSettingMessage(block->blockUniqueName, key, temp);
-                                   }
-                               } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view>) {
-                                   ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
-                                   std::string temp(val);
-                                   if (ImGui::InputText(label, &temp)) {
-                                       sendSetSettingMessage(block->blockUniqueName, key, std::move(temp));
-                                   }
-                                   IMW::detail::setItemTooltip(key.c_str());
-                               }
-                           }},
-                value);
+            gr::pmt::ValueVisitor([&]<typename TArg>(const TArg& arg) {
+                using T = std::decay_t<TArg>;
+                if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
+                    ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
+                    std::string temp(arg);
+                    if (ImGui::InputText(label, &temp)) {
+                        sendSetSettingMessage(block->blockUniqueName, key, std::move(temp));
+                    }
+                    IMW::detail::setItemTooltip(key.c_str());
+                } else if constexpr (std::floating_point<T>) {
+                    ImGui::SetNextItemWidth(editorFieldWidth);
+                    float temp = static_cast<float>(arg);
+                    if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                        sendSetSettingMessage(block->blockUniqueName, key, temp);
+                    }
+                } else if constexpr (std::integral<T>) {
+                    ImGui::SetNextItemWidth(editorFieldWidth);
+                    int temp = static_cast<int>(arg);
+                    if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                        sendSetSettingMessage(block->blockUniqueName, key, temp);
+                    }
+                }
+            }).visit(value);
 
             ++i;
         }

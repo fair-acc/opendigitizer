@@ -34,7 +34,7 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::BlockingIO<false>,
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         // allow paneWidth to be passed via config
         if (auto it = config.find("paneWidth"); it != config.end()) {
-            if (auto* val = std::get_if<float>(&it->second)) {
+            if (auto* val = it->second.get_if<float>()) {
                 _paneWidth = *val;
             }
         }
