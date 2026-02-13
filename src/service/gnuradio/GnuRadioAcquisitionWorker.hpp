@@ -9,6 +9,7 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/Value.hpp>
 #include <gnuradio-4.0/basic/DataSink.hpp>
 
 #include <chrono>
@@ -36,7 +37,9 @@ inline std::expected<T, std::string> get(const gr::property_map& m, const std::s
     if (res) {
         return res.value();
     } else {
-        return std::unexpected(std::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, std::visit<>([]<typename V>(V& /*value*/) { return gr::meta::type_name<V>(); }, it->second), gr::meta::type_name<T>()));
+        std::string receivedType;
+        gr::pmt::ValueVisitor([&receivedType](const auto& arg) { receivedType = gr::meta::type_name<std::decay_t<decltype(arg)>>(); }).visit(it->second);
+        return std::unexpected(std::format("Inconvertible type for tag '{}', received type {} not convertible to  {}", key, receivedType, gr::meta::type_name<T>()));
     }
 }
 
@@ -47,17 +50,17 @@ inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property
     } result;
 
     for (const auto& [diff, map] : tags) {
-        if (auto triggerNameIt = map.find(std::pmr::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
+        if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
             std::string name = triggerNameIt->second.value_or(std::string());
 
-            if (auto contextIt = map.find(std::pmr::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
+            if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
                 const auto context = contextIt->second.value_or(std::string());
                 if (!context.empty()) {
                     name = std::format("{}/{}", name, context);
                 }
             }
 
-            if (auto timeIt = map.find(std::pmr::string(gr::tag::TRIGGER_TIME.shortKey())); timeIt != map.end()) {
+            if (auto timeIt = map.find(std::string(gr::tag::TRIGGER_TIME.shortKey())); timeIt != map.end()) {
                 result = {name, timeIt->second.value_or(0ULL)};
             } else {
                 result = {name, 0ULL};
@@ -71,16 +74,14 @@ inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property
 
 template<typename T>
 inline std::optional<T> getSetting(const std::shared_ptr<gr::BlockModel>& block, const std::string& key) {
-    try {
-        const auto setting = block->settings().get(key);
-        if (!setting) {
-            return {};
-        }
-        return std::get<T>(*setting);
-    } catch (const std::exception& e) {
-        std::println(std::cerr, "Unexpected type for '{}' property", key);
+    const auto setting = block->settings().get(key);
+    if (!setting) {
         return {};
     }
+    if (const T* val = setting.value().get_if<T>(); val != nullptr) {
+        return *val;
+    }
+    return {};
 }
 
 template<typename TEnum>
@@ -128,17 +129,17 @@ struct StreamingPollerEntry {
     std::vector<std::string> populateFromTags(std::span<const gr::Tag>& tags) {
         std::vector<std::string> errors;
         for (const auto& tag : tags) {
-            if (const auto name = detail::get<std::string>(tag.map, tag::SIGNAL_NAME.shortKey())) {
+            if (const auto name = detail::get<std::pmr::string>(tag.map, tag::SIGNAL_NAME.shortKey())) {
                 signal_name = name.value();
             } else {
                 errors.push_back(name.error());
             }
-            if (const auto unit = detail::get<std::string>(tag.map, tag::SIGNAL_UNIT.shortKey())) {
+            if (const auto unit = detail::get<std::pmr::string>(tag.map, tag::SIGNAL_UNIT.shortKey())) {
                 signal_unit = unit.value();
             } else {
                 errors.push_back(unit.error());
             }
-            if (const auto quantity = detail::get<std::string>(tag.map, tag::SIGNAL_QUANTITY.shortKey())) {
+            if (const auto quantity = detail::get<std::pmr::string>(tag.map, tag::SIGNAL_QUANTITY.shortKey())) {
                 signal_quantity = quantity.value();
             } else {
                 errors.push_back(quantity.error());
@@ -365,14 +366,14 @@ private:
                         if (block->typeName().starts_with("gr::basic::DataSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::Plain;
-                            entry.name         = detail::getSetting<std::string>(block, "signal_name").value_or("");
-                            entry.quantity     = detail::getSetting<std::string>(block, "signal_quantity").value_or("");
-                            entry.unit         = detail::getSetting<std::string>(block, "signal_unit").value_or("");
+                            entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
+                            entry.quantity     = detail::getSetting<std::pmr::string>(block, "signal_quantity").value_or("");
+                            entry.unit         = detail::getSetting<std::pmr::string>(block, "signal_unit").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
                         } else if (block->typeName().starts_with("gr::basic::DataSetSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::DataSet;
-                            entry.name         = detail::getSetting<std::string>(block, "signal_name").value_or("");
+                            entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
                         }
                     });
@@ -491,18 +492,18 @@ private:
                     float      Ts_ns  = 0.f; // TODO: find where sample_rate is stored
                     const auto offset = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqLocalTimeStamp = static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
+                        reply.acqLocalTimeStamp = static_cast<int64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(0ULL)) - offset;
                     }
                     if (reply.refTriggerStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.refTriggerName  = std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()));
-                        reply.refTriggerStamp = cast_to_signed(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) - offset;
+                        reply.refTriggerName  = tagMap.at(gr::tag::TRIGGER_NAME.shortKey()).value_or(std::string());
+                        reply.refTriggerStamp = cast_to_signed(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(0ULL)) - offset;
                     }
                 }
                 reply.triggerIndices.push_back(cast_to_signed(idx));
-                reply.triggerEventNames.push_back(tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) ? std::get<std::string>(tagMap.at(gr::tag::TRIGGER_NAME.shortKey())) : ""s);
-                reply.triggerTimestamps.push_back(tagMap.contains(gr::tag::TRIGGER_TIME.shortKey()) ? static_cast<int64_t>(std::get<uint64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()))) : 0LL);
-                reply.triggerOffsets.push_back(tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey()) ? std::get<float>(tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey())) : 0.0f);
-                reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
+                reply.triggerEventNames.push_back(tagMap.at(gr::tag::TRIGGER_NAME.shortKey()).value_or(std::string()));
+                reply.triggerTimestamps.push_back(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(0ULL));
+                reply.triggerOffsets.push_back(tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey()).value_or(0.f));
+                reply.triggerYamlPropertyMaps.push_back(pmt::yaml::serialize(tagMap));
             }
 
             reply.triggerIndices.shrink_to_fit();
@@ -642,7 +643,7 @@ private:
                     reply.triggerEventNames.push_back("");
                     reply.triggerTimestamps.push_back(0ULL);
                     reply.triggerOffsets.push_back(0.f);
-                    reply.triggerYamlPropertyMaps.push_back(pmtv::yaml::serialize(tagMap));
+                    reply.triggerYamlPropertyMaps.push_back(pmt::yaml::serialize(tagMap));
                 }
                 reply.triggerIndices.shrink_to_fit();
                 reply.triggerEventNames.shrink_to_fit();
