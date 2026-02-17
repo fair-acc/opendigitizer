@@ -16,8 +16,8 @@ using namespace DigitizerUi; // TODO refactor namespaces in ImguiWrap.hpp
 #include <memory>
 
 class ImGuiApp;
-class ImGuiTestEngine;
-class ImGuiTestEngineIO;
+struct ImGuiTestEngine;
+struct ImGuiTestEngineIO;
 
 namespace gr {
 class PluginLoader;
