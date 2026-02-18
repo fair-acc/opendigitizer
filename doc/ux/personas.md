@@ -1,5 +1,8 @@
 # Personas
 
+Vision statement: "Improve the uptime of the accelerator by enabling everyone to gain the insights to spot and fix problems ASAP"
+plus the broader community goal around free software for signal processing.
+
 Personas are fictional yet data-driven archetypes representing key user segments.
 They're not just made-up characters;
 they are generally built from research-interviews and workshops.
@@ -50,7 +53,18 @@ crafting custom dashboards,
 and
 defining signal processing flowgraphs.
 
-Main tasks (rated by importance from 0-5, 0 - not important, 5 - critical):
+### Workflow pattern:
+
+Opens the OpenDigitizer Application either via
+
+a) (secondary case) direct link/program argument to open a specific Dashboard,
+b) (primary case) chooses a predefined Dashboard from a 'favourite'/curated list (e.g. tree-view of all, last used, ...)
+
+She uses both the 'Chart UI' and the 'Flow-graph UI' and
+flips back and forth between them.
+
+
+### Main tasks (rated by importance from 0-5, 0 - not important, 5 - critical):
 
 - (5) I want to see whether a signal is correct:
 Compare signals to expectations, to other signals, check min/max thresholds;
@@ -101,6 +115,20 @@ He needs a UI that's minimalist by default.
 This reflects accessibility heuristics in UX:
 progressive disclosure (hide the advanced stuff)
 ensures he doesn't hit walls, while still allowing growth if he levels up.
+
+### Workflow pattern:
+
+Opens the OpenDigitizer Application either via
+
+a) (primary case) direct link/program argument to open a specific Dashboard, or
+b) (secondary case) chooses a predefined Dashboard from a 'favourite'/curated list (e.g. tree-view of all, last used, ...)
+
+He enters and would interact directly with the 'Chart UI' view
+and rarely with the 'Flow-Graph UI'
+(adding new data sources and charts would be done in the 'Chart UI' view).
+
+
+### Main tasks (rated by importance from 0-5, 0 - not important, 5 - critical):
 
 - (5) I want to see whether a signal is correct:
   (Same as Susan)
