@@ -22,7 +22,7 @@
 
 namespace opendigitizer::charts {
 
-struct SpectrumPlot : gr::Block<SpectrumPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Spectrum magnitude plot with optional max-hold, min-hold, and average traces.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
@@ -57,6 +57,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::BlockingIO<false>, gr::Drawabl
 
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 

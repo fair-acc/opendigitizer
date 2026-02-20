@@ -184,7 +184,10 @@ std::vector<std::weak_ptr<DashboardStorageInfo>>& DigitizerUi::DashboardStorageI
 }
 
 std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view path) {
-    auto it = std::ranges::find_if(knownDashboardStorage(), [=](const auto& s) { return s.lock()->path == path; });
+    auto it = std::ranges::find_if(knownDashboardStorage(), [=](const auto& s) {
+        auto p = s.lock();
+        return p && p->path == path;
+    });
     if (it != knownDashboardStorage().end()) {
         return it->lock();
     }
@@ -341,7 +344,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
             }
 
             std::string actualType = "<unknown>";
-            pmt::ValueVisitor([&actualType]<typename T0>(const T0& arg) { actualType = gr::meta::type_name<std::decay_t<T0>>(); }).visit(it->second);
+            pmt::ValueVisitor([&actualType]<typename T0>(const T0& /*arg*/) { actualType = gr::meta::type_name<std::decay_t<T0>>(); }).visit(it->second);
             throw gr::exception(std::format("Key '{}' has invalid type: expected '{}', got '{}'", key, gr::meta::type_name<T>(), actualType));
         }
     };
@@ -444,10 +447,10 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         // Create UIWindow for this chart (sink management done via settings interface)
         UIWindow uiWindow(blockShared, name);
         if (uiWindow.window) {
-            uiWindow.window->x      = static_cast<std::size_t>(rectValue(rect[0]));
-            uiWindow.window->y      = static_cast<std::size_t>(rectValue(rect[1]));
-            uiWindow.window->width  = static_cast<std::size_t>(rectValue(rect[2]));
-            uiWindow.window->height = static_cast<std::size_t>(rectValue(rect[3]));
+            uiWindow.window->x      = rectValue(rect[0]);
+            uiWindow.window->y      = rectValue(rect[1]);
+            uiWindow.window->width  = rectValue(rect[2]);
+            uiWindow.window->height = rectValue(rect[3]);
         }
 
         uiWindows.push_back(std::move(uiWindow));

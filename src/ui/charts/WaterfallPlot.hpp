@@ -21,7 +21,7 @@
 
 namespace opendigitizer::charts {
 
-struct WaterfallPlot : gr::Block<WaterfallPlot, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Scrolling spectrogram using a GPU ring-buffer texture with single-row updates.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
@@ -72,6 +72,8 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::BlockingIO<false>, gr::Drawa
         }
         return (axis == AxisKind::Y) ? AxisScale::LinearReverse : AxisScale::Linear;
     }
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 

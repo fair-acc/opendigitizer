@@ -41,6 +41,13 @@
 #include <fair/picoscope/Picoscope4000a.hpp>
 #include <fair/picoscope/Picoscope5000a.hpp>
 #include <fair/picoscope/Picoscope6000.hpp>
+// TODO remove this declaration once gr-digitizer is bumped
+namespace gr {
+template<bool UseIoThread = true>
+struct BlockingIO {
+    [[maybe_unused]] constexpr static bool useIoThread = UseIoThread;
+};
+} // namespace gr
 #include <fair/timing/TimingSource.hpp>
 
 namespace {
