@@ -22,7 +22,7 @@ namespace opendigitizer::charts {
 /// YYChart - Correlation plot (Y1 vs Y2) as a GR4 block.
 /// Plots Y-values from one signal against another for Lissajous figures, phase plots, I-Q diagrams.
 /// Signal modes: 1 signal = XY fallback, 2 signals = Y1 vs Y2, 3+ signals = first as X, rest as Y.
-struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     // Annotated type alias for cleaner declarations
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
@@ -52,7 +52,9 @@ struct YYChart : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICa
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
-    explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
+    explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 

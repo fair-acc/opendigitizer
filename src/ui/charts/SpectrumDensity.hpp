@@ -19,7 +19,7 @@
 
 namespace opendigitizer::charts {
 
-struct SpectrumDensity : gr::Block<SpectrumDensity, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
+struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"2D persistence display showing spectrum amplitude density over time.">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
@@ -68,6 +68,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::BlockingIO<false>, gr::D
 
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 

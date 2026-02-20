@@ -159,13 +159,13 @@ void DockSpace::layoutInFree(const Windows& windows) {
     }
 
     // Assume that minX = 0, minY = 0
-    int maxX = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->x + w->width; }));
-    int maxY = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->y + w->height; }));
-    if (maxX <= 0 || maxY <= 0) {
+    std::size_t maxX = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->x + w->width; }));
+    std::size_t maxY = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->y + w->height; }));
+    if (maxX == 0 || maxY == 0) {
         return;
     }
 
-    std::vector<std::vector<int>> grid(static_cast<std::size_t>(maxX), std::vector<int>(static_cast<std::size_t>(maxY), -1));
+    std::vector<std::vector<int>> grid(maxX, std::vector<int>(maxY, -1));
 
     // No overlap -> each cell belongs to exactly one window
     bool isOverlapDetected = false;
@@ -191,7 +191,7 @@ void DockSpace::layoutInFree(const Windows& windows) {
         components::Notification::error("Free layout is ill-formed, empty cells detected.");
         layoutInGrid(windows);
     } else {
-        layoutInFreeRegion(grid, windows, 0, static_cast<std::size_t>(maxX), 0, static_cast<std::size_t>(maxY), dockspaceID());
+        layoutInFreeRegion(grid, windows, 0, maxX, 0, maxY, dockspaceID());
     }
 }
 
@@ -203,7 +203,7 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
     const bool        allSame = std::ranges::all_of( // x in [x0, x1)
         std::views::iota(x0, x1), [&](std::size_t x) {
             return std::ranges::all_of( // y in [y0, y1)
-                std::views::iota(y0, y1), [&](std::size_t y) { return grid[x][y] == firstId; });
+                std::views::iota(y0, y1), [&](std::size_t y) { return static_cast<std::size_t>(grid[x][y]) == firstId; });
         });
 
     if (allSame) {

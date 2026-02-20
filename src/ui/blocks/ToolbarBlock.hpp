@@ -124,11 +124,13 @@ public:
 } // namespace play_stop
 
 template<typename T>
-struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBlock<T>>, public gr::Block<PlayStopToolbarBlock<T>, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBlock<T>>, public gr::Block<PlayStopToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
     using enum play_stop::State;
     gr::MsgPortOut ctrlOut;
 
     GR_MAKE_REFLECTABLE(PlayStopToolbarBlock, ctrlOut);
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     gr::work::Status draw([[maybe_unused]] const gr::property_map& config = {}) noexcept {
         const gr::work::Status status = gr::work::Status::OK; // this->invokeWork(); // calls work(...) -> processOne(...) (all in the same thread as this 'draw()'
@@ -184,11 +186,13 @@ private:
 };
 
 template<typename T>
-struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
     gr::MsgPortIn ctrlIn;
     std::string   message = "<no message>";
 
     GR_MAKE_REFLECTABLE(LabelToolbarBlock, ctrlIn, message);
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void processMessages(auto&, std::span<const gr::Message> messages) {
         using namespace gr::message;

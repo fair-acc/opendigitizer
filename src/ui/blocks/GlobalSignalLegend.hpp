@@ -14,7 +14,7 @@ namespace DigitizerUi {
 
 /// Global signal legend displaying all registered sinks from SinkRegistry.
 /// Supports left-click toggle, right-click settings, drag to charts, and drop from charts.
-struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::BlockingIO<false>, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
+struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using RightClickCallback = std::function<void(std::string_view sinkUniqueName)>;
 
     enum class ClickResult { None, Left, Right };
@@ -30,6 +30,8 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::BlockingIO<false>,
 
     void setRightClickCallback(RightClickCallback callback) { _onRightClick = std::move(callback); }
     void setPaneWidth(float width) { _paneWidth = width; }
+
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         // allow paneWidth to be passed via config
