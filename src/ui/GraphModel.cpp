@@ -622,7 +622,24 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
             }
         }
 
-        blockSettingsMetaInformation.insert_or_assign(std::string(settingKey), SettingsMetaInformation{.unit = std::move(unit), .description = std::move(description), .isVisible = isVisible});
+        const auto extractDouble = [&](std::string_view attr) -> std::optional<double> {
+            if (const auto* v = findMeta(settingKey, attr)) {
+                if (const auto* d = v->get_if<double>()) {
+                    return *d;
+                }
+                if (const auto* f = v->get_if<float>()) {
+                    return static_cast<double>(*f);
+                }
+                if (const auto* i = v->get_if<int32_t>()) {
+                    return static_cast<double>(*i);
+                }
+            }
+            return std::nullopt;
+        };
+        std::optional<double> minVal = extractDouble("min_value");
+        std::optional<double> maxVal = extractDouble("max_value");
+
+        blockSettingsMetaInformation.insert_or_assign(std::string(settingKey), SettingsMetaInformation{.unit = std::move(unit), .description = std::move(description), .isVisible = isVisible, .minValue = minVal, .maxValue = maxVal});
     }
 }
 

@@ -103,7 +103,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory               xCat{.quantity = xQuantity, .unit = xUnit};
             std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid);
+            auto                       xCond = trackLimitsCond(true, minLimit, maxLimit);
+            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid, /*foreground=*/false, xCond);
         }
 
         // y-axis: magnitude
@@ -122,7 +123,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             auto [yQuantity, yUnit] = sinkAxisInfo(false);
             AxisCategory               yCat{.quantity = yQuantity, .unit = yUnit};
             std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid);
+            auto                       yCond = trackLimitsCond(false, minLimit, maxLimit);
+            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid, /*foreground=*/false, yCond);
         }
     }
 

@@ -82,6 +82,11 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         return;
     }
 
+    if (!ax::NodeEditor::GetCurrentEditor()) {
+        // no node editor context active (e.g. DashboardPage) — skip preview
+        return;
+    }
+
     if (!context.selectedBlock()) {
         // This does not happen, it would be a bug. Let it crash in debug mode so we notice.
         assert(false);

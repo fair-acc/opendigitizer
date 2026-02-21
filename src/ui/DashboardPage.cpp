@@ -209,8 +209,11 @@ void DashboardPage::draw(Mode mode) noexcept {
                         auto* legendBlock = static_cast<GlobalSignalLegend*>(blockPtr->raw());
                         legendBlock->setPaneWidth(_paneSize.x);
                         legendBlock->setRightClickCallback([this](std::string_view sinkUniqueName) {
-                            _editPane.setSelectedBlock(_dashboard->graphModel.rootBlock.findBlockByUniqueName(std::string(sinkUniqueName)), std::addressof(_dashboard->graphModel));
-                            _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+                            auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(sinkUniqueName));
+                            if (found) {
+                                _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
+                                _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+                            }
                         });
                     }
 

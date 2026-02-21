@@ -317,7 +317,11 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         pushedColor = true;
     }
 
-    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) ? "" : truncateLabel(category->buildLabel(), axisWidth);
+    if (format == LabelFormat::None) {
+        flags |= ImPlotAxisFlags_NoTickLabels;
+    }
+
+    const std::string label = (scale == AxisScale::Time) || (format == LabelFormat::MetricInline) || (format == LabelFormat::None) ? "" : truncateLabel(category->buildLabel(), axisWidth);
     ImPlot::SetupAxis(axisId, label.c_str(), flags);
 
     if (scale != AxisScale::Time) {
@@ -344,7 +348,7 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
             ImPlot::SetupAxisFormat(axisId, formatMetric, const_cast<void*>(static_cast<const void*>(unitStringStorage[static_cast<std::size_t>(axisId)].c_str())));
         } break;
         case LabelFormat::Scientific: ImPlot::SetupAxisFormat(axisId, formatScientific, nullptr); break;
-        case LabelFormat::None:
+        case LabelFormat::None: break; // tick labels suppressed via ImPlotAxisFlags_NoTickLabels
         case LabelFormat::Default:
         default: ImPlot::SetupAxisFormat(axisId, formatDefault, nullptr);
         }
@@ -899,10 +903,64 @@ struct Chart {
     static constexpr double      kCapacityRefreshIntervalSeconds = 30.0; // refresh before 60s timeout
     static constexpr double      kCapacityDebounceSeconds        = 0.3;  // debounce resize to avoid discontinuities
 
+    // helpers that abstract over scalar (bool / double) vs per-axis array (std::array<T,3>) properties
+    template<typename Field>
+    static bool readAutoScale(const Field& field, std::size_t idx) {
+        if constexpr (requires { field.value[0]; }) {
+            return field.value[idx];
+        } else {
+            return idx == 0 ? static_cast<bool>(field.value) : true;
+        }
+    }
+    template<typename Field>
+    static void writeAutoScale(Field& field, std::size_t idx, bool val) {
+        if constexpr (requires { field.value[0]; }) {
+            field.value[idx] = val;
+        } else if (idx == 0) {
+            field = val;
+        }
+    }
+    template<typename Field>
+    static double readLimit(const Field& field, std::size_t idx) {
+        if constexpr (requires { field.value[0]; }) {
+            return field.value[idx];
+        } else {
+            return idx == 0 ? static_cast<double>(field.value) : std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    template<typename Field>
+    static void writeLimit(Field& field, std::size_t idx, double val) {
+        if constexpr (requires { field.value[0]; }) {
+            field.value[idx] = val;
+        } else if (idx == 0) {
+            field = val;
+        }
+    }
+
     std::vector<std::shared_ptr<SignalSink>> _signalSinks;
     double                                   _lastCapacityRefreshTime = 0.0;
     double                                   _pendingResizeTime       = 0.0;                  // 0 = no pending resize
     HistoryUnit                              _historyDisplayUnit      = HistoryUnit::seconds; // UI-only, not persisted
+    std::optional<ImAxis>                    _hoveredAxisForMenu;                             // specific axis ID for right-click popup
+    std::array<int, 3>                       _fitOnceX            = {};                       // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
+    std::array<int, 3>                       _fitOnceY            = {};
+    std::array<double, 3>                    _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3>                    _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3>                    _prevYMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<double, 3>                    _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    std::array<bool, 3>                      _limitsForceAppliedX = {}; // true on frame where limits were force-applied
+    std::array<bool, 3>                      _limitsForceAppliedY = {};
+
+    ImPlotCond trackLimitsCond(bool isX, double newMin, double newMax, std::size_t axisIdx = 0) {
+        auto& prevMin   = isX ? _prevXMin[axisIdx] : _prevYMin[axisIdx];
+        auto& prevMax   = isX ? _prevXMax[axisIdx] : _prevYMax[axisIdx];
+        auto& forceFlag = isX ? _limitsForceAppliedX[axisIdx] : _limitsForceAppliedY[axisIdx];
+        bool  changed   = (newMin != prevMin || newMax != prevMax);
+        prevMin         = newMin;
+        prevMax         = newMax;
+        forceFlag       = changed;
+        return changed ? ImPlotCond_Always : ImPlotCond_Once;
+    }
 
     template<typename Self>
     void addSignalSink(this Self& self, std::shared_ptr<SignalSink> sink) {
@@ -1131,17 +1189,19 @@ struct Chart {
         }
     }
 
-    /// Axis submenu content with scale, auto-fit, and min/max controls
+    /// Axis submenu content with scale, auto-fit, and min/max controls.
     template<typename Self>
-    void drawAxisSubmenuContent(this Self& self, AxisKind axis) {
+    void drawAxisSubmenuContent(this Self& self, AxisKind axis, std::size_t axisIndex = 0) {
         const bool      isX        = (axis == AxisKind::X);
         constexpr float kDragWidth = 70.0f;
 
-        // Get current plot limits from ImPlot (actual displayed range)
-        const auto   plotLimits = ImPlot::GetPlotLimits();
-        const auto&  axisLimits = isX ? plotLimits.X : plotLimits.Y;
-        const double plotMin    = axisLimits.Min;
-        const double plotMax    = axisLimits.Max;
+        // Get current plot limits for the specific axis being edited
+        const ImAxis targetXAxis = ImAxis_X1 + static_cast<int>(isX ? axisIndex : 0);
+        const ImAxis targetYAxis = ImAxis_Y1 + static_cast<int>(isX ? 0 : axisIndex);
+        const auto   plotLimits  = ImPlot::GetPlotLimits(targetXAxis, targetYAxis);
+        const auto&  axisLimits  = isX ? plotLimits.X : plotLimits.Y;
+        const double plotMin     = axisLimits.Min;
+        const double plotMax     = axisLimits.Max;
 
         auto drawEnumCombo = [&]<typename E>(const char* icon, const char* text, const char* comboId, E current, auto&& setter) {
             menu_icons::iconText(icon, text);
@@ -1192,7 +1252,6 @@ struct Chart {
             drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis), [&](LabelFormat f) { self.setAxisFormat(axis, f); });
         }
 
-        // Row 2: Auto-fit checkbox (icon only) + min/max spinners with +/- buttons
         if constexpr (requires {
                           self.x_min;
                           self.x_max;
@@ -1201,104 +1260,94 @@ struct Chart {
                           self.x_auto_scale;
                           self.y_auto_scale;
                       }) {
-            bool       autoFit    = isX ? self.x_auto_scale.value : self.y_auto_scale.value;
-            const bool wasAutoFit = autoFit;
+            auto drawAutoFitControls = [&](auto& autoScaleField, auto& minField, auto& maxField) {
+                bool       autoFit    = readAutoScale(autoScaleField, axisIndex);
+                const bool wasAutoFit = autoFit;
 
-            // Auto-fit checkbox with icon (no text label)
-            {
-                DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                ImGui::TextUnformatted(menu_icons::kAutoFit);
-            }
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (ImGui::Checkbox("##auto", &autoFit)) {
-                if (isX) {
-                    self.x_auto_scale = autoFit;
-                } else {
-                    self.y_auto_scale = autoFit;
-                }
-                // When switching from auto-fit to manual, initialize limits from current plot
-                if (wasAutoFit && !autoFit) {
-                    if (isX) {
-                        self.x_min = plotMin;
-                        self.x_max = plotMax;
-                    } else {
-                        self.y_min = plotMin;
-                        self.y_max = plotMax;
-                    }
-                }
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Auto-fit axis range");
-            }
-
-            // Min/max spinners (disabled when auto-fit is on)
-            ImGui::SameLine();
-            if (autoFit) {
-                ImGui::BeginDisabled();
-            }
-
-            // Use current plot limits when in auto-fit mode, otherwise use stored values
-            double minVal = autoFit ? plotMin : static_cast<double>(isX ? self.x_min.value : self.y_min.value);
-            double maxVal = autoFit ? plotMax : static_cast<double>(isX ? self.x_max.value : self.y_max.value);
-
-            // Calculate increment based on current range (1% of range, or 0.1 if range is invalid)
-            const double range     = std::abs(maxVal - minVal);
-            const double increment = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
-            const float  dragSpeed = static_cast<float>(increment * 0.1);
-
-            auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
-                const std::string decId  = std::format("\uf146##{}_dec", id);
-                const std::string incId  = std::format("\uf0fe##{}_inc", id);
-                const std::string dragId = std::format("##{}", id);
                 {
                     DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                    if (ImGui::Button(decId.c_str())) {
-                        val -= increment;
-                        assign(val);
+                    ImGui::TextUnformatted(menu_icons::kAutoFit);
+                }
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                if (ImGui::Checkbox("##auto", &autoFit)) {
+                    writeAutoScale(autoScaleField, axisIndex, autoFit);
+                    if (wasAutoFit && !autoFit) {
+                        writeLimit(minField, axisIndex, plotMin);
+                        writeLimit(maxField, axisIndex, plotMax);
                     }
                 }
-                ImGui::SameLine(0.0f, 2.0f);
-                ImGui::SetNextItemWidth(kDragWidth);
-                if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
-                    assign(val);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Auto-fit axis range");
                 }
-                detail::onScrollWheel([&](float wheel) {
-                    val += static_cast<double>(wheel) * increment;
-                    assign(val);
-                });
-                ImGui::SameLine(0.0f, 2.0f);
-                {
-                    DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                    if (ImGui::Button(incId.c_str())) {
-                        val += increment;
+                ImGui::SameLine();
+                if (ImGui::Button("Fit once")) {
+                    writeAutoScale(autoScaleField, axisIndex, true);
+                    (isX ? self._fitOnceX : self._fitOnceY)[axisIndex] = 2;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Fit axis to data once, then return to manual mode");
+                }
+
+                ImGui::SameLine();
+                if (autoFit) {
+                    ImGui::BeginDisabled();
+                }
+
+                double minVal = autoFit ? plotMin : readLimit(minField, axisIndex);
+                double maxVal = autoFit ? plotMax : readLimit(maxField, axisIndex);
+
+                const double range     = std::abs(maxVal - minVal);
+                const double increment = (range > 0.0 && range < 1e10) ? range * 0.01 : 0.1;
+                const float  dragSpeed = static_cast<float>(increment * 0.1);
+
+                auto drawSpinner = [&](const char* id, double& val, auto&& assign) {
+                    const std::string decId  = std::format("\uf146##{}_dec", id);
+                    const std::string incId  = std::format("\uf0fe##{}_inc", id);
+                    const std::string dragId = std::format("##{}", id);
+                    {
+                        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+                        if (ImGui::Button(decId.c_str())) {
+                            val -= increment;
+                            assign(val);
+                        }
+                    }
+                    ImGui::SameLine(0.0f, 2.0f);
+                    ImGui::SetNextItemWidth(kDragWidth);
+                    if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
                         assign(val);
                     }
+                    detail::onScrollWheel([&](float wheel) {
+                        val += static_cast<double>(wheel) * increment;
+                        assign(val);
+                    });
+                    ImGui::SameLine(0.0f, 2.0f);
+                    {
+                        DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+                        if (ImGui::Button(incId.c_str())) {
+                            val += increment;
+                            assign(val);
+                        }
+                    }
+                };
+
+                auto setMin = [&](double v) { writeLimit(minField, axisIndex, v); };
+                auto setMax = [&](double v) { writeLimit(maxField, axisIndex, v); };
+
+                drawSpinner("min", minVal, setMin);
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                menu_icons::iconText(menu_icons::kArrow, "");
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                drawSpinner("max", maxVal, setMax);
+
+                if (autoFit) {
+                    ImGui::EndDisabled();
                 }
             };
 
-            auto setMin = [&](double v) {
-                if (isX) {
-                    self.x_min = v;
-                } else {
-                    self.y_min = v;
-                }
-            };
-            auto setMax = [&](double v) {
-                if (isX) {
-                    self.x_max = v;
-                } else {
-                    self.y_max = v;
-                }
-            };
-
-            drawSpinner("min", minVal, setMin);
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            menu_icons::iconText(menu_icons::kArrow, "");
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            drawSpinner("max", maxVal, setMax);
-
-            if (autoFit) {
-                ImGui::EndDisabled();
+            if (isX) {
+                drawAutoFitControls(self.x_auto_scale, self.x_min, self.x_max);
+            } else {
+                drawAutoFitControls(self.y_auto_scale, self.y_min, self.y_max);
             }
         }
     }
@@ -1589,7 +1638,7 @@ struct Chart {
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
         ImVec2      plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
-        ImPlotFlags plotFlags    = ImPlotFlags_NoChild | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle;
+        ImPlotFlags plotFlags    = ImPlotFlags_NoChild | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
         }
@@ -1670,7 +1719,7 @@ struct Chart {
             axesVec.push_back(newAxis);
         }
         constraints["axes"] = axesVec;
-        self.settings().set({{"ui_constraints", constraints}});
+        std::ignore         = self.settings().set({{"ui_constraints", constraints}});
     }
 
     template<typename Self>
@@ -1685,6 +1734,54 @@ struct Chart {
 
     template<typename Self>
     void handleCommonInteractions(this Self& self) {
+        if constexpr (requires {
+                          self.x_auto_scale;
+                          self.y_auto_scale;
+                          self.x_min;
+                          self.x_max;
+                          self.y_min;
+                          self.y_max;
+                      }) {
+            // fit-once state machine and zoom detection — per-axis
+            auto detectUserZoom = [](bool autoScale, auto& autoScaleField, auto& minField, auto& maxField, std::size_t idx, double plotMin, double plotMax, double prevMin, double prevMax, bool forceApplied) {
+                if (!autoScale || forceApplied || !std::isfinite(prevMin) || !std::isfinite(prevMax)) {
+                    return;
+                }
+                const double range = std::abs(prevMax - prevMin);
+                const double tol   = std::max(range * 1e-3, 1e-10);
+                if (std::abs(plotMin - prevMin) > tol || std::abs(plotMax - prevMax) > tol) {
+                    writeAutoScale(autoScaleField, idx, false);
+                    writeLimit(minField, idx, plotMin);
+                    writeLimit(maxField, idx, plotMax);
+                }
+            };
+
+            for (std::size_t i = 0; i < 3; ++i) {
+                auto limits = ImPlot::GetPlotLimits(ImAxis_X1 + static_cast<int>(i), ImAxis_Y1 + static_cast<int>(i));
+
+                // fit-once: auto-fit needs one full frame to resolve, then capture limits
+                if (self._fitOnceX[i] == 1) {
+                    self._fitOnceX[i] = 0;
+                    writeAutoScale(self.x_auto_scale, i, false);
+                    writeLimit(self.x_min, i, limits.X.Min);
+                    writeLimit(self.x_max, i, limits.X.Max);
+                } else if (self._fitOnceX[i] > 1) {
+                    --self._fitOnceX[i];
+                }
+                if (self._fitOnceY[i] == 1) {
+                    self._fitOnceY[i] = 0;
+                    writeAutoScale(self.y_auto_scale, i, false);
+                    writeLimit(self.y_min, i, limits.Y.Min);
+                    writeLimit(self.y_max, i, limits.Y.Max);
+                } else if (self._fitOnceY[i] > 1) {
+                    --self._fitOnceY[i];
+                }
+
+                detectUserZoom(readAutoScale(self.x_auto_scale, i), self.x_auto_scale, self.x_min, self.x_max, i, limits.X.Min, limits.X.Max, self._prevXMin[i], self._prevXMax[i], self._limitsForceAppliedX[i]);
+                detectUserZoom(readAutoScale(self.y_auto_scale, i), self.y_auto_scale, self.y_min, self.y_max, i, limits.Y.Min, limits.Y.Max, self._prevYMin[i], self._prevYMax[i], self._limitsForceAppliedY[i]);
+            }
+        }
+
         std::string popupId = std::string(std::remove_cvref_t<Self>::kChartTypeName) + "ContextMenu";
         self.drawContextMenu(popupId.c_str());
         self.setupLegendDragSources();
@@ -1886,8 +1983,6 @@ struct Chart {
 
     template<typename Self>
     void drawCommonContextMenuItems(this Self& self) {
-        self.drawAxisSubmenu(AxisKind::X);
-        self.drawAxisSubmenu(AxisKind::Y);
         if constexpr (requires { self.n_history; }) {
             self.drawHistoryDepthWidget();
         }
@@ -1902,18 +1997,63 @@ struct Chart {
         self.drawRemoveChartMenuItem();
     }
 
-    /// draws context menu as a standard linear popup
+    /// draws axis-specific or full context menu depending on what was right-clicked
     template<typename Self>
     void drawContextMenu(this Self& self, const char* popupId = "ChartContextMenu") {
-        // Only open our menu when hovering the plot area, NOT when hovering an axis
-        // (ImPlot provides its own axis context menus for Auto-Fit, Invert, etc.)
-        const bool anyAxisHovered = ImPlot::IsAxisHovered(ImAxis_X1) || ImPlot::IsAxisHovered(ImAxis_X2) || ImPlot::IsAxisHovered(ImAxis_X3) || ImPlot::IsAxisHovered(ImAxis_Y1) || ImPlot::IsAxisHovered(ImAxis_Y2) || ImPlot::IsAxisHovered(ImAxis_Y3);
+        // detect which specific axis (if any) is hovered
+        std::optional<ImAxis> hoveredAxis;
+        for (int i = 0; i < 3; ++i) {
+            if (ImPlot::IsAxisHovered(ImAxis_X1 + i)) {
+                hoveredAxis = ImAxis_X1 + i;
+                break;
+            }
+            if (ImPlot::IsAxisHovered(ImAxis_Y1 + i)) {
+                hoveredAxis = ImAxis_Y1 + i;
+                break;
+            }
+        }
 
-        const bool rightClicked = ImPlot::IsPlotHovered() && !anyAxisHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        const bool rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
-        if (rightClicked) {
+        if (hoveredAxis && rightClicked) {
+            self._hoveredAxisForMenu = hoveredAxis;
+            ImGui::OpenPopup("AxisContextMenu");
+        } else if (ImPlot::IsPlotHovered() && !hoveredAxis && rightClicked) {
             ImGui::OpenPopup(popupId);
         }
+
+        // detect double-click on any axis for fit-once
+        if constexpr (requires {
+                          self.x_auto_scale;
+                          self.y_auto_scale;
+                      }) {
+            if (ImGui::IsMouseDoubleClicked(0)) {
+                for (int i = 0; i < 3; ++i) {
+                    auto idx = static_cast<std::size_t>(i);
+                    if (ImPlot::IsAxisHovered(ImAxis_X1 + i) && self._fitOnceX[idx] == 0) {
+                        writeAutoScale(self.x_auto_scale, idx, true);
+                        self._fitOnceX[idx] = 2;
+                    }
+                    if (ImPlot::IsAxisHovered(ImAxis_Y1 + i) && self._fitOnceY[idx] == 0) {
+                        writeAutoScale(self.y_auto_scale, idx, true);
+                        self._fitOnceY[idx] = 2;
+                    }
+                }
+            }
+        }
+
+        // axis-specific popup: show only controls for the clicked axis
+        if (ImGui::BeginPopup("AxisContextMenu")) {
+            if (self._hoveredAxisForMenu) {
+                const ImAxis      axis      = *self._hoveredAxisForMenu;
+                const bool        isX       = (axis == ImAxis_X1 || axis == ImAxis_X2 || axis == ImAxis_X3);
+                const std::size_t axisIndex = static_cast<std::size_t>(isX ? (axis - ImAxis_X1) : (axis - ImAxis_Y1));
+                self.drawAxisSubmenuContent(isX ? AxisKind::X : AxisKind::Y, axisIndex);
+            }
+            ImGui::EndPopup();
+        }
+
+        // full canvas popup
         if (ImGui::BeginPopup(popupId)) {
             self.drawCommonContextMenuItems();
             ImGui::EndPopup();

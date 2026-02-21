@@ -288,6 +288,11 @@ struct SignalSink {
 
     virtual void setDrawEnabled(bool enabled) = 0;
 
+    virtual void setColor(std::uint32_t color)      = 0;
+    virtual void setLineStyle(LineStyle style)      = 0;
+    virtual void setLineWidth(float width)          = 0;
+    virtual void setSignalName(std::string_view nm) = 0;
+
     [[nodiscard]] virtual std::string_view signalQuantity() const noexcept   = 0;
     [[nodiscard]] virtual std::string_view signalUnit() const noexcept       = 0;
     [[nodiscard]] virtual std::string_view abscissaQuantity() const noexcept = 0;
@@ -388,6 +393,8 @@ struct SinkAdapter : public SignalSink {
         }
         if constexpr (requires { b->lineStyle(); }) {
             return b->lineStyle();
+        } else if constexpr (requires { b->signal_line_style.value; }) {
+            return static_cast<LineStyle>(b->signal_line_style.value);
         } else if constexpr (requires { b->line_style.value; }) {
             return static_cast<LineStyle>(b->line_style.value);
         }
@@ -401,6 +408,8 @@ struct SinkAdapter : public SignalSink {
         }
         if constexpr (requires { b->lineWidth(); }) {
             return b->lineWidth();
+        } else if constexpr (requires { b->signal_line_width.value; }) {
+            return static_cast<float>(b->signal_line_width.value);
         } else if constexpr (requires { b->line_width.value; }) {
             return static_cast<float>(b->line_width.value);
         }
@@ -754,6 +763,62 @@ struct SinkAdapter : public SignalSink {
     [[nodiscard]] bool drawEnabled() const noexcept override { return _drawEnabled.load(std::memory_order_relaxed); }
 
     void setDrawEnabled(bool enabled) override { _drawEnabled.store(enabled, std::memory_order_relaxed); }
+
+    void setColor(std::uint32_t c) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->color.value; }) {
+            b->color    = c;
+            std::ignore = b->settings().set({{"color", c}});
+            std::ignore = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setLineStyle(LineStyle style) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->signal_line_style.value; }) {
+            b->signal_line_style = static_cast<std::uint8_t>(style);
+            std::ignore          = b->settings().set({{"signal_line_style", static_cast<std::uint8_t>(style)}});
+            std::ignore          = b->settings().applyStagedParameters();
+        } else if constexpr (requires { b->line_style.value; }) {
+            b->line_style = static_cast<std::uint8_t>(style);
+            std::ignore   = b->settings().set({{"line_style", static_cast<std::uint8_t>(style)}});
+            std::ignore   = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setLineWidth(float width) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->signal_line_width.value; }) {
+            b->signal_line_width = width;
+            std::ignore          = b->settings().set({{"signal_line_width", width}});
+            std::ignore          = b->settings().applyStagedParameters();
+        } else if constexpr (requires { b->line_width.value; }) {
+            b->line_width = width;
+            std::ignore   = b->settings().set({{"line_width", width}});
+            std::ignore   = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setSignalName(std::string_view nm) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->signal_name.value; }) {
+            b->signal_name = std::string(nm);
+            std::ignore    = b->settings().set({{"signal_name", std::string(nm)}});
+            std::ignore    = b->settings().applyStagedParameters();
+        }
+    }
 
 private:
     mutable std::mutex _fallbackMutex; // per-instance fallback (replaces former static dummy)

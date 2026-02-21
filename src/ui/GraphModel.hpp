@@ -3,6 +3,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -141,9 +142,11 @@ public:
     gr::property_map blockMetaInformation;
 
     struct SettingsMetaInformation {
-        std::string unit;
-        std::string description;
-        bool        isVisible;
+        std::string           unit;
+        std::string           description;
+        bool                  isVisible = false;
+        std::optional<double> minValue;
+        std::optional<double> maxValue;
     };
 
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;

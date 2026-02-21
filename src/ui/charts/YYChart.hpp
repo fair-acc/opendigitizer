@@ -5,6 +5,7 @@
 #include "SignalSink.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -35,12 +36,12 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<bool, "anti-aliasing">                               anti_aliasing = true;
     A<int, "X-axis scale">                                 x_axis_scale  = static_cast<int>(AxisScale::Linear);
     A<int, "Y-axis scale">                                 y_axis_scale  = static_cast<int>(AxisScale::Linear);
-    A<bool, "X auto-scale">                                x_auto_scale  = true;
-    A<bool, "Y auto-scale">                                y_auto_scale  = true;
-    A<double, "X-axis min">                                x_min         = std::numeric_limits<double>::lowest();
-    A<double, "X-axis max">                                x_max         = std::numeric_limits<double>::max();
-    A<double, "Y-axis min">                                y_min         = std::numeric_limits<double>::lowest();
-    A<double, "Y-axis max">                                y_max         = std::numeric_limits<double>::max();
+    A<std::array<bool, 3>, "X auto-scale">                 x_auto_scale  = std::array{true, true, true};
+    A<std::array<bool, 3>, "Y auto-scale">                 y_auto_scale  = std::array{true, true, true};
+    A<std::array<double, 3>, "X-axis min">                 x_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3>, "X-axis max">                 x_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3>, "Y-axis min">                 y_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3>, "Y-axis max">                 y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">>    n_history     = kDefaultHistorySize;
 
     GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history);
@@ -92,32 +93,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
     }
 
-    void setupAxesWithAutoFit(const char* xLabel, const char* yLabel, bool showGrid = true) {
-        ImPlotAxisFlags xFlags = x_auto_scale ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None;
-        ImPlotAxisFlags yFlags = y_auto_scale ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None;
-        if (!showGrid) {
-            xFlags |= ImPlotAxisFlags_NoGridLines;
-            yFlags |= ImPlotAxisFlags_NoGridLines;
-        }
-        ImPlot::SetupAxis(ImAxis_X1, xLabel, xFlags);
-        ImPlot::SetupAxis(ImAxis_Y1, yLabel, yFlags);
-    }
-
-    /// Build axis label from signal name and unit ("SignalName [unit]" or just "SignalName")
-    static std::string buildAxisLabel(const SignalSink* sink) {
-        if (!sink) {
-            return "";
-        }
-        std::string      label(sink->signalName());
-        std::string_view unit = sink->signalUnit();
-        if (!unit.empty()) {
-            label += " [";
-            label += unit;
-            label += "]";
-        }
-        return label;
-    }
-
     void drawXYFallback(ImPlotFlags plotFlags, const ImVec2& size, bool showGrid = true) {
         const std::shared_ptr<SignalSink>& sinkPtr = _signalSinks[0];
         if (!sinkPtr) {
@@ -143,8 +118,20 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         // X-axis: Time, Y-axis: signal name with unit
-        setupAxesWithAutoFit("Time", buildAxisLabel(sinkPtr.get()).c_str(), showGrid);
-        setupAxisScales();
+        {
+            AxisScale xScale    = static_cast<AxisScale>(x_axis_scale.value);
+            double    xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
+            double    xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
+            auto      xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            axis::setupAxis(ImAxis_X1, AxisCategory{.quantity = "Time", .unit = "s"}, LabelFormat::Auto, 100.f, xMinLimit, xMaxLimit, 1, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
+
+            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
+            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
+            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
+            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            AxisCategory yCat{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()};
+            axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, 100.f, yMinLimit, yMaxLimit, 1, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
+        }
         ImPlot::SetupFinish();
 
         ImVec4 lineColor = sinkColor(sinkPtr->color());
@@ -216,11 +203,22 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return;
         }
 
-        // Build axis labels with signal name and unit
-        std::string xLabel = buildAxisLabel(sinkXPtr.get());
-        std::string yLabel = buildAxisLabel(sinkYPtr.get());
-        setupAxesWithAutoFit(xLabel.c_str(), yLabel.c_str(), showGrid);
-        setupAxisScales();
+        // Build axis categories from sink metadata
+        {
+            AxisScale    xScale    = static_cast<AxisScale>(x_axis_scale.value);
+            double       xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
+            double       xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
+            auto         xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            AxisCategory xCat{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
+            axis::setupAxis(ImAxis_X1, xCat, LabelFormat::Auto, 100.f, xMinLimit, xMaxLimit, 1, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
+
+            AxisScale    yScale    = static_cast<AxisScale>(y_axis_scale.value);
+            double       yMinLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[0];
+            double       yMaxLimit = y_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[0];
+            auto         yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit);
+            AxisCategory yCat{.quantity = sinkYPtr->signalQuantity().empty() ? std::string(sinkYPtr->signalName()) : std::string(sinkYPtr->signalQuantity()), .unit = std::string(sinkYPtr->signalUnit()), .color = sinkYPtr->color()};
+            axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, 100.f, yMinLimit, yMaxLimit, 1, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
+        }
         ImPlot::SetupFinish();
 
         // Plot X signal as dummy to create legend entry for D&D
@@ -315,9 +313,10 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         {
             std::optional<AxisCategory> xCategory = AxisCategory{.quantity = sinkXPtr->signalQuantity().empty() ? std::string(sinkXPtr->signalName()) : std::string(sinkXPtr->signalQuantity()), .unit = std::string(sinkXPtr->signalUnit()), .color = sinkXPtr->color()};
             AxisScale                   xScale    = static_cast<AxisScale>(x_axis_scale.value);
-            double                      xMinLimit = x_auto_scale ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_min.value);
-            double                      xMaxLimit = x_auto_scale ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_max.value);
-            axis::setupAxis(ImAxis_X1, xCategory, LabelFormat::Auto, 100.f, xMinLimit, xMaxLimit, 1, xScale, _unitStringStorage, showGrid);
+            double                      xMinLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_min.value[0];
+            double                      xMaxLimit = x_auto_scale.value[0] ? std::numeric_limits<double>::quiet_NaN() : x_max.value[0];
+            auto                        xCond     = trackLimitsCond(true, xMinLimit, xMaxLimit);
+            axis::setupAxis(ImAxis_X1, xCategory, LabelFormat::Auto, 100.f, xMinLimit, xMaxLimit, 1, xScale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
         }
 
         // Y-axes (up to 3) grouped by quantity+unit
@@ -326,9 +325,10 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             if (!yCategories[i].has_value()) {
                 continue;
             }
-            double yMinLimit = (i == 0 && !y_auto_scale) ? static_cast<double>(y_min.value) : std::numeric_limits<double>::quiet_NaN();
-            double yMaxLimit = (i == 0 && !y_auto_scale) ? static_cast<double>(y_max.value) : std::numeric_limits<double>::quiet_NaN();
-            axis::setupAxis(ImAxis_Y1 + static_cast<int>(i), yCategories[i], LabelFormat::Auto, 100.f, yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid);
+            double yMinLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_min.value[i];
+            double yMaxLimit = y_auto_scale.value[i] ? std::numeric_limits<double>::quiet_NaN() : y_max.value[i];
+            auto   yCond     = trackLimitsCond(false, yMinLimit, yMaxLimit, i);
+            axis::setupAxis(ImAxis_Y1 + static_cast<int>(i), yCategories[i], LabelFormat::Auto, 100.f, yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
 
         ImPlot::SetupFinish();
@@ -402,25 +402,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions();
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
-    }
-
-    void setupAxisScales() {
-        // Set axis scale (log10 if configured)
-        if (static_cast<AxisScale>(x_axis_scale.value) == AxisScale::Log10) {
-            ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Log10);
-        }
-        if (static_cast<AxisScale>(y_axis_scale.value) == AxisScale::Log10) {
-            ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
-        }
-
-        // Set axis limits (only when auto-scale is disabled)
-        // Use ImPlotCond_Always to ensure limits from context menu are applied every frame
-        if (!x_auto_scale) {
-            ImPlot::SetupAxisLimits(ImAxis_X1, static_cast<double>(x_min.value), static_cast<double>(x_max.value), ImPlotCond_Always);
-        }
-        if (!y_auto_scale) {
-            ImPlot::SetupAxisLimits(ImAxis_Y1, static_cast<double>(y_min.value), static_cast<double>(y_max.value), ImPlotCond_Always);
-        }
     }
 };
 

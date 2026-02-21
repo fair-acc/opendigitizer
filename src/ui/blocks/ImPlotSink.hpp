@@ -78,26 +78,28 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     gr::PortIn<T> in;
 
-    ManagedColour                                                                                                                                                 _colour;
-    A<uint32_t, "plot color", gr::Doc<"RGB color for the plot">>                                                                                                  color         = 0U;
-    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                         required_size = gr::DataSetLike<T> ? 10U : 2048U;
-    A<std::string, "signal name", gr::Visible, gr::Doc<"Human-readable identifier for the signal">>                                                               signal_name;
-    A<std::string, "abscissa quantity", gr::Visible, gr::Doc<"Physical quantity of the primary (X) axis">>                                                        abscissa_quantity = "time";
-    A<std::string, "abscissa unit", gr::Visible, gr::Doc<"Unit of measurement of the primary (X) axis">>                                                          abscissa_unit     = "s";
-    A<std::string, "signal quantity", gr::Visible, gr::Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
-    A<std::string, "signal unit", gr::Visible, gr::Doc<"Unit of measurement for the signal values">>                                                              signal_unit;
-    A<float, "signal min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min     = std::numeric_limits<float>::lowest();
-    A<float, "signal max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max     = std::numeric_limits<float>::max();
-    A<float, "sample rate", gr::Visible, gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>            sample_rate    = 1000.0f;
-    A<gr::Size_t, "dataset index", gr::Visible, gr::Doc<"Index of the dataset, if applicable">>                                                                   dataset_index  = std::numeric_limits<gr::Size_t>::max();
-    A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                           n_history      = 3U;
-    A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>>      history_offset = 0.01f;
-    A<bool, "plot tags", gr::Doc<"true: draw the timing tags">>                                                                                                   plot_tags      = true;
-    A<std::uint8_t, "line style", gr::Visible, gr::Doc<"Line drawing style: 0=Solid, 1=Dashed, 2=Dotted, 3=DashDot, 4=None">>                                     line_style     = 0U;
-    A<float, "line width", gr::Visible, gr::Doc<"Line width in pixels">, gr::Unit<"px">, gr::Limits<float(0.1), float(10.0)>>                                     line_width     = 1.0f;
+    ManagedColour _colour;
+
+    A<std::string, "signal name", gr::Doc<"Human-readable identifier for the signal">, gr::Visible>                                                                            signal_name;
+    A<uint32_t, "signal color", gr::Doc<"RGB color for the plot">, gr::Visible>                                                                                                color = 0U;
+    A<std::string, "signal quantity", gr::Doc<"Physical quantity represented by the signal">, gr::Visible>                                                                     signal_quantity;
+    A<std::string, "signal unit", gr::Doc<"Unit of measurement for the signal values">, gr::Visible>                                                                           signal_unit;
+    A<float, "signal min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>, gr::Visible> signal_min        = std::numeric_limits<float>::lowest();
+    A<float, "signal max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>, gr::Visible> signal_max        = std::numeric_limits<float>::max();
+    A<std::uint8_t, "line style", gr::Doc<"Line drawing style: 0=Solid, 1=Dashed, 2=Dotted, 3=DashDot, 4=None">, gr::Visible>                                                  signal_line_style = 0U;
+    A<float, "line width", gr::Doc<"Line width in pixels">, gr::Unit<"px">, gr::Limits<float(0.1), float(10.0)>, gr::Visible>                                                  signal_line_width = 1.0f;
+
+    A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                    sample_rate       = 1000.0f;
+    A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                abscissa_quantity = "time";
+    A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                  abscissa_unit     = "s";
+    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                    required_size     = gr::DataSetLike<T> ? 10U : 2048U;
+    A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                           dataset_index     = std::numeric_limits<gr::Size_t>::max();
+    A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                      n_history         = 3U;
+    A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>> history_offset    = 0.01f;
+    A<bool, "plot tags", gr::Doc<"true: draw the timing tags">>                                                                                              plot_tags         = true;
 
     GR_MAKE_REFLECTABLE(ImPlotSink, in, color, required_size, signal_name, abscissa_quantity, abscissa_unit, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, //
-        dataset_index, n_history, history_offset, plot_tags, line_style, line_width);
+        dataset_index, n_history, history_offset, plot_tags, signal_line_style, signal_line_width);
 
     double _xUtcOffset = [] {
         using namespace std::chrono;
@@ -168,8 +170,8 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? this->name.value : signal_name.value; }
     [[nodiscard]] float            sampleRate() const noexcept { return sample_rate; }
-    [[nodiscard]] LineStyle        lineStyle() const noexcept { return static_cast<LineStyle>(std::min(line_style.value, std::uint8_t{4})); }
-    [[nodiscard]] float            lineWidth() const noexcept { return line_width; }
+    [[nodiscard]] LineStyle        lineStyle() const noexcept { return static_cast<LineStyle>(std::min(signal_line_style.value, std::uint8_t{4})); }
+    [[nodiscard]] float            lineWidth() const noexcept { return signal_line_width; }
 
     [[nodiscard]] std::string_view signalQuantity() const noexcept { return signal_quantity; }
     [[nodiscard]] std::string_view signalUnit() const noexcept { return signal_unit; }

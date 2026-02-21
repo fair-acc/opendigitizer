@@ -1,7 +1,9 @@
 #ifndef OPENDIGITIZER_GLOBAL_SIGNAL_LEGEND_HPP
 #define OPENDIGITIZER_GLOBAL_SIGNAL_LEGEND_HPP
 
+#include <array>
 #include <functional>
+#include <string>
 #include <string_view>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -21,9 +23,11 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
 
     GR_MAKE_REFLECTABLE(GlobalSignalLegend);
 
-    ImVec2             _legendSize{0.f, 0.f};
-    float              _paneWidth{800.f};
-    RightClickCallback _onRightClick;
+    ImVec2                _legendSize{0.f, 0.f};
+    float                 _paneWidth{800.f};
+    RightClickCallback    _onRightClick;
+    std::string           _editingSinkUniqueName;
+    std::array<char, 256> _editNameBuf{};
 
     GlobalSignalLegend() = default;
     explicit GlobalSignalLegend(gr::property_map initParams) { std::ignore = initParams; }
@@ -40,7 +44,7 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
                 _paneWidth = *val;
             }
         }
-        _legendSize = drawLegend(_paneWidth, _onRightClick ? &_onRightClick : nullptr);
+        _legendSize = drawLegend(_paneWidth);
         return gr::work::Status::OK;
     }
 
@@ -80,10 +84,11 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
         return result;
     }
 
-    ImVec2 drawLegend(float paneWidth, RightClickCallback* onRightClick) {
+    ImVec2 drawLegend(float paneWidth) {
         using namespace opendigitizer::charts;
         ImVec2 legendSize{0.f, 0.f};
-        float  accumulatedWidth = paneWidth; // start at full width to force new line
+        float  accumulatedWidth    = paneWidth; // start at full width to force new line
+        bool   openPropertiesPopup = false;
 
         {
             IMW::Group group;
@@ -106,8 +111,15 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
                 // draw the legend item
                 auto clickResult = drawLegendItem(color, label, sink.drawEnabled());
 
-                if (clickResult == ClickResult::Right && onRightClick) {
-                    (*onRightClick)(sink.uniqueName());
+                if (clickResult == ClickResult::Right) {
+                    _editingSinkUniqueName = std::string(sink.uniqueName());
+                    auto nm                = sink.signalName().empty() ? sink.name() : sink.signalName();
+                    _editNameBuf.fill('\0');
+                    std::copy_n(nm.data(), std::min(nm.size(), _editNameBuf.size() - 1), _editNameBuf.data());
+                    openPropertiesPopup = true;
+                    if (_onRightClick) {
+                        _onRightClick(sink.uniqueName());
+                    }
                 }
                 if (clickResult == ClickResult::Left) {
                     sink.setDrawEnabled(!sink.drawEnabled());
@@ -130,6 +142,60 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
 
         legendSize.x = ImGui::GetItemRectSize().x;
         legendSize.y = std::max(5.f, ImGui::GetItemRectSize().y);
+
+        // open popup outside the Group/ChangeId scope so IDs match BeginPopup
+        if (openPropertiesPopup) {
+            ImGui::OpenPopup("SinkPropertiesPopup");
+        }
+
+        // sink property editor popup
+        if (ImGui::BeginPopup("SinkPropertiesPopup")) {
+            auto editingSink = SinkRegistry::instance().findSink([this](const auto& s) { return s.uniqueName() == _editingSinkUniqueName; });
+            if (editingSink) {
+                ImGui::TextUnformatted("Signal properties");
+                ImGui::Separator();
+
+                // colour picker
+                std::uint32_t c   = editingSink->color();
+                ImVec4        col = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(c));
+                float         rgb[3]{col.x, col.y, col.z};
+                if (ImGui::ColorEdit3("Colour", rgb, ImGuiColorEditFlags_NoInputs)) {
+                    auto newColor = (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f);
+                    editingSink->setColor(newColor);
+                }
+
+                // line style combo
+                auto currentStyle = editingSink->lineStyle();
+                if (ImGui::BeginCombo("Line style", magic_enum::enum_name(currentStyle).data())) {
+                    for (auto s : magic_enum::enum_values<opendigitizer::LineStyle>()) {
+                        if (ImGui::Selectable(magic_enum::enum_name(s).data(), s == currentStyle)) {
+                            editingSink->setLineStyle(s);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+
+                // line width slider
+                float lw = editingSink->lineWidth();
+                if (ImGui::SliderFloat("Line width", &lw, 0.1f, 10.0f, "%.1f px")) {
+                    editingSink->setLineWidth(lw);
+                }
+
+                // signal name input
+                if (ImGui::InputText("Signal name", _editNameBuf.data(), _editNameBuf.size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    editingSink->setSignalName(_editNameBuf.data());
+                }
+
+                // visibility toggle
+                bool visible = editingSink->drawEnabled();
+                if (ImGui::Checkbox("Visible", &visible)) {
+                    editingSink->setDrawEnabled(visible);
+                }
+            } else {
+                ImGui::TextUnformatted("Sink not found");
+            }
+            ImGui::EndPopup();
+        }
 
         // drop target - accept drops from charts, signal removal via dnd::g_state
         dnd::handleLegendDropTarget();
