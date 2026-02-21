@@ -61,9 +61,6 @@ struct SpectrumFrame {
 template<typename Sinks, typename Fn>
 void forEachValidSpectrum(const Sinks& sinks, Fn&& fn) {
     for (const auto& sink : sinks) {
-        if (!sink->drawEnabled()) {
-            continue;
-        }
         auto dataLock = sink->dataGuard();
         if (!sink->hasDataSets()) {
             continue;
@@ -224,25 +221,25 @@ struct DensityHistogram {
     bool        _gpuAvailable  = false;
 
     // GPU path — ping-pong R32F histogram + RGBA8 output
-    std::array<GLuint, 2> _histogramTextures{};
-    std::array<GLuint, 2> _histogramFBOs{};
-    int                   _pingPongIndex      = 0;
-    GLuint                _colormapTexture    = 0;
-    GLuint                _colormapFBO        = 0;
-    GLuint                _spectrumTexture    = 0;
-    GLuint                _colormapLutTexture = 0;
-    ImPlotColormap        _activeColormap     = -1;
-    GLuint                _emptyVAO           = 0;
-    GLuint                _accumulateProgram  = 0;
-    GLuint                _colormapProgram    = 0;
-    GLint                 _locAccPrevHist     = -1;
-    GLint                 _locAccSpecLine     = -1;
-    GLint                 _locAccDecay        = -1;
-    GLint                 _locAccAmpBins      = -1;
-    GLint                 _locCmHist          = -1;
-    GLint                 _locCmLut           = -1;
-    GLint                 _locCmMaxDensity    = -1;
-    float                 _peakDensity        = 0.f;
+    std::array<GLuint, 2UZ> _histogramTextures{};
+    std::array<GLuint, 2UZ> _histogramFBOs{};
+    int                     _pingPongIndex      = 0;
+    GLuint                  _colormapTexture    = 0;
+    GLuint                  _colormapFBO        = 0;
+    GLuint                  _spectrumTexture    = 0;
+    GLuint                  _colormapLutTexture = 0;
+    ImPlotColormap          _activeColormap     = -1;
+    GLuint                  _emptyVAO           = 0;
+    GLuint                  _accumulateProgram  = 0;
+    GLuint                  _colormapProgram    = 0;
+    GLint                   _locAccPrevHist     = -1;
+    GLint                   _locAccSpecLine     = -1;
+    GLint                   _locAccDecay        = -1;
+    GLint                   _locAccAmpBins      = -1;
+    GLint                   _locCmHist          = -1;
+    GLint                   _locCmLut           = -1;
+    GLint                   _locCmMaxDensity    = -1;
+    float                   _peakDensity        = 0.f;
 
     // reusable scratch buffers (avoid per-frame heap allocations)
     std::vector<float> _scratchBuffer;
@@ -525,9 +522,9 @@ void main() {
 
     void gpuUpdate(std::span<const float> yValues, std::size_t nBins, std::size_t ampBins, double decayTau, double yMin, double yMax, ImPlotColormap colormap) {
         // save GL state before any GL calls (resize/reset/upload all modify bindings)
-        GLint                prevFBO = 0, prevProgram = 0, prevActiveTexture = 0, prevVAO = 0;
-        GLint                prevTexture0 = 0, prevTexture1 = 0;
-        std::array<GLint, 4> prevViewport{};
+        GLint                  prevFBO = 0, prevProgram = 0, prevActiveTexture = 0, prevVAO = 0;
+        GLint                  prevTexture0 = 0, prevTexture1 = 0;
+        std::array<GLint, 4UZ> prevViewport{};
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
         glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
         glGetIntegerv(GL_VIEWPORT, prevViewport.data());

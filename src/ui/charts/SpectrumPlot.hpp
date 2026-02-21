@@ -52,6 +52,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
+    std::array<std::string, 6UZ>                      _unitStore{};
 
     static constexpr std::string_view kChartTypeName = "SpectrumPlot";
 
@@ -70,6 +71,9 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
+        const auto&            lnf = DigitizerUi::LookAndFeel::instance();
+        DigitizerUi::IMW::Font plotFont(lnf.fontSmall[lnf.prototypeMode ? 1UZ : 0UZ]); // smaller font to prevent MetricInline label overlap
+
         if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
@@ -87,48 +91,15 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     void reset() { _tracesPerSink.clear(); }
 
     void setupAxes(bool showGrid) {
-        // x-axis: frequency
-        {
-            const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, true);
-            const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-            const auto      format  = dashCfg ? dashCfg->format : LabelFormat::MetricInline;
-
-            double minLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_min.value;
-            double maxLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_max.value;
-            if (dashCfg && x_auto_scale.value) {
-                minLimit = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : minLimit;
-                maxLimit = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : maxLimit;
-            }
-
-            auto [xQuantity, xUnit] = sinkAxisInfo(true);
-            AxisCategory               xCat{.quantity = xQuantity, .unit = xUnit};
-            std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid);
-        }
-
-        // y-axis: magnitude
-        {
-            const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, false);
-            const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-            const auto      format  = dashCfg ? dashCfg->format : LabelFormat::Auto;
-
-            double minLimit = y_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : y_min.value;
-            double maxLimit = y_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : y_max.value;
-            if (dashCfg && y_auto_scale.value) {
-                minLimit = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : minLimit;
-                maxLimit = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : maxLimit;
-            }
-
-            auto [yQuantity, yUnit] = sinkAxisInfo(false);
-            AxisCategory               yCat{.quantity = yQuantity, .unit = yUnit};
-            std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid);
-        }
+        setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline);
+        setupSingleAxis(false, ImAxis_Y1, showGrid);
     }
 
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
-            plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+            if (sink.drawEnabled()) {
+                plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+            }
             auto& traces = _tracesPerSink[std::string(sink.signalName())];
             drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
             return true;

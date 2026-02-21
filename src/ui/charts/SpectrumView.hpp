@@ -75,14 +75,18 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     WaterfallBuffer                                   _waterfall;
     std::size_t                                       _lastSpectrumSize    = 0;
     int64_t                                           _lastPushedTimestamp = 0;
-    std::array<float, 2>                              _rowRatios           = {0.4f, 0.6f};
-    std::array<std::string, 6>                        _unitStore{};
+    std::array<float, 2UZ>                            _rowRatios           = {0.4f, 0.6f};
+    std::array<std::string, 6UZ>                      _unitStore{};
+    std::array<std::string, 6UZ>                      _waterfallUnitStore{};
 
     struct RenderInfo {
         double freqMin;
         double freqMax;
     };
     std::optional<RenderInfo> _lastRenderInfo;
+    ImPlotCond                _sharedXCond = ImPlotCond_Once; // computed once per frame, shared across both panes
+    double                    _topPaneYMin = -120.0;          // captured from the displayed top-pane Y-axis range
+    double                    _topPaneYMax = 0.0;
 
     static constexpr std::string_view kChartTypeName = "SpectrumView";
 
@@ -115,6 +119,21 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         _rowRatios[0] = top_pane_ratio;
         _rowRatios[1] = 1.0f - top_pane_ratio;
 
+        // precompute x-axis limit condition once — both panes share x-axis via LinkAllX
+        {
+            const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true);
+            double     xMinLim = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_min.value);
+            double     xMaxLim = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : static_cast<double>(x_max.value);
+            if (dashCfg && x_auto_scale.value) {
+                xMinLim = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : xMinLim;
+                xMaxLim = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : xMaxLim;
+            }
+            _sharedXCond = trackLimitsCond(true, xMinLim, xMaxLim);
+        }
+
+        const auto&            lnf = DigitizerUi::LookAndFeel::instance();
+        DigitizerUi::IMW::Font plotFont(lnf.fontSmall[lnf.prototypeMode ? 1UZ : 0UZ]); // smaller font to prevent MetricInline label overlap
+
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
         auto               subplotId    = std::format("##combined_{}", chart_name.value);
         if (!ImPlot::BeginSubplots(subplotId.c_str(), 2, 1, plotSize, subplotFlags, _rowRatios.data())) {
@@ -128,23 +147,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         return gr::work::Status::OK;
     }
 
-    void setupFrequencyAxis(bool showGrid) {
-        const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, true);
-        const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-        const auto      format  = dashCfg ? dashCfg->format : LabelFormat::MetricInline;
-
-        double minLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_min.value;
-        double maxLimit = x_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : x_max.value;
-        if (dashCfg && x_auto_scale.value) {
-            minLimit = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : minLimit;
-            maxLimit = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : maxLimit;
-        }
-
-        auto [xQuantity, xUnit] = sinkAxisInfo(true);
-        AxisCategory               xCat{.quantity = xQuantity, .unit = xUnit};
-        std::array<std::string, 6> unitStore{};
-        axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid, /*foreground=*/true);
-    }
+    void setupFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond); }
 
     void drawTopPane(ImPlotFlags plotFlags, bool showGrid) {
         const bool isDensity = (top_pane_mode.value == TopPaneMode::Density);
@@ -168,6 +171,11 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
             tooltip::showPlotMouseTooltip();
             handleCommonInteractions();
+
+            auto yLimits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y1).Y;
+            _topPaneYMin = yLimits.Min;
+            _topPaneYMax = yLimits.Max;
+
             ImPlot::EndPlot();
         }
         ImPlot::PopStyleVar();
@@ -178,27 +186,13 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
-    void setupMagnitudeAxis(bool showGrid) {
-        const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, false);
-        const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
-        const auto      format  = dashCfg ? dashCfg->format : LabelFormat::Auto;
-
-        double minLimit = y_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : y_min.value;
-        double maxLimit = y_auto_scale.value ? std::numeric_limits<double>::quiet_NaN() : y_max.value;
-        if (dashCfg && y_auto_scale.value) {
-            minLimit = std::isfinite(dashCfg->min) ? static_cast<double>(dashCfg->min) : minLimit;
-            maxLimit = std::isfinite(dashCfg->max) ? static_cast<double>(dashCfg->max) : maxLimit;
-        }
-
-        auto [yQuantity, yUnit] = sinkAxisInfo(false);
-        AxisCategory               yCat{.quantity = yQuantity, .unit = yUnit};
-        std::array<std::string, 6> unitStore{};
-        axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid);
-    }
+    void setupMagnitudeAxis(bool showGrid) { setupSingleAxis(false, ImAxis_Y1, showGrid); }
 
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
-            plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+            if (sink.drawEnabled()) {
+                plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+            }
             auto& traces = _tracesPerSink[std::string(sink.signalName())];
             drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
             return true;
@@ -218,7 +212,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             auto&  traces    = _tracesPerSink[std::string(sink.signalName())];
             drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
 
-            if (show_current_overlay.value) {
+            if (show_current_overlay.value && sink.drawEnabled()) {
                 plotTrace("##current", f.xValues, f.yValues, f.nBins, ImVec4(traceBase.x, traceBase.y, traceBase.z, 1.0f));
             }
 
@@ -232,7 +226,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
-            setupFrequencyAxis(showGrid);
+            setupBottomFrequencyAxis(showGrid);
             setupWaterfallYAxis(showGrid);
 
             auto renderInfo = fetchAndPushData();
@@ -254,6 +248,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             }
 
             tooltip::showPlotMouseTooltip();
+            drawContextMenu("SpectrumViewBottom");
             handlePlotDropTarget();
             ImPlot::EndPlot();
         }
@@ -263,11 +258,13 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
+    void setupBottomFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond, AxisScale::Linear); }
+
     void setupWaterfallYAxis(bool showGrid) {
         ImPlotAxisFlags yFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
         ImPlot::SetupAxis(ImAxis_Y1, "", yFlags);
-        _unitStore[ImAxis_Y1] = "s";
-        ImPlot::SetupAxisFormat(ImAxis_Y1, axis::formatMetric, const_cast<void*>(static_cast<const void*>(_unitStore[ImAxis_Y1].c_str())));
+        _waterfallUnitStore[ImAxis_Y1] = "s";
+        ImPlot::SetupAxisFormat(ImAxis_Y1, axis::formatMetric, const_cast<void*>(static_cast<const void*>(_waterfallUnitStore[ImAxis_Y1].c_str())));
         ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Linear);
     }
 
@@ -290,8 +287,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             }
 
             _waterfall.updateAutoScale(f.yValues, f.nBins);
-            auto [cMin, cMax] = effectiveColourRange(this->ui_constraints.value, _waterfall.scaleMin(), _waterfall.scaleMax());
-            _waterfall.pushRow(f.yValues, f.nBins, cMin, cMax, timestampFromNanos(f.timestamp), colormap.value);
+            _waterfall.pushRow(f.yValues, f.nBins, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
 
             _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
             result          = _lastRenderInfo;

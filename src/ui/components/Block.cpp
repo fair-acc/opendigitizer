@@ -2,6 +2,7 @@
 #include "BlockNeighboursPreview.hpp"
 #include "Keypad.hpp"
 
+#include <algorithm>
 #include <format>
 
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
@@ -47,7 +48,7 @@ bool drawRemoveContextPopup(const std::string& context) {
     ImGui::SetNextWindowSize({600, 100}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(removeContextPopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
-        ImGui::Text("Do you wanto to remove '%s' context?", context.c_str());
+        ImGui::Text("Do you want to remove '%s' context?", context.c_str());
         return components::DialogButtons() == components::DialogButton::Ok;
     }
     return false;
@@ -144,7 +145,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
             block->removeContext(activeContext);
         }
 
-        auto typeParams = block->ownerGraph->availableParametrizationsFor(block->blockTypeName);
+        auto typeParams = block->ownerGraph ? block->ownerGraph->availableParametrizationsFor(block->blockTypeName) : UiGraphModel::AvailableParametrizationsResult{};
 
         if (typeParams.availableParametrizations) {
             if (typeParams.availableParametrizations->size() > 1) {
@@ -184,80 +185,202 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
 void BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
     constexpr auto editorFieldWidth = 150;
-    if (auto table = IMW::Table("settings_table", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
-        // Setup columns without headers
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
-        int i = 0;
-        for (const auto& [key, value] : block->blockSettings) {
-            // Do we know how to edit this type?
-            bool isEditable = false;
-            gr::pmt::ValueVisitor([&](const auto& arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string> || std::floating_point<T> || std::integral<T>) {
-                    isEditable = true;
+    const auto isColourField = [](const UiGraphBlock::SettingsMetaInformation& meta, std::string_view key) {
+        auto containsColo = [](std::string_view s) {
+            constexpr std::string_view target = "colo";
+            return !std::ranges::search(s, target, [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); }).empty();
+        };
+        return containsColo(meta.description) || containsColo(key);
+    };
+
+    const auto sendSetSettingMessage = [block](std::string_view keyToUpdate, auto updatedValue) {
+        if (!block->ownerGraph) {
+            return;
+        }
+        gr::Message message;
+        message.serviceName = block->blockUniqueName;
+        message.endpoint    = gr::block::property::kSetting;
+        message.cmd         = gr::message::Command::Set;
+        message.data        = gr::property_map{{std::pmr::string(keyToUpdate), updatedValue}};
+        block->ownerGraph->sendMessage(std::move(message));
+    };
+
+    InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
+
+    const auto drawSettingRow = [&](const std::string& key, const gr::pmt::Value& value, int& rowIndex) {
+        bool isEditable = false;
+        gr::pmt::ValueVisitor([&](const auto& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string> || std::floating_point<T> || std::integral<T>) {
+                isEditable = true;
+            }
+        }).visit(value);
+        if (!isEditable) {
+            return;
+        }
+
+        auto          id = ImGui::GetID(key.c_str());
+        IMW::ChangeId rowId{int(id)};
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        auto& meta = block->blockSettingsMetaInformation[std::string(key)];
+        ImGui::TextUnformatted(meta.description.c_str());
+        if (meta.minValue && meta.maxValue) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%.4g \xe2\x80\x93 %.4g)", *meta.minValue, *meta.maxValue);
+        }
+
+        ImGui::TableSetColumnIndex(1);
+        char label[64];
+        auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", rowIndex);
+        *labelResult.out = '\0';
+
+        const auto getUnit = [&meta]() -> std::string_view { return meta.unit; };
+
+        const auto showFieldTooltip = [&]() {
+            if (ImGui::IsItemHovered()) {
+                if (meta.minValue && meta.maxValue) {
+                    ImGui::SetTooltip("%s [%.4g \xe2\x80\x93 %.4g]", key.c_str(), *meta.minValue, *meta.maxValue);
+                } else {
+                    ImGui::SetTooltip("%s", key.c_str());
                 }
-            }).visit(value);
-            if (!isEditable) {
-                continue;
-            };
+            }
+        };
 
-            auto          id = ImGui::GetID(key.c_str());
-            IMW::ChangeId rowId{int(id)};
-
-            ImGui::TableNextRow();
-
-            // Column 1: Label
-            ImGui::TableSetColumnIndex(0);
-            auto& currentPropertyMetaInformation = block->blockSettingsMetaInformation[std::string(key)];
-            ImGui::TextUnformatted(currentPropertyMetaInformation.description.c_str());
-
-            // Column 2: Input
-            ImGui::TableSetColumnIndex(1);
-            char label[64];
-            auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", i);
-            *labelResult.out = '\0';
-
-            auto sendSetSettingMessage = [block](auto blockUniqueName, auto keyToUpdate, auto updatedValue) {
-                gr::Message message;
-                message.serviceName = blockUniqueName;
-                message.endpoint    = gr::block::property::kSetting;
-                message.cmd         = gr::message::Command::Set;
-                message.data        = gr::property_map{{std::pmr::string(keyToUpdate), updatedValue}};
-                block->ownerGraph->sendMessage(std::move(message));
-            };
-
-            const auto getUnit = [&currentPropertyMetaInformation]() -> std::string_view { return currentPropertyMetaInformation.unit; };
-
-            InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
-
-            gr::pmt::ValueVisitor([&]<typename TArg>(const TArg& arg) {
-                using T = std::decay_t<TArg>;
-                if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
-                    ImGui::SetNextItemWidth(-FLT_MIN); // Stretch to available width
+        gr::pmt::ValueVisitor([&]<typename TArg>(const TArg& arg) {
+            using T = std::decay_t<TArg>;
+            if constexpr (std::same_as<T, bool>) {
+                bool temp = arg;
+                if (ImGui::Checkbox(label, &temp)) {
+                    sendSetSettingMessage(key, temp);
+                }
+                showFieldTooltip();
+            } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
+                if (!meta.enumValues.empty()) {
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    std::string current(arg);
+                    if (ImGui::BeginCombo(label, current.c_str())) {
+                        for (const auto& enumName : meta.enumValues) {
+                            if (ImGui::Selectable(enumName.c_str(), enumName == current)) {
+                                sendSetSettingMessage(key, enumName);
+                            }
+                            if (enumName == current) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                } else {
+                    ImGui::SetNextItemWidth(-FLT_MIN);
                     std::string temp(arg);
                     if (ImGui::InputText(label, &temp)) {
-                        sendSetSettingMessage(block->blockUniqueName, key, std::move(temp));
-                    }
-                    IMW::detail::setItemTooltip(key.c_str());
-                } else if constexpr (std::floating_point<T>) {
-                    ImGui::SetNextItemWidth(editorFieldWidth);
-                    float temp = static_cast<float>(arg);
-                    if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
-                        sendSetSettingMessage(block->blockUniqueName, key, temp);
-                    }
-                } else if constexpr (std::integral<T>) {
-                    ImGui::SetNextItemWidth(editorFieldWidth);
-                    int temp = static_cast<int>(arg);
-                    if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
-                        sendSetSettingMessage(block->blockUniqueName, key, temp);
+                        sendSetSettingMessage(key, std::move(temp));
                     }
                 }
-            }).visit(value);
+                showFieldTooltip();
+            } else if constexpr (std::unsigned_integral<T> && sizeof(T) >= 4) {
+                if (isColourField(meta, key)) {
+                    ImVec4 col = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(static_cast<std::uint32_t>(arg)));
+                    float  rgb[3]{col.x, col.y, col.z};
+                    if (ImGui::ColorEdit3(label, rgb, ImGuiColorEditFlags_NoInputs)) {
+                        auto newColor = static_cast<T>((static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f));
+                        sendSetSettingMessage(key, newColor);
+                    }
+                    showFieldTooltip();
+                } else {
+                    ImGui::SetNextItemWidth(editorFieldWidth);
+                    int temp = static_cast<int>(arg);
+                    if (meta.minValue && meta.maxValue) {
+                        if (ImGui::SliderInt(label, &temp, static_cast<int>(*meta.minValue), static_cast<int>(*meta.maxValue))) {
+                            sendSetSettingMessage(key, static_cast<T>(temp));
+                        }
+                    } else if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                        sendSetSettingMessage(key, static_cast<T>(temp));
+                    }
+                    showFieldTooltip();
+                }
+            } else if constexpr (std::floating_point<T>) {
+                ImGui::SetNextItemWidth(editorFieldWidth);
+                float temp = static_cast<float>(arg);
+                if (meta.minValue && meta.maxValue) {
+                    const float minV = static_cast<float>(*meta.minValue);
+                    const float maxV = static_cast<float>(*meta.maxValue);
+                    if (ImGui::SliderFloat(label, &temp, minV, maxV)) {
+                        sendSetSettingMessage(key, static_cast<T>(temp));
+                    }
+                } else if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                    sendSetSettingMessage(key, static_cast<T>(temp));
+                }
+                showFieldTooltip();
+            } else if constexpr (std::integral<T>) {
+                ImGui::SetNextItemWidth(editorFieldWidth);
+                int temp = static_cast<int>(arg);
+                if (meta.minValue && meta.maxValue) {
+                    if (ImGui::SliderInt(label, &temp, static_cast<int>(*meta.minValue), static_cast<int>(*meta.maxValue))) {
+                        sendSetSettingMessage(key, static_cast<T>(temp));
+                    }
+                } else if (InputKeypad<>::edit(key.c_str(), label, &temp, getUnit())) {
+                    sendSetSettingMessage(key, static_cast<T>(temp));
+                }
+                showFieldTooltip();
+            }
+        }).visit(value);
 
-            ++i;
+        ++rowIndex;
+    };
+
+    const auto drawSettingsTable = [&](bool visibleOnly) {
+        if (auto table = IMW::Table(visibleOnly ? "settings_visible" : "settings_more", 2, ImGuiTableFlags_SizingFixedFit, ImVec2(0, 0), 0.0f)) {
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
+
+            int rowIndex = 0;
+            for (const auto& [key, value] : block->blockSettings) {
+                std::string keyStr(key);
+                auto        metaIt   = block->blockSettingsMetaInformation.find(keyStr);
+                bool        isMarked = metaIt != block->blockSettingsMetaInformation.end() && metaIt->second.isVisible;
+                if (isMarked != visibleOnly) {
+                    continue;
+                }
+                drawSettingRow(keyStr, value, rowIndex);
+            }
         }
+    };
+
+    bool hasVisibleSettings = std::ranges::any_of(block->blockSettings, [&](const auto& kv) {
+        auto it = block->blockSettingsMetaInformation.find(std::string(kv.first));
+        return it != block->blockSettingsMetaInformation.end() && it->second.isVisible;
+    });
+
+    if (hasVisibleSettings) {
+        IMW::TabBar tabBar("settings_tabs", 0);
+        if (auto tab = IMW::TabItem("Settings", nullptr, 0)) {
+            drawSettingsTable(true);
+        }
+        if (auto tab = IMW::TabItem("more...", nullptr, 0)) {
+            drawSettingsTable(false);
+        }
+    } else {
+        drawSettingsTable(false);
+    }
+
+    // reset-all button — delegates to GR4's Block::settings().resetDefaults()
+    {
+        IMW::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+        ImGui::TextUnformatted("\uf2ea");
+    }
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    if (ImGui::SmallButton("Reset all") && block->ownerGraph) {
+        gr::Message message;
+        message.serviceName = block->blockUniqueName;
+        message.endpoint    = gr::block::property::kResetDefaults;
+        message.cmd         = gr::message::Command::Set;
+        block->ownerGraph->sendMessage(std::move(message));
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Reset all settings to defaults");
     }
 }
 

@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_GLOBAL_SIGNAL_LEGEND_HPP
 
 #include <functional>
+#include <string>
 #include <string_view>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -13,20 +14,19 @@
 namespace DigitizerUi {
 
 /// Global signal legend displaying all registered sinks from SinkRegistry.
-/// Supports left-click toggle, right-click settings, drag to charts, and drop from charts.
+/// Supports left-click toggle, right-click colour/settings, drag to charts, and drop from charts.
 struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using RightClickCallback = std::function<void(std::string_view sinkUniqueName)>;
 
-    enum class ClickResult { None, Left, Right };
+    enum class ClickResult { None, Left, RightColor, RightName };
 
     GR_MAKE_REFLECTABLE(GlobalSignalLegend);
 
     ImVec2             _legendSize{0.f, 0.f};
     float              _paneWidth{800.f};
     RightClickCallback _onRightClick;
-
-    GlobalSignalLegend() = default;
-    explicit GlobalSignalLegend(gr::property_map initParams) { std::ignore = initParams; }
+    std::string        _editingSinkUniqueName;
+    bool               _openColorPopup = false;
 
     void setRightClickCallback(RightClickCallback callback) { _onRightClick = std::move(callback); }
     void setPaneWidth(float width) { _paneWidth = width; }
@@ -34,13 +34,12 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        // allow paneWidth to be passed via config
         if (auto it = config.find("paneWidth"); it != config.end()) {
             if (auto* val = it->second.get_if<float>()) {
                 _paneWidth = *val;
             }
         }
-        _legendSize = drawLegend(_paneWidth, _onRightClick ? &_onRightClick : nullptr);
+        _legendSize = drawLegend(_paneWidth);
         return gr::work::Status::OK;
     }
 
@@ -48,20 +47,27 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
 
     static ClickResult drawLegendItem(std::uint32_t color, std::string_view text, bool enabled = true) {
         using namespace opendigitizer::charts;
-        ClickResult result = ClickResult::None;
+        ClickResult                result = ClickResult::None;
+        constexpr ImGuiMouseButton kRMB   = ImGuiMouseButton_Right;
 
         const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
         const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
 
-        // draw color indicator
+        // colour indicator square
         ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), rgbToImGuiABGR(color));
 
         if (ImGui::InvisibleButton("##ColorBox", rectSize)) {
             result = ClickResult::Left;
         }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            if (ImGui::IsMouseReleased(kRMB)) {
+                result = ClickResult::RightColor;
+            }
+        }
         ImGui::SameLine();
 
-        // draw button text with transparent background
+        // signal name button with transparent background
         ImVec2 buttonSize(rectSize.x + ImGui::CalcTextSize(text.data()).x - 4, ImGui::GetTextLineHeight());
 
         IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -72,18 +78,22 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
         if (ImGui::Button(text.data(), buttonSize)) {
             result = ClickResult::Left;
         }
-
-        if (ImGui::IsMouseReleased(ImGuiPopupFlags_MouseButtonRight & ImGuiPopupFlags_MouseButtonMask_) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
-            result = ClickResult::Right;
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            if (ImGui::IsMouseReleased(kRMB)) {
+                result = ClickResult::RightName;
+            }
         }
 
         return result;
     }
 
-    ImVec2 drawLegend(float paneWidth, RightClickCallback* onRightClick) {
+    ImVec2 drawLegend(float paneWidth) {
         using namespace opendigitizer::charts;
         ImVec2 legendSize{0.f, 0.f};
         float  accumulatedWidth = paneWidth; // start at full width to force new line
+
+        _openColorPopup = false;
 
         {
             IMW::Group group;
@@ -105,9 +115,18 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
 
                 // draw the legend item
                 auto clickResult = drawLegendItem(color, label, sink.drawEnabled());
+                if (ImGui::IsItemHovered() && !ImGui::GetDragDropPayload()) {
+                    ImGui::SetTooltip("Drag/Toggle Signal");
+                }
 
-                if (clickResult == ClickResult::Right && onRightClick) {
-                    (*onRightClick)(sink.uniqueName());
+                if (clickResult == ClickResult::RightColor) {
+                    _editingSinkUniqueName = std::string(sink.uniqueName());
+                    _openColorPopup        = true;
+                }
+                if (clickResult == ClickResult::RightName) {
+                    if (_onRightClick) {
+                        _onRightClick(sink.uniqueName());
+                    }
                 }
                 if (clickResult == ClickResult::Left) {
                     sink.setDrawEnabled(!sink.drawEnabled());
@@ -119,10 +138,7 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
                 if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                     dnd::Payload payload{};
                     opendigitizer::charts::dnd::copyToBuffer(payload.sink_name, label);
-                    // source_chart_id stays empty (dragging from legend = no chart to remove from)
                     ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
-
-                    // draw preview
                     drawLegendItem(color, label, sink.drawEnabled());
                 }
             });
@@ -130,6 +146,24 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
 
         legendSize.x = ImGui::GetItemRectSize().x;
         legendSize.y = std::max(5.f, ImGui::GetItemRectSize().y);
+
+        // colour-only popup (right-click on colour square)
+        if (_openColorPopup) {
+            ImGui::OpenPopup("SinkColorPopup");
+        }
+        if (ImGui::BeginPopup("SinkColorPopup")) {
+            auto editingSink = SinkRegistry::instance().findSink([this](const auto& s) { return s.uniqueName() == _editingSinkUniqueName; });
+            if (editingSink) {
+                std::uint32_t c   = editingSink->color();
+                ImVec4        col = ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(c));
+                float         rgb[3]{col.x, col.y, col.z};
+                if (ImGui::ColorPicker3("##color", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_PickerHueBar)) {
+                    auto newColor = (static_cast<std::uint32_t>(rgb[0] * 255.0f) << 16) | (static_cast<std::uint32_t>(rgb[1] * 255.0f) << 8) | static_cast<std::uint32_t>(rgb[2] * 255.0f);
+                    editingSink->setColor(newColor);
+                }
+            }
+            ImGui::EndPopup();
+        }
 
         // drop target - accept drops from charts, signal removal via dnd::g_state
         dnd::handleLegendDropTarget();

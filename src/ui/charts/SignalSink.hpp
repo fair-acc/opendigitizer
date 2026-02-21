@@ -288,6 +288,11 @@ struct SignalSink {
 
     virtual void setDrawEnabled(bool enabled) = 0;
 
+    virtual void setColor(std::uint32_t color)      = 0;
+    virtual void setLineStyle(LineStyle style)      = 0;
+    virtual void setLineWidth(float width)          = 0;
+    virtual void setSignalName(std::string_view nm) = 0;
+
     [[nodiscard]] virtual std::string_view signalQuantity() const noexcept   = 0;
     [[nodiscard]] virtual std::string_view signalUnit() const noexcept       = 0;
     [[nodiscard]] virtual std::string_view abscissaQuantity() const noexcept = 0;
@@ -312,8 +317,7 @@ struct SignalSink {
  */
 template<gr::BlockLike T>
 struct SinkAdapter : public SignalSink {
-    std::atomic<T*>   _block;             // non-owning pointer to the underlying block (nulled on invalidation)
-    std::atomic<bool> _drawEnabled{true}; // UI visibility state (independent of block)
+    std::atomic<T*> _block; // non-owning pointer to the underlying block (nulled on invalidation)
 
     // cached identity (stable after invalidation)
     std::string _cachedName;
@@ -751,9 +755,76 @@ struct SinkAdapter : public SignalSink {
         return gr::work::Status::OK;
     }
 
-    [[nodiscard]] bool drawEnabled() const noexcept override { return _drawEnabled.load(std::memory_order_relaxed); }
+    [[nodiscard]] bool drawEnabled() const noexcept override {
+        auto* b = blockPtr();
+        if (!b) {
+            return true;
+        }
+        if constexpr (requires { b->visible.value; }) {
+            return b->visible.value;
+        }
+        return true;
+    }
 
-    void setDrawEnabled(bool enabled) override { _drawEnabled.store(enabled, std::memory_order_relaxed); }
+    void setDrawEnabled(bool enabled) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->visible.value; }) {
+            b->visible  = enabled;
+            std::ignore = b->settings().set({{"visible", enabled}});
+            std::ignore = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setColor(std::uint32_t c) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->color.value; }) {
+            b->color    = c;
+            std::ignore = b->settings().set({{"color", c}});
+            std::ignore = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setLineStyle(LineStyle style) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->line_style.value; }) {
+            b->line_style = style;
+            std::ignore   = b->settings().set({{"line_style", magic_enum::enum_name(style)}});
+            std::ignore   = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setLineWidth(float width) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->line_width.value; }) {
+            b->line_width = width;
+            std::ignore   = b->settings().set({{"line_width", width}});
+            std::ignore   = b->settings().applyStagedParameters();
+        }
+    }
+
+    void setSignalName(std::string_view nm) override {
+        auto* b = blockPtr();
+        if (!b) {
+            return;
+        }
+        if constexpr (requires { b->signal_name.value; }) {
+            b->signal_name = std::string(nm);
+            std::ignore    = b->settings().set({{"signal_name", std::string(nm)}});
+            std::ignore    = b->settings().applyStagedParameters();
+        }
+    }
 
 private:
     mutable std::mutex _fallbackMutex; // per-instance fallback (replaces former static dummy)
