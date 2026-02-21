@@ -26,6 +26,7 @@ void LookAndFeel::loadFonts() {
                     0, 0};
     static const std::vector<ImWchar> rangeLatinExtended     = {0x80, 0xFFFF, 0}; // Latin-1 Supplement
     static const std::vector<ImWchar> rangeLatinPlusExtended = {0x0020, 0x00FF,   // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
+        0x2200, 0x22FF,                                                           // Mathematical Operators (√, ∑, ∫, ≤, ≥, ≠, ∞, etc.)
         0, 0};
     static const ImWchar              glyphRanges[]          = {// pick individual glyphs and specific sub-ranges rather than full range
         0XF005, 0XF2ED,                   // 0xf005 is "", 0xf2ed is "trash can"
@@ -63,12 +64,12 @@ void LookAndFeel::loadFonts() {
     config.PixelSnapH           = true;
     config.FontDataOwnedByAtlas = false;
 
-    auto loadDefaultFont = [](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar>& ranges = {}) {
-        auto loadFont = [&primaryFont, &secondaryFont, &ranges](float loadFontSize) {
-            const auto resultFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), static_cast<int>(primaryFont.size()), loadFontSize, &config);
-            if (!ranges.empty()) {
+    auto loadDefaultFont = [](auto primaryFont, auto secondaryFont, std::size_t index, const std::vector<ImWchar>& primaryRanges = {}, const std::vector<ImWchar>& secondaryRanges = {}) {
+        auto loadFont = [&primaryFont, &secondaryFont, &primaryRanges, &secondaryRanges](float loadFontSize) {
+            const auto resultFont = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(primaryFont.begin()), static_cast<int>(primaryFont.size()), loadFontSize, &config, primaryRanges.empty() ? nullptr : primaryRanges.data());
+            if (!secondaryRanges.empty()) {
                 config.MergeMode = true;
-                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), static_cast<int>(secondaryFont.size()), loadFontSize, &config, ranges.data());
+                ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), static_cast<int>(secondaryFont.size()), loadFontSize, &config, secondaryRanges.data());
                 config.MergeMode = false;
             }
             return resultFont;
@@ -83,8 +84,8 @@ void LookAndFeel::loadFonts() {
         lookAndFeel.fontLarge[index]  = loadFont(fontSize[FontSizeLarge]);
     };
 
-    loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0);
-    loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, rangeLatinExtended);
+    loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0, rangeLatinPlusExtended);
+    loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, {}, rangeLatinExtended);
     ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
 
     auto loadIconsFont = [](auto name, float iconFontSize) {

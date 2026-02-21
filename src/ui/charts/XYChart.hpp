@@ -55,12 +55,12 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<gr::Size_t, "max history count", gr::Limits<1U, 128U>>                        max_history_count       = 3U;
     A<float, "history opacity decay", gr::Limits<0.001f, 1.f>>                      history_opacity_decay   = 0.3f;
     A<float, "history vertical offset", gr::Limits<0.f, 100.f>>                     history_vertical_offset = 0.0f;
-    A<bool, "X auto-scale">                                                         x_auto_scale            = true;
-    A<bool, "Y auto-scale">                                                         y_auto_scale            = true;
-    A<double, "X-axis min">                                                         x_min                   = std::numeric_limits<double>::lowest();
-    A<double, "X-axis max">                                                         x_max                   = std::numeric_limits<double>::max();
-    A<double, "Y-axis min">                                                         y_min                   = std::numeric_limits<double>::lowest();
-    A<double, "Y-axis max">                                                         y_max                   = std::numeric_limits<double>::max();
+    A<std::array<bool, 3UZ>, "X auto-scale">                                        x_auto_scale            = std::array{true, true, true};
+    A<std::array<bool, 3UZ>, "Y auto-scale">                                        y_auto_scale            = std::array{true, true, true};
+    A<std::array<double, 3UZ>, "X-axis min">                                        x_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "X-axis max">                                        x_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis min">                                        y_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis max">                                        y_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">, gr::Limits<4U, 2'000'000U>> n_history               = kDefaultHistorySize;
 
     GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history);
@@ -111,16 +111,12 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         // Set default categories if none were created (fallback for XYChart)
         if (!_signalSinks.empty() && !_xCategories[0].has_value()) {
-            _xCategories[0] = AxisCategory{"time", "s", _signalSinks[0]->color()};
-            for (const auto& sink : _signalSinks) {
-                _xAxisGroups[0].push_back(std::string(sink->uniqueName()));
-            }
+            _xCategories[0] = AxisCategory{.quantity = "time", .unit = "s", .color = _signalSinks[0]->color()};
+            std::ranges::transform(_signalSinks, std::back_inserter(_xAxisGroups[0]), [](const auto& sink) { return std::string(sink->uniqueName()); });
         }
         if (!_signalSinks.empty() && !_yCategories[0].has_value()) {
-            _yCategories[0] = AxisCategory{"signal", "", _signalSinks[0]->color()};
-            for (const auto& sink : _signalSinks) {
-                _yAxisGroups[0].push_back(std::string(sink->uniqueName()));
-            }
+            _yCategories[0] = AxisCategory{.quantity = "signal", .unit = "", .color = _signalSinks[0]->color()};
+            std::ranges::transform(_signalSinks, std::back_inserter(_yAxisGroups[0]), [](const auto& sink) { return std::string(sink->uniqueName()); });
         }
     }
 
@@ -133,11 +129,10 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         for (std::size_t i = 0; i < _xCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true, i);
 
-            // Use direct properties for primary axis (i==0), fallback to dashboard config
             double minLimit, maxLimit;
-            if (i == 0 && !x_auto_scale.value) {
-                minLimit = x_min.value;
-                maxLimit = x_max.value;
+            if (!x_auto_scale.value[i]) {
+                minLimit = x_min.value[i];
+                maxLimit = x_max.value[i];
             } else {
                 minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
                 maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
@@ -147,22 +142,21 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : xAxisWidth;
             const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
-            // Update category scale to match dashboard config (used by drawStreamingSignal)
             if (_xCategories[i].has_value()) {
                 _xCategories[i]->scale = scale;
             }
 
-            axis::setupAxis(ImAxis_X1 + static_cast<int>(i), _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid);
+            auto xCond = trackLimitsCond(true, minLimit, maxLimit, i);
+            axis::setupAxis(ImAxis_X1 + static_cast<int>(i), _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
         }
 
         for (std::size_t i = 0; i < _yCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, false, i);
 
-            // Use direct properties for primary axis (i==0), fallback to dashboard config
             double minLimit, maxLimit;
-            if (i == 0 && !y_auto_scale.value) {
-                minLimit = y_min.value;
-                maxLimit = y_max.value;
+            if (!y_auto_scale.value[i]) {
+                minLimit = y_min.value[i];
+                maxLimit = y_max.value[i];
             } else {
                 minLimit = dashCfg ? static_cast<double>(dashCfg->min) : std::numeric_limits<double>::quiet_NaN();
                 maxLimit = dashCfg ? static_cast<double>(dashCfg->max) : std::numeric_limits<double>::quiet_NaN();
@@ -172,26 +166,19 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : yAxisWidth;
             const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
-            // Update category scale to match dashboard config
             if (_yCategories[i].has_value()) {
                 _yCategories[i]->scale = scale;
             }
 
-            axis::setupAxis(ImAxis_Y1 + static_cast<int>(i), _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid);
+            auto yCond = trackLimitsCond(false, minLimit, maxLimit, i);
+            axis::setupAxis(ImAxis_Y1 + static_cast<int>(i), _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
     }
 
     void drawSignals() {
         bool tagsDrawnForFirstSink = false;
 
-        for (std::size_t i = 0; i < _signalSinks.size(); ++i) {
-            const std::shared_ptr<SignalSink>& sink = _signalSinks[i];
-
-            // Skip drawing if signal is hidden (data consumption is handled elsewhere)
-            if (!sink->drawEnabled()) {
-                continue;
-            }
-
+        for (const auto& sink : enabledSinks()) {
             std::string_view sinkUniqueName = sink->uniqueName();
             std::size_t      xAxisIdx       = axis::findAxisForSink(sinkUniqueName, true, _xAxisGroups, _yAxisGroups);
             std::size_t      yAxisIdx       = axis::findAxisForSink(sinkUniqueName, false, _xAxisGroups, _yAxisGroups);
@@ -261,9 +248,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         AxisScale       xAxisScale = _xCategories[0].has_value() ? _xCategories[0]->scale : AxisScale::Linear;
         PlotLineContext ctx{&sink, xAxisScale, xMin, xMax, 0.0f, offset};
 
-        std::string signalLabel{sink.signalName()};
         ImPlot::PlotLineG(
-            signalLabel.c_str(),
+            sink.signalName().data(),
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       context   = static_cast<PlotLineContext*>(user_data);
                 std::size_t actualIdx = context->offset + static_cast<std::size_t>(idx);
@@ -308,7 +294,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             lineColor.w      = opacity;
             ImPlot::SetNextLineStyle(lineColor);
 
-            std::string label = isNewest ? baseName : ("##" + baseName + "_hist_" + std::to_string(i));
+            std::string label = isNewest ? baseName : std::format("##{}_hist_{}", baseName, i);
 
             // Get data count from DataSet's axis_values
             if (ds.axis_values.empty() || ds.axis_values[0].empty()) {

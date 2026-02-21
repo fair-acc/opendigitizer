@@ -56,11 +56,11 @@ struct TestSpectrumGenerator : gr::Block<TestSpectrumGenerator<T>, gr::Resamplin
     gr::Annotated<T, "sweep period", gr::Unit<"s">, gr::Doc<"time for one full back-and-forth cycle">> sweep_period    = T(4.0);
 
     // interference lines
-    gr::Annotated<bool, "show interference lines", gr::Visible>                                                                                 show_interference_lines = true;
-    gr::Annotated<T, "line amplitude above floor", gr::Unit<"dB">>                                                                              line_amplitude_db       = T(12);
-    gr::Annotated<T, "line sigma", gr::Doc<"interference line width as fraction of spectrum">>                                                  line_sigma              = T(0.005);
-    gr::Annotated<std::string, "morse pattern", gr::Visible, gr::Doc<"dots/dashes/spaces for third line keying (e.g. '.... . .-.. .-.. ---')">> morse_pattern           = ".... . .-.. .-.. --- ..-. .- .. .-. -.-.--";
-    gr::Annotated<T, "morse unit duration", gr::Unit<"s">, gr::Doc<"time unit for morse keying on third line">>                                 morse_unit_duration     = T(0.2);
+    gr::Annotated<bool, "show interference lines", gr::Visible>                                                                    show_interference_lines = true;
+    gr::Annotated<T, "line amplitude above floor", gr::Unit<"dB">>                                                                 line_amplitude_db       = T(12);
+    gr::Annotated<T, "line sigma", gr::Doc<"interference line width as fraction of spectrum">>                                     line_sigma              = T(0.005);
+    gr::Annotated<std::string, "morse pattern", gr::Doc<"dots/dashes/spaces for third line keying (e.g. '.... . .-.. .-.. ---')">> morse_pattern           = ".... . .-.. .-.. --- ..-. .- .. .-. -.-.--";
+    gr::Annotated<T, "morse unit duration", gr::Unit<"s">, gr::Doc<"time unit for morse keying on third line">>                    morse_unit_duration     = T(0.2);
 
     // debug
     gr::Annotated<gr::Size_t, "log interval", gr::Doc<"print debug info every N clock ticks (0 = off)">> log_interval = 0U;
@@ -71,8 +71,8 @@ struct TestSpectrumGenerator : gr::Block<TestSpectrumGenerator<T>, gr::Resamplin
     std::size_t               _sampleCount = 0;
     std::vector<std::uint8_t> _morseKey;
 
-    static constexpr double                kDbPerNeper    = 10.0 / std::numbers::ln10; // ~4.343
-    static constexpr std::array<double, 3> kLinePositions = {0.12, 0.25, 0.85};
+    static constexpr double                  kDbPerNeper    = 10.0 / std::numbers::ln10; // ~4.343
+    static constexpr std::array<double, 3UZ> kLinePositions = {0.12, 0.25, 0.85};
 
     void start() {
         _rng         = Xoshiro256pp(seed);
@@ -99,13 +99,6 @@ struct TestSpectrumGenerator : gr::Block<TestSpectrumGenerator<T>, gr::Resamplin
         for (std::size_t i = 0; i < input.size(); ++i) {
             output[i] = createSpectrum(static_cast<std::size_t>(spectrum_size));
             ++_sampleCount;
-
-            if (log_interval > 0U && _sampleCount % static_cast<std::size_t>(log_interval) == 0) {
-                const double elapsed  = static_cast<double>(_sampleCount) / static_cast<double>(clock_rate);
-                const double cycleDur = static_cast<double>(active_duration) + static_cast<double>(pause_duration);
-                const double cycTime  = std::fmod(elapsed, cycleDur);
-                std::println(stderr, "[TestSpectrumGenerator] input={} sample={} elapsed={:.2f}s cycleTime={:.2f}s active={} batchSize={}", input.size(), _sampleCount, elapsed, cycTime, cycTime < static_cast<double>(active_duration), output.size());
-            }
         }
         return gr::work::Status::OK;
     }

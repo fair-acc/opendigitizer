@@ -149,9 +149,12 @@ public:
     [[nodiscard]] float            signalMin() const noexcept override { return std::numeric_limits<float>::lowest(); }
     [[nodiscard]] float            signalMax() const noexcept override { return std::numeric_limits<float>::max(); }
 
-    void setSignalName(std::string name) { _signalName = std::move(name); }
+    void setColor(std::uint32_t c) override { _color = c; }
+    void setLineStyle(opendigitizer::LineStyle /*style*/) override {}
+    void setLineWidth(float /*width*/) override {}
+    void setSignalName(std::string_view nm) override { _signalName = std::string(nm); }
+
     void setSampleRate(float rate) { _sampleRate = rate; }
-    void setColor(std::uint32_t c) { _color = c; }
     void setSignalQuantity(std::string q) { _signalQuantity = std::move(q); }
     void setSignalUnit(std::string u) { _signalUnit = std::move(u); }
     void setAbscissaQuantity(std::string q) { _abscissaQuantity = std::move(q); }
@@ -260,6 +263,11 @@ public:
     [[nodiscard]] std::string_view abscissaUnit() const noexcept override { return "s"; }
     [[nodiscard]] float            signalMin() const noexcept override { return std::numeric_limits<float>::lowest(); }
     [[nodiscard]] float            signalMax() const noexcept override { return std::numeric_limits<float>::max(); }
+
+    void setColor(std::uint32_t /*color*/) override {}
+    void setLineStyle(opendigitizer::LineStyle /*style*/) override {}
+    void setLineWidth(float /*width*/) override {}
+    void setSignalName(std::string_view /*nm*/) override {}
 
     void pushDataSet(gr::DataSet<float> ds) {
         if (_dataSets.size() >= _maxDataSets) {

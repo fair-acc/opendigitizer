@@ -58,11 +58,12 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
     GR_MAKE_REFLECTABLE(SpectrumDensity, chart_name, chart_title, data_sinks, show_legend, show_grid, amplitude_bins, colormap, histogram_decay_tau_frames, gpu_acceleration, adaptive_y_range, show_current_overlay, show_max_hold, show_min_hold, show_average, trace_color, trace_decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
-    DensityHistogram _density;
-    TraceAccumulator _traces;
-    double           _lastSetYMin         = std::numeric_limits<double>::quiet_NaN();
-    double           _lastSetYMax         = std::numeric_limits<double>::quiet_NaN();
-    bool             _yLimitsForceApplied = false;
+    DensityHistogram             _density;
+    TraceAccumulator             _traces;
+    std::array<std::string, 6UZ> _unitStore{};
+    double                       _lastSetYMin         = std::numeric_limits<double>::quiet_NaN();
+    double                       _lastSetYMax         = std::numeric_limits<double>::quiet_NaN();
+    bool                         _yLimitsForceApplied = false;
 
     static constexpr std::string_view kChartTypeName = "SpectrumDensity";
 
@@ -161,9 +162,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             }
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
-            AxisCategory               xCat{.quantity = xQuantity, .unit = xUnit};
-            std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid, /*foreground=*/true);
+            AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
+            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
         }
 
         // y-axis: amplitude — always use finite limits because the heatmap provides no
@@ -186,14 +186,13 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             _lastSetYMax         = maxLimit;
             _yLimitsForceApplied = limitsChanged;
 
-            AxisCategory               yCat{.quantity = yQuantity, .unit = yUnit};
-            std::array<std::string, 6> unitStore{};
-            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1, scale, unitStore, showGrid, /*foreground=*/true, limitCond);
+            AxisCategory yCat{.quantity = yQuantity, .unit = yUnit};
+            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
         }
     }
 
     void drawDensitySignals() {
-        forEachValidSpectrum(_signalSinks, [&](const auto& /*sink*/, const SpectrumFrame& f) {
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             const auto ampBins      = static_cast<std::size_t>(amplitude_bins);
             auto [effYMin, effYMax] = effectiveYRange();
 
@@ -209,7 +208,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             ImVec4 traceBase = sinkColor(trace_color);
             drawTraceOverlays(_traces, f.xValues, f.yValues, f.nBins, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
 
-            if (show_current_overlay.value) {
+            if (show_current_overlay.value && sink.drawEnabled()) {
                 plotTrace("##current", f.xValues, f.yValues, f.nBins, ImVec4(traceBase.x, traceBase.y, traceBase.z, 1.0f));
             }
 
