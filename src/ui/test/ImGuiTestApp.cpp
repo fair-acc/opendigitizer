@@ -252,7 +252,7 @@ void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, in
 
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     std::span args(argv + 1, static_cast<std::size_t>(argc - 1));
-    auto      hasArgument = [args](std::string_view arg) { return std::any_of(args.cbegin(), args.cend(), [arg](const char* v) { return arg == v; }); };
+    auto      hasArgument = [args](std::string_view arg) { return std::any_of(std::cbegin(args), std::cend(args), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
         std::println(stdout, "Usage: {} [--keep-gui][--interactive]", argv[0]);

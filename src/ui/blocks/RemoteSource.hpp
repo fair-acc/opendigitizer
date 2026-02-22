@@ -232,7 +232,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                     map.insert({gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}});
                     const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                     auto       latency = now - std::chrono::nanoseconds(timestamp);
-                    map.insert({"REMOTE_SOURCE_LATENCY", {latency.count()}}); // compares the current system time with the time inside the tag
+                    map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())}); // compares the current system time with the time inside the tag
                 }
                 const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
                 if (yamlMap) {

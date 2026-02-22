@@ -48,7 +48,10 @@ struct BlockingIO {
     [[maybe_unused]] constexpr static bool useIoThread = UseIoThread;
 };
 } // namespace gr
+
+#if !defined(__clang__)
 #include <fair/timing/TimingSource.hpp>
+#endif
 
 namespace {
 template<typename Registry>
@@ -70,7 +73,9 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(registry);
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope5000a>, "">(registry);
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope6000>, "">(registry);
+#if !defined(__clang__)
     gr::registerBlock<gr::timing::TimingSource, "">(registry);
+#endif
 }
 } // namespace
 

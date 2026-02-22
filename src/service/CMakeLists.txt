@@ -129,7 +129,6 @@ target_link_libraries(
           client
           project_options
           fair-picoscope
-          timing
           assets::rest
           digitizer_common_utils
           digitizer_settings
@@ -143,6 +142,10 @@ target_link_libraries(
           GrHttpBlocksShared
           GrMathBlocksShared
           GrTestingBlocksShared)
+
+if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(opendigitizer PRIVATE timing)
+endif()
 
 add_custom_target(
   run-opendigitizer
