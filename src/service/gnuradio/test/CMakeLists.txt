@@ -17,3 +17,4 @@ target_link_libraries(
           zmq)
 
 add_test(NAME qa_GnuRadioWorker COMMAND qa_GnuRadioWorker)
+set_tests_properties(qa_GnuRadioWorker PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
