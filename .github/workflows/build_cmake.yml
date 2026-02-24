@@ -59,8 +59,9 @@ jobs:
     - name: Install image comparing tools
       shell: bash
       run: |
-        sudo apt update
-        sudo apt-get -y install imagemagick || true # needed because of packaging errors in the picoscope dpkgs
+        sudo rm -f /etc/apt/sources.list.d/picoscope* || true
+        sudo apt-get update
+        sudo apt-get -y install imagemagick || true
 
     - name: Configure CMake
       shell: bash
@@ -80,7 +81,7 @@ jobs:
         cmake --build ../build
 
     - name: Install Xvfb
-      run: ( sudo apt-get update && sudo apt-get install -y xvfb || true )
+      run: sudo apt-get install -y xvfb || true
 
     - name: execute tests
       if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
