@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_REMOTESOURCE_HPP
 
 #include <format>
+#include <shared_mutex>
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
@@ -40,6 +41,172 @@ struct RemoteSourceModel {
     virtual void*       raw() const        = 0;
 };
 
+struct RemoteSourceBase {
+    std::string remote_uri;
+    std::string host = "ADDA";
+};
+
+class RemoteSubscriptionManager;
+namespace detail {
+struct RemoteSourceSubscription;
+}
+
+class RemoteSubscriptionHandle {
+    detail::RemoteSourceSubscription* _subscription = nullptr;
+    explicit RemoteSubscriptionHandle(detail::RemoteSourceSubscription* subscription) : _subscription(subscription) {}
+    void disconnect(RemoteSubscriptionManager& instance, const std::string& uri) noexcept;
+
+public:
+    friend class RemoteSubscriptionManager;
+
+    constexpr explicit operator bool() const { return _subscription; }
+    constexpr RemoteSubscriptionHandle()                                 = default;
+    RemoteSubscriptionHandle(const RemoteSubscriptionHandle&)            = delete;
+    RemoteSubscriptionHandle& operator=(const RemoteSubscriptionHandle&) = delete;
+
+    constexpr RemoteSubscriptionHandle(RemoteSubscriptionHandle&& other) noexcept : _subscription(std::exchange(other._subscription, nullptr)) {}
+    constexpr RemoteSubscriptionHandle& operator=(RemoteSubscriptionHandle&& other) noexcept {
+        _subscription = std::exchange(other._subscription, nullptr);
+        return *this;
+    }
+
+    ~RemoteSubscriptionHandle() { reset(); }
+    void reset() noexcept;
+
+    /// It's safe to call reconnect during the user's callback, it doesn't modify subscriptions
+    void reconnect() noexcept;
+};
+
+namespace detail {
+struct RemoteSourceSubscription {
+    /// Returning a valid RemoteSubscriptionHandle from a Subscription::Callback indicates
+    /// that the subscription should be closed after the callback is complete
+    using Callback = std::function<RemoteSubscriptionHandle(const opencmw::mdp::Message&)>;
+
+    const std::string subscribedUri;
+    const std::size_t id;
+    const Callback    callback;
+
+    RemoteSourceSubscription(std::string&& uri, std::size_t _id, Callback&& _callback) : subscribedUri(std::move(uri)), id(_id), callback(std::move(_callback)) {}
+};
+} // namespace detail
+
+class RemoteSubscriptionManager {
+    using Subscription = detail::RemoteSourceSubscription;
+
+    static RemoteSubscriptionManager& instance() {
+        static RemoteSubscriptionManager s_instance;
+        return s_instance;
+    }
+
+    using SubscriptionSet = std::unordered_map<std::size_t /* id */, std::unique_ptr<Subscription>>;
+
+    opencmw::client::Command buildSubscribeCommand(const Subscription& subscription) {
+        opencmw::client::Command result;
+        result.command = opencmw::mdp::Command::Subscribe;
+        result.topic   = opencmw::URI<>(subscription.subscribedUri);
+
+        result.callback = [uri = subscription.subscribedUri, id = subscription.id](const opencmw::mdp::Message& response) {
+            // if the callback returns a RemoteSubscriptionHandle, it will just be destroyed and closed in this outer scope
+            std::ignore = [&]() -> RemoteSubscriptionHandle {
+                const auto& innerInstance = RemoteSubscriptionManager::instance();
+                // dont allow subscribing/unsubscribing to happen while calling callbacks
+                const auto innerGuard                = std::shared_lock{innerInstance._mutex};
+                const auto innerSubscriptionsSetIter = std::as_const(innerInstance._subscriptions).find(uri);
+                if (innerSubscriptionsSetIter == std::end(innerInstance._subscriptions)) {
+                    return {}; // dangling callback
+                }
+                const SubscriptionSet& subscriptionSet   = innerSubscriptionsSetIter->second;
+                const auto             innerSubscription = subscriptionSet.find(id);
+                if (innerSubscription == std::end(subscriptionSet)) {
+                    return {}; // dangling callback
+                }
+                return innerSubscription->second->callback(response);
+            }();
+        };
+
+        return result;
+    }
+
+public:
+    [[nodiscard]] static RemoteSubscriptionHandle subscribe(const RemoteSourceBase& source, Subscription::Callback&& callback) {
+        static std::size_t lastUsedId = 0;
+        auto&              instance   = RemoteSubscriptionManager::instance();
+        auto               uri        = resolveRelativeTopic(source.remote_uri, source.host).str();
+
+        const auto guard = std::unique_lock{instance._mutex};
+
+        auto subscriptionsSetIter = instance._subscriptions.find(uri);
+        if (subscriptionsSetIter == std::end(instance._subscriptions)) {
+            auto [emplacedIter, inserted] = instance._subscriptions.try_emplace(uri);
+            assert(inserted);
+            subscriptionsSetIter = emplacedIter;
+        }
+
+        while (subscriptionsSetIter->second.contains(lastUsedId)) {
+            ++lastUsedId;
+        }
+        auto  subscription       = std::make_unique<Subscription>(std::move(uri), lastUsedId, std::move(callback));
+        auto* subscriptionPtr    = subscription.get();
+        auto [iter, wasEmplaced] = subscriptionsSetIter->second.try_emplace(lastUsedId, std::move(subscription));
+        assert(wasEmplaced);
+
+        instance._client.request(instance.buildSubscribeCommand(*subscriptionPtr));
+
+        return RemoteSubscriptionHandle(subscriptionPtr);
+    }
+
+    friend class RemoteSubscriptionHandle;
+
+private:
+    // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
+    mutable std::shared_mutex                        _mutex;
+    std::unordered_map<std::string, SubscriptionSet> _subscriptions;
+    opencmw::client::RestClient                      _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
+};
+
+inline void RemoteSubscriptionHandle::disconnect(RemoteSubscriptionManager& instance, const std::string& uri) noexcept {
+    assert(_subscription);
+    opencmw::client::Command command;
+    command.command  = opencmw::mdp::Command::Unsubscribe;
+    command.topic    = opencmw::URI<>(uri);
+    command.callback = [](const opencmw::mdp::Message&) {};
+    instance._client.request(command);
+}
+
+inline void RemoteSubscriptionHandle::reconnect() noexcept {
+    if (!*this) {
+        return;
+    }
+    auto*      subscription = static_cast<RemoteSubscriptionManager::Subscription*>(_subscription);
+    auto&      instance     = RemoteSubscriptionManager::instance();
+    const auto guard        = std::shared_lock{instance._mutex};
+    this->disconnect(instance, subscription->subscribedUri);
+    // buildSubscribeCommand will not throw here because we must have already successfully called
+    // it with these paramters in order for this RemoteSubscriptionHandle to exist at all
+    instance._client.request(instance.buildSubscribeCommand(*subscription));
+}
+
+inline void RemoteSubscriptionHandle::reset() noexcept {
+    if (!*this) {
+        return;
+    }
+    auto&      instance     = RemoteSubscriptionManager::instance();
+    const auto guard        = std::unique_lock{instance._mutex};
+    auto*      subscription = static_cast<RemoteSubscriptionManager::Subscription*>(_subscription);
+    const auto uri          = subscription->subscribedUri;
+    const auto id           = subscription->id;
+
+    this->disconnect(instance, uri);
+
+    auto& subscriptionsSet = instance._subscriptions.at(uri);
+    subscriptionsSet.erase(subscriptionsSet.find(id));
+    if (subscriptionsSet.empty()) {
+        instance._subscriptions.erase(uri);
+    }
+    _subscription = nullptr;
+}
+
 class RemoteSourceManager {
 private:
     RemoteSourceManager() = default;
@@ -52,7 +219,7 @@ private:
 
     template<typename TRemoteSource>
     struct RemoteSourceWrapper : RemoteSourceModel {
-        RemoteSourceWrapper(TRemoteSource* _block) : block(_block) {}
+        explicit RemoteSourceWrapper(TRemoteSource* _block) : block(_block) {}
         ~RemoteSourceWrapper() override {}
 
         std::string uniqueName() const override { return block->unique_name; }
@@ -98,11 +265,6 @@ public:
     }
 };
 
-struct RemoteSourceBase {
-    std::string remote_uri;
-    std::string host = "ADDA";
-};
-
 template<typename T>
 requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
 struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
@@ -117,9 +279,8 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>                                                                                                          verbose_console   = false;
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">>                                                                                            reconnect_timeout = 5.f;
 
-    opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
-    std::string                 _subscribedUri;
-    std::atomic<std::uint64_t>  _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
+    RemoteSubscriptionHandle   _subscription;
+    std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
 
     GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_quantity, signal_min, signal_max, host, verbose_console, reconnect_timeout);
 
@@ -135,7 +296,7 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteStreamSource(gr::property_map props) : Parent(props) { RemoteSourceManager::instance().registerRemoteSource(this); }
+    explicit(false) RemoteStreamSource(gr::property_map props) : Parent(props) { RemoteSourceManager::instance().registerRemoteSource(this); }
     ~RemoteStreamSource() { RemoteSourceManager::instance().unregisterRemoteSource(this); }
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
@@ -175,7 +336,11 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
         if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
             if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
-                startSubscription(remote_uri);
+                if (_subscription) {
+                    _subscription.reconnect();
+                } else {
+                    startSubscription();
+                }
             }
         }
 
@@ -259,46 +424,31 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         return written == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
-    void stopSubscription() {
-        if (_subscribedUri.empty()) {
-            return;
-        }
-        opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Unsubscribe;
-        command.topic    = opencmw::URI<>(_subscribedUri);
-        command.callback = [](const opencmw::mdp::Message&) {};
-        _client.request(command);
-        _subscribedUri = "";
-    }
+    void stopSubscription() { _subscription.reset(); }
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
-    void startSubscription(const std::string& uri) {
-        if (!_subscribedUri.empty()) {
+    void startSubscription() {
+        if (_subscription) {
             return;
         }
-        std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", uri);
-        opencmw::client::Command command;
-        command.command          = opencmw::mdp::Command::Subscribe;
-        command.topic            = resolveRelativeTopic(uri, host);
-        _subscribedUri           = command.topic.str();
+        std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", remote_uri);
         std::weak_ptr maybeQueue = _queue;
-        command.callback         = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
+        _subscription            = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle {
             long           skipped_updates     = 0;
             constexpr auto skip_warning_prefix = "Warning: skipped ";
             if (rep.error.starts_with(skip_warning_prefix)) {
                 skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
             } else if (!rep.error.empty()) {
-                stopSubscription();
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                            gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
+                               gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
                 uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                         + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
                 _reconnect.store(nowTimeoutNs, std::memory_order_release);
 
                 auto queue = maybeQueue.lock();
                 if (!queue) {
-                    return;
+                    return std::move(_subscription); // release/unsubscribe
                 }
                 opendigitizer::acq::Acquisition acq;
                 acq.channelValues                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
@@ -311,15 +461,15 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
                 std::lock_guard lock(queue->mutex);
                 queue->data.push_back({std::move(acq), 0});
-                return;
+                return std::move(_subscription); // release/unsubscribe
             }
             if (rep.data.empty()) {
-                return;
+                return {};
             }
             try {
                 auto queue = maybeQueue.lock();
                 if (!queue) {
-                    return;
+                    return {};
                 }
                 opendigitizer::acq::Acquisition acq;
                 auto                            buf = rep.data;
@@ -334,13 +484,13 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
                 queue->data.push_back({std::move(acq), 0});
             } catch (opencmw::ProtocolException& e) {
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                            gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
-                return;
+                               gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+                return {};
             }
             this->progress->incrementAndGet();
             this->progress->notify_all();
-        };
-        _client.request(command);
+            return {};
+        });
     }
 
     void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
@@ -352,13 +502,13 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
             RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
-            startSubscription(remote_uri);
+            startSubscription();
         }
     }
 
     void start() {
         if (!remote_uri.empty() && !host.empty()) {
-            startSubscription(remote_uri);
+            startSubscription();
         }
     }
 
@@ -374,9 +524,8 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>               verbose_console   = false;
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">> reconnect_timeout = 5.f;
 
-    opencmw::client::RestClient _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
-    std::string                 _subscribedUri;
-    std::atomic<std::uint64_t>  _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
+    RemoteSubscriptionHandle   _subscription;    // must be after _client, it uses _client in destructor
+    std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
 
     GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console, reconnect_timeout);
     struct Queue {
@@ -386,7 +535,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {}
+    explicit(false) RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {}
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
@@ -394,7 +543,11 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
         if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
             if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
-                startSubscription(remote_uri);
+                if (_subscription) {
+                    _subscription.reconnect();
+                } else {
+                    startSubscription();
+                }
             }
         }
 
@@ -409,55 +562,40 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         return n == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
-    void stopSubscription() {
-        if (_subscribedUri.empty()) {
-            return;
-        }
-        opencmw::client::Command command;
-        command.command  = opencmw::mdp::Command::Unsubscribe;
-        command.topic    = opencmw::URI<>(_subscribedUri);
-        command.callback = [](const opencmw::mdp::Message&) {};
-        _client.request(command);
-        _subscribedUri = "";
-    }
+    void stopSubscription() { _subscription.reset(); }
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
         //
         return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
-    void startSubscription(const std::string& uri) {
-        if (!_subscribedUri.empty()) {
+    void startSubscription() {
+        if (_subscription) {
             return;
         }
-        std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", uri);
-        opencmw::client::Command command;
-        command.command          = opencmw::mdp::Command::Subscribe;
-        command.topic            = resolveRelativeTopic(uri, host);
-        _subscribedUri           = command.topic.str();
+        std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", remote_uri);
         std::weak_ptr maybeQueue = _queue;
 
-        command.callback = [maybeQueue, uri, this](const opencmw::mdp::Message& rep) {
+        _subscription = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle {
             long           skipped_samples     = 0;
             constexpr auto skip_warning_prefix = "Warning: skipped ";
             if (rep.error.starts_with(skip_warning_prefix)) {
                 skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
             } else if (!rep.error.empty()) {
-                stopSubscription();
                 sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
                     gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
                 uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                         + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
                 _reconnect.store(nowTimeoutNs, std::memory_order_release);
-                return;
+                return std::move(_subscription); // release/unsubscribe
             }
             if (rep.data.empty()) {
-                return;
+                return {};
             }
             try {
                 auto queue = maybeQueue.lock();
                 if (!queue) {
-                    return;
+                    return {};
                 }
                 auto                            buf = rep.data;
                 opendigitizer::acq::Acquisition acq;
@@ -466,7 +604,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 const auto nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
                 const auto nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
                 if (nSignals == 0 || nSamples == 0) {
-                    return;
+                    return {};
                 }
 
                 gr::DataSet<T> ds;
@@ -570,12 +708,12 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
                 queue->data.push_back(std::move(ds));
             } catch (opencmw::ProtocolException& e) {
                 gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
-                return;
+                return {};
             }
             this->progress->incrementAndGet();
             this->progress->notify_all();
-        };
-        _client.request(command);
+            return {};
+        });
     }
 
     void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
@@ -587,13 +725,13 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
             RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
             stopSubscription();
-            startSubscription(remote_uri);
+            startSubscription();
         }
     }
 
     void start() {
         if (!remote_uri.empty() && !host.empty()) {
-            startSubscription(remote_uri);
+            startSubscription();
         }
     }
 
