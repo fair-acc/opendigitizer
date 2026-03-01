@@ -1,0 +1,80 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/cmake-build-${presetName}"
+    },
+    {
+      "name": "gcc-debug",
+      "inherits": "base",
+      "displayName": "GCC Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "gcc-release",
+      "inherits": "base",
+      "displayName": "GCC Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "clang-debug",
+      "inherits": "base",
+      "displayName": "Clang Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "clang-release",
+      "inherits": "base",
+      "displayName": "Clang Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "emscripten-debug",
+      "inherits": "base",
+      "displayName": "Emscripten Debug (WASM)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "GNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER": "g++"
+      }
+    },
+    {
+      "name": "emscripten-release",
+      "inherits": "base",
+      "displayName": "Emscripten Release (WASM)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "GNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER": "g++"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gcc-debug", "configurePreset": "gcc-debug", "jobs": 6 },
+    { "name": "gcc-release", "configurePreset": "gcc-release", "jobs": 6 },
+    { "name": "clang-debug", "configurePreset": "clang-debug", "jobs": 6 },
+    { "name": "clang-release", "configurePreset": "clang-release", "jobs": 6 },
+    { "name": "emscripten-debug", "configurePreset": "emscripten-debug", "jobs": 6 },
+    { "name": "emscripten-release", "configurePreset": "emscripten-release", "jobs": 6 }
+  ]
+}
