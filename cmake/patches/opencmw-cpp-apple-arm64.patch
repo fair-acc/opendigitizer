@@ -1,0 +1,114 @@
+diff --git src/core/include/SpinWait.hpp src/core/include/SpinWait.hpp
+index df0bd13..1d59e9e 100644
+--- src/core/include/SpinWait.hpp
++++ src/core/include/SpinWait.hpp
+@@ -29,10 +29,12 @@ class SpinWait {
+             yieldProcessor();
+         }
+     }
+-#ifndef __EMSCRIPTEN__
+-    static void yieldProcessor() noexcept { asm volatile("rep\nnop"); }
+-#else
++#if defined(__EMSCRIPTEN__)
+     static void yieldProcessor() noexcept { asm volatile("nop"); }
++#elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM) || defined(_M_ARM64)
++    static void yieldProcessor() noexcept { asm volatile("yield" ::: "memory"); }
++#else
++    static void yieldProcessor() noexcept { asm volatile("rep\nnop"); }
+ #endif
+ 
+ public:
+diff --git src/core/include/opencmw.hpp src/core/include/opencmw.hpp
+index 50b2ac9..4cb7bb8 100644
+--- src/core/include/opencmw.hpp
++++ src/core/include/opencmw.hpp
+@@ -468,17 +468,17 @@ template<ReflectableClass T> inline constexpr const std::string_view typeName<T>
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int16_t const" : "int16_t";
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int32_t const" : "int32_t";
+-#ifndef __EMSCRIPTEN__
++#if !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && defined(__aarch64__))
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, int64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
+ #endif
+-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int128_t const" : "int128_t";
++template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int64_t const" : "int64_t";
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint8_t>    inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint8_t const" : "uint8_t";
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint16_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint16_t const" : "uint16_t";
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint32_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint32_t const" : "uint32_t";
+-#ifndef __EMSCRIPTEN__
++#if !defined(__EMSCRIPTEN__) && !(defined(__APPLE__) && defined(__aarch64__))
+ template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, uint64_t>   inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
+ #endif
+-template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint128_t const" : "uint128_t";
++template<ArithmeticType T> requires is_same_v<std::remove_const_t<T>, unsigned long long> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "uint64_t const" : "uint64_t";
+ 
+ template<typename T> requires is_same_v<std::remove_const_t<T>, std::byte> inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "int8_t const" : "int8_t";
+ template<typename T> requires is_same_v<std::remove_const_t<T>, char>      inline constexpr const std::string_view typeName<T> = std::is_const_v<T> ? "byte const" : "byte";
+diff --git src/majordomo/include/majordomo/NgTcp2Util.hpp src/majordomo/include/majordomo/NgTcp2Util.hpp
+index 7f62180..a5fe7f9 100644
+--- src/majordomo/include/majordomo/NgTcp2Util.hpp
++++ src/majordomo/include/majordomo/NgTcp2Util.hpp
+@@ -26,6 +26,13 @@
+ #ifndef OPENCMW_NGTCP2UTIL_H
+ #define OPENCMW_NGTCP2UTIL_H
+ 
++#if defined(__APPLE__)
++#ifndef __APPLE_USE_RFC_3542
++#define __APPLE_USE_RFC_3542
++#endif
++#include <fcntl.h>
++#endif
++
+ #include <cassert>
+ #include <chrono>
+ #include <functional>
+@@ -950,6 +957,16 @@ std::string percent_decode(InputIt first, InputIt last) {
+     return result;
+ }
+ 
++#ifndef SOCK_NONBLOCK
++inline void make_socket_nonblocking(int fd) {
++    auto flags = fcntl(fd, F_GETFL, 0);
++    if (flags == -1) {
++        flags = 0;
++    }
++    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++}
++#endif
++
+ inline int create_nonblock_socket(int domain, int type, int protocol) {
+ #ifdef SOCK_NONBLOCK
+     auto fd = socket(domain, type | SOCK_NONBLOCK, protocol);
+diff --git src/majordomo/include/majordomo/RestServer.hpp src/majordomo/include/majordomo/RestServer.hpp
+index 65160aa..8f8fdd4 100644
+--- src/majordomo/include/majordomo/RestServer.hpp
++++ src/majordomo/include/majordomo/RestServer.hpp
+@@ -1,6 +1,12 @@
+ #ifndef OPENCMW_MAJORDOMO_RESTSERVER_HPP
+ #define OPENCMW_MAJORDOMO_RESTSERVER_HPP
+ 
++#if defined(__APPLE__)
++#ifndef __APPLE_USE_RFC_3542
++#define __APPLE_USE_RFC_3542
++#endif
++#endif
++
+ #include "IoBuffer.hpp"
+ #include "LoadTest.hpp"
+ #include "MdpMessage.hpp"
+@@ -2831,6 +2837,7 @@ struct RestServer {
+             assert(0);
+         }
+ 
++#if defined(SOL_UDP) && defined(UDP_SEGMENT)
+         if (data.size() > gso_size) {
+             controllen += CMSG_SPACE(sizeof(uint16_t));
+             cm             = CMSG_NXTHDR(&msg, cm);
+@@ -2840,6 +2847,7 @@ struct RestServer {
+             uint16_t n     = static_cast<std::uint16_t>(gso_size);
+             memcpy(CMSG_DATA(cm), &n, sizeof(n));
+         }
++#endif
+ 
+         controllen += CMSG_SPACE(sizeof(int));
+         cm           = CMSG_NXTHDR(&msg, cm);

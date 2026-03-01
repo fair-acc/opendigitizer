@@ -15,6 +15,28 @@ include(ExternalProject)
 # Mainly for FMT
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+# limit parallel compile/link jobs to prevent OOM with template-heavy TUs override with -DOD_BUILD_PARALLEL_LEVEL=<N>
+# (CI with more RAM can raise this)
+set(OD_BUILD_PARALLEL_LEVEL
+    "6"
+    CACHE STRING "Maximum parallel compile/link jobs")
+if(CMAKE_GENERATOR MATCHES "Ninja")
+  set_property(GLOBAL APPEND PROPERTY JOB_POOLS compile_pool=${OD_BUILD_PARALLEL_LEVEL} link_pool=2)
+  set(CMAKE_JOB_POOL_COMPILE compile_pool)
+  set(CMAKE_JOB_POOL_LINK link_pool)
+endif()
+
+if(APPLE)
+  # macOS requires __APPLE_USE_RFC_3542 before <netinet/in.h> for IPV6_PKTINFO/IPV6_RECVPKTINFO
+  add_compile_definitions(__APPLE_USE_RFC_3542)
+
+  # macOS Mach-O two-level namespace duplicates singletons (e.g. globalBlockRegistry()) when a static library is linked
+  # into both the executable and shared plugins; -flat_namespace forces ELF-like single-level lookup ensuring one
+  # instance. -stack_size 8 MiB matches the Linux default — macOS ARM64 non-main threads default to 512 KiB.
+  add_link_options(-Wl,-flat_namespace)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-stack_size,0x800000")
+endif()
+
 set(ROOT_BUILD_DIR ${CMAKE_BINARY_DIR})
 set(PREFIX_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Prefix)
 set(BUILD_DIR ${CMAKE_BINARY_DIR}/CMakeExternals/Build)
