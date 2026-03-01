@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="opendigitizer-ui (WASM)" type="ShConfigurationType">
+    <option name="SCRIPT_PATH" value="$PROJECT_DIR$/serve.sh" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -91,8 +91,8 @@ if(NOT EMSCRIPTEN)
   find_package(SDL3 REQUIRED)
   find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 else() # Emscripten build
-  find_package(SDL3 REQUIRED)
-  find_package(OpenGL REQUIRED COMPONENTS OpenGL)
+  # SDL3 is provided by Emscripten ports (-s USE_SDL=3 in compile/link flags)
+  # WebGL is provided natively — no find_package needed
 endif()
 message(STATUS "SDL3_FOUND: ${SDL3_FOUND}")
 message(STATUS "SDL3_INCLUDE_DIRS: ${SDL3_INCLUDE_DIRS}")

@@ -98,11 +98,69 @@ if(EMSCRIPTEN)
   set(target_name "index")
   add_executable(${target_name})
 
+  file(
+    WRITE ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
+    "import http.server, os, ssl, subprocess, threading, time, webbrowser\n"
+    "\n"
+    "WEB_DIR = '${EXECUTABLE_OUTPUT_PATH}'\n"
+    "CERT_FILE = os.path.join(WEB_DIR, 'localhost.pem')\n"
+    "HTTP_PORT = 8000\n"
+    "HTTPS_PORT = 8443\n"
+    "\n"
+    "os.chdir(WEB_DIR)\n"
+    "\n"
+    "# stop any previous servers on our ports\n"
+    "for port in (HTTP_PORT, HTTPS_PORT):\n"
+    "    try:\n"
+    "        subprocess.run(['fuser', '-k', f'{port}/tcp'], capture_output=True, timeout=5)\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "time.sleep(0.5)\n"
+    "\n"
+    "# generate a self-signed certificate if missing\n"
+    "if not os.path.exists(CERT_FILE):\n"
+    "    print('Generating self-signed certificate...')\n"
+    "    subprocess.run([\n"
+    "        'openssl', 'req', '-x509', '-newkey', 'rsa:2048',\n"
+    "        '-keyout', CERT_FILE, '-out', CERT_FILE,\n"
+    "        '-days', '365', '-nodes',\n"
+    "        '-subj', '/CN=localhost',\n"
+    "    ], check=True)\n"
+    "\n"
+    "class Handler(http.server.SimpleHTTPRequestHandler):\n"
+    "    def end_headers(self):\n"
+    "        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')\n"
+    "        self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')\n"
+    "        super().end_headers()\n"
+    "    def log_message(self, fmt, *args):\n"
+    "        pass  # silence per-request logs\n"
+    "\n"
+    "class ReuseServer(http.server.HTTPServer):\n"
+    "    allow_reuse_address = True\n"
+    "\n"
+    "# HTTP server (fallback)\n"
+    "http_server = ReuseServer(('', HTTP_PORT), Handler)\n"
+    "threading.Thread(target=http_server.serve_forever, daemon=True).start()\n"
+    "print(f'  HTTP  -> http://localhost:{HTTP_PORT}')\n"
+    "\n"
+    "# HTTPS server (preferred — browsers need one-time certificate override)\n"
+    "https_server = ReuseServer(('', HTTPS_PORT), Handler)\n"
+    "ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)\n"
+    "ctx.load_cert_chain(CERT_FILE)\n"
+    "https_server.socket = ctx.wrap_socket(https_server.socket, server_side=True)\n"
+    "print(f'  HTTPS -> https://localhost:{HTTPS_PORT}')\n"
+    "\n"
+    "threading.Timer(0.5, lambda: webbrowser.open(f'https://localhost:{HTTPS_PORT}')).start()\n"
+    "https_server.serve_forever()\n")
+
+  # CLI usage: cmake --build --preset emscripten-release --target serve IDE usage: use the "opendigitizer-ui (WASM)" run
+  # configuration (auto-loaded from .run/)
   add_custom_target(
     serve
-    "python3 -m http.server -d ${EXECUTABLE_OUTPUT_PATH} 8000"
-    COMMENT "start a python server serving the webassembly app"
-    DEPENDS ${target_name})
+    COMMAND python3 ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
+    COMMENT "serve WASM app: https://localhost:8443 (preferred) + http://localhost:8000 (fallback)"
+    DEPENDS ${target_name}
+    USES_TERMINAL)
 else() # native build
   set(target_name "opendigitizer-ui")
   add_executable(${target_name})

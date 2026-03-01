@@ -47,6 +47,7 @@ Thumbs.db
 language.settings.xml
 **/**.swp
 CMakeLists.txt.user
+CMakeUserPresets.json
 
 # python venv files
 virtualenv/
