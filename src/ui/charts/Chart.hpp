@@ -1694,7 +1694,7 @@ struct Chart {
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
         ImVec2      plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
-        ImPlotFlags plotFlags    = ImPlotFlags_NoChild | ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
+        ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
         }

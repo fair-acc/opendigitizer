@@ -8,8 +8,7 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.4-docking # latest version still compatible with imgui-node-editor # v1.91.9b-docking # latest as of
-                          # 2025-06-02
+  GIT_TAG v1.91.9b-docking # latest 1.91.x release (v1.92.0+ requires ImTextureRef/font API migration)
   EXCLUDE_FROM_ALL SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
@@ -18,14 +17,14 @@ add_compile_definitions("ImDrawIdx=unsigned int")
 FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
-  GIT_TAG v0.16 # latest as of 2024-10-23
+  GIT_TAG v0.17 # latest as of 2024-11-30
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   imgui-node-editor
   # Upstream https://github.com/thedmd/imgui-node-editor.git
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
-  GIT_TAG e0788005f3280af4a93cdd1a7d55c16bb4ff3088
+  GIT_TAG 6d4f0c38558be808bb84acf14a6c851b3c990887 # latest as of 2024-03-02
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
