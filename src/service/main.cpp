@@ -249,7 +249,7 @@ connections:
     const opencmw::zmq::Context                               zctx{};
     std::vector<std::unique_ptr<opencmw::client::ClientBase>> clients;
     clients.emplace_back(std::make_unique<opencmw::client::MDClientCtx>(zctx, 20ms, ""));
-    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
+    clients.emplace_back(std::make_unique<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates), opencmw::client::DefaultContentTypeHeader(opencmw::MIME::BINARY)));
     opencmw::client::ClientContext client{std::move(clients)};
 
     dns::DnsClient dns_client{client, settings.serviceUrl().path("/dns").build()};
