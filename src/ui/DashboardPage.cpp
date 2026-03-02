@@ -79,7 +79,7 @@ DashboardPage::DashboardPage() {
             {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                            //
             {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                 //
             {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                         //
-            {std::pmr::string(gr::serialization_fields::EDGE_NAME), std::string()}};
+            {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}};
         _dashboard->graphModel.sendMessage(std::move(message));
 
         auto& uiWindow = _dashboard->newUIBlock(0, 0, 1, 1);
