@@ -308,7 +308,10 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    explicit RemoteStreamSource(gr::property_map props) : Parent(props) { RemoteSourceManager::instance().registerRemoteSource(this); }
+    explicit RemoteStreamSource(gr::property_map props) : Parent(props) {
+        RemoteSourceManager::instance().registerRemoteSource(this);
+        this->disconnect_on_done = false;
+    }
     ~RemoteStreamSource() { RemoteSourceManager::instance().unregisterRemoteSource(this); }
 
     void updateSettingsFromAcquisition(const opendigitizer::acq::Acquisition& acq) {
@@ -547,7 +550,7 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
 
     std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
 
-    explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) {}
+    explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { this->disconnect_on_done = false; }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
         std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
