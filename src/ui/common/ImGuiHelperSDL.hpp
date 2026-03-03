@@ -60,11 +60,7 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, in
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
-#ifdef __APPLE__
-    constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_ALLOW_HIGHDPI;
-#else
     constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#endif
     if (g_Window != nullptr) {
         SDL_DestroyWindow(g_Window);
         g_Window = nullptr;

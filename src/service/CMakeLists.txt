@@ -128,8 +128,6 @@ target_link_libraries(
           services
           client
           project_options
-          fair-picoscope
-          timing
           assets::rest
           digitizer_common_utils
           digitizer_settings
@@ -143,6 +141,15 @@ target_link_libraries(
           GrHttpBlocksShared
           GrMathBlocksShared
           GrTestingBlocksShared)
+
+if(TARGET fair-picoscope)
+  target_link_libraries(opendigitizer PRIVATE fair-picoscope)
+  target_compile_definitions(opendigitizer PRIVATE ENABLE_PICOSCOPE)
+endif()
+if(TARGET timing)
+  target_link_libraries(opendigitizer PRIVATE timing)
+  target_compile_definitions(opendigitizer PRIVATE ENABLE_TIMING)
+endif()
 
 add_custom_target(
   run-opendigitizer
