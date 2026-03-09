@@ -223,6 +223,7 @@ target_sources(${target_name} PRIVATE main.cpp)
 target_link_libraries(
   ${target_name}lib
   PUBLIC implot
+         implot3d
          imgui-node-editor
          od_acquisition
          services

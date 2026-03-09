@@ -21,6 +21,13 @@ FetchContent_Declare(
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
+  implot3d
+  GIT_REPOSITORY https://github.com/brenocq/implot3d.git
+  GIT_TAG v0.3
+        PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot3d-dynamic-tick-label-offset.patch
+  EXCLUDE_FROM_ALL SYSTEM)
+
+FetchContent_Declare(
   imgui-node-editor
   # Upstream https://github.com/thedmd/imgui-node-editor.git
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
@@ -56,6 +63,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(
   imgui
   implot
+  implot3d
   imgui-node-editor
   stb
   opencmw-cpp
@@ -167,6 +175,11 @@ add_library(implot OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_D
                           ${implot_SOURCE_DIR}/implot.cpp)
 target_include_directories(implot SYSTEM BEFORE PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(implot3d OBJECT ${implot3d_SOURCE_DIR}/implot3d.cpp ${implot3d_SOURCE_DIR}/implot3d_items.cpp
+                            ${implot3d_SOURCE_DIR}/implot3d_meshes.cpp ${implot3d_SOURCE_DIR}/implot3d_demo.cpp)
+target_include_directories(implot3d SYSTEM BEFORE PUBLIC ${implot3d_SOURCE_DIR})
+target_link_libraries(implot3d PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
 add_library(
   imgui-node-editor OBJECT

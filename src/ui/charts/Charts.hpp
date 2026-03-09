@@ -8,6 +8,7 @@
 #include "SpectrumDensity.hpp"
 #include "SpectrumPlot.hpp"
 #include "SpectrumView.hpp"
+#include "SurfacePlot.hpp"
 #include "WaterfallPlot.hpp"
 #include "XYChart.hpp"
 #include "YYChart.hpp"
