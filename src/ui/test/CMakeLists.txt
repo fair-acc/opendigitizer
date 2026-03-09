@@ -30,6 +30,7 @@ target_link_libraries(
           gnuradio-meta
           gnuradio-algorithm
           implot
+          implot3d
           imgui-node-editor
           services
           stb

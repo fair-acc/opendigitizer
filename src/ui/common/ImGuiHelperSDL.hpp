@@ -11,6 +11,7 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <implot.h>
+#include <implot3d.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "LookAndFeel.hpp"
@@ -114,6 +115,7 @@ inline bool initImGui(const std::string& glslVersion) {
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
     ImPlot::CreateContext();
+    ImPlot3D::CreateContext();
 
     ImGui_ImplSDL3_InitForOpenGL(g_Window, g_GLContext);
 
@@ -253,6 +255,7 @@ inline bool teardownSDL() {
     ImXkcd::Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
+    ImPlot3D::DestroyContext();
     ImGui::DestroyContext();
     if (bool state = SDL_GL_DestroyContext(g_GLContext); !state) {
         std::println("[Main] teardownSDL failed: '{}'", SDL_GetError());

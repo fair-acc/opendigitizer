@@ -1,0 +1,43 @@
+diff --git a/implot3d.cpp b/implot3d.cpp
+index 9c0ab7d..c0df158 100644
+--- a/implot3d.cpp
++++ b/implot3d.cpp
+@@ -878,10 +878,6 @@ void RenderTickLabels(ImDrawList* draw_list, const ImPlot3DPlot& plot, const ImP
+         if (ImDot(offset_dir_pix, center_to_axis_pix) < 0.0f)
+             offset_dir_pix = -offset_dir_pix;
+ 
+-        // Adjust the offset magnitude
+-        float offset_magnitude = 20.0f; // TODO Calculate based on label size
+-        ImVec2 offset_pix = offset_dir_pix * offset_magnitude;
+-
+         // Compute angle perpendicular to axis in screen space
+         float angle = atan2f(-axis_screen_dir.y, axis_screen_dir.x) + IM_PI * 0.5f;
+ 
+@@ -897,6 +893,27 @@ void RenderTickLabels(ImDrawList* draw_list, const ImPlot3DPlot& plot, const ImP
+         if (angle < -IM_PI * 0.5f)
+             angle += IM_PI;
+ 
++        // Compute offset magnitude from the maximum tick label size, projected
++        // onto the perpendicular offset direction, accounting for label rotation.
++        float max_label_extent = 0.0f;
++        float cos_a = cosf(angle);
++        float sin_a = sinf(angle);
++        for (int t = 0; t < axis.Ticker.TickCount(); ++t) {
++            const ImPlot3DTick& tick = axis.Ticker.Ticks[t];
++            if (!tick.ShowLabel)
++                continue;
++            // Label is rotated by 'angle'. The extent perpendicular to the axis
++            // (i.e. in the offset direction) is the rotated bounding box height.
++            float w = tick.LabelSize.x;
++            float h = tick.LabelSize.y;
++            float extent = fabsf(w * sin_a) + fabsf(h * cos_a);
++            if (extent > max_label_extent)
++                max_label_extent = extent;
++        }
++        const ImPlot3DStyle& style = ImPlot3D::GetStyle();
++        float offset_magnitude = ImMax(max_label_extent * 0.5f + style.LabelPadding.x, 10.0f);
++        ImVec2 offset_pix = offset_dir_pix * offset_magnitude;
++
+         // Loop over ticks
+         for (int t = 0; t < axis.Ticker.TickCount(); ++t) {
+             const ImPlot3DTick& tick = axis.Ticker.Ticks[t];
