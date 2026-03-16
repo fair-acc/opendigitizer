@@ -22,6 +22,8 @@
 #include "components/ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 
+#include "utils/TransparentStringHash.hpp"
+
 #include "App.hpp"
 #include "scope_exit.hpp"
 
@@ -858,16 +860,7 @@ void FlowgraphPage::setStyle(LookAndFeel::Style style) {
 }
 
 const FlowgraphPage::DataTypeStyle& FlowgraphPage::styleForDataType(std::string_view type) {
-    struct transparent_string_hash // why isn't std::hash<std::string> this exact same thing?
-    {
-        using hash_type      = std::hash<std::string_view>;
-        using is_transparent = void;
-
-        size_t operator()(const char* str) const { return hash_type{}(str); }
-        size_t operator()(std::string_view str) const { return hash_type{}(str); }
-        size_t operator()(std::string const& str) const { return hash_type{}(str); }
-    };
-    using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, transparent_string_hash, std::equal_to<>>;
+    using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, opendigitizer::TransparentStringHash, std::equal_to<>>;
 
     auto withDataSetColors = [](DataTypeStyleMap&& map) {
         DataTypeStyleMap result;
