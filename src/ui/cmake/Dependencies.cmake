@@ -8,7 +8,7 @@ add_compile_definitions(IMGUI_USE_WCHAR32)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.91.9b-docking # latest 1.91.x release (v1.92.0+ requires ImTextureRef/font API migration)
+  GIT_TAG v1.92.6-docking # latest as of 2026-03-17
   EXCLUDE_FROM_ALL SYSTEM)
 
 # Enables 32 bit vertex indices for ImGui
@@ -18,6 +18,7 @@ FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
   GIT_TAG v0.17 # latest as of 2024-11-30
+  PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot-imgui-1.92.6-compatibility.patch
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
@@ -119,10 +120,11 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     message(FATAL_ERROR "ENABLE_IMGUI_TEST_ENGINE does not make sense without OPENDIGITIZER_ENABLE_TESTING")
   endif()
 
+  # v1.92.6 needs imgui with ImGuiTabBarFlags_FittingPolicyMixed
   FetchContent_Declare(
     imgui_test_engine
     GIT_REPOSITORY https://github.com/ocornut/imgui_test_engine.git
-    GIT_TAG v1.91.9 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
+    GIT_TAG v1.92.5 # Can be bumped independently from imgui version. Docs recommend they are not too far apart
     SYSTEM)
 
   FetchContent_MakeAvailable(imgui_test_engine)

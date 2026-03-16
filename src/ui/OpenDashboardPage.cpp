@@ -318,6 +318,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
         }
 
         ImGui::SetCursorPos(p2);
+        ImGui::Dummy(ImVec2(0.f, 0.f));
         return false;
     };
 

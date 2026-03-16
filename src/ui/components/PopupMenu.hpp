@@ -185,7 +185,7 @@ public:
         if (font == nullptr) {
             buttonSize = ImGui::CalcTextSize(label.c_str()).y + 2.f * _padding;
         } else {
-            buttonSize = font->FontSize + 2.f * _padding;
+            buttonSize = font->LegacySize + 2.f * _padding;
         }
         _buttons.emplace_back(label, "", buttonSize, std::move(onClick), font, std::move(toolTip), transparent, newRow);
         _isOpen = true;

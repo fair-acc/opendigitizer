@@ -1,0 +1,17 @@
+diff --git a/implot.cpp b/implot.cpp
+index 5550d03..b63a579 100644
+--- a/implot.cpp
++++ b/implot.cpp
+@@ -1915,8 +1915,10 @@ bool UpdateInput(ImPlotPlot& plot) {
+     const bool any_hov         = any_x_hov    || any_y_hov;
+     const bool any_held        = any_x_held   || any_y_held;
+
+-    const ImVec2 select_drag   = ImGui::GetMouseDragDelta(gp.InputMap.Select);
+-    const ImVec2 pan_drag      = ImGui::GetMouseDragDelta(gp.InputMap.Pan);
++    // const ImVec2 select_drag   = ImGui::GetMouseDragDelta(gp.InputMap.Select);
++    // const ImVec2 pan_drag      = ImGui::GetMouseDragDelta(gp.InputMap.Pan);
++    const ImVec2 select_drag   = (gp.InputMap.Select >= 0 && gp.InputMap.Select < ImGuiMouseButton_COUNT) ? ImGui::GetMouseDragDelta(gp.InputMap.Select) : ImVec2(0, 0);
++    const ImVec2 pan_drag      = (gp.InputMap.Pan >= 0 && gp.InputMap.Pan < ImGuiMouseButton_COUNT) ? ImGui::GetMouseDragDelta(gp.InputMap.Pan) : ImVec2(0, 0);
+     const float select_drag_sq = ImLengthSqr(select_drag);
+     const float pan_drag_sq    = ImLengthSqr(pan_drag);
+     const bool selecting       = plot.Selecting && select_drag_sq > MOUSE_CURSOR_DRAG_THRESHOLD;
