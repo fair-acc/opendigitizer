@@ -626,6 +626,14 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     void stop() { stopSubscription(); }
 
 private:
+    constexpr static auto floatToDatasetTypeConvert = [](float v) constexpr {
+        if constexpr (gr::UncertainValueLike<T>) {
+            return static_cast<T::value_type>(v);
+        } else {
+            return static_cast<T>(v);
+        }
+    };
+
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
         long           skipped_samples     = 0;
         constexpr auto skip_warning_prefix = "Warning: skipped ";
@@ -658,13 +666,6 @@ private:
             }
 
             gr::DataSet<T> ds;
-            auto           convert = [](float v) {
-                if constexpr (gr::UncertainValueLike<T>) {
-                    return static_cast<T::value_type>(v);
-                } else {
-                    return static_cast<T>(v);
-                }
-            };
 
             ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
 
@@ -678,7 +679,7 @@ private:
             if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
                 ds.axis_values.resize(1UZ);
                 ds.axis_values[0UZ].resize(nSamples);
-                std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(convert), std::ranges::begin(ds.axisValues(0UZ)));
+                std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(floatToDatasetTypeConvert), std::ranges::begin(ds.axisValues(0UZ)));
             } else {
                 this->emitErrorMessage("subscriptionCallback(..)",                                                               //
                     gr::Error(std::format("Inconsistent data from '{}': channelTimeSinceRefTrigger size ({}) !=  nSamples ({})", //
@@ -699,7 +700,7 @@ private:
             if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
                 ds.signal_ranges.resize(nSignals);
                 for (std::size_t i = 0; i < nSignals; i++) {
-                    ds.signal_ranges[i] = {convert(acq.channelRangeMin[i]), convert(acq.channelRangeMax[i])};
+                    ds.signal_ranges[i] = {floatToDatasetTypeConvert(acq.channelRangeMin[i]), floatToDatasetTypeConvert(acq.channelRangeMax[i])};
                 }
             } else {
                 this->emitErrorMessage("subscriptionCallback(..)",                                                                                 //
@@ -707,38 +708,7 @@ private:
                         remote_uri, acq.channelRangeMin.size(), acq.channelRangeMax.size(), nSignals)));                                           //
             }
 
-            // copy signal values
-            ds.signal_values.resize(nSignals * nSamples);
-            // TODO: still needs to be tested when we get full support of gr::UncertainValue
-            if constexpr (gr::UncertainValueLike<T>) {
-                const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
-                if (!dataOk) {
-                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
-                        gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
-                            remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
-
-                    for (std::size_t i = 0; i < nSignals; i++) {
-                        auto outValues = ds.signalValues(i);
-                        auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                        std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
-                    }
-                } else {
-                    for (std::size_t i = 0; i < nSignals; i++) {
-                        auto outValues = ds.signalValues(i);
-                        auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                        auto inErrors  = std::span{std::next(acq.channelErrors.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                        std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
-                            const auto& [v, e] = ve;
-                            return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
-                        });
-                    }
-                }
-            } else {
-                auto signalValues = acq.channelValues.elements() | std::views::transform(convert);
-                for (std::size_t i = 0; i < nSignals; i++) {
-                    std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
-                }
-            }
+            copySignalValues(ds, acq, nSignals, nSamples);
 
             // meta data
             ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
@@ -763,6 +733,41 @@ private:
         this->progress->incrementAndGet();
         this->progress->notify_all();
         return {};
+    }
+
+    /// Copy signal values from an acquisition into a dataset
+    // TODO: still needs to be tested when we get full support of gr::UncertainValue
+    void copySignalValues(gr::DataSet<T>& ds, const opendigitizer::acq::Acquisition& acq, std::size_t nSignals, std::size_t nSamples) {
+        ds.signal_values.resize(nSignals * nSamples);
+        if constexpr (gr::UncertainValueLike<T>) {
+            const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
+            if (!dataOk) {
+                this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
+                    gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
+                        remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
+
+                for (std::size_t i = 0; i < nSignals; i++) {
+                    auto outValues = ds.signalValues(i);
+                    auto inValues  = std::span{std::next(std::cbegin(acq.channelValues.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                    std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
+                }
+            } else {
+                for (std::size_t i = 0; i < nSignals; i++) {
+                    auto outValues = ds.signalValues(i);
+                    auto inValues  = std::span{std::next(std::cbegin(acq.channelValues.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                    auto inErrors  = std::span{std::next(std::cbegin(acq.channelErrors.elements()), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                    std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
+                        const auto& [v, e] = ve;
+                        return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
+                    });
+                }
+            }
+        } else {
+            auto signalValues = acq.channelValues.elements() | std::views::transform(floatToDatasetTypeConvert);
+            for (std::size_t i = 0; i < nSignals; i++) {
+                std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
+            }
+        }
     }
 };
 
