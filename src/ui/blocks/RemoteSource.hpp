@@ -591,143 +591,8 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", remote_uri);
         std::weak_ptr maybeQueue = _queue;
 
-        _subscription = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle {
-            long           skipped_samples     = 0;
-            constexpr auto skip_warning_prefix = "Warning: skipped ";
-            if (rep.error.starts_with(skip_warning_prefix)) {
-                skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
-            } else if (!rep.error.empty()) {
-                sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                    gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
-                uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
-                                        + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-                _reconnect.store(nowTimeoutNs, std::memory_order_release);
-                return std::move(_subscription); // release/unsubscribe
-            }
-            if (rep.data.empty()) {
-                return {};
-            }
-            try {
-                auto queue = maybeQueue.lock();
-                if (!queue) {
-                    return {};
-                }
-                auto                            buf = rep.data;
-                opendigitizer::acq::Acquisition acq;
-                opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-
-                const auto nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
-                const auto nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
-                if (nSignals == 0 || nSamples == 0) {
-                    return {};
-                }
-
-                gr::DataSet<T> ds;
-                auto           convert = [](float v) {
-                    if constexpr (gr::UncertainValueLike<T>) {
-                        return static_cast<T::value_type>(v);
-                    } else {
-                        return static_cast<T>(v);
-                    }
-                };
-
-                ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
-
-                // signal data layout:
-                ds.extents = {static_cast<int32_t>(nSamples)};
-                ds.layout  = gr::LayoutRight{};
-
-                // axis layout:
-                ds.axis_names = {"x-axis"};
-                ds.axis_units = {"a.u."};
-                if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
-                    ds.axis_values.resize(1UZ);
-                    ds.axis_values[0UZ].resize(nSamples);
-                    std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(convert), std::ranges::begin(ds.axisValues(0UZ)));
-                } else {
-                    this->emitErrorMessage("subscriptionCallback(..)",                                                               //
-                        gr::Error(std::format("Inconsistent data from '{}': channelTimeSinceRefTrigger size ({}) !=  nSamples ({})", //
-                            remote_uri, acq.channelTimeSinceRefTrigger.size(), nSamples)));
-                }
-
-                // signal meta info
-                if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
-                    ds.signal_names      = acq.channelNames;
-                    ds.signal_units      = acq.channelUnits;
-                    ds.signal_quantities = acq.channelQuantities;
-                } else {
-                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                                          //
-                        gr::Error(std::format("Inconsistent data from '{}': channelNames size ({}) or channelQuantities size ({}) or channelUnits size ({}) !=  nSignals ({})", //
-                            remote_uri, acq.channelNames.size(), acq.channelQuantities.size(), acq.channelUnits.size(), nSignals)));                                            //
-                }
-
-                if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
-                    ds.signal_ranges.resize(nSignals);
-                    for (std::size_t i = 0; i < nSignals; i++) {
-                        ds.signal_ranges[i] = {convert(acq.channelRangeMin[i]), convert(acq.channelRangeMax[i])};
-                    }
-                } else {
-                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                 //
-                        gr::Error(std::format("Inconsistent data from '{}': channelRangeMin size ({}) or channelRangeMax size ({}) !=  nSignals ({})", //
-                            remote_uri, acq.channelRangeMin.size(), acq.channelRangeMax.size(), nSignals)));                                           //
-                }
-
-                // copy signal values
-                ds.signal_values.resize(nSignals * nSamples);
-                // TODO: still needs to be tested when we get full support of gr::UncertainValue
-                if constexpr (gr::UncertainValueLike<T>) {
-                    const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
-                    if (!dataOk) {
-                        this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
-                            gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
-                                remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
-
-                        for (std::size_t i = 0; i < nSignals; i++) {
-                            auto outValues = ds.signalValues(i);
-                            auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                            std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
-                        }
-                    } else {
-                        for (std::size_t i = 0; i < nSignals; i++) {
-                            auto outValues = ds.signalValues(i);
-                            auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                            auto inErrors  = std::span{std::next(acq.channelErrors.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
-                            std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
-                                const auto& [v, e] = ve;
-                                return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
-                            });
-                        }
-                    }
-                } else {
-                    auto signalValues = acq.channelValues.elements() | std::views::transform(convert);
-                    for (std::size_t i = 0; i < nSignals; i++) {
-                        std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
-                    }
-                }
-
-                // meta data
-                ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
-                ds.timing_events.resize(1UZ);
-
-                for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
-                    const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
-                    if (yamlMap) {
-                        const gr::property_map& rootMap = yamlMap.value();
-                        ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
-                    } else {
-                        // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
-                    }
-                }
-
-                std::lock_guard lock(queue->mutex);
-                queue->data.push_back(std::move(ds));
-            } catch (opencmw::ProtocolException& e) {
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
-                return {};
-            }
-            this->progress->incrementAndGet();
-            this->progress->notify_all();
-            return {};
+        _subscription = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle { //
+            return copyRestResponseDataIntoQueue(rep, maybeQueue);
         });
     }
 
@@ -751,6 +616,146 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     }
 
     void stop() { stopSubscription(); }
+
+private:
+    RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
+        long           skipped_samples     = 0;
+        constexpr auto skip_warning_prefix = "Warning: skipped ";
+        if (rep.error.starts_with(skip_warning_prefix)) {
+            skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+        } else if (!rep.error.empty()) {
+            sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
+            uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
+                                    + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
+            _reconnect.store(nowTimeoutNs, std::memory_order_release);
+            return std::move(_subscription); // release/unsubscribe
+        }
+        if (rep.data.empty()) {
+            return {};
+        }
+        try {
+            auto queue = maybeQueue.lock();
+            if (!queue) {
+                return {};
+            }
+            auto                            buf = rep.data;
+            opendigitizer::acq::Acquisition acq;
+            opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+
+            const auto nSignals = static_cast<std::size_t>(acq.channelValues.n(0));
+            const auto nSamples = static_cast<std::size_t>(acq.channelValues.n(1));
+            if (nSignals == 0 || nSamples == 0) {
+                return {};
+            }
+
+            gr::DataSet<T> ds;
+            auto           convert = [](float v) {
+                if constexpr (gr::UncertainValueLike<T>) {
+                    return static_cast<T::value_type>(v);
+                } else {
+                    return static_cast<T>(v);
+                }
+            };
+
+            ds.timestamp = acq.acqLocalTimeStamp.value(); // UTC timestamp [ns]
+
+            // signal data layout:
+            ds.extents = {static_cast<int32_t>(nSamples)};
+            ds.layout  = gr::LayoutRight{};
+
+            // axis layout:
+            ds.axis_names = {"x-axis"};
+            ds.axis_units = {"a.u."};
+            if (nSamples == acq.channelTimeSinceRefTrigger.size()) {
+                ds.axis_values.resize(1UZ);
+                ds.axis_values[0UZ].resize(nSamples);
+                std::ranges::copy(acq.channelTimeSinceRefTrigger | std::views::transform(convert), std::ranges::begin(ds.axisValues(0UZ)));
+            } else {
+                this->emitErrorMessage("subscriptionCallback(..)",                                                               //
+                    gr::Error(std::format("Inconsistent data from '{}': channelTimeSinceRefTrigger size ({}) !=  nSamples ({})", //
+                        remote_uri, acq.channelTimeSinceRefTrigger.size(), nSamples)));
+            }
+
+            // signal meta info
+            if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
+                ds.signal_names      = acq.channelNames;
+                ds.signal_units      = acq.channelUnits;
+                ds.signal_quantities = acq.channelQuantities;
+            } else {
+                this->emitErrorMessage("subscriptionCallback(..)",                                                                                                          //
+                    gr::Error(std::format("Inconsistent data from '{}': channelNames size ({}) or channelQuantities size ({}) or channelUnits size ({}) !=  nSignals ({})", //
+                        remote_uri, acq.channelNames.size(), acq.channelQuantities.size(), acq.channelUnits.size(), nSignals)));                                            //
+            }
+
+            if (nSignals == acq.channelRangeMin.size() && nSignals == acq.channelRangeMax.size()) {
+                ds.signal_ranges.resize(nSignals);
+                for (std::size_t i = 0; i < nSignals; i++) {
+                    ds.signal_ranges[i] = {convert(acq.channelRangeMin[i]), convert(acq.channelRangeMax[i])};
+                }
+            } else {
+                this->emitErrorMessage("subscriptionCallback(..)",                                                                                 //
+                    gr::Error(std::format("Inconsistent data from '{}': channelRangeMin size ({}) or channelRangeMax size ({}) !=  nSignals ({})", //
+                        remote_uri, acq.channelRangeMin.size(), acq.channelRangeMax.size(), nSignals)));                                           //
+            }
+
+            // copy signal values
+            ds.signal_values.resize(nSignals * nSamples);
+            // TODO: still needs to be tested when we get full support of gr::UncertainValue
+            if constexpr (gr::UncertainValueLike<T>) {
+                const bool dataOk = acq.channelValues.elements().size() == acq.channelErrors.elements().size();
+                if (!dataOk) {
+                    this->emitErrorMessage("subscriptionCallback(..)",                                                                                       //
+                        gr::Error(std::format("Inconsistent data from '{}': Sample type is UncertainValue but channelValues size ({}) != signalErrors ({})", //
+                            remote_uri, acq.channelValues.elements().size(), acq.channelErrors.elements().size())));                                         //
+
+                    for (std::size_t i = 0; i < nSignals; i++) {
+                        auto outValues = ds.signalValues(i);
+                        auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                        std::ranges::transform(inValues, outValues.begin(), [](const auto& v) { return gr::UncertainValue{static_cast<typename T::value_type>(v), typename T::value_type(0)}; });
+                    }
+                } else {
+                    for (std::size_t i = 0; i < nSignals; i++) {
+                        auto outValues = ds.signalValues(i);
+                        auto inValues  = std::span{std::next(acq.channelValues.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                        auto inErrors  = std::span{std::next(acq.channelErrors.elements().begin(), static_cast<std::ptrdiff_t>(i * nSamples)), nSamples};
+                        std::ranges::transform(std::views::zip(inValues, inErrors), outValues.begin(), [](const auto& ve) {
+                            const auto& [v, e] = ve;
+                            return gr::UncertainValue{static_cast<typename T::value_type>(v), static_cast<typename T::value_type>(e)};
+                        });
+                    }
+                }
+            } else {
+                auto signalValues = acq.channelValues.elements() | std::views::transform(convert);
+                for (std::size_t i = 0; i < nSignals; i++) {
+                    std::ranges::copy_n(std::next(signalValues.begin(), static_cast<std::ptrdiff_t>(i * nSamples)), static_cast<std::ptrdiff_t>(nSamples), ds.signalValues(i).begin());
+                }
+            }
+
+            // meta data
+            ds.meta_information.push_back({{"subscription-updates-skipped", static_cast<uint64_t>(skipped_samples)}});
+            ds.timing_events.resize(1UZ);
+
+            for (const auto& [idx, yaml] : std::views::zip(acq.triggerIndices.value(), acq.triggerYamlPropertyMaps.value())) {
+                const auto yamlMap = gr::pmt::yaml::deserialize(yaml);
+                if (yamlMap) {
+                    const gr::property_map& rootMap = yamlMap.value();
+                    ds.timing_events[0].emplace_back(static_cast<std::ptrdiff_t>(idx), rootMap);
+                } else {
+                    // throw gr::exception(std::format("Could not parse yaml for Tag property_map: {}:{}\n{}", yamlMap.error().message, yamlMap.error().line, yaml));
+                }
+            }
+
+            std::lock_guard lock(queue->mutex);
+            queue->data.push_back(std::move(ds));
+        } catch (opencmw::ProtocolException& e) {
+            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+            return {};
+        }
+        this->progress->incrementAndGet();
+        this->progress->notify_all();
+        return {};
+    }
 };
 
 } // namespace opendigitizer
