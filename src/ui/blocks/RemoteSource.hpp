@@ -21,6 +21,8 @@
 #include "conversion.hpp"
 #include "settings.hpp"
 
+#include "../utils/TransparentStringHash.hpp"
+
 namespace opendigitizer {
 
 inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
@@ -94,15 +96,16 @@ struct RemoteSourceSubscription {
     // push back a callback and return an id to use to delete it later
     [[nodiscard]] std::size_t pushCallback(Callback&& callback) {
         static std::size_t lastUsedId = 0;
-        const auto         guard      = std::lock_guard{callbacksMutex};
-        std::size_t        id         = ++lastUsedId;
-        auto [_, wasEmplaced]         = userCallbacks.try_emplace(id, std::move(callback));
+        const auto         guard      = std::scoped_lock{callbacksMutex};
+        std::size_t        id         = lastUsedId;
+        ++lastUsedId;
+        auto [_, wasEmplaced] = userCallbacks.try_emplace(id, std::move(callback));
         assert(wasEmplaced);
         return id;
     }
 
     void removeCallback(std::size_t id) {
-        const auto guard = std::lock_guard{callbacksMutex};
+        const auto guard = std::scoped_lock{callbacksMutex};
         userCallbacks.erase(id);
     }
 
@@ -122,10 +125,7 @@ private:
 class RemoteSubscriptionManager {
     using Subscription = detail::RemoteSourceSubscription;
 
-    static RemoteSubscriptionManager& instance() {
-        static RemoteSubscriptionManager s_instance;
-        return s_instance;
-    }
+    static RemoteSubscriptionManager& instance();
 
 public:
     [[nodiscard]] static RemoteSubscriptionHandle subscribe(const RemoteSourceBase& source, Subscription::Callback&& callback) {
@@ -155,10 +155,15 @@ public:
 
 private:
     // mutual exclusion between subscribing/unsubscribing (writing), and the rest client worker thread calling the callback (reading)
-    mutable std::shared_mutex                                      _mutex;
-    std::unordered_map<std::string, std::unique_ptr<Subscription>> _subscriptions;
-    opencmw::client::RestClient                                    _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
+    mutable std::shared_mutex                                                                              _mutex;
+    std::unordered_map<std::string, std::unique_ptr<Subscription>, TransparentStringHash, std::equal_to<>> _subscriptions;
+    opencmw::client::RestClient                                                                            _client = opencmw::client::RestClient(opencmw::client::VerifyServerCertificates(Digitizer::Settings::instance().checkCertificates));
 };
+
+namespace detail {
+inline static RemoteSubscriptionManager remoteSubscriptionManager;
+}
+inline RemoteSubscriptionManager& RemoteSubscriptionManager::instance() { return detail::remoteSubscriptionManager; }
 
 inline opencmw::client::Command detail::RemoteSourceSubscription::buildSubscribeCommand() {
     opencmw::client::Command result;
@@ -166,10 +171,10 @@ inline opencmw::client::Command detail::RemoteSourceSubscription::buildSubscribe
     result.topic   = opencmw::URI<>(subscribedUri);
 
     result.callback = [uri = subscribedUri](const opencmw::mdp::Message& response) {
-        std::vector<RemoteSubscriptionHandle> queuedUnsubscriptions; // destructor called after shared unlock
         const auto&                           instance         = RemoteSubscriptionManager::instance();
-        const auto                            guard            = std::shared_lock{instance._mutex};
+        auto                                  guard            = std::shared_lock{instance._mutex};
         const auto                            subscriptionIter = std::as_const(instance._subscriptions).find(uri);
+        std::vector<RemoteSubscriptionHandle> queuedUnsubscriptions;
         if (subscriptionIter != std::end(instance._subscriptions)) {
             const RemoteSourceSubscription& subscription      = *subscriptionIter->second;
             const auto                      subscriptionGuard = std::lock_guard{subscription.callbacksMutex};
@@ -179,6 +184,8 @@ inline opencmw::client::Command detail::RemoteSourceSubscription::buildSubscribe
                 }
             }
         }
+        guard.unlock(); // queued unsubscriptions should be destroyed (and disconnected) after unlock
+        queuedUnsubscriptions.clear();
     };
 
     return result;
@@ -349,13 +356,11 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
         const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
-            if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
-                if (_subscription) {
-                    _subscription.reconnect();
-                } else {
-                    startSubscription();
-                }
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+            if (_subscription) {
+                _subscription.reconnect();
+            } else {
+                startSubscription();
             }
         }
 
@@ -449,62 +454,8 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
         }
         std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", remote_uri);
         std::weak_ptr maybeQueue = _queue;
-        _subscription            = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle {
-            long           skipped_updates     = 0;
-            constexpr auto skip_warning_prefix = "Warning: skipped ";
-            if (rep.error.starts_with(skip_warning_prefix)) {
-                skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
-            } else if (!rep.error.empty()) {
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                               gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
-                uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
-                                        + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-                _reconnect.store(nowTimeoutNs, std::memory_order_release);
-
-                auto queue = maybeQueue.lock();
-                if (!queue) {
-                    return std::move(_subscription); // release/unsubscribe
-                }
-                opendigitizer::acq::Acquisition acq;
-                acq.channelValues                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
-                acq.channelErrors                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
-                acq.triggerEventNames                  = {"SubscriptionInterrupted"s};
-                acq.triggerIndices                     = {std::int64_t(0)};
-                acq.triggerTimestamps.value()          = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
-                acq.triggerOffsets                     = {0.f};
-                const gr::property_map yamlPropertyMap = {{"subscription-error", rep.error}};
-                acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
-                std::lock_guard lock(queue->mutex);
-                queue->data.push_back({std::move(acq), 0});
-                return std::move(_subscription); // release/unsubscribe
-            }
-            if (rep.data.empty()) {
-                return {};
-            }
-            try {
-                auto queue = maybeQueue.lock();
-                if (!queue) {
-                    return {};
-                }
-                opendigitizer::acq::Acquisition acq;
-                auto                            buf = rep.data;
-                opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
-                if (skipped_updates != 0) {
-                    acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
-                    acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), 0);
-                    acq.triggerEventNames.insert(acq.triggerEventNames.begin(), "WARNING_SAMPLES_DROPPED");
-                    acq.triggerOffsets.insert(acq.triggerOffsets.begin(), 0.0f);
-                }
-                std::lock_guard lock(queue->mutex);
-                queue->data.push_back({std::move(acq), 0});
-            } catch (opencmw::ProtocolException& e) {
-                gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                               gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
-                return {};
-            }
-            this->progress->incrementAndGet();
-            this->progress->notify_all();
-            return {};
+        _subscription            = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle { //
+            return copyRestResponseDataIntoQueue(rep, maybeQueue);
         });
     }
 
@@ -528,6 +479,65 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     }
 
     void stop() { stopSubscription(); }
+
+private:
+    RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
+        long           skipped_updates     = 0;
+        constexpr auto skip_warning_prefix = "Warning: skipped ";
+        if (rep.error.starts_with(skip_warning_prefix)) {
+            skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
+        } else if (!rep.error.empty()) {
+            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
+            uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
+                                    + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
+            _reconnect.store(nowTimeoutNs, std::memory_order_release);
+
+            auto queue = maybeQueue.lock();
+            if (!queue) {
+                return std::move(_subscription); // release/unsubscribe
+            }
+            opendigitizer::acq::Acquisition acq;
+            acq.channelValues                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
+            acq.channelErrors                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
+            acq.triggerEventNames                  = {"SubscriptionInterrupted"s};
+            acq.triggerIndices                     = {std::int64_t(0)};
+            acq.triggerTimestamps.value()          = {0}; // {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count()};
+            acq.triggerOffsets                     = {0.f};
+            const gr::property_map yamlPropertyMap = {{"subscription-error", rep.error}};
+            acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
+            std::lock_guard lock(queue->mutex);
+            queue->data.push_back({std::move(acq), 0});
+            return std::move(_subscription); // release/unsubscribe
+        }
+        if (rep.data.empty()) {
+            return {};
+        }
+        try {
+            auto queue = maybeQueue.lock();
+            if (!queue) {
+                return {};
+            }
+            opendigitizer::acq::Acquisition acq;
+            auto                            buf = rep.data;
+            opencmw::deserialise<opencmw::YaS, opencmw::ProtocolCheck::IGNORE>(buf, acq);
+            if (skipped_updates != 0) {
+                acq.triggerIndices.insert(acq.triggerIndices.begin(), 0L);
+                acq.triggerTimestamps.insert(acq.triggerTimestamps.begin(), 0);
+                acq.triggerEventNames.insert(acq.triggerEventNames.begin(), "WARNING_SAMPLES_DROPPED");
+                acq.triggerOffsets.insert(acq.triggerOffsets.begin(), 0.0f);
+            }
+            std::lock_guard lock(queue->mutex);
+            queue->data.push_back({std::move(acq), 0});
+        } catch (opencmw::ProtocolException& e) {
+            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
+                gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+            return {};
+        }
+        this->progress->incrementAndGet();
+        this->progress->notify_all();
+        return {};
+    }
 }; // RemoteStreamSource
 
 template<typename T>
@@ -556,13 +566,11 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
         std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
         const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty()) {
-            if (_reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
-                if (_subscription) {
-                    _subscription.reconnect();
-                } else {
-                    startSubscription();
-                }
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+            if (_subscription) {
+                _subscription.reconnect();
+            } else {
+                startSubscription();
             }
         }
 
