@@ -80,6 +80,37 @@ public:
     void reconnect() noexcept;
 };
 
+template<typename Derived, typename QueueContents>
+struct RemoteSourceCommon {
+    struct Queue {
+        std::deque<QueueContents> data;
+        std::mutex                mutex;
+    };
+
+    RemoteSubscriptionHandle   _subscription;
+    std::shared_ptr<Queue>     _queue = std::make_shared<Queue>();
+    std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
+
+    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings);
+    void stopSubscription() { _subscription.reset(); }
+    void startSubscription();
+    void start();
+    void stop() { stopSubscription(); }
+    void maybeReconnect() {
+        const auto*         self        = static_cast<Derived*>(this);
+        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
+        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !self->host.empty() && !self->remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
+            if (_subscription) {
+                _subscription.reconnect();
+            } else {
+                startSubscription();
+            }
+        }
+    }
+};
+
 namespace detail {
 struct RemoteSourceSubscription {
     /// Returning a valid RemoteSubscriptionHandle from a Subscription::Callback indicates
@@ -284,9 +315,53 @@ public:
     }
 };
 
+template<typename Derived, typename QueueContents>
+void RemoteSourceCommon<Derived, QueueContents>::startSubscription() {
+    if (_subscription) {
+        return;
+    }
+    auto*       derivedSelf = static_cast<Derived*>(this);
+    const auto* baseSelf    = static_cast<RemoteSourceBase*>(derivedSelf);
+    std::print("<<RemoteSource.hpp>> startSubscription {}\n", baseSelf->remote_uri);
+    std::weak_ptr maybeQueue = _queue;
+    _subscription            = RemoteSubscriptionManager::subscribe(*baseSelf, [maybeQueue, derivedSelf](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle { //
+        return derivedSelf->copyRestResponseDataIntoQueue(rep, maybeQueue);
+    });
+}
+
+template<typename Derived, typename QueueContents>
+void RemoteSourceCommon<Derived, QueueContents>::settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
+    static_assert(std::is_base_of_v<RemoteSourceBase, Derived>);
+    static_assert(std::is_base_of_v<RemoteSourceCommon, Derived>);
+    // GR doesn't set the state for a block added after the scheduler started
+    // if (Parent::state() != gr::lifecycle::State::RUNNING) {
+    //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
+    //     return; // early return, only apply settings for the running flowgraph
+    // }
+    auto* self = static_cast<RemoteSourceBase*>(static_cast<Derived*>(this));
+    if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !self->host.empty() && !self->remote_uri.empty()) {
+        RemoteSourceManager::instance().notifyOfRemoteSource(self->remote_uri, this);
+        stopSubscription();
+        startSubscription();
+    }
+}
+
+template<typename Derived, typename QueueContents>
+void RemoteSourceCommon<Derived, QueueContents>::start() {
+    const auto* self = static_cast<RemoteSourceBase*>(static_cast<Derived*>(this));
+    if (!self->remote_uri.empty() && !self->host.empty()) {
+        startSubscription();
+    }
+}
+
+struct RemoteStreamSourceData {
+    opendigitizer::acq::Acquisition acq;
+    std::size_t                     read = 0;
+};
+
 template<typename T>
 requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
-struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
+struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSource<T>, RemoteStreamSourceData>, gr::Block<RemoteStreamSource<T>> {
     using Parent = gr::Block<RemoteStreamSource<T>>;
     gr::PortOut<T> out;
 
@@ -298,22 +373,9 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>                                                                                                          verbose_console   = false;
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">>                                                                                            reconnect_timeout = 5.f;
 
-    RemoteSubscriptionHandle   _subscription;
-    std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
-
     GR_MAKE_REFLECTABLE(RemoteStreamSource, out, remote_uri, signal_name, signal_unit, signal_quantity, signal_min, signal_max, host, verbose_console, reconnect_timeout);
 
-    struct Data {
-        opendigitizer::acq::Acquisition acq;
-        std::size_t                     read = 0;
-    };
-
-    struct Queue {
-        std::deque<Data> data;
-        std::mutex       mutex;
-    };
-
-    std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
+    using Queue = RemoteSourceCommon<RemoteStreamSource, RemoteStreamSourceData>::Queue;
 
     explicit RemoteStreamSource(gr::property_map props) : Parent(props) {
         RemoteSourceManager::instance().registerRemoteSource(this);
@@ -353,21 +415,12 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
-        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
-            if (_subscription) {
-                _subscription.reconnect();
-            } else {
-                startSubscription();
-            }
-        }
+        this->maybeReconnect();
 
         std::size_t     written = 0;
-        std::lock_guard lock(_queue->mutex);
-        while (written < output.size() && !_queue->data.empty()) {
-            auto& d = _queue->data.front();
+        std::lock_guard lock(this->_queue->mutex);
+        while (written < output.size() && !this->_queue->data.empty()) {
+            auto& d = this->_queue->data.front();
             updateSettingsFromAcquisition(d.acq);
 
             const auto nSignals = static_cast<std::size_t>(d.acq.channelValues.n(0));
@@ -437,50 +490,15 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
             written += nSamplesToCopy;
             d.read += nSamplesToCopy;
             if (d.read == nSamples) {
-                _queue->data.pop_front();
+                this->_queue->data.pop_front();
             }
         }
         output.publish(written);
         return written == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
 
-    void stopSubscription() { _subscription.reset(); }
-
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) { return Parent::propertyCallbackLifecycleState(propertyName, std::move(message)); }
 
-    void startSubscription() {
-        if (_subscription) {
-            return;
-        }
-        std::print("<<RemoteSource.hpp>> RemoteStreamSource::startSubscription {}\n", remote_uri);
-        std::weak_ptr maybeQueue = _queue;
-        _subscription            = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle { //
-            return copyRestResponseDataIntoQueue(rep, maybeQueue);
-        });
-    }
-
-    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
-        // GR doesn't set the state for a block added after the scheduler started
-        // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
-        //     return; // early return, only apply settings for the running flowgraph
-        // }
-        if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
-            RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
-            stopSubscription();
-            startSubscription();
-        }
-    }
-
-    void start() {
-        if (!remote_uri.empty() && !host.empty()) {
-            startSubscription();
-        }
-    }
-
-    void stop() { stopSubscription(); }
-
-private:
     RemoteSubscriptionHandle copyRestResponseDataIntoQueue(const opencmw::mdp::Message& rep, const std::weak_ptr<Queue>& maybeQueue) {
         long           skipped_updates     = 0;
         constexpr auto skip_warning_prefix = "Warning: skipped ";
@@ -491,11 +509,11 @@ private:
                 gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            _reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
+            this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
 
             auto queue = maybeQueue.lock();
             if (!queue) {
-                return std::move(_subscription); // release/unsubscribe
+                return std::move(this->_subscription); // release/unsubscribe
             }
             opendigitizer::acq::Acquisition acq;
             acq.channelValues                      = opencmw::MultiArray<float, 2>({0.f}, std::array<uint32_t, 2>{1U, 1U});
@@ -508,7 +526,7 @@ private:
             acq.triggerYamlPropertyMaps            = {gr::pmt::yaml::serialize(yamlPropertyMap)};
             std::lock_guard lock(queue->mutex);
             queue->data.push_back({std::move(acq), 0});
-            return std::move(_subscription); // release/unsubscribe
+            return std::move(this->_subscription); // release/unsubscribe
         }
         if (rep.data.empty()) {
             return {};
@@ -542,90 +560,37 @@ private:
 
 template<typename T>
 requires std::is_floating_point_v<T> || gr::UncertainValueLike<T>
-struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>> {
+struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetSource<T>, gr::DataSet<T>>, gr::Block<RemoteDataSetSource<T>> {
     using Parent = gr::Block<RemoteDataSetSource<T>>;
     gr::PortOut<gr::DataSet<T>> out;
 
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>               verbose_console   = false;
     gr::Annotated<float, "reconnect timeout", gr::Doc<"reconnect timeout in sec">> reconnect_timeout = 5.f;
 
-    RemoteSubscriptionHandle   _subscription;    // must be after _client, it uses _client in destructor
-    std::atomic<std::uint64_t> _reconnect{0ULL}; // 0 == disabled, otherwise time since epoch in ns
-
     GR_MAKE_REFLECTABLE(RemoteDataSetSource, out, remote_uri, host, verbose_console, reconnect_timeout);
-    struct Queue {
-        std::deque<gr::DataSet<T>> data;
-        std::mutex                 mutex;
-    };
 
-    std::shared_ptr<Queue> _queue = std::make_shared<Queue>();
+    using Queue = RemoteSourceCommon<RemoteDataSetSource, gr::DataSet<T>>::Queue;
 
     explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { this->disconnect_on_done = false; }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
-        const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
-            if (_subscription) {
-                _subscription.reconnect();
-            } else {
-                startSubscription();
-            }
-        }
-
-        std::lock_guard           lock(_queue->mutex);
-        const auto                n       = std::min(_queue->data.size(), output.size());
+        this->maybeReconnect();
+        std::lock_guard           lock(this->_queue->mutex);
+        const auto                n       = std::min(this->_queue->data.size(), output.size());
         std::span<gr::DataSet<T>> outSpan = output;
         for (auto i = 0UZ; i < n; ++i) {
-            outSpan[i] = std::move(_queue->data.front());
-            _queue->data.pop_front();
+            outSpan[i] = std::move(this->_queue->data.front());
+            this->_queue->data.pop_front();
         }
         output.publish(n);
         return n == 0UZ ? gr::work::Status::INSUFFICIENT_INPUT_ITEMS : gr::work::Status::OK;
     }
-
-    void stopSubscription() { _subscription.reset(); }
 
     std::optional<gr::Message> propertyCallbackLifecycleState(std::string_view propertyName, gr::Message message) {
         //
         return Parent::propertyCallbackLifecycleState(propertyName, std::move(message));
     }
 
-    void startSubscription() {
-        if (_subscription) {
-            return;
-        }
-        std::print("<<RemoteSource.hpp>> RemoteDataSetSource::startSubscription {}\n", remote_uri);
-        std::weak_ptr maybeQueue = _queue;
-
-        _subscription = RemoteSubscriptionManager::subscribe(*this, [maybeQueue, this](const opencmw::mdp::Message& rep) -> RemoteSubscriptionHandle { //
-            return copyRestResponseDataIntoQueue(rep, maybeQueue);
-        });
-    }
-
-    void settingsChanged(const gr::property_map& /*old_settings*/, const gr::property_map& new_settings) {
-        // GR doesn't set the state for a block added after the scheduler started
-        // if (Parent::state() != gr::lifecycle::State::RUNNING) {
-        //     std::print("<<RemoteSource.hpp>> We didn't get a running lifetime from GR\n");
-        //     return; // early return, only apply settings for the running flowgraph
-        // }
-        if ((new_settings.contains("host") || new_settings.contains("remote_uri")) && !host.empty() && !remote_uri.empty()) {
-            RemoteSourceManager::instance().notifyOfRemoteSource(remote_uri, this);
-            stopSubscription();
-            startSubscription();
-        }
-    }
-
-    void start() {
-        if (!remote_uri.empty() && !host.empty()) {
-            startSubscription();
-        }
-    }
-
-    void stop() { stopSubscription(); }
-
-private:
     constexpr static auto floatToDatasetTypeConvert = [](float v) constexpr {
         if constexpr (gr::UncertainValueLike<T>) {
             return static_cast<T::value_type>(v);
@@ -644,8 +609,8 @@ private:
                 gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            _reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
-            return std::move(_subscription); // release/unsubscribe
+            this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
+            return std::move(this->_subscription); // release/unsubscribe
         }
         if (rep.data.empty()) {
             return {};
@@ -735,6 +700,7 @@ private:
         return {};
     }
 
+private:
     /// Copy signal values from an acquisition into a dataset
     // TODO: still needs to be tested when we get full support of gr::UncertainValue
     void copySignalValues(gr::DataSet<T>& ds, const opendigitizer::acq::Acquisition& acq, std::size_t nSignals, std::size_t nSamples) {
