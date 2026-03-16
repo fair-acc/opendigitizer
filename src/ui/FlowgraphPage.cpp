@@ -387,6 +387,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     ImVec2 topLeft;
                     float  bottomY;
                 };
+                ImGui::Dummy(ImVec2(0.f, 0.f));
                 return result{position, blockBottomY};
             }();
 

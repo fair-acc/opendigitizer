@@ -307,6 +307,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 alignForWidth(estSize.x, 1.0);
                 ImGui::Text("%s", str.c_str());
             }
+            ImGui::Dummy(ImVec2(0.f, 0.f));
         }
         _legendBox.y = std::floor(ImGui::GetItemRectSize().y * 1.5f);
     }
