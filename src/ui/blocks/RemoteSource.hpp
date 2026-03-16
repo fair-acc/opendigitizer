@@ -353,10 +353,10 @@ struct RemoteStreamSource : RemoteSourceBase, gr::Block<RemoteStreamSource<T>> {
     }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
+        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
         const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
             if (_subscription) {
                 _subscription.reconnect();
             } else {
@@ -491,7 +491,7 @@ private:
                 gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            _reconnect.store(nowTimeoutNs, std::memory_order_release);
+            _reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
 
             auto queue = maybeQueue.lock();
             if (!queue) {
@@ -563,10 +563,10 @@ struct RemoteDataSetSource : RemoteSourceBase, gr::Block<RemoteDataSetSource<T>>
     explicit RemoteDataSetSource(gr::property_map props) : Parent(std::move(props)) { this->disconnect_on_done = false; }
 
     auto processBulk(gr::OutputSpanLike auto& output) noexcept {
-        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_acquire);
+        std::uint64_t       reconnectNs = _reconnect.load(std::memory_order_seq_cst);
         const std::uint64_t nowNs       = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_acq_rel)) {
+        if (reconnectNs != 0ULL && reconnectNs < nowNs && !host.empty() && !remote_uri.empty() && _reconnect.compare_exchange_strong(reconnectNs, 0ULL, std::memory_order_seq_cst)) {
             if (_subscription) {
                 _subscription.reconnect();
             } else {
@@ -636,7 +636,7 @@ private:
                 gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
-            _reconnect.store(nowTimeoutNs, std::memory_order_release);
+            _reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
             return std::move(_subscription); // release/unsubscribe
         }
         if (rep.data.empty()) {
