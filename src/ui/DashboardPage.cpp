@@ -237,7 +237,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
             if (_dashboard && _remoteSignalSelector) {
                 // Post button strip
-                if (mode == Mode::Layout) {
+                if (mode == Mode::View) {
                     ImGui::SameLine();
                     if (plotButton("\uf067", "add signal")) {
                         // 'plus' button in the global legend, adds a new signal
