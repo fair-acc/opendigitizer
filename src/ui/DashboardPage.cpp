@@ -159,7 +159,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 };
             }
 
-            _dockSpace.render(windows, _paneSize);
+            _dockSpace.render(windows, _paneSize, mode == Mode::Layout);
         }
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
 

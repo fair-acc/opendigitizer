@@ -29,6 +29,7 @@ inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
 class DockSpace {
     DockingLayoutType _layoutType      = DockingLayoutType::Free;
     bool              _needsRelayout   = true;
+    bool              _lastIsEditable  = false;
     size_t            _lastWindowCount = 0;
 
 public:
@@ -42,32 +43,33 @@ public:
     void setLayoutType(DockingLayoutType);
 
     /// Renders the specified windows in an area of size paneSize
-    void render(const Windows& windows, ImVec2 paneSize);
+    void render(const Windows& windows, ImVec2 paneSize, bool isEditable);
 
 private:
     static ImGuiID dockspaceID();
 
-    void renderWindows(const Windows& windows);
+    void renderWindows(const Windows& windows, bool isEditable);
+    void drawEditableWindowDragArea();
 
     void clearWindowGeometry(const Windows& windows);
 
     // positions all windows according to the current layout type
-    void relayout(const Windows& windows);
+    void relayout(const Windows& windows, bool isEditable);
 
     // perform a box layout (aka row or column layout)
-    void layoutInBox(const Windows& windows, ImGuiDir);
+    void layoutInBox(const Windows& windows, ImGuiDir, bool isEditable);
 
-    void layoutInGrid(const Windows& windows);
+    void layoutInGrid(const Windows& windows, bool isEditable);
 
-    void layoutInFree(const Windows& windows);
-    void layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId);
+    void layoutInFree(const Windows& windows, bool isEditable);
+    void layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId, bool isEditable);
 
     // triggers a relayout for the next frame
     void setNeedsRelayout(bool);
 
     // returns the flags the node should use for the current layout type
     // these can be tweaked against UX requirements
-    int nodeFlags() const;
+    int nodeFlags(bool isEditable) const;
 };
 
 // make it a sub-class
