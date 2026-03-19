@@ -209,7 +209,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                         auto* legendBlock = static_cast<GlobalSignalLegend*>(blockPtr->raw());
                         legendBlock->setPaneWidth(_paneSize.x);
                         legendBlock->setRightClickCallback([this, mode](std::string_view sinkUniqueName) {
-                            if (mode != Mode::Layout) {
+                            if (mode == Mode::Layout) {
                                 return;
                             }
                             auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(sinkUniqueName));
