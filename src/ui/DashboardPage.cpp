@@ -218,6 +218,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                                 _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                             }
                         });
+                        legendBlock->setDragDropEnabled(mode != Mode::Layout);
                     }
 
                     // Draw the toolbar block
