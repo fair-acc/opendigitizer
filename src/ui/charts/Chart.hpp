@@ -1689,7 +1689,8 @@ struct Chart {
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {
-            effectiveShowLegend = self.show_legend.value || layoutMode;
+            // show_legend is unused for now, as there is no view-only mode where you *wouldn't* already show_legend
+            effectiveShowLegend = !layoutMode; // self.show_legend.value || layoutMode;
         }
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
@@ -1697,6 +1698,11 @@ struct Chart {
         ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
+        }
+
+        if (layoutMode) {
+            // not strictly necessary, the drag and drop buttons in layoutmode already cover the plot
+            plotFlags |= ImPlotFlags_NoInputs;
         }
 
         bool effectiveShowGrid = true;
