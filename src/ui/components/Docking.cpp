@@ -118,6 +118,11 @@ void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
 
         if (isEditable) {
             drawEditableWindowDragArea();
+
+            if (window->renderDockingContextMenuFunc && ImGui::BeginPopupContextWindow()) {
+                window->renderDockingContextMenuFunc();
+                ImGui::EndPopup();
+            }
         }
 
         // TODO: ImGui bug, it seems local flags on a window are reset after docking.

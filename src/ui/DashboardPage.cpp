@@ -157,6 +157,11 @@ void DashboardPage::draw(Mode mode) noexcept {
                     drawConfig["layoutMode"] = (mode == Mode::Layout);
                     block->draw(drawConfig);
                 };
+
+                uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
+                    opendigitizer::charts::drawDuplicateChartMenuItem(block->uniqueName());
+                    opendigitizer::charts::drawRemoveChartMenuItem(block->uniqueName());
+                };
             }
 
             _dockSpace.render(windows, _paneSize, mode == Mode::Layout);

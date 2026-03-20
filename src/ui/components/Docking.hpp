@@ -82,6 +82,7 @@ struct DockSpace::Window {
     std::size_t           width  = 0UZ;
     std::size_t           height = 0UZ;
     std::function<void()> renderFunc;
+    std::function<void()> renderDockingContextMenuFunc;
 
     void clearGeometry() { setGeometry({}, {}); }
 
