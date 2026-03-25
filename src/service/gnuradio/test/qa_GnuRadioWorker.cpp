@@ -146,6 +146,17 @@ void checkAcquisitionMeta(const Acquisition& acq, std::size_t nSignals_, std::si
     }
 }
 
+void checkTimeAxis(const Acquisition& acq, float sampleRate, std::string_view configStr, std::source_location location = std::source_location::current()) {
+    std::string configAndLoc = std::format("\n{} \ncheckTimeAxis() at {}:{}", configStr, location.file_name(), location.line());
+
+    expect(eq(acq.channelTimeSinceRefTrigger.size(), static_cast<std::size_t>(acq.channelValues.n(1)))) << configAndLoc;
+
+    const float ts = 1.f / sampleRate;
+    for (std::size_t i = 0; i < acq.channelTimeSinceRefTrigger.size(); ++i) {
+        expect(eq(acq.channelTimeSinceRefTrigger[i], static_cast<float>(i) * ts)) << configAndLoc;
+    }
+}
+
 void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<SignalType>& types, const std::vector<std::string>& names, const std::vector<std::string>& units, //
     const std::vector<std::string>& quantities, const std::vector<float>& sampleRates, std::string_view configStr, std::source_location location = std::source_location::current()) {
     std::string configAndLoc = std::format("\n{} \ncheckDnsEntries() at {}:{}", configStr, location.file_name(), location.line());
@@ -420,6 +431,41 @@ connections:
         checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {}, config.toString());
     } | testConfigs;
 
+    "Streaming late subscription"_test = [](auto config) {
+        constexpr std::string_view grc = R"(
+blocks:
+  - id: CountSource<float32>
+    parameters:
+      name: count
+      n_samples: 0
+      sample_rate: 8
+      signal_unit: "Unit_A"
+      signal_quantity: "Quantity_A"
+      signal_min: -2
+      signal_max: 2
+  - id: gr::basic::DataSink<float32>
+    parameters: 
+      name: test_sink
+      signal_name: "Signal_A"
+connections:
+  - [count, 0, test_sink, 0]
+)";
+        TestApp                    test;
+        std::atomic<std::size_t>   receivedCount = 0;
+
+        test.setGrc(grc);
+        std::this_thread::sleep_for(200ms);
+
+        test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCount, &config](const auto& acq) {
+            const auto samples = samplesForSignalIndex(acq.channelValues, 0);
+            checkAcquisitionMeta(acq, 1UZ, samples.size(), {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {-2.f}, {2.f}, config.toString());
+            checkTimeAxis(acq, 8.f, config.toString());
+            receivedCount = samples.size();
+        });
+
+        waitWhile([&] { return receivedCount == 0; });
+    } | testConfigs;
+
     "Flow graph management"_test = [] {
         constexpr std::string_view grc1 = R"(
 blocks:
@@ -496,10 +542,10 @@ connections:
 
         std::this_thread::sleep_for(50ms);
         test.setGrc(grc1);
-        std::this_thread::sleep_for(2000ms);
+        waitWhile([&] { return receivedUpCount < kExpectedSamples; });
         test.setGrc(grc2);
 
-        waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; });
+        waitWhile([&] { return receivedDownCount < kExpectedSamples; });
 
         expect(eq(receivedUpData.size(), kExpectedSamples));
         expect(eq(receivedUpData, expectedUpData));
@@ -928,7 +974,7 @@ connections:
     };
 
     "Dynamic signal metadata"_test = [] {
-        constexpr std::string_view grc = R"(
+        constexpr std::string_view grc               = R"(
 blocks:
   - id: CountSource<float32>
     parameters:
@@ -959,8 +1005,8 @@ connections:
   - [count_up, 0, test_sink_up, 0]
   - [count_down, 0, test_sink_down, 0]
 )";
-        std::atomic<std::size_t>   receivedUpCount;
-        std::atomic<std::size_t>   receivedDownCount;
+        std::atomic<std::size_t>   receivedUpCount   = 0;
+        std::atomic<std::size_t>   receivedDownCount = 0;
         std::vector<SignalEntry>   lastDnsEntries;
 
         TestApp test([&lastDnsEntries](auto entries) {
@@ -968,6 +1014,22 @@ connections:
                 lastDnsEntries = std::move(entries);
             }
         });
+
+        auto hasExpectedDnsEntries = [&lastDnsEntries] {
+            if (lastDnsEntries.size() != 2) {
+                return false;
+            }
+
+            auto entries = lastDnsEntries;
+            std::ranges::sort(entries, {}, &SignalEntry::name);
+
+            return entries[0].name == "Signal_A" && entries[0].unit == "Unit_A" && entries[0].quantity == "Quantity_A" && entries[0].signal_min == std::optional<float>{-42.f} && entries[0].signal_max == std::optional<float>{42.f} //
+                   && entries[1].name == "Signal_B" && entries[1].unit == "Unit_B" && entries[1].quantity == "Quantity_B" && entries[1].signal_min == std::optional<float>{0.f} && entries[1].signal_max == std::optional<float>{100.f};
+        };
+
+        std::this_thread::sleep_for(50ms);
+        test.setGrc(grc);
+        waitWhile([&] { return !hasExpectedDnsEntries(); });
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedUpCount](const Acquisition& acq) {
             const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
@@ -980,8 +1042,6 @@ connections:
             checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f}, "");
             receivedDownCount += nSamples;
         });
-        std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
         waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
 
         expect(receivedUpCount > 0);
