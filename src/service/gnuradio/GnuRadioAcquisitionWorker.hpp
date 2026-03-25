@@ -131,12 +131,117 @@ struct SignalEntry {
     std::string          name;
     std::string          quantity;
     std::string          unit;
-    float                sample_rate = 1.f;
+    std::optional<float> sample_rate;
     std::optional<float> signal_min;
     std::optional<float> signal_max;
     SignalType           type = SignalType::Plain;
 
     auto operator<=>(const SignalEntry&) const noexcept = default;
+};
+
+struct TimingEventState {
+    static constexpr int CmdBpStartEventNumber = 256; // CMD_BP_START
+
+    bool         valid              = false;
+    int          processIndex       = 0;
+    int          sequenceIndex      = 0;
+    int          chainIndex         = 0;
+    int          eventNumber        = 0;
+    int          timingGroupID      = 0;
+    std::int64_t acquisitionStamp   = 0;
+    std::int64_t eventStamp         = 0;
+    std::int64_t processStartStamp  = 0;
+    std::int64_t sequenceStartStamp = 0;
+    std::int64_t chainStartStamp    = 0;
+
+    void applyToReply(Acquisition& reply) const {
+        if (!valid) {
+            return;
+        }
+        reply.processIndex.value()       = processIndex;
+        reply.sequenceIndex.value()      = sequenceIndex;
+        reply.chainIndex.value()         = chainIndex;
+        reply.eventNumber.value()        = eventNumber;
+        reply.timingGroupID.value()      = timingGroupID;
+        reply.acquisitionStamp.value()   = acquisitionStamp;
+        reply.eventStamp.value()         = eventStamp;
+        reply.processStartStamp.value()  = processStartStamp;
+        reply.sequenceStartStamp.value() = sequenceStartStamp;
+        reply.chainStartStamp.value()    = chainStartStamp;
+    }
+
+    void updateFromTags(std::span<const gr::Tag> tags) {
+        for (const auto& tag : tags) {
+            updateFromTagMap(tag.map);
+        }
+    }
+
+private:
+    static bool hasFairTimingContext(const gr::property_map& tagMap) {
+        const auto contextIt = tagMap.find(std::string(gr::tag::CONTEXT.shortKey()));
+        return contextIt != tagMap.end() && contextIt->second.is_string() && contextIt->second.value_or(std::string()).starts_with("FAIR-TIMING:");
+    }
+
+    static bool isFairTimingTag(const gr::property_map& tagMap, const gr::property_map& metaInfo) { return hasFairTimingContext(tagMap) || (metaInfo.contains("BPCID") && metaInfo.contains("SID") && metaInfo.contains("BPID") && metaInfo.contains("GID")); }
+
+    void updateFromTagMap(const gr::property_map& tagMap) {
+        const auto metaInfoIt = tagMap.find(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        if (metaInfoIt == tagMap.end()) {
+            return;
+        }
+
+        const auto* metaInfo = metaInfoIt->second.get_if<gr::property_map>();
+        if (metaInfo == nullptr) {
+            return;
+        }
+
+        if (!isFairTimingTag(tagMap, *metaInfo)) {
+            return;
+        }
+
+        const auto parsedTriggerTime = detail::get<std::uint64_t>(tagMap, gr::tag::TRIGGER_TIME.shortKey());
+        const auto newEventNumber    = detail::get<int>(*metaInfo, "EVENT-NO");
+
+        if (!parsedTriggerTime || !newEventNumber) {
+            return;
+        }
+
+        const auto newTriggerTime = static_cast<std::int64_t>(*parsedTriggerTime);
+        const bool hadState       = valid;
+
+        valid            = true;
+        acquisitionStamp = newTriggerTime;
+        eventStamp       = newTriggerTime;
+        eventNumber      = *newEventNumber;
+
+        if (*newEventNumber != CmdBpStartEventNumber) {
+            return;
+        }
+
+        const auto newProcessIndex  = detail::get<int>(*metaInfo, "BPID");
+        const auto newSequenceIndex = detail::get<int>(*metaInfo, "SID");
+        const auto newChainIndex    = detail::get<int>(*metaInfo, "BPCID");
+        const auto newTimingGroupID = detail::get<int>(*metaInfo, "GID");
+
+        if (!newProcessIndex || !newSequenceIndex || !newChainIndex || !newTimingGroupID) {
+            return;
+        }
+
+        timingGroupID = *newTimingGroupID;
+
+        if (!hadState || chainIndex != *newChainIndex) {
+            chainStartStamp = newTriggerTime;
+            chainIndex      = *newChainIndex;
+        }
+        if (!hadState || sequenceIndex != *newSequenceIndex) {
+            sequenceStartStamp = newTriggerTime;
+            sequenceIndex      = *newSequenceIndex;
+        }
+        if (!hadState || processIndex != *newProcessIndex) {
+            processStartStamp = newTriggerTime;
+            processIndex      = *newProcessIndex;
+        }
+    }
 };
 
 struct StreamingPollerEntry {
@@ -149,6 +254,7 @@ struct StreamingPollerEntry {
     std::optional<float>                                    sample_rate;
     std::optional<float>                                    signal_min;
     std::optional<float>                                    signal_max;
+    TimingEventState                                        timingEventState;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
@@ -330,7 +436,7 @@ private:
                                 entry.name        = *signalName;
                                 signalInfoChanged = true;
                             }
-                            if (sampleRate && sampleRate.value() != entry.sample_rate) {
+                            if (sampleRate && entry.sample_rate != std::optional<float>{*sampleRate}) {
                                 entry.sample_rate = *sampleRate;
                                 signalInfoChanged = true;
                             }
@@ -398,14 +504,14 @@ private:
                             entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
                             entry.quantity     = detail::getSetting<std::pmr::string>(block, "signal_quantity").value_or("");
                             entry.unit         = detail::getSetting<std::pmr::string>(block, "signal_unit").value_or("");
-                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
+                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
                             entry.signal_min   = detail::getSetting<float>(block, "signal_min");
                             entry.signal_max   = detail::getSetting<float>(block, "signal_max");
                         } else if (block->typeName().starts_with("gr::basic::DataSetSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::DataSet;
                             entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
-                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
+                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
                         }
                     });
                     if (_updateSignalEntriesCallback) {
@@ -500,12 +606,14 @@ private:
 
         auto processData = [&reply, signalName, &pollerEntry](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
             std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
+            pollerEntry.timingEventState.updateFromTags(tags);
             reply.refTriggerName    = "NO_REF_TRIGGER";
             reply.channelNames      = {pollerEntry.signal_name.value_or(std::string(signalName))};
             reply.channelUnits      = {pollerEntry.signal_unit.value_or("N/A")};
             reply.channelQuantities = {pollerEntry.signal_quantity.value_or("N/A")};
             reply.channelRangeMin   = {pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest()};
             reply.channelRangeMax   = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
+            pollerEntry.timingEventState.applyToReply(reply);
 
             const auto                    nSamples = static_cast<uint32_t>(data.size());
             const std::array<uint32_t, 2> dims{1U, nSamples}; // 1 signal, N samples

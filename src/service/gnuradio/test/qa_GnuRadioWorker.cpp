@@ -15,6 +15,7 @@
 #include <gnuradio-4.0/meta/formatter.hpp>
 #include <gnuradio-4.0/testing/Delay.hpp>
 
+#include <array>
 #include <boost/ut.hpp>
 #include <format>
 #include <print>
@@ -181,8 +182,31 @@ void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<
     }
     if (!sampleRates.empty()) {
         expect(eq(lastDnsEntries.size(), sampleRates.size())) << configAndLoc;
-        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.sample_rate; }), sampleRates)) << configAndLoc;
+        expect(eq(lastDnsEntries | std::views::transform([](const auto& dnsEntry) { return dnsEntry.sample_rate.value_or(0.f); }), sampleRates)) << configAndLoc;
     }
+}
+
+gr::Tag makeFairTimingTag(std::uint64_t triggerTime, int eventNumber, std::optional<int> chainIndex = {}, std::optional<int> sequenceIndex = {}, std::optional<int> processIndex = {}, std::optional<int> timingGroupID = {}) {
+    gr::property_map metaInfo;
+    metaInfo.emplace("EVENT-NO", eventNumber);
+    if (chainIndex) {
+        metaInfo.emplace("BPCID", *chainIndex);
+    }
+    if (sequenceIndex) {
+        metaInfo.emplace("SID", *sequenceIndex);
+    }
+    if (processIndex) {
+        metaInfo.emplace("BPID", *processIndex);
+    }
+    if (timingGroupID) {
+        metaInfo.emplace("GID", *timingGroupID);
+    }
+
+    gr::property_map tagMap;
+    tagMap.emplace(gr::tag::TRIGGER_TIME.shortKey(), triggerTime);
+    tagMap.emplace(gr::tag::CONTEXT.shortKey(), "FAIR-TIMING:C=1.S=1.P=1.T=1");
+    tagMap.emplace(gr::tag::TRIGGER_META_INFO.shortKey(), metaInfo);
+    return gr::Tag{0, std::move(tagMap)};
 }
 } // namespace
 
@@ -444,7 +468,7 @@ blocks:
       signal_min: -2
       signal_max: 2
   - id: gr::basic::DataSink<float32>
-    parameters: 
+    parameters:
       name: test_sink
       signal_name: "Signal_A"
 connections:
@@ -1048,6 +1072,55 @@ connections:
         expect(receivedDownCount > 0);
 
         checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_A", "Signal_B"}, {"Unit_A", "Unit_B"}, {"Quantity_A", "Quantity_B"}, {}, "");
+    };
+
+    "Timing event state"_test = [] {
+        TimingEventState state;
+
+        const auto apply = [&state] {
+            Acquisition acq;
+            state.applyToReply(acq);
+            return acq;
+        };
+
+        state.updateFromTags(std::array{makeFairTimingTag(1000, TimingEventState::CmdBpStartEventNumber, 11, 22, 33, 44)});
+        auto acq = apply();
+        expect(eq(acq.chainIndex.value(), 11));
+        expect(eq(acq.sequenceIndex.value(), 22));
+        expect(eq(acq.processIndex.value(), 33));
+        expect(eq(acq.timingGroupID.value(), 44));
+        expect(eq(acq.eventNumber.value(), TimingEventState::CmdBpStartEventNumber));
+        expect(eq(acq.acquisitionStamp.value(), 1000LL));
+        expect(eq(acq.eventStamp.value(), 1000LL));
+        expect(eq(acq.chainStartStamp.value(), 1000LL));
+        expect(eq(acq.sequenceStartStamp.value(), 1000LL));
+        expect(eq(acq.processStartStamp.value(), 1000LL));
+
+        state.updateFromTags(std::array{makeFairTimingTag(1100, 777)});
+        acq = apply();
+        expect(eq(acq.chainIndex.value(), 11));
+        expect(eq(acq.sequenceIndex.value(), 22));
+        expect(eq(acq.processIndex.value(), 33));
+        expect(eq(acq.timingGroupID.value(), 44));
+        expect(eq(acq.eventNumber.value(), 777));
+        expect(eq(acq.acquisitionStamp.value(), 1100LL));
+        expect(eq(acq.eventStamp.value(), 1100LL));
+        expect(eq(acq.chainStartStamp.value(), 1000LL));
+        expect(eq(acq.sequenceStartStamp.value(), 1000LL));
+        expect(eq(acq.processStartStamp.value(), 1000LL));
+
+        state.updateFromTags(std::array{makeFairTimingTag(1200, TimingEventState::CmdBpStartEventNumber, 11, 22, 34, 44)});
+        acq = apply();
+        expect(eq(acq.chainIndex.value(), 11));
+        expect(eq(acq.sequenceIndex.value(), 22));
+        expect(eq(acq.processIndex.value(), 34));
+        expect(eq(acq.timingGroupID.value(), 44));
+        expect(eq(acq.eventNumber.value(), TimingEventState::CmdBpStartEventNumber));
+        expect(eq(acq.acquisitionStamp.value(), 1200LL));
+        expect(eq(acq.eventStamp.value(), 1200LL));
+        expect(eq(acq.chainStartStamp.value(), 1000LL));
+        expect(eq(acq.sequenceStartStamp.value(), 1000LL));
+        expect(eq(acq.processStartStamp.value(), 1200LL));
     };
 };
 
