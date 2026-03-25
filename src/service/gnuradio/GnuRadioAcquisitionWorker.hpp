@@ -31,7 +31,7 @@ template<typename T>
 inline std::expected<T, std::string> get(const gr::property_map& m, const std::string_view& key) {
     const auto it = m.find(std::string(key));
     if (it == m.end()) {
-        return {};
+        return std::unexpected(std::format("Missing key '{}'", key));
     }
 
     if constexpr (std::is_same_v<T, std::string>) {
@@ -122,6 +122,23 @@ struct PollerKey {
     auto operator<=>(const PollerKey&) const noexcept = default;
 };
 
+enum class SignalType {
+    DataSet, ///< DataSet stream, only allows acquisition mode "dataset"
+    Plain    ///< Plain data, allows all acquisition modes other than "dataset"
+};
+
+struct SignalEntry {
+    std::string          name;
+    std::string          quantity;
+    std::string          unit;
+    float                sample_rate = 1.f;
+    std::optional<float> signal_min;
+    std::optional<float> signal_max;
+    SignalType           type = SignalType::Plain;
+
+    auto operator<=>(const SignalEntry&) const noexcept = default;
+};
+
 struct StreamingPollerEntry {
     using SampleType                                               = float;
     bool                                                    in_use = true;
@@ -129,57 +146,46 @@ struct StreamingPollerEntry {
     std::optional<std::string>                              signal_name;
     std::optional<std::string>                              signal_unit;
     std::optional<std::string>                              signal_quantity;
+    std::optional<float>                                    sample_rate;
     std::optional<float>                                    signal_min;
     std::optional<float>                                    signal_max;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
+    void populateFromSignalEntry(const SignalEntry& entry) {
+        signal_name     = entry.name;
+        signal_unit     = entry.unit;
+        signal_quantity = entry.quantity;
+        sample_rate     = entry.sample_rate;
+        signal_min      = entry.signal_min;
+        signal_max      = entry.signal_max;
+    }
+
     std::vector<std::string> populateFromTags(std::span<const gr::Tag>& tags) {
         std::vector<std::string> errors;
+
+        auto update = [&errors]<typename T>(const gr::property_map& map, std::string_view key, std::optional<T>& target) {
+            if (!map.contains(std::string(key))) {
+                return;
+            }
+            const auto value = detail::get<T>(map, key);
+            if (value) {
+                target = *value;
+            } else {
+                errors.push_back(value.error());
+            }
+        };
+
         for (const auto& tag : tags) {
-            if (const auto name = detail::get<std::string>(tag.map, tag::SIGNAL_NAME.shortKey())) {
-                signal_name = name.value();
-            } else {
-                errors.push_back(name.error());
-            }
-            if (const auto unit = detail::get<std::string>(tag.map, tag::SIGNAL_UNIT.shortKey())) {
-                signal_unit = unit.value();
-            } else {
-                errors.push_back(unit.error());
-            }
-            if (const auto quantity = detail::get<std::string>(tag.map, tag::SIGNAL_QUANTITY.shortKey())) {
-                signal_quantity = quantity.value();
-            } else {
-                errors.push_back(quantity.error());
-            }
-            if (const auto min = detail::get<float>(tag.map, tag::SIGNAL_MIN.shortKey())) {
-                signal_min = min.value();
-            } else {
-                errors.push_back(min.error());
-            }
-            if (const auto max = detail::get<float>(tag.map, tag::SIGNAL_MAX.shortKey())) {
-                signal_max = max.value();
-            } else {
-                errors.push_back(max.error());
-            }
+            update(tag.map, tag::SIGNAL_NAME.shortKey(), signal_name);
+            update(tag.map, tag::SIGNAL_UNIT.shortKey(), signal_unit);
+            update(tag.map, tag::SIGNAL_QUANTITY.shortKey(), signal_quantity);
+            update(tag.map, tag::SAMPLE_RATE.shortKey(), sample_rate);
+            update(tag.map, tag::SIGNAL_MIN.shortKey(), signal_min);
+            update(tag.map, tag::SIGNAL_MAX.shortKey(), signal_max);
         }
         return errors;
     }
-};
-
-enum class SignalType {
-    DataSet, ///< DataSet stream, only allows acquisition mode "dataset"
-    Plain    ///< Plain data, allows all acquisition modes other than "dataset"
-};
-
-struct SignalEntry {
-    std::string name;
-    std::string quantity;
-    std::string unit;
-    float       sample_rate;
-    SignalType  type;
-
-    auto operator<=>(const SignalEntry&) const noexcept = default;
 };
 
 namespace detail {
@@ -195,6 +201,11 @@ struct Matcher {
         return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
     }
 };
+
+inline const SignalEntry* findSignalEntryByName(const std::map<std::string, SignalEntry>& signalEntryBySink, std::string_view signalName, SignalType type) {
+    const auto it = std::ranges::find_if(signalEntryBySink, [signalName, type](const auto& entry) { return entry.second.type == type && entry.second.name == signalName; });
+    return it == signalEntryBySink.end() ? nullptr : &it->second;
+}
 
 } // namespace detail
 
@@ -334,6 +345,16 @@ private:
                                     entry.quantity    = *signalQuantity;
                                     signalInfoChanged = true;
                                 }
+                                const auto signalMin = detail::get<float>(*settings, "signal_min");
+                                if (signalMin && entry.signal_min != std::optional<float>{*signalMin}) {
+                                    entry.signal_min  = *signalMin;
+                                    signalInfoChanged = true;
+                                }
+                                const auto signalMax = detail::get<float>(*settings, "signal_max");
+                                if (signalMax && entry.signal_max != std::optional<float>{*signalMax}) {
+                                    entry.signal_max  = *signalMax;
+                                    signalInfoChanged = true;
+                                }
                             }
                         }
                     }
@@ -347,7 +368,7 @@ private:
 
                     bool pollersFinished = true;
                     do {
-                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers);
+                        pollersFinished = handleSubscriptions(streamingPollers, dataSetPollers, signalEntryBySink);
                     } while (stopScheduler && !pollersFinished);
                 }
 
@@ -378,6 +399,8 @@ private:
                             entry.quantity     = detail::getSetting<std::pmr::string>(block, "signal_quantity").value_or("");
                             entry.unit         = detail::getSetting<std::pmr::string>(block, "signal_unit").value_or("");
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate").value_or(1.f);
+                            entry.signal_min   = detail::getSetting<float>(block, "signal_min");
+                            entry.signal_max   = detail::getSetting<float>(block, "signal_max");
                         } else if (block->typeName().starts_with("gr::basic::DataSetSink")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::DataSet;
@@ -424,7 +447,7 @@ private:
         });
     }
 
-    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers) {
+    bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers, const std::map<std::string, SignalEntry>& signalEntryBySink) {
         bool pollersFinished = true;
         for (const auto& subscription : super_t::activeSubscriptions()) {
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
@@ -432,7 +455,7 @@ private:
                 const auto acquisitionMode = detail::convertToEnum<AcquisitionMode>(filterIn.acquisitionModeFilter);
                 for (std::string_view signalName : filterIn.channelNameFilter | std::ranges::views::split(',') | std::ranges::views::transform([](const auto&& r) { return std::string_view{&*r.begin(), static_cast<std::size_t>(std::ranges::distance(r))}; })) {
                     if (acquisitionMode == AcquisitionMode::Continuous) {
-                        if (!handleStreamingSubscription(streamingPollers, filterIn, signalName)) {
+                        if (!handleStreamingSubscription(streamingPollers, signalEntryBySink, filterIn, signalName)) {
                             pollersFinished = false;
                         }
                     } else {
@@ -459,34 +482,45 @@ private:
         return pollerIt;
     }
 
-    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const TimeDomainContext& context, std::string_view signalName) {
+    bool handleStreamingSubscription(std::map<PollerKey, StreamingPollerEntry>& pollers, const std::map<std::string, SignalEntry>& signalEntryBySink, const TimeDomainContext& context, std::string_view signalName) {
         auto pollerIt = getStreamingPoller(pollers, signalName);
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
 
         auto& pollerEntry = pollerIt->second;
+        if (const auto* entry = detail::findSignalEntryByName(signalEntryBySink, signalName, SignalType::Plain)) {
+            pollerEntry.populateFromSignalEntry(*entry);
+        }
 
         if (pollerEntry.poller == nullptr) {
             return true;
         }
         Acquisition reply;
 
-        auto key         = pollerIt->first;
-        auto processData = [&reply, signalName, &pollerEntry, &key](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
+        auto processData = [&reply, signalName, &pollerEntry](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
             std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
-            reply.refTriggerName            = "STREAMING";
-            reply.channelNames              = {pollerEntry.signal_name.value_or(std::string(signalName))};
-            reply.channelUnits              = {pollerEntry.signal_unit.value_or("N/A")};
-            reply.channelQuantities         = {pollerEntry.signal_quantity.value_or("N/A")};
-            reply.channelRangeMin           = {pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest()};
-            reply.channelRangeMax           = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
+            reply.refTriggerName    = "NO_REF_TRIGGER";
+            reply.channelNames      = {pollerEntry.signal_name.value_or(std::string(signalName))};
+            reply.channelUnits      = {pollerEntry.signal_unit.value_or("N/A")};
+            reply.channelQuantities = {pollerEntry.signal_quantity.value_or("N/A")};
+            reply.channelRangeMin   = {pollerEntry.signal_min ? static_cast<float>(*pollerEntry.signal_min) : std::numeric_limits<float>::lowest()};
+            reply.channelRangeMax   = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
 
             const auto                    nSamples = static_cast<uint32_t>(data.size());
             const std::array<uint32_t, 2> dims{1U, nSamples}; // 1 signal, N samples
             reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), dims);
             reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), dims);
-            reply.channelTimeSinceRefTrigger.assign(nSamples, 0.f); // TODO real timeline
+            reply.channelTimeSinceRefTrigger.resize(nSamples);
+            if (pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f) {
+                const float ts = 1.f / *pollerEntry.sample_rate;
+                for (uint32_t i = 0; i < nSamples; ++i) {
+                    reply.channelTimeSinceRefTrigger[i] = static_cast<float>(i) * ts;
+                }
+            } else {
+                reply.channelTimeSinceRefTrigger.assign(nSamples, 0.f);
+                errors.push_back(std::format("Missing or invalid sample_rate metadata for signal '{}'", signalName));
+            }
 
             // preallocate trigger vectors to number of tags
             reply.triggerIndices.reserve(tags.size());
@@ -496,9 +530,8 @@ private:
             reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-                    // float   Ts_ns  = 1'000'000'000.f / entry.sample_rate;
-                    float      Ts_ns  = 0.f; // TODO: find where sample_rate is stored
-                    const auto offset = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
+                    const float Ts_ns  = pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f ? 1'000'000'000.f / *pollerEntry.sample_rate : 0.f;
+                    const auto  offset = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
                         reply.acqLocalTimeStamp = static_cast<int64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(std::uint64_t{0})) - offset;
                     }
