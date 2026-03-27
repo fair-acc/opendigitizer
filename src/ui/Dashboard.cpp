@@ -604,7 +604,7 @@ void Dashboard::save() {
     }
 }
 
-DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int h, std::string_view chartType) {
+DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int h, std::string_view chartType, const gr::property_map& chartInitialParameters) {
     std::string chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
 
     // Generate a unique name for the chart
@@ -612,7 +612,7 @@ DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int
     std::string chartName    = std::format("Chart {}", chartCounter++);
 
     // Create chart block in UI Graph
-    auto* blockPtr = emplaceChartBlock(chartTypeName, chartName);
+    auto* blockPtr = emplaceChartBlock(chartTypeName, chartName, chartInitialParameters);
 
     if (!blockPtr) {
         // Return a reference to an empty UIWindow on failure (shouldn't happen with known types)

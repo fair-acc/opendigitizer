@@ -45,7 +45,8 @@ private:
     Dashboard* _dashboard = nullptr;
 
     // modal dialog state for new plot creation
-    bool        _showNewPlotModal  = false;
+    bool        _showNewPlotModal = false;
+    std::string _sinkForNewPlot;
     std::string _selectedChartType = "XYChart";
 
     // deferred chart transmutation request (processed at start of next frame)
@@ -65,7 +66,7 @@ public:
     void draw(Mode mode = Mode::View) noexcept;
     void setLayoutType(DockingLayoutType);
 
-    /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart");
+    /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
     void                                                           drawNewPlotModal();
 
     void setDashboard(Dashboard& dashboard) {

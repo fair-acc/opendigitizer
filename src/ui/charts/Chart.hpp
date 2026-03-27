@@ -722,19 +722,25 @@ struct State {
 };
 inline State g_state;
 
-inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
+template<typename Callable>
+requires std::is_invocable_r_v<bool, Callable, const Payload&>
+inline bool handleDropTarget(Callable&& handler, const char* payloadType) {
     bool dropped = false;
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
             const auto* dnd = static_cast<const Payload*>(payload->Data);
-            if (dnd && dnd->isValid() && dnd->hasSource()) {
-                g_state.accepted = true;
-                dropped          = true;
+            if (dnd && dnd->isValid()) {
+                g_state.accepted = std::invoke(handler, *dnd);
+                dropped          = g_state.accepted;
             }
         }
         ImGui::EndDragDropTarget();
     }
     return dropped;
+}
+
+inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
+    return handleDropTarget([](const Payload& payload) { return payload.hasSource(); }, payloadType);
 }
 
 inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType) {
@@ -2064,6 +2070,7 @@ struct Chart {
 
         ImGui::Separator();
         self.drawChartTypeSubmenu();
+        opendigitizer::charts::drawRemoveChartMenuItem(self.unique_name);
     }
 
     /// draws axis-specific or full context menu depending on what was right-clicked

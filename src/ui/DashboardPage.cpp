@@ -171,12 +171,25 @@ void DashboardPage::draw(Mode mode) noexcept {
         // Legend
         {
             IMW::Group group;
-            // Button strip
-            if (mode == Mode::Layout) {
+
+            if (mode != Mode::View) {
+                namespace dnd = opendigitizer::charts::dnd;
                 if (plotButton("\uF201", "create new chart")) {
                     _showNewPlotModal = true;
+                    _sinkForNewPlot   = {};
                 }
+                const bool dropped = dnd::handleDropTarget(
+                    [this](const dnd::Payload& payload) {
+                        _sinkForNewPlot = payload.sink_name;
+                        return true;
+                    },
+                    dnd::kPayloadType);
+                _showNewPlotModal = _showNewPlotModal || dropped;
                 ImGui::SameLine();
+            }
+
+            // Button strip
+            if (mode == Mode::Layout) {
                 if (plotButton("\uF7A5", "change to the horizontal layout")) {
                     _dockSpace.setLayoutType(DockingLayoutType::Row);
                 }
@@ -330,9 +343,13 @@ void DashboardPage::draw(Mode mode) noexcept {
     drawNewPlotModal();
 }
 
-DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view chartType) {
+DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view chartType, std::string_view initialSignal) {
     if (_dashboard->uiWindows.size() < kMaxPlots) {
-        return std::addressof(_dashboard->newUIBlock(0, 0, 1, 1, chartType));
+        gr::property_map chartInitialParameters;
+        if (!initialSignal.empty()) {
+            chartInitialParameters["data_sinks"] = gr::Tensor<gr::pmt::Value>{initialSignal};
+        }
+        return std::addressof(_dashboard->newUIBlock(0, 0, 1, 1, chartType, chartInitialParameters));
     }
     return nullptr;
 }
@@ -365,7 +382,7 @@ void DashboardPage::drawNewPlotModal() {
         ImGui::Separator();
 
         if (ImGui::Button("Create", ImVec2(120, 0))) {
-            newUIBlock(_selectedChartType);
+            newUIBlock(_selectedChartType, _sinkForNewPlot);
             _showNewPlotModal = false;
             ImGui::CloseCurrentPopup();
         }
