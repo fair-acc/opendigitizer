@@ -154,7 +154,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 // Capture shared_ptr by value to ensure block stays alive during render
                 uiWindow.window->renderFunc = [this, block = blockPtr, mode] {
                     gr::property_map drawConfig;
-                    drawConfig["layoutMode"] = (mode == Mode::Layout);
+                    drawConfig["chartMode"] = magic_enum::enum_name(mode);
                     block->draw(drawConfig);
                 };
 
@@ -223,7 +223,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                                 _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                             }
                         });
-                        legendBlock->setDragDropEnabled(mode != Mode::Layout);
+                        legendBlock->setDragDropEnabled(mode == Mode::Interaction);
                     }
 
                     // Draw the toolbar block
@@ -243,7 +243,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
             if (_dashboard && _remoteSignalSelector) {
                 // Post button strip
-                if (mode == Mode::View) {
+                if (mode == Mode::Interaction) {
                     ImGui::SameLine();
                     if (plotButton("\uf067", "add signal")) {
                         // 'plus' button in the global legend, adds a new signal

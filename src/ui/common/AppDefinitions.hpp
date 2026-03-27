@@ -4,9 +4,10 @@
 namespace DigitizerUi {
 enum class ViewMode {
     VIEW,
+    INTERACTION,
     LAYOUT,
     FLOWGRAPH,
-    OPEN_SAVE_DASHBOARD
+    OPEN_SAVE_DASHBOARD,
 };
 }
 

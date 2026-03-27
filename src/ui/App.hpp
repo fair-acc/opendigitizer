@@ -252,9 +252,18 @@ public:
                 }
             }
 
-            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
+            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
                 if (dashboard != nullptr && dashboard->isInitialised) {
-                    dashboardPage->draw(mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
+                    const auto mode = [&] {
+                        using enum DashboardPage::Mode;
+                        switch (mainViewMode) {
+                        case ViewMode::VIEW: return View;
+                        case ViewMode::INTERACTION: return Interaction;
+                        case ViewMode::LAYOUT: return Layout;
+                        default: assert(false); return View;
+                        }
+                    }();
+                    dashboardPage->draw(mode);
                 }
             } else if (mainViewMode == ViewMode::FLOWGRAPH) {
                 if (dashboard != nullptr && dashboard->isInitialised) {

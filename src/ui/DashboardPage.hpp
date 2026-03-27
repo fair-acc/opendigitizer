@@ -21,7 +21,7 @@ namespace DigitizerUi {
 
 class DashboardPage {
 public:
-    enum class Mode { View, Layout };
+    enum class Mode { View, Interaction, Layout };
 
 private:
     ImVec2 _paneSize{0, 0};     // updated by drawPlots(...)
