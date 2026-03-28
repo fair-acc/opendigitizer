@@ -850,6 +850,22 @@ inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled 
 
 } // namespace menu_icons
 
+inline void drawDuplicateChartMenuItem(std::string_view uniqueName) {
+    if (menu_icons::menuItemWithIcon(menu_icons::kDuplicate, "Duplicate")) {
+        if (g_requestChartDuplication) {
+            g_requestChartDuplication(uniqueName);
+        }
+    }
+}
+
+inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
+    if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
+        if (g_requestChartRemoval) {
+            g_requestChartRemoval(uniqueName);
+        }
+    }
+}
+
 struct DrawPrologue {
     ImPlotFlags plotFlags;
     ImVec2      plotSize;
@@ -1186,24 +1202,6 @@ struct Chart {
                 }
             }
             ImGui::EndMenu();
-        }
-    }
-
-    template<typename Self>
-    void drawDuplicateChartMenuItem(this Self const& self) {
-        if (menu_icons::menuItemWithIcon(menu_icons::kDuplicate, "Duplicate")) {
-            if (g_requestChartDuplication) {
-                g_requestChartDuplication(self.unique_name);
-            }
-        }
-    }
-
-    template<typename Self>
-    void drawRemoveChartMenuItem(this Self const& self) {
-        if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
-            if (g_requestChartRemoval) {
-                g_requestChartRemoval(self.unique_name);
-            }
         }
     }
 
@@ -1689,7 +1687,8 @@ struct Chart {
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {
-            effectiveShowLegend = self.show_legend.value || layoutMode;
+            // show_legend is unused for now, as there is no view-only mode where you *wouldn't* already show_legend
+            effectiveShowLegend = !layoutMode; // self.show_legend.value || layoutMode;
         }
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
@@ -1697,6 +1696,11 @@ struct Chart {
         ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
+        }
+
+        if (layoutMode) {
+            // not strictly necessary, the drag and drop buttons in layoutmode already cover the plot
+            plotFlags |= ImPlotFlags_NoInputs;
         }
 
         bool effectiveShowGrid = true;
@@ -2049,8 +2053,6 @@ struct Chart {
 
         ImGui::Separator();
         self.drawChartTypeSubmenu();
-        self.drawDuplicateChartMenuItem();
-        self.drawRemoveChartMenuItem();
     }
 
     /// draws axis-specific or full context menu depending on what was right-clicked

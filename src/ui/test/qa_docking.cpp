@@ -72,7 +72,7 @@ private:
                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
 
             createButtonGroup(g_testState.dockspace);
-            g_testState.dockspace.render(g_testState.windows, ImGui::GetContentRegionAvail());
+            g_testState.dockspace.render(g_testState.windows, ImGui::GetContentRegionAvail(), false);
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {

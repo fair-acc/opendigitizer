@@ -69,7 +69,7 @@ void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& p
 
     ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
     ImGui::SetNextWindowSize(frameSize);
-    IMW::Window blockControlsPanel("BlockControlsPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+    IMW::Window blockControlsPanel("BlockControlsPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoDocking);
 
     const float lineHeight = [&] {
         IMW::Font font(LookAndFeel::instance().fontIconsSolid);

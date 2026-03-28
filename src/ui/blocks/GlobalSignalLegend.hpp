@@ -26,10 +26,12 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
     float              _paneWidth{800.f};
     RightClickCallback _onRightClick;
     std::string        _editingSinkUniqueName;
-    bool               _openColorPopup = false;
+    bool               _openColorPopup  = false;
+    bool               _dragDropEnabled = true;
 
     void setRightClickCallback(RightClickCallback callback) { _onRightClick = std::move(callback); }
     void setPaneWidth(float width) { _paneWidth = width; }
+    void setDragDropEnabled(bool isNowEnabled) { _dragDropEnabled = isNowEnabled; }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
@@ -88,6 +90,53 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
         return result;
     }
 
+    void drawSink(opendigitizer::SignalSink& sink, float& accumulatedWidth, float paneWidth, int index) {
+        using namespace opendigitizer::charts;
+        IMW::ChangeId itemId(index);
+
+        const auto        color = sink.color();
+        const std::string label = sink.signalName().empty() ? std::string(sink.name()) : std::string(sink.signalName());
+
+        // check if we need to wrap to next line
+        const auto widthEstimate = ImGui::CalcTextSize(label.c_str()).x + 20.f;
+        if ((accumulatedWidth + widthEstimate) < 0.9f * paneWidth) {
+            ImGui::SameLine();
+        } else {
+            accumulatedWidth = 0.f;
+        }
+
+        // draw the legend item
+        auto clickResult = drawLegendItem(color, label, sink.drawEnabled());
+        if (ImGui::IsItemHovered() && !ImGui::GetDragDropPayload()) {
+            ImGui::SetTooltip(_dragDropEnabled ? "Drag/Toggle Signal" : "Toggle Signal");
+        }
+
+        if (clickResult == ClickResult::RightColor) {
+            _editingSinkUniqueName = std::string(sink.uniqueName());
+            _openColorPopup        = true;
+        }
+        if (clickResult == ClickResult::RightName) {
+            if (_onRightClick) {
+                _onRightClick(sink.uniqueName());
+            }
+        }
+        if (clickResult == ClickResult::Left) {
+            sink.setDrawEnabled(!sink.drawEnabled());
+        }
+
+        accumulatedWidth += ImGui::GetItemRectSize().x;
+
+        // drag source - from global legend (empty source_chart_id = no removal needed)
+        if (_dragDropEnabled) {
+            if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
+                dnd::Payload payload{};
+                opendigitizer::charts::dnd::copyToBuffer(payload.sink_name, label);
+                ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
+                drawLegendItem(color, label, sink.drawEnabled());
+            }
+        }
+    }
+
     ImVec2 drawLegend(float paneWidth) {
         using namespace opendigitizer::charts;
         ImVec2 legendSize{0.f, 0.f};
@@ -99,49 +148,7 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
             IMW::Group group;
 
             int index = 0;
-            SinkRegistry::instance().forEach([&](SignalSink& sink) {
-                IMW::ChangeId itemId(index++);
-
-                const auto        color = sink.color();
-                const std::string label = sink.signalName().empty() ? std::string(sink.name()) : std::string(sink.signalName());
-
-                // check if we need to wrap to next line
-                const auto widthEstimate = ImGui::CalcTextSize(label.c_str()).x + 20.f;
-                if ((accumulatedWidth + widthEstimate) < 0.9f * paneWidth) {
-                    ImGui::SameLine();
-                } else {
-                    accumulatedWidth = 0.f;
-                }
-
-                // draw the legend item
-                auto clickResult = drawLegendItem(color, label, sink.drawEnabled());
-                if (ImGui::IsItemHovered() && !ImGui::GetDragDropPayload()) {
-                    ImGui::SetTooltip("Drag/Toggle Signal");
-                }
-
-                if (clickResult == ClickResult::RightColor) {
-                    _editingSinkUniqueName = std::string(sink.uniqueName());
-                    _openColorPopup        = true;
-                }
-                if (clickResult == ClickResult::RightName) {
-                    if (_onRightClick) {
-                        _onRightClick(sink.uniqueName());
-                    }
-                }
-                if (clickResult == ClickResult::Left) {
-                    sink.setDrawEnabled(!sink.drawEnabled());
-                }
-
-                accumulatedWidth += ImGui::GetItemRectSize().x;
-
-                // drag source - from global legend (empty source_chart_id = no removal needed)
-                if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
-                    dnd::Payload payload{};
-                    opendigitizer::charts::dnd::copyToBuffer(payload.sink_name, label);
-                    ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
-                    drawLegendItem(color, label, sink.drawEnabled());
-                }
-            });
+            SinkRegistry::instance().forEach([&](opendigitizer::SignalSink& sink) { drawSink(sink, accumulatedWidth, paneWidth, index++); });
         }
 
         legendSize.x = ImGui::GetItemRectSize().x;

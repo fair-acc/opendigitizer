@@ -28,12 +28,41 @@ static void setFlagsForAllDockNodes(ImGuiDockNodeFlags flags) {
     }
 }
 
+static void dragWindow(ImGuiWindow* windowToDrag, ImRect boundingBox) {
+    ImGuiContext& g = *GImGui;
+    // found in the internals of ImGui::TabItemEx()
+    ImGui::DockContextQueueUndockWindow(&g, windowToDrag);
+
+    // copy of ImGui::StartMouseMovingWindow(), with two changes:
+    // - the ActiveIdClickOffset calculation is from ImGui::TabItemEx(), which
+    //   expects an initially-docked window.
+    // - the part of StartMouseMovingWindow() which checks for ancestor windows
+    //   with the NoMove flag, and cancels the movement if so, is removed (our
+    //   main window is NoMove)
+    // - click position is clamped to be in the window frame/header
+    ImGui::FocusWindow(windowToDrag);
+    ImGui::SetActiveID(windowToDrag->MoveId, windowToDrag);
+    if (g.IO.ConfigNavCursorVisibleAuto) {
+        g.NavCursorVisible = false;
+    }
+    g.ActiveIdClickOffset -= windowToDrag->Pos - boundingBox.Min;
+    g.ActiveIdNoClearOnFocusLoss = true;
+    ImGui::SetActiveIdUsingAllKeyboardKeys();
+    g.MovingWindow = windowToDrag;
+
+    // set the click offset to within the window frame, currently ImGui::BeginDockableDragDropSource() will only
+    // start the docking drag + drop process if the click is specifically between the top of the window and
+    // the window frame height, where the tab bar is (see is_drag_docking in the aforementioned function).
+    g.ActiveIdClickOffset.y = std::clamp(g.ActiveIdClickOffset.y, 0.f, std::max(0.f, ImGui::GetFrameHeight() - 1.f));
+};
+
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
         _layoutType = type;
         setNeedsRelayout(true);
         if (type == DockingLayoutType::Free) {
-            setFlagsForAllDockNodes(nodeFlags());
+            // isEditable passed to nodeFlags is always true- because layout type can only change in the editable mode
+            setFlagsForAllDockNodes(nodeFlags(true));
         }
     }
 }
@@ -44,7 +73,7 @@ void DockSpace::clearWindowGeometry(const Windows& windows) {
     }
 }
 
-void DockSpace::render(const Windows& windows, ImVec2 paneSize) {
+void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable) {
 
     {
         ImGui::SetNextWindowSize(paneSize);
@@ -58,22 +87,50 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize) {
         _lastWindowCount = windows.size();
 
         if (_needsRelayout) {
-            relayout(windows);
+            relayout(windows, isEditable);
+        } else if (_lastIsEditable != isEditable) {
+            setFlagsForAllDockNodes(nodeFlags(isEditable));
+            _lastIsEditable = isEditable;
         }
 
         ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
         ImGui::DockSpace(dockspaceID(), ImVec2(0.0f, 0.0f), dockspace_flags, nullptr);
     }
 
-    renderWindows(windows);
+    renderWindows(windows, isEditable);
 }
 
-void DockSpace::renderWindows(const Windows& windows) {
+void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
     for (const auto& window : windows) {
+        constexpr float floatingWindowMinSizeFractionOfMainWindow = 1.f / 4.f;
+        const ImVec2    windowSizeMax                             = ImGui::GetMainViewport()->WorkSize;
+        const ImVec2    windowSizeMin                             = {
+            std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfMainWindow),
+            std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfMainWindow),
+        };
+        ImGui::SetNextWindowSizeConstraints(windowSizeMin, windowSizeMax);
+
         IMW::Window dock(window->name.data(), nullptr, ImGuiWindowFlags_NoCollapse);
 
         if (window->renderFunc) {
             window->renderFunc();
+        }
+
+        if (isEditable) {
+            drawEditableWindowDragArea();
+
+            if (window->renderDockingContextMenuFunc && ImGui::BeginPopupContextWindow()) {
+                window->renderDockingContextMenuFunc();
+                ImGui::EndPopup();
+            }
+        }
+
+        // TODO: ImGui bug, it seems local flags on a window are reset after docking.
+        // use the no tab bar flag as a marker to see if our flags are still there.
+        // nodeFlags() also specifies ImGuiDockNodeFlags_NoWindowMenuButton for a similar
+        // reason
+        if (auto node = ImGui::GetWindowDockNode(); node && !node->IsNoTabBar()) {
+            node->SetLocalFlags(nodeFlags(isEditable));
         }
 
         // Write back geometry info, as user might have used the splitters
@@ -87,10 +144,56 @@ void DockSpace::renderWindows(const Windows& windows) {
     }
 }
 
-void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction) {
-    auto initNode = [this](ImGuiID nodeId, const std::shared_ptr<Window>& window) {
+void DockSpace::drawEditableWindowDragArea() {
+    auto* const currentWindow = ImGui::GetCurrentWindow();
+    const auto  dragArea      = currentWindow->ContentRegionRect;
+
+    if (dragArea.GetArea() <= 0.f) {
+        components::Notification::warning("Unable to create drag and drop button for zero-sized window");
+        return;
+    }
+
+    const auto oldPos = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(dragArea.GetTL());
+    auto buttonFlags = ImGuiButtonFlags_PressedOnClickRelease | ImGuiButtonFlags_AllowOverlap;
+    if (GImGui->DragDropActive && !GImGui->DragDropPayload.IsDataType(IMGUI_PAYLOAD_TYPE_WINDOW)) {
+        buttonFlags |= ImGuiButtonFlags_PressedOnDragDropHold;
+    }
+    const bool pressed = ImGui::InvisibleButton("windowDragButton", dragArea.GetSize(), buttonFlags);
+    const bool held    = ImGui::IsItemActive();
+    const bool hovered = ImGui::IsItemHovered();
+
+    const bool windowAlreadyBeingDragged = GImGui->MovingWindow == currentWindow;
+    const bool isFloating                = !currentWindow->DockIsActive;
+
+    if (hovered || pressed || held) {
+        const uint32_t highlightColor = [&] {
+            if (windowAlreadyBeingDragged) {
+                return 0x33333333U; // window is being dragged
+            } else if ((held || pressed) && !isFloating) {
+                return 0x3300FF00U; // almost dragging a docked window, but drag lock is in effect
+            } else {
+                return 0x33FF0000U; // just hovering
+            }
+        }();
+        currentWindow->DrawList->AddRectFilled(dragArea.GetTR(), dragArea.GetBL(), highlightColor);
+    }
+
+    if (!windowAlreadyBeingDragged && held) {
+        const float dragMinimumDelta = isFloating ? 0.0f : 30.f;
+
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, dragMinimumDelta)) {
+            dragWindow(currentWindow, dragArea);
+        }
+    }
+
+    ImGui::SetCursorScreenPos(oldPos);
+}
+
+void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction, bool isEditable) {
+    auto initNode = [&](ImGuiID nodeId, const std::shared_ptr<Window>& window) {
         auto node = ImGui::DockBuilderGetNode(nodeId);
-        node->SetLocalFlags(nodeFlags());
+        node->SetLocalFlags(nodeFlags(isEditable));
         ImGui::DockBuilderDockWindow(window->name.data(), nodeId);
     };
 
@@ -110,7 +213,7 @@ void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction) {
     }
 }
 
-void DockSpace::layoutInGrid(const Windows& windows) {
+void DockSpace::layoutInGrid(const Windows& windows, bool isEditable) {
     const size_t windowCount = windows.size();
     const int    columns     = int(std::ceil(std::sqrt(windowCount)));
     const int    rows        = int(std::ceil(double(windowCount) / static_cast<double>(columns)));
@@ -138,14 +241,14 @@ void DockSpace::layoutInGrid(const Windows& windows) {
                 ImGui::DockBuilderDockWindow(window->name.data(), rowDockId);
 
                 auto node = ImGui::DockBuilderGetNode(rowDockId);
-                node->SetLocalFlags(nodeFlags());
+                node->SetLocalFlags(nodeFlags(isEditable));
                 break;
             }
 
             ImGuiID leftId;
             ImGui::DockBuilderSplitNode(rowDockId, ImGuiDir_Left, colRatio, &leftId, &rowDockId);
             auto node = ImGui::DockBuilderGetNode(leftId);
-            node->SetLocalFlags(nodeFlags());
+            node->SetLocalFlags(nodeFlags(isEditable));
 
             const auto& window = windows[windowIdx];
             ImGui::DockBuilderDockWindow(window->name.data(), leftId);
@@ -153,7 +256,7 @@ void DockSpace::layoutInGrid(const Windows& windows) {
     }
 }
 
-void DockSpace::layoutInFree(const Windows& windows) {
+void DockSpace::layoutInFree(const Windows& windows, bool isEditable) {
     if (windows.empty()) {
         return;
     }
@@ -186,17 +289,16 @@ void DockSpace::layoutInFree(const Windows& windows) {
     // if layout is ill-formed -> inform user and use grid layout
     if (isOverlapDetected) {
         components::Notification::error("Free layout is ill-formed, overlapped cells detected.");
-        layoutInGrid(windows);
+        layoutInGrid(windows, isEditable);
     } else if (isEmptyCellDetected) {
         components::Notification::error("Free layout is ill-formed, empty cells detected.");
-        layoutInGrid(windows);
+        layoutInGrid(windows, isEditable);
     } else {
-        layoutInFreeRegion(grid, windows, 0, maxX, 0, maxY, dockspaceID());
+        layoutInFreeRegion(grid, windows, 0, maxX, 0, maxY, dockspaceID(), isEditable);
     }
 }
 
-void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId) {
-
+void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId, bool isEditable) {
     // Check if entire region belongs to exactly one window ID
     assert(grid[x0][y0] >= 0);
     const std::size_t firstId = static_cast<std::size_t>(grid[x0][y0]);
@@ -214,7 +316,7 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
             ImGui::DockBuilderDockWindow(std::to_string(firstId).c_str(), nodeId); // empty draw
         }
         ImGuiDockNode* node = ImGui::DockBuilderGetNode(nodeId);
-        node->SetLocalFlags(nodeFlags());
+        node->SetLocalFlags(nodeFlags(isEditable));
         return;
     }
 
@@ -225,8 +327,8 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
             float   fraction = float(cutX - x0) / float(x1 - x0);
             ImGuiID leftNode, rightNode;
             ImGui::DockBuilderSplitNode(nodeId, ImGuiDir_Left, fraction, &leftNode, &rightNode);
-            layoutInFreeRegion(grid, windows, x0, cutX, y0, y1, leftNode);
-            layoutInFreeRegion(grid, windows, cutX, x1, y0, y1, rightNode);
+            layoutInFreeRegion(grid, windows, x0, cutX, y0, y1, leftNode, isEditable);
+            layoutInFreeRegion(grid, windows, cutX, x1, y0, y1, rightNode, isEditable);
             return;
         }
     }
@@ -238,24 +340,24 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
             float   fraction = float(cutY - y0) / float(y1 - y0);
             ImGuiID topNode, bottomNode;
             ImGui::DockBuilderSplitNode(nodeId, ImGuiDir_Up, fraction, &topNode, &bottomNode);
-            layoutInFreeRegion(grid, windows, x0, x1, y0, cutY, topNode);
-            layoutInFreeRegion(grid, windows, x0, x1, cutY, y1, bottomNode);
+            layoutInFreeRegion(grid, windows, x0, x1, y0, cutY, topNode, isEditable);
+            layoutInFreeRegion(grid, windows, x0, x1, cutY, y1, bottomNode, isEditable);
             return;
         }
     }
 }
 
-void DockSpace::relayout(const Windows& windows) {
+void DockSpace::relayout(const Windows& windows, bool isEditable) {
     const ImGuiID dockspaceID = this->dockspaceID();
     ImGui::DockBuilderAddNode(dockspaceID);
     ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetWindowSize());
 
     if (isBoxLayout()) {
-        layoutInBox(windows, _layoutType == DockingLayoutType::Row ? ImGuiDir_Left : ImGuiDir_Up);
+        layoutInBox(windows, _layoutType == DockingLayoutType::Row ? ImGuiDir_Left : ImGuiDir_Up, isEditable);
     } else if (isFreeLayout()) {
-        layoutInFree(windows);
+        layoutInFree(windows, isEditable);
     } else {
-        layoutInGrid(windows);
+        layoutInGrid(windows, isEditable);
     }
 
     ImGui::DockBuilderFinish(dockspaceID);
@@ -268,22 +370,20 @@ void DockSpace::setNeedsRelayout(bool needs) { _needsRelayout = needs; }
 bool DockSpace::isFreeLayout() const { return _layoutType == DockingLayoutType::Free; }
 bool DockSpace::isBoxLayout() const { return _layoutType == DockingLayoutType::Row || _layoutType == DockingLayoutType::Column; }
 
-int DockSpace::nodeFlags() const {
+int DockSpace::nodeFlags(bool isEditable) const {
     int flags = ImGuiDockNodeFlags_None;
 
     if (isFreeLayout()) {
         // TODO: ImGui bug: When detached and redocked, the window menu button comes back
-        // TODO: Plot-Tabs are currently always hidden. In the future, they might be used for Mode::Layout, but because the mode must be passed to this function (which is tricky right now),
-        //  the Docking feature for layout is not yet available.
         flags |= ImGuiDockNodeFlags_NoWindowMenuButton;
-        flags |= ImGuiDockNodeFlags_NoUndocking;
-        flags |= ImGuiDockNodeFlags_HiddenTabBar;
-        flags |= ImGuiDockNodeFlags_NoTabBar;
-    } else {
-        flags |= ImGuiDockNodeFlags_NoUndocking;
-        flags |= ImGuiDockNodeFlags_HiddenTabBar;
-        flags |= ImGuiDockNodeFlags_NoTabBar;
     }
+
+    if (!isEditable) {
+        flags |= ImGuiDockNodeFlags_NoUndocking;
+        flags |= ImGuiDockNodeFlags_NoResize;
+    }
+
+    flags |= ImGuiDockNodeFlags_NoTabBar;
 
     return flags;
 }

@@ -157,9 +157,14 @@ void DashboardPage::draw(Mode mode) noexcept {
                     drawConfig["layoutMode"] = (mode == Mode::Layout);
                     block->draw(drawConfig);
                 };
+
+                uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
+                    opendigitizer::charts::drawDuplicateChartMenuItem(block->uniqueName());
+                    opendigitizer::charts::drawRemoveChartMenuItem(block->uniqueName());
+                };
             }
 
-            _dockSpace.render(windows, _paneSize);
+            _dockSpace.render(windows, _paneSize, mode == Mode::Layout);
         }
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
 
@@ -209,7 +214,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                         auto* legendBlock = static_cast<GlobalSignalLegend*>(blockPtr->raw());
                         legendBlock->setPaneWidth(_paneSize.x);
                         legendBlock->setRightClickCallback([this, mode](std::string_view sinkUniqueName) {
-                            if (mode != Mode::Layout) {
+                            if (mode == Mode::Layout) {
                                 return;
                             }
                             auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(sinkUniqueName));
@@ -218,6 +223,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                                 _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
                             }
                         });
+                        legendBlock->setDragDropEnabled(mode != Mode::Layout);
                     }
 
                     // Draw the toolbar block
@@ -237,7 +243,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
             if (_dashboard && _remoteSignalSelector) {
                 // Post button strip
-                if (mode == Mode::Layout) {
+                if (mode == Mode::View) {
                     ImGui::SameLine();
                     if (plotButton("\uf067", "add signal")) {
                         // 'plus' button in the global legend, adds a new signal
