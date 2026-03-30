@@ -53,10 +53,9 @@ private:
         t->TestFunc = [](ImGuiTestContext* ctx) {
             ut::test("my test") = [ctx] {
                 ctx->SetRef("Test Window");
-                const ImGuiID popupId = ctx->PopupGetWindowID("MenuPopup_1");
                 captureScreenshot(*ctx);
 
-                ctx->SetRef(popupId);
+                ctx->SetRef("MenuPopup_1");
                 ctx->ItemClick("button");
 
                 auto& vars = ctx->GetVars<TestState>();
