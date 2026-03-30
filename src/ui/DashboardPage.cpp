@@ -188,32 +188,32 @@ void DashboardPage::draw(Mode mode) noexcept {
                 ImGui::SameLine();
             }
 
-            // Button strip
+            // Render Toolbar blocks (legend, layout buttons, etc.) - centre-aligned
+            alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
+            _legendBox.x = 0.f;
             if (mode == Mode::Layout) {
-                if (plotButton("\uF7A5", "change to the horizontal layout")) {
-                    _dockSpace.setLayoutType(DockingLayoutType::Row);
+                {
+                    IMW::Group layout;
+                    if (plotButton("\uF7A5", "change to the horizontal layout")) {
+                        _dockSpace.setLayoutType(DockingLayoutType::Row);
+                    }
+                    ImGui::SameLine();
+                    if (plotButton("\uF7A4", "change to the vertical layout")) {
+                        _dockSpace.setLayoutType(DockingLayoutType::Column);
+                    }
+                    ImGui::SameLine();
+                    if (plotButton("\uF58D", "change to the grid layout")) {
+                        _dockSpace.setLayoutType(DockingLayoutType::Grid);
+                    }
+                    ImGui::SameLine();
+                    if (plotButton("\uF248", "change to the free layout")) {
+                        _dockSpace.setLayoutType(DockingLayoutType::Free);
+                    }
+                    ImGui::SameLine();
                 }
-                ImGui::SameLine();
-                if (plotButton("\uF7A4", "change to the vertical layout")) {
-                    _dockSpace.setLayoutType(DockingLayoutType::Column);
-                }
-                ImGui::SameLine();
-                if (plotButton("\uF58D", "change to the grid layout")) {
-                    _dockSpace.setLayoutType(DockingLayoutType::Grid);
-                }
-                ImGui::SameLine();
-                if (plotButton("\uF248", "change to the free layout")) {
-                    _dockSpace.setLayoutType(DockingLayoutType::Free);
-                }
-                ImGui::SameLine();
-            }
-
-            // Render Toolbar blocks (legend, etc.) - centre-aligned
-            {
+                _legendBox.x = ImGui::GetItemRectSize().x;
+            } else {
                 static constexpr std::string_view kLegendBlockType = "DigitizerUi::GlobalSignalLegend";
-
-                alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
-                _legendBox.x = 0.f;
 
                 ImVec2 totalSize{0.f, 0.f};
                 for (auto& blockPtr : _dashboard->uiGraph.blocks()) {
