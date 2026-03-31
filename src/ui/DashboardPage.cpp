@@ -168,6 +168,16 @@ void DashboardPage::draw(Mode mode) noexcept {
         }
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
 
+        // quickfix for an imgui bug?: the SetCursorPos above does not seem to
+        // be sufficient for getting our cursor to return there after
+        // SameLine(). The issue is visible iff we do manual cursor
+        // manipulation (as the global signal legend does for the first color
+        // rect). So to make sure the first item draws at the same position as
+        // the succeeding ones after SameLine(), just insert a dummy size and
+        // do SameLine here, so the imgui context is in the same state as later
+        ImGui::ItemSize(ImVec2{}, 0.f);
+        ImGui::SameLine();
+
         // Legend
         {
             IMW::Group group;
