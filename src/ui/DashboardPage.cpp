@@ -102,7 +102,7 @@ void DashboardPage::draw(Mode mode) noexcept {
     const bool      horizontalSplit   = size.x > size.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock());
+    const float     ratio             = mode == Mode::Interaction ? components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
