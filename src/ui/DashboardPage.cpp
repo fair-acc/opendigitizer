@@ -27,13 +27,13 @@ constexpr inline auto kGridWidth  = 16u;
 constexpr inline auto kGridHeight = 16u;
 } // namespace
 
-static bool plotButton(const char* glyph, const char* tooltip) noexcept {
+static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor normal(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         IMW::StyleColor hovered(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
         IMW::StyleColor active(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
-        IMW::Font       font(LookAndFeel::instance().fontIconsSolid);
-        return ImGui::Button(glyph);
+        IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
+        return ImGui::Button(glyph, {buttonSize, buttonSize});
     }();
 
     if (ImGui::IsItemHovered()) {
@@ -182,9 +182,11 @@ void DashboardPage::draw(Mode mode) noexcept {
         {
             IMW::Group group;
 
+            const float plotButtonSize = 40.f;
+
             if (mode != Mode::View) {
                 namespace dnd = opendigitizer::charts::dnd;
-                if (plotButton("\uF201", "create new chart")) {
+                if (plotButton("\uF201", "create new chart", plotButtonSize)) {
                     _showNewPlotModal = true;
                     _sinkForNewPlot   = {};
                 }
@@ -204,24 +206,24 @@ void DashboardPage::draw(Mode mode) noexcept {
             if (mode == Mode::Layout) {
                 {
                     IMW::Group layout;
-                    if (plotButton("\uF7A5", "change to the horizontal layout")) {
+                    if (plotButton("\uF7A5", "change to the horizontal layout", plotButtonSize)) {
                         _dockSpace.setLayoutType(DockingLayoutType::Row);
                     }
                     ImGui::SameLine();
-                    if (plotButton("\uF7A4", "change to the vertical layout")) {
+                    if (plotButton("\uF7A4", "change to the vertical layout", plotButtonSize)) {
                         _dockSpace.setLayoutType(DockingLayoutType::Column);
                     }
                     ImGui::SameLine();
-                    if (plotButton("\uF58D", "change to the grid layout")) {
+                    if (plotButton("\uF58D", "change to the grid layout", plotButtonSize)) {
                         _dockSpace.setLayoutType(DockingLayoutType::Grid);
                     }
                     ImGui::SameLine();
-                    if (plotButton("\uF248", "change to the free layout")) {
+                    if (plotButton("\uF248", "change to the free layout", plotButtonSize)) {
                         _dockSpace.setLayoutType(DockingLayoutType::Free);
                     }
                     ImGui::SameLine();
                 }
-                _legendBox.x = ImGui::GetItemRectSize().x;
+                _legendBox = ImGui::GetItemRectSize();
             } else {
                 static constexpr std::string_view kLegendBlockType = "DigitizerUi::GlobalSignalLegend";
 
@@ -268,7 +270,7 @@ void DashboardPage::draw(Mode mode) noexcept {
                 // Post button strip
                 if (mode == Mode::Interaction) {
                     ImGui::SameLine();
-                    if (plotButton("\uf067", "add signal")) {
+                    if (plotButton("\uf067", "add signal", plotButtonSize)) {
                         // 'plus' button in the global legend, adds a new signal
                         // to the dashboard
                         _remoteSignalSelector->open();
@@ -337,8 +339,9 @@ void DashboardPage::draw(Mode mode) noexcept {
                 ImGui::Text("%s", str.c_str());
             }
             ImGui::Dummy(ImVec2(0.f, 0.f));
+
+            _legendBox.y = std::max(_legendBox.y, plotButtonSize);
         }
-        _legendBox.y = std::floor(ImGui::GetItemRectSize().y * 1.5f);
     }
 
     if (horizontalSplit) {
