@@ -105,11 +105,15 @@ ImVec2 DashboardPage::drawCharts(Mode mode) noexcept {
     if (mode == Mode::Layout) {
         const uint32_t gridLineColor = LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0x40000000 : 0x40ffffff;
         auto           pos           = ImGui::GetCursorScreenPos();
-        for (float x = pos.x; x < pos.x + paneSize.x; x += w) {
+        float          x             = pos.x;
+        while (x < pos.x + paneSize.x) {
             ImGui::GetWindowDrawList()->AddLine({x, pos.y}, {x, pos.y + paneSize.y}, gridLineColor);
+            x += w;
         }
-        for (float y = pos.y; y < pos.y + paneSize.y; y += h) {
+        float y = pos.y;
+        while (y < pos.y + paneSize.y) {
             ImGui::GetWindowDrawList()->AddLine({pos.x, y}, {pos.x + paneSize.x, y}, gridLineColor);
+            y += w;
         }
     }
 
