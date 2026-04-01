@@ -274,6 +274,7 @@ public:
                     dashboardPage->setDashboard(*dashboard.get());
                     dashboardPage->setLayoutType(loadedDashboard->layout);
                     dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
+                    dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                     flowgraphPage.reset();
                 }
             }

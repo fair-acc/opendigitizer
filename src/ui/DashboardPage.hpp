@@ -29,8 +29,8 @@ private:
 
     ImVec2 _legendBox{500, 40}; // updated by drawLegend(...)
 
-    std::function<void()> _requestViewOnlyMode;
-    std::function<void()> _requestExitViewOnlyMode;
+    std::function<void()>     _requestViewOnlyMode;
+    std::function<void(bool)> _requestSetLayoutMode;
 
     // signals which are scheduled to be added
     // (source block creation requested)
@@ -82,8 +82,8 @@ public:
 
     void draw(Mode mode = Mode::View) noexcept;
     void setLayoutType(DockingLayoutType);
-    void setRequestViewOnlyModeHandler(auto&& function) { _requestViewOnlyMode = std::move(function); }
-    void setRequestExitViewOnlyModeHandler(auto&& function) { _requestExitViewOnlyMode = std::move(function); }
+    void setRequestViewOnlyModeHandler(std::function<void()>&& function) { _requestViewOnlyMode = std::move(function); }
+    void setRequestSetLayoutModeHandler(std::function<void(bool)>&& function) { _requestSetLayoutMode = std::move(function); }
 
     /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
 

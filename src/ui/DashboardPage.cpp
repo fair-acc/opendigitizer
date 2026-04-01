@@ -303,11 +303,39 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
         }
     }
 
+    struct Button {
+        const char*           icon    = nullptr;
+        const char*           tooltip = nullptr;
+        std::function<void()> action;
+    };
+
+    std::vector<Button> buttons;
+
+    if (mode == Mode::Interaction) {
+        buttons.emplace_back("\u{F248}", "Enter layout mode", [this] {
+            if (this->_requestSetLayoutMode) {
+                this->_requestSetLayoutMode(true);
+            }
+        });
+        buttons.emplace_back("\u{F023}", "Lock the dashboard", [&clickResult] { clickResult.shouldOpenEnterViewOnlyModeModal = true; });
+    } else if (mode == Mode::Layout) {
+        buttons.emplace_back("\u{F52B}", "Finish layouting", [this] {
+            if (this->_requestSetLayoutMode) {
+                this->_requestSetLayoutMode(false);
+            }
+        });
+    }
+
     ImGui::SameLine();
-    alignForWidth(plotButtonSize, 1.0);
-    const float cursorBeforeLockButton = ImGui::GetCursorPosX();
-    if (mode == Mode::Interaction && plotButton("\uF023", "Lock the dashboard", plotButtonSize)) {
-        clickResult.shouldOpenEnterViewOnlyModeModal = true;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    alignForWidth(spacing + (spacing + plotButtonSize) * static_cast<float>(buttons.size()), 1.0);
+    const float cursorBeforeButtons = ImGui::GetCursorPosX();
+
+    for (const auto& button : buttons) {
+        if (plotButton(button.icon, button.tooltip, plotButtonSize)) {
+            button.action();
+        }
+        ImGui::SameLine();
     }
 
     if (LookAndFeel::instance().prototypeMode) {
@@ -316,7 +344,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
         const float fps     = ImGui::GetIO().Framerate;
         const auto  str     = std::format("FPS:{:5.0f}({:2}ms)", fps, LookAndFeel::instance().execTime.count());
         const auto  estSize = ImGui::CalcTextSize(str.c_str());
-        ImGui::SetCursorPosX(cursorBeforeLockButton - estSize.x - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::SetCursorPosX(cursorBeforeButtons - estSize.x - spacing);
         ImGui::Text("%s", str.c_str());
     }
     ImGui::Dummy(ImVec2(0.f, 0.f));
