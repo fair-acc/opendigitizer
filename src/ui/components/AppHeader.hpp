@@ -150,8 +150,7 @@ public:
 
             {
                 IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f}); // green
-                leftMenu.addButton("\uF023", [this]() { requestApplicationSwitchMode(ViewMode::VIEW); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to view mode");
-                leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::INTERACTION); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to interaction mode");
+                leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::INTERACTION); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to chart view");
                 leftMenu.addButton("\uF248", [this]() { requestApplicationSwitchMode(ViewMode::LAYOUT); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to layout mode");
                 leftMenu.addButton("\uF542", [this]() { requestApplicationSwitchMode(ViewMode::FLOWGRAPH); }, LookAndFeel::instance().fontIconsSolidLarge, "click to edit flow-graph");
                 leftMenu.addButton("", [this]() { requestApplicationSwitchMode(ViewMode::OPEN_SAVE_DASHBOARD); }, LookAndFeel::instance().fontIconsSolidLarge, "click to open/save new dashboards");

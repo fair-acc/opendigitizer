@@ -24,8 +24,13 @@ public:
     enum class Mode { View, Interaction, Layout };
 
 private:
-    ImVec2 _paneSize{0, 0};     // updated by drawPlots(...)
+    static constexpr const char* addChartPopupID          = "New Chart";
+    static constexpr const char* enterViewOnlyModePopupID = "Lock the dashboard?##lockMode";
+
     ImVec2 _legendBox{500, 40}; // updated by drawLegend(...)
+
+    std::function<void()> _requestViewOnlyMode;
+    std::function<void()> _requestExitViewOnlyMode;
 
     // signals which are scheduled to be added
     // (source block creation requested)
@@ -45,9 +50,7 @@ private:
     Dashboard* _dashboard = nullptr;
 
     // modal dialog state for new plot creation
-    bool        _showNewPlotModal = false;
     std::string _sinkForNewPlot;
-    std::string _selectedChartType = "XYChart";
 
     // deferred chart transmutation request (processed at start of next frame)
     struct PendingTransmutation {
@@ -59,15 +62,30 @@ private:
     // deferred chart removal requests (processed at start of next frame)
     std::vector<std::string> _pendingRemovals;
 
+    struct LegendItemClickResult {
+        bool        shouldOpenEnterViewOnlyModeModal = false;
+        bool        shouldOpenNewPlotModal           = false;
+        std::string sinkForNewPlot;
+    };
+
+    void                                drawNewPlotModal();                                         // modifies _showNewPlotModal if close is requested
+    [[nodiscard]] ImVec2                drawCharts(Mode mode) noexcept;                             // returns the size of area used for charts
+    [[nodiscard]] LegendItemClickResult drawLegend(Mode mode, ImVec2 chartPaneSize) noexcept;       // sets _legendBox
+    [[nodiscard]] ImVec2                drawLegendCenter(Mode mode, ImVec2 chartPaneSize) noexcept; // returns total size of centered legend part
+    void                                drawToolbarLayoutButtons(float plotButtonSize) noexcept;
+    void                                addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
+    void                                doViewModeOverlayArea() noexcept;
+
 public:
     DashboardPage();
     ~DashboardPage();
 
     void draw(Mode mode = Mode::View) noexcept;
     void setLayoutType(DockingLayoutType);
+    void setRequestViewOnlyModeHandler(auto&& function) { _requestViewOnlyMode = std::move(function); }
+    void setRequestExitViewOnlyModeHandler(auto&& function) { _requestExitViewOnlyMode = std::move(function); }
 
     /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
-    void                                                           drawNewPlotModal();
 
     void setDashboard(Dashboard& dashboard) {
         _dashboard = std::addressof(dashboard);

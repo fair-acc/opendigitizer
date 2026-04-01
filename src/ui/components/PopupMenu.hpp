@@ -165,7 +165,7 @@ class PopupMenu {
         std::size_t numberOfButtonRows{};
     };
 
-    ButtonsOutput doPopupAndButtons(ImVec2 popupCenter, float buttonSize) const {
+    ButtonsOutput doPopupAndButtons(ImVec2 popupCenter, float buttonSize) {
         ButtonsOutput out{};
         if (_animationProgress >= 0.0f) {
             const ImVec2 oldPos = ImGui::GetCursorPos();

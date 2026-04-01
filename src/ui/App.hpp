@@ -12,6 +12,7 @@
 
 #include "components/AppHeader.hpp"
 #include "components/Toolbar.hpp"
+#include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
@@ -52,8 +53,8 @@ public:
     OpenDashboardPage openDashboardPage;
 
     std::atomic<bool> isRunning        = true;
-    ViewMode          mainViewMode     = ViewMode::VIEW;
-    ViewMode          previousViewMode = ViewMode::VIEW;
+    ViewMode          mainViewMode     = ViewMode::INTERACTION;
+    ViewMode          previousViewMode = ViewMode::INTERACTION;
 
     std::vector<gr::BlockModel*> toolbarBlocks;
 
@@ -213,9 +214,33 @@ public:
         }
     }
 
+    [[nodiscard]] bool viewModeReturnIsExitRequested() const noexcept {
+        const ImRect buttonArea{{}, ImGui::GetMainViewport()->Size};
+        ImGui::SetNextWindowSize(buttonArea.GetSize());
+        ImGui::SetNextWindowPos(buttonArea.GetTL());
+        IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
+        const auto  unlockPopupID = "Unlock the dashboard?##lockModeDisableInputBlockerPopup";
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+        ImGui::SetCursorScreenPos({});
+        if (ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+            ImGui::OpenPopup(unlockPopupID);
+        }
+
+        bool exitRequested = false;
+        using namespace components;
+        if (const auto popup = beginYesNoPopup(unlockPopupID); isPopupOpen(popup)) {
+            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+            if (isPopupConfirmed(popup)) {
+                exitRequested = true;
+            }
+            ImGui::EndPopup();
+        }
+        return exitRequested;
+    }
+
     void processAndRender() {
         {
-            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
@@ -248,6 +273,7 @@ public:
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
                     dashboardPage->setLayoutType(loadedDashboard->layout);
+                    dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
                     flowgraphPage.reset();
                 }
             }
@@ -280,6 +306,10 @@ public:
                 auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
                 components::Notification::warning(msg);
             }
+        }
+
+        if (mainViewMode == ViewMode::VIEW && this->viewModeReturnIsExitRequested()) {
+            mainViewMode = ViewMode::INTERACTION;
         }
 
         previousViewMode = mainViewMode;
