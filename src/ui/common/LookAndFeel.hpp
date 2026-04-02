@@ -76,6 +76,7 @@ struct LookAndFeel {
     std::chrono::seconds      editPaneCloseDelay{15};
 
     [[nodiscard]] const Palette& palette() const noexcept;
+    [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
 
     Style      style      = Style::Light;
     WindowMode windowMode = WindowMode::RESTORED;

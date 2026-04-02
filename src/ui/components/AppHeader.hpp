@@ -137,7 +137,10 @@ public:
 
         const auto& settings         = Digitizer::Settings::instance();
         const auto  menuButtonPushed = settings.editableMode && [&] {
-            IMW::StyleColor mainButtonStyle(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, 0.6f));
+            IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
+            IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
+            IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().mainWindowButtonBgActive);
+            IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().mainWindowButtonBgHovered);
             IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
             return ImGui::Button(LookAndFeel::instance().prototypeMode ? "" : "");
         }();

@@ -28,13 +28,9 @@ constexpr inline auto kGridWidth  = 16u;
 constexpr inline auto kGridHeight = 16u;
 } // namespace
 
-static bool plotButton(const char* glyph, const char* tooltip, float buttonSize, bool transparentInactiveBg = false) noexcept {
+static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
-        auto bgColor = LookAndFeel::instance().palette().mainWindowButtonBgInactive;
-        if (transparentInactiveBg) {
-            bgColor.w = 0.0f;
-        }
-        IMW::StyleColor buttonStyle(ImGuiCol_Button, bgColor);
+        IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
         IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
         IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().mainWindowButtonBgActive);
         IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().mainWindowButtonBgHovered);
@@ -272,7 +268,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
 
     LegendItemClickResult clickResult;
 
-    const float plotButtonSize = 40.f;
+    const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
 
     if (mode != Mode::View) {
         namespace dnd = opendigitizer::charts::dnd;
@@ -301,7 +297,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
 
     if (mode == Mode::Interaction && _dashboard && _remoteSignalSelector) {
         ImGui::SameLine();
-        if (plotButton("\u{F067}", "add signal", plotButtonSize, true)) {
+        if (plotButton("\u{F067}", "add signal", plotButtonSize)) {
             // 'plus' button in the global legend, adds a new signal
             // to the dashboard
             _remoteSignalSelector->open();
