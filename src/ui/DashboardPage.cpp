@@ -28,11 +28,16 @@ constexpr inline auto kGridWidth  = 16u;
 constexpr inline auto kGridHeight = 16u;
 } // namespace
 
-static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
+static bool plotButton(const char* glyph, const char* tooltip, float buttonSize, bool transparentInactiveBg = false) noexcept {
     const bool ret = [&] {
-        IMW::StyleColor normal(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        IMW::StyleColor hovered(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0.1f));
-        IMW::StyleColor active(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.2f));
+        auto bgColor = LookAndFeel::instance().palette().mainWindowButtonBgInactive;
+        if (transparentInactiveBg) {
+            bgColor.w = 0.0f;
+        }
+        IMW::StyleColor buttonStyle(ImGuiCol_Button, bgColor);
+        IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
+        IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().mainWindowButtonBgActive);
+        IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().mainWindowButtonBgHovered);
         IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
         return ImGui::Button(glyph, {buttonSize, buttonSize});
     }();
@@ -103,7 +108,7 @@ ImVec2 DashboardPage::drawCharts(Mode mode) noexcept {
 
     // Draw layout grid in Layout mode
     if (mode == Mode::Layout) {
-        const uint32_t gridLineColor = LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0x40000000 : 0x40ffffff;
+        const uint32_t gridLineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().gridLines);
         auto           pos           = ImGui::GetCursorScreenPos();
         float          x             = pos.x;
         while (x < pos.x + paneSize.x) {
@@ -296,7 +301,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
 
     if (mode == Mode::Interaction && _dashboard && _remoteSignalSelector) {
         ImGui::SameLine();
-        if (plotButton("\u{F067}", "add signal", plotButtonSize)) {
+        if (plotButton("\u{F067}", "add signal", plotButtonSize, true)) {
             // 'plus' button in the global legend, adds a new signal
             // to the dashboard
             _remoteSignalSelector->open();

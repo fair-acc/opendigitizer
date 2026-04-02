@@ -87,25 +87,16 @@ public:
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
 
-    void setStyle(LookAndFeel::Style s) {
+    void updateStyle() {
         makeCurrent();
 
         auto& style        = ax::NodeEditor::GetStyle();
         style.NodeRounding = 0;
         style.PinRounding  = 0;
 
-        switch (s) {
-        case LookAndFeel::Style::Dark:
-            style.Colors[ax::NodeEditor::StyleColor_Bg]         = {0.1f, 0.1f, 0.1f, 1.f};
-            style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.2f, 0.2f, 0.2f, 1.f};
-            style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.7f, 0.7f, 0.7f, 1.f};
-            break;
-        case LookAndFeel::Style::Light:
-            style.Colors[ax::NodeEditor::StyleColor_Bg]         = {1.f, 1.f, 1.f, 1.f};
-            style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = {0.94f, 0.92f, 1.f, 1.f};
-            style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = {0.38f, 0.38f, 0.38f, 1.f};
-            break;
-        }
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().palette().flowgraphBg;
+        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
+        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = LookAndFeel::instance().palette().flowgraphNodeBorder;
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
@@ -202,7 +193,7 @@ public:
     void pushEditor(std::string name, UiGraphModel& model, UiGraphBlock* rootBlock);
     void popEditor();
 
-    void setStyle(LookAndFeel::Style style);
+    void updateStyle(); // reads from LookAndFeel::instance().style
 
     static const DataTypeStyle& styleForDataType(std::string_view type);
 

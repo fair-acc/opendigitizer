@@ -16,6 +16,41 @@ LookAndFeel& LookAndFeel::mutableInstance() {
 
 const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
 
+const Palette& LookAndFeel::palette() const noexcept {
+    static const ImVec4  quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
+    static const ImVec4  quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
+    static const Palette darkModePalette{
+        .gridLines = quarterTransparentWhite,
+
+        .mainWindowButtonIcon       = {1.f, 1.f, 1.f, 1.f},
+        .mainWindowButtonBgInactive = {1.f, 1.f, 1.f, 0.0f},
+        .mainWindowButtonBgHovered  = {1.f, 1.f, 1.f, 0.1f},
+        .mainWindowButtonBgActive   = {1.f, 1.f, 1.f, 0.2f},
+
+        .notificationWindowBg = {0.10f, 0.10f, 0.10f, 1.00f},
+        .toolbarLineColor     = quarterTransparentWhite,
+        .flowgraphBg          = {0.1f, 0.1f, 0.1f, 1.f},
+        .flowgraphNodeBg      = {0.2f, 0.2f, 0.2f, 1.f},
+        .flowgraphNodeBorder  = {0.7f, 0.7f, 0.7f, 1.f},
+    };
+    static const Palette lightModePalette{
+        .gridLines = quarterTransparentBlack,
+
+        .mainWindowButtonIcon       = {0.f, 0.f, 0.f, 1.f},
+        .mainWindowButtonBgInactive = {0.f, 0.f, 0.f, 0.0f},
+        .mainWindowButtonBgHovered  = {0.f, 0.f, 0.f, 0.1f},
+        .mainWindowButtonBgActive   = {0.f, 0.f, 0.f, 0.2f},
+
+        .notificationWindowBg = {1.00f, 1.00f, 1.00f, 1.00f},
+        .toolbarLineColor     = quarterTransparentBlack,
+        .flowgraphBg          = {1.f, 1.f, 1.f, 1.f},
+        .flowgraphNodeBg      = {0.94f, 0.92f, 1.f, 1.f},
+        .flowgraphNodeBorder  = {0.38f, 0.38f, 0.38f, 1.f},
+    };
+
+    return style == Style::Light ? lightModePalette : darkModePalette;
+}
+
 void LookAndFeel::loadFonts() {
     // static const ImWchar fullRange[] = {
     //     0x0020, 0XFFFF, 0, 0 // '0', '0' are the end marker

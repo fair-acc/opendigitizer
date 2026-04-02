@@ -152,7 +152,7 @@ public:
 
     void setStyle(LookAndFeel::Style style) {
         setImGuiStyle(style);
-        flowgraphPage.setStyle(style);
+        flowgraphPage.updateStyle();
     }
 
     void init(int argc, char** argv) {

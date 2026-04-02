@@ -568,13 +568,7 @@ struct Notification {
         // Notifications style setup
         IMW::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, 0.5f);    // round borders
         IMW::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, 1.f); // visible borders
-
-        // Notifications color setup
-        if (LookAndFeel::instance().style == LookAndFeel::Style::Dark) {
-            IMW::StyleColor _(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
-        } else {
-            IMW::StyleColor _(ImGuiCol_WindowBg, ImVec4(1.00f, 1.00f, 1.00f, 1.00f)); // White background
-        }
+        IMW::StyleColor    _(ImGuiCol_WindowBg, LookAndFeel::instance().palette().notificationWindowBg);
 
         // Main rendering function
         ImGui::RenderNotifications();
