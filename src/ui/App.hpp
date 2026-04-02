@@ -145,6 +145,8 @@ public:
         }
         LookAndFeel::mutableInstance().style = style;
 
+        ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
+
         // with the dark style the plot frame would have the same color as a button. make it have the
         // same color as the window background instead.
         ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
