@@ -182,6 +182,7 @@ class PopupMenu {
             }
 
             if (auto popup = IMW::Window(_popupId.c_str(), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing)) {
+                ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
                 if constexpr (menuType == MenuType::Radial) {
                     out.numberOfButtonRows = drawButtonsOnArc(popupCenter, _extraRadius + .5f * buttonSize + _padding);
                 } else {

@@ -69,7 +69,14 @@ public:
     components::AppHeader header;
 
 public:
-    App() : flowgraphPage(restClient), openDashboardPage(restClient) { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
+    App() : flowgraphPage(restClient), openDashboardPage(restClient) {
+        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
+        if (!Digitizer::Settings::instance().editableMode) {
+            // the exit-view-mode button will also check and be disabled in this case so things are fully non-editable
+            mainViewMode     = ViewMode::VIEW;
+            previousViewMode = ViewMode::VIEW;
+        }
+    }
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
@@ -216,15 +223,14 @@ public:
         }
     }
 
-    [[nodiscard]] bool viewModeReturnIsExitRequested() const noexcept {
-        const ImRect buttonArea{{}, ImGui::GetMainViewport()->Size};
+    [[nodiscard]] bool viewModeReturnIsExitRequested(float startHeight) const noexcept {
+        const ImRect buttonArea{{0, startHeight}, ImGui::GetMainViewport()->Size};
         ImGui::SetNextWindowSize(buttonArea.GetSize());
         ImGui::SetNextWindowPos(buttonArea.GetTL());
         IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
         const auto  unlockPopupID = "Unlock the dashboard?##lockModeDisableInputBlockerPopup";
-        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-        ImGui::SetCursorScreenPos({});
-        if (ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+        ImGui::SetCursorScreenPos(buttonArea.GetTL());
+        if ((ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) && Digitizer::Settings::instance().editableMode) {
             ImGui::OpenPopup(unlockPopupID);
         }
 
@@ -246,6 +252,8 @@ public:
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 
             if (prepareForANewDashboardToLoad) {
                 prepareForANewDashboardToLoad = false;
@@ -309,10 +317,10 @@ public:
                 auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
                 components::Notification::warning(msg);
             }
-        }
 
-        if (mainViewMode == ViewMode::VIEW && this->viewModeReturnIsExitRequested()) {
-            mainViewMode = ViewMode::INTERACTION;
+            if (mainViewMode == ViewMode::VIEW && this->viewModeReturnIsExitRequested(lockedModeBlockerStart)) {
+                mainViewMode = ViewMode::INTERACTION;
+            }
         }
 
         previousViewMode = mainViewMode;
