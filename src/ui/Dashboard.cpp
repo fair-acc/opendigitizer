@@ -559,21 +559,24 @@ void Dashboard::save() {
         hcommand.command          = opencmw::mdp::Command::Set;
         std::string headerYamlStr = pmt::yaml::serialize(headerYaml);
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
-        hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        hcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        hcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command             = opencmw::mdp::Command::Set;
         std::string dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
         dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
-        dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        dcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        dcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(dcommand);
 
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
         fcommand.data.put(stream.str());
-        fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        fcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        fcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(fcommand);
     } else {
 #ifndef EMSCRIPTEN
