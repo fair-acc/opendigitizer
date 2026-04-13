@@ -3,7 +3,6 @@
 #include "../ui/components/ImGuiNotify.hpp"
 
 #include <algorithm>
-#include <format>
 #include <ranges>
 
 #include <imgui_internal.h>
@@ -59,6 +58,7 @@ static void dragWindow(ImGuiWindow* windowToDrag, ImRect boundingBox) {
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
         _layoutType = type;
+
         setNeedsRelayout(true);
         if (type == DockingLayoutType::Free) {
             // isEditable passed to nodeFlags is always true- because layout type can only change in the editable mode
@@ -67,14 +67,8 @@ void DockSpace::setLayoutType(DockingLayoutType type) {
     }
 }
 
-void DockSpace::clearWindowGeometry(const Windows& windows) {
-    for (auto w : windows) {
-        w->clearGeometry();
-    }
-}
-
 void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable) {
-
+    const bool requestsExactFreeLayout = std::ranges::any_of(windows, [](const auto& w) { return w->freeLayoutPosition.has_value(); });
     {
         ImGui::SetNextWindowSize(paneSize);
 
@@ -87,10 +81,18 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         _lastWindowCount = windows.size();
 
         if (_needsRelayout) {
-            relayout(windows, isEditable);
+            relayout(windows, isEditable, requestsExactFreeLayout);
         } else if (_lastIsEditable != isEditable) {
             setFlagsForAllDockNodes(nodeFlags(isEditable));
             _lastIsEditable = isEditable;
+        }
+
+        // save a description of split layout and floating windows every frame. this could instead
+        // occur only before relayouting + before switching to the dashboard load/save page.
+        if (!_needsRelayout && !requestsExactFreeLayout && layoutType() == DockingLayoutType::Free) {
+            constexpr auto toWindowName = [](const auto& ptr) { return std::string_view{ptr->name}; };
+            const auto     windowNames  = windows | std::views::transform(toWindowName) | std::ranges::to<std::vector<std::string_view>>();
+            _lastFreeLayout             = DigitizerUi::saveDockSpaceState(windowNames, dockspaceID()); // saves nothing on first frame, before windows exist
         }
 
         ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
@@ -133,10 +135,7 @@ void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
             node->SetLocalFlags(nodeFlags(isEditable));
         }
 
-        // Write back geometry info, as user might have used the splitters
-        if (isBoxLayout()) {
-            // window->setGeometry(ImGui::GetWindowPos(), ImGui::GetWindowSize());
-        } else if (layoutType() == DockingLayoutType::Free) {
+        if (layoutType() == DockingLayoutType::Free) {
             if (auto node = ImGui::GetWindowDockNode()) {
                 node->SetLocalFlags(node->LocalFlags | ImGuiDockNodeFlags_NoDockingOverMe);
             }
@@ -249,46 +248,56 @@ void DockSpace::layoutInGrid(const Windows& windows, bool isEditable) {
     }
 }
 
-void DockSpace::layoutInFree(const Windows& windows, bool isEditable) {
+bool DockSpace::layoutInExactFree(const Windows& windows, bool isEditable) {
     if (windows.empty()) {
-        return;
+        return false;
     }
 
+    std::unordered_map<std::size_t, Window::FreeGeometry> windowAreasByOriginalIndex;
+    windowAreasByOriginalIndex.reserve(windows.size());
+
     // Assume that minX = 0, minY = 0
-    std::size_t maxX = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->x + w->width; }));
-    std::size_t maxY = std::ranges::max(windows | std::views::transform([](auto const& w) { return w->y + w->height; }));
-    if (maxX == 0 || maxY == 0) {
-        return;
+    std::size_t maxX  = 0UL;
+    std::size_t maxY  = 0UL;
+    std::size_t index = 0UL;
+    for (const auto& windowPtr : windows) {
+        ++index;
+        if (!windowPtr->freeLayoutPosition.has_value()) {
+            continue;
+        }
+        maxX = std::max(maxX, windowPtr->freeLayoutPosition->x + windowPtr->freeLayoutPosition->width);
+        maxY = std::max(maxY, windowPtr->freeLayoutPosition->y + windowPtr->freeLayoutPosition->height);
+        windowAreasByOriginalIndex.try_emplace(static_cast<std::size_t>(index - 1), *windowPtr->freeLayoutPosition);
+        windowPtr->freeLayoutPosition.reset();
     }
 
     std::vector<std::vector<int>> grid(maxX, std::vector<int>(maxY, -1));
 
     // No overlap -> each cell belongs to exactly one window
     bool isOverlapDetected = false;
-    for (std::size_t i = 0; i < windows.size(); i++) {
-        const auto& w = windows[i];
-        for (std::size_t x = w->x; x < w->x + w->width; x++) {
-            for (std::size_t y = w->y; y < w->y + w->height; y++) {
+    for (auto [originalIndex, geo] : windowAreasByOriginalIndex) {
+        for (std::size_t x = geo.x; x < geo.x + geo.width; x++) {
+            for (std::size_t y = geo.y; y < geo.y + geo.height; y++) {
                 if (grid[x][y] != -1) {
                     isOverlapDetected = true;
                 }
-                grid[x][y] = static_cast<int>(i);
+                grid[x][y] = static_cast<int>(originalIndex);
             }
         }
     }
 
     const bool isEmptyCellDetected = std::ranges::any_of(grid | std::views::join, [](int cellValue) { return cellValue == -1; });
 
+    layoutInFreeRegion(grid, windows, 0, maxX, 0, maxY, dockspaceID(), isEditable);
+
     // if layout is ill-formed -> inform user and use grid layout
     if (isOverlapDetected) {
         components::Notification::error("Free layout is ill-formed, overlapped cells detected.");
-        layoutInGrid(windows, isEditable);
     } else if (isEmptyCellDetected) {
         components::Notification::error("Free layout is ill-formed, empty cells detected.");
-        layoutInGrid(windows, isEditable);
-    } else {
-        layoutInFreeRegion(grid, windows, 0, maxX, 0, maxY, dockspaceID(), isEditable);
     }
+
+    return !isEmptyCellDetected && !isOverlapDetected;
 }
 
 void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, const Windows& windows, std::size_t x0, std::size_t x1, std::size_t y0, std::size_t y1, ImGuiID nodeId, bool isEditable) {
@@ -340,7 +349,7 @@ void DockSpace::layoutInFreeRegion(const std::vector<std::vector<int>>& grid, co
     }
 }
 
-void DockSpace::relayout(const Windows& windows, bool isEditable) {
+void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFreeLayoutRequested) {
     const ImGuiID dockspaceID = this->dockspaceID();
     ImGui::DockBuilderAddNode(dockspaceID);
     ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetWindowSize());
@@ -348,7 +357,13 @@ void DockSpace::relayout(const Windows& windows, bool isEditable) {
     if (isBoxLayout()) {
         layoutInBox(windows, _layoutType == DockingLayoutType::Row ? ImGuiDir_Left : ImGuiDir_Up, isEditable);
     } else if (isFreeLayout()) {
-        layoutInFree(windows, isEditable);
+        if (exactFreeLayoutRequested) {
+            if (!layoutInExactFree(windows, isEditable)) {
+                layoutInGrid(windows, isEditable); // fallback, will be saved as state of free layout
+            }
+        } else {
+            restoreDockSpaceState(_lastFreeLayout, dockspaceID);
+        }
     } else {
         layoutInGrid(windows, isEditable);
     }

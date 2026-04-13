@@ -51,7 +51,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             if (g_state->dashboard) {
                 DigitizerUi::DashboardPage page;
                 page.setDashboard(*g_state->dashboard);
-                page.setLayoutType(vars.layoutType);
+                page.setLayoutConfiguration(vars.layoutType, {});
                 page.draw();
                 ut::expect(!g_state->dashboard->uiWindows.empty()) << ut::fatal;
             }

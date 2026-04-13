@@ -12,6 +12,7 @@
 #include "common/Events.hpp"
 #include "common/LookAndFeel.hpp"
 
+#include "DashboardPage.hpp"
 #include "OpenDashboardPage.hpp"
 
 #include "components/Dialog.hpp"
@@ -118,7 +119,7 @@ void OpenDashboardPage::unsubscribeSource(const std::shared_ptr<DashboardStorage
 static constexpr float indent = 20;
 
 //
-void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
+void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
     IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
 
     if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
@@ -137,6 +138,9 @@ void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     {
         IMW::Disabled innerDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
         if (dashboardLoaded && ImGui::Button("Save")) {
+            if (optionalDashboardPage) {
+                std::tie(optionalDashboard->layoutType, optionalDashboard->windowLayout) = optionalDashboardPage->saveLayoutConfiguration();
+            }
             optionalDashboard->save();
         }
     }
@@ -151,10 +155,10 @@ void OpenDashboardPage::dashboardControls(Dashboard* optionalDashboard) {
     }
 }
 
-void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
+void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
     ImGui::Spacing();
 
-    dashboardControls(optionalDashboard);
+    dashboardControls(optionalDashboard, optionalDashboardPage);
 
     ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup("saveAsDialog", nullptr, 0)) {
@@ -197,6 +201,11 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard) {
 
             if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
                 optionalDashboard->setNewDescription(newDesc);
+
+                if (optionalDashboardPage) {
+                    std::tie(optionalDashboard->layoutType, optionalDashboard->windowLayout) = optionalDashboardPage->saveLayoutConfiguration();
+                }
+
                 optionalDashboard->save();
             }
         }
