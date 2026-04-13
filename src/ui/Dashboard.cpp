@@ -447,15 +447,6 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
             return 0ULL;
         };
 
-        if (rect) {
-            blockPtr->uiConstraints()["window"] = gr::property_map{
-                {"x", rectValue((*rect)[0])},
-                {"y", rectValue((*rect)[1])},
-                {"width", rectValue((*rect)[2])},
-                {"height", rectValue((*rect)[3])},
-            };
-        }
-
         // Find the shared_ptr for this block in uiGraph
         std::shared_ptr<gr::BlockModel> blockShared;
         for (auto& blk : uiGraph.blocks()) {
@@ -545,25 +536,6 @@ void Dashboard::save() {
             plotSinkBlockNames.emplace_back(sinkName);
         }
         plotMap["sources"] = plotSinkBlockNames;
-
-        // Serialize window rect from uiConstraints, if present
-        gr::Tensor<gr::pmt::Value> rectTensor(gr::extents_from, {std::size_t(4)});
-        if (constraints.contains("window")) {
-            if (const auto* windowMap = constraints.at("window").get_if<property_map>()) {
-                auto toUInt64 = [](const gr::pmt::Value& v) -> std::uint64_t {
-                    if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
-                        return *converted;
-                    }
-                    return 0ULL;
-                };
-                rectTensor[0] = toUInt64(windowMap->at("x"));
-                rectTensor[1] = toUInt64(windowMap->at("y"));
-                rectTensor[2] = toUInt64(windowMap->at("width"));
-                rectTensor[3] = toUInt64(windowMap->at("height"));
-            }
-        }
-        plotMap["rect"] = std::move(rectTensor);
-
         plots.emplace_back(plotMap);
     }
     dashboardYaml["plots"] = plots;
