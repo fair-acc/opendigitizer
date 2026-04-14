@@ -239,8 +239,8 @@ target_link_libraries(
          digitizer_common_utils
          raii_wrapper
          vir
-         gnuradio-core
-         gnuradio-blocklib-core
+         gnuradio4::gnuradio-core
+         gnuradio4::gnuradio-blocklib-core
          GrBasicBlocksShared
          GrElectricalBlocksShared
          GrFileIoBlocksShared

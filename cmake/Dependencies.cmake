@@ -2,11 +2,8 @@ include(FetchContent)
 include(DependenciesSHAs)
 include(CompileGr4Release)
 
-FetchContent_Declare(
-  gnuradio4
-  GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-  GIT_TAG ${GIT_SHA_GNURADIO4}
-  SYSTEM EXCLUDE_FROM_ALL)
+find_package(gnuradio4 4.0.0 REQUIRED)
+
 
 FetchContent_Declare(
   opencmw-cpp
@@ -20,7 +17,7 @@ FetchContent_Declare(
   GIT_TAG ${GIT_SHA_UT}
   SYSTEM EXCLUDE_FROM_ALL)
 
-FetchContent_MakeAvailable(opencmw-cpp gnuradio4 ut)
+FetchContent_MakeAvailable(opencmw-cpp ut)
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 

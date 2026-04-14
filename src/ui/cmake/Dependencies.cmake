@@ -55,11 +55,6 @@ FetchContent_Declare(
   GIT_TAG ${GIT_SHA_OPENCMW_CPP}
   EXCLUDE_FROM_ALL SYSTEM)
 
-FetchContent_Declare(
-  gnuradio4
-  GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
-  GIT_TAG ${GIT_SHA_GNURADIO4}
-  EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_MakeAvailable(
   imgui
@@ -68,8 +63,8 @@ FetchContent_MakeAvailable(
   imgui-node-editor
   stb
   opencmw-cpp
-  plf_colony
-  gnuradio4)
+  plf_colony)
+find_package(gnuradio4 4.0.0 REQUIRED)
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 

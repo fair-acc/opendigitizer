@@ -133,8 +133,8 @@ target_link_libraries(
           assets::rest
           digitizer_common_utils
           digitizer_settings
-          gnuradio-core
-          gnuradio-blocklib-core
+          gnuradio4::gnuradio-core
+          gnuradio4::gnuradio-blocklib-core
           GrBasicBlocksShared
           GrElectricalBlocksShared
           GrFileIoBlocksShared
