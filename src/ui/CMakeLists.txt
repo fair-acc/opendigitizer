@@ -15,6 +15,7 @@ set(GR_MAX_WASM_THREAD_COUNT
     CACHE STRING "Max number of threads for WASM pthread pool")
 
 if(EMSCRIPTEN)
+  message(STATUS "Emscripten version: ${EMSCRIPTEN_VERSION}")
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
   # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
@@ -246,17 +247,17 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
-         vir
-         gnuradio-core
-         gnuradio-blocklib-core
-         GrBasicBlocksShared
-         GrElectricalBlocksShared
-         GrFileIoBlocksShared
-         GrFilterBlocksShared
-         GrFourierBlocksShared
-         GrHttpBlocksShared
-         GrMathBlocksShared
-         GrTestingBlocksShared)
+         gnuradio4::vir
+         gnuradio4::gnuradio-core
+         gnuradio4::gnuradio-blocklib-core
+         gnuradio4::GrBasicBlocksShared
+         gnuradio4::GrElectricalBlocksShared
+         gnuradio4::GrFileIoBlocksShared
+         gnuradio4::GrFilterBlocksShared
+         gnuradio4::GrFourierBlocksShared
+         gnuradio4::GrHttpBlocksShared
+         gnuradio4::GrMathBlocksShared
+         gnuradio4::GrTestingBlocksShared)
 if(NOT EMSCRIPTEN) # PicoScope blocks (gr-digitizers), native-only
   target_link_libraries(${target_name}lib PUBLIC fair-picoscope)
 endif()
