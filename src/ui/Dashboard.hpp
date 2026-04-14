@@ -152,7 +152,7 @@ struct Dashboard {
     void save();
     void doLoad(const gr::property_map& dashboard);
 
-    UIWindow& newUIBlock(int x, int y, int w, int h, std::string_view chartType = "XYChart");
+    UIWindow& newUIBlock(int x, int y, int w, int h, std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
     void      deleteChart(UIWindow* uiWindow);
     UIWindow* copyChart(std::string_view sourceChartId);
     bool      transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);

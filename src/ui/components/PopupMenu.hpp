@@ -160,6 +160,40 @@ class PopupMenu {
         _menuSize            = _itemBoundaryBox.GetSize();
     }
 
+    struct ButtonsOutput {
+        bool        wasHovered{};
+        std::size_t numberOfButtonRows{};
+    };
+
+    ButtonsOutput doPopupAndButtons(ImVec2 popupCenter, float buttonSize) {
+        ButtonsOutput out{};
+        if (_animationProgress >= 0.0f) {
+            const ImVec2 oldPos = ImGui::GetCursorPos();
+            if constexpr (menuType == MenuType::Radial) {
+                float requiredPopupSize = 2.f * (_extraRadius + (buttonSize + 2.f * _padding) * static_cast<float>(_buttons.size()));
+                ImGui::SetNextWindowSize(ImVec2(requiredPopupSize, requiredPopupSize));
+                ImGui::SetNextWindowPos(ImVec2(popupCenter.x - .5f * requiredPopupSize / 2, popupCenter.y - .5f * requiredPopupSize));
+            } else {
+                const ImVec2 size{buttonSize, static_cast<float>(_buttons.size() + 1UL) * (buttonSize + ImGui::GetStyle().ItemSpacing.y)};
+                const ImVec2 pos = _itemBoundaryBox.GetTL();
+                ImGui::SetNextWindowSize(size);
+                ImGui::SetNextWindowPos(pos);
+                out.wasHovered = ImGui::IsMouseHoveringRect(pos, pos + size);
+            }
+
+            if (auto popup = IMW::Window(_popupId.c_str(), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing)) {
+                ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+                if constexpr (menuType == MenuType::Radial) {
+                    out.numberOfButtonRows = drawButtonsOnArc(popupCenter, _extraRadius + .5f * buttonSize + _padding);
+                } else {
+                    out.numberOfButtonRows = drawButtonsVertically();
+                }
+            }
+            ImGui::SetCursorScreenPos(oldPos);
+        }
+        return out;
+    }
+
 public:
     float frameRounding = 6.f;
 
@@ -201,7 +235,7 @@ public:
     }
 
     void updateAndDraw() {
-        static float timeOutOfRadius = 0.0f;
+        static float timeOutOfBoundingArea = 0.0f;
 
         const float deltaTime = ImGui::GetIO().DeltaTime;
         _animationProgress    = _isOpen ? std::min(1.0f, _animationProgress + deltaTime / _animationSpeed) : std::max(0.0f, _animationProgress - deltaTime / _animationSpeed);
@@ -217,23 +251,15 @@ public:
         }
         const ImVec2 centre = _itemBoundaryBox.GetCenter();
 
-        std::size_t nButtonRows = 1UL;
-        const float buttonSize  = maxButtonSize();
-        if (_animationProgress >= 0.0f) {
-            const ImVec2 oldPos            = ImGui::GetCursorPos();
-            float        requiredPopupSize = 2.f * (_extraRadius + (buttonSize + 2.f * _padding) * static_cast<float>(_buttons.size()));
-            ImGui::SetNextWindowSize(ImVec2(requiredPopupSize, requiredPopupSize));
-            ImGui::SetNextWindowPos(ImVec2(centre.x - .5f * requiredPopupSize / 2, centre.y - .5f * requiredPopupSize));
+        const float buttonSize                               = maxButtonSize();
+        const auto [rectangularPopupWasHovered, nButtonRows] = doPopupAndButtons(centre, buttonSize);
 
-            ImGui::OpenPopup(_popupId.c_str());
-            if (auto popup = IMW::Popup(_popupId.c_str(), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration)) {
-                if constexpr (menuType == MenuType::Radial) {
-                    nButtonRows = drawButtonsOnArc(centre, _extraRadius + .5f * buttonSize + _padding);
-                } else {
-                    nButtonRows = drawButtonsVertically();
-                }
+        if constexpr (menuType == MenuType::Horizontal || menuType == MenuType::Vertical) {
+            timeOutOfBoundingArea = !rectangularPopupWasHovered ? timeOutOfBoundingArea + deltaTime : 0.f;
+            if (timeOutOfBoundingArea >= _timeOut || (!rectangularPopupWasHovered && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)))) {
+                _isOpen = false;
             }
-            ImGui::SetCursorScreenPos(oldPos);
+            return;
         }
 
         const ImVec2 mousePos      = ImGui::GetMousePos();
@@ -242,12 +268,8 @@ public:
         const float  arcRadius     = _extraRadius + static_cast<float>(nButtonRows + 1) * (buttonSize + _padding);
         // the last statement is to keep the menu open when the mouse is outside the arc segment but on the calling button.
         const bool mouseInArc = (mouseDistance <= arcRadius && mouseAngle >= _startAngle && mouseAngle <= _stopAngle) || mouseDistance <= std::max(_menuSize.x, _menuSize.y);
-        timeOutOfRadius       = !mouseInArc ? timeOutOfRadius + deltaTime : 0.f;
-        if (timeOutOfRadius >= _timeOut) {
-            _isOpen = false;
-        }
-
-        if (timeOutOfRadius >= _timeOut) {
+        timeOutOfBoundingArea = !mouseInArc ? timeOutOfBoundingArea + deltaTime : 0.f;
+        if (timeOutOfBoundingArea >= _timeOut) {
             _isOpen = false;
         }
 

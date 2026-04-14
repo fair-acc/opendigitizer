@@ -12,6 +12,7 @@
 
 #include "components/AppHeader.hpp"
 #include "components/Toolbar.hpp"
+#include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
@@ -52,8 +53,8 @@ public:
     OpenDashboardPage openDashboardPage;
 
     std::atomic<bool> isRunning        = true;
-    ViewMode          mainViewMode     = ViewMode::VIEW;
-    ViewMode          previousViewMode = ViewMode::VIEW;
+    ViewMode          mainViewMode     = ViewMode::INTERACTION;
+    ViewMode          previousViewMode = ViewMode::INTERACTION;
 
     std::vector<gr::BlockModel*> toolbarBlocks;
 
@@ -68,7 +69,14 @@ public:
     components::AppHeader header;
 
 public:
-    App() : flowgraphPage(restClient), openDashboardPage(restClient) { setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light); }
+    App() : flowgraphPage(restClient), openDashboardPage(restClient) {
+        setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
+        if (!Digitizer::Settings::instance().editableMode) {
+            // the exit-view-mode button will also check and be disabled in this case so things are fully non-editable
+            mainViewMode     = ViewMode::VIEW;
+            previousViewMode = ViewMode::VIEW;
+        }
+    }
 
     void openNewWindow() {
 #ifdef EMSCRIPTEN
@@ -144,6 +152,8 @@ public:
         }
         LookAndFeel::mutableInstance().style = style;
 
+        ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
+
         // with the dark style the plot frame would have the same color as a button. make it have the
         // same color as the window background instead.
         ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
@@ -151,7 +161,7 @@ public:
 
     void setStyle(LookAndFeel::Style style) {
         setImGuiStyle(style);
-        flowgraphPage.setStyle(style);
+        flowgraphPage.updateStyle();
     }
 
     void init(int argc, char** argv) {
@@ -213,12 +223,37 @@ public:
         }
     }
 
+    [[nodiscard]] bool viewModeReturnIsExitRequested(float startHeight) const noexcept {
+        const ImRect buttonArea{{0, startHeight}, ImGui::GetMainViewport()->Size};
+        ImGui::SetNextWindowSize(buttonArea.GetSize());
+        ImGui::SetNextWindowPos(buttonArea.GetTL());
+        IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
+        const auto  unlockPopupID = "Unlock the dashboard?##lockModeDisableInputBlockerPopup";
+        ImGui::SetCursorScreenPos(buttonArea.GetTL());
+        if ((ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) && Digitizer::Settings::instance().editableMode) {
+            ImGui::OpenPopup(unlockPopupID);
+        }
+
+        bool exitRequested = false;
+        using namespace components;
+        if (const auto popup = beginYesNoPopup(unlockPopupID); isPopupOpen(popup)) {
+            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+            if (isPopupConfirmed(popup)) {
+                exitRequested = true;
+            }
+            ImGui::EndPopup();
+        }
+        return exitRequested;
+    }
+
     void processAndRender() {
         {
-            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+            IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 
             if (prepareForANewDashboardToLoad) {
                 prepareForANewDashboardToLoad = false;
@@ -248,13 +283,24 @@ public:
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
                     dashboardPage->setLayoutType(loadedDashboard->layout);
+                    dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
+                    dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                     flowgraphPage.reset();
                 }
             }
 
-            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::LAYOUT) {
+            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
                 if (dashboard != nullptr && dashboard->isInitialised) {
-                    dashboardPage->draw(mainViewMode == ViewMode::VIEW ? DashboardPage::Mode::View : DashboardPage::Mode::Layout);
+                    const auto mode = [&] {
+                        using enum DashboardPage::Mode;
+                        switch (mainViewMode) {
+                        case ViewMode::VIEW: return View;
+                        case ViewMode::INTERACTION: return Interaction;
+                        case ViewMode::LAYOUT: return Layout;
+                        default: assert(false); return View;
+                        }
+                    }();
+                    dashboardPage->draw(mode);
                 }
             } else if (mainViewMode == ViewMode::FLOWGRAPH) {
                 if (dashboard != nullptr && dashboard->isInitialised) {
@@ -270,6 +316,10 @@ public:
             } else {
                 auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
                 components::Notification::warning(msg);
+            }
+
+            if (mainViewMode == ViewMode::VIEW && this->viewModeReturnIsExitRequested(lockedModeBlockerStart)) {
+                mainViewMode = ViewMode::INTERACTION;
             }
         }
 

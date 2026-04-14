@@ -104,7 +104,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, layoutMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
 
         _waterfall.setPreferGpu(gpu_acceleration);
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
@@ -112,7 +112,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         }
 
         if (_signalSinks.empty()) {
-            drawEmptyPlot("No signals", plotFlags, plotSize);
+            drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
@@ -140,7 +140,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
-        drawTopPane(plotFlags, showGrid);
+        drawTopPane(plotFlags, showGrid, chartMode);
         drawBottomPane(plotFlags, showGrid);
 
         ImPlot::EndSubplots();
@@ -149,7 +149,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     void setupFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond); }
 
-    void drawTopPane(ImPlotFlags plotFlags, bool showGrid) {
+    void drawTopPane(ImPlotFlags plotFlags, bool showGrid, ChartMode chartMode) {
         const bool isDensity = (top_pane_mode.value == TopPaneMode::Density);
 
         ImGui::PushID("top");
@@ -170,7 +170,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             }
 
             tooltip::showPlotMouseTooltip();
-            handleCommonInteractions();
+            handleCommonInteractions(chartMode);
 
             auto yLimits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y1).Y;
             _topPaneYMin = yLimits.Min;

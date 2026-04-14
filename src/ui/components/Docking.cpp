@@ -159,27 +159,20 @@ void DockSpace::drawEditableWindowDragArea() {
     if (GImGui->DragDropActive && !GImGui->DragDropPayload.IsDataType(IMGUI_PAYLOAD_TYPE_WINDOW)) {
         buttonFlags |= ImGuiButtonFlags_PressedOnDragDropHold;
     }
-    const bool pressed = ImGui::InvisibleButton("windowDragButton", dragArea.GetSize(), buttonFlags);
-    const bool held    = ImGui::IsItemActive();
-    const bool hovered = ImGui::IsItemHovered();
+    const bool     pressed        = ImGui::InvisibleButton("windowDragButton", dragArea.GetSize(), buttonFlags);
+    const bool     held           = ImGui::IsItemActive();
+    const bool     hovered        = ImGui::IsItemHovered();
+    const bool     isFloating     = !currentWindow->DockIsActive;
+    const uint32_t highlightColor = [&] {
+        if ((held || pressed) && !isFloating) {
+            return rgbToImGuiABGR(0x63e69f, 0x99); // mouse down, trying to undock
+        }
+        return rgbToImGuiABGR(hovered ? 0x6ec9cf : 0x9ef7f1, 0x99);
+    }();
 
-    const bool windowAlreadyBeingDragged = GImGui->MovingWindow == currentWindow;
-    const bool isFloating                = !currentWindow->DockIsActive;
+    currentWindow->DrawList->AddRectFilled(dragArea.GetTR(), dragArea.GetBL(), highlightColor);
 
-    if (hovered || pressed || held) {
-        const uint32_t highlightColor = [&] {
-            if (windowAlreadyBeingDragged) {
-                return 0x33333333U; // window is being dragged
-            } else if ((held || pressed) && !isFloating) {
-                return 0x3300FF00U; // almost dragging a docked window, but drag lock is in effect
-            } else {
-                return 0x33FF0000U; // just hovering
-            }
-        }();
-        currentWindow->DrawList->AddRectFilled(dragArea.GetTR(), dragArea.GetBL(), highlightColor);
-    }
-
-    if (!windowAlreadyBeingDragged && held) {
+    if (held) {
         const float dragMinimumDelta = isFloating ? 0.0f : 30.f;
 
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, dragMinimumDelta)) {

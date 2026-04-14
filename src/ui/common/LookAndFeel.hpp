@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cstdint>
 
+#include <imgui.h>
+
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
 
 /**
@@ -23,6 +25,28 @@ constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0
 struct ImFont;
 
 namespace DigitizerUi {
+
+/// Colors that are not obviously included in the regular ImGuiStyle
+/// TODO: maybe include popup menu colors (light grey hamburger icon, green buttons
+/// on hamburger popup, red/violet buttons on radial menu) here, or make those use
+/// colors from a style
+struct Palette {
+    ImVec4 gridLines;
+
+    // main window buttons, shown on top of windowBg color, bg colors can be transparent
+    ImVec4 mainWindowButtonIcon;
+    ImVec4 mainWindowButtonBgInactive;
+    ImVec4 mainWindowButtonBgHovered;
+    ImVec4 mainWindowButtonBgActive;
+
+    ImVec4 notificationWindowBg;
+
+    ImVec4 toolbarLineColor;
+
+    ImVec4 flowgraphBg;
+    ImVec4 flowgraphNodeBg;
+    ImVec4 flowgraphNodeBorder;
+};
 
 struct LookAndFeel {
     enum class Style { Light, Dark };
@@ -50,6 +74,9 @@ struct LookAndFeel {
     ImFont*                   fontIconsSolidBig;
     ImFont*                   fontIconsSolidLarge;
     std::chrono::seconds      editPaneCloseDelay{15};
+
+    [[nodiscard]] const Palette& palette() const noexcept;
+    [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
 
     Style      style      = Style::Light;
     WindowMode windowMode = WindowMode::RESTORED;

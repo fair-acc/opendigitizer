@@ -740,7 +740,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, layoutMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
 
         if (_pendingResizeTime == 0.0 && _surface.width() > 0) {
             if (_surface._historyDepth != static_cast<std::size_t>(n_history)) {
@@ -750,14 +750,14 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         }
 
         if (_signalSinks.empty()) {
-            drawEmptyPlot("No signals", plotFlags, plotSize);
+            drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
         fetchAndPushData();
 
         if (_surface.filledRows() < 2 || _surface._freqAxis.empty()) {
-            drawEmptyPlot("Waiting for data", plotFlags, plotSize);
+            drawEmptyPlot("Waiting for data", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 

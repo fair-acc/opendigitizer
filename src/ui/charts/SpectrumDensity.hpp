@@ -75,10 +75,10 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, layoutMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
-            drawEmptyPlot("No signals", plotFlags, plotSize);
+            drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
@@ -116,7 +116,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
         drawDensitySignals();
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions();
+        handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
         ImPlot::PopStyleColor();
 

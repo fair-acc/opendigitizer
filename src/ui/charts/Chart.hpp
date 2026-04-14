@@ -722,19 +722,25 @@ struct State {
 };
 inline State g_state;
 
-inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
+template<typename Callable>
+requires std::is_invocable_r_v<bool, Callable, const Payload&>
+inline bool handleDropTarget(Callable&& handler, const char* payloadType) {
     bool dropped = false;
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
             const auto* dnd = static_cast<const Payload*>(payload->Data);
-            if (dnd && dnd->isValid() && dnd->hasSource()) {
-                g_state.accepted = true;
-                dropped          = true;
+            if (dnd && dnd->isValid()) {
+                g_state.accepted = std::invoke(handler, *dnd);
+                dropped          = g_state.accepted;
             }
         }
         ImGui::EndDragDropTarget();
     }
     return dropped;
+}
+
+inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
+    return handleDropTarget([](const Payload& payload) { return payload.hasSource(); }, payloadType);
 }
 
 inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType) {
@@ -866,11 +872,17 @@ inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     }
 }
 
+enum class ChartMode : std::uint8_t {
+    Interaction,
+    View,
+    Layout,
+};
+
 struct DrawPrologue {
     ImPlotFlags plotFlags;
     ImVec2      plotSize;
     bool        showLegend;
-    bool        layoutMode;
+    ChartMode   chartMode;
     bool        showGrid;
 };
 
@@ -1680,27 +1692,28 @@ struct Chart {
         self.syncSinksIfNeeded(self.data_sinks.value);
         self.refreshCapacityIfNeeded();
 
-        bool layoutMode = false;
-        if (const auto it = config.find("layoutMode"); it != config.end()) {
-            layoutMode = it->second.value_or(false);
+        ChartMode chartMode = ChartMode::View;
+        if (const auto it = config.find("chartMode"); it != config.end()) {
+            if (auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}))) {
+                chartMode = *mode;
+            }
         }
+        const bool layoutMode = chartMode == ChartMode::Layout;
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {
-            // show_legend is unused for now, as there is no view-only mode where you *wouldn't* already show_legend
-            effectiveShowLegend = !layoutMode; // self.show_legend.value || layoutMode;
+            effectiveShowLegend = chartMode == ChartMode::Interaction || self.show_legend.value;
         }
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
         ImVec2      plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
-        ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus;
+        ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
         }
 
-        if (layoutMode) {
-            // not strictly necessary, the drag and drop buttons in layoutmode already cover the plot
-            plotFlags |= ImPlotFlags_NoInputs;
+        if (chartMode == ChartMode::View || chartMode == ChartMode::Layout) {
+            plotFlags |= ImPlotFlags_NoInputs | ImPlotFlags_NoBoxSelect;
         }
 
         bool effectiveShowGrid = true;
@@ -1708,7 +1721,7 @@ struct Chart {
             effectiveShowGrid = self.show_grid.value;
         }
 
-        return DrawPrologue{plotFlags, plotSize, effectiveShowLegend, layoutMode, effectiveShowGrid};
+        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid};
     }
 
     template<typename Self>
@@ -1793,7 +1806,11 @@ struct Chart {
     }
 
     template<typename Self>
-    void handleCommonInteractions(this Self& self) {
+    void handleCommonInteractions(this Self& self, ChartMode mode) {
+        if (mode == ChartMode::View || mode == ChartMode::Layout) {
+            return;
+        }
+
         if constexpr (requires {
                           self.x_auto_scale;
                           self.y_auto_scale;
@@ -1849,7 +1866,7 @@ struct Chart {
     }
 
     template<typename Self>
-    void drawEmptyPlot(this Self& self, const char* message, ImPlotFlags plotFlags, const ImVec2& size) {
+    void drawEmptyPlot(this Self& self, const char* message, ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode) {
         if (DigitizerUi::TouchHandler<>::BeginZoomablePlot(self.chart_name.value, size, plotFlags)) {
             ImPlot::SetupAxis(ImAxis_X1, "X", ImPlotAxisFlags_None);
             ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_None);
@@ -1859,7 +1876,7 @@ struct Chart {
             auto limits = ImPlot::GetPlotLimits();
             ImPlot::PlotText(message, (limits.X.Min + limits.X.Max) / 2, (limits.Y.Min + limits.Y.Max) / 2);
             tooltip::showPlotMouseTooltip();
-            self.handleCommonInteractions();
+            self.handleCommonInteractions(chartMode);
             DigitizerUi::TouchHandler<>::EndZoomablePlot();
         }
     }
@@ -2053,6 +2070,7 @@ struct Chart {
 
         ImGui::Separator();
         self.drawChartTypeSubmenu();
+        opendigitizer::charts::drawRemoveChartMenuItem(self.unique_name);
     }
 
     /// draws axis-specific or full context menu depending on what was right-clicked

@@ -60,24 +60,24 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, layoutMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
-            drawEmptyPlot("No signals", plotFlags, plotSize);
+            drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
         if (_signalSinks.size() == 1) {
-            drawXYFallback(plotFlags, plotSize, showGrid);
+            drawXYFallback(plotFlags, plotSize, chartMode, showGrid);
             return gr::work::Status::OK;
         }
 
         if (_signalSinks.size() == 2) {
-            drawCorrelation(plotFlags, plotSize, showGrid);
+            drawCorrelation(plotFlags, plotSize, chartMode, showGrid);
             return gr::work::Status::OK;
         }
 
-        drawMultiCorrelation(plotFlags, plotSize, showGrid);
+        drawMultiCorrelation(plotFlags, plotSize, chartMode, showGrid);
         return gr::work::Status::OK;
     }
 
@@ -93,23 +93,23 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
     }
 
-    void drawXYFallback(ImPlotFlags plotFlags, const ImVec2& size, bool showGrid = true) {
+    void drawXYFallback(ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode, bool showGrid = true) {
         const std::shared_ptr<SignalSink>& sinkPtr = _signalSinks[0];
         if (!sinkPtr) {
-            drawEmptyPlot("No data", plotFlags, size);
+            drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
 
         // Skip if signal is hidden
         if (!sinkPtr->drawEnabled()) {
-            drawEmptyPlot("Signal hidden", plotFlags, size);
+            drawEmptyPlot("Signal hidden", plotFlags, size, chartMode);
             return;
         }
 
         // Acquire lock for thread-safe data access
         DataGuard dataLock = sinkPtr->dataGuard();
         if (sinkPtr->size() == 0) {
-            drawEmptyPlot("No data", plotFlags, size);
+            drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
 
@@ -165,22 +165,22 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             &ctx, static_cast<int>(dataCount));
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions();
+        handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
     }
 
-    void drawCorrelation(ImPlotFlags plotFlags, const ImVec2& size, bool showGrid = true) {
+    void drawCorrelation(ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode, bool showGrid = true) {
         const auto& sinkXPtr = _signalSinks[0];
         const auto& sinkYPtr = _signalSinks[1];
 
         if (!sinkXPtr || !sinkYPtr) {
-            drawEmptyPlot("Invalid sinks", plotFlags, size);
+            drawEmptyPlot("Invalid sinks", plotFlags, size, chartMode);
             return;
         }
 
         // Skip if any signal is hidden
         if (!sinkXPtr->drawEnabled() || !sinkYPtr->drawEnabled()) {
-            drawEmptyPlot("Signal hidden", plotFlags, size);
+            drawEmptyPlot("Signal hidden", plotFlags, size, chartMode);
             return;
         }
 
@@ -191,7 +191,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         std::size_t totalCount = std::min(sinkXPtr->size(), sinkYPtr->size());
         if (totalCount == 0) {
-            drawEmptyPlot("No data", plotFlags, size);
+            drawEmptyPlot("No data", plotFlags, size, chartMode);
             return;
         }
 
@@ -255,7 +255,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             &ctx, static_cast<int>(count));
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions();
+        handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
     }
 
@@ -282,14 +282,14 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         return result;
     }
 
-    void drawMultiCorrelation(ImPlotFlags plotFlags, const ImVec2& size, bool showGrid = true) {
+    void drawMultiCorrelation(ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode, bool showGrid = true) {
         const auto& sinkXPtr = _signalSinks[0];
         if (!sinkXPtr) {
-            drawEmptyPlot("No X data", plotFlags, size);
+            drawEmptyPlot("No X data", plotFlags, size, chartMode);
             return;
         }
         if (!sinkXPtr->drawEnabled()) {
-            drawEmptyPlot("X signal hidden", plotFlags, size);
+            drawEmptyPlot("X signal hidden", plotFlags, size, chartMode);
             return;
         }
 
@@ -297,7 +297,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         {
             DataGuard lockX = sinkXPtr->dataGuard();
             if (sinkXPtr->size() == 0) {
-                drawEmptyPlot("No X data", plotFlags, size);
+                drawEmptyPlot("No X data", plotFlags, size, chartMode);
                 return;
             }
         }
@@ -400,7 +400,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions();
+        handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
     }
 };

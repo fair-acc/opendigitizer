@@ -24,7 +24,7 @@ struct ToolbarRAII {
             const float    width     = ImGui::GetWindowWidth();
             const float    y         = (ImGui::GetWindowPos().y + ImGui::GetWindowHeight()) - 1;
             const float    x         = ImGui::GetWindowPos().x;
-            const uint32_t lineColor = LookAndFeel::instance().style == LookAndFeel::Style::Light ? 0x40000000 : 0x40ffffff;
+            const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
             ImGui::GetWindowDrawList()->AddLine(ImVec2(x, y), ImVec2(width, y), lineColor);
 
             ImGui::EndChild();

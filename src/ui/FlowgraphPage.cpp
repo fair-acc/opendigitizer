@@ -818,7 +818,7 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
 
     auto& editor = _editors.emplace_back(name, graphModel, rootBlock, _editors.size());
 
-    editor.setStyle(LookAndFeel::instance().style);
+    editor.updateStyle();
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
 
     editor.requestGraphEdit = [&](UiGraphBlock* block) { pushEditor(block->blockUniqueName, graphModel, block); };
@@ -854,9 +854,9 @@ void FlowgraphPage::popEditor() {
     }
 }
 
-void FlowgraphPage::setStyle(LookAndFeel::Style style) {
+void FlowgraphPage::updateStyle() {
     for (auto& editor : _editors) {
-        editor.setStyle(style);
+        editor.updateStyle();
     }
 }
 

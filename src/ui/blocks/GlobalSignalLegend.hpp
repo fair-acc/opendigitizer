@@ -52,15 +52,20 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
         ClickResult                result = ClickResult::None;
         constexpr ImGuiMouseButton kRMB   = ImGuiMouseButton_Right;
 
-        const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-        const ImVec2 rectSize(ImGui::GetTextLineHeight() - 4, ImGui::GetTextLineHeight());
+        IMW::StyleVar resetSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});     // no space between button and color rect
+        const ImVec2  innerPad      = ImPlot::GetStyle().LegendInnerPadding; // mimic implot legends
+        const auto    textSize      = ImGui::CalcTextSize(text.data());
+        const auto    buttonSize    = textSize + innerPad * 2;
+        const ImVec2  colorRectSize = {ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()};
 
-        // colour indicator square
-        ImGui::GetWindowDrawList()->AddRectFilled(cursorPos + ImVec2(0, 2), cursorPos + rectSize - ImVec2(0, 2), rgbToImGuiABGR(color));
-
-        if (ImGui::InvisibleButton("##ColorBox", rectSize)) {
+        // colour indicator square, centered vertically next to the text
+        const auto cursorOriginalY = ImGui::GetCursorPosY();
+        ImGui::SetCursorPosY(cursorOriginalY + (buttonSize.y - colorRectSize.y) / 2.f);
+        if (ImGui::InvisibleButton("##ColorBox", colorRectSize)) {
             result = ClickResult::Left;
         }
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color));
+
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
             if (ImGui::IsMouseReleased(kRMB)) {
@@ -70,8 +75,6 @@ struct GlobalSignalLegend : gr::Block<GlobalSignalLegend, gr::Drawable<gr::UICat
         ImGui::SameLine();
 
         // signal name button with transparent background
-        ImVec2 buttonSize(rectSize.x + ImGui::CalcTextSize(text.data()).x - 4, ImGui::GetTextLineHeight());
-
         IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
         IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.1f));
         IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));

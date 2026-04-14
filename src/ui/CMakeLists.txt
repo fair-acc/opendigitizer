@@ -210,6 +210,7 @@ add_library(
   components/Splitter.cpp
   components/Splitter.hpp
   components/Toolbar.hpp
+  components/YesNoPopup.hpp
   utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
   common/AppDefinitions.hpp
   common/Events.hpp

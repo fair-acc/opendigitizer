@@ -83,10 +83,10 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, layoutMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
-            drawEmptyPlot("No signals", plotFlags, plotSize);
+            drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
@@ -100,7 +100,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         ImPlot::SetupFinish();
         drawSignals();
         tooltip::showPlotMouseTooltip();
-        handleCommonInteractions();
+        handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
 
         return gr::work::Status::OK;
