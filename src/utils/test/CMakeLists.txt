@@ -17,7 +17,7 @@ add_executable(qa_PeriodicTimer qa_PeriodicTimer.cpp)
 target_include_directories(qa_PeriodicTimer INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
                                                       $<INSTALL_INTERFACE:include/>)
 add_test(NAME qa_PeriodicTimer COMMAND qa_PeriodicTimer)
-target_link_libraries(qa_PeriodicTimer PRIVATE ut gnuradio-core)
+target_link_libraries(qa_PeriodicTimer PRIVATE ut gnuradio4::gnuradio-core)
 
 add_executable(qa_Xoshiro256pp qa_Xoshiro256pp.cpp)
 target_link_libraries(qa_Xoshiro256pp PRIVATE ut)

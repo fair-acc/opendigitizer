@@ -725,12 +725,12 @@ struct SinkAdapter : public SignalSink {
     [[nodiscard]] YRangeResult getY(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const override {
         auto* b = blockPtr();
         if (!b) {
-            return {{}, 0.0, 0.0};
+            return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
         }
         if constexpr (requires { b->getY(tMin, tMax); }) {
             return b->getY(tMin, tMax);
         }
-        return {{}, 0.0, 0.0};
+        return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
     }
 
     [[nodiscard]] TagRangeResult getTags(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const override {

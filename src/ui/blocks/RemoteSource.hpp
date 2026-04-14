@@ -23,6 +23,10 @@
 
 #include "../utils/TransparentStringHash.hpp"
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#endif
+
 namespace opendigitizer {
 
 inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
@@ -130,7 +134,7 @@ struct RemoteSourceSubscription {
         const auto         guard      = std::scoped_lock{callbacksMutex};
         std::size_t        id         = lastUsedId;
         ++lastUsedId;
-        auto [_, wasEmplaced] = userCallbacks.try_emplace(id, std::move(callback));
+        const auto wasEmplaced = userCallbacks.try_emplace(id, std::move(callback)).second;
         assert(wasEmplaced);
         return id;
     }

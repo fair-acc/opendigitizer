@@ -68,7 +68,7 @@ static const ImGuiWindowFlags NOTIFY_DEFAULT_TOAST_FLAGS = ImGuiWindowFlags_Alwa
     if (format) {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
         va_list args;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \
         va_start(args, format);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                \
-        fn(format, args, ##__VA_ARGS__);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       \
+        fn(format, args __VA_OPT__(,) __VA_ARGS__);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       \
         va_end(args);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \
     }
 
@@ -98,11 +98,11 @@ private:
 private:
     // Setters
 
-    inline void setTitle(const char* format, va_list args) { vsnprintf(this->title, sizeof(this->title), format, args); }
+    [[gnu::format(printf, 2, 0)]] inline void setTitle(const char* format, va_list args) { vsnprintf(this->title, sizeof(this->title), format, args); }
 
-    inline void setContent(const char* format, va_list args) { vsnprintf(this->content, sizeof(this->content), format, args); }
+    [[gnu::format(printf, 2, 0)]] inline void setContent(const char* format, va_list args) { vsnprintf(this->content, sizeof(this->content), format, args); }
 
-    inline void setButtonLabel(const char* format, va_list args) { vsnprintf(this->buttonLabel, sizeof(this->buttonLabel), format, args); }
+    [[gnu::format(printf, 2, 0)]] inline void setButtonLabel(const char* format, va_list args) { vsnprintf(this->buttonLabel, sizeof(this->buttonLabel), format, args); }
 
 public:
     /**
@@ -111,7 +111,7 @@ public:
      * @param format The format string for the title.
      * @param ... The arguments for the format string.
      */
-    inline void setTitle(const char* format, ...) { NOTIFY_FORMAT(this->setTitle, format); }
+    [[gnu::format(printf, 2, 3)]] inline void setTitle(const char* format, ...) { NOTIFY_FORMAT(this->setTitle, format); }
 
     /**
      * @brief Set the content of the toast notification.
@@ -119,7 +119,7 @@ public:
      * @param format The format string for the content.
      * @param ... The arguments for the format string.
      */
-    inline void setContent(const char* format, ...) { NOTIFY_FORMAT(this->setContent, format); }
+    [[gnu::format(printf, 2, 3)]] inline void setContent(const char* format, ...) { NOTIFY_FORMAT(this->setContent, format); }
 
     /**
      * @brief Set the type of the toast notification.
@@ -151,7 +151,7 @@ public:
      * @param format The format string for the label.
      * @param ... The arguments for the format string.
      */
-    inline void setButtonLabel(const char* format, ...) { NOTIFY_FORMAT(this->setButtonLabel, format); }
+    [[gnu::format(printf, 2, 3)]] inline void setButtonLabel(const char* format, ...) { NOTIFY_FORMAT(this->setButtonLabel, format); }
 
 public:
     // Getters
@@ -320,7 +320,7 @@ public:
      * @param format The format string for the message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type_, const char* format, ...) : ImGuiToast(type_) { NOTIFY_FORMAT(this->setContent, format); }
+    [[gnu::format(printf, 3, 4)]] ImGuiToast(ImGuiToastType type_, const char* format, ...) : ImGuiToast(type_) { NOTIFY_FORMAT(this->setContent, format); }
 
     /**
      * @brief Constructor for creating a new ImGuiToast object with a specified type, dismiss time, and content format.
@@ -330,7 +330,7 @@ public:
      * @param format The format string for the content of the toast message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type_, int dismissTime, const char* format, ...) : ImGuiToast(type_, dismissTime) { NOTIFY_FORMAT(this->setContent, format); }
+    [[gnu::format(printf, 4, 5)]] ImGuiToast(ImGuiToastType type_, int dismissTime, const char* format, ...) : ImGuiToast(type_, dismissTime) { NOTIFY_FORMAT(this->setContent, format); }
 
     /**
      * @brief Constructor for creating a new ImGuiToast object with a specified type, dismiss time, title format, content format and a button.
@@ -342,11 +342,11 @@ public:
      * @param format The format string for the content of the toast message.
      * @param ... The variable arguments to be formatted according to the format string.
      */
-    ImGuiToast(ImGuiToastType type_, int dismissTime, const char* buttonLabel, const std::function<void()>& onButtonPress, const char* format, ...) : ImGuiToast(type_, dismissTime) {
+    [[gnu::format(printf, 6, 7)]] ImGuiToast(ImGuiToastType type_, int dismissTime, const char* buttonLabel, const std::function<void()>& onButtonPress, const char* format, ...) : ImGuiToast(type_, dismissTime) {
         NOTIFY_FORMAT(this->setContent, format);
 
         this->onButtonPress = onButtonPress;
-        this->setButtonLabel(buttonLabel);
+        this->setButtonLabel("%s", buttonLabel);
     }
 };
 
@@ -548,21 +548,21 @@ struct Notification {
     std::string               text;
     std::chrono::milliseconds dismissTime{5000};
 
-    inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
 
-    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), text.c_str()}); }
+    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
 
-    inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
 
-    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), text.c_str()}); }
+    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
 
-    inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
 
-    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), text.c_str()}); }
+    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
 
-    inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), notification.text.c_str()}); }
+    inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
 
-    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), text.c_str()}); }
+    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
 
     inline static void render() {
         // Notifications style setup

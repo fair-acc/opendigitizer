@@ -43,7 +43,7 @@ inline void Toolbar(const std::vector<gr::BlockModel*>& blocks) {
     if (toolbar.valid) {
         for (const auto& b : blocks) {
             // TODO: if (b->isToolbarBlock()) {
-            b->draw();
+            std::ignore = b->draw();
             ImGui::SameLine();
         }
     }

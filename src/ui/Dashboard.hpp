@@ -133,9 +133,9 @@ struct Dashboard {
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
         std::vector<std::string> pluginPaths;
 #ifndef __EMSCRIPTEN__
-        pluginPaths.push_back(std::filesystem::current_path() / "plugins");
+        pluginPaths.push_back((std::filesystem::current_path() / "plugins").string());
 #endif
-        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), pluginPaths);
+        return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     }();
     std::atomic<bool>               isInUse = false;
     std::function<void(Dashboard*)> requestClose;

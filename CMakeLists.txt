@@ -73,12 +73,16 @@ option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
+  string(REPLACE ";" "|" _wasm_cmake_prefix_path "${CMAKE_PREFIX_PATH}")
   ExternalProject_Add(
     ui-wasm
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
     PREFIX ${PREFIX_DIR}/ui-wasm
+    LIST_SEPARATOR |
     CONFIGURE_COMMAND
       ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm
+      -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path}
+      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
       -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER} ${OD_WASM_CMAKE_OPTIONS}
     BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm

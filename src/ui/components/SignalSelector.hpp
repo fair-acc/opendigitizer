@@ -68,7 +68,7 @@ private:
     FilterComboBoxes<CategoryData>  m_filterCombos;
 
     bool        m_forceRefresh                = false;
-    bool        m_addRemoteSignalDialogOpened = false;
+    //bool        m_addRemoteSignalDialogOpened = false;
     std::string m_addRemoteSignalUri;
 
     opencmw::service::dns::QueryEntry m_queryFilter;

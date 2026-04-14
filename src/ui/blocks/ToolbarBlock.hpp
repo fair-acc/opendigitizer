@@ -167,7 +167,7 @@ private:
             IMW::Disabled      _(disabled);
             IMW::Font          font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
             IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
-            const bool         clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
+            [[maybe_unused]] const bool clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
             ImGui::SameLine();
         }
 #if 0 // TODO port to new messaging architecture
@@ -196,7 +196,7 @@ struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::Drawable<g
 
     void processMessages(auto&, std::span<const gr::Message> messages) {
         using namespace gr::message;
-        for (const gr::Message& msg : messages) {
+        for ([[maybe_unused]] const gr::Message& msg : messages) {
 #if 0 // TODO port to new messaging architecture
             if (msg.contains(key::Kind) && msg.contains(key::What) && std::get<std::string>(msg.at(key::Kind)) == kind::SettingsChanged) {
                 this->settings().set({ { std::string("message"), std::get<std::string>(msg.at(key::What)) } });

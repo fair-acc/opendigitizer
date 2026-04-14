@@ -450,13 +450,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] SignalSink::YRangeResult getY(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const {
         if constexpr (IsStreaming) {
             if (_yValues.empty() || _xValues.empty()) {
-                return {{}, 0.0, 0.0};
+                return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
             }
 
             // Get the X range first to determine indices
             auto xResult = getX(tMin, tMax);
             if (xResult.data.empty()) {
-                return {{}, xResult.actual_t_min, xResult.actual_t_max};
+                return {.data = {}, .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = {}};
             }
 
             // Calculate indices from X range
@@ -466,7 +466,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
             if constexpr (std::is_same_v<ValueType, float>) {
                 auto ySpan = _yValues.get_span(0);
-                return {ySpan.subspan(startIdx, count), xResult.actual_t_min, xResult.actual_t_max};
+                return {.data = ySpan.subspan(startIdx, count), .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = {}};
             } else {
                 // non-float: convert to owned float storage so the span is self-contained
                 auto storage = std::make_shared<std::vector<float>>(count);
@@ -474,10 +474,10 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 for (std::size_t i = 0; i < count; ++i) {
                     (*storage)[i] = static_cast<float>(ySpan[startIdx + i]);
                 }
-                return {std::span<const float>(*storage), xResult.actual_t_min, xResult.actual_t_max, std::move(storage)};
+                return {.data = std::span<const float>(*storage), .actual_t_min = xResult.actual_t_min, .actual_t_max = xResult.actual_t_max, ._storage = std::move(storage)};
             }
         }
-        return {{}, 0.0, 0.0};
+        return {.data = {}, .actual_t_min = 0.0, .actual_t_max = 0.0, ._storage = {}};
     }
 
     [[nodiscard]] SignalSink::TagRangeResult getTags(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const {
@@ -530,7 +530,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
             const gr::property_map& tagMap = tagMapRef.get();
             if (tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-
                 const auto   offset       = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
                 const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tagMap, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
                 const double tagEventTime = utcTime * 1e-9 + offset; // [s]
