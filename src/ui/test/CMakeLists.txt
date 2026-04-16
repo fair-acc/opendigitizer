@@ -76,9 +76,9 @@ if(ENABLE_IMGUI_TEST_ENGINE)
               ut
               imgui_tests_common
               gnuradio4::gnuradio-blocklib-core
-              GrBasicBlocksShared
-              GrTestingBlocksShared
-              GrFourierBlocksShared)
+              gnuradio4::GrBasicBlocksShared
+              gnuradio4::GrTestingBlocksShared
+              gnuradio4::GrFourierBlocksShared)
     add_test(NAME ${NAME} COMMAND ${NAME})
   endfunction()
 

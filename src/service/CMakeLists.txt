@@ -135,14 +135,14 @@ target_link_libraries(
           digitizer_settings
           gnuradio4::gnuradio-core
           gnuradio4::gnuradio-blocklib-core
-          GrBasicBlocksShared
-          GrElectricalBlocksShared
-          GrFileIoBlocksShared
-          GrFilterBlocksShared
-          GrFourierBlocksShared
-          GrHttpBlocksShared
-          GrMathBlocksShared
-          GrTestingBlocksShared)
+          gnuradio4::GrBasicBlocksShared
+          gnuradio4::GrElectricalBlocksShared
+          gnuradio4::GrFileIoBlocksShared
+          gnuradio4::GrFilterBlocksShared
+          gnuradio4::GrFourierBlocksShared
+          gnuradio4::GrHttpBlocksShared
+          gnuradio4::GrMathBlocksShared
+          gnuradio4::GrTestingBlocksShared)
 
 add_custom_target(
   run-opendigitizer

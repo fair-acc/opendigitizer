@@ -23,6 +23,10 @@
 
 #include "../utils/TransparentStringHash.hpp"
 
+#ifdef __GNUC__
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#endif
+
 namespace opendigitizer {
 
 inline opencmw::URI<> resolveRelativeTopic(const std::string& remote, const std::string& base) {
