@@ -81,9 +81,12 @@ public:
     ~DashboardPage();
 
     void draw(Mode mode = Mode::View) noexcept;
-    void setLayoutType(DockingLayoutType);
+
     void setRequestViewOnlyModeHandler(std::function<void()>&& function) { _requestViewOnlyMode = std::move(function); }
     void setRequestSetLayoutModeHandler(std::function<void(bool)>&& function) { _requestSetLayoutMode = std::move(function); }
+
+    void                                           setLayoutConfiguration(DockingLayoutType type, std::optional<gr::property_map> freeLayoutDescription);
+    std::pair<DockingLayoutType, gr::property_map> saveLayoutConfiguration() const;
 
     /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
 

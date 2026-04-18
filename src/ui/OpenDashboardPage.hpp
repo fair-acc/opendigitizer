@@ -12,6 +12,7 @@ class RestClient;
 }
 
 namespace DigitizerUi {
+class DashboardPage;
 
 class OpenDashboardPage {
 public:
@@ -21,7 +22,7 @@ public:
     std::function<void()>                                                   requestCloseDashboard;
     std::function<void(const std::shared_ptr<const DashboardDescription>&)> requestLoadDashboard;
 
-    void draw(Dashboard* optionalDashboard);
+    void draw(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage);
 
     void addDashboard(std::string_view path);
     void addDashboard(const std::shared_ptr<DashboardStorageInfo>& storageInfo, const auto& n);
@@ -29,7 +30,7 @@ public:
     std::shared_ptr<const DashboardDescription> get(const size_t index);
 
 private:
-    void dashboardControls(Dashboard* optionalDashboard);
+    void dashboardControls(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage);
     void drawAddSourcePopup();
     void unsubscribeSource(const std::shared_ptr<DashboardStorageInfo>& source);
 

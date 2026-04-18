@@ -212,6 +212,7 @@ add_library(
   components/Toolbar.hpp
   components/YesNoPopup.hpp
   utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
+  utils/ImGuiDockSpaceState.cpp
   common/AppDefinitions.hpp
   common/Events.hpp
   common/ImguiWrap.hpp

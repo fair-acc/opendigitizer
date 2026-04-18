@@ -350,7 +350,11 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
     };
 
     if (dashboard.contains("layout") && dashboard.at("layout").is_string()) {
-        layout = magic_enum::enum_cast<DockingLayoutType>(dashboard.at("layout").value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+        layoutType = magic_enum::enum_cast<DockingLayoutType>(dashboard.at("layout").value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+    }
+    const bool hasWindowLayout = dashboard.contains("windowLayout");
+    if (hasWindowLayout && dashboard.at("windowLayout").is_map()) {
+        windowLayout = dashboard.at("windowLayout").value_or(gr::property_map{});
     }
 
     auto sources = *readField.operator()<Tensor<pmt::Value>>(dashboard, "sources");
@@ -385,8 +389,16 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
 
         const auto name        = *readField.operator()<std::string>(plotMap, "name");
         const auto plotSources = *readField.operator()<Tensor<pmt::Value>>(plotMap, "sources");
-        const auto rect        = *readField.operator()<Tensor<pmt::Value>>(plotMap, "rect");
-        if (rect.size() != 4) {
+        auto       rect        = readField.operator()<Tensor<pmt::Value>>(plotMap, "rect", false);
+        if (!rect && !hasWindowLayout) {
+            throw gr::exception("Missing one of two possible required keys for describing dashboard window UI:"
+                                " [\"dashboard\"][\"windowLayout\"] or per-plot [\"rect\"] field");
+        }
+        if (rect && hasWindowLayout) {
+            std::println(stderr, "WARNING: plot rect and dashboard windowLayout both specified, ignoring rect");
+            rect = std::nullopt;
+        }
+        if (rect && rect->size() != 4) {
             throw gr::exception("invalid plot definition rect.size() != 4");
         }
 
@@ -427,13 +439,13 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
 
         // Set uiConstraints on the block (axes config and window layout for chart to read in draw())
         blockPtr->uiConstraints()["axes"] = axesConfig;
-        auto rectValue                    = [](const gr::pmt::Value& v) -> std::uint64_t {
+
+        constexpr auto rectValue = [](const gr::pmt::Value& v) -> std::uint64_t {
             if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
                 return *converted;
             }
             return 0ULL;
         };
-        blockPtr->uiConstraints()["window"] = gr::property_map{{"x", rectValue(rect[0])}, {"y", rectValue(rect[1])}, {"width", rectValue(rect[2])}, {"height", rectValue(rect[3])}};
 
         // Find the shared_ptr for this block in uiGraph
         std::shared_ptr<gr::BlockModel> blockShared;
@@ -446,11 +458,14 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
 
         // Create UIWindow for this chart (sink management done via settings interface)
         UIWindow uiWindow(blockShared, name);
-        if (uiWindow.window) {
-            uiWindow.window->x      = rectValue(rect[0]);
-            uiWindow.window->y      = rectValue(rect[1]);
-            uiWindow.window->width  = rectValue(rect[2]);
-            uiWindow.window->height = rectValue(rect[3]);
+
+        if (rect) {
+            uiWindow.window->freeLayoutPosition = {
+                .x      = static_cast<std::size_t>(rectValue((*rect)[0])),
+                .y      = static_cast<std::size_t>(rectValue((*rect)[1])),
+                .width  = static_cast<std::size_t>(rectValue((*rect)[2])),
+                .height = static_cast<std::size_t>(rectValue((*rect)[3])),
+            };
         }
 
         uiWindows.push_back(std::move(uiWindow));
@@ -488,6 +503,8 @@ void Dashboard::save() {
     });
     dashboardYaml["sources"] = sources;
 
+    dashboardYaml["windowLayout"] = windowLayout;
+
     gr::Tensor<gr::pmt::Value> plots;
     // Iterate UIWindows for chart serialization (new API)
     for (const auto& w : uiWindows) {
@@ -519,35 +536,6 @@ void Dashboard::save() {
             plotSinkBlockNames.emplace_back(sinkName);
         }
         plotMap["sources"] = plotSinkBlockNames;
-
-        // Serialize window rect from uiConstraints or DockSpace::Window
-        gr::Tensor<gr::pmt::Value> rectTensor(gr::extents_from, {std::size_t(4)});
-        if (constraints.contains("window")) {
-            if (const auto* windowMap = constraints.at("window").get_if<property_map>()) {
-                auto toUInt64 = [](const gr::pmt::Value& v) -> std::uint64_t {
-                    if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
-                        return *converted;
-                    }
-                    return 0ULL;
-                };
-                rectTensor[0] = toUInt64(windowMap->at("x"));
-                rectTensor[1] = toUInt64(windowMap->at("y"));
-                rectTensor[2] = toUInt64(windowMap->at("width"));
-                rectTensor[3] = toUInt64(windowMap->at("height"));
-            }
-        } else if (w.window) {
-            rectTensor[0] = static_cast<std::uint64_t>(w.window->x);
-            rectTensor[1] = static_cast<std::uint64_t>(w.window->y);
-            rectTensor[2] = static_cast<std::uint64_t>(w.window->width);
-            rectTensor[3] = static_cast<std::uint64_t>(w.window->height);
-        } else {
-            rectTensor[0] = std::uint64_t{0};
-            rectTensor[1] = std::uint64_t{0};
-            rectTensor[2] = std::uint64_t{1};
-            rectTensor[3] = std::uint64_t{1};
-        }
-        plotMap["rect"] = std::move(rectTensor);
-
         plots.emplace_back(plotMap);
     }
     dashboardYaml["plots"] = plots;
@@ -559,21 +547,24 @@ void Dashboard::save() {
         hcommand.command          = opencmw::mdp::Command::Set;
         std::string headerYamlStr = pmt::yaml::serialize(headerYaml);
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
-        hcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        hcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
+        hcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(hcommand);
 
         opencmw::client::Command dcommand;
         dcommand.command             = opencmw::mdp::Command::Set;
         std::string dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
         dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
-        dcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        dcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
+        dcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(dcommand);
 
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
         std::stringstream stream;
         fcommand.data.put(stream.str());
-        fcommand.topic = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        fcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
+        fcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(fcommand);
     } else {
 #ifndef EMSCRIPTEN
@@ -604,7 +595,7 @@ void Dashboard::save() {
     }
 }
 
-DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int h, std::string_view chartType, const gr::property_map& chartInitialParameters) {
+DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(std::string_view chartType, const gr::property_map& chartInitialParameters) {
     std::string chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
 
     // Generate a unique name for the chart
@@ -620,14 +611,6 @@ DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int
         return emptyWindow;
     }
 
-    // Store window layout and default axes in uiConstraints
-    blockPtr->uiConstraints()["window"] = gr::property_map{
-        {"x", static_cast<std::uint64_t>(x)},
-        {"y", static_cast<std::uint64_t>(y)},
-        {"width", static_cast<std::uint64_t>(w)},
-        {"height", static_cast<std::uint64_t>(h)},
-    };
-
     // Find the shared_ptr for this block in uiGraph
     std::shared_ptr<gr::BlockModel> blockShared;
     for (auto& blk : uiGraph.blocks()) {
@@ -638,11 +621,7 @@ DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(int x, int y, int w, int
     }
 
     // Create UIWindow for this chart
-    UIWindow win(blockShared, chartName);
-    if (win.window) {
-        win.window->setGeometry({static_cast<float>(x), static_cast<float>(y)}, {static_cast<float>(w), static_cast<float>(h)});
-    }
-    uiWindows.push_back(std::move(win));
+    uiWindows.emplace_back(std::move(blockShared), std::move(chartName));
 
     return uiWindows.back();
 }

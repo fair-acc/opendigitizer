@@ -21,10 +21,11 @@ void Init();
 void Apply(ImDrawData* drawData);
 void Shutdown();
 
-inline bool  enabled   = true;
-inline float amplitude = 7.f;    // pixel displacement strength
-inline float frequency = 0.002f; // noise frequency (lower = smoother wobble)
-inline float seed      = 42.0f;  // deterministic noise seed
+inline bool         enabled      = true;
+inline float        amplitude    = 7.f;    // pixel displacement strength
+inline float        frequency    = 0.002f; // noise frequency (lower = smoother wobble)
+inline float        seed         = 42.0f;  // deterministic noise seed
+inline unsigned int minElemCount = 50;     // skip draw commands below this index count (filters grid/axis lines)
 
 } // namespace ImXkcd
 
@@ -39,18 +40,20 @@ inline float seed      = 42.0f;  // deterministic noise seed
 #include <SDL3/SDL_opengl.h>
 #endif
 
+#include <algorithm>
 #include <array>
 #include <print>
 
 namespace ImXkcd {
 namespace detail {
 
-inline GLuint g_program = 0;
-inline GLint  g_locProj = -1;
-inline GLint  g_locAmp  = -1;
-inline GLint  g_locFreq = -1;
-inline GLint  g_locSeed = -1;
-inline GLint  g_locTex  = -1;
+inline GLuint g_program     = 0;
+inline GLint  g_locProj     = -1;
+inline GLint  g_locAmp      = -1;
+inline GLint  g_locFreq     = -1;
+inline GLint  g_locSeed     = -1;
+inline GLint  g_locTex      = -1;
+inline GLint  g_locUtilMaxY = -1;
 
 #ifdef __EMSCRIPTEN__
 static constexpr auto* kGlslPrefix = "#version 300 es\nprecision mediump float;\n";
@@ -67,6 +70,7 @@ uniform mat4  ProjMtx;
 uniform float u_amplitude;
 uniform float u_frequency;
 uniform float u_seed;
+uniform float u_utilMaxY;
 
 out vec2 Frag_UV;
 out vec4 Frag_Color;
@@ -93,10 +97,10 @@ void main() {
     Frag_Color = Color;
     vec2 pos   = Position;
 
-    // only wobble untextured geometry — ImGui's white pixel at UV near (0,0)
-    // is used for all solid-color primitives (lines, fills, grid).
-    // text vertices have font atlas UVs well above this threshold.
-    if (UV.x < 0.01 && UV.y < 0.01) {
+    // wobble untextured geometry: white pixel, baked line textures, and cursor
+    // data all live in the top rows of the atlas (low V). Glyph UVs are below.
+    // u_utilMaxY is computed at runtime to stay correct across ImGui versions.
+    if (UV.y < u_utilMaxY) {
         // vertex-ID noise: travels with the line (dominant for dense polylines)
         float lineSeed = dot(Color.rgb, vec3(7.13, 157.7, 1117.3));
         float t = float(gl_VertexID) * u_frequency + lineSeed;
@@ -167,6 +171,15 @@ inline void enableCallback(const ImDrawList*, const ImDrawCmd*) {
     glUniform1f(g_locFreq, frequency);
     glUniform1f(g_locSeed, seed);
     glUniform1i(g_locTex, 0);
+
+    // Y threshold covering all atlas utility data (white pixel + baked line textures)
+    ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+    float        maxY  = ImGui::GetFontTexUvWhitePixel().y;
+    for (int n = 0; n < IM_DRAWLIST_TEX_LINES_WIDTH_MAX + 1; ++n) {
+        maxY = std::max(maxY, atlas->TexUvLines[n].y);
+        maxY = std::max(maxY, atlas->TexUvLines[n].w);
+    }
+    glUniform1f(g_locUtilMaxY, maxY + 0.03f);
 }
 
 } // namespace detail
@@ -201,16 +214,17 @@ inline void Init() {
         return;
     }
 
-    g_locProj = glGetUniformLocation(g_program, "ProjMtx");
-    g_locAmp  = glGetUniformLocation(g_program, "u_amplitude");
-    g_locFreq = glGetUniformLocation(g_program, "u_frequency");
-    g_locSeed = glGetUniformLocation(g_program, "u_seed");
-    g_locTex  = glGetUniformLocation(g_program, "Texture");
+    g_locProj     = glGetUniformLocation(g_program, "ProjMtx");
+    g_locAmp      = glGetUniformLocation(g_program, "u_amplitude");
+    g_locFreq     = glGetUniformLocation(g_program, "u_frequency");
+    g_locSeed     = glGetUniformLocation(g_program, "u_seed");
+    g_locTex      = glGetUniformLocation(g_program, "Texture");
+    g_locUtilMaxY = glGetUniformLocation(g_program, "u_utilMaxY");
 
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    std::println("[ImXkcd] initialised (program={}, uniforms: proj={} amp={} freq={} seed={} tex={})", g_program, g_locProj, g_locAmp, g_locFreq, g_locSeed, g_locTex);
+    std::println("[ImXkcd] initialised (program={}, uniforms: proj={} amp={} freq={} seed={} tex={} utilMaxY={})", g_program, g_locProj, g_locAmp, g_locFreq, g_locSeed, g_locTex, g_locUtilMaxY);
 }
 
 inline void Apply(ImDrawData* drawData) {
@@ -232,7 +246,7 @@ inline void Apply(ImDrawData* drawData) {
 
             if (cmd.UserCallback) {
                 patched.push_back(cmd);
-            } else {
+            } else if (cmd.ElemCount >= minElemCount) {
                 ImDrawCmd enableCmd    = {};
                 enableCmd.UserCallback = enableCallback;
                 patched.push_back(enableCmd);
@@ -242,6 +256,8 @@ inline void Apply(ImDrawData* drawData) {
                 ImDrawCmd resetCmd    = {};
                 resetCmd.UserCallback = ImDrawCallback_ResetRenderState;
                 patched.push_back(resetCmd);
+            } else {
+                patched.push_back(cmd);
             }
         }
 

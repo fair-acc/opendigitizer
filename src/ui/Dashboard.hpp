@@ -134,7 +134,8 @@ struct Dashboard {
     std::shared_ptr<opencmw::client::RestClient> restClient;
     std::shared_ptr<const DashboardDescription>  description = nullptr;
     std::vector<UIWindow>                        uiWindows;
-    DockingLayoutType                            layout;
+    DockingLayoutType                            layoutType;
+    gr::property_map                             windowLayout;
     std::unordered_map<std::string, std::string> flowgraphUriByRemoteSource;
     plf::colony<Service>                         services;
     std::atomic<bool>                            isInitialised = false;
@@ -152,7 +153,7 @@ struct Dashboard {
     void save();
     void doLoad(const gr::property_map& dashboard);
 
-    UIWindow& newUIBlock(int x, int y, int w, int h, std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
+    UIWindow& newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
     void      deleteChart(UIWindow* uiWindow);
     UIWindow* copyChart(std::string_view sourceChartId);
     bool      transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);

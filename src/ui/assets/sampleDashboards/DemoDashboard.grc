@@ -232,6 +232,21 @@ connections:
   - [SpectrumGenerator, 0, spectrumSink, 0]
 dashboard:
   layout: Free
+  windowLayout:
+    floatingWindows:  {}
+    dockSpace:
+      hsplit:
+        second:  "Spectrum View"
+        first:
+          vsplit:
+            second:  "Function Generators"
+            first:
+              hsplit:
+                second:  "FFT Spectrum"
+                first:  "Raw Signal"
+                ratio: !!float32 0.498815
+            ratio: !!float32 0.497561
+        ratio: !!float32 0.665091
   sources:
     - name: sinesSink
       block: sinesSink
@@ -264,7 +279,6 @@ dashboard:
           format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
       sources:
         - sinesSink
-      rect: [0, 0, 1, 1]
     - name: FFT Spectrum
       axes:
         - axis: X
@@ -277,7 +291,6 @@ dashboard:
           max: NaN
       sources:
         - fftSink
-      rect: [ 1, 0, 1, 1 ]
     - name: Function Generators
       parameters:
         n_history: 10000 # number of samples to plot
@@ -296,7 +309,6 @@ dashboard:
       sources:
         - IntensitySink
         - DipoleCurrentSink
-      rect: [ 0, 1, 2, 1 ] # x, y, width, height - spans 3 columns
     - name: Spectrum View
       type: opendigitizer::charts::SpectrumView
       parameters:
@@ -320,4 +332,3 @@ dashboard:
           max: -55
       sources:
         - spectrumSink
-      rect: [ 2, 0, 1, 2 ] # 1 column wide, spans 2 rows

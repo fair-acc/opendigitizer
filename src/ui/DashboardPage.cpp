@@ -84,7 +84,7 @@ DashboardPage::DashboardPage() {
             {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}};
         _dashboard->graphModel.sendMessage(std::move(message));
 
-        auto& uiWindow = _dashboard->newUIBlock(0, 0, 1, 1);
+        auto& uiWindow = _dashboard->newUIBlock();
         auto  names    = grc_compat::getBlockSinkNames(uiWindow.block.get());
         names.push_back(sourceInWaiting.signalData.signalName);
         grc_compat::setBlockSinkNames(uiWindow.block.get(), names);
@@ -436,7 +436,7 @@ DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view cha
         if (!initialSignal.empty()) {
             chartInitialParameters["data_sinks"] = gr::Tensor<gr::pmt::Value>{initialSignal};
         }
-        return std::addressof(_dashboard->newUIBlock(0, 0, 1, 1, chartType, chartInitialParameters));
+        return std::addressof(_dashboard->newUIBlock(chartType, chartInitialParameters));
     }
     return nullptr;
 }
@@ -467,6 +467,13 @@ void DashboardPage::drawNewPlotModal() {
     }
 }
 
-void DashboardPage::setLayoutType(DockingLayoutType type) { _dockSpace.setLayoutType(type); }
+void DashboardPage::setLayoutConfiguration(DockingLayoutType type, std::optional<gr::property_map> freeLayoutDescription) {
+    _dockSpace.setLayoutType(type);
+    if (freeLayoutDescription) {
+        _dockSpace.loadFreeLayout(*freeLayoutDescription);
+    }
+}
+
+std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const { return {_dockSpace.layoutType(), _dockSpace.saveFreeLayout()}; }
 
 } // namespace DigitizerUi

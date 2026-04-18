@@ -282,7 +282,7 @@ public:
                     loadedDashboard = dashboard.get();
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
-                    dashboardPage->setLayoutType(loadedDashboard->layout);
+                    dashboardPage->setLayoutConfiguration(loadedDashboard->layoutType, loadedDashboard->windowLayout);
                     dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
                     dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                     flowgraphPage.reset();
@@ -312,7 +312,7 @@ public:
                     flowgraphPage.draw();
                 }
             } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
-                openDashboardPage.draw(dashboard.get());
+                openDashboardPage.draw(dashboard.get(), dashboardPage.get());
             } else {
                 auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
                 components::Notification::warning(msg);
