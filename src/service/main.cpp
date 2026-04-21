@@ -5,6 +5,7 @@
 #include <majordomo/LoadTestWorker.hpp>
 #include <majordomo/Rest.hpp>
 #include <majordomo/Worker.hpp>
+#include <services/OAuthClient.hpp>
 #include <services/dns.hpp>
 #include <services/dns_client.hpp>
 #include <zmq/ZmqUtils.hpp>
@@ -234,6 +235,23 @@ connections:
     DsWorker     dashboardWorker(*broker);
     std::jthread dashboardWorkerThread([&dashboardWorker] { dashboardWorker.run(); });
 
+    auto envOr = [](std::string_view name, std::string_view fallback) -> std::string {
+        std::string key{name}; // ensures null-terminated
+        if (const char* v = std::getenv(key.c_str()); v && *v) {
+            return std::string(v);
+        }
+        return std::string(fallback);
+    };
+
+    // To use a custom keycloak instance, set the KEYCLOAK_URL env variable accordingly.
+    // The Keycloak instance should have role mappers configured,
+    // such that OAuth scopes get resolved to RBAC roles:
+    // https://www.keycloak.org/docs/latest/server_admin/index.html#assigning-permissions-using-roles-and-groups
+    const std::string    kcBase       = envOr("KEYCLOAK_URL", "http://localhost:8090");
+    const std::string    redirectBase = envOr("KEYCLOAK_REDIRECT_URI", "http://localhost:8091");
+    opencmw::OAuthWorker oauthWorker{opencmw::URI(redirectBase), opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/auth"), opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/token"), opencmw::URI(kcBase + "/realms/testrealm/protocol/openid-connect/userinfo"), *broker};
+    std::jthread         oauthWorkerThread([&oauthWorker] { oauthWorker.run(); });
+
     using GrAcqWorker = GnuRadioAcquisitionWorker<"/GnuRadio/Acquisition", description<"Provides data from a GnuRadio flow graph execution">>;
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
@@ -317,6 +335,8 @@ connections:
     client.stop();
     dnsThread.join();
     dashboardWorkerThread.join();
+    oauthWorker.stop();
+    oauthWorkerThread.join();
     grAcqWorkerThread.join();
     grFgWorkerThread.join();
     if (loadTestWorkerThread) {
