@@ -198,7 +198,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     if (show_tags.value && !tagsDrawnForFirstSink) {
                         auto allDataSets = sink->dataSets();
                         if (!allDataSets.empty()) {
-                            tags::drawDataSetTimingEvents(allDataSets[0], _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear, baseColor);
+                            tags::drawDataSetTimingEvents(allDataSets.back(), _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear, baseColor);
                         }
                         tagsDrawnForFirstSink = true;
                     }
