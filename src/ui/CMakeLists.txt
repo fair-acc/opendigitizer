@@ -185,6 +185,8 @@ add_library(
   Dashboard.hpp
   DashboardPage.cpp
   DashboardPage.hpp
+  OAuthSession.cpp
+  OAuthSession.hpp
   OpenDashboardPage.cpp
   OpenDashboardPage.hpp
   RemoteSignalSources.cpp

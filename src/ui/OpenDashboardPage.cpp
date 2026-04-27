@@ -15,6 +15,7 @@
 #include "DashboardPage.hpp"
 #include "OpenDashboardPage.hpp"
 
+#include "OAuthSession.hpp"
 #include "components/Dialog.hpp"
 #include "components/ListBox.hpp"
 #include "scope_exit.hpp"
@@ -216,7 +217,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         IMW::Font font(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
         ImGui::TextUnformatted("New Digitizer Window");
     }
-    ImGui::Dummy({indent, 00});
+    ImGui::Dummy({indent, 0});
     ImGui::SameLine();
     if (ImGui::Button("Open a new Digitizer Window")) {
         // TODO: ivan
@@ -438,6 +439,52 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
         drawAddSourcePopup();
     }
+
+#ifndef __EMSCRIPTEN__
+    if (Digitizer::Settings::instance().editableMode && LookAndFeel::instance().prototypeMode) {
+        ImGui::Dummy({0, 30});
+        {
+            IMW::Font font(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+            ImGui::TextUnformatted("OAuth/RBAC");
+        }
+        ImGui::Spacing();
+        auto& session = DigitizerUi::OAuthSession::instance();
+
+        ImGui::Dummy({indent, 0});
+        ImGui::SameLine();
+        ImGui::Text("Scope:");
+        ImGui::SameLine();
+        static std::string scope = "openid";
+        ImGui::InputText("##scope", &scope);
+
+        ImGui::Dummy({indent, 0});
+        ImGui::SameLine();
+        ImGui::Text("Client ID:");
+        ImGui::SameLine();
+        static std::string clientid = "testclientid";
+        ImGui::InputText("##clientid", &clientid);
+
+        ImGui::Dummy({indent, 0});
+        ImGui::SameLine();
+        ImGui::Text("Endpoint:");
+        ImGui::SameLine();
+        static std::string endpoint = "mdp://127.0.0.1:12340/oauth";
+        ImGui::InputText("##endpoint", &endpoint);
+
+        ImGui::Dummy({indent, 0});
+        ImGui::SameLine();
+        if (ImGui::Button("Sign in")) {
+            session.signIn(scope, clientid, endpoint);
+        }
+
+        ImGui::Dummy({indent, 0});
+        ImGui::SameLine();
+        ImGui::Text("Roles:");
+        ImGui::SameLine();
+        ImGui::Text("%s", session.availableRoles().empty() ? "N/A" : session.availableRoles().c_str());
+        ImGui::Spacing();
+    }
+#endif
 }
 
 void OpenDashboardPage::drawAddSourcePopup() {
