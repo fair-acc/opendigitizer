@@ -9,7 +9,7 @@ target_link_libraries(
   INTERFACE od_acquisition
             majordomo
             disruptor
-            gr-basic
+            gnuradio4::GrBasicBlocksShared
             project_options)
 
 add_subdirectory(test)
