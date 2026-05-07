@@ -304,7 +304,7 @@ class InputKeypad {
     std::unordered_map<std::string, int>    _manualyEditedPrecisions;
 
     //
-    bool        _visible     = true;
+    bool        _visible     = false;
     bool        _altMode     = false;
     bool        _invMode     = false;
     bool        _firstUpdate = true;
@@ -481,6 +481,76 @@ class InputKeypad {
         return instance;
     }
 
+    static constexpr const char* decrementButtonIcon = "\u{f146}";
+    static constexpr const char* incrementButtonIcon = "\u{f0fe}";
+
+    template<typename EdTy>
+    [[nodiscard]] static bool drawChangeButtons(const std::string& key, const char* label, EdTy* value) {
+        assert(label);
+        auto& keyPad = getInstance();
+
+        bool result = keyPad.editImpl(label, value);
+        if (result) {
+            const int precision = InputKeypad::getDecimalPrecision(keyPad._editBuffer);
+            keyPad._manualyEditedPrecisions.insert_or_assign(key, precision);
+
+            const double increment = InputKeypad::computeIncrement(keyPad._editBuffer);
+            keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+        }
+
+        {
+            ImGui::SameLine();
+            IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button(decrementButtonIcon)) {
+                auto it = keyPad._manualyEditedIncrements.find(key);
+                if (it == keyPad._manualyEditedIncrements.end()) {
+                    const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
+                    auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+                    it                     = op.first;
+                }
+                *value -= static_cast<EdTy>(it->second);
+
+                result = true;
+            }
+        }
+        IMW::detail::setItemTooltip("Decrement");
+
+        {
+            ImGui::SameLine();
+            IMW::Font _(LookAndFeel::instance().fontIconsSolid);
+            if (ImGui::Button(incrementButtonIcon)) {
+                auto it = keyPad._manualyEditedIncrements.find(key);
+                if (it == keyPad._manualyEditedIncrements.end()) {
+                    const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
+                    auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
+                    it                     = op.first;
+                }
+                *value += static_cast<EdTy>(it->second);
+
+                result = true;
+            }
+        }
+        IMW::detail::setItemTooltip("Increment");
+
+        return result;
+    }
+
+    template<std::floating_point EdTy>
+    [[nodiscard]] static std::string floatingPointDragFormat(const std::string& key, EdTy* value, std::string_view suffix) {
+        auto&     keyPad    = getInstance();
+        const int precision = [&keyPad, &key, value]() -> int {
+            if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
+                return it->second;
+            } else {
+                return InputKeypad::getDecimalPrecisionNonZero(std::format("{:.4f}", *value));
+            }
+        }();
+
+        return suffix.empty() ? std::format("%.{}f", precision) : std::format("%.{}f {}", precision, suffix);
+    }
+
+    static std::string intDragFormat(std::string_view suffix) { return suffix.empty() ? "%d" : std::format("%d {}", suffix); }
+
 public:
     static void clearIfNewBlock(std::string_view block) {
         auto& keyPad = getInstance();
@@ -493,83 +563,85 @@ public:
 
     template<typename EdTy>
     requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
+    [[nodiscard]] static IMW::WidgetSize calcSize(const char* label, std::string_view suffix = {}) {
+        constexpr bool hasChangeButtons = !std::same_as<std::string, EdTy>;
+        // hardcode no. of digits in a drag/slider as being 5, it is okay to clip off big/long numbers
+        const auto      dragSize = IMW::CalcDragSize(label, 5 + suffix.size());
+        IMW::Font       iconFont(LookAndFeel::instance().fontIconsSolid);
+        const ImVec2    decBtn  = hasChangeButtons ? IMW::CalcButtonSize(decrementButtonIcon) : ImVec2{};
+        const ImVec2    incBtn  = hasChangeButtons ? IMW::CalcButtonSize(incrementButtonIcon) : ImVec2{};
+        const float     spacing = ImGui::GetStyle().ItemSpacing.x;
+        IMW::WidgetSize size{
+            .min                 = {dragSize.min.x, dragSize.min.y},
+            .preferred           = {dragSize.preferred.x, dragSize.preferred.y},
+            .labelPreferredWidth = dragSize.labelPreferredWidth,
+        };
+        if (hasChangeButtons) {
+            size.min.x += spacing + decBtn.x + spacing + incBtn.x;
+            size.min.y = std::max({size.min.y, decBtn.y, incBtn.y});
+            size.preferred.x += spacing + decBtn.x + spacing + incBtn.x;
+            size.preferred.y = std::max({size.preferred.y, decBtn.y, incBtn.y});
+        }
+        return size;
+    }
+
+    template<typename EdTy>
+    requires std::integral<EdTy> || std::floating_point<EdTy> || std::same_as<std::string, EdTy>
     [[nodiscard]] static bool edit(const std::string& key, const char* label, EdTy* value, std::string_view suffix = {}) {
         if (!label || !value) {
             return false;
         }
 
-        const auto drawChangeButtons = [&]() -> bool {
-            auto& keyPad = getInstance();
+        constexpr bool hasChangeButtons = !std::same_as<std::string, EdTy>;
 
-            bool result = keyPad.editImpl(label, value);
-            if (result) {
-                const int precision = InputKeypad::getDecimalPrecision(keyPad._editBuffer);
-                keyPad._manualyEditedPrecisions.insert_or_assign(key, precision);
+        const float totalWidth  = ImGui::CalcItemWidth();
+        float       buttonWidth = 0.f;
+        if constexpr (hasChangeButtons) {
+            IMW::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+            buttonWidth = IMW::CalcButtonSize(decrementButtonIcon).x;
+        }
+        const float spacing                     = ImGui::GetStyle().ItemSpacing.x;
+        const float spaceAvailableBeforeButtons = std::max(1.f, totalWidth - (hasChangeButtons ? 2.f * (buttonWidth + spacing) : 0.f));
 
-                const double increment = InputKeypad::computeIncrement(keyPad._editBuffer);
-                keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
-            }
-
-            {
-                ImGui::SameLine();
-                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf146")) {
-                    auto it = keyPad._manualyEditedIncrements.find(key);
-                    if (it == keyPad._manualyEditedIncrements.end()) {
-                        const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
-                        auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
-                        it                     = op.first;
-                    }
-                    *value -= static_cast<EdTy>(it->second);
-
-                    result = true;
-                }
-            }
-            IMW::detail::setItemTooltip("Decrement");
-
-            {
-                ImGui::SameLine();
-                IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button("\uf0fe")) {
-                    auto it = keyPad._manualyEditedIncrements.find(key);
-                    if (it == keyPad._manualyEditedIncrements.end()) {
-                        const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
-                        auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
-                        it                     = op.first;
-                    }
-                    *value += static_cast<EdTy>(it->second);
-
-                    result = true;
-                }
-            }
-            IMW::detail::setItemTooltip("Increment");
-
-            return result;
-        };
-
-        auto& keyPad = getInstance();
+        auto&      keyPad = getInstance();
+        IMW::Group group;
 
         if constexpr (std::floating_point<EdTy>) {
-            const int precision = [&]() -> int {
-                if (auto it = keyPad._manualyEditedPrecisions.find(key); it != keyPad._manualyEditedPrecisions.end()) {
-                    return it->second;
-                } else {
-                    return InputKeypad::getDecimalPrecisionNonZero(std::format("{:.4f}", *value));
-                }
-            }();
+            ImGuiDataType type = ImGuiDataType_Float;
+            if constexpr (std::is_same_v<EdTy, double>) {
+                type = ImGuiDataType_Double;
+            } else {
+                static_assert(std::is_same_v<EdTy, float>, "unsupported type");
+            }
 
-            const std::string format = suffix.empty() ? std::format("%.{}f", precision) : std::format("%.{}f {}", precision, suffix);
-            ImGui::DragFloat(label, static_cast<float*>(value), 0.1f, 0.0f, 0.0f, format.c_str());
+            EdTy min = 0;
+            EdTy max = 0;
+            ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
+            ImGui::DragScalar(label, type, value, 1.f, &min, &max, floatingPointDragFormat(key, value, suffix).c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
-            return drawChangeButtons();
+            return drawChangeButtons(key, label, value);
         } else if constexpr (std::integral<EdTy>) {
-            const std::string format = suffix.empty() ? "%d" : std::format("%d {}", suffix);
-            ImGui::DragInt(label, static_cast<int*>(value), 1.0f, 0, 0, format.c_str());
+            ImGuiDataType type = ImGuiDataType_S32;
+            if constexpr (std::is_same_v<EdTy, std::int64_t>) {
+                type = ImGuiDataType_S64;
+            } else if constexpr (std::is_same_v<EdTy, std::uint64_t>) {
+                type = ImGuiDataType_U64;
+            } else if constexpr (std::is_same_v<EdTy, std::uint32_t>) {
+                type = ImGuiDataType_U32;
+            } else {
+                static_assert(std::is_same_v<EdTy, std::int32_t>, "unsupported type");
+            }
+
+            EdTy min = 0;
+            EdTy max = 0;
+            ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
+            ImGui::DragScalar(label, type, value, 1.f, &min, &max, intDragFormat(suffix).c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
-            return drawChangeButtons();
+            return drawChangeButtons(key, label, value);
         } else {
+            ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
             ImGui::InputText(label, value);
             IMW::detail::setItemTooltip(key.c_str());
 

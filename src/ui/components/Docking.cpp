@@ -55,6 +55,24 @@ static void dragWindow(ImGuiWindow* windowToDrag, ImRect boundingBox) {
     g.ActiveIdClickOffset.y = std::clamp(g.ActiveIdClickOffset.y, 0.f, std::max(0.f, ImGui::GetFrameHeight() - 1.f));
 };
 
+static void dockAtBottomIfWanted(const DockSpace::Windows& windows, ImGuiID dockspaceID, ImGuiDockNodeFlags nodeFlags) {
+    // if any windows request to be docked at the bottom, respect that
+    for (const auto& window : windows) {
+        if (window->wantsDockAtBottom) {
+            window->wantsDockAtBottom = false;
+            ImGuiID bottomId          = 0;
+            ImGuiID topId             = 0;
+            ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Down, .3f, &bottomId, &topId);
+
+            ImGui::DockBuilderDockWindow(window->name.data(), bottomId);
+            auto bottomNode = ImGui::DockBuilderGetNode(bottomId);
+            bottomNode->SetLocalFlags(nodeFlags);
+            ImGui::DockBuilderSetNodeSize(bottomId, ImVec2{bottomNode->Size.x, ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y});
+            ImGui::DockBuilderFinish(dockspaceID);
+        }
+    }
+}
+
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
         _layoutType = type;
@@ -105,14 +123,18 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
 void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
     for (const auto& window : windows) {
         constexpr float floatingWindowMinSizeFractionOfMainWindow = 1.f / 4.f;
-        const ImVec2    windowSizeMax                             = ImGui::GetMainViewport()->WorkSize;
-        const ImVec2    windowSizeMin                             = {
+        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(ImGui::GetMainViewport()->WorkSize);
+        const ImVec2    windowSizeMin                             = window->windowMinSizeOverride.value_or(ImVec2{
             std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfMainWindow),
             std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfMainWindow),
-        };
+        });
         ImGui::SetNextWindowSizeConstraints(windowSizeMin, windowSizeMax);
 
-        IMW::Window dock(window->name.data(), nullptr, ImGuiWindowFlags_NoCollapse);
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
+        if (window->wantsHorizontalScrollbar) {
+            flags |= ImGuiWindowFlags_HorizontalScrollbar;
+        }
+        IMW::Window dock(window->name.data(), nullptr, flags);
 
         if (window->renderFunc) {
             window->renderFunc();
@@ -180,6 +202,10 @@ void DockSpace::drawEditableWindowDragArea() {
     }
 
     ImGui::SetCursorScreenPos(oldPos);
+    // there is an assert in imgui that the cursor screen pos does not exceed
+    // both window size and content. Adding a dummy expands the content to the
+    // cursor
+    ImGui::Dummy({});
 }
 
 void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction, bool isEditable) {
@@ -363,6 +389,8 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
             }
         } else {
             restoreDockSpaceState(_lastFreeLayout, dockspaceID);
+
+            dockAtBottomIfWanted(windows, dockspaceID, nodeFlags(isEditable));
         }
     } else {
         layoutInGrid(windows, isEditable);

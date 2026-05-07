@@ -7,6 +7,8 @@
 
 #include <c_resource.hpp>
 
+#include <algorithm>
+
 namespace DigitizerUi::IMW {
 
 namespace detail {
@@ -82,6 +84,47 @@ struct PushCursorPosition {
     PushCursorPosition() { saved = ImGui::GetCursorScreenPos(); }
     ~PushCursorPosition() { ImGui::SetCursorScreenPos(saved); }
 };
+
+/// In places such as the edit pane, we want to wrap widgets to a newline when
+/// there is not enough space. But ImGui generally has no concept of min size.
+/// Checkboxes, for example, are a constant size. Meanwhile TextInputs will
+/// take up 65% of the window by default but can shrink to 1px regardless of
+/// their text contents. So, to have a rule when to wrap, we make these min
+/// and preferred sizes ourselves.
+/// Generally, min(strlen(label), 4) characters is considered the min width for
+/// widgets with a label.
+struct WidgetSize {
+    ImVec2 min;
+    ImVec2 preferred;
+    // SetNextItemWidth does not account for/affect the label, so subtract this
+    float labelPreferredWidth{};
+
+    [[nodiscard]] constexpr WidgetSize normalized() const {
+        return {
+            .min                 = min,
+            .preferred           = ImVec2{std::max(preferred.x, min.x), std::max(preferred.y, min.y)},
+            .labelPreferredWidth = labelPreferredWidth,
+        };
+    }
+};
+
+/// Calculate the width and height a button will take up with the current style
+/// and a given label. Buttons have a fixed size.
+ImVec2 CalcButtonSize(const char* label);
+
+WidgetSize CalcCheckboxSize(const char* label);
+/// Minimum size of a labelled color editor, not the color picker popup
+WidgetSize CalcColorEditorSize(const char* label, ImGuiColorEditFlags flags);
+/// charsNeeded should be something like floating point precision, plus unit/suffix strlen
+WidgetSize CalcSliderSize(const char* label, std::size_t charsNeeded);
+/// charsNeeded should be something like floating point precision, plus unit/suffix strlen
+WidgetSize CalcDragSize(const char* label, std::size_t charsNeeded);
+/// Minimum size of a folded ImGui::BeginCombo() (label + arrow + small preview
+/// area). previewValue is only used if ImGuiComboFlags_WidthFitPreview is set
+WidgetSize CalcComboSize(const char* label, const char* previewValue, ImGuiComboFlags flags);
+/// Preferred minimum size of a single-line text input (room for ~4 characters
+/// + label).
+WidgetSize CalcTextInputSize(const char* label, const char* contents);
 
 } // namespace DigitizerUi::IMW
 #endif

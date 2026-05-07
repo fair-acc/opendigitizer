@@ -1,0 +1,358 @@
+blocks:
+  - id: opendigitizer::Arithmetic<float32>
+    parameters:
+      name: sum sigs
+      ui_constraints:
+        x: 30
+        y: 40
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+    parameters:
+      name: FFT
+      outputInDb: true
+      outputInDeg: true
+      unwrapPhase: true
+  - id: opendigitizer::SineSource<float32>
+    parameters:
+      name: sine source 1
+      frequency: 2
+  - id: opendigitizer::SineSource<float32>
+    parameters:
+      name: sine source 3
+      frequency: 5
+      ui_constraints:
+        x: 30
+        y: 40
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sinesSink
+      signal_name: value
+      signal_quantity: sum voltage
+      signal_unit: V
+      color: !!uint32 23496
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: fftSink
+      dataset_index: 0
+      signal_name: fft
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+      color: !!uint32 23496
+  - id: gr::basic::ClockSource
+    parameters:
+      name: ClockSource
+      chunk_size: 40
+      do_zero_order_hold: true
+      n_samples_max: 0
+      repeat_period: 4000000000
+      sample_rate: 1000
+      verbose_console: false
+      tag_times: !!uint64
+        - 10000000
+        - 100000000 # start pre-ramp
+        - 200000000 # lower-plateau
+        - 500000000 # start main-ramp
+        - 1000000000 # upper-plateau
+        - 2000000000 # CMD_DIAG_TRIGGER1
+        - 3000000000 # start ramp-down
+        - 3900000000
+      tag_values: !!str
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2" # start pre-ramp
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3" # lower-plateau
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
+        - "CMD_DIAG_TRIGGER1"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=7"
+  - id: gr::basic::FunctionGenerator<float32>
+    parameters:
+      name: DipoleCurrentGenerator
+      sample_rate: 1000
+      signal_type: Const
+      start_value: 0
+      signal_trigger: "CMD_BP_START"
+    ctx_parameters:
+      - context: "FAIR.SELECTOR.C=1:S=1:P=1"
+        time: !!uint64 0
+        parameters:
+          start_value: 100
+          sample_rate: 1000
+          signal_type: Const
+      - context: "FAIR.SELECTOR.C=1:S=1:P=2"  # start pre-ramp
+        time: !!uint64 0
+        parameters:
+          duration: 0.1
+          start_value: 100
+          final_value: 500
+          round_off_time: 0.02
+          sample_rate: 1000
+          signal_type: ParabolicRamp
+      - context: "FAIR.SELECTOR.C=1:S=1:P=3"  # lower-plateau
+        time: !!uint64 0
+        parameters:
+          start_value: 500
+          sample_rate: 1000
+          signal_type: Const
+      - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
+        time: !!uint64 0
+        parameters:
+          duration: 0.5
+          start_value: 500
+          final_value: 3000
+          round_off_time: 0.2
+          sample_rate: 1000
+          signal_type: ParabolicRamp
+      - context: "FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
+        time: !!uint64 0
+        parameters:
+          start_value: 3000
+          sample_rate: 1000
+          signal_type: Const
+      - context: "FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
+        time: !!uint64 0
+        parameters:
+          duration: 0.3
+          start_value: 3000
+          final_value: 100
+          sample_rate: 1000
+          signal_type: CubicSpline
+      - context: "FAIR.SELECTOR.C=1:S=1:P=7" # upper-plateau
+        time: !!uint64 0
+        parameters:
+          start_value: 100
+          sample_rate: 1000
+          signal_type: Const
+  - id: gr::basic::FunctionGenerator<float32>
+    parameters:
+      name: IntensityGenerator
+      sample_rate: 1000
+      signal_type: Const
+      start_value: 0
+      signal_trigger: "CMD_BP_START"
+    ctx_parameters:
+      - context: "FAIR.SELECTOR.C=1:S=1:P=3" # lower-plateau
+        time: !!uint64 0
+        parameters:
+          start_value: 40e9f
+          sample_rate: 1000
+          signal_type: Const
+      - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
+        time: !!uint64 0
+        parameters:
+          duration: 0.500000
+          start_value: 40e9f
+          final_value: 38e9f
+          sample_rate: 1000
+          signal_type: CubicSpline
+      - context: "FAIR.SELECTOR.C=1:S=1:P=5"
+        time: !!uint64 0
+        parameters:
+          duration: 2
+          start_value: 38e9f
+          final_value: 00e9f
+          round_off_time: 0.3
+          sample_rate: 1000
+          signal_type: ParabolicRamp
+      - context: "FAIR.SELECTOR.C=1:S=1:P=6"
+        time: !!uint64 0
+        parameters:
+          start_value: 0
+          sample_rate: 1000
+          signal_type: Const
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: DipoleCurrentSink
+      color: 0xC80000
+      required_size: 16384
+      signal_name: dipole current
+      signal_quantity: DipoleCurrent
+      signal_unit: A
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: IntensitySink
+      color: 0x0000C8
+      required_size: 16384
+      signal_name: beam intensity
+      signal_quantity: BeamIntensity
+      signal_unit: ppp
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      color: 0x00C800
+      signal_name: sine 2Hz
+      signal_quantity: voltage
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink3
+      color: 0xC800C8
+      signal_name: sine 5Hz
+      signal_quantity: voltage
+      signal_unit: V
+  - id: gr::basic::ClockSource
+    parameters:
+      name: SpectrumClock
+      sample_rate: 25
+      chunk_size: 1
+      n_samples_max: 0
+  - id: opendigitizer::TestSpectrumGenerator<float32>
+    parameters:
+      name: SpectrumGenerator
+      spectrum_size: 4
+      center_freq: 100e6
+      signal_bandwidth: 1e6
+      clock_rate: 25
+      seed: 42
+      show_schottky: true
+      show_interference_lines: true
+      show_sweep_line: true
+      log_interval: 0
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrumSink
+      dataset_index: 0
+      signal_name: spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+connections:
+  - [sine source 1, 0, sum sigs, 0]
+  - [sine source 3, 0, sum sigs, 1]
+  - [ sine source 1, 0, sineSink1, 0 ]
+  - [ sine source 3, 0, sineSink3, 0 ]
+  - [sum sigs, 0, FFT, 0]
+  - [sum sigs, 0, sinesSink, 0]
+  - [FFT, 0, fftSink, 0]
+  - [ClockSource, 0, DipoleCurrentGenerator, 0]
+  - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
+  - [ClockSource, 0, IntensityGenerator, 0]
+  - [IntensityGenerator, 0, IntensitySink, 0]
+  - [SpectrumClock, 0, SpectrumGenerator, 0]
+  - [SpectrumGenerator, 0, spectrumSink, 0]
+dashboard:
+  layout: Free
+  propertyControlWindows:
+    "Control color for fftSink and sinesSink":
+      label:  "sine wave and fft color"
+      id: !!uint32 1
+    "Property control for spectrum_size of SpectrumGenerator":
+      label:  "spectrum_size"
+      id: !!uint32 2
+  windowLayout:
+    floatingWindows:  {}
+    dockSpace:
+      hsplit:
+        second:
+          vsplit:
+            second:  "Property control for spectrum_size of SpectrumGenerator"
+            first:  "Spectrum View"
+            ratio: !!float32 0.0747968
+        first:
+          vsplit:
+            second:  "Function Generators"
+            first:
+              vsplit:
+                second:  "Control color for fftSink and sinesSink"
+                first:
+                  hsplit:
+                    second:  "FFT Spectrum"
+                    first:  "Raw Signal"
+                    ratio: !!float32 0.497613
+                ratio: !!float32 0.149837
+            ratio: !!float32 0.497561
+        ratio: !!float32 0.660362
+  exportedProperties:
+    "sinesSink":
+      color: !!uint32 1
+    "fftSink":
+      color: !!uint32 1
+    "SpectrumGenerator":
+      spectrum_size: !!uint32 2
+  sources:
+    - name: sinesSink
+      block: sinesSink
+    - name: fftSink
+      block: fftSink
+    - name: DipoleCurrentSink
+      block: DipoleCurrentSink
+      port: 0
+    - name: IntensitySink
+      block: IntensitySink
+      port: 0
+    - name: sineSink1
+      block: sineSink1
+    - name: sineSink3
+      block: sineSink3
+    - name: spectrumSink
+      block: spectrumSink
+  plots:
+    - name: Raw Signal
+      parameters:
+        show_legend: true
+      axes:
+        - axis: X
+          min: NaN # enables auto-range
+          max: NaN # enables auto-range
+          scale: LinearReverse
+        - axis: Y
+          min: NaN # enables auto-range for first axis
+          max: NaN # enables auto-range for first axis
+          format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
+      sources:
+        - sinesSink
+    - name: FFT Spectrum
+      axes:
+        - axis: X
+          min: 0.0001
+          max: 0.5
+          scale: Log10
+          format: MetricInline # options: Auto, Metric, MetricInline, Scientific, None, Default
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - fftSink
+    - name: Function Generators
+      parameters:
+        n_history: 10000 # number of samples to plot
+      axes:
+        - axis: X
+          min: NaN # auto-range min
+          max: NaN # auto-range max
+          scale: Time # UTC time axis, other options: Linear, LinearReverse, Time, Log10, SymLog
+        - axis: Y
+          min: NaN # enables auto-range for first axis
+          max: NaN # enables auto-range for first axis
+        - axis: Y
+          min: -100. # second axis min
+          max: NaN # second axis max
+          format: Metric # options: Auto, Metric, MetricInline, Scientific, None, Default
+      sources:
+        - IntensitySink
+        - DipoleCurrentSink
+    - name: Spectrum View
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        show_max_hold: true
+        show_min_hold: true
+        show_average: true
+        decay_tau_frames: 120
+        n_history: 256
+        colormap: ImPlotColormap_Viridis
+        top_pane_ratio: 0.4
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          format: MetricInline
+        - axis: Y
+          min: NaN
+          max: NaN
+        - axis: Z
+          min: -85
+          max: -55
+      sources:
+        - spectrumSink

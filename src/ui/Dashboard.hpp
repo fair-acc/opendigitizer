@@ -1,39 +1,37 @@
 #ifndef DASHBOARD_H
 #define DASHBOARD_H
 
-#include <chrono>
-#include <functional>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <vector>
+#include "GraphModel.hpp"
+#include "Scheduler.hpp"
 
-#include <cmrc/cmrc.hpp>
-CMRC_DECLARE(sample_dashboards);
+#include "charts/Chart.hpp"
+
+#include "components/ColourManager.hpp"
+#include "components/Docking.hpp"
+#include "components/ExportedPropertiesList.hpp"
+
+#include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/Graph.hpp>
+#include <gnuradio-4.0/PluginLoader.hpp>
 
 #include <RestClient.hpp>
+
+#include <cmrc/cmrc.hpp>
 
 #ifdef EMSCRIPTEN
 #include "utils/emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>
 
-#include <gnuradio-4.0/BlockRegistry.hpp>
-#include <gnuradio-4.0/Graph.hpp>
-#include <gnuradio-4.0/PluginLoader.hpp>
+#include <functional>
+#include <string>
+#include <string_view>
 
-#include "components/ColourManager.hpp"
-#include "components/Docking.hpp"
+CMRC_DECLARE(sample_dashboards);
 
 namespace detail {
 [[maybe_unused]] inline static opendigitizer::ColourManager& _colourManager = opendigitizer::ColourManager::instance();
 }
-
-#include "GraphModel.hpp"
-#include "Scheduler.hpp"
-#include "settings.hpp"
-
-#include "charts/Charts.hpp"
 
 namespace gr {
 class Graph;
@@ -94,17 +92,30 @@ struct DashboardDescription {
 struct Dashboard {
     using AxisConfig = opendigitizer::charts::AxisConfig;
     struct PrivateTag {};
+    struct DeserializeTag {};
 
     struct UIWindow {
         std::shared_ptr<DockSpace::Window> window;
         std::shared_ptr<gr::BlockModel>    block;
 
         UIWindow() = default;
-        explicit UIWindow(std::shared_ptr<gr::BlockModel> blk, std::string_view name = "") : window(std::make_shared<DockSpace::Window>(name.empty() ? std::string(blk->uniqueName()) : std::string(name))), block(std::move(blk)) {}
+        explicit UIWindow(Dashboard& dashboard, std::shared_ptr<gr::BlockModel> blk, std::string_view name = "");
+        explicit UIWindow(DeserializeTag, std::shared_ptr<gr::BlockModel> blk, std::string_view name = "");
 
         [[nodiscard]] bool           hasBlock() const noexcept { return block != nullptr; }
         [[nodiscard]] bool           isChart() const noexcept { return uiCategory() == gr::UICategory::Content; }
         [[nodiscard]] gr::UICategory uiCategory() const noexcept { return block ? block->uiCategory() : gr::UICategory::None; }
+    };
+
+    struct PropertyControlWindow {
+        std::shared_ptr<DockSpace::Window> window;
+        std::string                        label; // label for the editor widget, chosen by user
+
+        PropertyControlWindow(DeserializeTag, std::string_view labelView, std::string_view windowName);
+
+        // all the parameters of these constructors are just to know how to generate a good and unique name for the window
+        PropertyControlWindow(Dashboard& dashboard, UiGraphModel* graphModel, std::string_view propertyName, std::string_view labelView, std::string_view blockName);
+        PropertyControlWindow(Dashboard& dashboard, UiGraphBlock* block, std::string_view propertyName, std::string_view labelView);
     };
 
     struct Service {
@@ -131,17 +142,19 @@ struct Dashboard {
     std::atomic<bool>               isInUse = false;
     std::function<void(Dashboard*)> requestClose;
 
-    std::shared_ptr<opencmw::client::RestClient> restClient;
-    std::shared_ptr<const DashboardDescription>  description = nullptr;
-    std::vector<UIWindow>                        uiWindows;
-    DockingLayoutType                            layoutType;
-    gr::property_map                             windowLayout;
-    std::unordered_map<std::string, std::string> flowgraphUriByRemoteSource;
-    plf::colony<Service>                         services;
-    std::atomic<bool>                            isInitialised = false;
-    Scheduler                                    scheduler;
-    gr::Graph                                    uiGraph{*pluginLoader};
-    UiGraphModel                                 graphModel;
+    std::shared_ptr<opencmw::client::RestClient>           restClient;
+    std::shared_ptr<const DashboardDescription>            description = nullptr;
+    std::vector<UIWindow>                                  uiWindows;
+    std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
+    DockingLayoutType                                      layoutType;
+    gr::property_map                                       windowLayout;
+    gr::property_map                                       exportedProperties;
+    std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
+    plf::colony<Service>                                   services;
+    std::atomic<bool>                                      isInitialised = false;
+    Scheduler                                              scheduler;
+    gr::Graph                                              uiGraph{*pluginLoader};
+    UiGraphModel                                           graphModel;
 
     explicit Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc);
     ~Dashboard();
@@ -151,12 +164,20 @@ struct Dashboard {
     void load();
     void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
     void save();
+    void saveStore(gr::property_map& headerYaml, gr::property_map& dashboardYaml); // actually send message to save endpoint with serialized dashboard
     void doLoad(const gr::property_map& dashboard);
 
     UIWindow& newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
     void      deleteChart(UIWindow* uiWindow);
     UIWindow* copyChart(std::string_view sourceChartId);
     bool      transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);
+
+    std::pair<std::size_t, PropertyControlWindow&> newPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName, std::string_view label);
+    void                                           applyExportedPropertiesToUiGraph();
+    [[nodiscard]] constexpr bool                   hasPendingExportedPropertiesConfiguration() const noexcept { return !this->exportedProperties.empty(); }
+    std::string                                    generateUniqueNameForPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName);
+    std::string                                    generateUniqueNameForUiWindow(gr::BlockModel& block, std::string_view desiredName);
+    std::unordered_set<std::string_view>           getAllWindowNamesInUse() const;
 
     gr::BlockModel* emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
     void            removeSinkFromPlots(std::string_view sinkName);
@@ -179,7 +200,16 @@ struct Dashboard {
         scheduler.emplaceGraph(std::forward<Args>(args)...);
     }
 
-    void handleMessages() { scheduler.handleMessages(graphModel); }
+    void handleMessages() {
+        scheduler.handleMessages(graphModel);
+
+        if (hasPendingExportedPropertiesConfiguration()) [[unlikely]] {
+            const auto* schedulerInfo = std::get_if<UiGraphBlock::SchedulerBlockInfo>(&graphModel.rootBlock.blockCategoryInfo);
+            if (schedulerInfo && schedulerInfo->childrenLoaded) {
+                applyExportedPropertiesToUiGraph();
+            }
+        }
+    }
 
     [[nodiscard]] UIWindow* findUIWindow(const std::shared_ptr<gr::BlockModel>& block) noexcept {
         if (!block) {
@@ -206,7 +236,7 @@ struct Dashboard {
         if (auto* existing = findUIWindow(block)) {
             return *existing;
         }
-        uiWindows.emplace_back(block);
+        uiWindows.emplace_back(*this, block);
         return uiWindows.back();
     }
 

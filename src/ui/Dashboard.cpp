@@ -208,6 +208,74 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
+std::size_t& lastUsedWindowId() {
+    static std::size_t lastUsedWindowId = 0;
+    return lastUsedWindowId;
+}
+
+std::string Dashboard::generateUniqueNameForPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName) {
+    auto        currentlyInUse = getAllWindowNamesInUse();
+    const char* blockName      = block ? block->blockName.c_str() : "UNKNOWN";
+    const auto  prefix         = std::format("Property control for {} of block {}", propertyName, blockName);
+    // imgui will try to remember the position of windows by name, and return
+    // them there if the window is drawn again later.
+    // so unlike generateUniqueNameForUiWindow, this will always append
+    // lastUsedWindowId, so that new property windows are treated as entirely
+    // new windows without their old position/size remembered.
+    std::string out;
+    do {
+        ++lastUsedWindowId();
+        out = std::format("{}{}", prefix, lastUsedWindowId());
+    } while (currentlyInUse.contains(out));
+    return out;
+}
+
+std::string Dashboard::generateUniqueNameForUiWindow(gr::BlockModel& block, std::string_view desiredName) {
+    auto              currentlyInUse = getAllWindowNamesInUse();
+    const std::string desiredNameString{desiredName.empty() ? block.uniqueName() : desiredName};
+    std::string       out = desiredNameString;
+    while (currentlyInUse.contains(out)) {
+        ++lastUsedWindowId();
+        out = std::format("{}{}", desiredNameString, lastUsedWindowId());
+    }
+    return out;
+}
+
+std::unordered_set<std::string_view> Dashboard::getAllWindowNamesInUse() const {
+    std::unordered_set<std::string_view> output;
+    for (const auto& window : uiWindows) {
+        auto [_, wasEmplaced] = output.emplace(std::string_view{window.window->name});
+        assert(wasEmplaced);
+    }
+    for (const auto& [id, controlWindow] : propertyControlWindows) {
+        auto [_, wasEmplaced] = output.emplace(std::string_view{controlWindow.window->name});
+        assert(wasEmplaced);
+    }
+    return output;
+}
+
+Dashboard::UIWindow::UIWindow(Dashboard& dashboard, std::shared_ptr<gr::BlockModel> blk, std::string_view name) //
+    : window(std::make_shared<DockSpace::Window>(dashboard.generateUniqueNameForUiWindow(*blk, name))), block(std::move(blk)) {}
+
+Dashboard::UIWindow::UIWindow(DeserializeTag, std::shared_ptr<gr::BlockModel> blk, std::string_view name) //
+    : window(std::make_shared<DockSpace::Window>(std::string{name})), block(std::move(blk)) {}
+
+Dashboard::PropertyControlWindow::PropertyControlWindow(DeserializeTag, std::string_view labelView, std::string_view windowName)
+    : window(std::make_shared<DockSpace::Window>(std::string{windowName})), //
+      label{labelView}                                                      //
+{}
+
+Dashboard::PropertyControlWindow::PropertyControlWindow(Dashboard& dashboard, UiGraphModel* graphModel, //
+    std::string_view propertyName, std::string_view labelView, std::string_view blockName)              //
+    : PropertyControlWindow(dashboard, graphModel->recursiveFindBlockByName(blockName).block, propertyName, labelView) {}
+
+Dashboard::PropertyControlWindow::PropertyControlWindow(Dashboard& dashboard, UiGraphBlock* block, std::string_view propertyName, std::string_view labelView) //
+    : window(std::make_shared<DockSpace::Window>(dashboard.generateUniqueNameForPropertyControlWindow(block, propertyName))),                                 //
+      label{labelView}                                                                                                                                        //
+{
+    assert(block && "trying to control property of nonexistent block");
+}
+
 Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) : restClient(std::move(client)), description(desc) {
     description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
@@ -457,7 +525,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
 
         // Create UIWindow for this chart (sink management done via settings interface)
-        UIWindow uiWindow(blockShared, name);
+        UIWindow uiWindow(DeserializeTag{}, blockShared, name);
 
         if (rect) {
             uiWindow.window->freeLayoutPosition = {
@@ -473,73 +541,28 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
 
     // Load sinks for all UIWindows (sinks should be registered in SinkRegistry by now)
     loadUIWindowSources();
+
+    if (dashboard.contains("exportedProperties")) {
+        // exportedProperties are stored in the graph model, so defer loading this until that is loaded
+        this->exportedProperties = dashboard.at("exportedProperties").value_or(gr::property_map{});
+    }
+    if (dashboard.contains("propertyControlWindows")) {
+        if (const auto* controlWindowsByWindowName = dashboard.at("propertyControlWindows").get_if<gr::property_map>()) {
+            for (const auto& [controlWindowName, controlWindowPropertiesValue] : *controlWindowsByWindowName) {
+                if (const auto* controlWindowProperties = controlWindowPropertiesValue.get_if<gr::property_map>()) {
+                    const auto* id    = controlWindowProperties->at("id").get_if<gr::Size_t>();
+                    const auto* label = controlWindowProperties->at("label").get_if<std::pmr::string>();
+                    if (id && label) {
+                        propertyControlWindows.try_emplace(*id, DeserializeTag{}, *label, controlWindowName);
+                    }
+                }
+            }
+        }
+    }
 }
 
-void Dashboard::save() {
+void Dashboard::saveStore(gr::property_map& headerYaml, gr::property_map& dashboardYaml) {
     using namespace gr;
-
-    if (description->storageInfo->isInMemoryDashboardStorage()) {
-        return;
-    }
-
-    property_map headerYaml;
-    headerYaml["favorite"] = description->isFavorite;
-    std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(description->lastUsed.value()));
-    char                        lastUsed[11];
-    std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
-    headerYaml["lastUsed"] = std::string(lastUsed);
-
-    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
-
-    gr::Tensor<gr::pmt::Value> sources;
-    // Use SinkRegistry with SignalSink interface for serialization
-    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
-        // TODO: Port saving and loading flowgraph layouts
-        property_map map;
-        map["name"]  = std::string(sink.name());
-        map["color"] = sink.color();
-
-        sources.emplace_back(std::move(map));
-    });
-    dashboardYaml["sources"] = sources;
-
-    dashboardYaml["windowLayout"] = windowLayout;
-
-    gr::Tensor<gr::pmt::Value> plots;
-    // Iterate UIWindows for chart serialization (new API)
-    for (const auto& w : uiWindows) {
-        if (!w.isChart() || !w.block) {
-            continue;
-        }
-
-        property_map plotMap;
-        plotMap["name"] = w.window ? w.window->name : std::string(w.block->uniqueName());
-        // Extract short chart type name from fully-qualified name (e.g., "opendigitizer::charts::XYChart" -> "XYChart")
-        std::string fullTypeName = std::string(w.block->typeName());
-        if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
-            plotMap["type"] = fullTypeName.substr(pos + 2);
-        } else {
-            plotMap["type"] = fullTypeName;
-        }
-
-        // Serialize axes from uiConstraints
-        gr::Tensor<gr::pmt::Value> plotAxes;
-        const auto&                constraints = w.block->uiConstraints();
-        if (constraints.contains("axes")) {
-            plotAxes = constraints.at("axes").value_or(gr::Tensor<gr::pmt::Value>{});
-        }
-        plotMap["axes"] = plotAxes;
-
-        // Serialize signal sinks from data_sinks property
-        gr::Tensor<gr::pmt::Value> plotSinkBlockNames;
-        for (const auto& sinkName : grc_compat::getBlockSinkNames(w.block.get())) {
-            plotSinkBlockNames.emplace_back(sinkName);
-        }
-        plotMap["sources"] = plotSinkBlockNames;
-        plots.emplace_back(plotMap);
-    }
-    dashboardYaml["plots"] = plots;
-
     if (description->storageInfo->path.starts_with("http://") || description->storageInfo->path.starts_with("https://")) {
         auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
 
@@ -595,10 +618,102 @@ void Dashboard::save() {
     }
 }
 
+void Dashboard::save() {
+    using namespace gr;
+
+    if (description->storageInfo->isInMemoryDashboardStorage()) {
+        return;
+    }
+
+    property_map headerYaml;
+    headerYaml["favorite"] = description->isFavorite;
+    std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(description->lastUsed.value()));
+    char                        lastUsed[11];
+    std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
+    headerYaml["lastUsed"] = std::string(lastUsed);
+
+    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
+
+    gr::Tensor<gr::pmt::Value> sources;
+    // Use SinkRegistry with SignalSink interface for serialization
+    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
+        // TODO: Port saving and loading flowgraph layouts
+        property_map map;
+        map["name"]  = std::string(sink.name());
+        map["color"] = sink.color();
+
+        sources.emplace_back(std::move(map));
+    });
+    dashboardYaml["sources"] = sources;
+
+    dashboardYaml["windowLayout"] = windowLayout;
+
+    dashboardYaml["propertyControlWindows"] = [this] {
+        gr::property_map out;
+        for (const auto& [id, controlWindow] : propertyControlWindows) {
+            gr::property_map windowProperties = {{"id", static_cast<gr::Size_t>(id)}, {"label", controlWindow.label}};
+            out.try_emplace(std::pmr::string{controlWindow.window->name}, std::move(windowProperties));
+        }
+        return out;
+    }();
+
+    dashboardYaml["exportedProperties"] = [this] {
+        auto             exported = this->graphModel.recursiveGatherExportedProperties();
+        gr::property_map properties;
+        for (const auto& [block, exportedPropertiesPtr] : exported) {
+            gr::property_map blockProperties;
+            blockProperties.reserve(exportedPropertiesPtr->size());
+            for (const auto& [propertyName, info] : *exportedPropertiesPtr) {
+                blockProperties.try_emplace(std::pmr::string{propertyName}, info.windowId ? gr::pmt::Value{static_cast<gr::Size_t>(*info.windowId)} : gr::pmt::Value{});
+            }
+            properties[std::pmr::string{block}] = blockProperties;
+        }
+        return properties;
+    }();
+
+    gr::Tensor<gr::pmt::Value> plots;
+    // Iterate UIWindows for chart serialization (new API)
+    for (const auto& w : uiWindows) {
+        if (!w.isChart() || !w.block) {
+            continue;
+        }
+
+        property_map plotMap;
+        plotMap["name"] = w.window ? w.window->name : std::string(w.block->uniqueName());
+        // Extract short chart type name from fully-qualified name (e.g., "opendigitizer::charts::XYChart" -> "XYChart")
+        std::string fullTypeName = std::string(w.block->typeName());
+        if (auto pos = fullTypeName.rfind("::"); pos != std::string::npos) {
+            plotMap["type"] = fullTypeName.substr(pos + 2);
+        } else {
+            plotMap["type"] = fullTypeName;
+        }
+
+        // Serialize axes from uiConstraints
+        gr::Tensor<gr::pmt::Value> plotAxes;
+        const auto&                constraints = w.block->uiConstraints();
+        if (constraints.contains("axes")) {
+            plotAxes = constraints.at("axes").value_or(gr::Tensor<gr::pmt::Value>{});
+        }
+        plotMap["axes"] = plotAxes;
+
+        // Serialize signal sinks from data_sinks property
+        gr::Tensor<gr::pmt::Value> plotSinkBlockNames;
+        for (const auto& sinkName : grc_compat::getBlockSinkNames(w.block.get())) {
+            plotSinkBlockNames.emplace_back(sinkName);
+        }
+        plotMap["sources"] = plotSinkBlockNames;
+        plots.emplace_back(plotMap);
+    }
+    dashboardYaml["plots"] = plots;
+
+    saveStore(headerYaml, dashboardYaml);
+}
+
 DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(std::string_view chartType, const gr::property_map& chartInitialParameters) {
     std::string chartTypeName = chartType.empty() ? "XYChart" : std::string(chartType);
 
-    // Generate a unique name for the chart
+    // Generate a unique name for the chart. If this is not actually unique,
+    // then the UiWindow constructor will append another number.
     static int  chartCounter = 1;
     std::string chartName    = std::format("Chart {}", chartCounter++);
 
@@ -621,7 +736,7 @@ DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(std::string_view chartTy
     }
 
     // Create UIWindow for this chart
-    uiWindows.emplace_back(std::move(blockShared), std::move(chartName));
+    uiWindows.emplace_back(*this, std::move(blockShared), std::move(chartName));
 
     return uiWindows.back();
 }
@@ -764,6 +879,29 @@ bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) 
     win.block = newBlockShared;
 
     return true;
+}
+
+std::pair<std::size_t, Dashboard::PropertyControlWindow&> Dashboard::newPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName, std::string_view label) {
+    static std::size_t lastUsedId = 0;
+    do {
+        ++lastUsedId;
+    } while (this->propertyControlWindows.contains(lastUsedId));
+    auto [iter, _] = this->propertyControlWindows.try_emplace(lastUsedId, *this, block, propertyName, label);
+    return {lastUsedId, iter->second};
+}
+
+void Dashboard::applyExportedPropertiesToUiGraph() {
+    for (const auto& [blockNameKey, mapValue] : this->exportedProperties) {
+        const auto* exportedPropertiesForThisBlock = mapValue.get_if<gr::property_map>();
+        auto*       block                          = graphModel.recursiveFindBlockByName(blockNameKey).block;
+        if (block && exportedPropertiesForThisBlock) {
+            for (const auto& [propertyName, maybeWindowId] : *exportedPropertiesForThisBlock) {
+                auto optionalWindowId = maybeWindowId.is_unsigned_integral() ? std::optional<gr::Size_t>{maybeWindowId.value_or<>(gr::Size_t{})} : std::optional<gr::Size_t>{};
+                block->exportedProperties.try_emplace(std::string{propertyName}, optionalWindowId);
+            }
+        }
+    }
+    this->exportedProperties = {};
 }
 
 void Dashboard::removeSinkFromPlots(std::string_view sinkName) {

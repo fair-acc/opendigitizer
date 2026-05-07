@@ -99,6 +99,7 @@ struct UiGraphBlock {
     const std::vector<UiGraphPort>& inputPorts() { return _inputPorts; }
     const std::vector<UiGraphPort>& outputPorts() { return _outputPorts; }
 
+    void                       setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
     void                       setBlockData(const gr::property_map& data);
     void                       setBasicBlockData(const gr::property_map& blockData);
     void                       setGraphChildren(const gr::property_map& data);
@@ -141,6 +142,15 @@ public:
     gr::property_map blockSettings;
     gr::property_map blockMetaInformation;
 
+    enum class SettingsControlType {
+        Color,
+        Checkbox,
+        Slider,
+        Keypad,
+        Combo,
+        TextInput,
+    };
+
     struct SettingsMetaInformation {
         std::string              unit;
         std::string              description;
@@ -148,8 +158,19 @@ public:
         std::optional<double>    minValue;
         std::optional<double>    maxValue;
         std::vector<std::string> enumValues;
+
+        SettingsControlType controlType(std::string_view propertyName, const gr::pmt::Value& value) const;
     };
 
+    struct ExportedProperty {
+        // if null, this is not visible on any control
+        std::optional<std::size_t> windowId;
+    };
+
+    template<typename Key, typename Value>
+    using UnorderedMap = std::unordered_map<Key, Value, gr::pmt::Value::MapHash, gr::pmt::Value::MapEqual>;
+
+    UnorderedMap<std::string, ExportedProperty>    exportedProperties;
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
     void                                           updateBlockSettingsMetaInformation();
 
@@ -248,7 +269,18 @@ public:
         decltype(UiGraphBlock::childBlocks)*          owningCollection;
         decltype(UiGraphBlock::childBlocks)::iterator owningCollectionIt;
     };
-    FindBlockResult recursiveFindBlockByUniqueName(const std::string& uniqueName);
+    FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
+    FindBlockResult recursiveFindBlockByName(std::string_view name);
+
+    struct ExportedPropertyMatchResult {
+        UiGraphBlock* block;
+        std::string   propertyName;
+    };
+
+    using ExportedPropertiesView = std::unordered_map<std::string_view, UiGraphBlock::UnorderedMap<std::string, UiGraphBlock::ExportedProperty>*>;
+    /// Returns a map of block names to their exported properties, if the exported properties are not empty
+    ExportedPropertiesView                   recursiveGatherExportedProperties();
+    std::vector<ExportedPropertyMatchResult> recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude);
 
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 
@@ -263,6 +295,13 @@ private:
     void handleAvailableGraphSchedulerTypes(const gr::property_map& data);
 
     bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree, UiGraphPort::Role direction) const;
+
+    enum class VisitorResult {
+        Recurse,  // recurse into children
+        Continue, // continue to sibling and ignore children of this block
+        Break,
+    };
+    void recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult& element)>& callback);
 };
 
 } // namespace DigitizerUi
