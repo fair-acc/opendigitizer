@@ -720,6 +720,17 @@ std::vector<UiGraphModel::ExportedPropertyMatchResult> UiGraphModel::recursiveGa
     return output;
 }
 
+std::vector<UiGraphBlock*> UiGraphModel::recursiveGatherPlotSinks() {
+    std::vector<UiGraphBlock*> output;
+    recursiveForEachBlock([&output](const FindBlockResult& element) {
+        if (element.block->isPlotSink()) {
+            output.push_back(element.block);
+        }
+        return VisitorResult::Recurse;
+    });
+    return output;
+}
+
 void UiGraphModel::recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult&)>& callback) {
     if (callback({.block = std::addressof(rootBlock)}) != VisitorResult::Recurse) {
         return;

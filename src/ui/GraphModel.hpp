@@ -106,6 +106,8 @@ struct UiGraphBlock {
     void                       setSchedulerGraph(const gr::property_map& data);
     std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
 
+    [[nodiscard]] constexpr bool isPlotSink() { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
+
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
     std::vector<std::unique_ptr<UiGraphBlock>> childBlocks;
@@ -281,6 +283,7 @@ public:
     /// Returns a map of block names to their exported properties, if the exported properties are not empty
     ExportedPropertiesView                   recursiveGatherExportedProperties();
     std::vector<ExportedPropertyMatchResult> recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude);
+    std::vector<UiGraphBlock*>               recursiveGatherPlotSinks();
 
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 

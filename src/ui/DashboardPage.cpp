@@ -13,7 +13,6 @@
 #include "components/Splitter.hpp"
 #include "components/YesNoPopup.hpp"
 
-#include "blocks/GlobalSignalLegend.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "charts/Chart.hpp"
@@ -477,44 +476,15 @@ void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
 }
 
 ImVec2 DashboardPage::drawLegendCenter(Mode mode, ImVec2 chartPaneSize) noexcept {
-    static constexpr std::string_view kLegendBlockType = "DigitizerUi::GlobalSignalLegend";
-
-    ImVec2 totalSize{0.f, 0.f};
-    for (auto& blockPtr : _dashboard->uiGraph.blocks()) {
-        if (blockPtr->uiCategory() != gr::UICategory::Toolbar) {
-            continue;
-        }
-
-        // Configure GlobalSignalLegend before drawing
-        const bool isLegendBlock = (blockPtr->typeName() == kLegendBlockType);
-        if (isLegendBlock) {
-            auto* legendBlock = static_cast<GlobalSignalLegend*>(blockPtr->raw());
-            legendBlock->setPaneWidth(chartPaneSize.x);
-            legendBlock->setRightClickCallback([this, mode](std::string_view sinkUniqueName) {
-                if (mode == Mode::Layout) {
-                    return;
-                }
-                auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(sinkUniqueName));
-                if (found) {
-                    _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
-                    _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
-                }
-            });
-            legendBlock->setDragDropEnabled(mode == Mode::Interaction);
-        }
-
-        // Draw the toolbar block
-        gr::property_map drawConfig;
-        drawConfig["paneWidth"] = chartPaneSize.x;
-        blockPtr->draw(drawConfig);
-
-        // Track legend size
-        if (isLegendBlock) {
-            auto* legendBlock = static_cast<GlobalSignalLegend*>(blockPtr->raw());
-            totalSize         = legendBlock->legendSize();
+    _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
+    auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, chartPaneSize.x);
+    if (mode != Mode::Layout && !rightClickedSinkName.empty()) {
+        if (auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(rightClickedSinkName))) {
+            _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
+            _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
-    return totalSize;
+    return _signalLegend.legendSize();
 }
 
 void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept {

@@ -13,6 +13,7 @@
 #include "common/ImguiWrap.hpp"
 #include "components/Block.hpp"
 #include "components/Docking.hpp"
+#include "components/GlobalSignalLegend.hpp"
 #include "components/SignalSelector.hpp"
 
 #include <memory>
@@ -50,6 +51,7 @@ private:
     DockSpace                             _dockSpace;
     components::BlockControlsPanelContext _editPane;
     std::unique_ptr<SignalSelector>       _remoteSignalSelector;
+    GlobalSignalLegend                    _signalLegend;
 
     Dashboard* _dashboard = nullptr;
 

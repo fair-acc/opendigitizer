@@ -288,9 +288,6 @@ Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> cl
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 
     graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { scheduler.sendMessage(std::move(message), std::move(location)); };
-
-    // Create the GlobalSignalLegend in uiGraph (Toolbar block showing all sinks)
-    uiGraph.emplaceBlock("DigitizerUi::GlobalSignalLegend", {});
 }
 
 Dashboard::~Dashboard() {}
