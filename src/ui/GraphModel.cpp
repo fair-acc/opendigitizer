@@ -386,10 +386,10 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
                 port.portDirection = direction;
             }
         } else {
-            auto& exportedPorts = direction == gr::PortDirection::INPUT ? exportedInputPorts : exportedOutputPorts;
             assert(childBlocks.size() <= 1);
             if (childBlocks.size() != 0) {
-                auto* graph = childBlocks[0].get();
+                auto* graph         = childBlocks[0].get();
+                auto& exportedPorts = direction == gr::PortDirection::INPUT ? exportedInputPorts : exportedOutputPorts;
                 for (const auto& [childBlockName, portDefinitions] : exportedPorts) {
                     auto* child = graph->findBlockByUniqueName(childBlockName);
                     if (child == nullptr) {
@@ -586,7 +586,7 @@ void UiGraphBlock::requestBlockUpdate() {
                 gr::Message message;
                 message.cmd         = gr::message::Command::Get;
                 message.endpoint    = gr::scheduler::property::kSchedulerInspect;
-                message.serviceName = parentBlock ? parentBlock->blockUniqueName : blockUniqueName;
+                message.serviceName = parentBlock->blockUniqueName;
                 ownerGraph->sendMessage(std::move(message));
             }
             {

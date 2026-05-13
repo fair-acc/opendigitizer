@@ -79,8 +79,6 @@ struct DashboardDescription {
     mutable bool                          isFavorite;
     mutable OptionalTimePoint             lastUsed;
 
-    static std::vector<std::shared_ptr<DashboardDescription>> s_knownDashboards;
-
     DashboardDescription(PrivateTag, std::string _name, std::shared_ptr<DashboardStorageInfo> _storageInfo, std::string _filename, bool _isFavorite, OptionalTimePoint _lastUsed) : name(std::move(_name)), storageInfo(std::move(_storageInfo)), filename(std::move(_filename)), isFavorite(_isFavorite), lastUsed(std::move(_lastUsed)) {}
 
     void save();

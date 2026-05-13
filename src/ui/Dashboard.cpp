@@ -1010,8 +1010,8 @@ void Dashboard::Service::reload() {
         auto        newFlowgraph = opendigitizer::flowgraph::getFlowgraphFromMessage(message);
 
         if (newFlowgraph) {
-            grc    = newFlowgraph->serialisedFlowgraph;
-            layout = newFlowgraph->serialisedUiLayout;
+            this->grc    = newFlowgraph->serialisedFlowgraph;
+            this->layout = newFlowgraph->serialisedUiLayout;
 
         } else {
             components::Notification::warning("Error reading flowgraph from the service reply");
@@ -1096,8 +1096,8 @@ void Dashboard::Service::execute() {
     command.command = opencmw::mdp::Command::Set;
 
     FlowgraphMessage request;
-    request.flowgraph = grc;
-    request.layout    = layout;
+    request.flowgraph = this->grc;
+    request.layout    = this->layout;
     opencmw::serialise<opencmw::Json>(command.data, request);
 
     command.topic    = opencmw::URI<>(uri);
