@@ -48,6 +48,8 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphBg          = {0.1f, 0.1f, 0.1f, 1.f},
         .flowgraphNodeBg      = {0.2f, 0.2f, 0.2f, 1.f},
         .flowgraphNodeBorder  = {0.7f, 0.7f, 0.7f, 1.f},
+
+        .rowBgAlt = ImVec4{0.2f, 0.2f, 0.2f, 1.0f},
     };
     static const Palette lightModePalette{
         .gridLines = quarterTransparentBlack,
@@ -62,6 +64,8 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphBg          = {1.f, 1.f, 1.f, 1.f},
         .flowgraphNodeBg      = {0.94f, 0.92f, 1.f, 1.f},
         .flowgraphNodeBorder  = {0.38f, 0.38f, 0.38f, 1.f},
+
+        .rowBgAlt = {0.8f, 0.8f, 0.8f, 1.0f},
     };
 
     return style == Style::Light ? lightModePalette : darkModePalette;

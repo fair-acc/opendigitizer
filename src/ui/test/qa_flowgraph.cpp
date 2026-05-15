@@ -17,7 +17,6 @@
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
-#include "blocks/GlobalSignalLegend.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"

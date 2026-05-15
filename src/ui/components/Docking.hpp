@@ -99,6 +99,15 @@ struct DockSpace::Window {
     /// Min point of the pane is (0, 0).
     /// This is only used at startup, loaded from "rect" field of plots in dashboard yaml
     std::optional<FreeGeometry> freeLayoutPosition;
+
+    std::optional<ImVec2> windowMinSizeOverride;
+    std::optional<ImVec2> windowMaxSize;
+    bool                  wantsHorizontalScrollbar = false;
+
+    /// If a window is floating and this is true, then relayout() will see it
+    /// and consume it, docking the floating window at the bottom of the
+    /// dockspace.
+    bool wantsDockAtBottom = false;
 };
 
 } // namespace DigitizerUi

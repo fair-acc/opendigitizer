@@ -812,6 +812,7 @@ inline constexpr const char* kCheckOff   = "\uf0c8"; // square
 inline constexpr const char* kHistory    = "\uf1da"; // clock-rotate-left
 inline constexpr const char* kArrow      = "\uf061"; // arrow-right
 inline constexpr const char* kFormat     = "\uf031"; // font
+inline constexpr const char* kDisconnect = "\ue55e"; // plug with minus sign
 
 /// Renders icon followed by text, using fontIconsSolid for the icon portion.
 inline void iconText(const char* icon, const char* text) {

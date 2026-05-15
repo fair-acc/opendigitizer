@@ -91,6 +91,7 @@ cmrc_add_resource_library(
   sample_dashboards
   assets/sampleDashboards/dashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.grc
+  assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc)
 
 if(EMSCRIPTEN)
@@ -199,6 +200,8 @@ add_library(
   components/Dialog.hpp
   components/Docking.cpp
   components/Docking.hpp
+  components/ExportedPropertiesList.hpp
+  components/ExportedPropertiesList.cpp
   components/FilterComboBoxes.hpp
   components/Keypad.hpp
   components/ListBox.hpp
@@ -218,6 +221,7 @@ add_library(
   common/AppDefinitions.hpp
   common/Events.hpp
   common/ImguiWrap.hpp
+  common/ImguiWrap.cpp
   common/LookAndFeel.hpp
   common/LookAndFeel.cpp
   common/TouchHandler.hpp)
