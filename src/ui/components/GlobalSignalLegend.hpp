@@ -2,7 +2,8 @@
 #define OPENDIGITIZER_GLOBAL_SIGNAL_LEGEND_HPP
 
 #include "../GraphModel.hpp"
-#include "../charts/Charts.hpp"
+#include "../charts/Chart.hpp"
+#include "../charts/SinkRegistry.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 
@@ -125,10 +126,12 @@ struct GlobalSignalLegend {
         if (_dragDropEnabled) {
             if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                 using namespace opendigitizer::charts;
-                dnd::Payload payload{};
-                dnd::copyToBuffer(payload.sink_name, label);
-                ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
-                drawLegendItem(color, label, visible);
+                if (const auto& signalSink = SinkRegistry::instance().getSink(sink.blockUniqueName)) {
+                    dnd::Payload payload{.sink_type = signalSink->signalKind()};
+                    dnd::copyToBuffer(payload.sink_name, label);
+                    ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
+                    drawLegendItem(color, label, visible);
+                }
             }
         }
         return clickResult == ClickResult::RightName;

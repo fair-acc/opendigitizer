@@ -22,7 +22,6 @@ struct UiGraphPort {
 
     std::string       portName;
     std::string       portType;
-    bool              portTypeIsDataset = false;
     gr::PortDirection portDirection;
 
     UiGraphPort(UiGraphBlock* owner) : ownerBlock(owner) {}

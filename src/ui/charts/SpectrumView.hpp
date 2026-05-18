@@ -68,6 +68,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     A<double, "Y-axis min"> y_min        = -120.0;
     A<double, "Y-axis max"> y_max        = 0.0;
 
+    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
+
     GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, gpu_acceleration, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
@@ -300,6 +302,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumView", opendigitizer::charts::SpectrumView)
-inline auto registerSpectrumView = gr::registerBlock<opendigitizer::charts::SpectrumView>(gr::globalBlockRegistry());
+inline auto registerSpectrumView                = gr::registerBlock<opendigitizer::charts::SpectrumView>(gr::globalBlockRegistry());
+inline auto registerSpectrumViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumView>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMVIEW_HPP

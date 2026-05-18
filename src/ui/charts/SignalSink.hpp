@@ -50,6 +50,19 @@ enum class LineStyle : std::uint8_t {
     None     ///< No line drawn (markers only)
 };
 
+enum class SignalKind : std::uint8_t {
+    None      = 0,
+    Streaming = 1 << 0U,
+    Dataset1D = 1 << 1U,
+    All       = Streaming | Dataset1D,
+};
+constexpr SignalKind operator|(SignalKind a, SignalKind b) noexcept { //
+    return static_cast<SignalKind>(std::to_underlying(a) | std::to_underlying(b));
+}
+constexpr SignalKind operator&(SignalKind a, SignalKind b) noexcept { //
+    return static_cast<SignalKind>(std::to_underlying(a) & std::to_underlying(b));
+}
+
 /**
  * @brief RAII guard for thread-safe data access to signal sink buffers.
  *
@@ -123,6 +136,7 @@ struct SignalSink {
     [[nodiscard]] virtual bool                                hasDataSets() const noexcept  = 0;
     [[nodiscard]] virtual std::size_t                         dataSetCount() const noexcept = 0;
     [[nodiscard]] virtual std::span<const gr::DataSet<float>> dataSets() const              = 0;
+    [[nodiscard]] virtual SignalKind                          signalKind() const noexcept   = 0;
 
     [[nodiscard]] virtual bool                      hasStreamingTags() const noexcept                                                                    = 0;
     [[nodiscard]] virtual std::pair<double, double> tagTimeRange() const noexcept                                                                        = 0;
@@ -564,6 +578,17 @@ struct SinkAdapter : public SignalSink {
             return b->dataSets();
         }
         return {};
+    }
+
+    [[nodiscard]] SignalKind signalKind() const noexcept override {
+        auto* b = blockPtr();
+        if (!b) {
+            return {};
+        }
+        if constexpr (requires { b->signalKind(); }) {
+            return b->signalKind();
+        }
+        return SignalKind::None;
     }
 
     [[nodiscard]] bool hasStreamingTags() const noexcept override {

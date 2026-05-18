@@ -46,6 +46,8 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     A<double, "Y-axis min"> y_min        = std::numeric_limits<double>::lowest();
     A<double, "Y-axis max"> y_max        = std::numeric_limits<double>::max();
 
+    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
+
     GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     struct RenderInfo {
@@ -234,6 +236,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::WaterfallPlot", opendigitizer::charts::WaterfallPlot)
-inline auto registerWaterfallPlot = gr::registerBlock<opendigitizer::charts::WaterfallPlot>(gr::globalBlockRegistry());
+inline auto registerWaterfallPlot                = gr::registerBlock<opendigitizer::charts::WaterfallPlot>(gr::globalBlockRegistry());
+inline auto registerWaterfallPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::WaterfallPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_WATERFALLPLOT_HPP

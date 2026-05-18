@@ -74,6 +74,8 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
     static constexpr bool IsDataSet   = gr::DataSetLike<T>;
 
+    static constexpr SignalKind kSignalKind = IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
+
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
@@ -280,6 +282,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     [[nodiscard]] bool        hasDataSets() const noexcept { return IsDataSet && _yValues.size() > 0; }
     [[nodiscard]] std::size_t dataSetCount() const noexcept { return IsDataSet ? _yValues.size() : 0; }
+    [[nodiscard]] SignalKind  signalKind() const noexcept { return kSignalKind; }
 
     [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const {
         if constexpr (IsDataSet) {

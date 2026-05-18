@@ -65,6 +65,7 @@ public:
     [[nodiscard]] bool                                hasDataSets() const noexcept override { return false; }
     [[nodiscard]] std::size_t                         dataSetCount() const noexcept override { return 0; }
     [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const override { return {}; }
+    [[nodiscard]] SignalKind                          signalKind() const noexcept override { return SignalKind::Streaming; }
 
     [[nodiscard]] bool                      hasStreamingTags() const noexcept override { return false; }
     [[nodiscard]] std::pair<double, double> tagTimeRange() const noexcept override { return {0.0, 0.0}; }
@@ -225,6 +226,7 @@ public:
     [[nodiscard]] bool                                hasDataSets() const noexcept override { return !_dataSets.empty(); }
     [[nodiscard]] std::size_t                         dataSetCount() const noexcept override { return _dataSets.size(); }
     [[nodiscard]] std::span<const gr::DataSet<float>> dataSets() const override { return {}; }
+    [[nodiscard]] SignalKind                          signalKind() const noexcept override { return SignalKind::Dataset1D; }
 
     [[nodiscard]] bool                      hasStreamingTags() const noexcept override { return false; }
     [[nodiscard]] std::pair<double, double> tagTimeRange() const noexcept override { return {0.0, 0.0}; }
