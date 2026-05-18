@@ -44,10 +44,10 @@ private:
         template<typename... Args>
         explicit SchedulerImpl(Args&&... args) : _scheduler() {
             std::ignore = _scheduler.exchange(std::forward<Args>(args)...);
-            if (_toScheduler.connect(_scheduler.msgIn) != gr::ConnectionResult::SUCCESS) {
+            if (!_toScheduler.connect(_scheduler.msgIn).has_value()) {
                 throw gr::exception("Failed to connect _toScheduler -> _scheduler.msgIn");
             }
-            if (_scheduler.msgOut.connect(_fromScheduler) != gr::ConnectionResult::SUCCESS) {
+            if (!_scheduler.msgOut.connect(_fromScheduler).has_value()) {
                 throw gr::exception("Failed to connect _scheduler.msgOut -> _fromScheduler");
             }
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {}, "UI");

@@ -7,9 +7,10 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/../../demo_sslcert/demo_public.crt" DESTI
 target_link_libraries(
   qa_GnuRadioWorker
   PRIVATE ut
-          gr-fourier
-          gr-testing
-          gnuradio-blocklib-core
+          gnuradio4::GrFourierBlocksShared
+          gnuradio4::GrTestingBlocksShared
+          gnuradio4::GrBasicBlocksShared
+          gnuradio4::gnuradio-blocklib-core
           od_gnuradio_worker
           digitizer_common_utils
           client

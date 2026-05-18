@@ -380,7 +380,7 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
     paneSize.y -= _legendBox.y;
 
     const float w = paneSize.x / float(kGridWidth);
-    const float h = paneSize.y / float(kGridHeight);
+    // const float h = paneSize.y / float(kGridHeight);
 
     // Draw layout grid in Layout mode
     if (mode == Mode::Layout) {
@@ -394,7 +394,7 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
         float y = pos.y;
         while (y < pos.y + paneSize.y) {
             ImGui::GetWindowDrawList()->AddLine({pos.x, y}, {pos.x + paneSize.x, y}, gridLineColor);
-            y += w;
+            y += w; // TODO maybe should be h here?
         }
     }
 
