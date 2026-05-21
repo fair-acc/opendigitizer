@@ -62,6 +62,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
     DensityHistogram             _density;
     TraceAccumulator             _traces;
+    std::vector<float>           _logRow; // scratch: linear spectrum re-binned onto log-spaced columns
+    std::size_t                  _lastSampleCount = std::numeric_limits<std::size_t>::max();
     std::array<std::string, 6UZ> _unitStore{};
     double                       _lastSetYMin         = std::numeric_limits<double>::quiet_NaN();
     double                       _lastSetYMax         = std::numeric_limits<double>::quiet_NaN();
@@ -128,6 +130,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     void reset() {
         _density.reset();
         _traces.reset();
+        _lastSampleCount = std::numeric_limits<std::size_t>::max();
     }
 
     // effective Y-range considering dashboard config override (always finite, needed for histogram binning)
@@ -194,6 +197,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     }
 
     void drawDensitySignals() {
+        const auto logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             const auto ampBins      = static_cast<std::size_t>(amplitude_bins);
             auto [effYMin, effYMax] = effectiveYRange();
@@ -204,11 +208,23 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
                 effYMax     = std::min(limits.Y.Max, effYMax);
             }
 
-            _density.update(f.yValues, f.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-            _density.plot(f.xValues, effYMin, effYMax);
+            const bool newData = consumeNewData(_lastSampleCount, sink.totalSampleCount());
+            if (logRange) {
+                if (newData) {
+                    _logRow.resize(kLogSpectrumColumns);
+                    buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                    _density.update(_logRow, kLogSpectrumColumns, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+                }
+                _density.plot(logRange->min, logRange->max, effYMin, effYMax);
+            } else {
+                if (newData) {
+                    _density.update(f.yValues, f.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+                }
+                _density.plot(f.xValues, effYMin, effYMax);
+            }
 
             ImVec4 traceBase = sinkColor(trace_color);
-            drawTraceOverlays(_traces, f.xValues, f.yValues, f.nBins, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
+            drawTraceOverlays(_traces, newData, f.xValues, f.yValues, f.nBins, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
 
             if (show_current_overlay.value && sink.drawEnabled()) {
                 plotTrace("##current", f.xValues, f.yValues, f.nBins, ImVec4(traceBase.x, traceBase.y, traceBase.z, 1.0f));

@@ -546,6 +546,11 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     }
                 }
             }
+
+            // surface dropped-sample tags at the current position so the gap is visible in the plot
+            if (plot_tags && IsStreaming && tagMap.contains("droppedSamples")) {
+                _tagValues.push_back({.timestamp = _xUtcOffset + static_cast<double>(_sample_count) * _sample_period, .map = tagMap});
+            }
         }
 
         // Process all samples in the span

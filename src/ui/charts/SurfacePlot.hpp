@@ -722,9 +722,12 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
     SurfaceBuffer              _surface;
     SurfaceGpuRenderer         _gpuRenderer;
-    std::size_t                _lastSpectrumSize    = 0;
-    int64_t                    _lastPushedTimestamp = 0;
-    ImPlot3DColormap           _implot3dColormap    = -1;
+    std::vector<float>         _logRow;      // scratch: linear spectrum re-binned onto log-spaced columns
+    std::vector<float>         _logFreqAxis; // log10(centre frequency) per log column — the X coordinate in log mode
+    bool                       _logModeActive         = false;
+    std::size_t                _lastSpectrumSize      = 0;
+    std::size_t                _lastPushedSampleCount = std::numeric_limits<std::size_t>::max();
+    ImPlot3DColormap           _implot3dColormap      = -1;
     std::array<std::string, 6> _unitStore{};
     bool                       _needsRefit       = true;
     std::array<int, 3>         _pendingScale     = {-1, -1, -1}; // -1 = no change
@@ -826,6 +829,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             auto  axisId  = static_cast<ImAxis3D>(i);
             auto  ai      = static_cast<std::size_t>(i);
             void* unitPtr = const_cast<char*>(_unitStore[ai].c_str());
+            if (i == 0 && _logModeActive) { // X holds log10(freq); relabel ticks back to real frequency
+                ImPlot3D::SetupAxisFormat(axisId, formatLog10Metric, unitPtr);
+                continue;
+            }
             switch (_axisFormat[ai]) {
             case LabelFormat::Metric: ImPlot3D::SetupAxisFormat(axisId, static_cast<ImPlot3DFormatter>(axis::formatMetric), nullptr); break;
             case LabelFormat::MetricInline: ImPlot3D::SetupAxisFormat(axisId, static_cast<ImPlot3DFormatter>(axis::formatMetric), unitPtr); break;
@@ -1191,22 +1198,46 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         }
     }
 
+    // log10(centre frequency) of each log-spaced column — the linear X coordinate used in log mode (matches the
+    // column mapping of buildLogBinnedRow). A linear axis over [log10(fMin), log10(fMax)] then renders correctly on
+    // both the CPU and the GPU mesh path (which projects vertices linearly), with decade-uniform grid spacing.
+    void buildLog10FreqAxis(double fMin, double fMax) {
+        _logFreqAxis.resize(kLogSpectrumColumns);
+        const double logMin  = std::log(fMin);
+        const double span    = std::log(fMax) - logMin;
+        const double invLn10 = 1.0 / std::log(10.0);
+        for (std::size_t c = 0; c < kLogSpectrumColumns; ++c) {
+            const double naturalLog = logMin + (static_cast<double>(c) + 0.5) / static_cast<double>(kLogSpectrumColumns) * span;
+            _logFreqAxis[c]         = static_cast<float>(naturalLog * invLn10);
+        }
+    }
+
+    static int formatLog10Metric(double value, char* buf, int size, void* unitPtr) { return axis::formatMetric(std::pow(10.0, value), buf, size, unitPtr); }
+
     void fetchAndPushData() {
-        forEachValidSpectrum(_signalSinks, [&](const auto& /*sink*/, const SpectrumFrame& f) -> bool {
-            if (f.timestamp == _lastPushedTimestamp && _lastPushedTimestamp != 0) {
+        const auto logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) -> bool {
+            if (!consumeNewData(_lastPushedSampleCount, sink.totalSampleCount())) {
                 return false;
             }
-            _lastPushedTimestamp = f.timestamp;
 
-            if (_lastSpectrumSize != f.nBins) {
-                _surface.init(f.nBins, static_cast<std::size_t>(n_history));
-                _lastSpectrumSize = f.nBins;
+            const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
+            if (_lastSpectrumSize != width || _logModeActive != logRange.has_value()) {
+                _surface.init(width, static_cast<std::size_t>(n_history));
+                _lastSpectrumSize = width;
+                _logModeActive    = logRange.has_value();
                 _needsRefit       = true;
             }
 
             _surface.updateAutoScale(f.yValues, f.nBins);
-            _surface.pushRow(f.xValues, f.yValues, f.nBins, timestampFromNanos(f.timestamp));
-
+            if (logRange) {
+                _logRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                buildLog10FreqAxis(logRange->min, logRange->max);
+                _surface.pushRow(_logFreqAxis, _logRow, kLogSpectrumColumns, timestampFromNanos(f.timestamp));
+            } else {
+                _surface.pushRow(f.xValues, f.yValues, f.nBins, timestampFromNanos(f.timestamp));
+            }
             return false;
         });
     }

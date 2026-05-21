@@ -73,6 +73,16 @@ FetchContent_MakeAvailable(
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 
+# PicoScope blocks (gr-digitizers) for local hardware dashboards; native-only (SDK + USB, not under emscripten)
+if (NOT EMSCRIPTEN)
+    FetchContent_Declare(
+            gr-digitizers
+            GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
+            GIT_TAG ${GIT_SHA_GR_DIGITIZERS}
+            EXCLUDE_FROM_ALL SYSTEM)
+    FetchContent_MakeAvailable(gr-digitizers)
+endif ()
+
 if(NOT EMSCRIPTEN)
   find_package(SDL3 QUIET)
 

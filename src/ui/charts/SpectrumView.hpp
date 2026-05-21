@@ -73,11 +73,13 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     GR_MAKE_REFLECTABLE(SpectrumView, chart_name, data_sinks, show_legend, show_grid, top_pane_mode, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, amplitude_bins, histogram_decay_tau_frames, show_current_overlay, n_history, colormap, gpu_acceleration, top_pane_ratio, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
+    std::unordered_map<std::string, std::size_t>      _topPaneSampleCountPerSink;
     DensityHistogram                                  _density;
     WaterfallBuffer                                   _waterfall;
-    std::size_t                                       _lastSpectrumSize    = 0;
-    int64_t                                           _lastPushedTimestamp = 0;
-    std::array<float, 2UZ>                            _rowRatios           = {0.4f, 0.6f};
+    std::vector<float>                                _logRow; // scratch: linear spectrum re-binned onto log-spaced columns
+    std::size_t                                       _lastSpectrumSize         = 0;
+    std::size_t                                       _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
+    std::array<float, 2UZ>                            _rowRatios                = {0.4f, 0.6f};
     std::array<std::string, 6UZ>                      _unitStore{};
     std::array<std::string, 6UZ>                      _waterfallUnitStore{};
 
@@ -101,6 +103,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     void reset() {
         _tracesPerSink.clear();
+        _topPaneSampleCountPerSink.clear();
+        _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
         _density.reset();
         _waterfall.clear();
     }
@@ -195,24 +199,38 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             if (sink.drawEnabled()) {
                 plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
             }
-            auto& traces = _tracesPerSink[std::string(sink.signalName())];
-            drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
+            const std::string sinkKey = std::string(sink.signalName());
+            const bool        newData = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
+            drawTraceOverlays(_tracesPerSink[sinkKey], newData, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
             return true;
         });
     }
 
     void drawDensitySignals() {
+        const auto logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             const auto ampBins = static_cast<std::size_t>(amplitude_bins);
             double     effYMin = y_min.value;
             double     effYMax = y_max.value;
 
-            _density.update(f.yValues, f.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-            _density.plot(f.xValues, effYMin, effYMax);
+            const std::string sinkKey = std::string(sink.signalName());
+            const bool        newData = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
+            if (logRange) {
+                if (newData) {
+                    _logRow.resize(kLogSpectrumColumns);
+                    buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                    _density.update(_logRow, kLogSpectrumColumns, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+                }
+                _density.plot(logRange->min, logRange->max, effYMin, effYMax);
+            } else {
+                if (newData) {
+                    _density.update(f.yValues, f.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
+                }
+                _density.plot(f.xValues, effYMin, effYMax);
+            }
 
             ImVec4 traceBase = sinkColor(trace_color);
-            auto&  traces    = _tracesPerSink[std::string(sink.signalName())];
-            drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
+            drawTraceOverlays(_tracesPerSink[sinkKey], newData, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
 
             if (show_current_overlay.value && sink.drawEnabled()) {
                 plotTrace("##current", f.xValues, f.yValues, f.nBins, ImVec4(traceBase.x, traceBase.y, traceBase.z, 1.0f));
@@ -260,7 +278,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
-    void setupBottomFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond, AxisScale::Linear); }
+    void setupBottomFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond); }
 
     void setupWaterfallYAxis(bool showGrid) {
         ImPlotAxisFlags yFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
@@ -277,22 +295,29 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     [[nodiscard]] std::optional<RenderInfo> fetchAndPushData() {
         std::optional<RenderInfo> result;
-        forEachValidSpectrum(_signalSinks, [&](const auto& /*sink*/, const SpectrumFrame& f) -> bool {
-            if (f.timestamp == _lastPushedTimestamp && _lastPushedTimestamp != 0) {
+        const auto                logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) -> bool {
+            if (!consumeNewData(_lastWaterfallSampleCount, sink.totalSampleCount())) {
                 return false;
             }
-            _lastPushedTimestamp = f.timestamp;
 
-            if (_lastSpectrumSize != f.nBins) {
-                _waterfall.init(f.nBins, static_cast<std::size_t>(n_history), gpu_acceleration);
-                _lastSpectrumSize = f.nBins;
+            const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
+            if (_lastSpectrumSize != width) {
+                _waterfall.init(width, static_cast<std::size_t>(n_history), gpu_acceleration);
+                _lastSpectrumSize = width;
             }
 
             _waterfall.updateAutoScale(f.yValues, f.nBins);
-            _waterfall.pushRow(f.yValues, f.nBins, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
-
-            _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
-            result          = _lastRenderInfo;
+            if (logRange) {
+                _logRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                _waterfall.pushRow(_logRow, kLogSpectrumColumns, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
+                _lastRenderInfo = RenderInfo{.freqMin = logRange->min, .freqMax = logRange->max};
+            } else {
+                _waterfall.pushRow(f.yValues, f.nBins, _topPaneYMin, _topPaneYMax, timestampFromNanos(f.timestamp), colormap.value);
+                _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
+            }
+            result = _lastRenderInfo;
             return false;
         });
         return result;

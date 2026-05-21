@@ -92,7 +92,8 @@ cmrc_add_resource_library(
   assets/sampleDashboards/dashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.grc
   assets/sampleDashboards/PropertyControlDashboard.grc
-  assets/sampleDashboards/DemoDashboard.grc)
+  assets/sampleDashboards/DemoDashboard.grc
+  assets/sampleDashboards/PulsedPowerDemo.grc)
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
@@ -256,6 +257,9 @@ target_link_libraries(
          GrHttpBlocksShared
          GrMathBlocksShared
          GrTestingBlocksShared)
+if(NOT EMSCRIPTEN) # PicoScope blocks (gr-digitizers), native-only
+  target_link_libraries(${target_name}lib PUBLIC fair-picoscope)
+endif()
 if(OD_DISABLE_DEMO_FLOWGRAPHS)
   target_compile_definitions(${target_name}lib PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
 else()

@@ -43,7 +43,7 @@ inline ImVec4 contrastingGridColor(ImPlotColormap cmap, float alpha = 0.3f) {
 }
 
 inline uint32_t colormapLookup(double value, double scaleMin, double scaleMax, std::span<const uint32_t, kColormapSize> lut) {
-    if (scaleMax <= scaleMin) {
+    if (scaleMax <= scaleMin || !std::isfinite(value)) {
         return lut[0];
     }
     double norm = (value - scaleMin) / (scaleMax - scaleMin);
@@ -176,9 +176,64 @@ inline void plotTrace(const char* label, std::span<const float> xValues, std::sp
         &ctx, static_cast<int>(count));
 }
 
-inline void drawTraceOverlays(TraceAccumulator& traces, std::span<const float> xValues, std::span<const float> yValues, std::size_t nBins, double decayTau, const ImVec4& baseColor, bool showMaxHold, bool showMinHold, bool showAverage) {
+/// True (and updates `lastCount`) when `currentCount` advanced, i.e. a new spectrum arrived. Gates per-frame
+/// accumulation (hold/decay, waterfall/surface rows) to the data rate, not the UI redraw rate. The DataSet
+/// timestamp can't serve this because gr::blocks::fft::FFT hardcodes it to 0.
+[[nodiscard]] inline bool consumeNewData(std::size_t& lastCount, std::size_t currentCount) noexcept {
+    if (lastCount == currentCount) {
+        return false;
+    }
+    lastCount = currentCount;
+    return true;
+}
+
+/// fixed number of log-spaced display columns for a log-frequency spectrum (waterfall/density/surface).
+inline constexpr std::size_t kLogSpectrumColumns = 2048;
+
+/// Re-sample a linear spectrum (`freqs`/`mags`, `nBins`) onto `out.size()` log-spaced columns over [fMin, fMax]:
+/// peak-preserving max-aggregate, then fill columns finer than the bin spacing. Keeps low-frequency detail on a log axis.
+inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const float> mags, std::size_t nBins, double fMin, double fMax, std::span<float> out) {
+    std::ranges::fill(out, -std::numeric_limits<float>::infinity());
+    const std::size_t nCols  = out.size();
+    const double      logMin = std::log(fMin);
+    const double      span   = std::log(fMax) - logMin;
+    for (std::size_t k = 0; k < nBins; ++k) {
+        const double freq = static_cast<double>(freqs[k]);
+        if (freq < fMin || freq > fMax) {
+            continue;
+        }
+        const auto col = std::min(static_cast<std::size_t>((std::log(freq) - logMin) / span * static_cast<double>(nCols)), nCols - 1);
+        out[col]       = std::max(out[col], mags[k]);
+    }
+    float carry     = 0.0f;
+    bool  seen      = false;
+    float firstVal  = 0.0f;
+    bool  haveFirst = false;
+    for (float& v : out) { // forward-fill: propagate the last occupied column into the gaps above it
+        if (std::isfinite(v)) {
+            carry = v;
+            seen  = true;
+            if (!haveFirst) {
+                firstVal  = v;
+                haveFirst = true;
+            }
+        } else if (seen) {
+            v = carry;
+        }
+    }
+    for (float& v : out) { // back-fill leading columns (below the first occupied bin) with the first value
+        if (std::isfinite(v)) {
+            break;
+        }
+        v = haveFirst ? firstVal : 0.0f;
+    }
+}
+
+inline void drawTraceOverlays(TraceAccumulator& traces, bool newData, std::span<const float> xValues, std::span<const float> yValues, std::size_t nBins, double decayTau, const ImVec4& baseColor, bool showMaxHold, bool showMinHold, bool showAverage) {
     const bool anyEnabled = showMaxHold || showMinHold || showAverage;
-    traces.update(yValues, nBins, decayTau, anyEnabled);
+    if (newData) {
+        traces.update(yValues, nBins, decayTau, anyEnabled);
+    }
 
     if (traces.empty()) {
         return;
@@ -725,14 +780,14 @@ void main() {
         }
     }
 
-    void plot(std::span<const float> xValues, double yMin, double yMax) {
+    void plot(std::span<const float> xValues, double yMin, double yMax) { plot(static_cast<double>(xValues.front()), static_cast<double>(xValues.back()), yMin, yMax); }
+
+    void plot(double freqMin, double freqMax, double yMin, double yMax) {
         GLuint tex = _gpuAvailable ? _colormapTexture : _cpuTexture;
         if (!tex) {
             return;
         }
-        const double freqMin     = static_cast<double>(xValues.front());
-        const double freqMax     = static_cast<double>(xValues.back());
-        auto         toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
+        auto toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
             if constexpr (std::is_pointer_v<TexId>) {
                 return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
             } else {
@@ -822,9 +877,12 @@ struct WaterfallBuffer {
 
         _timestamps.assign(_height, 0.0);
 
-        if (_preferGpu) {
+        // Always create the GPU texture: PlotImage maps it in screen space, so it renders correctly on log-frequency axes,
+        // whereas PlotHeatmap places cells in linear data space and mis-positions log-binned columns. The renderCpu/
+        // PlotHeatmap path below is retained only as a fallback for the rare case where no GL texture can be allocated.
+        glGenTextures(1, &_texture);
+        if (_texture != 0U) {
             _pixels.assign(_width * _height, 0U);
-            glGenTextures(1, &_texture);
             glBindTexture(GL_TEXTURE_2D, _texture);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -855,7 +913,7 @@ struct WaterfallBuffer {
 
         auto n = std::min(count, _width);
 
-        if (_preferGpu && _texture) {
+        if (_texture) {
             if (_activeColormap != colormap || (_colormapLut[0] == 0 && _colormapLut[1] == 0)) {
                 _colormapLut = buildColormapLut(colormap);
             }
@@ -887,44 +945,79 @@ struct WaterfallBuffer {
         }
     }
 
-    void render(double freqMin, double freqMax, double yMin, double yMax, bool newestAtTop = true) const {
+    // `horizontal` transposes the display: frequency on Y, time on X (default: frequency on X, time on Y).
+    void render(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading = true, bool horizontal = false) const {
         if (_filledRows == 0) {
             return;
         }
+        if (!_texture) {
+            renderCpu(freqMin, freqMax, timeLo, timeHi, newestLeading, horizontal);
+            return;
+        }
 
-        if (_texture) {
-            // center-of-texel UVs avoid GL_NEAREST boundary ambiguity at the write-head seam
-            const auto fHeight = static_cast<float>(_height);
-            float      vNewest = (static_cast<float>(_writeRow) - 0.5f) / fHeight;
-            float      vOldest = (static_cast<float>(_writeRow) - static_cast<float>(_filledRows) + 0.5f) / fHeight;
+        // center-of-texel UVs avoid GL_NEAREST boundary ambiguity at the write-head seam; the time axis (texture V)
+        // wraps via GL_REPEAT, so vNewest/vOldest may fall outside [0,1].
+        const auto  fHeight     = static_cast<float>(_height);
+        const float vNewest     = (static_cast<float>(_writeRow) - 0.5f) / fHeight;
+        const float vOldest     = (static_cast<float>(_writeRow) - static_cast<float>(_filledRows) + 0.5f) / fHeight;
+        auto        toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
+            if constexpr (std::is_pointer_v<TexId>) {
+                return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
+            } else {
+                return static_cast<TexId>(id);
+            }
+        };
 
-            // uv0 maps to (bmin.x, bmax.y) = screen top-left = plot yMax
-            // uv1 maps to (bmax.x, bmin.y) = screen bottom-right = plot yMin
-            float vTop        = newestAtTop ? vNewest : vOldest;
-            float vBottom     = newestAtTop ? vOldest : vNewest;
-            auto  toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
-                if constexpr (std::is_pointer_v<TexId>) {
-                    return reinterpret_cast<TexId>(static_cast<std::uintptr_t>(id));
-                } else {
-                    return static_cast<TexId>(id);
-                }
-            };
-            ImPlot::PlotImage("##waterfall", toTextureId(_texture), ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
+        if (horizontal) {
+            // PlotImage can't transpose, so map the quad explicitly: texture U (freq) -> Y, V (time) -> X.
+            // U 0->freqMin (bottom) .. 1->freqMax (top); V newest at the high-time end (right) when newestLeading.
+            const float  vRight   = newestLeading ? vNewest : vOldest;
+            const float  vLeft    = newestLeading ? vOldest : vNewest;
+            ImDrawList*  drawList = ImPlot::GetPlotDrawList();
+            const ImVec2 topLeft  = ImPlot::PlotToPixels(timeLo, freqMax);
+            const ImVec2 topRight = ImPlot::PlotToPixels(timeHi, freqMax);
+            const ImVec2 botRight = ImPlot::PlotToPixels(timeHi, freqMin);
+            const ImVec2 botLeft  = ImPlot::PlotToPixels(timeLo, freqMin);
+            ImPlot::PushPlotClipRect();
+            drawList->AddImageQuad(toTextureId(_texture), topLeft, topRight, botRight, botLeft, ImVec2(1.f, vLeft), ImVec2(1.f, vRight), ImVec2(0.f, vRight), ImVec2(0.f, vLeft));
+            ImPlot::PopPlotClipRect();
         } else {
-            renderCpu(freqMin, freqMax, yMin, yMax, newestAtTop);
+            // uv0 maps to (bmin.x, bmax.y) = screen top-left = plot timeHi; newest at top when newestLeading
+            const float vTop    = newestLeading ? vNewest : vOldest;
+            const float vBottom = newestLeading ? vOldest : vNewest;
+            ImPlot::PlotImage("##waterfall", toTextureId(_texture), ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi), ImVec2(0.0f, vTop), ImVec2(1.0f, vBottom));
         }
     }
 
-    void renderCpu(double freqMin, double freqMax, double yMin, double yMax, bool newestAtTop) const {
+    void renderCpu(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading, bool horizontal = false) const {
+        if (horizontal) {
+            renderCpuHorizontal(freqMin, freqMax, timeLo, timeHi, newestLeading);
+            return;
+        }
         _linearized.resize(_filledRows * _width);
         for (std::size_t i = 0; i < _filledRows; ++i) {
-            // PlotHeatmap maps row 0 to the top of the bounding box
-            std::size_t srcRow = newestAtTop ? (_writeRow + _height - 1 - i) % _height : (_writeRow + _height - _filledRows + i) % _height;
+            std::size_t srcRow = newestLeading ? (_writeRow + _height - 1 - i) % _height : (_writeRow + _height - _filledRows + i) % _height;
             std::copy_n(_rawMagnitudes.data() + srcRow * _width, _width, _linearized.data() + i * _width);
         }
 
         ImPlot::PushColormap(_activeColormap);
-        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_filledRows), static_cast<int>(_width), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(freqMin, yMin), ImPlotPoint(freqMax, yMax));
+        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_filledRows), static_cast<int>(_width), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(freqMin, timeLo), ImPlotPoint(freqMax, timeHi));
+        ImPlot::PopColormap();
+    }
+
+    // transposed CPU fallback: rows = frequency (Y), cols = time (X)
+    void renderCpuHorizontal(double freqMin, double freqMax, double timeLo, double timeHi, bool newestLeading) const {
+        _linearized.resize(_width * _filledRows);
+        for (std::size_t r = 0; r < _width; ++r) {
+            const std::size_t freqCol = _width - 1 - r;
+            for (std::size_t c = 0; c < _filledRows; ++c) {
+                const std::size_t order          = newestLeading ? c : (_filledRows - 1 - c); // col 0 = left = oldest when newest trails right
+                const std::size_t srcRow         = (_writeRow + _height - _filledRows + order) % _height;
+                _linearized[r * _filledRows + c] = _rawMagnitudes[srcRow * _width + freqCol];
+            }
+        }
+        ImPlot::PushColormap(_activeColormap);
+        ImPlot::PlotHeatmap("##waterfall", _linearized.data(), static_cast<int>(_width), static_cast<int>(_filledRows), _effectiveScaleMin, _effectiveScaleMax, nullptr, ImPlotPoint(timeLo, freqMin), ImPlotPoint(timeHi, freqMax));
         ImPlot::PopColormap();
     }
 
@@ -936,7 +1029,7 @@ struct WaterfallBuffer {
         std::vector<double> newTimestamps(newHeight, 0.0);
         std::size_t         rowsToCopy = std::min(_filledRows, newHeight);
 
-        if (_preferGpu) {
+        if (_texture) {
             std::vector<uint32_t> newPixels(_width * newHeight, 0U);
             for (std::size_t i = 0; i < rowsToCopy; ++i) {
                 std::size_t srcRow = (_writeRow + _height - rowsToCopy + i) % _height;
@@ -969,7 +1062,7 @@ struct WaterfallBuffer {
     }
 
     void clear() {
-        if (_preferGpu) {
+        if (_texture) {
             std::ranges::fill(_pixels, uint32_t(0));
         } else {
             std::ranges::fill(_rawMagnitudes, 0.0f);
@@ -1002,9 +1095,20 @@ struct WaterfallBuffer {
     }
 
     void updateAutoScale(std::span<const float> yValues, std::size_t nBins) {
-        auto [minIt, maxIt] = std::ranges::minmax_element(yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins)));
-        double fMin         = static_cast<double>(*minIt);
-        double fMax         = static_cast<double>(*maxIt);
+        // ignore non-finite bins: a dB spectrum has -inf where the magnitude is ~0 (e.g. empty bands of a
+        // wideband FFT), which would otherwise drag scaleMin to -inf and collapse the whole colour mapping.
+        double fMin = std::numeric_limits<double>::infinity();
+        double fMax = -std::numeric_limits<double>::infinity();
+        for (const float y : yValues | std::views::take(static_cast<std::ptrdiff_t>(nBins))) {
+            if (!std::isfinite(y)) {
+                continue;
+            }
+            fMin = std::min(fMin, static_cast<double>(y));
+            fMax = std::max(fMax, static_cast<double>(y));
+        }
+        if (fMax <= fMin) {
+            return; // no finite range this frame -> keep the previous colour scale
+        }
         if (_filledRows == 0) {
             _scaleMin = fMin;
             _scaleMax = fMax;

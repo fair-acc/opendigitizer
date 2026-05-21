@@ -54,6 +54,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
+    std::unordered_map<std::string, std::size_t>      _lastSampleCountPerSink;
     std::array<std::string, 6UZ>                      _unitStore{};
 
     static constexpr std::string_view kChartTypeName = "SpectrumPlot";
@@ -90,7 +91,10 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         return gr::work::Status::OK;
     }
 
-    void reset() { _tracesPerSink.clear(); }
+    void reset() {
+        _tracesPerSink.clear();
+        _lastSampleCountPerSink.clear();
+    }
 
     void setupAxes(bool showGrid) {
         setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline);
@@ -102,8 +106,10 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             if (sink.drawEnabled()) {
                 plotTrace(std::string(sink.signalName()).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
             }
-            auto& traces = _tracesPerSink[std::string(sink.signalName())];
-            drawTraceOverlays(traces, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
+            const std::string sinkKey = std::string(sink.signalName());
+            auto&             traces  = _tracesPerSink[sinkKey];
+            const bool        newData = consumeNewData(_lastSampleCountPerSink[sinkKey], sink.totalSampleCount());
+            drawTraceOverlays(traces, newData, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
             return true;
         });
     }
