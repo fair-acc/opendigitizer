@@ -32,15 +32,24 @@
 #include <GrHttpBlocks.hpp>
 #include <GrMathBlocks.hpp>
 #include <GrTestingBlocks.hpp>
+
+#ifndef __EMSCRIPTEN__
+// gr-digitizers is a native-only run-time dependency (PicoScope SDK, USB); unavailable under emscripten.
+#include <fair/picoscope/Picoscope.hpp>
+#include <fair/picoscope/Picoscope4000a.hpp>
+#endif
+
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/basic/ConverterBlocks.hpp>
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
+#include <gnuradio-4.0/filter/time_domain_filter.hpp>
 
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
 #include "blocks/SineSource.hpp"
+#include "blocks/StridedWindow.hpp"
 #include "blocks/TagToSample.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
 
@@ -230,6 +239,19 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrHttpBlocks(*registry);
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
+
+    // decimating BasicFilterProto variants: the ratio is the Resampling<in,out> template integers, and the
+    // gr::filter blocklib registers only the <1,1> identity (used by PulsedPowerDemo.grc).
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "">(*registry);
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "">(*registry);
+
+    // strided windowing in front of the FFT (the gr4 FFT has no Stride<>); see PulsedPowerDemo.grc
+    gr::registerBlock<opendigitizer::StridedWindow<float>, "">(*registry);
+
+#ifndef __EMSCRIPTEN__
+    gr::registerBlock<fair::picoscope::Picoscope<float, fair::picoscope::Picoscope4000a>, "">(*registry);
+    gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(*registry);
+#endif
 
     // Register schedulers
     gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>();

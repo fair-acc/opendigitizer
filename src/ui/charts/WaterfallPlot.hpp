@@ -21,6 +21,8 @@
 
 namespace opendigitizer::charts {
 
+enum class WaterfallOrientation : int { Vertical = 0, Horizontal = 1 }; // time on Y (Vertical) or on X with frequency on Y (Horizontal)
+
 struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<"Scrolling spectrogram using a GPU ring-buffer texture with single-row updates.">;
 
@@ -35,9 +37,10 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     A<bool, "show grid", gr::Visible>                      show_grid   = true;
 
     // waterfall
-    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                      n_history        = 256U;
-    A<ImPlotColormap_, "colormap", gr::Visible>                                                              colormap         = ImPlotColormap_Viridis;
-    A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">> gpu_acceleration = true;
+    A<gr::Size_t, "history depth", gr::Visible, gr::Limits<16U, 4096U>>                                                                         n_history        = 256U;
+    A<ImPlotColormap_, "colormap", gr::Visible>                                                                                                 colormap         = ImPlotColormap_Viridis;
+    A<bool, "GPU acceleration", gr::Doc<"use GPU texture for rendering (falls back to CPU if unavailable)">>                                    gpu_acceleration = true;
+    A<WaterfallOrientation, "orientation", gr::Visible, gr::Doc<"scroll axis: Vertical (time on Y) or Horizontal (time on X, frequency on Y)">> orientation      = WaterfallOrientation::Vertical;
     // axis limits (Z = colour scale: NaN min/max → auto-scale from data)
     A<bool, "X auto-scale"> x_auto_scale = true;
     A<bool, "Y auto-scale"> y_auto_scale = true;
@@ -48,7 +51,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
     static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
+    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, orientation, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     struct RenderInfo {
         double freqMin;
@@ -56,10 +59,11 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     };
 
     WaterfallBuffer            _waterfall;
-    std::size_t                _lastSpectrumSize = 0;
+    std::size_t                _lastInitWidth = 0; // allocated texture width (nBins, or kLogSpectrumColumns in log mode)
     std::array<std::string, 6> _unitStore{};
-    int64_t                    _lastPushedTimestamp = 0;
+    std::size_t                _lastPushedSampleCount = std::numeric_limits<std::size_t>::max();
     std::optional<RenderInfo>  _lastRenderInfo;
+    std::vector<float>         _logRow; // scratch: linear spectrum re-binned onto log-spaced columns
 
     static constexpr std::string_view kChartTypeName = "WaterfallPlot";
 
@@ -109,13 +113,15 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         // phase 2: fetch new data and push into waterfall (skips duplicate frames)
         auto renderInfo = fetchAndPushData();
 
-        // phase 3: compute Y-axis bounds in the coordinate system determined by the scale
-        const AxisScale yScale  = getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse);
-        auto [tOldest, tNewest] = _waterfall.rawTimeBounds();
-        auto [yLo, yHi]         = transformedYBounds(tOldest, tNewest, yScale);
+        // phase 3: compute the time-axis bounds; in horizontal mode time is on X, otherwise on Y
+        const bool      horizontal = orientation.value == WaterfallOrientation::Horizontal;
+        const ImAxis    timeAxis   = horizontal ? ImAxis_X1 : ImAxis_Y1;
+        const AxisScale timeScale  = getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse);
+        auto [tOldest, tNewest]    = _waterfall.rawTimeBounds();
+        auto [timeLo, timeHi]      = transformedYBounds(tOldest, tNewest, timeScale);
 
-        if (_waterfall.filledRows() > 0 && yHi > yLo) {
-            ImPlot::SetupAxisLimits(ImAxis_Y1, yLo, yHi, ImPlotCond_Always);
+        if (_waterfall.filledRows() > 0 && timeHi > timeLo) {
+            ImPlot::SetupAxisLimits(timeAxis, timeLo, timeHi, ImPlotCond_Always);
         }
 
         ImPlot::SetupFinish();
@@ -128,11 +134,11 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         }
 
         // phase 4: render waterfall image (always, even when no new data this frame)
-        const bool newestAtTop = (yScale == AxisScale::LinearReverse);
+        const bool newestLeading = (timeScale == AxisScale::LinearReverse);
         if (renderInfo) {
-            _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, yLo, yHi, newestAtTop);
+            _waterfall.render(renderInfo->freqMin, renderInfo->freqMax, timeLo, timeHi, newestLeading, horizontal);
         } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
-            _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, yLo, yHi, newestAtTop);
+            _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, timeLo, timeHi, newestLeading, horizontal);
         }
 
         tooltip::showPlotMouseTooltip();
@@ -167,7 +173,12 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     }
 
     void setupAxes(bool showGrid) {
-        // x-axis: frequency
+        // frequency keeps the "X" dashboard entry, time the "Y" entry; orientation only rotates which screen axis each uses
+        const bool   horizontal = orientation.value == WaterfallOrientation::Horizontal;
+        const ImAxis freqAxis   = horizontal ? ImAxis_Y1 : ImAxis_X1;
+        const ImAxis timeAxis   = horizontal ? ImAxis_X1 : ImAxis_Y1;
+
+        // frequency axis
         {
             const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, true);
             const AxisScale scale   = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
@@ -182,27 +193,26 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true);
+            axis::setupAxis(freqAxis, xCat, format, 100.f, minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true);
         }
 
-        // y-axis: time — limits are set in draw() after data push so axis and image stay synchronised.
-        // ImPlotScale_Time is X-axis-only; we use Linear + custom formatter.
+        // time axis — limits are set in draw() after data push so axis and image stay synchronised.
+        // ImPlotScale_Time is X-axis-only; we use Linear + a custom formatter uniformly.
         {
-            AxisScale scale = getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse);
-
-            ImPlotAxisFlags yFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
-            ImPlot::SetupAxis(ImAxis_Y1, "", yFlags);
+            AxisScale       scale  = getAxisScale(AxisKind::Y).value_or(AxisScale::LinearReverse);
+            ImPlotAxisFlags tFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;
+            ImPlot::SetupAxis(timeAxis, "", tFlags);
 
             if (scale == AxisScale::Time) {
-                ImPlot::SetupAxisFormat(ImAxis_Y1, formatTimeAxis, nullptr);
-                ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Linear);
+                ImPlot::SetupAxisFormat(timeAxis, formatTimeAxis, nullptr);
+                ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear);
             } else {
-                _unitStore[ImAxis_Y1] = "s";
-                ImPlot::SetupAxisFormat(ImAxis_Y1, axis::formatMetric, const_cast<void*>(static_cast<const void*>(_unitStore[ImAxis_Y1].c_str())));
+                _unitStore[static_cast<std::size_t>(timeAxis)] = "s";
+                ImPlot::SetupAxisFormat(timeAxis, axis::formatMetric, const_cast<void*>(static_cast<const void*>(_unitStore[static_cast<std::size_t>(timeAxis)].c_str())));
                 switch (scale) {
-                case AxisScale::Log10: ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10); break;
-                case AxisScale::SymLog: ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_SymLog); break;
-                default: ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Linear); break;
+                case AxisScale::Log10: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Log10); break;
+                case AxisScale::SymLog: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_SymLog); break;
+                default: ImPlot::SetupAxisScale(timeAxis, ImPlotScale_Linear); break;
                 }
             }
         }
@@ -210,23 +220,32 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
     [[nodiscard]] std::optional<RenderInfo> fetchAndPushData() {
         std::optional<RenderInfo> result;
-        forEachValidSpectrum(_signalSinks, [&](const auto& /*sink*/, const SpectrumFrame& f) -> bool {
-            if (f.timestamp == _lastPushedTimestamp && _lastPushedTimestamp != 0) {
+        const auto                logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
+
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) -> bool {
+            if (!consumeNewData(_lastPushedSampleCount, sink.totalSampleCount())) {
                 return false;
             }
-            _lastPushedTimestamp = f.timestamp;
 
-            if (_lastSpectrumSize != f.nBins) {
-                _waterfall.init(f.nBins, static_cast<std::size_t>(n_history), gpu_acceleration);
-                _lastSpectrumSize = f.nBins;
+            const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
+            if (_lastInitWidth != width) {
+                _waterfall.init(width, static_cast<std::size_t>(n_history), gpu_acceleration);
+                _lastInitWidth = width;
             }
 
             _waterfall.updateAutoScale(f.yValues, f.nBins);
             auto [cMin, cMax] = effectiveColourRange(this->ui_constraints.value, _waterfall.scaleMin(), _waterfall.scaleMax());
-            _waterfall.pushRow(f.yValues, f.nBins, cMin, cMax, timestampFromNanos(f.timestamp), colormap.value);
 
-            _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
-            result          = _lastRenderInfo;
+            if (logRange) {
+                _logRow.resize(kLogSpectrumColumns);
+                buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                _waterfall.pushRow(_logRow, kLogSpectrumColumns, cMin, cMax, timestampFromNanos(f.timestamp), colormap.value);
+                _lastRenderInfo = RenderInfo{.freqMin = logRange->min, .freqMax = logRange->max};
+            } else {
+                _waterfall.pushRow(f.yValues, f.nBins, cMin, cMax, timestampFromNanos(f.timestamp), colormap.value);
+                _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
+            }
+            result = _lastRenderInfo;
             return false;
         });
         return result;

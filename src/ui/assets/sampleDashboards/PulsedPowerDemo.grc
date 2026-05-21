@@ -1,0 +1,165 @@
+blocks:
+  - id: fair::picoscope::Picoscope<float32, fair::picoscope::Picoscope4000a>
+    parameters:
+      name: PicoPulsedPower
+      auto_arm: true
+      sample_rate: 4000000
+      channel_ids: !!str [ A, B ]
+      signal_names: !!str [ "voltage", "current" ]
+      signal_units: !!str [ "V", "A" ]
+      signal_quantities: !!str [ "voltage", "current" ]
+      channel_couplings: !!str [ AC, AC ]
+      channel_ranges: !!float32 [ 10, 5 ] # scope full-scale [V] before signal_scales; tune to your probe/sensor
+      signal_scales: !!float32 [ 100, 2.5 ] # 100:1 HV probe (x100); 400 mV/A current sensor (1/0.4 = x2.5)
+      signal_offsets: !!float32 [ 0, 0 ]
+      trigger_source: ""                # empty -> free-running streaming
+      verbose_console: false
+  - id: gr::testing::NullSink<uint16>
+    parameters:
+      name: DigitalNullSink             # digital port must be connected or the graph blocks
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkC }
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkD }
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkE }
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkF }
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkG }
+  - id: gr::testing::NullSink<float32>
+    parameters: { name: NullSinkH }
+  # time-domain path: 4 MS/s -> 100 kHz; decimation ratio is the Resampling<40, 1> template (decimate must match)
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
+    parameters:
+      name: DecimateVoltage
+      sample_rate: 4000000
+      decimate: 40
+      f_low: 40000.0
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
+    parameters:
+      name: DecimateCurrent
+      sample_rate: 4000000
+      decimate: 40
+      f_low: 40000.0
+  # spectrum path: take one 2^19-sample window of the raw 4 MS/s current twice per second (stride = sample_rate/2),
+  # so the FFT runs on the full bandwidth (0-2 MHz) at ~2 Hz without filtering or per-sample cost on skipped data.
+  - id: opendigitizer::StridedWindow<float32>
+    parameters:
+      name: CurrentWindow
+      input_chunk_size: 524288
+      output_chunk_size: 524288
+      stride: 2000000
+  # time-domain path: stream the decimated 100 kHz signals straight to the plot sinks. The XYChart snapshot-gates
+  # the displayed window (caches it and refreshes on new samples, not per redraw), so it advances at the data rate
+  # rather than the mouse/redraw rate without needing flowgraph-level chunking.
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotVoltage
+      color: 0x000099
+      signal_name: voltage
+      signal_quantity: voltage
+      signal_unit: V
+      sample_rate: 100000
+      required_size: 20000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotCurrent
+      color: 0x990000
+      signal_name: current
+      signal_quantity: current
+      signal_unit: A
+      sample_rate: 100000
+      required_size: 20000
+  # 2^19-pt FFT on the raw 4 MS/s window -> 7.6 Hz/bin, 0-2 MHz. The waterfall re-bins these 262145 linear bins
+  # onto a log frequency axis (see the plot), keeping the mains harmonics resolved at the low end.
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+    parameters:
+      name: CurrentSpectrumFFT
+      fftSize: 524288
+      sample_rate: 4000000
+      window: Hann                      # suppress leakage so the harmonic comb is sharp
+      outputInDb: true
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotCurrentSpectrum
+      color: 0x990000
+      signal_name: current spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+      dataset_index: 0
+connections:
+  # picoscope ports: digital is port 1, analog out[] is the port-0 collection ([0, channel]).
+  # 5th element is the edge buffer; keep every picoscope edge >= 2x the 32768 driver chunk (see availableBuffer note above).
+  - [ PicoPulsedPower, 1, DigitalNullSink, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 0 ], DecimateVoltage, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 1 ], DecimateCurrent, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 2 ], NullSinkC, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 3 ], NullSinkD, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 4 ], NullSinkE, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 5 ], NullSinkF, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 6 ], NullSinkG, 0, 65536 ]
+  - [ PicoPulsedPower, [ 0, 7 ], NullSinkH, 0, 65536 ]
+  - [ DecimateVoltage, 0, PlotVoltage, 0 ]
+  - [ DecimateCurrent, 0, PlotCurrent, 0 ]
+  # raw current also feeds the strided window -> FFT (edge >= one 2^19 window)
+  - [ PicoPulsedPower, [ 0, 1 ], CurrentWindow, 0, 16777216 ]
+  - [ CurrentWindow, 0, CurrentSpectrumFFT, 0, 16777216 ]
+  - [ CurrentSpectrumFFT, 0, PlotCurrentSpectrum, 0, 16 ]
+dashboard:
+  layout: Free
+  sources:
+    - name: PlotVoltage
+      block: PlotVoltage
+    - name: PlotCurrent
+      block: PlotCurrent
+    - name: PlotCurrentSpectrum
+      block: PlotCurrentSpectrum
+  plots:
+    - name: Voltage & current
+      parameters:
+        show_legend: true
+        n_history: 6000      # 60 ms at 100 kHz
+        update_rate: 2       # Hz; refresh the 60 ms window twice per second (decoupled from the redraw rate)
+      axes:
+        - axis: X            # relative-to-now, newest on the right
+          min: -0.06
+          max: 0.0
+          scale: LinearReverse
+          format: Metric
+        - axis: Y          # voltage, left axis (fixed)
+          min: -400
+          max: 400
+        - axis: Y          # current, right axis (auto-range)
+          min: NaN
+          max: NaN
+          format: Metric
+      sources:
+        - PlotVoltage
+        - PlotCurrent
+      rect: [ 0, 0, 2, 1 ] # x, y, width, height
+    - name: Current magnitude spectrum
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        n_history: 60   # ~30 s history at ~2 spectra/s
+        colormap: ImPlotColormap_Jet
+      axes:
+        # log frequency: the chart re-bins the linear FFT onto log-spaced columns over [min, max], so the
+        # mains harmonics (low end) and the wideband up to ~2 MHz are both visible. min must be > 0 for log.
+        - axis: X
+          min: 10        # [Hz]
+          max: 2000000   # 2 MHz (Nyquist of the raw 4 MS/s current)
+          scale: Log10
+          format: MetricInline
+        - axis: Y
+          min: NaN
+          max: NaN
+        - axis: Z      # colour scale [dB], auto
+          min: NaN
+          max: NaN
+      sources:
+        - PlotCurrentSpectrum
+      rect: [ 0, 1, 2, 1 ]
+  flowgraphLayout: ""

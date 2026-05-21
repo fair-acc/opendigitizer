@@ -74,6 +74,20 @@ struct AxisConfig {
     bool                     plotTags = true;
 };
 
+struct LogFreqRange {
+    double min;
+    double max;
+};
+
+/// The [min, max] display range when `xCfg` is a Log10 axis with a finite, strictly-positive range, else nullopt.
+/// Texture/surface spectrum charts re-bin a linear FFT onto log-spaced columns drawn over this range (buildLogBinnedRow).
+[[nodiscard]] inline std::optional<LogFreqRange> logFreqRange(const std::optional<AxisConfig>& xCfg) {
+    if (xCfg && xCfg->scale == AxisScale::Log10 && std::isfinite(xCfg->min) && std::isfinite(xCfg->max) && xCfg->min > 0.f) {
+        return LogFreqRange{static_cast<double>(xCfg->min), static_cast<double>(xCfg->max)};
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, AxisKind targetKind, std::size_t index = 0) {
     auto axesIt = constraints.find("axes");
     if (axesIt == constraints.end()) {
@@ -114,11 +128,16 @@ struct AxisConfig {
 
         AxisConfig cfg;
         cfg.axis = parsedKind;
+        // accept both integer and floating-point literals from the .grc (value_or<float> alone returns NaN on an int)
         if (auto it = axisMap->find("min"); it != axisMap->end()) {
-            cfg.min = it->second.value_or(std::numeric_limits<float>::quiet_NaN());
+            if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
+                cfg.min = *v;
+            }
         }
         if (auto it = axisMap->find("max"); it != axisMap->end()) {
-            cfg.max = it->second.value_or(std::numeric_limits<float>::quiet_NaN());
+            if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
+                cfg.max = *v;
+            }
         }
         if (auto it = axisMap->find("scale"); it != axisMap->end()) {
             if (it->second.is_string()) {
@@ -484,9 +503,12 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
         double      xTagPosition = transformX(timestamp, axisScale, xMin, xMax);
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
-        // highlight fishy tags (out-of-order timestamps) in magenta
+        const bool isDrop = properties.contains("droppedSamples");
+        // highlight fishy tags (out-of-order timestamps) magenta, lost-sample markers red
         if (properties.contains(std::string(kFishyTagKey))) {
             ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.0f, 1.0f, 1.0f));
+        } else if (isDrop) {
+            ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
         } else {
             ImPlot::SetNextLineStyle(tagColor);
         }
@@ -494,6 +516,10 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
 
         // suppress tag labels if too close to previous or to axis extremities
         if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
+            if (isDrop) {
+                lastTextPixelX = plotVerticalTagLabel("dropped samples", xTagPosition, plotLimits, true).x;
+                return;
+            }
             std::string triggerLabel = "TRIGGER";
             if (const auto it = properties.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); it != properties.end()) {
                 if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {

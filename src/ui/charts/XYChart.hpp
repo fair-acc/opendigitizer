@@ -10,6 +10,7 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -21,15 +22,6 @@
 #include <implot.h>
 
 namespace opendigitizer::charts {
-
-struct PlotLineContext {
-    const SignalSink* sink;
-    AxisScale         axis_scale;
-    double            x_min;
-    double            x_max;
-    float             y_offset{0.0f};
-    std::size_t       offset{0};
-};
 
 struct DataSetPlotContext {
     const gr::DataSet<float>* data_set;
@@ -44,34 +36,42 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    A<std::string, "chart name", gr::Visible>                                       chart_name;
-    A<std::string, "chart title">                                                   chart_title;
-    A<std::vector<std::string>, "data sinks", gr::Visible>                          data_sinks              = {};
-    A<int, "X-axis mode", gr::Visible>                                              x_axis_mode             = static_cast<int>(XAxisMode::RelativeTime);
-    A<bool, "show legend", gr::Visible>                                             show_legend             = false;
-    A<bool, "show tags", gr::Visible>                                               show_tags               = true;
-    A<bool, "show grid", gr::Visible>                                               show_grid               = true;
-    A<bool, "anti-aliasing">                                                        anti_aliasing           = true;
-    A<gr::Size_t, "max history count", gr::Limits<1U, 128U>>                        max_history_count       = 3U;
-    A<float, "history opacity decay", gr::Limits<0.001f, 1.f>>                      history_opacity_decay   = 0.3f;
-    A<float, "history vertical offset", gr::Limits<0.f, 100.f>>                     history_vertical_offset = 0.0f;
-    A<std::array<bool, 3UZ>, "X auto-scale">                                        x_auto_scale            = std::array{true, true, true};
-    A<std::array<bool, 3UZ>, "Y auto-scale">                                        y_auto_scale            = std::array{true, true, true};
-    A<std::array<double, 3UZ>, "X-axis min">                                        x_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "X-axis max">                                        x_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "Y-axis min">                                        y_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "Y-axis max">                                        y_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<gr::Size_t, "history depth", gr::Unit<"samples">, gr::Limits<4U, 2'000'000U>> n_history               = kDefaultHistorySize;
+    A<std::string, "chart name", gr::Visible>                                                                                                                                      chart_name;
+    A<std::string, "chart title">                                                                                                                                                  chart_title;
+    A<std::vector<std::string>, "data sinks", gr::Visible>                                                                                                                         data_sinks              = {};
+    A<int, "X-axis mode", gr::Visible>                                                                                                                                             x_axis_mode             = static_cast<int>(XAxisMode::RelativeTime);
+    A<bool, "show legend", gr::Visible>                                                                                                                                            show_legend             = false;
+    A<bool, "show tags", gr::Visible>                                                                                                                                              show_tags               = true;
+    A<bool, "show grid", gr::Visible>                                                                                                                                              show_grid               = true;
+    A<bool, "anti-aliasing">                                                                                                                                                       anti_aliasing           = true;
+    A<gr::Size_t, "max history count", gr::Limits<1U, 128U>>                                                                                                                       max_history_count       = 3U;
+    A<float, "history opacity decay", gr::Limits<0.001f, 1.f>>                                                                                                                     history_opacity_decay   = 0.3f;
+    A<float, "history vertical offset", gr::Limits<0.f, 100.f>>                                                                                                                    history_vertical_offset = 0.0f;
+    A<std::array<bool, 3UZ>, "X auto-scale">                                                                                                                                       x_auto_scale            = std::array{true, true, true};
+    A<std::array<bool, 3UZ>, "Y auto-scale">                                                                                                                                       y_auto_scale            = std::array{true, true, true};
+    A<std::array<double, 3UZ>, "X-axis min">                                                                                                                                       x_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "X-axis max">                                                                                                                                       x_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis min">                                                                                                                                       y_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis max">                                                                                                                                       y_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<gr::Size_t, "history depth", gr::Unit<"samples">, gr::Limits<4U, 2'000'000U>>                                                                                                n_history               = kDefaultHistorySize;
+    A<float, "update rate", gr::Unit<"Hz">, gr::Limits<0.f, 240.f>, gr::Doc<"streaming-trace redraw cadence; decouples the display from the mouse/redraw rate (0 = every frame)">> update_rate             = 25.0f;
 
     static constexpr SignalKind supportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history);
+    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, update_rate);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
     std::array<std::optional<AxisCategory>, 3UZ> _yCategories{};
     std::array<std::vector<std::string>, 3UZ>    _xAxisGroups{};
     std::array<std::vector<std::string>, 3UZ>    _yAxisGroups{};
     mutable std::array<std::string, 6UZ>         _unitStringStorage{};
+
+    struct StreamSnapshot {
+        std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
+        std::vector<double> y;
+        double              lastRefresh = 0.0;
+    };
+    std::unordered_map<std::string, StreamSnapshot> _streamSnapshots;
 
     static constexpr std::string_view kChartTypeName = "XYChart";
 
@@ -234,39 +234,36 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         // clamp to n_history: show only the most recent samples
-        std::size_t dataCount = totalCount;
-        std::size_t offset    = 0;
-        if (dataCount > static_cast<std::size_t>(n_history.value)) {
-            dataCount = static_cast<std::size_t>(n_history.value);
-            offset    = totalCount - dataCount;
+        std::size_t dataCount = std::min(totalCount, static_cast<std::size_t>(n_history.value));
+        std::size_t offset    = totalCount - dataCount;
+
+        const AxisScale xAxisScale = _xCategories[0].has_value() ? _xCategories[0]->scale : AxisScale::Linear;
+
+        // snapshot-gate: rebuild the displayed window at most update_rate times/s instead of re-reading the live
+        // ring buffer each redraw, so the trace advances at a steady cadence rather than with the mouse/redraw rate.
+        StreamSnapshot& snap            = _streamSnapshots[std::string(sink.uniqueName())];
+        const double    now             = ImGui::GetTime();
+        const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
+        if (snap.x.size() != dataCount || (now - snap.lastRefresh) >= refreshInterval) {
+            const double xMin = sink.xAt(offset);
+            const double xMax = sink.xAt(offset + dataCount - 1);
+            snap.x.resize(dataCount);
+            snap.y.resize(dataCount);
+            for (std::size_t i = 0; i < dataCount; ++i) {
+                double xVal = sink.xAt(offset + i);
+                switch (xAxisScale) {
+                case AxisScale::Time: break;
+                case AxisScale::LinearReverse: xVal -= xMax; break;
+                default: xVal -= xMin; break;
+                }
+                snap.x[i] = xVal;
+                snap.y[i] = static_cast<double>(sink.yAt(offset + i));
+            }
+            snap.lastRefresh = now;
         }
 
-        ImVec4 lineColor = sinkColor(sink.color());
-        ImPlot::SetNextLineStyle(lineColor);
-
-        double xMin = sink.xAt(offset);
-        double xMax = sink.xAt(offset + dataCount - 1);
-
-        AxisScale       xAxisScale = _xCategories[0].has_value() ? _xCategories[0]->scale : AxisScale::Linear;
-        PlotLineContext ctx{&sink, xAxisScale, xMin, xMax, 0.0f, offset};
-
-        ImPlot::PlotLineG(
-            sink.signalName().data(),
-            [](int idx, void* user_data) -> ImPlotPoint {
-                auto*       context   = static_cast<PlotLineContext*>(user_data);
-                std::size_t actualIdx = context->offset + static_cast<std::size_t>(idx);
-                double      xVal      = context->sink->xAt(actualIdx);
-                double      yVal      = static_cast<double>(context->sink->yAt(actualIdx)) + static_cast<double>(context->y_offset);
-
-                switch (context->axis_scale) {
-                case AxisScale::Time: break;
-                case AxisScale::LinearReverse: xVal = xVal - context->x_max; break;
-                default: xVal = xVal - context->x_min; break;
-                }
-
-                return ImPlotPoint(xVal, yVal);
-            },
-            &ctx, static_cast<int>(dataCount));
+        ImPlot::SetNextLineStyle(sinkColor(sink.color()));
+        ImPlot::PlotLine(sink.signalName().data(), snap.x.data(), snap.y.data(), static_cast<int>(snap.x.size()));
     }
 
     void drawDataSetSignal(const SignalSink& sink) {
