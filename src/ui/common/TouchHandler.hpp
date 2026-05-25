@@ -219,14 +219,14 @@ struct TouchHandler {
                 if (getFingerPressedDuration(fingerIndex) < std::chrono::milliseconds(500)) { // short click -> process as left click
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, true);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, false);
-                    ImGui::GetIO().MouseDown[ImGuiPopupFlags_MouseButtonRight]    = false;
-                    ImGui::GetIO().MouseClicked[ImGuiPopupFlags_MouseButtonRight] = false;
+                    ImGui::GetIO().MouseDown[ImGuiMouseButton_Right]    = false;
+                    ImGui::GetIO().MouseClicked[ImGuiMouseButton_Right] = false;
                 } else { // long click -> process as right click
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonLeft, false);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonRight, true);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiPopupFlags_MouseButtonRight, false);
-                    ImGui::GetIO().MouseDown[ImGuiPopupFlags_MouseButtonLeft]    = false;
-                    ImGui::GetIO().MouseClicked[ImGuiPopupFlags_MouseButtonLeft] = false;
+                    ImGui::GetIO().MouseDown[ImGuiMouseButton_Left]    = false;
+                    ImGui::GetIO().MouseClicked[ImGuiMouseButton_Left] = false;
                     // reset to avoid recurring 'right click emulation'
                     fingerDownTimeStamp[fingerIndex] = now;
                 }
