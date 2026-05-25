@@ -24,15 +24,6 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
-#include <GrBasicBlocks.hpp>
-#include <GrElectricalBlocks.hpp>
-#include <GrFileIoBlocks.hpp>
-#include <GrFilterBlocks.hpp>
-#include <GrFourierBlocks.hpp>
-#include <GrHttpBlocks.hpp>
-#include <GrMathBlocks.hpp>
-#include <GrTestingBlocks.hpp>
-
 #ifndef __EMSCRIPTEN__
 // gr-digitizers is a native-only run-time dependency (PicoScope SDK, USB); unavailable under emscripten.
 #include <fair/picoscope/Picoscope.hpp>
@@ -44,6 +35,15 @@
 #include <gnuradio-4.0/basic/ConverterBlocks.hpp>
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
+
+#include <gnuradio-4.0/GrBasicBlocks.hpp>
+#include <gnuradio-4.0/GrElectricalBlocks.hpp>
+#include <gnuradio-4.0/GrFileIoBlocks.hpp>
+#include <gnuradio-4.0/GrFilterBlocks.hpp>
+#include <gnuradio-4.0/GrFourierBlocks.hpp>
+#include <gnuradio-4.0/GrHttpBlocks.hpp>
+#include <gnuradio-4.0/GrMathBlocks.hpp>
+#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"

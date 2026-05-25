@@ -76,7 +76,7 @@ struct CountSource : public gr::Block<CountSource<T>> {
         }
 
         if (!_pending_tags.empty() && _pending_tags[0].index == _produced) {
-            this->publishTag(_pending_tags[0].map, 0);
+            output.publishTag(_pending_tags[0].map, 0);
             _pending_tags.pop_front();
         }
 
