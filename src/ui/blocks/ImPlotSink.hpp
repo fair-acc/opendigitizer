@@ -515,14 +515,19 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
     }
 
-    gr::work::Status processBulk(std::span<const T> input) noexcept {
+    gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         std::lock_guard lock(*_dataMutex);
 
-        // Handle tag at start of span (GR4 guarantees tag on first sample if present)
-        if (this->inputTagsPresent()) {
-            const gr::property_map& tagMap = this->mergedInputTag().map;
-
+        for (const auto& [relIndex, tagMapRef] : input.tags()) {
+            if (relIndex < 0) {
+                continue; // skip unconsumed pre-span tags
+            }
+            if (relIndex > 0) {
+                break; // only process tags at the start of the span
+            }
+            const gr::property_map& tagMap = tagMapRef.get();
             if (tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
+
                 const auto   offset       = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
                 const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tagMap, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
                 const double tagEventTime = utcTime * 1e-9 + offset; // [s]

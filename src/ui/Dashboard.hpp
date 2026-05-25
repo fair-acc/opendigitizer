@@ -122,7 +122,7 @@ struct Dashboard {
     };
 
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        std::vector<std::filesystem::path> pluginPaths;
+        std::vector<std::string> pluginPaths;
 #ifndef __EMSCRIPTEN__
         pluginPaths.push_back(std::filesystem::current_path() / "plugins");
 #endif

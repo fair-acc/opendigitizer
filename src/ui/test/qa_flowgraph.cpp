@@ -8,9 +8,9 @@
 #include <gnuradio-4.0/Profiler.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 
-#include <GrBasicBlocks.hpp>
-#include <GrFourierBlocks.hpp>
-#include <GrTestingBlocks.hpp>
+#include <gnuradio-4.0/GrBasicBlocks.hpp>
+#include <gnuradio-4.0/GrFourierBlocks.hpp>
+#include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
