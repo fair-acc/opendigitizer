@@ -377,5 +377,85 @@ int main() {
         expect(eq(sink->bufferCapacity(), 3000UZ)) << "after expiry, should fall back to chart1's request";
     };
 
+    "SignalKind bitwise operators"_test = [] {
+        using opendigitizer::SignalKind;
+
+        expect((SignalKind::Streaming | SignalKind::Dataset1D) == SignalKind::All);
+        expect((SignalKind::All & SignalKind::Streaming) == SignalKind::Streaming);
+        expect((SignalKind::All & SignalKind::Dataset1D) == SignalKind::Dataset1D);
+        expect((SignalKind::Streaming & SignalKind::Dataset1D) == SignalKind::None);
+        expect((SignalKind::None | SignalKind::None) == SignalKind::None);
+        expect((SignalKind::None & SignalKind::All) == SignalKind::None);
+    };
+
+    "detail::isCompatible truth table"_test = [] {
+        using opendigitizer::SignalKind;
+        using opendigitizer::charts::detail::isCompatible;
+
+        expect(isCompatible(SignalKind::Streaming, SignalKind::Streaming)) << "streaming vs streaming";
+        expect(!isCompatible(SignalKind::Streaming, SignalKind::Dataset1D)) << "streaming vs dataset-only";
+        expect(isCompatible(SignalKind::Dataset1D, SignalKind::Dataset1D)) << "dataset vs dataset";
+        expect(!isCompatible(SignalKind::Dataset1D, SignalKind::Streaming)) << "dataset vs streaming-only";
+        expect(isCompatible(SignalKind::Streaming, SignalKind::All)) << "streaming vs all";
+        expect(isCompatible(SignalKind::Dataset1D, SignalKind::All)) << "dataset vs all";
+        expect(!isCompatible(SignalKind::None, SignalKind::All)) << "none vs all";
+        expect(!isCompatible(SignalKind::None, SignalKind::Streaming)) << "none vs streaming";
+        expect(!isCompatible(SignalKind::None, SignalKind::Dataset1D)) << "none vs dataset";
+        expect(isCompatible(SignalKind::All, SignalKind::All)) << "all vs all";
+        expect(isCompatible(SignalKind::All, SignalKind::Streaming)) << "all vs streaming";
+    };
+
+    "TestDataSetSink and TestStreamingSink return correct signalKind"_test = [] {
+        auto streamingSink = makeTestStreamingSink("streaming_kind_test");
+        auto datasetSink   = makeTestDataSetSink("dataset_kind_test");
+        expect(streamingSink->signalKind() == opendigitizer::SignalKind::Streaming);
+        expect(datasetSink->signalKind() == opendigitizer::SignalKind::Dataset1D);
+    };
+
+    "minimumSinkCompatibility empty chart returns None"_test = [] {
+        auto chart = makeXYChart("compat_empty");
+        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::None);
+    };
+
+    "minimumSinkCompatibility with streaming sink"_test = [] {
+        auto chart = makeXYChart("compat_streaming");
+        chart->addSignalSink(makeTestStreamingSink("s1"));
+        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::Streaming);
+    };
+
+    "minimumSinkCompatibility with dataset sink"_test = [] {
+        auto chart = makeXYChart("compat_dataset");
+        chart->addSignalSink(makeTestDataSetSink("d1"));
+        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::Dataset1D);
+    };
+
+    "minimumSinkCompatibility with mixed sinks returns All"_test = [] {
+        auto chart = makeXYChart("compat_mixed");
+        chart->addSignalSink(makeTestStreamingSink("s1"));
+        chart->addSignalSink(makeTestDataSetSink("d1"));
+        expect(chart->minimumSinkCompatibility() == opendigitizer::SignalKind::All);
+    };
+
+    "chartSignalCompatibilityRegistry contains registered chart types"_test = [] {
+        using opendigitizer::SignalKind;
+        using namespace opendigitizer::charts;
+
+        auto expectEntry = []<typename T>() {
+            const auto&      registry = opendigitizer::charts::detail::chartSignalCompatibilityRegistry();
+            std::string_view name     = gr::refl::type_name<T>;
+            auto             iterator = std::ranges::find_if(registry, [name](const auto& pair) { return pair.first.find(name) != std::string::npos; });
+            expect(iterator != registry.end()) << name << " should be registered";
+            expect(iterator->second == T::supportedSignals);
+        };
+
+        expectEntry.template operator()<XYChart>();
+        expectEntry.template operator()<YYChart>();
+        expectEntry.template operator()<SpectrumPlot>();
+        expectEntry.template operator()<SpectrumDensity>();
+        expectEntry.template operator()<SpectrumView>();
+        expectEntry.template operator()<SurfacePlot>();
+        expectEntry.template operator()<WaterfallPlot>();
+    };
+
     return 0;
 }
