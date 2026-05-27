@@ -228,7 +228,7 @@ public:
         ImGui::SetNextWindowSize(buttonArea.GetSize());
         ImGui::SetNextWindowPos(buttonArea.GetTL());
         IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
-        const auto  unlockPopupID = "Unlock the dashboard?##lockModeDisableInputBlockerPopup";
+        const auto  unlockPopupID = "Return dashboard to interactive mode?##lockModeDisableInputBlockerPopup";
         ImGui::SetCursorScreenPos(buttonArea.GetTL());
         if ((ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) && Digitizer::Settings::instance().editableMode) {
             ImGui::OpenPopup(unlockPopupID);
@@ -236,7 +236,7 @@ public:
 
         bool exitRequested = false;
         using namespace components;
-        if (const auto popup = beginYesNoPopup(unlockPopupID); isPopupOpen(popup)) {
+        if (const auto popup = beginYesNoPopup(unlockPopupID, {.yesText = "Make interactive"}); isPopupOpen(popup)) {
             ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
             if (isPopupConfirmed(popup)) {
                 exitRequested = true;

@@ -26,7 +26,7 @@ public:
 
 private:
     static constexpr const char* addChartPopupID                      = "New Chart";
-    static constexpr const char* enterViewOnlyModePopupID             = "Lock the dashboard?##lockMode";
+    static constexpr const char* enterViewOnlyModePopupID             = "Set dashboard to locked mode?##lockMode";
     static constexpr const char* currentPropertiesPopupID             = "##Current properties";
     static constexpr const char* changeLabelPopupID                   = "##Change property control window label";
     static constexpr const char* addExportedPropertyPopupID           = "Add another exported property";
