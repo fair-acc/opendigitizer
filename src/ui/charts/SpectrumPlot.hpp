@@ -49,6 +49,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     A<double, "Y-axis min"> y_min        = -120.0;
     A<double, "Y-axis max"> y_max        = 0.0;
 
+    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
+
     GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
@@ -110,6 +112,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumPlot", opendigitizer::charts::SpectrumPlot)
-inline auto registerSpectrumPlot = gr::registerBlock<opendigitizer::charts::SpectrumPlot>(gr::globalBlockRegistry());
+inline auto registerSpectrumPlot                = gr::registerBlock<opendigitizer::charts::SpectrumPlot>(gr::globalBlockRegistry());
+inline auto registerSpectrumPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMPLOT_HPP

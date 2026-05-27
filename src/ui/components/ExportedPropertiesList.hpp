@@ -100,7 +100,7 @@ struct ExportedPropertyDragDropPayload {
     static void payloadSource(const std::string& block, const std::string& property);
 
     [[nodiscard]] static ExportedPropertyPair getCurrentPayload() {
-        if (const auto* payload = ImGui::GetDragDropPayload(); payload && payload->Data) {
+        if (const auto* payload = ImGui::GetDragDropPayload(); payload && payload->Data && payload->IsDataType(kType)) {
             return ExportedPropertyPair(*static_cast<ExportedPropertyDragDropPayload*>(payload->Data));
         }
         return {};

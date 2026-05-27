@@ -716,6 +716,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<double, "Z-axis min"> z_min        = std::numeric_limits<double>::lowest();
     A<double, "Z-axis max"> z_max        = std::numeric_limits<double>::max();
 
+    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
+
     GR_MAKE_REFLECTABLE(SurfacePlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_minor_grid, grid_color, grid_opacity, n_history, colormap, gpu_acceleration, x_auto_scale, y_auto_scale, z_auto_scale, x_min, x_max, y_min, y_max, z_min, z_max);
 
     SurfaceBuffer              _surface;
@@ -1213,6 +1215,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SurfacePlot", opendigitizer::charts::SurfacePlot)
-inline auto registerSurfacePlot = gr::registerBlock<opendigitizer::charts::SurfacePlot>(gr::globalBlockRegistry());
+inline auto registerSurfacePlot                = gr::registerBlock<opendigitizer::charts::SurfacePlot>(gr::globalBlockRegistry());
+inline auto registerSurfacePlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SurfacePlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SURFACEPLOT_HPP

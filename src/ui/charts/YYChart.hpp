@@ -44,6 +44,8 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<std::array<double, 3UZ>, "Y-axis max">               y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">>    n_history     = kDefaultHistorySize;
 
+    static constexpr SignalKind supportedSignals = SignalKind::Streaming;
+
     GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history);
 
     mutable std::array<std::string, 6UZ> _unitStringStorage{};
@@ -410,6 +412,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 // Register YYChart with the GR4 block registry
 // GR_REGISTER_BLOCK is a marker macro for build tools; actual registration via gr::registerBlock
 GR_REGISTER_BLOCK("opendigitizer::charts::YYChart", opendigitizer::charts::YYChart)
-inline auto registerYYChart = gr::registerBlock<opendigitizer::charts::YYChart>(gr::globalBlockRegistry());
+inline auto registerYYChart                = gr::registerBlock<opendigitizer::charts::YYChart>(gr::globalBlockRegistry());
+inline auto registerYYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::YYChart>();
 
 #endif // OPENDIGITIZER_CHARTS_YYCHART_HPP

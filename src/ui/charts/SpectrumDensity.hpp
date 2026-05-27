@@ -56,6 +56,8 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     A<double, "Y-axis min"> y_min        = -120.0;
     A<double, "Y-axis max"> y_max        = 0.0;
 
+    static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
+
     GR_MAKE_REFLECTABLE(SpectrumDensity, chart_name, chart_title, data_sinks, show_legend, show_grid, amplitude_bins, colormap, histogram_decay_tau_frames, gpu_acceleration, adaptive_y_range, show_current_overlay, show_max_hold, show_min_hold, show_average, trace_color, trace_decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
 
     DensityHistogram             _density;
@@ -220,6 +222,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumDensity", opendigitizer::charts::SpectrumDensity)
-inline auto registerSpectrumDensity = gr::registerBlock<opendigitizer::charts::SpectrumDensity>(gr::globalBlockRegistry());
+inline auto registerSpectrumDensity                = gr::registerBlock<opendigitizer::charts::SpectrumDensity>(gr::globalBlockRegistry());
+inline auto registerSpectrumDensityCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumDensity>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMDENSITY_HPP

@@ -423,6 +423,10 @@ inline std::size_t activeAxisCount(const std::array<std::optional<AxisCategory>,
 
 } // namespace axis
 
+namespace detail {
+constexpr bool isCompatible(SignalKind signal, SignalKind chartSupport) { return (std::to_underlying(signal) & std::to_underlying(chartSupport)) != 0; }
+} // namespace detail
+
 namespace tags {
 
 /// Marker key for tags that appear out-of-order or have suspicious timestamps.
@@ -700,8 +704,9 @@ constexpr void copyToBuffer(char (&dest)[N], std::string_view src) noexcept {
 }
 
 struct Payload {
-    char sink_name[256]      = {};
-    char source_chart_id[64] = {};
+    char       sink_name[256]      = {};
+    char       source_chart_id[64] = {};
+    SignalKind sink_type           = SignalKind::None;
 
     [[nodiscard]] bool hasSource() const noexcept { return source_chart_id[0] != '\0'; }
     [[nodiscard]] bool isValid() const noexcept { return sink_name[0] != '\0'; }
@@ -722,32 +727,46 @@ struct State {
 };
 inline State g_state;
 
+struct PayloadStatus {
+    const Payload* payload{};
+    bool           isCompatible{};
+};
+
+[[nodiscard]] inline PayloadStatus getPayloadStatus(const char* payloadType, SignalKind supportedKinds) {
+    if (const ImGuiPayload* payload = ImGui::GetDragDropPayload(); payload && payload->Data && payload->IsDataType(payloadType)) {
+        const auto* dnd = static_cast<const Payload*>(payload->Data);
+        return {.payload = dnd, .isCompatible = detail::isCompatible(dnd->sink_type, supportedKinds)};
+    }
+    return {};
+}
+
 template<typename Callable>
 requires std::is_invocable_r_v<bool, Callable, const Payload&>
 inline bool handleDropTarget(Callable&& handler, const char* payloadType) {
-    bool dropped = false;
-    if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
-            const auto* dnd = static_cast<const Payload*>(payload->Data);
-            if (dnd && dnd->isValid()) {
-                g_state.accepted = std::invoke(handler, *dnd);
-                dropped          = g_state.accepted;
-            }
-        }
-        ImGui::EndDragDropTarget();
+    const auto payloadResult = getPayloadStatus(payloadType, SignalKind::All);
+    if (payloadResult.payload && !payloadResult.isCompatible) {
+        return false;
     }
-    return dropped;
+
+    if (ImGui::BeginDragDropTarget()) {
+        Digitizer::utils::scope_exit _([] { ImGui::EndDragDropTarget(); });
+        if (ImGui::AcceptDragDropPayload(payloadType) && payloadResult.payload && payloadResult.payload->isValid()) {
+            g_state.accepted = std::invoke(handler, *payloadResult.payload);
+            return g_state.accepted;
+        }
+    }
+    return false;
 }
 
 inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
     return handleDropTarget([](const Payload& payload) { return payload.hasSource(); }, payloadType);
 }
 
-inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType) {
+inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType, SignalKind signalKind = SignalKind::All) {
     if (!sink) {
         return;
     }
-    Payload           dnd{};
+    Payload           dnd{.sink_type = signalKind};
     const std::string sinkIdentifier = sink->signalName().empty() ? std::string(sink->name()) : std::string(sink->signalName());
     dnd::copyToBuffer(dnd.sink_name, sinkIdentifier);
     if (!sourceChartId.empty()) {
@@ -925,7 +944,20 @@ inline void onScrollWheel(auto&& apply) {
     }
 }
 
+/// We need to know the signal compatibilities for every chart type in order to
+/// enumerate the available types to switch to in the "Change Type" chart dropdown.
+/// This is a map of Chart typenames to the signals they can display
+inline std::unordered_map<std::string, SignalKind>& chartSignalCompatibilityRegistry() {
+    static std::unordered_map<std::string, SignalKind> s_instance;
+    return s_instance;
+}
 } // namespace detail
+
+template<typename T>
+int registerChartSignalCompatibility() {
+    detail::chartSignalCompatibilityRegistry().emplace(gr::refl::type_name<T>, T::supportedSignals);
+    return 0;
+}
 
 /// Non-polymorphic CRTP mixin for chart signal sink storage and D&D using C++23 deducing this.
 /// Derived classes must: inherit gr::Block<Derived>, define kChartTypeName, data_sinks.
@@ -985,6 +1017,17 @@ struct Chart {
     std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     std::array<bool, 3UZ>   _limitsForceAppliedX = {}; // true on frame where limits were force-applied
     std::array<bool, 3UZ>   _limitsForceAppliedY = {};
+
+    template<typename Self>
+    [[nodiscard]] inline SignalKind minimumSinkCompatibility(this const Self& self) noexcept {
+        auto result = SignalKind::None;
+        for (const auto& signalSinkPtr : self._signalSinks) {
+            if (signalSinkPtr) {
+                result = result | signalSinkPtr->signalKind();
+            }
+        }
+        return result;
+    }
 
     template<typename Self>
     void setupSingleAxis(this Self& self, bool isX, ImAxis axisId, bool showGrid, LabelFormat defaultFormat = LabelFormat::Auto, bool foreground = false, std::optional<ImPlotCond> condOverride = std::nullopt, std::optional<AxisScale> scaleOverride = std::nullopt) {
@@ -1173,7 +1216,7 @@ struct Chart {
                 signalNameStr = std::string(sink->name());
             }
             if (ImPlot::BeginDragDropSourceItem(signalNameStr.c_str())) {
-                dnd::setupPayload(sink, self.unique_name);
+                dnd::setupPayload(sink, self.unique_name, dnd::kPayloadType, sink->signalKind());
                 dnd::renderDragTooltip(sink);
                 ImPlot::EndDragDropSource();
             }
@@ -1182,32 +1225,50 @@ struct Chart {
 
     template<typename Self>
     bool handlePlotDropTarget(this Self& self, const char* payloadType = dnd::kPayloadType) {
-        bool dropped = false;
-        if (ImPlot::BeginDragDropTargetPlot()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
-                const auto* dndPayload = static_cast<const dnd::Payload*>(payload->Data);
-                if (dndPayload && dndPayload->isValid()) {
-                    std::string sinkName(dndPayload->sink_name);
-                    auto        sinkSharedPtr = SinkRegistry::instance().findSink([&sinkName](const auto& s) { return s.signalName() == sinkName || s.name() == sinkName; });
-                    if (sinkSharedPtr) {
-                        self.onSinkAddedFromDnd(sinkName, sinkSharedPtr);
-                        if (dndPayload->hasSource()) {
-                            dnd::g_state.accepted = true;
-                        }
-                        dropped = true;
-                    }
-                }
-            }
-            ImPlot::EndDragDropTarget();
+        static constexpr bool hasSupportedSignals = requires {
+            { Self::supportedSignals };
+        };
+        static_assert(hasSupportedSignals, "Every chart type must define `static constexpr SignalKind supportedSignals = ...`");
+        const auto payloadResult = dnd::getPayloadStatus(payloadType, Self::supportedSignals);
+        if (payloadResult.payload && !payloadResult.isCompatible) {
+            return false;
         }
-        return dropped;
+
+        if (ImPlot::BeginDragDropTargetPlot()) {
+            Digitizer::utils::scope_exit _([] { ImPlot::EndDragDropTarget(); });
+
+            if (!ImGui::AcceptDragDropPayload(payloadType) || !payloadResult.payload || !payloadResult.payload->isValid()) {
+                return false;
+            }
+
+            std::string sinkName(payloadResult.payload->sink_name);
+            auto        sinkSharedPtr = SinkRegistry::instance().findSink([&sinkName](const auto& s) { return s.signalName() == sinkName || s.name() == sinkName; });
+            if (!sinkSharedPtr) {
+                return false;
+            }
+
+            self.onSinkAddedFromDnd(sinkName, sinkSharedPtr);
+            if (payloadResult.payload->hasSource()) {
+                dnd::g_state.accepted = true;
+            }
+            return true;
+        }
+        return false;
     }
 
     template<typename Self>
     void drawChartTypeSubmenu(this Self& self) {
         if (menu_icons::beginMenuWithIcon(menu_icons::kChangeType, "Change Type")) {
+            const auto minimumCompatibility = self.minimumSinkCompatibility();
             for (const auto& type : registeredChartTypes()) {
-                bool isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
+                bool disabled                     = false;
+                auto otherSignalCompatibilityIter = detail::chartSignalCompatibilityRegistry().find(type);
+                if (otherSignalCompatibilityIter != std::end(detail::chartSignalCompatibilityRegistry()) && (otherSignalCompatibilityIter->second & minimumCompatibility) != minimumCompatibility) {
+                    disabled = true; // this chart type does not support all the signal types we are displaying
+                }
+
+                DigitizerUi::IMW::Disabled _(disabled);
+                bool                       isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
                 if (ImGui::MenuItem(type.c_str(), nullptr, isCurrent)) {
                     if (!isCurrent && g_requestChartTransmutation) {
                         g_requestChartTransmutation(self.unique_name, type);
