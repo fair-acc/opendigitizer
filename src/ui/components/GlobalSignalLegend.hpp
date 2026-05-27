@@ -51,7 +51,8 @@ struct GlobalSignalLegend {
         if (ImGui::InvisibleButton("##ColorBox", colorRectSize)) {
             result = ClickResult::Left;
         }
-        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color, enabled ? 0xFF : 0x88));
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color), {}, {}, 2);
 
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
