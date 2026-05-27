@@ -758,7 +758,7 @@ void DashboardPage::draw(Mode mode) noexcept {
         ImGui::OpenPopup(enterViewOnlyModePopupID);
     }
     using namespace components;
-    if (const auto popup = beginYesNoPopup(enterViewOnlyModePopupID); isPopupOpen(popup)) {
+    if (const auto popup = beginYesNoPopup(enterViewOnlyModePopupID, {.yesText = "Lock dashboard"}); isPopupOpen(popup)) {
         if (isPopupConfirmed(popup) && this->_requestViewOnlyMode) {
             this->_requestViewOnlyMode();
         }
