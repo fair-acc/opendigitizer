@@ -617,9 +617,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = n.AsPointer<UiGraphBlock>();
-        if (block) {
-            ImGui::OpenPopup("Block settings");
-            _selectedBlock = block;
+        if (block && (block->isGraph() || block->isScheduler())) {
+            requestGraphEdit(block);
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
