@@ -105,7 +105,9 @@ struct UiGraphBlock {
     void                       setSchedulerGraph(const gr::property_map& data);
     std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
 
-    [[nodiscard]] constexpr bool isPlotSink() { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
+    [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
+    [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
+    [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine

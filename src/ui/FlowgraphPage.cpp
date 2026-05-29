@@ -256,6 +256,49 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
     return result;
 }
 
+void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::NodeId blockNode) {
+    if (!block.ownerGraph) {
+        std::println("scheduler {} had no owner graph", block.blockName);
+        return;
+    }
+    std::string tagLabel = "Unmanaged graph";
+    if (block.isScheduler()) {
+        tagLabel = "Managed graph";
+        // auto computeDomainIter = block.blockSettings.find("compute_domain");
+        // if (computeDomainIter == std::end(block.blockSettings)) {
+        //     return;
+        // }
+        // auto computeDomain = gr::ComputeDomain::parse(computeDomainIter->second.value_or(std::string_view{}));
+        // if (computeDomain.kind.empty()) {
+        //     return;
+        // }
+        // tagLabel = computeDomain.kind;
+    }
+
+    const auto nodePosition    = ax::NodeEditor::GetNodePosition(blockNode);
+    const auto nodeSize        = ax::NodeEditor::GetNodeSize(blockNode);
+    const auto textRectPadding = ImGui::GetStyle().ItemInnerSpacing.x;
+    const auto textSize        = ImGui::CalcTextSize(tagLabel.data(), tagLabel.data() + tagLabel.size());
+    const auto topLeft         = nodePosition;
+    const auto topRight        = nodePosition + ImVec2{nodeSize.x, 0.f};
+    const auto availableSpace  = topRight.x - topLeft.x;
+    if (textSize.x + (textRectPadding * 2.f) > availableSpace) {
+        return;
+    }
+
+    const auto      lineHeight                   = ImGui::GetFrameHeight();
+    constexpr float maxLabelSpaceFromLeft        = 30.f;
+    constexpr float labelSpaceFromLeftPercentage = 0.2f;
+    const auto      spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
+    const auto      topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
+
+    const auto  schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
+    const auto  textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
+    const auto* currentWindow     = ImGui::GetCurrentWindow();
+    currentWindow->DrawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32);
+    currentWindow->DrawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
+}
+
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
     const auto& graphBlocks = _rootBlock->childBlocks;
     const auto& graphEdges  = _rootBlock->childEdges;
@@ -309,7 +352,15 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     filteredOutNodes.push_back(blockId);
                 }
 
+                const auto            isGroup        = block->isScheduler() || block->isGraph();
+                const ImVec4          borderColor    = isGroup ? LookAndFeel::instance().palette().flowgraphSubgraphBorder : ax::NodeEditor::GetStyle().Colors[ax::NodeEditor::StyleColor_NodeBorder];
+                const auto            borderWidthVar = IMW::NodeEditor::StyleFloatVar(ax::NodeEditor::StyleVar_NodeBorderWidth, isGroup ? 3.0f : ax::NodeEditor::GetStyle().NodeBorderWidth);
+                const auto            borderColorVar = IMW::NodeEditor::StyleColor(ax::NodeEditor::StyleColor_NodeBorder, borderColor);
                 IMW::NodeEditor::Node node(blockId);
+
+                if (isGroup) {
+                    this->drawComputeDomainTag(*block, blockId);
+                }
 
                 const auto blockScreenPosition = ImGui::GetCursorScreenPos();
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
