@@ -103,6 +103,8 @@ public:
 
     void drawGraph(const ImVec2& size);
 
+    void drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::NodeId blockNode);
+
     struct Buttons {
         bool openNewBlockDialog : 1       = false;
         bool openNewSubGraphDialog : 1    = false;
