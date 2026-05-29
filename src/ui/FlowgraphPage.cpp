@@ -366,7 +366,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
                 // Draw block title
-                auto name = block->blockName;
+                auto name = gr::globalSchedulerRegistry().displayName(block->blockName).value_or(block->blockName);
                 ImGui::TextUnformatted(name.c_str());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
