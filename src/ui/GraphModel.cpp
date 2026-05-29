@@ -318,12 +318,33 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         updateFieldFrom(blockName, blockData, {}, "parameters"s, "name"s);
     }
 
-    updateFieldFrom(blockTypeName, blockData, blockTypeName, "type_name"s);
-    if (blockTypeName.empty()) {
-        updateFieldFrom(blockTypeName, blockData, {}, "id"s);
+    const gr::property_map* parameters       = nullptr;
+    const auto              tryGetParameters = [&parameters](const gr::property_map& map) {
+        auto parametersIterator = map.find(gr::serialization_fields::BLOCK_PARAMETERS);
+        if (parametersIterator != std::end(map)) {
+            parameters = parametersIterator->second.get_if<gr::property_map>();
+        }
+    };
+
+    // handle the case where parameters are in the "scheduler" key and not at the root of the block description
+    const auto scheduler = getOptionalProperty<gr::property_map>(blockData, "scheduler");
+    if (scheduler) {
+        tryGetParameters(*scheduler);
+    }
+    if (parameters == nullptr) {
+        tryGetParameters(blockData);
+    }
+    if (parameters != nullptr) {
+        blockSettings = *parameters;
     }
 
-    updateFieldFrom(blockSettings, blockData, blockSettings, gr::serialization_fields::BLOCK_PARAMETERS);
+    updateFieldFrom(blockTypeName, blockData, blockTypeName, "type_name"s);
+    if (blockTypeName.empty() && scheduler) {
+        updateFieldFrom(blockTypeName, *scheduler, {}, gr::serialization_fields::BLOCK_ID);
+    }
+    if (blockTypeName.empty()) {
+        updateFieldFrom(blockTypeName, blockData, {}, gr::serialization_fields::BLOCK_ID);
+    }
 
     // Meta information needs special handling as it contains the
     // information about the exported ports
@@ -414,22 +435,19 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     processPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
     processPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
 
-    if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
-        const auto* parameters = parametersIt->second.get_if<gr::property_map>();
-        if (parameters) {
-            if (auto uiConstraintsIt = parameters->find("ui_constraints"); uiConstraintsIt != parameters->end()) {
-                const auto* uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
-                if (uiConstraints) {
-                    auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
-                    auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
+    if (parameters) {
+        if (auto uiConstraintsIt = parameters->find("ui_constraints"); uiConstraintsIt != parameters->end()) {
+            const auto* uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
+            if (uiConstraints) {
+                auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
+                auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
 
-                    if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
-                        storedXY = UiGraphBlock::StoredXY{
-                            .x = *x,
-                            .y = *y,
-                        };
-                        updatePosition = true;
-                    }
+                if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
+                    storedXY = UiGraphBlock::StoredXY{
+                        .x = *x,
+                        .y = *y,
+                    };
+                    updatePosition = true;
                 }
             }
         }

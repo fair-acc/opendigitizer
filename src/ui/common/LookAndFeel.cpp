@@ -36,6 +36,7 @@ const Palette& LookAndFeel::palette() const noexcept {
     static const auto    rgba                    = [](std::uint32_t color, std::uint8_t alpha = 0xFF) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(color, alpha)); };
     static const ImVec4  quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
     static const ImVec4  quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
+    static const ImVec4  black                   = {0.0f, 0.0f, 0.0f, 1.f};
     static const Palette darkModePalette{
         .gridLines = quarterTransparentWhite,
 
@@ -46,9 +47,12 @@ const Palette& LookAndFeel::palette() const noexcept {
 
         .notificationWindowBg = rgba(0x202020),
         .toolbarLineColor     = quarterTransparentWhite,
-        .flowgraphBg          = rgba(0x202020),
-        .flowgraphNodeBg      = rgba(0x333333),
-        .flowgraphNodeBorder  = rgba(0xB3B3B3),
+
+        .flowgraphBg                 = rgba(0x202020),
+        .flowgraphNodeBg             = rgba(0x333333),
+        .flowgraphNodeBorder         = rgba(0xB3B3B3),
+        .flowgraphSubgraphBorder     = rgba(0xDFA32B),
+        .flowgraphSubgraphBorderText = black,
 
         .rowBgAlt = rgba(0x333333),
 
@@ -64,9 +68,12 @@ const Palette& LookAndFeel::palette() const noexcept {
 
         .notificationWindowBg = rgba(0xFFFFFF),
         .toolbarLineColor     = quarterTransparentBlack,
-        .flowgraphBg          = rgba(0xFFFFFF),
-        .flowgraphNodeBg      = rgba(0xEFEAFF),
-        .flowgraphNodeBorder  = rgba(0x606060),
+
+        .flowgraphBg                 = rgba(0xFFFFFF),
+        .flowgraphNodeBg             = rgba(0xEFEAFF),
+        .flowgraphNodeBorder         = rgba(0x606060),
+        .flowgraphSubgraphBorder     = rgba(0xDFA32B),
+        .flowgraphSubgraphBorderText = black,
 
         .rowBgAlt = rgba(0xCCCCCC),
 
