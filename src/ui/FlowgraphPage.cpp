@@ -456,10 +456,14 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                 auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
                 auto drawPorts = [&](auto& ports, auto portLeftPos, bool rightAlign) {
-                    for (std::size_t i = 0; i < ports.size(); ++i) {
+                    // group ports by port type, then name
+                    auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
+                    std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
+
+                    for (std::size_t i = 0; i < sortedPorts.size(); ++i) {
                         const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
-                        const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i].portName, ports[i].portType);
+                        const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, sortedPorts.size(), blockSize.y, pinHeight);
+                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, sortedPorts[i]->portName, sortedPorts[i]->portType);
                     }
                 };
 
