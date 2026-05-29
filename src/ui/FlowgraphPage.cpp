@@ -337,8 +337,16 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         for (auto& block : graphBlocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
 
-            const auto& inputPorts  = block->inputPorts();
-            const auto& outputPorts = block->outputPorts();
+            const auto transformPorts = [](UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
+                auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
+                if (block.isScheduler() || block.isGraph()) { // regular blocks define port order by declaration order
+                    std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
+                }
+                return sortedPorts;
+            };
+
+            auto inputPorts  = transformPorts(*block, block->inputPorts());
+            auto outputPorts = transformPorts(*block, block->outputPorts());
 
             const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block.get(), *_filterBlock);
 
@@ -422,7 +430,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinWidth, pinHeight});
+                        addPin(ax::NodeEditor::PinId(ports[i]), pinType, position, {pinWidth, pinHeight});
                     }
                 };
 
@@ -458,7 +466,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
                         const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i].portName, ports[i].portType);
+                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i]->portName, ports[i]->portType);
                     }
                 };
 
