@@ -83,6 +83,20 @@ EITHER EXPRESS OR IMPLIED, INCLUDING, WITHOUT LIMITATION,
 ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT,
 MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 
+## Releasing and Zenodo archiving
+
+This repository is linked to Zenodo: **every published GitHub Release is archived by Zenodo as a new version** under the OpenDigitizer concept DOI [`10.5281/zenodo.19105696`](https://doi.org/10.5281/zenodo.19105696). The concept DOI always resolves to the **most recently published** version (by date, not by version string), and that latest version is what linked communities (e.g. iRIS) display.
+
+Consequences for day-to-day work:
+
+- **Only cut GitHub Releases for software versions** — a semver tag `vX.Y.Z` on `main`. Never create a release on a side branch or for non-software assets; doing so mints a spurious Zenodo version and pushes it to "latest".
+- The `reference_screen_captures-main` and `test_screen_captures` releases are **internal asset storage** for the visual-regression workflow, not real releases. The merge workflow updates their assets in place and must **never** delete/recreate them — recreating republishes the release and triggers a fresh (screenshots) Zenodo deposit. This is what previously buried the software record.
+- If reference or screenshot artefacts ever need a citable archive, deposit them as a **separate** Zenodo record (its own concept), not through this repository's release hook.
+
+### Citation metadata
+
+Author and project metadata for the Zenodo deposit live in [`CITATION.cff`](CITATION.cff) and [`.zenodo.json`](.zenodo.json). When the deposit is built from a release tag, **`.zenodo.json` takes precedence** over `CITATION.cff`, which in turn takes precedence over GitHub-derived defaults. Keep both files in sync and edit the author roster there — not in the GitHub release UI.
+
 ## Code of Conduct
 
 To ensure an inclusive community, contributors and users in the GNU Radio
