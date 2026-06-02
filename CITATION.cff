@@ -2,21 +2,30 @@ cff-version: 1.2.0
 title: "OpenDigitizer"
 message: "If you use this software, please cite it using the metadata from this file."
 type: software
+abstract: "OpenDigitizer — an open-source digitiser framework and user interface for signal acquisition and visualisation, built on OpenCMW and GNU Radio 4.0."
 license: LGPL-3.0-only
 repository-code: "https://github.com/fair-acc/opendigitizer"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19105696"
+    description: "Concept DOI resolving to the latest published version of OpenDigitizer on Zenodo."
 keywords:
   - digitiser
   - signal acquisition
+  - signal processing
   - data visualisation
-  - C++
   - accelerator controls
+  - accelerator diagnostics
+  - OpenCMW
+  - GNU Radio
+  - C++
 authors:
   - family-names: Krimm
     given-names: Alexander
     affiliation: "GSI Helmholtzzentrum für Schwerionenforschung"
     orcid: "https://orcid.org/0000-0003-0804-756X"
   - family-names: Steinhagen
-    given-names: Ralph J.
+    given-names: "Ralph J."
     affiliation: "GSI Helmholtzzentrum für Schwerionenforschung / FAIR"
     orcid: "https://orcid.org/0009-0009-8537-7029"
   - family-names: Lebedev
@@ -27,3 +36,28 @@ authors:
     given-names: Ivan
     affiliation: "KDAB"
     orcid: "https://orcid.org/0000-0001-5358-0828"
+  - family-names: Martins
+    given-names: Sergio
+    affiliation: "KDAB"
+  - family-names: Camuffo
+    given-names: Giulio
+    affiliation: "KDAB"
+  - family-names: Osterfeld
+    given-names: Frank
+    affiliation: "KDAB"
+  - family-names: Nicoletti
+    given-names: Daniel
+    affiliation: "KDAB"
+  - family-names: Groß
+    given-names: Magnus
+    affiliation: "KDAB"
+  - family-names: Ahmed
+    given-names: Waqar
+    affiliation: "KDAB"
+  - family-names: Doroshenko
+    given-names: Ilya
+    affiliation: "KDAB"
+  - family-names: McFarlane
+    given-names: Ian
+  - family-names: Busse
+    given-names: Alexander

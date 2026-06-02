@@ -29,12 +29,22 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         if [ -d captures ]; then
-          # Delete/recreate release, as there's no easy API to just rsync new pngs
-          gh release delete reference_screen_captures-main --repo ${{ github.repository }} -y
-          gh release create reference_screen_captures-main --notes "Reference screen captures" --repo ${{ github.repository }}
+          # Update assets in place — never delete/recreate this release. Recreating
+          # publishes a GitHub Release that Zenodo archives as a new screenshots version
+          # under the software concept DOI (see CONTRIBUTING.md → Releasing and Zenodo archiving).
+          REPO="${{ github.repository }}"
+          REF_RELEASE="reference_screen_captures-main"
 
-          # upload new captures
-          gh release upload reference_screen_captures-main captures/*.png --clobber --repo ${{ github.repository }}
+          # create the storage release once; afterwards only its assets change
+          gh release view "$REF_RELEASE" --repo "$REPO" >/dev/null 2>&1 \
+            || gh release create "$REF_RELEASE" --notes "Reference screen captures" --repo "$REPO"
 
-          gh release delete-asset test_screen_captures ${{ github.event.pull_request.number }}-all-captures.tgz --repo ${{ github.repository }}
+          # drop the previous reference pngs so removed/renamed captures don't linger
+          for asset in $(gh release view "$REF_RELEASE" --repo "$REPO" --json assets --jq '.assets[].name'); do
+            gh release delete-asset "$REF_RELEASE" "$asset" --repo "$REPO" --yes || true
+          done
+
+          gh release upload "$REF_RELEASE" captures/*.png --clobber --repo "$REPO"
+
+          gh release delete-asset test_screen_captures "${{ github.event.pull_request.number }}-all-captures.tgz" --repo "$REPO" --yes
         fi
