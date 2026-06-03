@@ -239,6 +239,7 @@ add_library(
   components/ExportedPropertiesList.hpp
   components/ExportedPropertiesList.cpp
   components/FilterComboBoxes.hpp
+  components/InputTextCompletion.hpp
   components/Keypad.hpp
   components/ListBox.hpp
   components/ImGuiNotify.hpp
@@ -248,6 +249,8 @@ add_library(
   components/SignalSelector.cpp
   components/NewBlockSelector.hpp
   components/NewBlockSelector.cpp
+  components/NewBlockSelectorFuzzySearch.hpp
+  components/NewBlockSelectorFuzzySearch.cpp
   components/Splitter.cpp
   components/Splitter.hpp
   components/Toolbar.hpp

@@ -48,6 +48,8 @@ struct Palette {
     ImVec4 flowgraphNodeBorder;
 
     ImVec4 rowBgAlt;
+
+    ImVec4 highlightedSearchResultsBg;
 };
 
 struct LookAndFeel {

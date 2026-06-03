@@ -2,6 +2,9 @@
 #define OPENDIGITIZER_UI_COMPONENTS_LIST_BOX_HPP_
 
 #include "../common/ImguiWrap.hpp"
+#include "tolower.hpp"
+
+#include "InputTextCompletion.hpp"
 #include <misc/cpp/imgui_stdlib.h>
 
 #include <optional>
@@ -23,58 +26,83 @@ inline void ensureItemVisible() {
         ImGui::SetScrollHereY(0);
     }
 }
+
+template<typename T>
+struct FilterListContext {
+    std::optional<T> selected = {};
+    std::string      filterString;
+    std::vector<T>   filteredItems;
+    bool             filterInputReclaimFocus = false;
+
+    [[nodiscard]] bool filter(std::string_view name) {
+        if (!filterString.empty()) {
+            auto subrange = std::ranges::search(name, filterString, [](char a, char b) { return Digitizer::utils::safe_tolower(a) == Digitizer::utils::safe_tolower(b); });
+            if (std::begin(subrange) == name.end()) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    std::pair<int, bool> initSelection(bool shouldScrollToSelected) {
+        if (selected && !filter(selected->second)) {
+            selected = {};
+        }
+
+        if (selected) {
+            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+                return {1, true};
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+                return {-1, true};
+            }
+        }
+        return {0, shouldScrollToSelected};
+    }
+
+    template<typename Items, typename ItemGetter, typename ItemDrawer>
+    void draw(const Items& items, ItemGetter getItem, ItemDrawer drawItem, bool shouldScrollToSelected) {
+        auto [selectOffset, scrollToSelected] = initSelection(shouldScrollToSelected);
+
+        filteredItems.clear();
+        for (auto& t : items) {
+            auto [item, name] = getItem(t);
+            if (!name.empty() && filter(name)) {
+                filteredItems.push_back({item, name});
+            }
+        }
+
+        for (auto it = filteredItems.begin(); it != filteredItems.end(); ++it) {
+            if (!selected) {
+                selected = *it;
+            }
+
+            const bool isLastIteration = (it + 1) == filteredItems.end();
+            if (!isLastIteration) {
+                if (selectOffset == -1 && *(it + 1) == *selected) { // selectOffset = -1, go up, ie. next item is selected and current should be instead
+                    selected     = *it;
+                    selectOffset = 0;
+                } else if (selectOffset == 1 && *it == *selected) { // selectOffset = 1, go down, ie. this is selected and select next item
+                    selected     = {};
+                    selectOffset = 0;
+                }
+            }
+
+            if (drawItem(*it, selected && *it == *selected)) {
+                selected                = *it;
+                filterInputReclaimFocus = true;
+            }
+            if (selected && *selected == *it && scrollToSelected) {
+                detail::ensureItemVisible();
+            }
+        }
+    }
+};
+
 } // namespace detail
 
 template<typename T, typename Items, typename ItemGetter, typename ItemDrawer>
-std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& items, ItemGetter getItem, ItemDrawer drawItem) {
-    struct CallbackData {
-        const Items& items;
-        ItemGetter   getItem;
-    } cbdata = {items, getItem};
-
-    auto completeItemName = [](ImGuiInputTextCallbackData* d) -> int {
-        auto* _cbdata = static_cast<CallbackData*>(d->UserData);
-        if (d->EventKey == ImGuiKey_Tab) {
-            std::vector<std::string> candidates;
-            std::size_t              shortest = std::numeric_limits<std::size_t>::max();
-            for (auto& t : _cbdata->items) {
-                auto [item, name] = _cbdata->getItem(t);
-                if (name.empty()) {
-                    continue;
-                }
-                if (name.starts_with(std::string_view(d->Buf, static_cast<std::size_t>(d->BufTextLen)))) {
-                    candidates.push_back(name);
-                    shortest = std::min(shortest, name.size());
-                }
-            }
-
-            if (candidates.empty()) {
-                return 0;
-            }
-
-            for (auto& c : candidates) {
-                c.resize(shortest);
-            }
-
-            while (candidates.size() > 1) {
-                auto s = candidates.size();
-                if (candidates[s - 2] == candidates[s - 1]) {
-                    candidates.pop_back();
-                    continue;
-                }
-
-                shortest--;
-                assert(shortest > 0);
-                for (auto& c : candidates) {
-                    c.resize(shortest);
-                }
-            }
-            auto* str = candidates.front().data();
-            d->InsertChars(d->BufTextLen, &str[d->BufTextLen], &str[candidates.front().size()]);
-        }
-        return 0;
-    };
-
+std::optional<T> FilteredListBox(const char* id, const ImVec2& size, const Items& items, ItemGetter getItem, ItemDrawer&& drawItem) {
     IMW::ChangeStrId newId(id);
 
     IMW::Group group;
@@ -86,17 +114,12 @@ std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& ite
     ImGui::SameLine();
     ImGui::SetCursorPosY(y);
 
-    struct FilterListContext {
-        std::optional<T> selected = {};
-        std::string      filterString;
-        std::vector<T>   filteredItems;
-        bool             filterInputReclaimFocus = false;
-    };
     auto  storage = ImGui::GetStateStorage();
     auto  ctxid   = ImGui::GetID("context");
-    auto* ctx     = static_cast<FilterListContext*>(storage->GetVoidPtr(ctxid));
+    auto* ctx     = static_cast<detail::FilterListContext<T>*>(storage->GetVoidPtr(ctxid));
     if (!ctx) {
-        ctx = new FilterListContext;
+        // this new will leak this object but that is okay, it and ImGui live for the whole program
+        ctx = new detail::FilterListContext<T>; // NOSONAR
         storage->SetVoidPtr(ctxid, ctx);
     }
 
@@ -106,83 +129,32 @@ std::optional<T> FilteredListBox(const char* id, const ImVec2& size, Items&& ite
     }
 
     IMW::ItemWidth newItemWidth(size.x - (ImGui::GetCursorPosX() - x));
-    bool           scrollToSelected = ImGui::InputText("##filterBlockType", &ctx->filterString, ImGuiInputTextFlags_CallbackCompletion, completeItemName, &cbdata);
+    const bool     scrollToSelected = [&getItem, &items, ctx] {
+        auto completionNames = items | std::views::transform([&getItem](auto& item) { return getItem(item).second; });
+        return InputTextCompletion(completionNames).inputText("##filterBlockType", &ctx->filterString);
+    }();
 
     if (auto listbox = IMW::ListBox("##Available Block types", ImVec2{size.x, size.y - (ImGui::GetCursorPosY() - y)})) {
-        auto filter = [&](std::string_view name) {
-            if (!ctx->filterString.empty()) {
-                auto it = std::search(name.begin(), name.end(), ctx->filterString.begin(), ctx->filterString.end(), [](int a, int b) { return std::tolower(a) == std::tolower(b); });
-                if (it == name.end()) {
-                    return false;
-                }
-            }
-            return true;
-        };
-
-        if (ctx->selected && !filter(ctx->selected->second)) {
-            ctx->selected = {};
-        }
-
-        int selectOffset = 0;
-        if (ctx->selected) {
-            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-                ++selectOffset;
-                scrollToSelected = true;
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
-                --selectOffset;
-                scrollToSelected = true;
-            }
-        }
-
-        ctx->filteredItems.clear();
-        for (auto& t : items) {
-            auto [item, name] = getItem(t);
-            if (!name.empty() && filter(name)) {
-                ctx->filteredItems.push_back({item, name});
-            }
-        }
-
-        for (auto it = ctx->filteredItems.begin(); it != ctx->filteredItems.end(); ++it) {
-            if (!ctx->selected) {
-                ctx->selected = *it;
-            }
-
-            if (selectOffset == -1 && *(it + 1) == *ctx->selected) {
-                ctx->selected = *it;
-                selectOffset  = 0;
-            } else if (selectOffset == 1 && *it == *ctx->selected && (it + 1) != ctx->filteredItems.end()) {
-                ctx->selected = {};
-                selectOffset  = 0;
-            }
-
-            if (drawItem(*it, ctx->selected && ctx->selected && *it == *ctx->selected)) {
-                ctx->selected                = *it;
-                ctx->filterInputReclaimFocus = true;
-            }
-            if (ctx->selected && *ctx->selected == *it && scrollToSelected) {
-                detail::ensureItemVisible();
-            }
-        }
+        ctx->draw(items, std::move(getItem), std::forward<ItemDrawer>(drawItem), scrollToSelected);
     }
 
     return ctx->selected;
 }
 
 template<typename Items, typename ItemGetter>
-auto FilteredListBox(const char* id, const ImVec2& size, Items&& items, ItemGetter getItem)
+auto FilteredListBox(const char* id, const ImVec2& size, const Items& items, ItemGetter&& getItem)
 requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
-    return FilteredListBox<T>(id, size, items, getItem, [](auto&& item, bool selected) { return ImGui::Selectable(item.second.data(), selected); });
+    return FilteredListBox<T>(id, size, items, std::forward<ItemGetter>(getItem), [](auto&& item, bool selected) { return ImGui::Selectable(item.second.data(), selected); });
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>
-auto FilteredListBox(const char* id, const ImVec2& size, Items&& items, ItemGetter getItem, ItemDrawer drawItem)
+auto FilteredListBox(const char* id, const ImVec2& size, const Items& items, ItemGetter&& getItem, ItemDrawer&& drawItem)
 requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
-    return FilteredListBox<T>(id, size, items, getItem, drawItem);
+    return FilteredListBox<T>(id, size, items, std::forward<ItemGetter>(getItem), std::forward<ItemDrawer>(drawItem));
 }
 
 } // namespace DigitizerUi::components

@@ -14,7 +14,16 @@ add_library(digitizer_common_utils INTERFACE)
 
 target_include_directories(digitizer_common_utils INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                                             $<INSTALL_INTERFACE:include>)
-set_target_properties(digitizer_common_utils PROPERTIES PUBLIC_HEADER include/conversion.hpp)
+
+target_sources(
+  digitizer_common_utils
+  PUBLIC FILE_SET
+         HEADERS
+         BASE_DIRS
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/
+         FILES
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/conversion.hpp
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/tolower.hpp)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)
