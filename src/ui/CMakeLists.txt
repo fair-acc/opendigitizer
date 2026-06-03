@@ -204,6 +204,7 @@ add_library(
   components/ExportedPropertiesList.hpp
   components/ExportedPropertiesList.cpp
   components/FilterComboBoxes.hpp
+  components/InputTextCompletion.hpp
   components/Keypad.hpp
   components/ListBox.hpp
   components/ImGuiNotify.hpp

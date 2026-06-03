@@ -1,12 +1,11 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_NEW_BLOCK_SELECTOR_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_NEW_BLOCK_SELECTOR_HPP_
 
+#include <imgui.h>
+
+#include <map>
 #include <set>
 #include <string>
-
-#include <gnuradio-4.0/Message.hpp>
-
-#include "../common/ImguiWrap.hpp"
 
 namespace DigitizerUi {
 
@@ -16,12 +15,16 @@ class NewBlockSelector {
 private:
     std::string m_windowName = "New Block";
 
+    std::string m_blockFilter;
+    std::string m_currentlySelectedType;
     std::string m_previouslySelectedType;
     std::string m_selectedTypeParametrizationListName;
     std::string m_targetSchedulerUniqueName;
     std::string m_targetGraphUniqueName;
 
     UiGraphModel* m_graphModel = nullptr;
+
+    void drawNamespaceTree(const ImVec2& size);
 
 public:
     std::map<std::string, std::set<std::string>> data;
