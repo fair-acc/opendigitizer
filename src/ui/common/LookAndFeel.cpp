@@ -33,39 +33,44 @@ LookAndFeel& LookAndFeel::mutableInstance() {
 const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
 
 const Palette& LookAndFeel::palette() const noexcept {
+    static const auto    rgba                    = [](std::uint32_t color, std::uint8_t alpha = 0xFF) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(color, alpha)); };
     static const ImVec4  quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
     static const ImVec4  quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
     static const Palette darkModePalette{
         .gridLines = quarterTransparentWhite,
 
-        .mainWindowButtonIcon       = {.8f, .8f, .8f, 1.0f},
-        .mainWindowButtonBgInactive = {1.f, 1.f, 1.f, 0.0f},
-        .mainWindowButtonBgHovered  = {1.f, 1.f, 1.f, 0.1f},
-        .mainWindowButtonBgActive   = {1.f, 1.f, 1.f, 0.2f},
+        .mainWindowButtonIcon       = rgba(0xCCCCCC),
+        .mainWindowButtonBgInactive = rgba(0xFFFFFF, 0x00),
+        .mainWindowButtonBgHovered  = rgba(0xFFFFFF, 0x20),
+        .mainWindowButtonBgActive   = rgba(0xFFFFFF, 0x33),
 
-        .notificationWindowBg = {0.10f, 0.10f, 0.10f, 1.00f},
+        .notificationWindowBg = rgba(0x202020),
         .toolbarLineColor     = quarterTransparentWhite,
-        .flowgraphBg          = {0.1f, 0.1f, 0.1f, 1.f},
-        .flowgraphNodeBg      = {0.2f, 0.2f, 0.2f, 1.f},
-        .flowgraphNodeBorder  = {0.7f, 0.7f, 0.7f, 1.f},
+        .flowgraphBg          = rgba(0x202020),
+        .flowgraphNodeBg      = rgba(0x333333),
+        .flowgraphNodeBorder  = rgba(0xB3B3B3),
 
-        .rowBgAlt = ImVec4{0.2f, 0.2f, 0.2f, 1.0f},
+        .rowBgAlt = rgba(0x333333),
+
+        .highlightedSearchResultsBg = rgba(0x1A94F0, 0x66), // saturated but transparent blue, goes behind white text
     };
     static const Palette lightModePalette{
         .gridLines = quarterTransparentBlack,
 
-        .mainWindowButtonIcon       = {.8f, .8f, .8f, 0.6f},
-        .mainWindowButtonBgInactive = {0.f, 0.f, 0.f, 0.0f},
-        .mainWindowButtonBgHovered  = {0.f, 0.f, 0.f, 0.1f},
-        .mainWindowButtonBgActive   = {0.f, 0.f, 0.f, 0.2f},
+        .mainWindowButtonIcon       = rgba(0xCCCCCC, 0x99),
+        .mainWindowButtonBgInactive = rgba(0x000000, 0x00),
+        .mainWindowButtonBgHovered  = rgba(0x000000, 0x20),
+        .mainWindowButtonBgActive   = rgba(0x000000, 0x33),
 
-        .notificationWindowBg = {1.00f, 1.00f, 1.00f, 1.00f},
+        .notificationWindowBg = rgba(0xFFFFFF),
         .toolbarLineColor     = quarterTransparentBlack,
-        .flowgraphBg          = {1.f, 1.f, 1.f, 1.f},
-        .flowgraphNodeBg      = {0.94f, 0.92f, 1.f, 1.f},
-        .flowgraphNodeBorder  = {0.38f, 0.38f, 0.38f, 1.f},
+        .flowgraphBg          = rgba(0xFFFFFF),
+        .flowgraphNodeBg      = rgba(0xEFEAFF),
+        .flowgraphNodeBorder  = rgba(0x606060),
 
-        .rowBgAlt = {0.8f, 0.8f, 0.8f, 1.0f},
+        .rowBgAlt = rgba(0xCCCCCC),
+
+        .highlightedSearchResultsBg = rgba(0xFFFF00, 0x88),
     };
 
     return style == Style::Light ? lightModePalette : darkModePalette;

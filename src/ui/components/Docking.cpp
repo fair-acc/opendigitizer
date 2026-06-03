@@ -293,7 +293,7 @@ bool DockSpace::layoutInExactFree(const Windows& windows, bool isEditable) {
         }
         maxX = std::max(maxX, windowPtr->freeLayoutPosition->x + windowPtr->freeLayoutPosition->width);
         maxY = std::max(maxY, windowPtr->freeLayoutPosition->y + windowPtr->freeLayoutPosition->height);
-        windowAreasByOriginalIndex.try_emplace(static_cast<std::size_t>(index - 1), *windowPtr->freeLayoutPosition);
+        windowAreasByOriginalIndex.try_emplace(index - std::size_t{1}, *windowPtr->freeLayoutPosition);
         windowPtr->freeLayoutPosition.reset();
     }
 
