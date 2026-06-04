@@ -315,12 +315,26 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             void addRectangle(ImVec2 position, ImVec2 size) {
                 minX = std::min(minX, position[0]);
                 minY = std::min(minY, position[1]);
-                maxX = std::min(maxX, position[0] + size[0]);
-                maxY = std::min(maxY, position[1] + size[1]);
+                maxX = std::max(maxX, position[0] + size[0]);
+                maxY = std::max(maxY, position[1] + size[1]);
             }
         };
 
-        BoundingBox boundingBox;
+        constexpr BoundingBox defaultBoundingBox{.maxX = 100, .maxY = 100};
+
+        std::optional<BoundingBox> boundingBox;
+        const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 position, ImVec2 size) {
+            if (boundingBox.has_value()) {
+                boundingBox->addRectangle(position, size);
+            } else {
+                boundingBox = BoundingBox{
+                                    .minX = position.x,
+                                    .minY = position.y,
+                                    .maxX = position.x + size.x,
+                                    .maxY = position.y + size.y,
+                };
+            }
+        };
 
         // TODO: Move to the theme definition
         const int    pinWidth  = 10;
@@ -410,7 +424,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     auto position  = ax::NodeEditor::GetNodePosition(blockId);
                     block->view->x = position[0];
                     block->view->y = position[1];
-                    boundingBox.addRectangle(position, blockSize);
+                    addRectangleToBoundingBox(position, blockSize);
                 }
 
                 // Register ports with node editor, actual drawing comes later
@@ -477,19 +491,23 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             if (!block->view.has_value()) {
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
                 block->view    = UiGraphBlock::ViewData{
-                       .x      = block->storedXY.has_value() ? block->storedXY->x : boundingBox.minX,
-                       .y      = block->storedXY.has_value() ? block->storedXY->y : boundingBox.maxY,
+                       .x      = block->storedXY.has_value() ? block->storedXY->x : boundingBox.value_or(defaultBoundingBox).minX,
+                       .y      = block->storedXY.has_value() ? block->storedXY->y : boundingBox.value_or(defaultBoundingBox).maxY,
                        .width  = blockSize[0],
                        .height = blockSize[1],
                 };
                 block->updatePosition = false;
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
-                boundingBox.minX += blockSize[0] + padding.x;
+
+                if (!boundingBox.has_value()) {
+                    boundingBox = defaultBoundingBox;
+                }
+                boundingBox->minX += blockSize[0] + padding.x;
 
                 _rootBlock->shouldRearrangeBlocks = true;
             } else if (block->updatePosition) {
-                block->view->x        = block->storedXY.has_value() ? block->storedXY->x : boundingBox.minX;
-                block->view->y        = block->storedXY.has_value() ? block->storedXY->y : boundingBox.maxY;
+                block->view->x        = block->storedXY.has_value() ? block->storedXY->x : boundingBox.value_or(defaultBoundingBox).minX;
+                block->view->y        = block->storedXY.has_value() ? block->storedXY->y : boundingBox.value_or(defaultBoundingBox).maxY;
                 block->updatePosition = false;
                 ax::NodeEditor::SetNodePosition(blockId, ImVec2(block->view->x, block->view->y));
             } else if (ax::NodeEditor::GetWasUserPositioned(blockId)) {
