@@ -1,8 +1,8 @@
 #include "GraphModel.hpp"
 
-#include <scope_exit.hpp>
-
 #include "components/ImGuiNotify.hpp"
+
+#include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Scheduler.hpp>
 

@@ -1,0 +1,48 @@
+connections:  []
+blocks:
+  - scheduler:
+      id:  "gr::scheduler::Simple<(gr::scheduler::ExecutionPolicy)0, gr::profiling::null::Profiler>"
+    block_category:  "ScheduledBlockGroup"
+    parameters:
+      name: "simpleScheduler"
+    name:  "gr::scheduler::Simple<(gr::scheduler::ExecutionPolicy)0, gr::profiling::null::Profiler>"
+    graph:
+      exported_ports:  []
+      connections:  []
+      blocks:
+        - parameters:
+            input_chunk_size: !!uint32 1
+            output_chunk_size: !!uint32 1
+            stride: !!uint32 0
+            frequency: !!float32 1
+            disconnect_on_done: !!bool true
+            unique_name:  "opendigitizer::SineSource<float32>#2"
+            ui_constraints:
+              y: !!float32 29
+              x: !!float32 -392
+            phase: !!float32 0
+            compute_domain:  "default_io"
+            amplitude: !!float32 1
+            name:  "subgraphSineSource"
+            sample_rate: !!float32 1000
+            update_rate: !!float32 0
+          id:  "opendigitizer::SineSource<float32>"
+        - parameters:
+            input_chunk_size: !!uint32 1
+            signal_quantity:  ""
+            stride: !!uint32 0
+            disconnect_on_done: !!bool true
+            unique_name:  "gr::basic::DataSink<float32>#0"
+            ui_constraints:
+              y: !!float32 194
+              x: !!float32 553
+            signal_min: !!float32 -1
+            signal_max: !!float32 1
+            name:  "gr::basic::DataSink<float32>"
+            sample_rate: !!float32 1
+            signal_name:  ""
+            signal_unit:  "a.u."
+            output_chunk_size: !!uint32 1
+            compute_domain:  "default_io"
+          id:  "gr::basic::DataSink<float32>"
+    id:  "SUBGRAPH"

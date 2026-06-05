@@ -16,6 +16,7 @@
 #include "GraphModel.hpp"
 
 struct TestState;
+struct TestApp;
 
 namespace DigitizerUi {
 
@@ -24,6 +25,9 @@ float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeigh
 void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true);
 
 class FlowgraphEditor {
+    friend struct ::TestState;
+    friend struct ::TestApp;
+
 private:
     ax::NodeEditor::Config _editorConfig;
     std::string            _editorName;
@@ -38,8 +42,31 @@ private:
     const UiGraphBlock* _filterBlock   = nullptr;
     UiGraphBlock*       _selectedBlock = nullptr;
 
+    struct ExportPortMessageData {
+        std::string uniqueBlockName;
+        std::string portDirection;
+        std::string portName;
+        std::string exportedName;
+        bool        exportFlag;
+    };
+
     components::BlockControlsPanelContext _editPaneContext;
     ImVec2                                _contextMenuPosition;
+
+    float                                _timeSpentHoldingPin = 0.0;
+    std::optional<ExportPortMessageData> _draggingPinExportRequest;
+
+    static constexpr float borderExteriorHoverFadeTransitionDurationSeconds = 0.4f;
+    float                  _timeSpentHoveringBoundingBoxExterior            = 0.0;
+    bool                   _wasHoveringBoundingBoxExteriorThisFrame         = false;
+
+    struct PortNameAndExportInfo {
+        bool        isExported{};
+        std::string internalName;
+        std::string exportedName;
+    };
+
+    [[nodiscard]] PortNameAndExportInfo getPortNameAndExportInfo(const UiGraphPort* port) const;
 
     void makeCurrent() { ax::NodeEditor::SetCurrentEditor(_editorPtr); }
 
@@ -51,19 +78,27 @@ private:
     }
 
 public:
+    struct BoundingBox {
+        float minX = 0, minY = 0, maxX = 0, maxY = 0;
+
+        constexpr void addRectangle(ImVec2 position, ImVec2 size) {
+            minX = std::min(minX, position[0]);
+            minY = std::min(minY, position[1]);
+            maxX = std::max(maxX, position[0] + size[0]);
+            maxY = std::max(maxY, position[1] + size[1]);
+        }
+
+        [[nodiscard]] constexpr bool contains(ImVec2 position) const { //
+            return position.x >= minX && position.y >= minY && position.x <= maxX && position.y <= maxY;
+        }
+    };
+
     std::function<void()> closeRequestedCallback;
 
     std::function<void(UiGraphModel*)> openNewBlockSelectorCallback;
     std::function<void(UiGraphModel*)> openNewSubGraphSelectorCallback;
     std::function<void(UiGraphModel*)> openAddRemoteSignalCallback;
 
-    struct ExportPortMessageData {
-        std::string uniqueBlockName;
-        std::string portDirection;
-        std::string portName;
-        std::string exportedName;
-        bool        exportFlag;
-    };
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
@@ -104,6 +139,9 @@ public:
     void drawGraph(const ImVec2& size);
 
     void drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::NodeId blockNode);
+
+    /// Must be called while the editor is active, so we are in canvas/local space.
+    void drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox);
 
     struct Buttons {
         bool openNewBlockDialog : 1       = false;
