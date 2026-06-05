@@ -50,12 +50,25 @@
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++"
       }
+    },
+    {
+      "name": "wasm-release",
+      "inherits": "base",
+      "displayName": "WASM Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "DISABLE_WASM_BUILD": "ON",
+        "OPENDIGITIZER_ENABLE_TESTING": "OFF",
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH"
+      }
     }
   ],
   "buildPresets": [
     { "name": "gcc-debug", "configurePreset": "gcc-debug", "jobs": 6 },
     { "name": "gcc-release", "configurePreset": "gcc-release", "jobs": 6 },
     { "name": "clang-debug", "configurePreset": "clang-debug", "jobs": 6 },
-    { "name": "clang-release", "configurePreset": "clang-release", "jobs": 6 }
+    { "name": "clang-release", "configurePreset": "clang-release", "jobs": 6 },
+    { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 }
   ]
 }

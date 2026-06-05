@@ -163,10 +163,10 @@ private:
         };
         const float actualButtonSize = 28.f;
         {
-            const bool         disabled = this->isStateDisabled(buttonType);
-            IMW::Disabled      _(disabled);
-            IMW::Font          font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
+            const bool                  disabled = this->isStateDisabled(buttonType);
+            IMW::Disabled               _(disabled);
+            IMW::Font                   font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
+            IMW::StyleFloatVar          style(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
             [[maybe_unused]] const bool clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
             ImGui::SameLine();
         }

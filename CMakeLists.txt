@@ -65,15 +65,25 @@ add_library(project_warnings INTERFACE) # Link this 'library' to use the warning
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
-add_subdirectory(src/acquisition)
-add_subdirectory(src/utils)
+if(NOT EMSCRIPTEN)
+  add_subdirectory(src/acquisition)
+  add_subdirectory(src/utils)
+endif()
+
 add_subdirectory(src/ui)
 
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
+  # -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH is needed to find dependencies for the WASM build, otherwise it would
+  # ignore the host system and fail to find gnuradio even if we pass it on CMAKE_PREFIX_PATH
+
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
-  string(REPLACE ";" "|" _wasm_cmake_prefix_path "${CMAKE_PREFIX_PATH}")
+  string(
+    REPLACE ";"
+            "|"
+            _wasm_cmake_prefix_path
+            "${CMAKE_PREFIX_PATH}")
   ExternalProject_Add(
     ui-wasm
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
@@ -81,8 +91,7 @@ if(NOT DISABLE_WASM_BUILD)
     LIST_SEPARATOR |
     CONFIGURE_COMMAND
       ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm
-      -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path}
-      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
+      -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path} -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
       -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER} ${OD_WASM_CMAKE_OPTIONS}
     BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
@@ -101,4 +110,6 @@ if(NOT DISABLE_WASM_BUILD)
       ${ROOT_BUILD_DIR}/ui-wasm/web)
 endif()
 
-add_subdirectory(src/service)
+if(NOT EMSCRIPTEN)
+  add_subdirectory(src/service)
+endif()
