@@ -21,16 +21,26 @@ if(EMSCRIPTEN)
   # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
   # can execute it with the webserver)
   set(CMAKE_EXECUTABLE_SUFFIX ".html")
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_od_emscripten_optimisation_flags -g -Os)
+    set(_od_emscripten_assertions_flag "SHELL:-s ASSERTIONS=1")
+    set(_od_emscripten_debug_info_flags -g)
+  else()
+    set(_od_emscripten_optimisation_flags -O3)
+    set(_od_emscripten_assertions_flag "SHELL:-s ASSERTIONS=0")
+    set(_od_emscripten_debug_info_flags -g0)
+  endif()
+
   # CAUTION: The "SHELL:" before some compile/link options has to be used to explicitly tell CMake to not sum up options
   # (e.g. -option A -option B => -option A B)(CMake default behaviour), but instead keep them separated (needed for
   # proper operation of emscripten)
   add_compile_options(
     -DIMGUI_DISABLE_FILE_FUNCTIONS
-    -g
     -Wall
     -Wformat
-    -Os
-    -fwasm-exceptions
+    ${_od_emscripten_optimisation_flags}
+    ${_od_emscripten_debug_info_flags}
+    -fexceptions
     "SHELL:-s USE_SDL=3"
     -pthread)
   add_link_options(
@@ -40,7 +50,7 @@ if(EMSCRIPTEN)
     "SHELL:-sMIN_WEBGL_VERSION=2"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s NO_EXIT_RUNTIME=0"
-    "SHELL:-s ASSERTIONS=1"
+    ${_od_emscripten_assertions_flag}
     "SHELL:-s INITIAL_MEMORY=300MB"
     "SHELL:-s STACK_SIZE=5MB"
     "SHELL:-s MINIFY_HTML=0"
@@ -48,7 +58,8 @@ if(EMSCRIPTEN)
     ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
     "SHELL:-s PTHREAD_POOL_SIZE=${GR_MAX_WASM_THREAD_COUNT}"
     "SHELL:-s USE_SDL=3"
-    -fwasm-exceptions
+    ${_od_emscripten_debug_info_flags}
+    -fexceptions
     -pthread
     "-sFETCH=1" # needed for file_io
     "--bind" # needed for Clipboard
@@ -103,7 +114,11 @@ if(EMSCRIPTEN)
 
   file(
     WRITE ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
+    "#!/usr/bin/env python3\n"
     "import http.server, os, ssl, subprocess, threading, time, webbrowser\n"
+    "\n"
+    "def log(message):\n"
+    "    print(message, flush=True)\n"
     "\n"
     "WEB_DIR = '${EXECUTABLE_OUTPUT_PATH}'\n"
     "CERT_FILE = os.path.join(WEB_DIR, 'localhost.pem')\n"
@@ -122,7 +137,7 @@ if(EMSCRIPTEN)
     "\n"
     "# generate a self-signed certificate if missing\n"
     "if not os.path.exists(CERT_FILE):\n"
-    "    print('Generating self-signed certificate...')\n"
+    "    log('Generating self-signed certificate...')\n"
     "    subprocess.run([\n"
     "        'openssl', 'req', '-x509', '-newkey', 'rsa:2048',\n"
     "        '-keyout', CERT_FILE, '-out', CERT_FILE,\n"
@@ -144,23 +159,42 @@ if(EMSCRIPTEN)
     "# HTTP server (fallback)\n"
     "http_server = ReuseServer(('', HTTP_PORT), Handler)\n"
     "threading.Thread(target=http_server.serve_forever, daemon=True).start()\n"
-    "print(f'  HTTP  -> http://localhost:{HTTP_PORT}')\n"
+    "log(f'  HTTP  -> http://localhost:{HTTP_PORT}')\n"
     "\n"
     "# HTTPS server (preferred — browsers need one-time certificate override)\n"
     "https_server = ReuseServer(('', HTTPS_PORT), Handler)\n"
     "ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)\n"
     "ctx.load_cert_chain(CERT_FILE)\n"
     "https_server.socket = ctx.wrap_socket(https_server.socket, server_side=True)\n"
-    "print(f'  HTTPS -> https://localhost:{HTTPS_PORT}')\n"
+    "log(f'  HTTPS -> https://localhost:{HTTPS_PORT}')\n"
     "\n"
-    "threading.Timer(0.5, lambda: webbrowser.open(f'https://localhost:{HTTPS_PORT}')).start()\n"
+    "def open_browser():\n"
+    "    try:\n"
+    "        if not webbrowser.open(f'https://localhost:{HTTPS_PORT}'): \n"
+    "            log('Browser auto-open was not handled; open the HTTPS URL manually.')\n"
+    "    except Exception as exc:\n"
+    "        log(f'Browser auto-open failed: {exc}')\n"
+    "\n"
+    "threading.Timer(0.5, open_browser).start()\n"
     "https_server.serve_forever()\n")
+
+  file(
+    CHMOD
+    ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
+    PERMISSIONS
+    OWNER_READ
+    OWNER_WRITE
+    OWNER_EXECUTE
+    GROUP_READ
+    GROUP_EXECUTE
+    WORLD_READ
+    WORLD_EXECUTE)
 
   # CLI usage: cmake --build --preset emscripten-release --target serve IDE usage: use the "opendigitizer-ui (WASM)" run
   # configuration (auto-loaded from .run/)
   add_custom_target(
     serve
-    COMMAND python3 ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
+    COMMAND python3 -u ${CMAKE_CURRENT_BINARY_DIR}/serve_wasm.py
     COMMENT "serve WASM app: https://localhost:8443 (preferred) + http://localhost:8000 (fallback)"
     DEPENDS ${target_name}
     USES_TERMINAL)

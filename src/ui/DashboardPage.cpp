@@ -417,7 +417,7 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
         uiWindow.window->renderFunc = [block = blockPtr, mode] {
             gr::property_map drawConfig;
             drawConfig["chartMode"] = magic_enum::enum_name(mode);
-            std::ignore = block->draw(drawConfig);
+            std::ignore             = block->draw(drawConfig);
         };
 
         uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
