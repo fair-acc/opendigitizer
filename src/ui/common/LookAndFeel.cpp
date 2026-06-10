@@ -35,6 +35,7 @@ const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
 const Palette& LookAndFeel::palette() const noexcept {
     static const ImVec4  quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
     static const ImVec4  quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
+    static const ImVec4  black                   = {0.0f, 0.0f, 0.0f, 1.f};
     static const Palette darkModePalette{
         .gridLines = quarterTransparentWhite,
 
@@ -45,9 +46,12 @@ const Palette& LookAndFeel::palette() const noexcept {
 
         .notificationWindowBg = {0.10f, 0.10f, 0.10f, 1.00f},
         .toolbarLineColor     = quarterTransparentWhite,
-        .flowgraphBg          = {0.1f, 0.1f, 0.1f, 1.f},
-        .flowgraphNodeBg      = {0.2f, 0.2f, 0.2f, 1.f},
-        .flowgraphNodeBorder  = {0.7f, 0.7f, 0.7f, 1.f},
+
+        .flowgraphBg                 = {0.1f, 0.1f, 0.1f, 1.f},
+        .flowgraphNodeBg             = {0.2f, 0.2f, 0.2f, 1.f},
+        .flowgraphNodeBorder         = {0.7f, 0.7f, 0.7f, 1.f},
+        .flowgraphSubgraphBorder     = {0.875f, 0.64f, 0.168f, 1.f},
+        .flowgraphSubgraphBorderText = black,
 
         .rowBgAlt = ImVec4{0.2f, 0.2f, 0.2f, 1.0f},
     };
@@ -61,9 +65,12 @@ const Palette& LookAndFeel::palette() const noexcept {
 
         .notificationWindowBg = {1.00f, 1.00f, 1.00f, 1.00f},
         .toolbarLineColor     = quarterTransparentBlack,
-        .flowgraphBg          = {1.f, 1.f, 1.f, 1.f},
-        .flowgraphNodeBg      = {0.94f, 0.92f, 1.f, 1.f},
-        .flowgraphNodeBorder  = {0.38f, 0.38f, 0.38f, 1.f},
+
+        .flowgraphBg                 = {1.f, 1.f, 1.f, 1.f},
+        .flowgraphNodeBg             = {0.94f, 0.92f, 1.f, 1.f},
+        .flowgraphNodeBorder         = {0.38f, 0.38f, 0.38f, 1.f},
+        .flowgraphSubgraphBorder     = {0.875f, 0.64f, 0.168f, 1.f},
+        .flowgraphSubgraphBorderText = black,
 
         .rowBgAlt = {0.8f, 0.8f, 0.8f, 1.0f},
     };

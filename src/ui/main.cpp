@@ -255,6 +255,12 @@ int main(int argc, char** argv) {
 
     // Register schedulers
     gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::BreadthFirst<gr::scheduler::ExecutionPolicy::singleThreaded>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::BreadthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::singleThreaded>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>();
 
     static App app;
 #ifdef EMSCRIPTEN
