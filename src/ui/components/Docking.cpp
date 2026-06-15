@@ -283,9 +283,9 @@ bool DockSpace::layoutInExactFree(const Windows& windows, bool isEditable) {
     windowAreasByOriginalIndex.reserve(windows.size());
 
     // Assume that minX = 0, minY = 0
-    std::size_t maxX  = 0UL;
-    std::size_t maxY  = 0UL;
-    std::size_t index = 0UL;
+    std::size_t maxX  = 0;
+    std::size_t maxY  = 0;
+    std::size_t index = 0;
     for (const auto& windowPtr : windows) {
         ++index;
         if (!windowPtr->freeLayoutPosition.has_value()) {
