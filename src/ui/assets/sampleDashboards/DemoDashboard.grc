@@ -1,7 +1,7 @@
 blocks:
   - id: opendigitizer::Arithmetic<float32>
     parameters:
-      name: sum sigs
+      name: sineSum
       ui_constraints:
         x: 30
         y: 40
@@ -13,11 +13,11 @@ blocks:
       unwrapPhase: true
   - id: opendigitizer::SineSource<float32>
     parameters:
-      name: sine source 1
+      name: sineSource1
       frequency: 2
   - id: opendigitizer::SineSource<float32>
     parameters:
-      name: sine source 3
+      name: sineSource2
       frequency: 5
       ui_constraints:
         x: 30
@@ -25,8 +25,22 @@ blocks:
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
       name: sinesSink
-      signal_name: value
+      signal_name: sine2Hz+5Hz
       signal_quantity: sum voltage
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      color: 0x00C800
+      signal_name: sine2Hz
+      signal_quantity: long long sine voltage 1
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink2
+      color: 0xC800C8
+      signal_name: sine5Hz
+      signal_quantity: sine voltage 2
       signal_unit: V
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
@@ -175,20 +189,6 @@ blocks:
       signal_name: beam intensity
       signal_quantity: BeamIntensity
       signal_unit: ppp
-  - id: opendigitizer::ImPlotSink<float32>
-    parameters:
-      name: sineSink1
-      color: 0x00C800
-      signal_name: sine 2Hz
-      signal_quantity: voltage
-      signal_unit: V
-  - id: opendigitizer::ImPlotSink<float32>
-    parameters:
-      name: sineSink3
-      color: 0xC800C8
-      signal_name: sine 5Hz
-      signal_quantity: voltage
-      signal_unit: V
   - id: gr::basic::ClockSource
     parameters:
       name: SpectrumClock
@@ -217,33 +217,33 @@ blocks:
       signal_quantity: magnitude
       signal_unit: dB
 connections:
-  - [sine source 1, 0, sum sigs, 0]
-  - [sine source 3, 0, sum sigs, 1]
-  - [ sine source 1, 0, sineSink1, 0 ]
-  - [ sine source 3, 0, sineSink3, 0 ]
-  - [sum sigs, 0, FFT, 0]
-  - [sum sigs, 0, sinesSink, 0]
-  - [FFT, 0, fftSink, 0]
-  - [ClockSource, 0, DipoleCurrentGenerator, 0]
-  - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
-  - [ClockSource, 0, IntensityGenerator, 0]
-  - [IntensityGenerator, 0, IntensitySink, 0]
-  - [SpectrumClock, 0, SpectrumGenerator, 0]
-  - [SpectrumGenerator, 0, spectrumSink, 0]
+  - [ sineSource1, 0, sineSum, 0 ]
+  - [ sineSource2, 0, sineSum, 1 ]
+  - [ sineSource1, 0, sineSink1, 0 ]
+  - [ sineSource2, 0, sineSink2, 0 ]
+  - [ sineSum, 0, FFT, 0 ]
+  - [ sineSum, 0, sinesSink, 0 ]
+  - [ FFT, 0, fftSink, 0 ]
+  - [ ClockSource, 0, DipoleCurrentGenerator, 0 ]
+  - [ DipoleCurrentGenerator, 0, DipoleCurrentSink, 0 ]
+  - [ ClockSource, 0, IntensityGenerator, 0 ]
+  - [ IntensityGenerator, 0, IntensitySink, 0 ]
+  - [ SpectrumClock, 0, SpectrumGenerator, 0 ]
+  - [ SpectrumGenerator, 0, spectrumSink, 0 ]
 dashboard:
   layout: Free
   windowLayout:
-    floatingWindows:  {}
+    floatingWindows: { }
     dockSpace:
       hsplit:
-        second:  "Spectrum View"
+        second: "Spectrum View"
         first:
           vsplit:
-            second:  "Function Generators"
+            second: "Function Generators"
             first:
               hsplit:
-                second:  "FFT Spectrum"
-                first:  "Raw Signal"
+                second: "FFT Spectrum"
+                first: "Raw Signal"
                 ratio: !!float32 0.498815
             ratio: !!float32 0.497561
         ratio: !!float32 0.665091
@@ -260,8 +260,8 @@ dashboard:
       port: 0
     - name: sineSink1
       block: sineSink1
-    - name: sineSink3
-      block: sineSink3
+    - name: sineSink2
+      block: sineSink2
     - name: spectrumSink
       block: spectrumSink
   plots:
@@ -279,6 +279,8 @@ dashboard:
           format: Default # options: Auto, Metric, MetricInline, Scientific, None, Default
       sources:
         - sinesSink
+        - sineSink1
+        - sineSink2
     - name: FFT Spectrum
       axes:
         - axis: X

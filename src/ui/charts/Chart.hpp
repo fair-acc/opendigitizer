@@ -70,9 +70,20 @@ struct AxisConfig {
     float                    max  = std::numeric_limits<float>::quiet_NaN();
     std::optional<AxisScale> scale;
     LabelFormat              format   = LabelFormat::Auto;
-    float                    width    = std::numeric_limits<float>::max();
+    float                    width    = std::numeric_limits<float>::quiet_NaN();
     bool                     plotTags = true;
 };
+
+inline constexpr float defaultAxisLabelWidth = std::numeric_limits<float>::max();
+
+[[nodiscard]] inline float axisLabelWidthOrDefault(const std::optional<AxisConfig>& config, float defaultWidth = defaultAxisLabelWidth) noexcept { return config && std::isfinite(config->width) ? config->width : defaultWidth; }
+
+[[nodiscard]] inline float defaultAxisLabelWidthFor(ImAxis axisId, const ImVec2& plotSize) noexcept {
+    constexpr float labelBudgetFraction = 0.9f;
+    const bool      isX                 = axisId == ImAxis_X1 || axisId == ImAxis_X2 || axisId == ImAxis_X3;
+    const float     axisExtent          = isX ? plotSize.x : plotSize.y;
+    return std::isfinite(axisExtent) && axisExtent > 0.f ? axisExtent * labelBudgetFraction : defaultAxisLabelWidth;
+}
 
 struct LogFreqRange {
     double min;
@@ -147,6 +158,11 @@ struct LogFreqRange {
         if (auto it = axisMap->find("format"); it != axisMap->end()) {
             if (it->second.is_string()) {
                 cfg.format = magic_enum::enum_cast<LabelFormat>(it->second.value_or(std::string()), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
+            }
+        }
+        if (auto it = axisMap->find("width"); it != axisMap->end()) {
+            if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
+                cfg.width = *v;
             }
         }
         if (auto it = axisMap->find("plot_tags"); it != axisMap->end()) {
@@ -288,6 +304,9 @@ inline int formatDefault(double value, char* buff, int size, void* data) {
 }
 
 inline std::string truncateLabel(std::string_view original, float availableWidth) {
+    if (!std::isfinite(availableWidth) || availableWidth <= 0.f) {
+        return std::string(original);
+    }
     const float textWidth = ImGui::CalcTextSize(original.data()).x;
     if (textWidth <= availableWidth) {
         return std::string(original);
@@ -1056,7 +1075,7 @@ struct Chart {
     }
 
     template<typename Self>
-    void setupSingleAxis(this Self& self, bool isX, ImAxis axisId, bool showGrid, LabelFormat defaultFormat = LabelFormat::Auto, bool foreground = false, std::optional<ImPlotCond> condOverride = std::nullopt, std::optional<AxisScale> scaleOverride = std::nullopt) {
+    void setupSingleAxis(this Self& self, bool isX, ImAxis axisId, const ImVec2& plotSize, bool showGrid, LabelFormat defaultFormat = LabelFormat::Auto, bool foreground = false, std::optional<ImPlotCond> condOverride = std::nullopt, std::optional<AxisScale> scaleOverride = std::nullopt) {
         const auto      dashCfg = parseAxisConfig(self.ui_constraints.value, isX);
         const AxisScale scale   = scaleOverride.value_or(dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear);
         const auto      format  = dashCfg ? dashCfg->format : defaultFormat;
@@ -1077,7 +1096,7 @@ struct Chart {
         auto [quantity, unit] = self.sinkAxisInfo(isX);
         AxisCategory cat{.quantity = quantity, .unit = unit};
         auto         cond = condOverride.value_or(self.trackLimitsCond(isX, minLimit, maxLimit));
-        axis::setupAxis(axisId, cat, format, 100.f, minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond);
+        axis::setupAxis(axisId, cat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize)), minLimit, maxLimit, 1UZ, scale, self._unitStore, showGrid, foreground, cond);
     }
 
     ImPlotCond trackLimitsCond(bool isX, double newMin, double newMax, std::size_t axisIdx = 0UZ) {

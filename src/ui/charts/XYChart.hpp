@@ -98,7 +98,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             return gr::work::Status::OK;
         }
 
-        setupAxes(showGrid);
+        setupAxes(plotSize, showGrid);
         ImPlot::SetupFinish();
         drawSignals();
         tooltip::showPlotMouseTooltip();
@@ -122,11 +122,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
     }
 
-    void setupAxes(bool showGrid = true) {
-        constexpr float   xAxisWidth = 100.f;
-        constexpr float   yAxisWidth = 100.f;
-        const std::size_t nAxesX     = axis::activeAxisCount(_xCategories);
-        const std::size_t nAxesY     = axis::activeAxisCount(_yCategories);
+    void setupAxes(const ImVec2& plotSize, bool showGrid = true) {
+        const std::size_t nAxesX = axis::activeAxisCount(_xCategories);
+        const std::size_t nAxesY = axis::activeAxisCount(_yCategories);
 
         for (std::size_t i = 0; i < _xCategories.size(); ++i) {
             const auto dashCfg = parseAxisConfig(this->ui_constraints.value, true, i);
@@ -141,7 +139,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
-            const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : xAxisWidth;
+            const auto        axisId = ImAxis_X1 + static_cast<int>(i);
+            const float       width  = axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize));
             const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
             if (_xCategories[i].has_value()) {
@@ -149,7 +148,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
 
             auto xCond = trackLimitsCond(true, minLimit, maxLimit, i);
-            axis::setupAxis(ImAxis_X1 + static_cast<int>(i), _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
+            axis::setupAxis(axisId, _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
         }
 
         for (std::size_t i = 0; i < _yCategories.size(); ++i) {
@@ -165,7 +164,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
 
             const LabelFormat format = dashCfg ? dashCfg->format : LabelFormat::Auto;
-            const float       width  = dashCfg && std::isfinite(dashCfg->width) ? dashCfg->width : yAxisWidth;
+            const auto        axisId = ImAxis_Y1 + static_cast<int>(i);
+            const float       width  = axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(axisId, plotSize));
             const AxisScale   scale  = dashCfg ? dashCfg->scale.value_or(AxisScale::Linear) : AxisScale::Linear;
 
             if (_yCategories[i].has_value()) {
@@ -173,7 +173,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
 
             auto yCond = trackLimitsCond(false, minLimit, maxLimit, i);
-            axis::setupAxis(ImAxis_Y1 + static_cast<int>(i), _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
+            axis::setupAxis(axisId, _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
     }
 
