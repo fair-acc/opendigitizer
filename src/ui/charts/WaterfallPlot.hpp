@@ -108,7 +108,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         }
 
         // phase 1: set up axes (X fully, Y skeleton without limits)
-        setupAxes(showGrid);
+        setupAxes(plotSize, showGrid);
 
         // phase 2: fetch new data and push into waterfall (skips duplicate frames)
         auto renderInfo = fetchAndPushData();
@@ -172,7 +172,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         return static_cast<int>(result.out - buff);
     }
 
-    void setupAxes(bool showGrid) {
+    void setupAxes(const ImVec2& plotSize, bool showGrid) {
         // frequency keeps the "X" dashboard entry, time the "Y" entry; orientation only rotates which screen axis each uses
         const bool   horizontal = orientation.value == WaterfallOrientation::Horizontal;
         const ImAxis freqAxis   = horizontal ? ImAxis_Y1 : ImAxis_X1;
@@ -193,7 +193,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(freqAxis, xCat, format, 100.f, minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true);
+            axis::setupAxis(freqAxis, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(freqAxis, plotSize)), minLimit, maxLimit, 1, scale, _unitStore, showGrid, /*foreground=*/true);
         }
 
         // time axis — limits are set in draw() after data push so axis and image stay synchronised.

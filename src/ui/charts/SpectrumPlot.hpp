@@ -81,7 +81,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
-        setupAxes(showGrid);
+        setupAxes(plotSize, showGrid);
         ImPlot::SetupFinish();
         drawSpectrumSignals();
         tooltip::showPlotMouseTooltip();
@@ -96,9 +96,9 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         _lastSampleCountPerSink.clear();
     }
 
-    void setupAxes(bool showGrid) {
-        setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline);
-        setupSingleAxis(false, ImAxis_Y1, showGrid);
+    void setupAxes(const ImVec2& plotSize, bool showGrid) {
+        setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::MetricInline);
+        setupSingleAxis(false, ImAxis_Y1, plotSize, showGrid);
     }
 
     void drawSpectrumSignals() {

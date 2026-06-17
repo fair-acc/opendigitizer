@@ -146,17 +146,18 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
-        drawTopPane(plotFlags, showGrid, chartMode);
-        drawBottomPane(plotFlags, showGrid);
+        drawTopPane(plotFlags, plotSize, showGrid, chartMode);
+        drawBottomPane(plotFlags, plotSize, showGrid);
 
         ImPlot::EndSubplots();
         return gr::work::Status::OK;
     }
 
-    void setupFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond); }
+    void setupFrequencyAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::MetricInline, /*foreground=*/true, _sharedXCond); }
 
-    void drawTopPane(ImPlotFlags plotFlags, bool showGrid, ChartMode chartMode) {
-        const bool isDensity = (top_pane_mode.value == TopPaneMode::Density);
+    void drawTopPane(ImPlotFlags plotFlags, const ImVec2& plotSize, bool showGrid, ChartMode chartMode) {
+        const bool   isDensity = (top_pane_mode.value == TopPaneMode::Density);
+        const ImVec2 paneSize{plotSize.x, plotSize.y * _rowRatios[0]};
 
         ImGui::PushID("top");
         if (isDensity) {
@@ -165,8 +166,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
-            setupFrequencyAxis(showGrid);
-            setupMagnitudeAxis(showGrid);
+            setupFrequencyAxis(paneSize, showGrid);
+            setupMagnitudeAxis(paneSize, showGrid);
             ImPlot::SetupFinish();
 
             if (isDensity) {
@@ -192,7 +193,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
-    void setupMagnitudeAxis(bool showGrid) { setupSingleAxis(false, ImAxis_Y1, showGrid); }
+    void setupMagnitudeAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(false, ImAxis_Y1, plotSize, showGrid); }
 
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
@@ -240,13 +241,15 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         });
     }
 
-    void drawBottomPane(ImPlotFlags plotFlags, bool showGrid) {
+    void drawBottomPane(ImPlotFlags plotFlags, const ImVec2& plotSize, bool showGrid) {
+        const ImVec2 paneSize{plotSize.x, plotSize.y * _rowRatios[1]};
+
         ImGui::PushID("bottom");
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
-            setupBottomFrequencyAxis(showGrid);
+            setupBottomFrequencyAxis(paneSize, showGrid);
             setupWaterfallYAxis(showGrid);
 
             auto renderInfo = fetchAndPushData();
@@ -278,7 +281,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         ImGui::PopID();
     }
 
-    void setupBottomFrequencyAxis(bool showGrid) { setupSingleAxis(true, ImAxis_X1, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond); }
+    void setupBottomFrequencyAxis(const ImVec2& plotSize, bool showGrid) { setupSingleAxis(true, ImAxis_X1, plotSize, showGrid, LabelFormat::None, /*foreground=*/true, _sharedXCond); }
 
     void setupWaterfallYAxis(bool showGrid) {
         ImPlotAxisFlags yFlags = (showGrid ? ImPlotAxisFlags_None : ImPlotAxisFlags_NoGridLines) | ImPlotAxisFlags_Foreground;

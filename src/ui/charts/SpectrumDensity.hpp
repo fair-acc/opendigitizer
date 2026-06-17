@@ -93,7 +93,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             return gr::work::Status::OK;
         }
 
-        setupAxes(showGrid);
+        setupAxes(plotSize, showGrid);
         ImPlot::SetupFinish();
 
         // detect user zoom on Y-axis: if auto-fit is active and the actual plot limits
@@ -148,7 +148,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         return {yMin, yMax};
     }
 
-    void setupAxes(bool showGrid) {
+    void setupAxes(const ImVec2& plotSize, bool showGrid) {
         // x-axis: frequency
         {
             const auto      dashCfg = parseAxisConfig(this->ui_constraints.value, true);
@@ -168,7 +168,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 
             auto [xQuantity, xUnit] = sinkAxisInfo(true);
             AxisCategory xCat{.quantity = xQuantity, .unit = xUnit};
-            axis::setupAxis(ImAxis_X1, xCat, format, 100.f, minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
+            axis::setupAxis(ImAxis_X1, xCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_X1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true);
         }
 
         // y-axis: amplitude — always use finite limits because the heatmap provides no
@@ -192,7 +192,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
             _yLimitsForceApplied = limitsChanged;
 
             AxisCategory yCat{.quantity = yQuantity, .unit = yUnit};
-            axis::setupAxis(ImAxis_Y1, yCat, format, 100.f, minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
+            axis::setupAxis(ImAxis_Y1, yCat, format, axisLabelWidthOrDefault(dashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, plotSize)), minLimit, maxLimit, 1UZ, scale, _unitStore, showGrid, /*foreground=*/true, limitCond);
         }
     }
 
