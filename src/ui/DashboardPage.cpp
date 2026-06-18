@@ -24,7 +24,6 @@ namespace DigitizerUi {
 namespace {
 constexpr inline auto kMaxPlots   = 16u;
 constexpr inline auto kGridWidth  = 16u;
-constexpr inline auto kGridHeight = 16u;
 } // namespace
 
 static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
@@ -380,7 +379,6 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
     paneSize.y -= _legendBox.y;
 
     const float w = paneSize.x / float(kGridWidth);
-    // const float h = paneSize.y / float(kGridHeight);
 
     // Draw layout grid in Layout mode
     if (mode == Mode::Layout) {

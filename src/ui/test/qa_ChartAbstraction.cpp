@@ -444,8 +444,11 @@ int main() {
             const auto&      registry = opendigitizer::charts::detail::chartSignalCompatibilityRegistry();
             std::string_view name     = gr::refl::type_name<T>;
             auto             iterator = std::ranges::find_if(registry, [name](const auto& pair) { return pair.first.find(name) != std::string::npos; });
-            expect(iterator != registry.end()) << name << " should be registered";
-            expect(iterator->second == T::supportedSignals);
+            if (iterator == registry.end()) {
+                expect(false) << name << " should be registered";
+            } else {
+                expect(iterator->second == T::supportedSignals);
+            }
         };
 
         expectEntry.template operator()<XYChart>();

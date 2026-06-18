@@ -53,15 +53,18 @@ inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEv
 }
 #endif
 
+// clang-format off
 inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
     EM_ASM_(
         {
             function listDir(path, recursive, indent = "") {
                 try {
                     const entries = FS.readdir(path);
                     for (let entry of entries) {
-                        if (entry == = '.' || entry == = '..') {
+                        if (entry === '.' || entry === '..') {
                             continue;
                         }
                         const fullPath = path + (path.endsWith('/') ? "" : "/") + entry;
@@ -79,12 +82,14 @@ inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
                     console.error('Error listing directory:', path, e);
                 }
             }
-            listDir('/', $0 != = 0);
+            listDir('/', $0 !== 0);
         },
         recursive ? 1 : 0);
+#pragma clang diagnostic pop
 #else
 
 #endif
 }
+// clang-format on
 
 #endif // EMSCRIPTENHELPER_HPP

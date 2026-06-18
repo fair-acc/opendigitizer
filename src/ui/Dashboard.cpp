@@ -39,7 +39,16 @@ struct FlowgraphMessage {
     std::string layout;
 };
 
+#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc2y-extensions" // refl-cpp uses __COUNTER__ issue
+#endif
+
 ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
+
+#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 namespace DigitizerUi {
 
@@ -244,11 +253,11 @@ std::string Dashboard::generateUniqueNameForUiWindow(gr::BlockModel& block, std:
 std::unordered_set<std::string_view> Dashboard::getAllWindowNamesInUse() const {
     std::unordered_set<std::string_view> output;
     for (const auto& window : uiWindows) {
-        auto [_, wasEmplaced] = output.emplace(std::string_view{window.window->name});
+        [[maybe_unused]] auto [_, wasEmplaced] = output.emplace(std::string_view{window.window->name});
         assert(wasEmplaced);
     }
     for (const auto& [id, controlWindow] : propertyControlWindows) {
-        auto [_, wasEmplaced] = output.emplace(std::string_view{controlWindow.window->name});
+        [[maybe_unused]] auto [_, wasEmplaced] = output.emplace(std::string_view{controlWindow.window->name});
         assert(wasEmplaced);
     }
     return output;
@@ -344,7 +353,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
 
         if (const auto dashboardUri = opencmw::URI<>(std::string(description->storageInfo->path)); dashboardUri.hostName().has_value()) {
             const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
-            gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri, this](auto& block) {
+            gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri](auto& block) {
                 if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
                     auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
                     sourceBlock->host = remoteUri.str();

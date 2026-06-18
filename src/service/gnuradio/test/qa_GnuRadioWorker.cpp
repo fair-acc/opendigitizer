@@ -1,3 +1,8 @@
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference" // OpenCMW headers
+#endif
+
 #include <Client.hpp>
 #include <IoSerialiserCmwLight.hpp>
 #include <IoSerialiserJson.hpp>
@@ -8,6 +13,10 @@
 #include <majordomo/Settings.hpp>
 #include <majordomo/Worker.hpp>
 #include <zmq/ZmqUtils.hpp>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <gnuradio-4.0/basic/StreamToDataSet.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>

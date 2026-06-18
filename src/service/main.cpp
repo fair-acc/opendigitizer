@@ -1,3 +1,8 @@
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference" // OpenCMW includes
+#endif
+
 #include <Client.hpp>
 #include <RestDefaultClientCertificates.hpp>
 #include <cmrc/cmrc.hpp>
@@ -9,6 +14,10 @@
 #include <services/dns.hpp>
 #include <services/dns_client.hpp>
 #include <zmq/ZmqUtils.hpp>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <algorithm>
 #include <format>

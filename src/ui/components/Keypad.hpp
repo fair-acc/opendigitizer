@@ -6,6 +6,7 @@
 
 #include <any>
 #include <charconv>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -799,7 +800,13 @@ private:
             if constexpr (std::same_as<std::string, EdTy>) {
                 *value = _editBuffer;
             } else if constexpr (std::floating_point<EdTy>) {
-                *value = strtof(_editBuffer.c_str(), nullptr);
+                if constexpr (std::same_as<float, EdTy>) {
+                    *value = std::strtof(_editBuffer.c_str(), nullptr);
+                } else if constexpr (std::same_as<double, EdTy>) {
+                    *value = std::strtod(_editBuffer.c_str(), nullptr);
+                } else {
+                    *value = std::strtold(_editBuffer.c_str(), nullptr);
+                }
             } else {
                 EdTy             converted = 0;
                 std::string_view a{_editBuffer};
