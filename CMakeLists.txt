@@ -28,6 +28,7 @@ if(USE_DWARF4)
 endif()
 
 option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
+option(OPENDIGITIZER_WARNINGS_AS_ERRORS "Treat OpenDigitizer compiler warnings as errors" ON)
 
 # Set proper default for ENABLE_IMGUI_TEST_ENGINE, the idea is:
 
@@ -60,10 +61,10 @@ include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 include(cmake/Cache.cmake) # enable cache system
 include(cmake/CMakeRC.cmake)
-add_library(project_warnings INTERFACE) # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
+add_library(opendigitizer-options INTERFACE)
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
-set_project_warnings(project_warnings)
+set_project_warnings(opendigitizer-options)
 
 if(NOT EMSCRIPTEN)
   add_subdirectory(src/acquisition)
@@ -93,7 +94,8 @@ if(NOT DISABLE_WASM_BUILD)
       ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm
       -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path} -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
-      -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER} ${OD_WASM_CMAKE_OPTIONS}
+      -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER}
+      -DOPENDIGITIZER_WARNINGS_AS_ERRORS=${OPENDIGITIZER_WARNINGS_AS_ERRORS} ${OD_WASM_CMAKE_OPTIONS}
     BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
     BINARY_DIR ${BUILD_DIR}/ui-wasm
     BUILD_ALWAYS 1

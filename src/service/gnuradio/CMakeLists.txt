@@ -20,4 +20,5 @@ target_link_libraries(
   PRIVATE core
           client
           od_acquisition
+          opendigitizer-options
           project_options)

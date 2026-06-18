@@ -14,6 +14,7 @@ target_link_libraries(
           od_gnuradio_worker
           digitizer_common_utils
           client
+          opendigitizer-options
           od_rest
           zmq)
 

@@ -3,8 +3,6 @@
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(set_project_warnings project_name)
-  option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" FALSE) #TODO: re-enable as soon as the refl-cpp macro issue is fixed https://github.com/veselink1/refl-cpp/issues/63
-
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings
       /w14242 # 'identifier': conversion from 'type1' to 'type1', possible loss of data
@@ -50,7 +48,7 @@ function(set_project_warnings project_name)
       -Wno-unknown-pragmas # ignore IDE, GCC/CLANG specific pragmas
   )
 
-  if(WARNINGS_AS_ERRORS)
+  if(OPENDIGITIZER_WARNINGS_AS_ERRORS)
     set(CLANG_WARNINGS ${CLANG_WARNINGS} -Werror)
     set(MSVC_WARNINGS ${MSVC_WARNINGS} /WX)
   endif()
@@ -77,6 +75,6 @@ function(set_project_warnings project_name)
     message(AUTHOR_WARNING "No compiler warnings set for '${CMAKE_CXX_COMPILER_ID}' compiler.")
   endif()
 
-  target_compile_options(${project_name} INTERFACE ${PROJECT_WARNINGS})
+  target_compile_options(${project_name} INTERFACE $<BUILD_INTERFACE:${PROJECT_WARNINGS}>)
 
 endfunction()

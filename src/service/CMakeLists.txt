@@ -127,6 +127,7 @@ target_link_libraries(
           majordomo
           services
           client
+          opendigitizer-options
           project_options
           fair-picoscope
           timing

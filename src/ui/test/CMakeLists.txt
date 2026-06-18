@@ -2,24 +2,29 @@
 
 # Headless chart abstraction tests (links opendigitizer-uilib for shared TestSinks.hpp)
 add_executable(qa_SignalSink qa_SignalSink.cpp)
-target_link_libraries(qa_SignalSink PRIVATE ut opendigitizer-uilib)
+target_link_libraries(qa_SignalSink PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_SignalSink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_SignalSink COMMAND qa_SignalSink)
 
 # Chart abstraction tests for SignalSink/SinkRegistry/Chart mixin APIs Note: links opendigitizer-uilib because Chart.hpp
 # menu helpers reference LookAndFeel
 add_executable(qa_ChartAbstraction qa_ChartAbstraction.cpp)
-target_link_libraries(qa_ChartAbstraction PRIVATE ut opendigitizer-uilib)
+target_link_libraries(qa_ChartAbstraction PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_ChartAbstraction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_ChartAbstraction COMMAND qa_ChartAbstraction)
 
 add_executable(qa_FuzzySearch qa_FuzzySearch.cpp)
-target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib)
+target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_FuzzySearch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_FuzzySearch COMMAND qa_FuzzySearch)
 
 add_executable(qa_TestSpectrumGenerator qa_TestSpectrumGenerator.cpp)
-target_link_libraries(qa_TestSpectrumGenerator PRIVATE ut gnuradio4::gnuradio-core gnuradio4::gnuradio-blocklib-core)
+target_link_libraries(
+  qa_TestSpectrumGenerator
+  PRIVATE ut
+          gnuradio4::gnuradio-core
+          gnuradio4::gnuradio-blocklib-core
+          opendigitizer-options)
 target_include_directories(qa_TestSpectrumGenerator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
                                                             ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
 add_test(NAME qa_TestSpectrumGenerator COMMAND qa_TestSpectrumGenerator)
@@ -31,6 +36,7 @@ target_link_libraries(
   qa_play_stop_bar
   PRIVATE ut
           core
+          opendigitizer-options
           gnuradio4::gnuradio-core
           gnuradio4::gnuradio-meta
           gnuradio4::gnuradio-algorithm
@@ -63,6 +69,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
   target_link_libraries(
     imgui_tests_common
+    PRIVATE opendigitizer-options
     PUBLIC opendigitizer-uilib
            raii_wrapper
            ui_assets
@@ -78,6 +85,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     target_link_libraries(
       ${NAME}
       PRIVATE opendigitizer-uilib
+              opendigitizer-options
               ut
               imgui_tests_common
               gnuradio4::gnuradio-blocklib-core

@@ -71,6 +71,13 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
 
+if(NOT TARGET opendigitizer-options)
+  option(OPENDIGITIZER_WARNINGS_AS_ERRORS "Treat OpenDigitizer compiler warnings as errors" ON)
+  add_library(opendigitizer-options INTERFACE)
+  include(../../cmake/CompilerWarnings.cmake)
+  set_project_warnings(opendigitizer-options)
+endif()
+
 add_compile_definitions(GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT}) # propagate to C++
 
 if(NOT TARGET od_acquisition)
@@ -269,6 +276,7 @@ target_sources(${target_name} PRIVATE main.cpp)
 
 target_link_libraries(
   ${target_name}lib
+  PRIVATE opendigitizer-options
   PUBLIC implot
          implot3d
          imgui-node-editor
@@ -303,12 +311,11 @@ if(OD_DISABLE_DEMO_FLOWGRAPHS)
 else()
   target_link_libraries(${target_name}lib PUBLIC sample_dashboards)
 endif()
-target_compile_options(${target_name}lib PUBLIC "-Wfatal-errors")
 target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 if(NOT EMSCRIPTEN)
   target_compile_definitions(${target_name}lib PUBLIC GL_GLEXT_PROTOTYPES)
 endif()
-target_link_libraries(${target_name} PRIVATE ${target_name}lib)
+target_link_libraries(${target_name} PRIVATE ${target_name}lib opendigitizer-options)
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)
