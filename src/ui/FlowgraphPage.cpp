@@ -256,6 +256,48 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
     return result;
 }
 
+void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::NodeId blockNode) {
+    if (!block.ownerGraph) {
+        assert(false && "scheduler {} had no owner graph");
+        return;
+    }
+    std::string tagLabel = "Unmanaged graph";
+    if (block.isScheduler()) {
+        auto computeDomainIter = block.blockSettings.find("compute_domain");
+        if (computeDomainIter == std::end(block.blockSettings)) {
+            return;
+        }
+        auto computeDomain = gr::ComputeDomain::parse(computeDomainIter->second.value_or(std::string_view{}));
+        if (computeDomain.kind.empty()) {
+            return;
+        }
+        tagLabel = computeDomain.kind;
+    }
+
+    const auto nodePosition    = ax::NodeEditor::GetNodePosition(blockNode);
+    const auto nodeSize        = ax::NodeEditor::GetNodeSize(blockNode);
+    const auto textRectPadding = ImGui::GetStyle().ItemInnerSpacing.x;
+    const auto textSize        = ImGui::CalcTextSize(tagLabel.data(), tagLabel.data() + tagLabel.size());
+    const auto topLeft         = nodePosition;
+    const auto topRight        = nodePosition + ImVec2{nodeSize.x, 0.f};
+    const auto availableSpace  = topRight.x - topLeft.x;
+    if (textSize.x + (textRectPadding * 2.f) > availableSpace) {
+        return;
+    }
+
+    const auto      lineHeight                   = ImGui::GetFrameHeight();
+    constexpr float maxLabelSpaceFromLeft        = 30.f;
+    constexpr float labelSpaceFromLeftPercentage = 0.2f;
+    const auto      spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
+    const auto      topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
+
+    const auto  schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
+    const auto  textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
+    const auto* currentWindow     = ImGui::GetCurrentWindow();
+    currentWindow->DrawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32);
+    currentWindow->DrawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
+}
+
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
     const auto& graphBlocks = _rootBlock->childBlocks;
     const auto& graphEdges  = _rootBlock->childEdges;
@@ -295,8 +337,16 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         for (auto& block : graphBlocks) {
             auto blockId = ax::NodeEditor::NodeId(block.get());
 
-            const auto& inputPorts  = block->inputPorts();
-            const auto& outputPorts = block->outputPorts();
+            const auto transformPorts = [](UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
+                auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
+                if (block.isScheduler() || block.isGraph()) { // regular blocks define port order by declaration order
+                    std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
+                }
+                return sortedPorts;
+            };
+
+            auto inputPorts  = transformPorts(*block, block->inputPorts());
+            auto outputPorts = transformPorts(*block, block->outputPorts());
 
             const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block.get(), *_filterBlock);
 
@@ -309,14 +359,22 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     filteredOutNodes.push_back(blockId);
                 }
 
+                const auto            isGroup        = block->isScheduler() || block->isGraph();
+                const ImVec4          borderColor    = isGroup ? LookAndFeel::instance().palette().flowgraphSubgraphBorder : ax::NodeEditor::GetStyle().Colors[ax::NodeEditor::StyleColor_NodeBorder];
+                const auto            borderWidthVar = IMW::NodeEditor::StyleFloatVar(ax::NodeEditor::StyleVar_NodeBorderWidth, isGroup ? 3.0f : ax::NodeEditor::GetStyle().NodeBorderWidth);
+                const auto            borderColorVar = IMW::NodeEditor::StyleColor(ax::NodeEditor::StyleColor_NodeBorder, borderColor);
                 IMW::NodeEditor::Node node(blockId);
+
+                if (isGroup) {
+                    this->drawComputeDomainTag(*block, blockId);
+                }
 
                 const auto blockScreenPosition = ImGui::GetCursorScreenPos();
                 auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
                 // Draw block title
-                auto name = block->blockName;
-                ImGui::TextUnformatted(name.c_str());
+                // blockTypeName is from BLOCK_ID which respects the `alias` parameter sent when registering blocks, blockName is generated by full typename
+                ImGui::TextUnformatted(block->blockTypeName.c_str());
                 auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
                 // Draw block properties
@@ -372,7 +430,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                        addPin(ax::NodeEditor::PinId(&ports[i]), pinType, position, {pinWidth, pinHeight});
+                        addPin(ax::NodeEditor::PinId(ports[i]), pinType, position, {pinWidth, pinHeight});
                     }
                 };
 
@@ -408,7 +466,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     for (std::size_t i = 0; i < ports.size(); ++i) {
                         const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
                         const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i].portName, ports[i].portType);
+                        drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i]->portName, ports[i]->portType);
                     }
                 };
 
@@ -617,9 +675,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         auto n     = ax::NodeEditor::GetDoubleClickedNode();
         auto block = n.AsPointer<UiGraphBlock>();
-        if (block) {
-            ImGui::OpenPopup("Block settings");
-            _selectedBlock = block;
+        if (block && (block->isGraph() || block->isScheduler())) {
+            requestGraphEdit(block);
         }
     } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         auto n     = ax::NodeEditor::GetHoveredNode();

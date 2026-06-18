@@ -46,6 +46,8 @@ struct Palette {
     ImVec4 flowgraphBg;
     ImVec4 flowgraphNodeBg;
     ImVec4 flowgraphNodeBorder;
+    ImVec4 flowgraphSubgraphBorder;
+    ImVec4 flowgraphSubgraphBorderText;
 
     ImVec4 rowBgAlt;
 

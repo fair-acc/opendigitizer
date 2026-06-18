@@ -254,7 +254,13 @@ int main(int argc, char** argv) {
 #endif
 
     // Register schedulers
-    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>();
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>>("Simple", "singleThreadedBlocking");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>>("Simple", "singleThreaded");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreaded>>("Simple", "multiThreaded");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::BreadthFirst<gr::scheduler::ExecutionPolicy::singleThreaded>>("BreadthFirst", "singleThreaded");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::BreadthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>("BreadthFirst", "multiThreaded");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::singleThreaded>>("DepthFirst", "singleThreaded");
+    gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>("DepthFirst", "multiThreaded");
 
     static App app;
 #ifdef EMSCRIPTEN
