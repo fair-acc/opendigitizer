@@ -1,5 +1,10 @@
 # define unit-tests
 
+add_executable(qa_FlowgraphLayout qa_FlowgraphLayout.cpp ../FlowgraphLayout.cpp)
+target_link_libraries(qa_FlowgraphLayout PRIVATE ut opendigitizer-options)
+target_include_directories(qa_FlowgraphLayout PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_FlowgraphLayout COMMAND qa_FlowgraphLayout)
+
 # Headless chart abstraction tests (links opendigitizer-uilib for shared TestSinks.hpp)
 add_executable(qa_SignalSink qa_SignalSink.cpp)
 target_link_libraries(qa_SignalSink PRIVATE ut opendigitizer-uilib opendigitizer-options)

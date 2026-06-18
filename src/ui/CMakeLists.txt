@@ -236,6 +236,8 @@ add_library(
   App.hpp
   FlowgraphPage.cpp
   FlowgraphPage.hpp
+  FlowgraphLayout.cpp
+  FlowgraphLayout.hpp
   GraphModel.cpp
   GraphModel.hpp
   Dashboard.cpp

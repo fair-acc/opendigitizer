@@ -162,6 +162,7 @@ public:
         auto& style        = ax::NodeEditor::GetStyle();
         style.NodeRounding = 0;
         style.PinRounding  = 0;
+        style.LinkStrength = 60.f;
 
         style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().palette().flowgraphBg;
         style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
@@ -200,7 +201,7 @@ public:
 
     Buttons drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
-    static void sortNodes(UiGraphBlock* rootBlock, bool all);
+    static void sortNodes(UiGraphBlock* rootBlock);
 
     void requestBlockDeletion(const std::string& blockName);
 

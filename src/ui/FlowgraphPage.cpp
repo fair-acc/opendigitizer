@@ -1,4 +1,5 @@
 #include "FlowgraphPage.hpp"
+#include "FlowgraphLayout.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -83,68 +84,23 @@ uint32_t darkenOrLighten(uint32_t color) {
     }
 }
 
-auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, const std::vector<UiGraphEdge>& edges) {
-    struct SortLevel {
-        std::vector<const UiGraphBlock*> blocks;
-    };
-
-    struct BlockConnections {
-        std::unordered_set<const UiGraphBlock*> parents;
-        std::unordered_set<const UiGraphBlock*> children;
-    };
-
-    std::unordered_map<const UiGraphBlock*, BlockConnections> graphConnections;
-    std::vector<SortLevel>                                    result;
-
-    for (const auto& block : blocks) {
-        graphConnections[block.get()];
-    }
-
-    for (const auto& edge : edges) {
-        graphConnections[edge.edgeSourcePort->ownerBlock].children.insert(edge.edgeDestinationPort->ownerBlock);
-        graphConnections[edge.edgeDestinationPort->ownerBlock].parents.insert(edge.edgeSourcePort->ownerBlock);
-    }
-
-    while (!graphConnections.empty()) {
-        SortLevel newLevel;
-        for (const auto& [block, connections] : graphConnections) {
-            if (connections.parents.empty()) {
-                newLevel.blocks.push_back(block);
-            }
-        }
-
-        for (const auto* block : newLevel.blocks) {
-            graphConnections.erase(block);
-            for (auto& [_, connections] : graphConnections) {
-                connections.parents.erase(block);
-                // TODO(NOW) Proper top sort would use this to initialize the next level blocks
-            }
-        }
-
-        if (newLevel.blocks.empty()) {
-            break;
-        }
-
-        std::ranges::reverse(newLevel.blocks);
-
-        result.push_back(std::move(newLevel));
-    }
-
-    // If there are blocks in graphConnections, we have at lease one cycle,
-    // those blocks will not be sorted. Put them in the last level.
-    if (!graphConnections.empty()) {
-        SortLevel newLevel;
-        std::ranges::transform(graphConnections, std::back_inserter(newLevel.blocks), [](const auto& kvp) { return kvp.first; });
-    }
-
-    return result;
-}
-
 float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
     const float spacing = blockHeight / (static_cast<float>(numPins) + 1);
     // ImFloor here is to mimic what imgui node editor is doing internally, so our rectangles line up with the highlight rects they draw
     return ImFloor(spacing * (static_cast<float>(index) + 1) - (pinHeight / 2));
 }
+
+namespace {
+
+auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
+    auto result = ports | std::views::transform([](const auto& port) { return &port; }) | std::ranges::to<std::vector>();
+    if (block.isScheduler() || block.isGraph()) {
+        std::ranges::sort(result, {}, [](const auto* port) { return std::tie(port->portType, port->portName); });
+    }
+    return result;
+}
+
+} // namespace
 
 void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
@@ -704,19 +660,11 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     // over-reserved, but minimizes allocations
     filteredOutNodes.reserve(_filterBlock ? graphBlocks.size() : 0);
 
-    const auto transformPorts = [](const UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
-        auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
-        if (block.isScheduler() || block.isGraph()) { // regular blocks define port order by declaration order
-            std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
-        }
-        return sortedPorts;
-    };
-
     // Draw every block before measuring and arranging.
     for (auto& block : graphBlocks) {
         const auto blockId     = ax::NodeEditor::NodeId(block.get());
-        auto       inputPorts  = transformPorts(*block, block->inputPorts());
-        auto       outputPorts = transformPorts(*block, block->outputPorts());
+        auto       inputPorts  = displayedPorts(*block, block->inputPorts());
+        auto       outputPorts = displayedPorts(*block, block->outputPorts());
 
         const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block.get(), *_filterBlock);
 
@@ -784,7 +732,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
     // Arrange only after drawing has measured every block.
     if (std::exchange(_rearrangeRequested, false)) {
-        sortNodes(rootBlock, true);
+        sortNodes(rootBlock);
     }
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
@@ -1132,32 +1080,52 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
     }
 }
 
-void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock, bool all) {
-    auto blockLevels = topologicalSort(rootBlock->childBlocks, rootBlock->childEdges);
+void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) {
+    const auto& blocks = rootBlock->childBlocks;
 
-    constexpr float ySpacing = 32;
-    constexpr float xSpacing = 200;
-
-    // We don't want the nodes to be glued to the left edge, same for top edge and y
-    static const float padding = 16.f;
-    float              x       = padding;
-    for (auto& level : blockLevels) {
-        float y          = padding;
-        float levelWidth = 0;
-
-        for (auto& block : level.blocks) {
-
-            const auto blockId        = ax::NodeEditor::NodeId(block);
-            const bool userPositioned = ax::NodeEditor::GetWasUserPositioned(blockId) || block->storedXY.has_value();
-            if (all || !userPositioned) {
-                ax::NodeEditor::SetNodePosition(blockId, ImVec2(x, y));
+    std::vector<flowgraph_layout::Size> nodeSizes;
+    nodeSizes.reserve(blocks.size());
+    struct PortLocation {
+        std::size_t nodeIndex;
+        float       y;
+    };
+    std::unordered_map<const UiGraphPort*, PortLocation> portLocations;
+    for (std::size_t i = 0UZ; i < blocks.size(); ++i) {
+        auto&      block     = *blocks[i];
+        const auto blockId   = ax::NodeEditor::NodeId(&block);
+        const auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
+        nodeSizes.push_back({.width = std::max(blockSize.x, 80.f), .height = std::max(blockSize.y, 40.f)});
+        const auto addPortLocations = [&](const auto& ports) {
+            const auto orderedPorts = displayedPorts(block, ports);
+            for (std::size_t port = 0UZ; port < orderedPorts.size(); ++port) {
+                portLocations.emplace(orderedPorts[port], PortLocation{i, pinLocalPositionY(port, orderedPorts.size(), blockSize.y, 0.f)});
             }
-            auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-            y += blockSize.y + ySpacing;
-            levelWidth = std::max(levelWidth, blockSize.x);
+        };
+        addPortLocations(block.inputPorts());
+        addPortLocations(block.outputPorts());
+    }
+
+    std::vector<flowgraph_layout::Edge> layoutEdges;
+    layoutEdges.reserve(rootBlock->childEdges.size());
+    for (const auto& edge : rootBlock->childEdges) {
+        const auto source = portLocations.find(edge.edgeSourcePort);
+        const auto target = portLocations.find(edge.edgeDestinationPort);
+        if (source == portLocations.end() || target == portLocations.end()) {
+            continue;
         }
 
-        x += levelWidth + xSpacing;
+        layoutEdges.push_back({
+            .source      = source->second.nodeIndex,
+            .target      = target->second.nodeIndex,
+            .sourcePortY = source->second.y,
+            .targetPortY = target->second.y,
+        });
+    }
+
+    const auto positions = flowgraph_layout::compute(nodeSizes, layoutEdges);
+
+    for (std::size_t i = 0UZ; i < blocks.size(); ++i) {
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(blocks[i].get()), ImVec2(positions[i].x, positions[i].y));
     }
 }
 
