@@ -87,6 +87,7 @@ public:
             return position.x >= minX && position.y >= minY && position.x <= maxX && position.y <= maxY;
         }
     };
+    constexpr static BoundingBox defaultBoundingBox{.minX = 0, .minY = 0, .maxX = 100, .maxY = 100};
 
     std::function<void()> closeRequestedCallback;
 
@@ -133,7 +134,19 @@ public:
 
     void drawGraph(const ImVec2& size);
 
-    void drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::NodeId blockNode);
+    struct NodeDrawResult {
+        ImVec2 topLeft;
+        float  bottomY;
+    };
+    NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
+
+    void applyNodePosition(UiGraphBlock& block, std::optional<BoundingBox>& boundingBox, float pinHorizontalPadding);
+
+    void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
+
+    void sendPinsConnectedGraphMessage(ax::NodeEditor::PinId inputPinId, ax::NodeEditor::PinId outputPinId);
+
+    void drawComputeDomainTag(UiGraphBlock& block);
 
     /// Must be called while the editor is active, so we are in canvas/local space.
     void drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox);

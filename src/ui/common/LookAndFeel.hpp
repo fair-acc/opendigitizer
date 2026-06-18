@@ -103,6 +103,7 @@ struct LookAndFeel {
     ImFont*                   fontIconsSolidBig;
     ImFont*                   fontIconsSolidLarge;
     std::chrono::seconds      editPaneCloseDelay{15};
+    Flowgraph                 flowgraph;
 
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;

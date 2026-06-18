@@ -632,32 +632,37 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
     return clickResult;
 }
 
+void applyExportPropertiesPageResult(const components::BlockControlsPanelResult& controlPanelAction, Dashboard& dashboard) {
+    using Action         = components::ExportedPropertyList::Action;
+    const auto& property = controlPanelAction.allExportedPropertiesPageResult.targetProperty;
+    switch (controlPanelAction.allExportedPropertiesPageResult.action) {
+    case Action::Unexport: {
+        if (const auto propertyInfo = getPropertyInfo(dashboard.graphModel, property.blockName, property.propertyName)) {
+            propertyInfo->block.exportedProperties.erase(property.propertyName);
+        }
+        break;
+    }
+    case Action::AddWindow: {
+        if (const auto propertyInfo = getPropertyInfo(dashboard.graphModel, property.blockName, property.propertyName)) {
+            auto exportedPropertyIterator = propertyInfo->block.exportedProperties.find(property.propertyName);
+            if (exportedPropertyIterator == std::end(propertyInfo->block.exportedProperties)) {
+                assert(false && "Results from getPropertyInfo() did not describe an exported property");
+                break;
+            }
+
+            // if we got here, the property and block must actually exist, so it's okay to make a window now
+            const auto& [windowId, _]                 = dashboard.newPropertyControlWindow(std::addressof(propertyInfo->block), property.propertyName, property.propertyName);
+            exportedPropertyIterator->second.windowId = windowId;
+        }
+        break;
+    }
+    case Action::Selected: break;
+    }
+}
+
 void DashboardPage::applyControlPanelWindowAction(const components::BlockControlsPanelResult& controlPanelAction, const ExportedPropertyPairsByWindowID& pairs, std::vector<std::size_t>& windowRemoveList) {
     if (controlPanelAction.allExportedPropertiesPageResult) {
-        using Action         = components::ExportedPropertyList::Action;
-        const auto& property = controlPanelAction.allExportedPropertiesPageResult.targetProperty;
-        switch (controlPanelAction.allExportedPropertiesPageResult.action) {
-        case Action::Unexport: {
-            if (const auto propertyInfo = getPropertyInfo(_dashboard->graphModel, property.blockName, property.propertyName)) {
-                propertyInfo->block.exportedProperties.erase(property.propertyName);
-            }
-            break;
-        }
-        case Action::AddWindow: {
-            if (const auto propertyInfo = getPropertyInfo(_dashboard->graphModel, property.blockName, property.propertyName)) {
-                const auto [currentValue, meta, block] = *propertyInfo;
-                // if we got here, the property and block must actually exist, so it's okay to make a window now
-                const auto& [windowId, _] = _dashboard->newPropertyControlWindow(std::addressof(block), property.propertyName, property.propertyName);
-
-                auto exportedPropertyIterator = propertyInfo->block.exportedProperties.find(property.propertyName);
-                if (exportedPropertyIterator != std::end(propertyInfo->block.exportedProperties)) {
-                    exportedPropertyIterator->second.windowId = windowId;
-                }
-            }
-            break;
-        }
-        case Action::Selected: break;
-        }
+        applyExportPropertiesPageResult(controlPanelAction, *_dashboard);
     }
     if (controlPanelAction.blockEditPaneResult) {
         const auto& [type, block, propertyName] = controlPanelAction.blockEditPaneResult;
