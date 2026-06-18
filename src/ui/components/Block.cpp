@@ -266,7 +266,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
         assert(currentPropertyValue.is_arithmetic());
         gr::pmt::ValueVisitor([&out, &meta, label]<typename T>(const T& num) {
             if constexpr (std::floating_point<T>) {
-                double temp = num;
+                auto temp = static_cast<double>(num);
                 if (ImGui::SliderScalar(label, ImGuiDataType_Double, &temp, &*meta.minValue, &*meta.maxValue, "%d", {})) {
                     out = static_cast<T>(temp);
                 }

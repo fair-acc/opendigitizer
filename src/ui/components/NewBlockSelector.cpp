@@ -85,19 +85,33 @@ struct NamespaceOrSymbol {
     explicit NamespaceOrSymbol(const Symbol& symbol) : variant(symbol) {}
     explicit NamespaceOrSymbol(NamespaceTag) : variant(Namespace{}) {}
 
-    NamespaceOrSymbol* insertOrFindNameSpaceChild(std::string_view key) { //
-        return nameSpace()->insertOrLeaveExistingElement(key, NamespaceTag{});
+    [[nodiscard]] NamespaceOrSymbol* insertOrFindNameSpaceChild(std::string_view key) { //
+        auto* namespaceNode = nameSpace();
+        if (namespaceNode == nullptr) {
+            assert(false && "insertOrFindNameSpaceChild requires a namespace node");
+            return nullptr;
+        }
+        return namespaceNode->insertOrLeaveExistingElement(key, NamespaceTag{});
     }
     void insertElementChild(std::string_view key, std::string_view element, const FilterResult& filter) { //
-        nameSpace()->insertOrLeaveExistingElement(key, Symbol{element, filter});
+        auto* namespaceNode = nameSpace();
+        if (namespaceNode == nullptr) {
+            assert(false && "insertElementChild requires a namespace node");
+            return;
+        }
+        namespaceNode->insertOrLeaveExistingElement(key, Symbol{element, filter});
     }
 
     /// If nonempty, the returned string view is the full symbol name of the selected symbol
     [[nodiscard]] std::string_view drawTreeRecursive(std::string_view currentlySelected, std::string& keyBuffer, bool scrollToSelected, std::optional<bool> newOpenValue) const {
         std::string_view selected;
-        assert(nameSpace());
+        const auto*      namespaceNode = nameSpace();
+        if (namespaceNode == nullptr) {
+            assert(false && "drawTreeRecursive requires a namespace node");
+            return {};
+        }
 
-        for (const auto& [key, child] : nameSpace()->children) {
+        for (const auto& [key, child] : namespaceNode->children) {
             const auto namespaceCase = [&keyBuffer, key, &newOpenValue, &child, &selected, scrollToSelected, currentlySelected](const Namespace&) {
                 // this is a branch
                 keyBuffer = key;
@@ -214,6 +228,9 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
                 cursor->insertElementChild(std::string_view{namespaceElement}, entry.blockTypeName(), *entry.filterResult);
             } else {
                 cursor = cursor->insertOrFindNameSpaceChild(std::string_view{namespaceElement});
+                if (cursor == nullptr) {
+                    break;
+                }
             }
         }
     }

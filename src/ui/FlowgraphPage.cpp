@@ -332,21 +332,20 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         // over-reserved, but minimizes allocations
         filteredOutNodes.reserve(_filterBlock ? graphBlocks.size() : 0);
 
+        const auto transformPorts = [](const UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
+            auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
+            if (block.isScheduler() || block.isGraph()) { // regular blocks define port order by declaration order
+                std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
+            }
+            return sortedPorts;
+        };
+
         // We need to pass all blocks in order for NodeEditor to calculate
         // the sizes. Then, we can arrange those that are newly created
         for (auto& block : graphBlocks) {
-            auto blockId = ax::NodeEditor::NodeId(block.get());
-
-            const auto transformPorts = [](UiGraphBlock& block, const std::vector<UiGraphPort>& ports) {
-                auto sortedPorts = ports | std::views::transform([](const auto& p) { return &p; }) | std::ranges::to<std::vector>();
-                if (block.isScheduler() || block.isGraph()) { // regular blocks define port order by declaration order
-                    std::ranges::sort(sortedPorts, {}, [](auto* p) { return std::tie(p->portType, p->portName); });
-                }
-                return sortedPorts;
-            };
-
-            auto inputPorts  = transformPorts(*block, block->inputPorts());
-            auto outputPorts = transformPorts(*block, block->outputPorts());
+            const auto blockId     = ax::NodeEditor::NodeId(block.get());
+            auto       inputPorts  = transformPorts(*block, block->inputPorts());
+            auto       outputPorts = transformPorts(*block, block->outputPorts());
 
             const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block.get(), *_filterBlock);
 

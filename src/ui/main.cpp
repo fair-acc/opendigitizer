@@ -158,7 +158,7 @@ static void renderFrameOnly(App* app, gr::profiling::PeriodicTimer& tim) {
 // Track visibility for power saving
 static bool g_isVisible = true;
 
-static EM_BOOL emVisibilityCallback(int eventType, const EmscriptenVisibilityChangeEvent* event, void* /*userData*/) {
+static EM_BOOL emVisibilityCallback([[maybe_unused]] int eventType, const EmscriptenVisibilityChangeEvent* event, void* /*userData*/) {
     g_isVisible = !event->hidden;
     if (g_isVisible) {
         // Waking up from hidden: request a frame

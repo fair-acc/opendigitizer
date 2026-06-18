@@ -40,9 +40,9 @@ public:
     struct Params {
         Flags flags = {};
         // filter the displayed exported properties to only ones that match this type
-        std::optional<UiGraphBlock::SettingsControlType> typeFilter;
+        std::optional<UiGraphBlock::SettingsControlType> typeFilter = std::nullopt;
         // items in this vector will not be interactable
-        std::span<const ExportedPropertyPair> disabledList;
+        std::span<const ExportedPropertyPair> disabledList = {};
     };
 
     enum class Action {

@@ -165,10 +165,8 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
     }
 
     if (filtersChanged) {
-        std::vector<FilterData*> filters;
-        filters.resize(m_selectedFilters.labels().size());
-        std::ranges::transform(m_selectedFilters.labels(), filters.begin(), [](const auto& filter) { return filter.data; });
-        startSearching(m_shownSearchString, filters);
+        auto filters = m_selectedFilters.labels() | std::views::transform([](const auto& filter) { return filter.data; }) | std::ranges::to<std::vector>();
+        startSearching(m_shownSearchString, std::move(filters));
         while (loadMoreItems()) {
         }
     }

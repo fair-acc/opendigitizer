@@ -134,7 +134,7 @@ struct RemoteSourceSubscription {
         const auto         guard      = std::scoped_lock{callbacksMutex};
         std::size_t        id         = lastUsedId;
         ++lastUsedId;
-        const auto wasEmplaced = userCallbacks.try_emplace(id, std::move(callback)).second;
+        [[maybe_unused]] const auto wasEmplaced = userCallbacks.try_emplace(id, std::move(callback)).second;
         assert(wasEmplaced);
         return id;
     }

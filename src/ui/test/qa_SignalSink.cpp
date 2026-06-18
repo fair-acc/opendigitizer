@@ -156,8 +156,11 @@ int main() {
         expect(eq(registry.sinkCount(), initialCount + 2));
 
         auto found = registry.getSink("registry_sink1");
-        expect(found != nullptr);
-        expect(eq(found->uniqueName(), std::string_view("registry_sink1")));
+        if (found == nullptr) {
+            expect(false) << "registry_sink1 should be registered";
+        } else {
+            expect(eq(found->uniqueName(), std::string_view("registry_sink1")));
+        }
 
         registry.unregisterSink("registry_sink1");
         registry.unregisterSink("registry_sink2");

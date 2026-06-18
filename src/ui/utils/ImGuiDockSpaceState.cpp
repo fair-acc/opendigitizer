@@ -113,7 +113,7 @@ gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWi
     std::unordered_map<std::string_view, ImGuiWindow*> remainingWindowsByName;
     remainingWindowsByName.reserve(relevantWindowsNames.size());
     for (std::string_view windowName : relevantWindowsNames) {
-        auto [_, wasEmplaced] = remainingWindowsByName.try_emplace(windowName, nullptr);
+        [[maybe_unused]] auto [_, wasEmplaced] = remainingWindowsByName.try_emplace(windowName, nullptr);
         assert(wasEmplaced); // non-unique window names
     }
     for (ImGuiWindow* window : g.Windows) {

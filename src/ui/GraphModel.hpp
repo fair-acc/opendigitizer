@@ -267,10 +267,10 @@ public:
     struct FindBlockResult {
         operator bool() const { return block != nullptr; }
 
-        UiGraphBlock*                                 parentGraph = nullptr;
-        UiGraphBlock*                                 block       = nullptr;
-        decltype(UiGraphBlock::childBlocks)*          owningCollection;
-        decltype(UiGraphBlock::childBlocks)::iterator owningCollectionIt;
+        UiGraphBlock*                                 parentGraph        = nullptr;
+        UiGraphBlock*                                 block              = nullptr;
+        decltype(UiGraphBlock::childBlocks)*          owningCollection   = nullptr;
+        decltype(UiGraphBlock::childBlocks)::iterator owningCollectionIt = {};
     };
     FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
     FindBlockResult recursiveFindBlockByName(std::string_view name);
