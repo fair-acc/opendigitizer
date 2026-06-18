@@ -649,7 +649,10 @@ void DashboardPage::applyControlPanelWindowAction(const components::BlockControl
                 // if we got here, the property and block must actually exist, so it's okay to make a window now
                 const auto& [windowId, _] = _dashboard->newPropertyControlWindow(std::addressof(block), property.propertyName, property.propertyName);
 
-                propertyInfo->block.exportedProperties.find(property.propertyName)->second.windowId = windowId;
+                auto exportedPropertyIterator = propertyInfo->block.exportedProperties.find(property.propertyName);
+                if (exportedPropertyIterator != std::end(propertyInfo->block.exportedProperties)) {
+                    exportedPropertyIterator->second.windowId = windowId;
+                }
             }
             break;
         }
