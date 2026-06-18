@@ -76,5 +76,6 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version/version.cpp.in ${CMAKE_BINARY
                @ONLY)
 
 add_library(opendigitizer_version STATIC ${CMAKE_BINARY_DIR}/generated_version/version.cpp)
+target_link_libraries(opendigitizer_version PRIVATE opendigitizer-options)
 target_include_directories(opendigitizer_version PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/version/include)
 target_include_directories(opendigitizer_version PUBLIC ${CMAKE_BINARY_DIR}/generated_version)

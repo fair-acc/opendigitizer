@@ -22,8 +22,8 @@
 namespace DigitizerUi {
 
 namespace {
-constexpr inline auto kMaxPlots   = 16u;
-constexpr inline auto kGridWidth  = 16u;
+constexpr inline auto kMaxPlots  = 16u;
+constexpr inline auto kGridWidth = 16u;
 } // namespace
 
 static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
