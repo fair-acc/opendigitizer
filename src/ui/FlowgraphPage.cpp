@@ -110,15 +110,15 @@ auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, c
 
 float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
     const float spacing = blockHeight / (static_cast<float>(numPins) + 1);
-    return spacing * (static_cast<float>(index) + 1) - (pinHeight / 2);
+    // ImFloor here is to mimic what imgui node editor is doing internally, so our rectangles line up with the highlight rects they draw
+    return ImFloor(spacing * (static_cast<float>(index) + 1) - (pinHeight / 2));
 }
 
 void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
-    const ImVec2 rmin  = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
-    const ImVec2 rmax  = ImVec2(rmin.x + 1, rmin.y + 1);
+    const ImVec2 pivot = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
 
     if (input) {
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
@@ -127,7 +127,7 @@ void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2
     }
 
     ax::NodeEditor::BeginPin(id, kind);
-    ax::NodeEditor::PinPivotRect(rmin, rmax);
+    ax::NodeEditor::PinPivotRect(pivot, pivot);
     ax::NodeEditor::PinRect(min, max);
     ax::NodeEditor::EndPin();
 
