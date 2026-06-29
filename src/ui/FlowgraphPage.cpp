@@ -298,6 +298,65 @@ void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block, ax::NodeEditor::
     currentWindow->DrawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
 }
 
+void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox) {
+    constexpr static float fadeLengthSeconds = 1.0;
+    const auto             alphaPercentage   = std::clamp(this->_timeSpentHoldingPin, 0.f, fadeLengthSeconds) / fadeLengthSeconds;
+
+    // while in canvas space, ImGui::GetMousePos() returns the canvas space value and does not need to be converted
+    if (!canvasSpacingBoundingBox.contains(ImGui::GetMousePos())) {
+        this->_wasHoveringBoundingBoxExteriorThisFrame = true;
+        if (this->_timeSpentHoldingPin < fadeLengthSeconds) { // accelerate quickly to the background being fully faded in
+            this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime * 4;
+        }
+        // user dragging connection outside of bounding box.
+        ax::NodeEditor::Suspend();
+        if (auto tooltip = IMW::ToolTip{}) {
+            ImGui::TextUnformatted("Release to export this pin...");
+        }
+        ax::NodeEditor::Resume();
+    }
+
+    // border hover fade animation
+    auto          outlineAlpha       = static_cast<std::uint8_t>(LookAndFeel::getColorAlphaU8(&Palette::flowgraphBoundingBoxExteriorSelectionOutline) * alphaPercentage);
+    auto          outerAlpha         = static_cast<std::uint8_t>(LookAndFeel::getColorAlphaU8(&Palette::flowgraphBoundingBoxExteriorSelection) * alphaPercentage);
+    std::uint32_t outlineOpaqueColor = LookAndFeel::getColorU32Opaque(&Palette::flowgraphBoundingBoxExteriorSelectionOutline);
+    std::uint32_t outerOpaqueColor   = LookAndFeel::getColorU32Opaque(&Palette::flowgraphBoundingBoxExteriorSelection);
+    float         outlineThickness   = LookAndFeel::instance().flowgraph.flowgraphBoundingBoxExteriorSelectionOutlineThickness;
+    {
+        auto       animPercentage = std::clamp(_timeSpentHoveringBoundingBoxExterior, 0.f, borderExteriorHoverFadeTransitionDurationSeconds) / borderExteriorHoverFadeTransitionDurationSeconds;
+        const auto lerpColor      = [animPercentage](std::uint32_t coloru32, std::uint32_t targetu32) { //
+            return ImGui::ColorConvertFloat4ToU32(ImLerp(ImGui::ColorConvertU32ToFloat4(coloru32), ImGui::ColorConvertU32ToFloat4(targetu32), animPercentage));
+        };
+        const auto castLerp = [animPercentage]<typename T>(T color, T target) { //
+            return static_cast<T>(std::lerp(static_cast<float>(color), static_cast<float>(target), animPercentage));
+        };
+
+        // blend to hovered colors/alpha/outline thickness based on how long hovering exterior
+        outlineOpaqueColor = lerpColor(outlineOpaqueColor, LookAndFeel::getColorU32Opaque(&Palette::flowgraphBoundingBoxExteriorSelectionOutlineHovered));
+        outerOpaqueColor   = lerpColor(outerOpaqueColor, LookAndFeel::getColorU32Opaque(&Palette::flowgraphBoundingBoxExteriorSelectionHovered));
+        outerAlpha         = castLerp(outerAlpha, LookAndFeel::getColorAlphaU8(&Palette::flowgraphBoundingBoxExteriorSelectionHovered));
+        outlineAlpha       = castLerp(outlineAlpha, LookAndFeel::getColorAlphaU8(&Palette::flowgraphBoundingBoxExteriorSelectionOutlineHovered));
+        outlineThickness   = castLerp(outlineThickness, LookAndFeel::instance().flowgraph.flowgraphBoundingBoxExteriorSelectionOutlineThicknessHovered);
+    }
+
+    const auto outlineColor = rgbToImGuiABGR(outlineOpaqueColor, outlineAlpha);
+    const auto outerColor   = rgbToImGuiABGR(outerOpaqueColor, outerAlpha);
+
+    auto* const drawlist = ImGui::GetWindowDrawList();
+
+    // consider "visible region" to be the whole window, expanding above the opendigitizer title bar and outside margins
+    const auto visibleRegionMin = ax::NodeEditor::ScreenToCanvas(ImGui::GetWindowPos());
+    const auto visibleRegionMax = ax::NodeEditor::ScreenToCanvas(ImGui::GetWindowPos() + ImGui::GetWindowSize());
+
+    // draw some rectangles to demarcate the area to drag to do port exporting
+    const auto& bb = canvasSpacingBoundingBox;
+    drawlist->AddRect({bb.minX, bb.minY}, {bb.maxX, bb.maxY}, outlineColor, 0, ImDrawFlags_None, outlineThickness); // outline
+    drawlist->AddRectFilled(visibleRegionMin, {bb.minX, visibleRegionMax.y}, outerColor);                           // left side column
+    drawlist->AddRectFilled({bb.maxX, visibleRegionMin.y}, visibleRegionMax, outerColor);                           // right side column
+    drawlist->AddRectFilled({bb.minX, visibleRegionMin.y}, {bb.maxX, bb.minY}, outerColor);                         // top middle between the two columns
+    drawlist->AddRectFilled({bb.minX, bb.maxY}, {bb.maxX, visibleRegionMax.y}, outerColor);                         // bottom middle between the two columns
+}
+
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
     const auto& graphBlocks = _rootBlock->childBlocks;
     const auto& graphEdges  = _rootBlock->childEdges;
@@ -308,18 +367,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
     {
-        struct BoundingBox {
-            float minX = 0, minY = 0, maxX = 0, maxY = 0;
-
-            void addRectangle(ImVec2 position, ImVec2 size) {
-                minX = std::min(minX, position[0]);
-                minY = std::min(minY, position[1]);
-                maxX = std::max(maxX, position[0] + size[0]);
-                maxY = std::max(maxY, position[1] + size[1]);
-            }
-        };
-
-        constexpr BoundingBox defaultBoundingBox{.maxX = 100, .maxY = 100};
+        constexpr static BoundingBox defaultBoundingBox{.maxX = 100, .maxY = 100};
 
         std::optional<BoundingBox> boundingBox;
         const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {
@@ -532,8 +580,28 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             }
         }
 
+        constexpr static std::size_t marginPixels = 10;
+        const auto                   bb           = [&boundingBox]() {
+            auto out = boundingBox.value_or(defaultBoundingBox);
+            out.minX -= marginPixels;
+            out.minY -= marginPixels;
+            out.maxX += marginPixels;
+            out.maxY += marginPixels;
+            return out;
+        }();
+
+        // fade out the bounding box effect, unless drawBoundingBoxExterior() gets called below, it may override this
+        this->_wasHoveringBoundingBoxExteriorThisFrame = false;
+
         // Handle creation action, returns true if editor want to create new object (node or link)
         if (auto creation = IMW::NodeEditor::Creation(linkColor, 1.0f)) {
+            // allow the user to drag outside the bounds of a subgraph to export a port
+            if (_editorLevel > 0) {
+                assert(boundingBox && "user shouldn't be able to drag pins if there were no nodes that defined the bounding box...");
+                this->drawBoundingBoxExterior(bb);
+            }
+            this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime;
+
             ax::NodeEditor::PinId inputPinId, outputPinId;
             if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
                 // QueryNewLink returns true if editor wants to create new link between pins.
@@ -580,6 +648,38 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                     }
                 }
             }
+
+            ax::NodeEditor::PinId heldPinId;
+            if (_editorLevel > 0 && ax::NodeEditor::QueryNewNode(&heldPinId)) {
+                auto* port = heldPinId.AsPointer<UiGraphPort>();
+                assert(port);
+
+                if (!port->isExportedTo(this->_exportPortTargetBlock)) {
+                    _draggingPinExportRequest = ExportPortMessageData{
+                        .uniqueBlockName = port->ownerBlock ? port->ownerBlock->blockUniqueName : "UNKNOWN"s,
+                        .portDirection   = port->portDirection == gr::PortDirection::INPUT ? "input"s : "output"s,
+                        .portName        = port->portName,
+                        .exportedName    = (port->ownerBlock ? port->ownerBlock->blockName : "UNKNOWN"s) + "." + port->portName,
+                        .exportFlag      = true,
+                    };
+                }
+            }
+        } else {
+            // we are not dragging. if we previously were dragging a port, and the mouse is outside the bounding box of the graph, export the dragged port
+            if (_draggingPinExportRequest && !bb.contains(ImGui::GetMousePos())) {
+                requestExportPort(*_draggingPinExportRequest);
+            }
+            _draggingPinExportRequest  = {};
+            this->_timeSpentHoldingPin = 0.f;
+        }
+
+        // play fade animation for hovering outside the bounding box
+        if (this->_wasHoveringBoundingBoxExteriorThisFrame) {
+            if (this->_timeSpentHoveringBoundingBoxExterior < borderExteriorHoverFadeTransitionDurationSeconds) {
+                this->_timeSpentHoveringBoundingBoxExterior += ImGui::GetIO().DeltaTime;
+            }
+        } else if (this->_timeSpentHoveringBoundingBoxExterior > 0) {
+            this->_timeSpentHoveringBoundingBoxExterior -= ImGui::GetIO().DeltaTime;
         }
     }
 }
@@ -751,36 +851,27 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
 
         if (_editorLevel > 0) {
-            auto exportedPortsMenu = [this](auto text, auto portDirection, const auto& graphExportedPorts, const auto& blockPorts) {
+            auto exportedPortsMenu = [this](auto text, auto portDirection, const auto& blockPorts) {
                 auto selectedBlockUniqueName = _selectedBlock->blockUniqueName;
-                auto alreadyExportedPorts    = [&] {
-                    auto it = graphExportedPorts.find(selectedBlockUniqueName);
-                    if (it == graphExportedPorts.end()) {
-                        return std::set<UiGraphBlock::PortNameMapper>{};
-                    } else {
-                        return it->second;
-                    }
-                }();
 
                 if (IMW::Menu exportPortsSubMenu(text, /*enabled*/ true); exportPortsSubMenu) {
-                    for (const auto& knownPort : blockPorts) {
-                        auto        it          = std::ranges::find_if(alreadyExportedPorts, [&knownPort](const auto& internalExternalPair) { return internalExternalPair.internalName == knownPort.portName; });
-                        bool        wasExported = it != alreadyExportedPorts.end();
-                        std::string itemText    = [&] {
-                            if (wasExported) {
-                                return std::format("{} (as {})", it->internalName, it->exportedName);
+                    for (const UiGraphPort& knownPort : blockPorts) {
+                        const auto  exportedName = knownPort.getExportedName(this->_exportPortTargetBlock);
+                        std::string itemText     = [&] {
+                            if (exportedName) {
+                                return std::format("{} (as {})", knownPort.portName, *exportedName);
                             } else {
                                 return knownPort.portName;
                             }
                         }();
-                        if (ImGui::MenuItem(itemText.c_str(), 0, wasExported)) {
+                        if (ImGui::MenuItem(itemText.c_str(), 0, exportedName.has_value())) {
                             ExportPortMessageData request{                          //
                                 .uniqueBlockName = _selectedBlock->blockUniqueName, //
                                 .portDirection   = portDirection,                   //
                                 .portName        = knownPort.portName,              //
                                 .exportedName    = {},                              //
-                                .exportFlag      = !wasExported};
-                            if (wasExported) {
+                                .exportFlag      = !exportedName.has_value()};
+                            if (exportedName.has_value()) {
                                 requestExportPort(std::move(request));
                             } else {
                                 exportPortTextField = _selectedBlock->blockName + "." + knownPort.portName;
@@ -791,8 +882,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                 }
             };
 
-            exportedPortsMenu("Exported input ports...", "input", _exportPortTargetBlock->exportedInputPorts, _selectedBlock->_inputPorts);
-            exportedPortsMenu("Exported output ports...", "output", _exportPortTargetBlock->exportedOutputPorts, _selectedBlock->_outputPorts);
+            exportedPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
+            exportedPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
         }
     }
 
@@ -1074,9 +1165,11 @@ void FlowgraphPage::drawLocalYamlTab() {
     ImGui::SameLine();
     if (ImGui::Button("Apply")) {
         gr::Message message;
-        message.cmd      = gr::message::Command::Set;
-        message.endpoint = gr::scheduler::property::kGraphGRC;
-        message.data     = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kGraphGRC;
+        message.data        = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+        auto owner          = _editors.front().ownersForRoot();
+        message.serviceName = owner.scheduler;
         _dashboard->graphModel.sendMessage(std::move(message));
     }
 

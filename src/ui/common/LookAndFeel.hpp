@@ -22,6 +22,15 @@ constexpr std::uint32_t rgbToImGuiABGR(std::uint32_t rgb, std::uint8_t alpha = 0
     return (static_cast<std::uint32_t>(alpha) << 24) | (b << 16) | (g << 8) | r;
 }
 
+constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
+    const auto saturate = [](float f) { return (f < 0.0f) ? 0.0f : (f > 1.0f) ? 1.0f : f; };
+    auto       r        = static_cast<std::uint32_t>(saturate(float4.x) * 255.0f + 0.5f);
+    auto       g        = static_cast<std::uint32_t>(saturate(float4.y) * 255.0f + 0.5f);
+    auto       b        = static_cast<std::uint32_t>(saturate(float4.z) * 255.0f + 0.5f);
+    auto       a        = static_cast<std::uint32_t>(saturate(float4.w) * 255.0f + 0.5f);
+    return (r << 24) | (g << 16) | (b << 8) | a;
+}
+
 struct ImFont;
 
 namespace DigitizerUi {
@@ -49,6 +58,11 @@ struct Palette {
     ImVec4 flowgraphSubgraphBorder;
     ImVec4 flowgraphSubgraphBorderText;
 
+    ImVec4 flowgraphBoundingBoxExteriorSelection;
+    ImVec4 flowgraphBoundingBoxExteriorSelectionOutline;
+    ImVec4 flowgraphBoundingBoxExteriorSelectionHovered;
+    ImVec4 flowgraphBoundingBoxExteriorSelectionOutlineHovered;
+
     ImVec4 rowBgAlt;
 
     ImVec4 highlightedSearchResultsBg;
@@ -56,6 +70,15 @@ struct Palette {
 
 struct LookAndFeel {
     enum class Style { Light, Dark };
+
+    struct Flowgraph {
+        float  pinWidth  = 10;
+        float  pinHeight = 10;
+        ImVec2 minimumBlockSize{80.0f, 0.0f};
+
+        float flowgraphBoundingBoxExteriorSelectionOutlineThickness        = 1.f;
+        float flowgraphBoundingBoxExteriorSelectionOutlineThicknessHovered = 3.f;
+    };
 
 #ifdef __EMSCRIPTEN__
     const bool isDesktop = false;
@@ -89,6 +112,13 @@ struct LookAndFeel {
 
     static LookAndFeel&       mutableInstance();
     static const LookAndFeel& instance();
+
+    static std::uint8_t  getColorAlphaU8(ImVec4 Palette::*color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
+    static std::uint32_t getColorU32(ImVec4 Palette::*color) { return float4ToRGBA(instance().palette().*color); }
+    static std::uint32_t getColorU32Opaque(ImVec4 Palette::*color) {
+        const auto vec4 = instance().palette().*color;
+        return float4ToRGBA({vec4.x, vec4.y, vec4.z, 1.f}) >> 8;
+    }
 
     void loadFonts();
 

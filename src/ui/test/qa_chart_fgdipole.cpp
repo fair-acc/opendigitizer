@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <boost/ut.hpp>
 
@@ -32,26 +33,7 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-struct TestState {
-    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
-    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
-
-    void stopScheduler() { dashboard->scheduler->stop(); }
-
-    void waitForSchedulerActive(std::size_t maxCount = 30UZ, std::source_location location = std::source_location::current()) {
-        std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler->state()) && count < maxCount) {
-            dashboard->handleMessages();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            count++;
-        }
-        if (count >= maxCount) {
-            throw gr::exception(std::format("waitForSchedulerActive({}): maxCount exceeded", count), location);
-        }
-    }
-};
-
-TestState g_state;
+opendigitizer::test::TestDashboardRunner g_state;
 
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
@@ -66,7 +48,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_dashboard", "DashboardPage::drawPlot");
-        t->SetVarsDataType<TestState>();
+        t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
 
         t->GuiFunc = [](ImGuiTestContext*) {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
@@ -95,7 +77,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ut::expect(intensitySink != nullptr) << "IntensitySink not found";
                 ut::expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
 
-                g_state.waitForSchedulerActive();
+                g_state.waitForScheduler(ctx);
 
                 // Wait for sinks to accumulate data (DataSet sink needs the P=2→P=5 tag window at ~1s)
                 while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0 || intensitySink->size() == 0) {
