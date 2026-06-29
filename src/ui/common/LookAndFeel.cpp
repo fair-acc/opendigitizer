@@ -54,6 +54,11 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphSubgraphBorder     = rgba(0xDFA32B),
         .flowgraphSubgraphBorderText = black,
 
+        .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
+        .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
+        .flowgraphBoundingBoxExteriorSelectionHovered        = rgba(0x7B69FF, 0x55),
+        .flowgraphBoundingBoxExteriorSelectionOutlineHovered = rgba(0x563AE0),
+
         .rowBgAlt = rgba(0x333333),
 
         .highlightedSearchResultsBg = rgba(0x1A94F0, 0x66), // saturated but transparent blue, goes behind white text
@@ -74,6 +79,11 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphNodeBorder         = rgba(0x606060),
         .flowgraphSubgraphBorder     = rgba(0xDFA32B),
         .flowgraphSubgraphBorderText = black,
+
+        .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
+        .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
+        .flowgraphBoundingBoxExteriorSelectionHovered        = rgba(0x7B69FF, 0x55),
+        .flowgraphBoundingBoxExteriorSelectionOutlineHovered = rgba(0x563AE0),
 
         .rowBgAlt = rgba(0xCCCCCC),
 

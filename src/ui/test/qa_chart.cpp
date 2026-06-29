@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 #include "imgui.h"
 
 #include <boost/ut.hpp>
@@ -30,33 +31,14 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-
-    void startScheduler() { dashboard->scheduler->start(); }
-    void stopScheduler() { dashboard->scheduler->stop(); }
-
-    void waitForScheduler(std::size_t maxCount = 100UZ, std::source_location location = std::source_location::current()) {
-        std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler->state()) && count < maxCount) {
-            // wait until scheduler is started
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            count++;
-        }
-        if (count >= maxCount) {
-            throw gr::exception(std::format("waitForScheduler({}): maxCount exceeded", count), location);
-        }
-    }
-};
-
-TestState g_state;
+opendigitizer::test::TestDashboardRunner g_state;
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "chart_dashboard", "DashboardPage::drawPlot");
-        t->SetVarsDataType<TestState>();
+        t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
 
         t->GuiFunc = [](ImGuiTestContext*) {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
@@ -73,6 +55,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
+            g_state.reload();
+            g_state.waitForScheduler(ctx);
+            while (!g_state.hasBlocks()) {
+                ctx->Yield();
+            }
+
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
@@ -125,23 +113,11 @@ int main(int argc, char* argv[]) {
 
     options.speedMode = ImGuiTestRunSpeed_Normal;
     TestApp app(options);
-    auto    restClient = std::make_shared<opencmw::client::RestClient>(opencmw::client::VerifyServerCertificates(false));
 
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
     auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
-
-    auto fs      = cmrc::sample_dashboards::get_filesystem();
-    auto grcFile = fs.open("assets/sampleDashboards/DemoDashboard.grc");
-
-    auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [](gr::Graph&& grGraph) { //
-        g_state.dashboard->emplaceGraph(std::move(grGraph));
-    });
-
-    g_state.startScheduler();
 
     auto result = app.runTests();
     g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown

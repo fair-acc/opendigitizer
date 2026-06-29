@@ -10,6 +10,12 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+struct TestApp;
+
+namespace opendigitizer::test {
+struct TestDashboardRunner;
+}
+
 namespace DigitizerUi {
 
 class UiGraphModel;
@@ -25,6 +31,11 @@ struct UiGraphPort {
     gr::PortDirection portDirection;
 
     UiGraphPort(UiGraphBlock* owner) : ownerBlock(owner) {}
+
+    /// `exportedTo` should be the root block (ie. graph or scheduler) to which this port is exported
+    /// Returns the exported name of the port, if it is exported, and null otherwise.
+    [[nodiscard]] std::optional<std::string> getExportedName(const UiGraphBlock* exportedTo) const;
+    [[nodiscard]] bool                       isExportedTo(const UiGraphBlock* exportedTo) const { return getExportedName(exportedTo).has_value(); }
 };
 
 struct UiGraphEdge {
@@ -229,6 +240,9 @@ public:
 
 class UiGraphModel {
 public:
+    friend struct ::TestApp;
+    friend struct ::opendigitizer::test::TestDashboardRunner;
+
     UiGraphModel() : rootBlock(this, nullptr) {}
 
     std::function<void(gr::Message, std::source_location)> sendMessage_;
@@ -308,6 +322,19 @@ private:
         Break,
     };
     void recursiveForEachBlock(const std::function<VisitorResult(const FindBlockResult& element)>& callback);
+
+    /// only used by tests to wait for a reponse from the scheduler  TODO: #if defined(TESTING_...) ?
+    std::unordered_map<std::size_t, std::function<void(const gr::Message&)>> _testResponseSubscriptions;
+
+    std::size_t subscribeToResponses(std::function<void(const gr::Message& incoming)> listener) {
+        static std::size_t lastUsedId = 0;
+        ++lastUsedId;
+        auto [iterator, wasEmplaced] = _testResponseSubscriptions.try_emplace(lastUsedId, std::move(listener));
+        assert(wasEmplaced);
+        return iterator->first;
+    }
+
+    void unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
 };
 
 } // namespace DigitizerUi

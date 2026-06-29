@@ -1,8 +1,8 @@
 #include "GraphModel.hpp"
 
-#include <scope_exit.hpp>
-
 #include "components/ImGuiNotify.hpp"
+
+#include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Scheduler.hpp>
 
@@ -33,6 +33,27 @@ auto UiGraphBlock::findBlockIteratorBy(std::initializer_list<SearchProperty> sea
         return false;
     });
     return std::make_pair(it, it != childBlocks.end());
+}
+
+std::optional<std::string> UiGraphPort::getExportedName(const UiGraphBlock* exportedTo) const {
+    assert(!exportedTo || exportedTo->isGraph() || exportedTo->isScheduler());
+    const auto& exportedPorts = [this, exportedTo]() -> std::set<UiGraphBlock::PortNameMapper> {
+        if (!ownerBlock || !exportedTo) {
+            return {};
+        }
+        const auto& map      = (portDirection == gr::PortDirection::INPUT) ? exportedTo->exportedInputPorts : exportedTo->exportedOutputPorts;
+        auto        iterator = map.find(ownerBlock->blockUniqueName);
+        if (iterator != std::end(map)) {
+            return iterator->second;
+        }
+        return {};
+    }();
+
+    auto iterator = std::ranges::find_if(exportedPorts, [this](const auto& portmapper) { return portmapper.internalName == portName; });
+    if (iterator != std::end(exportedPorts)) {
+        return iterator->exportedName;
+    }
+    return {};
 }
 
 auto UiGraphBlock::findBlockIteratorByUniqueName(std::string_view uniqueName) { return findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName); }
@@ -803,6 +824,10 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph     = gr::graph::property;
     namespace scheduler = gr::scheduler::property;
     namespace block     = gr::block::property;
+
+    for (const auto& [_, subscription] : _testResponseSubscriptions) {
+        subscription(message);
+    }
 
     if (!message.data) {
         std::println("Received an error: {}", message.data.error().message);
