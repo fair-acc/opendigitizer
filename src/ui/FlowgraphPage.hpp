@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <stack>
 #include <vector>
 
 #include "common/ImguiWrap.hpp"
@@ -22,11 +21,15 @@ namespace DigitizerUi {
 
 // Returns the pin positionY relative to the block
 float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight);
-void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true);
+void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, gr::PortDirection pinDirection, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true, bool isSupressed = true);
+
+class FlowgraphPage;
 
 class FlowgraphEditor {
+public:
     friend struct ::TestState;
     friend struct ::TestApp;
+    friend class ::FlowgraphPage;
 
 private:
     ax::NodeEditor::Config _editorConfig;
@@ -117,6 +120,17 @@ public:
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
+    void                                 autoExportUnconnectedPorts();
+
+    struct UnexportPortRequest {
+        ExportPortMessageData message;      // exportFlag = false
+        std::string           exportedName; // name of the port as exported on the subgraph block
+        bool                  suppressAfter = false;
+    };
+    std::optional<UnexportPortRequest> unexportPortRequest;
+
+    [[nodiscard]] bool hasExternalEdgesForExportedPort(const std::string& exportedName) const;
+    void               suppressPortAutoExport(const ExportPortMessageData& request);
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
@@ -157,6 +171,9 @@ public:
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
+
+    void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
+    void drawPortExportOptionsMenu(const UiGraphPort& port, const char* portDirection);
 
     void drawGraph(const ImVec2& size);
 

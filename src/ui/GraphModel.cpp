@@ -328,6 +328,9 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     }
     if (parameters) {
         blockSettings = *parameters;
+        if (const auto uiConstraints = parameters->get_if<gr::property_map>("ui_constraints")) {
+            applyUiConstraints(*uiConstraints);
+        }
     }
 
     updateFieldFrom(blockTypeName, blockData, blockTypeName, "type_name"s);
@@ -426,28 +429,6 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
 
     processPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
     processPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
-
-    if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
-        const auto uiParameters = parametersIt->second.get_if<gr::property_map>();
-        if (uiParameters) {
-            if (auto uiConstraintsIt = uiParameters->find("ui_constraints"); uiConstraintsIt != uiParameters->end()) {
-                const auto uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
-                if (uiConstraints) {
-                    auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
-                    auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
-                    if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
-                        storedXY = UiGraphBlock::StoredXY{
-                            .x = *x,
-                            .y = *y,
-                        };
-                        updatePosition = true;
-                    }
-                }
-            }
-        }
-    }
-
-    shouldRearrangeBlocks = true;
 }
 
 std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& edgeData) {
@@ -577,13 +558,84 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
     });
 }
 
-void UiGraphBlock::storeXY() {
-    storedXY = UiGraphBlock::StoredXY{
-        .x = view->x,
-        .y = view->y,
-    };
+bool UiGraphPort::isAutoExportSuppressed() const {
+    if (!ownerBlock) {
+        return false;
+    }
+    const auto& portNames = portDirection == gr::PortDirection::INPUT ? ownerBlock->suppressedAutoExportInputPorts : ownerBlock->suppressedAutoExportOutputPorts;
+    return portNames.contains(portName);
+}
 
-    setSetting("ui_constraints", gr::property_map{{"x", storedXY->x}, {"y", storedXY->y}});
+void UiGraphBlock::setPortAutoExportSuppressed(const UiGraphPort& port, bool suppressed) {
+    assert(port.ownerBlock == this);
+    auto&      portNames = port.portDirection == gr::PortDirection::INPUT ? suppressedAutoExportInputPorts : suppressedAutoExportOutputPorts;
+    const bool changed   = suppressed ? portNames.insert(port.portName).second : portNames.erase(port.portName) > 0;
+    if (changed) {
+        submitUiConstraints();
+    }
+}
+
+void UiGraphBlock::applyUiConstraints(const gr::property_map& constraints) {
+    if (constraints.empty()) {
+        return;
+    }
+
+    const auto x = getOptionalProperty<float, true>(constraints, "x");
+    const auto y = getOptionalProperty<float, true>(constraints, "y");
+    if (x && y && (!storedXY.has_value() || storedXY->x != *x || storedXY->y != *y)) {
+        storedXY       = StoredXY{.x = *x, .y = *y};
+        updatePosition = true;
+
+        ownerGraph->rootBlock.shouldRearrangeBlocks = true;
+    }
+
+    const auto readSuppressedPorts = [&constraints](const char* key, std::set<std::string>& portNames) {
+        portNames.clear();
+        const auto suppressed = constraints.get_if<gr::TensorView<gr::pmt::Value>>(key);
+        if (!suppressed) {
+            return;
+        }
+        for (const auto& portName_ : *suppressed) {
+            auto portName = portName_.value_or(std::string());
+            if (!portName.empty()) {
+                portNames.insert(std::move(portName));
+            }
+        }
+    };
+    readSuppressedPorts("suppressed_input_ports", suppressedAutoExportInputPorts);
+    readSuppressedPorts("suppressed_output_ports", suppressedAutoExportOutputPorts);
+}
+
+void UiGraphBlock::submitUiConstraints() {
+    gr::property_map constraints;
+
+    if (view.has_value()) {
+        storedXY = UiGraphBlock::StoredXY{
+            .x = view->x,
+            .y = view->y,
+        };
+    }
+    if (storedXY.has_value()) {
+        constraints.insert_or_assign("x", storedXY->x);
+        constraints.insert_or_assign("y", storedXY->y);
+    }
+
+    const auto writeSuppressedPorts = [&constraints](std::string_view key, const std::set<std::string>& portNames) {
+        if (portNames.empty()) {
+            return;
+        }
+        gr::Tensor<gr::pmt::Value> suppressed(gr::extents_from, {portNames.size()});
+        std::size_t                i = 0;
+        for (const auto& portName : portNames) {
+            suppressed[i] = portName;
+            ++i;
+        }
+        constraints.insert_or_assign(key, std::move(suppressed));
+    };
+    writeSuppressedPorts("suppressed_input_ports", suppressedAutoExportInputPorts);
+    writeSuppressedPorts("suppressed_output_ports", suppressedAutoExportOutputPorts);
+
+    setSetting("ui_constraints", std::move(constraints));
 }
 
 void UiGraphBlock::requestBlockUpdate() {
@@ -891,6 +943,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     } else if (message.endpoint == graph::kBlockInspected) {
         handleBlockDataUpdated(uniqueName(), data);
 
+    } else if (message.endpoint == block::kUiConstraints) {
+        handleBlockUiConstraintsChanged(message.serviceName, data);
+
     } else if (message.endpoint == block::kSetting) {
         // serviceName is used for block's unique name in settings messages
         handleBlockSettingsChanged(message.serviceName, data);
@@ -1008,6 +1063,17 @@ void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const g
     found.block->setBlockData(blockData);
 }
 
+void UiGraphModel::handleBlockUiConstraintsChanged(const std::string& uniqueName, const gr::property_map& data) {
+    auto found = recursiveFindBlockByUniqueName(uniqueName);
+    if (!found) {
+        std::println("!requestFullUpdate reason: requested an unknown block to be changed settings {}", uniqueName);
+        requestFullUpdate();
+        return;
+    }
+    found.block->applyUiConstraints(data);
+    found.block->shouldRearrangeBlocks = true;
+}
+
 void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
@@ -1019,20 +1085,8 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     auto* block = found.block;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) == "ui_constraints") {
-            const auto map = value.get_if<gr::property_map>();
-            if (map && !map->empty()) {
-                const auto x = map->contains("x") ? map->find_value("x").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
-                const auto y = map->contains("y") ? map->find_value("y").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
-
-                if (!block->storedXY.has_value() || (block->storedXY.value().x != x || block->storedXY.value().y != y)) {
-                    block->storedXY = UiGraphBlock::StoredXY{
-                        .x = x,
-                        .y = y,
-                    };
-                    block->updatePosition = true;
-
-                    rootBlock.shouldRearrangeBlocks = true;
-                }
+            if (const auto constraints = value.get_if<gr::property_map>()) {
+                block->applyUiConstraints(*constraints);
             }
         } else if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
             block->blockSettings.insert_or_assign(key, value);
@@ -1127,6 +1181,15 @@ std::unique_ptr<UiGraphBlock> UiGraphModel::makeGraphBlock(UiGraphBlock* parent,
     // Sets the block data, including its children if it is a
     // scheduler or a graph
     newBlock->setBlockData(blockData);
+
+    // ui constraints are not part of the inspection data, ask for them separately
+    sendMessage({
+        .cmd         = gr::message::Command::Get,
+        .serviceName = newBlock->blockUniqueName,
+        .endpoint    = gr::block::property::kUiConstraints,
+        //-Wmissing-designated-field-initializers
+        .data = {},
+    });
 
     return newBlock;
 }
