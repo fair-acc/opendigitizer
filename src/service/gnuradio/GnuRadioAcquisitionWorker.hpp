@@ -29,7 +29,7 @@ using namespace std::string_literals;
 namespace detail {
 template<typename T>
 inline std::expected<T, std::string> get(const gr::property_map& m, const std::string_view& key) {
-    const auto it = m.find(std::string(key));
+    const auto it = m.find(key);
     if (it == m.end()) {
         return std::unexpected(std::format("Missing key '{}'", key));
     }
@@ -58,17 +58,17 @@ inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property
     } result;
 
     for (const auto& [diff, map] : tags) {
-        if (auto triggerNameIt = map.find(std::string(gr::tag::TRIGGER_NAME.shortKey())); triggerNameIt != map.end()) {
+        if (auto triggerNameIt = map.find(gr::tag::TRIGGER_NAME.shortKey()); triggerNameIt != map.end()) {
             std::string name = triggerNameIt->second.value_or(std::string());
 
-            if (auto contextIt = map.find(std::string(gr::tag::CONTEXT.shortKey())); contextIt != map.end()) {
+            if (auto contextIt = map.find(gr::tag::CONTEXT.shortKey()); contextIt != map.end()) {
                 const auto context = contextIt->second.value_or(std::string());
                 if (!context.empty()) {
                     name = std::format("{}/{}", name, context);
                 }
             }
 
-            if (auto timeIt = map.find(std::string(gr::tag::TRIGGER_TIME.shortKey())); timeIt != map.end()) {
+            if (auto timeIt = map.find(gr::tag::TRIGGER_TIME.shortKey()); timeIt != map.end()) {
                 result = {name, timeIt->second.value_or(std::uint64_t{0})};
             } else {
                 result = {name, std::uint64_t{0}};
@@ -86,8 +86,15 @@ inline std::optional<T> getSetting(const std::shared_ptr<gr::BlockModel>& block,
     if (!setting) {
         return {};
     }
-    if (const T* val = setting.value().get_if<T>(); val != nullptr) {
-        return *val;
+    const gr::pmt::Value& val = setting.value();
+    if constexpr (std::is_same_v<T, std::pmr::string> || std::is_same_v<T, std::string>) {
+        if (const auto sv = val.get_if<std::string_view>(); sv) {
+            return T(*sv);
+        }
+    } else {
+        if (const T* v = val.get_if<T>(); v != nullptr) {
+            return *v;
+        }
     }
     return {};
 }
@@ -178,20 +185,20 @@ struct TimingEventState {
 
 private:
     static bool hasFairTimingContext(const gr::property_map& tagMap) {
-        const auto contextIt = tagMap.find(std::string(gr::tag::CONTEXT.shortKey()));
+        const auto contextIt = tagMap.find(gr::tag::CONTEXT.shortKey());
         return contextIt != tagMap.end() && contextIt->second.is_string() && contextIt->second.value_or(std::string()).starts_with("FAIR-TIMING:");
     }
 
     static bool isFairTimingTag(const gr::property_map& tagMap, const gr::property_map& metaInfo) { return hasFairTimingContext(tagMap) || (metaInfo.contains("BPCID") && metaInfo.contains("SID") && metaInfo.contains("BPID") && metaInfo.contains("GID")); }
 
     void updateFromTagMap(const gr::property_map& tagMap) {
-        const auto metaInfoIt = tagMap.find(std::string(gr::tag::TRIGGER_META_INFO.shortKey()));
+        const auto metaInfoIt = tagMap.find(gr::tag::TRIGGER_META_INFO.shortKey());
         if (metaInfoIt == tagMap.end()) {
             return;
         }
 
-        const auto* metaInfo = metaInfoIt->second.get_if<gr::property_map>();
-        if (metaInfo == nullptr) {
+        const auto metaInfo = metaInfoIt->second.get_if<gr::property_map>();
+        if (!metaInfo) {
             return;
         }
 
@@ -271,7 +278,7 @@ struct StreamingPollerEntry {
         std::vector<std::string> errors;
 
         auto update = [&errors]<typename T>(const gr::property_map& map, std::string_view key, std::optional<T>& target) {
-            if (!map.contains(std::string(key))) {
+            if (!map.contains(key)) {
                 return;
             }
             const auto value = detail::get<T>(map, key);
@@ -298,14 +305,7 @@ namespace detail {
 
 struct Matcher {
     std::string          filterDefinition;
-    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) {
-        const auto maybeName    = tag.get(std::string(gr::tag::TRIGGER_NAME.shortKey()));
-        const auto name         = maybeName ? maybeName->get().value_or("<unset>"s) : "<unset>"s;
-        const auto maybeContext = tag.get(std::string(gr::tag::CONTEXT.shortKey()));
-        const auto context      = maybeContext ? maybeContext->get().value_or(std::string()) : ""s;
-
-        return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState);
-    }
+    trigger::MatchResult operator()(std::string_view, const Tag& tag, property_map& filterState) { return trigger::BasicTriggerNameCtxMatcher::filter(filterDefinition, tag, filterState); }
 };
 
 inline const SignalEntry* findSignalEntryByName(const std::map<std::string, SignalEntry>& signalEntryBySink, std::string_view signalName, SignalType type) {
@@ -638,20 +638,22 @@ private:
             reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
                 if (tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) && tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-                    const float Ts_ns  = pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f ? 1'000'000'000.f / *pollerEntry.sample_rate : 0.f;
-                    const auto  offset = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
+                    const float Ts_ns       = pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f ? 1'000'000'000.f / *pollerEntry.sample_rate : 0.f;
+                    const auto  offset      = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
+                    const auto  triggerTime = [&](const gr::property_map& m) { return m.find_value(gr::tag::TRIGGER_TIME.shortKey()).value_or(gr::pmt::Value{}).value_or(std::uint64_t{0}); };
+                    const auto  triggerName = [&](const gr::property_map& m) { return std::string(m.find_value(gr::tag::TRIGGER_NAME.shortKey()).value_or(gr::pmt::Value{}).value_or(std::string_view{})); };
                     if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqLocalTimeStamp = static_cast<int64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(std::uint64_t{0})) - offset;
+                        reply.acqLocalTimeStamp = static_cast<int64_t>(triggerTime(tagMap)) - offset;
                     }
                     if (reply.refTriggerStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.refTriggerName  = tagMap.at(gr::tag::TRIGGER_NAME.shortKey()).value_or(std::string());
-                        reply.refTriggerStamp = cast_to_signed(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(std::uint64_t{0})) - offset;
+                        reply.refTriggerName  = triggerName(tagMap);
+                        reply.refTriggerStamp = cast_to_signed(triggerTime(tagMap)) - offset;
                     }
                 }
                 reply.triggerIndices.push_back(cast_to_signed(idx));
-                reply.triggerEventNames.push_back(tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) ? tagMap.at(gr::tag::TRIGGER_NAME.shortKey()).value_or(std::string()) : ""s);
-                reply.triggerTimestamps.push_back(tagMap.contains(gr::tag::TRIGGER_TIME.shortKey()) ? static_cast<int64_t>(tagMap.at(gr::tag::TRIGGER_TIME.shortKey()).value_or(std::uint64_t{0})) : 0LL);
-                reply.triggerOffsets.push_back(tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey()) ? tagMap.at(gr::tag::TRIGGER_OFFSET.shortKey()).value_or(0.f) : 0.0f);
+                reply.triggerEventNames.push_back(tagMap.contains(gr::tag::TRIGGER_NAME.shortKey()) ? std::string(tagMap.find_value(gr::tag::TRIGGER_NAME.shortKey()).value_or(gr::pmt::Value{}).value_or(std::string_view{})) : ""s);
+                reply.triggerTimestamps.push_back(tagMap.contains(gr::tag::TRIGGER_TIME.shortKey()) ? static_cast<int64_t>(tagMap.find_value(gr::tag::TRIGGER_TIME.shortKey()).value_or(gr::pmt::Value{}).value_or(std::uint64_t{0})) : 0LL);
+                reply.triggerOffsets.push_back(tagMap.contains(gr::tag::TRIGGER_OFFSET.shortKey()) ? tagMap.find_value(gr::tag::TRIGGER_OFFSET.shortKey()).value_or(gr::pmt::Value{}).value_or(0.f) : 0.0f);
                 reply.triggerYamlPropertyMaps.push_back(pmt::yaml::serialize(tagMap));
             }
 

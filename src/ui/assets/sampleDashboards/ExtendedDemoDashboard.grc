@@ -8,7 +8,7 @@ blocks:
   - id: opendigitizer::Arithmetic<float32>
     parameters:
       name: sum sigs3
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: gr::blocks::fft::FFT<float32>
     parameters:
       name: FFT
   - id: opendigitizer::SineSource<float32>

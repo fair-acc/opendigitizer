@@ -49,7 +49,7 @@ void ExportedPropertyList::drawPropertyUninteractiveNoLabel(const char* id, UiGr
             ImGui::Checkbox(id, &dummy);
             return;
         } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> || std::is_same_v<T, std::pmr::string>) {
-            ImGui::TextUnformatted(std::string{value}.c_str());
+            ImGui::TextUnformatted(value.data(), value.data() + value.size());
         } else if constexpr (std::is_floating_point_v<T>) {
             ImGui::Text("%f", static_cast<double>(value));
         } else if constexpr (std::is_integral_v<T>) {
@@ -90,7 +90,9 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
 
     IMW::Group property;
 
-    IMW::ChangeStrId id(std::format("{}{}", block->blockName, settingIterator->first).c_str());
+    const std::string settingKey(settingIterator->first);
+    const std::string settingId = std::format("{}{}", block->blockName, settingKey);
+    IMW::ChangeStrId  id(settingId.c_str());
 
     // draw drag and drop button
     if (parameters.flags & ExportedPropertyList::Flags::DragDropHandle) {
@@ -101,8 +103,8 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
         ImGui::SetItemTooltip("Drag to control window...");
 
         if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_AcceptNoDrawDefaultRect)) {
-            ExportedPropertyDragDropPayload::payloadSource(block->blockName, std::string{settingIterator->first});
-            ImGui::Text("Property \"%s\"...", settingIterator->first.c_str());
+            ExportedPropertyDragDropPayload::payloadSource(block->blockName, settingKey);
+            ImGui::Text("Property \"%s\"...", settingKey.c_str());
         }
         ImGui::SameLine();
     }
@@ -113,12 +115,12 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
     if (parameters.flags & ExportedPropertyList::Flags::SelectableProperties) {
         // in this case you can't interact with the controls of the property, so avoid drawing ones that don't add information.
         // passing in nullptr for blockname since we are in a section which is already labeled with the blockname
-        ExportedPropertyList::drawPropertyUninteractive(nullptr, settingIterator->first.c_str(), propertyUiControlType, current);
+        ExportedPropertyList::drawPropertyUninteractive(nullptr, settingKey.c_str(), propertyUiControlType, current);
     } else {
         IMW::Disabled disabled(isDisabled);
-        const auto    labelSize = ImGui::CalcTextSize(settingIterator->first.c_str());
+        const auto    labelSize = ImGui::CalcTextSize(settingKey.c_str());
         ImGui::SetNextItemWidth(-(labelSize + moreOptionsButtonSize + ImGui::GetStyle().ItemSpacing * 2.f).x);
-        if (auto newValue = editBlockProperty(settingIterator->first.c_str(), std::string{settingIterator->first}, current, meta)) {
+        if (auto newValue = editBlockProperty(settingKey.c_str(), settingKey, current, meta)) {
             block->setSetting(settingIterator->first, std::move(newValue));
         }
     }
@@ -172,7 +174,8 @@ ExportedPropertyList::ExportedPropertyAction ExportedPropertyList::drawExportedP
         }
         // create a button over the previous item
         ImGui::SetCursorScreenPos(ImGui::GetItemRectMin());
-        if (ImGui::InvisibleButton(propertyIter->first.c_str(), ImGui::GetItemRectSize())) {
+        const std::string propertyKey(propertyIter->first);
+        if (ImGui::InvisibleButton(propertyKey.c_str(), ImGui::GetItemRectSize())) {
             action = ExportedPropertyAction::SelectThis;
         }
     } else {

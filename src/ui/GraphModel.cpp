@@ -10,85 +10,32 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include <memory>
+#include <set>
+
+#include "MapUtils.hpp"
 
 using namespace std::string_literals;
 
-namespace {
-
-template<typename T, bool allow_conversion = false>
-inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName) {
-    auto it = map.find(propertyName);
-    if (it == map.cend()) {
-        return std::unexpected(gr::Error(std::format("Missing field {} in YAML object", propertyName)));
-    }
-
-    if constexpr (std::same_as<T, std::string>) {
-        if (!it->second.is_string()) {
-            return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-        }
-        return it->second.value_or(std::string{});
-    } else if constexpr (std::same_as<T, std::size_t>) {
-        if (const auto* p = it->second.get_if<gr::Size_t>()) {
-            return static_cast<std::size_t>(*p);
-        }
-        if (auto converted = gr::pmt::convert_safely<gr::Size_t>(it->second); converted) {
-            return static_cast<std::size_t>(*converted);
-        }
-    } else if constexpr (std::same_as<T, std::pmr::string>) {
-        if (!it->second.is_string()) {
-            return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-        }
-        return std::pmr::string(it->second.value_or(std::string_view{}));
-    } else if constexpr (!allow_conversion) {
-        if constexpr (requires(const gr::pmt::Value& value) { value.template get_if<T>(); }) {
-            if (const auto* p = it->second.get_if<T>()) {
-                return *p;
+auto UiGraphBlock::findBlockIteratorBy(std::initializer_list<SearchProperty> searchProperties, std::string_view value) {
+    assert(std::get_if<GraphBlockInfo>(&blockCategoryInfo) && "This makes sense only for graphs");
+    auto it = std::ranges::find_if(childBlocks, [&](const auto& block) {
+        for (auto searchProperty : searchProperties) {
+            if (searchProperty == SearchProperty::UniqueName) {
+                if (block->blockUniqueName == value) {
+                    return true;
+                }
+            } else if (searchProperty == SearchProperty::Name) {
+                if (block->blockName == value) {
+                    return true;
+                }
             }
         }
-    } else {
-        if (auto converted = gr::pmt::convert_safely<T>(it->second); converted) {
-            return *converted;
-        }
-    }
-
-    return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
-}
-
-template<typename T, bool allow_conversion = false>
-inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& map, std::string_view propertyName, auto... propertySubNames)
-requires(sizeof...(propertySubNames) > 0)
-{
-    static_assert((std::is_convertible_v<decltype(propertySubNames), std::string_view> && ...));
-    auto it = map.find(propertyName);
-    if (it == map.cend()) {
-        return std::unexpected(gr::Error(std::format("Missing field {} in YAML object", propertyName)));
-    }
-
-    auto* value = it->second.get_if<gr::property_map>();
-    if (value == nullptr) {
-        return std::unexpected(gr::Error(std::format("Field {} in YAML object has an incorrect type (expected gr::property_map)", propertyName)));
-    }
-
-    return getOptionalProperty<T, allow_conversion>(*value, propertySubNames...);
-}
-
-template<typename T, typename... Keys>
-T getProperty(const gr::property_map& data, const Keys&... keys) {
-    static_assert((std::is_convertible_v<Keys, std::string_view> && ...));
-    return getOptionalProperty<T>(data, keys...).value_or(T{});
-}
-
-template<typename FieldType, typename... Keys>
-void updateFieldFrom(FieldType& field, const auto& data, const FieldType& defaultValue, const Keys&... keys) { //
-    field = getOptionalProperty<FieldType>(data, keys...).value_or(defaultValue);
-};
-} // namespace
-
-auto UiGraphBlock::findBlockIteratorByUniqueName(const std::string& uniqueName) {
-    assert(std::get_if<GraphBlockInfo>(&blockCategoryInfo) && "This makes sense only for graphs");
-    auto it = std::ranges::find_if(childBlocks, [&](const auto& block) { return block->blockUniqueName == uniqueName; });
+        return false;
+    });
     return std::make_pair(it, it != childBlocks.end());
 }
+
+auto UiGraphBlock::findBlockIteratorByUniqueName(std::string_view uniqueName) { return findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName); }
 
 UiGraphBlock* UiGraphBlock::findBlockByUniqueName(const std::string& uniqueName) {
     auto [it, found] = findBlockIteratorByUniqueName(uniqueName);
@@ -165,14 +112,15 @@ void UiGraphBlock::handleChildEdgeEmplaced(const gr::property_map& data) {
 void UiGraphBlock::handleChildEdgeRemoved(const gr::property_map& /* data */) { ownerGraph->requestFullUpdate(); }
 
 void UiGraphBlock::handlePortExported(const gr::property_map& data) {
-    auto&      exportedPortsCollection = data.at("portDirection") == "input"s ? exportedInputPorts : exportedOutputPorts;
-    const auto targetBlockUniqueName   = data.at("uniqueBlockName").value_or(std::string());
-    const auto internalPortName        = data.at("portName").value_or(std::string());
-    const auto exportedPortName        = data.at("exportedName").value_or(std::string());
+    const auto valueForKey             = [&data](std::string_view key) { return data.find_value(key).value_or(gr::pmt::Value{}); };
+    auto&      exportedPortsCollection = valueForKey("portDirection") == "input"s ? exportedInputPorts : exportedOutputPorts;
+    const auto targetBlockUniqueName   = valueForKey("uniqueBlockName").value_or(std::string());
+    const auto internalPortName        = valueForKey("portName").value_or(std::string());
+    const auto exportedPortName        = valueForKey("exportedName").value_or(std::string());
 
     auto& exportedPortsOfBlock = exportedPortsCollection[targetBlockUniqueName];
 
-    if (data.at("exportFlag").value_or(false)) {
+    if (valueForKey("exportFlag").value_or(false)) {
         exportedPortsOfBlock.insert(UiGraphBlock::PortNameMapper{internalPortName, exportedPortName});
     } else {
         auto it = std::ranges::find_if(exportedPortsOfBlock, [&internalPortName](const auto& internalExternalPair) { return internalExternalPair.internalName == internalPortName; });
@@ -190,9 +138,9 @@ void UiGraphBlock::setSchedulerGraph(const gr::property_map& data) {
     assert(children.size() == 1 && "Schedulers contain only a single child -- the graph");
 
     for (const auto& [graphUniqueName, graphData_] : children) {
-        const bool  found     = !childBlocks.empty() && childBlocks[0]->blockUniqueName == std::string_view(graphUniqueName);
-        const auto* graphData = graphData_.get_if<gr::property_map>();
-        if (graphData == nullptr) {
+        const bool found     = !childBlocks.empty() && childBlocks[0]->blockUniqueName == std::string_view(graphUniqueName);
+        const auto graphData = graphData_.get_if<gr::property_map>();
+        if (!graphData) {
             continue;
         }
         if (found) {
@@ -211,27 +159,48 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
         return;
     }
 
-    // Update or create blocks that GR knows
-    const auto& children = getProperty<gr::property_map>(data, "children"s);
+    std::set<std::string> childrenUniqueNames;
 
-    for (const auto& [childUniqueName, blockData_] : children) {
-        const auto [blockIt, found] = findBlockIteratorByUniqueName(std::string(childUniqueName));
-        const auto* blockData       = blockData_.get_if<gr::property_map>();
-        if (blockData == nullptr) {
-            continue;
+    // Update or create blocks that GR knows
+    if (data.contains("children"s)) {
+        const auto& children = getProperty<gr::property_map>(data, "children"s);
+        for (const auto& [childUniqueName, blockData_] : children) {
+            childrenUniqueNames.insert(std::string(childUniqueName));
+            const auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, childUniqueName);
+            const auto blockData        = blockData_.get_if<gr::property_map>();
+            if (!blockData) {
+                continue;
+            }
+            if (found) {
+                (*blockIt)->setBlockData(*blockData);
+            } else {
+                handleChildBlockEmplaced(*blockData);
+            }
         }
-        if (found) {
-            (*blockIt)->setBlockData(*blockData);
-        } else {
-            handleChildBlockEmplaced(*blockData);
+    } else {
+        const auto& children = getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "blocks"s);
+        for (const auto& blockData : children) {
+            const auto mapOpt = blockData.get_if<gr::property_map>();
+            if (!mapOpt) {
+                continue;
+            }
+            const auto& map        = *mapOpt;
+            const auto& uniqueName = getProperty<std::string>(map, "unique_name"s);
+            childrenUniqueNames.insert(uniqueName);
+            const auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName);
+            if (found) {
+                (*blockIt)->setBlockData(map);
+            } else {
+                handleChildBlockEmplaced(map);
+            }
         }
     }
 
     // Delete blocks that GR doesn't know about.
     // This is similar to erase-remove, but we need the list of blocks
     // we want to delete in order to disconnect them first.
-    const auto toRemove = std::partition(childBlocks.begin(), childBlocks.end(), [&children](const auto& child) { //
-        return children.contains(child->blockUniqueName);
+    const auto toRemove = std::partition(childBlocks.begin(), childBlocks.end(), [&childrenUniqueNames](const auto& child) { //
+        return childrenUniqueNames.contains(child->blockUniqueName);
     });
     for (auto it = toRemove; it != childBlocks.end(); ++it) {
         removeEdgesForBlock(**it);
@@ -241,18 +210,20 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
 
     // Establish new edges
     childEdges.clear();
-    const auto& edges = getProperty<gr::property_map>(data, "edges"s);
-    for (const auto& [index, edgeData_] : edges) {
-        const auto* edgeData = edgeData_.get_if<gr::property_map>();
-        if (edgeData == nullptr) {
-            continue;
-        }
+    if (data.contains("edges"s)) {
+        const auto& edges = getProperty<gr::property_map>(data, "edges"s);
+        for (const auto& [index, edgeData_] : edges) {
+            const auto edgeData = edgeData_.get_if<gr::property_map>();
+            if (!edgeData) {
+                continue;
+            }
 
-        auto edge = parseEdgeData(*edgeData);
-        if (edge) {
-            childEdges.emplace_back(std::move(*edge));
-        } else {
-            components::Notification::error("Invalid edge ignored");
+            auto edge = parseEdgeData(*edgeData);
+            if (edge) {
+                childEdges.emplace_back(std::move(*edge));
+            } else {
+                components::Notification::error("Invalid edge ignored");
+            }
         }
     }
 
@@ -318,8 +289,8 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         updateFieldFrom(blockName, blockData, {}, "parameters"s, "name"s);
     }
 
-    const gr::property_map* parameters       = nullptr;
-    const auto              tryGetParameters = [&parameters](const gr::property_map& map) {
+    std::optional<gr::property_map> parameters;
+    const auto                      tryGetParameters = [&parameters](const gr::property_map& map) {
         auto parametersIterator = map.find(gr::serialization_fields::BLOCK_PARAMETERS);
         if (parametersIterator != std::end(map)) {
             parameters = parametersIterator->second.get_if<gr::property_map>();
@@ -331,10 +302,10 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     if (scheduler) {
         tryGetParameters(*scheduler);
     }
-    if (parameters == nullptr) {
+    if (!parameters) {
         tryGetParameters(blockData);
     }
-    if (parameters != nullptr) {
+    if (parameters) {
         blockSettings = *parameters;
     }
 
@@ -358,19 +329,19 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
             }
 
             destination.clear();
-            auto* map = it->second.get_if<gr::property_map>();
-            if (map == nullptr) {
+            auto map = it->second.get_if<gr::property_map>();
+            if (!map) {
                 return;
             }
 
             for (const auto& [subBlockName, portMappings_] : *map) {
-                const auto* portMappings = portMappings_.get_if<gr::property_map>();
-                if (portMappings == nullptr) {
+                const auto portMappings = portMappings_.template get_if<gr::property_map>();
+                if (!portMappings) {
                     continue;
                 }
                 for (const auto& [portName, portMapping_] : *portMappings) {
-                    const auto* portMapping = portMapping_.get_if<gr::property_map>();
-                    if (portMapping == nullptr) {
+                    const auto portMapping = portMapping_.template get_if<gr::property_map>();
+                    if (!portMapping) {
                         continue;
                     }
                     if (auto portIt = portMapping->find("exportedName"); portIt != portMapping->end()) {
@@ -397,8 +368,8 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         // if (exportedInputPorts.empty() && exportedOutputPorts.empty()) {
         if (blockCategory != "ScheduledBlockGroup") {
             for (const auto& [portName, portData_] : getProperty<gr::property_map>(blockData, portsField)) {
-                const auto* portData = portData_.get_if<gr::property_map>();
-                if (portData == nullptr) {
+                const auto portData = portData_.get_if<gr::property_map>();
+                if (!portData) {
                     continue;
                 }
                 auto& port         = portsCollection.emplace_back(/*owner*/ this);
@@ -435,19 +406,21 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     processPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
     processPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
 
-    if (parameters) {
-        if (auto uiConstraintsIt = parameters->find("ui_constraints"); uiConstraintsIt != parameters->end()) {
-            const auto* uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
-            if (uiConstraints) {
-                auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
-                auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
-
-                if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
-                    storedXY = UiGraphBlock::StoredXY{
-                        .x = *x,
-                        .y = *y,
-                    };
-                    updatePosition = true;
+    if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
+        const auto uiParameters = parametersIt->second.get_if<gr::property_map>();
+        if (uiParameters) {
+            if (auto uiConstraintsIt = uiParameters->find("ui_constraints"); uiConstraintsIt != uiParameters->end()) {
+                const auto uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
+                if (uiConstraints) {
+                    auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
+                    auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
+                    if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
+                        storedXY = UiGraphBlock::StoredXY{
+                            .x = *x,
+                            .y = *y,
+                        };
+                        updatePosition = true;
+                    }
                 }
             }
         }
@@ -555,7 +528,7 @@ void UiGraphBlock::setActiveContext(const ContextTime& contextTime) {
         .serviceName     = blockUniqueName,
         .clientRequestID = "activate",
         .endpoint        = gr::block::property::kActiveContext,
-        .data            = gr::property_map{{"context", context}, {"time", time}},
+        .data            = gr::property_map{{"context", context}, {"ctx_time", time}},
     });
 }
 
@@ -568,7 +541,7 @@ void UiGraphBlock::addContext(const ContextTime& contextTime) {
         .serviceName     = blockUniqueName,
         .clientRequestID = "add",
         .endpoint        = gr::block::property::kSettingsCtx,
-        .data            = gr::property_map{{"context", context}, {"time", time}},
+        .data            = gr::property_map{{"context", context}, {"ctx_time", time}},
     });
 }
 
@@ -579,7 +552,7 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
         .serviceName     = blockUniqueName,
         .clientRequestID = "rm",
         .endpoint        = gr::block::property::kSettingsCtx,
-        .data            = gr::property_map{{"context", context}, {"time", time}},
+        .data            = gr::property_map{{"context", context}, {"ctx_time", time}},
     });
 }
 
@@ -627,9 +600,12 @@ void UiGraphBlock::requestBlockUpdate() {
 }
 
 void UiGraphBlock::updateBlockSettingsMetaInformation() {
-    const auto findMeta = [this](std::string_view key, std::string_view attr) -> const gr::pmt::Value* {
+    const auto findMeta = [this](std::string_view key, std::string_view attr) -> std::optional<gr::pmt::Value> {
         const auto it = blockMetaInformation.find(std::format("{}::{}", key, attr));
-        return it == blockMetaInformation.end() ? nullptr : &it->second;
+        if (it == blockMetaInformation.end()) {
+            return std::nullopt;
+        }
+        return gr::pmt::Value(it->second);
     };
 
     blockSettingsMetaInformation.clear();
@@ -639,20 +615,20 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
         std::string unit;
         bool        isVisible = false;
 
-        if (const auto* v = findMeta(settingKey, "description"); v && v->is_string()) {
+        if (const auto v = findMeta(settingKey, "description"); v && v->is_string()) {
             description = v->value_or(std::string{});
         }
-        if (const auto* v = findMeta(settingKey, "unit"); v && v->is_string()) {
+        if (const auto v = findMeta(settingKey, "unit"); v && v->is_string()) {
             unit = v->value_or(std::string{});
         }
-        if (const auto* v = findMeta(settingKey, "visible")) {
+        if (const auto v = findMeta(settingKey, "visible")) {
             if (const auto* b = v->get_if<bool>()) {
                 isVisible = *b;
             }
         }
 
         const auto extractDouble = [&](std::string_view attr) -> std::optional<double> {
-            if (const auto* v = findMeta(settingKey, attr)) {
+            if (const auto v = findMeta(settingKey, attr)) {
                 if (const auto* d = v->get_if<double>()) {
                     return *d;
                 }
@@ -669,8 +645,8 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
         std::optional<double> maxVal = extractDouble("max_value");
 
         std::vector<std::string> enumValues;
-        if (const auto* v = findMeta(settingKey, "enum_values")) {
-            if (auto* tensor = v->get_if<gr::Tensor<gr::pmt::Value>>()) {
+        if (const auto v = findMeta(settingKey, "enum_values")) {
+            if (const auto tensor = v->get_if<gr::TensorView<gr::pmt::Value>>()) {
                 for (const auto& elem : *tensor) {
                     if (auto sv = elem.value_or(std::string_view{}); sv.data() != nullptr) {
                         enumValues.emplace_back(sv);
@@ -1018,10 +994,10 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     auto* block = found.block;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) == "ui_constraints") {
-            const auto* map = value.get_if<gr::property_map>();
-            if (map != nullptr && !map->empty()) {
-                const auto x = map->contains("x") ? map->at("x").value_or(0.0f) : 0.0f;
-                const auto y = map->contains("y") ? map->at("y").value_or(0.0f) : 0.0f;
+            const auto map = value.get_if<gr::property_map>();
+            if (map && !map->empty()) {
+                const auto x = map->contains("x") ? map->find_value("x").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
+                const auto y = map->contains("y") ? map->find_value("y").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
 
                 if (!block->storedXY.has_value() || (block->storedXY.value().x != x || block->storedXY.value().y != y)) {
                     block->storedXY = UiGraphBlock::StoredXY{
@@ -1050,8 +1026,8 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
         return;
     }
 
-    const auto ctx  = data.at("context").value_or(std::string());
-    auto       time = data.at("time").value_or(std::uint64_t{0});
+    const auto ctx  = data.find_value("context").value_or(gr::pmt::Value{}).value_or(std::string());
+    auto       time = data.find_value("ctx_time").value_or(gr::pmt::Value{}).value_or(std::uint64_t{0});
 
     found.block->activeContext = UiGraphBlock::ContextTime{
         .context = ctx,
@@ -1069,8 +1045,10 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
         return;
     }
 
-    auto contexts = data.at("contexts").value_or(gr::Tensor<gr::pmt::Value>{});
-    auto times    = data.at("times").value_or(gr::Tensor<gr::pmt::Value>{});
+    const gr::pmt::Value contextsPmt = data.find_value("contexts").value_or(gr::pmt::Value{});
+    const gr::pmt::Value timesPmt    = data.find_value("times").value_or(gr::pmt::Value{});
+    auto                 contexts    = contextsPmt.value_or(gr::Tensor<gr::pmt::Value>{});
+    auto                 times       = timesPmt.value_or(gr::Tensor<gr::pmt::Value>{});
 
     std::vector<UiGraphBlock::ContextTime> contextAndTimes;
     const std::size_t                      n = std::min(contexts.size(), times.size());

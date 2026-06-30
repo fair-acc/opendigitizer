@@ -5,7 +5,7 @@ blocks:
       ui_constraints:
         x: 30
         y: 40
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: gr::blocks::fft::FFT<float32>
     parameters:
       name: FFT
       outputInDb: true
@@ -87,13 +87,13 @@ blocks:
       signal_trigger: "CMD_BP_START"
     ctx_parameters:
       - context: "FAIR.SELECTOR.C=1:S=1:P=1"
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 100
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=2"  # start pre-ramp
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           duration: 0.1
           start_value: 100
@@ -102,13 +102,13 @@ blocks:
           sample_rate: 1000
           signal_type: ParabolicRamp
       - context: "FAIR.SELECTOR.C=1:S=1:P=3"  # lower-plateau
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 500
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           duration: 0.5
           start_value: 500
@@ -117,13 +117,13 @@ blocks:
           sample_rate: 1000
           signal_type: ParabolicRamp
       - context: "FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 3000
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           duration: 0.3
           start_value: 3000
@@ -131,7 +131,7 @@ blocks:
           sample_rate: 1000
           signal_type: CubicSpline
       - context: "FAIR.SELECTOR.C=1:S=1:P=7" # upper-plateau
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 100
           sample_rate: 1000
@@ -145,13 +145,13 @@ blocks:
       signal_trigger: "CMD_BP_START"
     ctx_parameters:
       - context: "FAIR.SELECTOR.C=1:S=1:P=3" # lower-plateau
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 40e9f
           sample_rate: 1000
           signal_type: Const
       - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           duration: 0.500000
           start_value: 40e9f
@@ -159,7 +159,7 @@ blocks:
           sample_rate: 1000
           signal_type: CubicSpline
       - context: "FAIR.SELECTOR.C=1:S=1:P=5"
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           duration: 2
           start_value: 38e9f
@@ -168,7 +168,7 @@ blocks:
           sample_rate: 1000
           signal_type: ParabolicRamp
       - context: "FAIR.SELECTOR.C=1:S=1:P=6"
-        time: !!uint64 0
+        ctx_time: !!uint64 0
         parameters:
           start_value: 0
           sample_rate: 1000

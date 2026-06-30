@@ -252,7 +252,8 @@ inline std::vector<std::string> getBlockSinkNames(const gr::BlockModel* block) {
     }
     const auto& settings = block->settings().get();
     if (auto it = settings.find("data_sinks"); it != settings.end()) {
-        if (auto* sinks = it->second.get_if<gr::Tensor<gr::pmt::Value>>()) {
+        const gr::pmt::Value sinksVal = it->second;
+        if (const auto sinks = sinksVal.get_if<gr::TensorView<gr::pmt::Value>>()) {
             std::vector<std::string> result;
             result.reserve(sinks->size());
             for (const auto& sink : *sinks) {

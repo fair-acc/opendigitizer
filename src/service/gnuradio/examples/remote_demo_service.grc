@@ -23,7 +23,7 @@ blocks:
       amplitude: 50
       sample_rate: 10000
       signal_type: Sin
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: gr::blocks::fft::FFT<float32>
     parameters:
       name: FFT
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>

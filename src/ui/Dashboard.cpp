@@ -364,7 +364,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         assignScheduler(std::move(grGraph));
 
         // Load is called after parsing the flowgraph so that we already have the list of sources
-        if (const auto* dashboard = rootMap.at("dashboard").get_if<gr::property_map>()) {
+        if (const auto dashboard = rootMap.find_value("dashboard").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
             doLoad(*dashboard);
         } else {
             throw gr::exception("dashboard field is not a property_map");
@@ -412,9 +412,17 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
                 throw gr::exception(std::format("Key '{}' must be string", key));
             }
             return it->second.value_or(std::string{});
+        } else if constexpr (gr::TensorLike<T>) {
+            const gr::pmt::Value val = it->second;
+            if (const auto tv = val.get_if<gr::TensorView<typename T::value_type>>()) {
+                return tv->owned();
+            }
+            throw gr::exception(std::format("Key '{}' must be tensor-like", key));
+            return {};
         } else {
-            if (const auto* p = it->second.get_if<T>()) {
-                return *p;
+            const auto result = it->second.get_if<T>();
+            if (result) {
+                return *result;
             }
 
             std::string actualType = "<unknown>";
@@ -423,12 +431,16 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
     };
 
-    if (dashboard.contains("layout") && dashboard.at("layout").is_string()) {
-        layoutType = magic_enum::enum_cast<DockingLayoutType>(dashboard.at("layout").value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+    if (const auto layoutPmt = dashboard.find_value("layout")) {
+        if (layoutPmt->is_string()) {
+            layoutType = magic_enum::enum_cast<DockingLayoutType>(layoutPmt->value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
+        }
     }
     const bool hasWindowLayout = dashboard.contains("windowLayout");
-    if (hasWindowLayout && dashboard.at("windowLayout").is_map()) {
-        windowLayout = dashboard.at("windowLayout").value_or(gr::property_map{});
+    if (hasWindowLayout) {
+        if (const auto windowLayoutOpt = dashboard.find_value("windowLayout").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
+            windowLayout = *windowLayoutOpt;
+        }
     }
 
     auto sources = *readField.operator()<Tensor<pmt::Value>>(dashboard, "sources");
@@ -437,7 +449,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         if (!src.holds<property_map>()) {
             throw gr::exception("source is not a property_map");
         }
-        const property_map srcMap = src.value_or(property_map{});
+        const property_map srcMap = *src.get_if<property_map>();
 
         const auto block = *readField.operator()<std::string>(srcMap, "block");
         const auto name  = *readField.operator()<std::string>(srcMap, "name");
@@ -459,11 +471,11 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         if (!plotPmt.holds<property_map>()) {
             throw gr::exception("plot is not a property_map");
         }
-        const property_map plotMap = plotPmt.value_or(property_map{});
+        const property_map plotMap = *plotPmt.get_if<property_map>();
 
         const auto name        = *readField.operator()<std::string>(plotMap, "name");
         const auto plotSources = *readField.operator()<Tensor<pmt::Value>>(plotMap, "sources");
-        auto       rect        = readField.operator()<Tensor<pmt::Value>>(plotMap, "rect", false);
+        auto       rect        = readField.operator()<Tensor<std::int64_t>>(plotMap, "rect", false);
         if (!rect && !hasWindowLayout) {
             throw gr::exception("Missing one of two possible required keys for describing dashboard window UI:"
                                 " [\"dashboard\"][\"windowLayout\"] or per-plot [\"rect\"] field");
@@ -515,10 +527,8 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         blockPtr->uiConstraints()["axes"] = axesConfig;
 
         constexpr auto rectValue = [](const gr::pmt::Value& v) -> std::uint64_t {
-            if (auto converted = gr::pmt::convert_safely<std::uint64_t>(v); converted) {
-                return *converted;
-            }
-            return 0ULL;
+            auto value = v.value_or<std::int64_t>(0);
+            return value < 0 ? 0ULL : static_cast<std::uint64_t>(value);
         };
 
         // Find the shared_ptr for this block in uiGraph
@@ -549,17 +559,20 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
     loadUIWindowSources();
 
     if (dashboard.contains("exportedProperties")) {
-        // exportedProperties are stored in the graph model, so defer loading this until that is loaded
-        this->exportedProperties = dashboard.at("exportedProperties").value_or(gr::property_map{});
+        if (const auto expOpt = dashboard.find_value("exportedProperties").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
+            this->exportedProperties = *expOpt;
+        }
     }
     if (dashboard.contains("propertyControlWindows")) {
-        if (const auto* controlWindowsByWindowName = dashboard.at("propertyControlWindows").get_if<gr::property_map>()) {
+        if (const auto controlWindowsByWindowName = dashboard.find_value("propertyControlWindows").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
             for (const auto& [controlWindowName, controlWindowPropertiesValue] : *controlWindowsByWindowName) {
-                if (const auto* controlWindowProperties = controlWindowPropertiesValue.get_if<gr::property_map>()) {
-                    const auto* id    = controlWindowProperties->at("id").get_if<gr::Size_t>();
-                    const auto* label = controlWindowProperties->at("label").get_if<std::pmr::string>();
+                if (const auto controlWindowProperties = controlWindowPropertiesValue.get_if<gr::property_map>()) {
+                    const gr::pmt::Value idPmt    = controlWindowProperties->find_value("id").value_or(gr::pmt::Value{});
+                    const gr::pmt::Value labelPmt = controlWindowProperties->find_value("label").value_or(gr::pmt::Value{});
+                    const auto*          id       = idPmt.get_if<gr::Size_t>();
+                    const auto           label    = labelPmt.get_if<std::string_view>();
                     if (id && label) {
-                        propertyControlWindows.try_emplace(*id, DeserializeTag{}, *label, controlWindowName);
+                        propertyControlWindows.try_emplace(*id, DeserializeTag{}, std::string(*label), controlWindowName);
                     }
                 }
             }
@@ -668,7 +681,7 @@ void Dashboard::save() {
         gr::property_map properties;
         for (const auto& [block, exportedPropertiesPtr] : exported) {
             gr::property_map blockProperties;
-            blockProperties.reserve(exportedPropertiesPtr->size());
+            blockProperties.reserve(static_cast<std::uint32_t>(exportedPropertiesPtr->size()));
             for (const auto& [propertyName, info] : *exportedPropertiesPtr) {
                 blockProperties.try_emplace(std::pmr::string{propertyName}, info.windowId ? gr::pmt::Value{static_cast<gr::Size_t>(*info.windowId)} : gr::pmt::Value{});
             }
@@ -698,7 +711,9 @@ void Dashboard::save() {
         gr::Tensor<gr::pmt::Value> plotAxes;
         const auto&                constraints = w.block->uiConstraints();
         if (constraints.contains("axes")) {
-            plotAxes = constraints.at("axes").value_or(gr::Tensor<gr::pmt::Value>{});
+            if (const auto axesPmt = constraints.find_value("axes")) {
+                plotAxes = axesPmt->value_or(gr::Tensor<gr::pmt::Value>{});
+            }
         }
         plotMap["axes"] = plotAxes;
 
@@ -898,8 +913,8 @@ std::pair<std::size_t, Dashboard::PropertyControlWindow&> Dashboard::newProperty
 
 void Dashboard::applyExportedPropertiesToUiGraph() {
     for (const auto& [blockNameKey, mapValue] : this->exportedProperties) {
-        const auto* exportedPropertiesForThisBlock = mapValue.get_if<gr::property_map>();
-        auto*       block                          = graphModel.recursiveFindBlockByName(blockNameKey).block;
+        const auto exportedPropertiesForThisBlock = mapValue.get_if<gr::property_map>();
+        auto*      block                          = graphModel.recursiveFindBlockByName(blockNameKey).block;
         if (block && exportedPropertiesForThisBlock) {
             for (const auto& [propertyName, maybeWindowId] : *exportedPropertiesForThisBlock) {
                 auto optionalWindowId = maybeWindowId.is_unsigned_integral() ? std::optional<gr::Size_t>{maybeWindowId.value_or<>(gr::Size_t{})} : std::optional<gr::Size_t>{};
@@ -1140,8 +1155,9 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
             if (!yaml) {
                 throw gr::exception(std::format("Could not parse yaml for DashboardDescription: {}:{}\n{}", yaml.error().message, yaml.error().line, desc));
             }
-            const gr::property_map& rootMap    = yaml.value();
-            bool                    isFavorite = rootMap.contains("favorite") && rootMap.at("favorite").value_or(false);
+            const gr::property_map& rootMap     = yaml.value();
+            const auto              valueForKey = [&rootMap](std::string_view key) { return rootMap.find_value(key).value_or(gr::pmt::Value{}); };
+            bool                    isFavorite  = rootMap.contains("favorite") && valueForKey("favorite").value_or(false);
 
             auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
                 if (str.size() < 10) {
@@ -1158,7 +1174,7 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
                 return std::chrono::sys_days(date);
             };
 
-            auto lastUsed = rootMap.contains("lastUsed") && rootMap.at("lastUsed").is_string() ? getDate(rootMap.at("lastUsed").value_or(std::string())) : std::nullopt;
+            auto lastUsed = rootMap.contains("lastUsed") && valueForKey("lastUsed").is_string() ? getDate(valueForKey("lastUsed").value_or(std::string())) : std::nullopt;
 
             cb(std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed));
         },
