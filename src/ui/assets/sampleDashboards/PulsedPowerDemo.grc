@@ -73,7 +73,7 @@ blocks:
       required_size: 20000
   # 2^19-pt FFT on the raw 4 MS/s window -> 7.6 Hz/bin, 0-2 MHz. The waterfall re-bins these 262145 linear bins
   # onto a log frequency axis (see the plot), keeping the mains harmonics resolved at the low end.
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: gr::blocks::fft::FFT<float32>
     parameters:
       name: CurrentSpectrumFFT
       fftSize: 524288

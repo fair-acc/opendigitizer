@@ -278,7 +278,7 @@ private:
 
         std::string uniqueName() const override { return block->unique_name; }
         std::string remoteUri() const override { return block->remote_uri; }
-        std::string typeName() const override { return gr::meta::type_name<TRemoteSource>(); }
+        std::string typeName() const override { return std::string(gr::meta::type_name<TRemoteSource>()); }
 
         void* raw() const override { return block; }
 

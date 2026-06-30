@@ -127,7 +127,9 @@ struct UiGraphBlock {
     UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
 
 private:
-    auto findBlockIteratorByUniqueName(const std::string& uniqueName);
+    enum class SearchProperty { UniqueName, Name };
+    auto findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
+    auto findBlockIteratorByUniqueName(std::string_view uniqueName);
     auto findPortIteratorByName(auto& ports, const std::string& portName);
 
 public:

@@ -73,7 +73,7 @@ void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept
     const bool splitIsHorizontal = hsplit != region.end();
     const auto split             = splitIsHorizontal ? hsplit : vsplit;
 
-    if (const auto* regionInner = split->second.get_if<gr::property_map>()) {
+    if (const auto regionInner = split->second.get_if<gr::property_map>()) {
         const auto  ratioIter = regionInner->find("ratio");
         const float ratio     = ratioIter != regionInner->end() ? ratioIter->second.value_or(defaultSplitRatio) : defaultSplitRatio;
 
@@ -85,10 +85,11 @@ void applyLayoutVisitor(const gr::property_map& region, ImGuiID nodeId) noexcept
             ImGui::DockBuilderSplitNode(nodeId, splitIsHorizontal ? ImGuiDir_Left : ImGuiDir_Down, ratio, &topNode, &bottomNode);
 
             const auto doChild = [](const auto& iter, ImGuiID node) {
-                if (const auto* map = iter->second.template get_if<gr::property_map>()) {
+                if (const auto map = iter->second.template get_if<gr::property_map>()) {
                     applyLayoutVisitor(*map, node);
-                } else if (const auto* windowNameStr = iter->second.template get_if<std::pmr::string>()) {
-                    ImGui::DockBuilderDockWindow(windowNameStr->c_str(), node);
+                } else if (const auto windowNameStr = iter->second.template get_if<std::string_view>()) {
+                    const std::string windowName(*windowNameStr);
+                    ImGui::DockBuilderDockWindow(windowName.c_str(), node);
                 }
             };
 
@@ -155,20 +156,21 @@ void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) no
         return;
     }
 
-    if (const auto* dockMap = dockSpaceIter->second.get_if<gr::property_map>()) {
+    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>()) {
         applyLayoutVisitor(*dockMap, rootNodeID);
     }
 
-    if (const auto* floatingWindowsMap = floatingIter->second.get_if<gr::property_map>()) {
+    if (const auto floatingWindowsMap = floatingIter->second.get_if<gr::property_map>()) {
         for (const auto& [windowName, windowDescriptionPmtValue] : *floatingWindowsMap) {
-            if (const auto* windowDescription = windowDescriptionPmtValue.get_if<gr::property_map>()) {
+            if (const auto windowDescription = windowDescriptionPmtValue.get_if<gr::property_map>()) {
                 auto get = [windowDescription](const auto& key) -> float {
                     auto iter = windowDescription->find(key);
                     return iter == std::end(*windowDescription) ? 0.F : iter->second.value_or(0.F);
                 };
 
-                ImGui::SetWindowPos(windowName.c_str(), {get("x"), get("y")});
-                ImGui::SetWindowSize(windowName.c_str(), {get("width"), get("height")});
+                const std::string name(windowName);
+                ImGui::SetWindowPos(name.c_str(), {get("x"), get("y")});
+                ImGui::SetWindowSize(name.c_str(), {get("width"), get("height")});
             }
         }
     }

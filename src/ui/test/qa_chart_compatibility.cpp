@@ -76,12 +76,13 @@ opendigitizer::SignalKind getChartBlockSignalKinds(const gr::BlockModel& block) 
     if (iter == std::end(settings)) {
         return out;
     }
-    auto namesValues = iter->second.get_if<gr::Tensor<gr::pmt::Value>>();
+    const gr::pmt::Value sinksVal    = iter->second;
+    const auto           namesValues = sinksVal.get_if<gr::TensorView<gr::pmt::Value>>();
     if (!namesValues) {
         return out;
     }
     std::vector<std::string> names;
-    for (auto& pmtValue : *namesValues) {
+    for (const auto pmtValue : *namesValues) {
         names.emplace_back(pmtValue.value_or(std::string_view{}));
     }
     SinkRegistry::instance().forEach([&out, &names](const SignalSink& sink) {
@@ -99,7 +100,8 @@ bool blockHasSink(const gr::BlockModel& block, std::string_view sinkName) {
     if (it == settings.end()) {
         return false;
     }
-    auto sinkNames = it->second.value_or(gr::Tensor<gr::pmt::Value>{});
+    const gr::pmt::Value sinksVal(it->second);
+    auto                 sinkNames = sinksVal.value_or(gr::Tensor<gr::pmt::Value>{});
     for (std::size_t i = 0; i < sinkNames.size(); ++i) {
         if (sinkNames[i].value_or(std::string{}).find(sinkName) != std::string::npos) {
             return true;
@@ -114,7 +116,8 @@ std::size_t blockSinkCount(const gr::BlockModel& block) {
     if (it == settings.end()) {
         return 0;
     }
-    const auto* tensor = it->second.get_if<gr::Tensor<gr::pmt::Value>>();
+    const gr::pmt::Value sinksVal = it->second;
+    const auto           tensor   = sinksVal.get_if<gr::TensorView<gr::pmt::Value>>();
     return tensor ? tensor->size() : 0UL;
 }
 

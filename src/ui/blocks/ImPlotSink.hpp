@@ -173,7 +173,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
     }
 
-    [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? this->name.value : signal_name.value; }
+    [[nodiscard]] std::string_view signalName() const noexcept { return signal_name.value.empty() ? std::string_view(this->name.value) : std::string_view(signal_name.value); }
     [[nodiscard]] float            sampleRate() const noexcept { return sample_rate; }
     [[nodiscard]] LineStyle        lineStyle() const noexcept { return line_style.value; }
     [[nodiscard]] float            lineWidth() const noexcept { return line_width; }
@@ -591,18 +591,18 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             ImPlot::SetAxis(xAxes[std::clamp(getValueOrDefault<std::size_t>(config, "xAxisID", 0UZ), 0UZ, 2UZ)]);
             ImPlot::SetAxis(yAxes[std::clamp(getValueOrDefault<std::size_t>(config, "yAxisID", 0UZ), 0UZ, 2UZ)]);
         }
-        std::string scaleStr = config.contains("scale") ? config.at("scale").value_or(std::string("Linear")) : "Linear";
+        std::string scaleStr = config.contains("scale") ? config.find_value("scale").value_or(gr::pmt::Value{}).value_or(std::string{"Linear"}) : std::string{"Linear"};
         auto        trim     = [](const std::string& str) {
             auto start = std::ranges::find_if_not(str, [](unsigned char ch) { return std::isspace(ch); });
             auto end   = std::ranges::find_if_not(str.rbegin(), str.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
             return (start < end) ? std::string(start, end) : std::string{};
         };
-        const AxisScale    axisScale = magic_enum::enum_cast<AxisScale>(trim(scaleStr)).value_or(AxisScale::Linear);
-        const std::string& label     = signal_name.value.empty() ? this->name.value : signal_name.value;
+        const AxisScale axisScale = magic_enum::enum_cast<AxisScale>(trim(scaleStr)).value_or(AxisScale::Linear);
+        const char*     label     = signal_name.value.empty() ? this->name.value.c_str() : signal_name.value.c_str();
         if (_yValues.empty()) {
             // plot one single dummy value so that the sink shows up in the plot legend
             double v = {};
-            ImPlot::PlotLine(label.c_str(), &v, 1);
+            ImPlot::PlotLine(label, &v, 1);
             return gr::work::Status::OK;
         }
 
@@ -668,7 +668,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
 
             PlotLineContext ctx{_xValues.get_span(0UZ), _yValues.get_span(0UZ), axisScale, ValueType{0}};
-            ImPlot::PlotLineG(label.c_str(), pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if x_values can have long values
+            ImPlot::PlotLineG(label, pointGetter, &ctx, static_cast<int>(_xValues.size())); // limited to int, even if x_values can have long values
         } else if constexpr (gr::DataSetLike<T>) {
             const std::size_t nMax = std::min(_yValues.size(), static_cast<std::size_t>(n_history));
             for (std::size_t historyIdx = nMax; historyIdx-- > 0;) {

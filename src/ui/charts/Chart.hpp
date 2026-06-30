@@ -104,15 +104,16 @@ struct LogFreqRange {
     if (axesIt == constraints.end()) {
         return std::nullopt;
     }
-    const auto* axesVec = axesIt->second.get_if<gr::Tensor<gr::pmt::Value>>();
-    if (axesVec == nullptr) {
+    const gr::pmt::Value axesVal = axesIt->second;
+    const auto           axesVec = axesVal.get_if<gr::TensorView<gr::pmt::Value>>();
+    if (!axesVec) {
         return std::nullopt;
     }
 
     std::size_t count = 0;
     for (const auto& axisPmt : *axesVec) {
-        const auto* axisMap = axisPmt.get_if<gr::property_map>();
-        if (axisMap == nullptr) {
+        const auto axisMap = axisPmt.get_if<gr::property_map>();
+        if (!axisMap) {
             continue;
         }
         auto axisStrIt = axisMap->find("axis");
@@ -1866,20 +1867,21 @@ struct Chart {
 
         gr::Tensor<gr::pmt::Value> axesVec;
         if (const auto it = constraints.find("axes"); it != constraints.end()) {
-            if (const auto* existing = it->second.template get_if<gr::Tensor<gr::pmt::Value>>()) {
-                axesVec = *existing;
+            const gr::pmt::Value axesVal = it->second;
+            if (const auto existing = axesVal.get_if<gr::TensorView<gr::pmt::Value>>()) {
+                axesVec = existing->owned();
             }
         }
 
         const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
         bool              found      = false;
         for (auto& axisPmt : axesVec) {
-            auto* axisMap = axisPmt.get_if<gr::property_map>();
-            if (axisMap == nullptr) {
+            auto axisMapOpt = axisPmt.get_if<gr::property_map>();
+            if (!axisMapOpt) {
                 continue;
             }
-            auto axisStrIt = axisMap->find("axis");
-            if (axisStrIt == axisMap->end()) {
+            auto axisStrIt = axisMapOpt->find("axis");
+            if (axisStrIt == axisMapOpt->end()) {
                 continue;
             }
             if (!axisStrIt->second.is_string()) {
@@ -1887,8 +1889,9 @@ struct Chart {
             }
             const auto axisStr = axisStrIt->second.value_or(std::string_view{});
             if (axisStr == targetAxis || (axisStr.size() == 1 && std::tolower(axisStr[0]) == std::tolower(targetAxis[0]))) {
-                (*axisMap)[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
-                found                             = true;
+                (*axisMapOpt)[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
+                axisPmt                              = gr::pmt::Value(std::move(*axisMapOpt));
+                found                                = true;
                 break;
             }
         }

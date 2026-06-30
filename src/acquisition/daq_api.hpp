@@ -107,26 +107,27 @@ inline gr::Message deserialiseMessage(const std::string& messageYaml) {
     const property_map& rootMap = yaml.value();
 
     gr::Message message;
-    if (const auto cmd = rootMap.at("cmd").value_or(std::string()); !cmd.empty()) {
+    const auto  valueForKey = [&rootMap](std::string_view key) { return rootMap.find_value(key).value_or(gr::pmt::Value{}); };
+    if (const auto cmd = valueForKey("cmd").value_or(std::string()); !cmd.empty()) {
         if (auto optionalCmd = magic_enum::enum_cast<gr::message::Command>(cmd)) {
             message.cmd = *optionalCmd;
         }
     }
 
-    message.protocol        = rootMap.at("protocol").value_or(std::string());
-    message.serviceName     = rootMap.at("serviceName").value_or(std::string());
-    message.clientRequestID = rootMap.at("clientRequestID").value_or(std::string());
-    message.endpoint        = rootMap.at("endpoint").value_or(std::string());
-    message.rbac            = rootMap.at("rbac").value_or(std::string());
+    message.protocol        = valueForKey("protocol").value_or(std::string());
+    message.serviceName     = valueForKey("serviceName").value_or(std::string());
+    message.clientRequestID = valueForKey("clientRequestID").value_or(std::string());
+    message.endpoint        = valueForKey("endpoint").value_or(std::string());
+    message.rbac            = valueForKey("rbac").value_or(std::string());
 
     if (rootMap.contains("data")) {
-        if (auto* dataPtr = rootMap.at("data").get_if<property_map>(); dataPtr != nullptr) {
-            message.data = *dataPtr;
+        if (auto dataOpt = valueForKey("data").get_if<property_map>(); dataOpt) {
+            message.data = *dataOpt;
         } else {
             message.data = std::unexpected(gr::Error("Invalid type for 'data': expected property_map"));
         }
     } else if (rootMap.contains("dataError")) {
-        message.data = std::unexpected(gr::Error(rootMap.at("dataError").value_or(std::string())));
+        message.data = std::unexpected(gr::Error(valueForKey("dataError").value_or(std::string())));
     }
 
     return message;
