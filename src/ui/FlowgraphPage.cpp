@@ -26,6 +26,14 @@
 
 using namespace std::string_literals;
 
+namespace {
+bool isPortConnected(const DigitizerUi::UiGraphPort& port, const std::vector<DigitizerUi::UiGraphEdge>& edges) {
+    return std::ranges::any_of(edges, [&port](const auto& edge) { //
+        return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
+    });
+}
+} // namespace
+
 namespace DigitizerUi {
 
 uint32_t darkenOrLighten(uint32_t color) {
@@ -922,40 +930,9 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             }
         }
 
-        const auto exportedPortsMenu = [this](auto text, auto portDirection, const auto& blockPorts) {
-            auto selectedBlockUniqueName = _selectedBlock->blockUniqueName;
-
-            auto exportPortsSubMenu = IMW::Menu{text, /*enabled*/ true};
-            if (!exportPortsSubMenu) {
-                return;
-            }
-
-            for (const UiGraphPort& knownPort : blockPorts) {
-                const auto  exportedName = knownPort.getExportedName(this->_exportPortTargetBlock);
-                std::string itemText     = exportedName ? std::format("{} (as {})", knownPort.portName, *exportedName) : knownPort.portName;
-
-                if (!ImGui::MenuItem(itemText.c_str(), nullptr, exportedName.has_value())) {
-                    continue;
-                }
-
-                ExportPortMessageData request{                          //
-                    .uniqueBlockName = _selectedBlock->blockUniqueName, //
-                    .portDirection   = portDirection,                   //
-                    .portName        = knownPort.portName,              //
-                    .exportedName    = {},                              //
-                    .exportFlag      = !exportedName.has_value()};
-                if (exportedName.has_value()) {
-                    requestExportPort(std::move(request));
-                } else {
-                    exportPortTextField = _selectedBlock->blockName + "." + knownPort.portName;
-                    exportPortRequest   = std::move(request);
-                }
-            }
-        };
-
         if (_editorLevel > 0) {
-            exportedPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
-            exportedPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
+            this->drawPortsMenu("Input ports", "input", _selectedBlock->_inputPorts);
+            this->drawPortsMenu("Output ports", "output", _selectedBlock->_outputPorts);
         }
     }
 
@@ -973,6 +950,60 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     } else {
         const float h = contentSize.y * ratio;
         requestBlockControlsPanel(_editPaneContext, {contentTopLeft.x, contentTopLeft.y + contentSize.y - h + halfSplitterWidth}, {contentSize.x, h - halfSplitterWidth}, false);
+    }
+}
+
+void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts) {
+    if (blockPorts.empty()) {
+        return;
+    }
+
+    auto portsSubMenu = IMW::Menu{text, /*enabled*/ true};
+    if (!portsSubMenu) {
+        return;
+    }
+
+    for (const UiGraphPort& knownPort : blockPorts) {
+        auto portSubMenu = IMW::Menu{knownPort.portName.c_str(), /*enabled*/ true};
+        if (!portSubMenu) {
+            continue;
+        }
+
+        const auto           exportedName = knownPort.getExportedName(this->_exportPortTargetBlock);
+        const SuppressedPort key{_selectedBlock->blockUniqueName, portDirection, knownPort.portName};
+        const bool           suppressed = _suppressedAutoExportPorts.contains(key);
+
+        if (ImGui::RadioButton("Auto-export on close", !suppressed)) {
+            if (suppressed) {
+                _suppressedAutoExportPorts.erase(key);
+            } else {
+                _suppressedAutoExportPorts.insert(key);
+            }
+        }
+
+        bool exported = exportedName.has_value();
+        if (ImGui::RadioButton("Exported", exported)) {
+            requestExportPort(ExportPortMessageData{
+                .uniqueBlockName = _selectedBlock->blockUniqueName,
+                .portDirection   = portDirection,
+                .portName        = knownPort.portName,
+                .exportedName    = !exported ? getDefaultExportedName(&knownPort) : std::string{},
+                .exportFlag      = !exported,
+            });
+        }
+
+        ImGui::BeginDisabled(!exportedName.has_value());
+        if (ImGui::MenuItem("Change exported name...")) {
+            exportPortTextField = *exportedName;
+            exportPortRequest   = ExportPortMessageData{
+                  .uniqueBlockName = _selectedBlock->blockUniqueName,
+                  .portDirection   = portDirection,
+                  .portName        = knownPort.portName,
+                  .exportedName    = {},
+                  .exportFlag      = true,
+            };
+        }
+        ImGui::EndDisabled();
     }
 }
 
@@ -1034,6 +1065,40 @@ void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
     graphModel()->sendMessage(std::move(message));
 }
 
+void FlowgraphEditor::autoExportUnconnectedPorts() {
+    if (_editorLevel == 0) {
+        return;
+    }
+
+    const auto& edges = _rootBlock->childEdges;
+
+    for (const auto& block : _rootBlock->childBlocks) {
+        auto exportUnconnected = [&](const std::vector<UiGraphPort>& ports, const std::string& direction) {
+            for (const auto& port : ports) {
+                if (isPortConnected(port, edges)) {
+                    continue;
+                }
+                if (port.isExportedTo(_exportPortTargetBlock)) {
+                    continue;
+                }
+                if (_suppressedAutoExportPorts.contains(SuppressedPort{block->blockUniqueName, direction, port.portName})) {
+                    continue;
+                }
+                requestExportPort(ExportPortMessageData{
+                    .uniqueBlockName = block->blockUniqueName,
+                    .portDirection   = direction,
+                    .portName        = port.portName,
+                    .exportedName    = getDefaultExportedName(&port),
+                    .exportFlag      = true,
+                });
+            }
+        };
+
+        exportUnconnected(block->_inputPorts, "input");
+        exportUnconnected(block->_outputPorts, "output");
+    }
+}
+
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
 FlowgraphPage::~FlowgraphPage() = default;
@@ -1080,7 +1145,10 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     }
 
     if (_editors.size() > 1) {
-        editor.closeRequestedCallback = [&] { popEditor(); };
+        editor.closeRequestedCallback = [this] {
+            currentEditor().autoExportUnconnectedPorts();
+            popEditor();
+        };
     }
 }
 
