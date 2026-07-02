@@ -780,7 +780,7 @@ void UiGraphModel::recursiveForEachBlock(const std::function<VisitorResult(const
 
 void updateKnownTypeMap(auto& map, const auto& data) {
     map.clear();
-    const auto& knownList = getProperty<gr::Tensor<gr::pmt::Value>>(data, "types"s);
+    const auto knownList = getProperty<gr::TensorView<gr::pmt::Value>>(data, "types"s);
     for (const auto& typeValue : knownList) {
         if (!typeValue.is_string()) {
             continue;

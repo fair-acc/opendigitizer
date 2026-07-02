@@ -78,8 +78,13 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
             return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
         }
         return std::pmr::string(it->second.value_or(std::string_view{}));
+    } else if constexpr (gr::TensorViewLike<T>) {
+        // ValueView cannot view a tensor, viewing may actually do allocation. but the map has a memory resource, so it can
+        if (auto value = map.get_if<T>(propertyName)) {
+            return *value;
+        }
     } else if constexpr (!allow_conversion) {
-        if constexpr (requires(const gr::pmt::Value& value) { value.template get_if<T>(); }) {
+        if constexpr (requires(const gr::ValueView& value) { value.template get_if<T>(); }) {
             if (const auto p = it->second.get_if<T>()) {
                 return *p;
             }
