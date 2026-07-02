@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <boost/ut.hpp>
 
@@ -29,25 +30,9 @@ using namespace boost;
 using namespace boost::ut;
 using namespace opendigitizer::charts;
 
-struct TestState {
-    std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();
-    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
+struct TestState : public opendigitizer::test::TestDashboardRunner {
     // this test retains dashboardPage because we need it to see its _pendingTransmutation from the previous frame
     std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
-
-    void stopScheduler() { std::ignore = dashboard->scheduler->stop(); }
-
-    void waitForSchedulerActive(std::size_t maxCount = 30UZ, std::source_location location = std::source_location::current()) {
-        std::size_t count = 0;
-        while (!gr::lifecycle::isActive(dashboard->scheduler->state()) && count < maxCount) {
-            dashboard->handleMessages();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            count++;
-        }
-        if (count >= maxCount) {
-            throw gr::exception(std::format("waitForSchedulerActive({}): maxCount exceeded", count), location);
-        }
-    }
 };
 
 TestState g_state;
@@ -70,24 +55,14 @@ DigitizerUi::Dashboard::UIWindow* findWindowByName(std::string_view windowName) 
 }
 
 opendigitizer::SignalKind getChartBlockSignalKinds(const gr::BlockModel& block) {
-    auto settings = block.settings().get();
-    auto iter     = settings.find("data_sinks");
-    auto out      = opendigitizer::SignalKind::None;
-    if (iter == std::end(settings)) {
-        return out;
-    }
-    const gr::pmt::Value sinksVal    = iter->second;
-    const auto           namesValues = sinksVal.get_if<gr::TensorView<gr::pmt::Value>>();
-    if (!namesValues) {
-        return out;
-    }
-    std::vector<std::string> names;
-    for (const auto pmtValue : *namesValues) {
-        names.emplace_back(pmtValue.value_or(std::string_view{}));
-    }
-    SinkRegistry::instance().forEach([&out, &names](const SignalSink& sink) {
-        auto found = std::ranges::find(names, sink.name());
-        if (found != std::end(names)) {
+    using TensorView         = gr::TensorView<gr::pmt::Value>;
+    const auto settings      = block.settings().get();
+    const auto namesAsValues = settings.get_if<TensorView>("data_sinks").value_or(TensorView{});
+
+    auto out = opendigitizer::SignalKind::None;
+    SinkRegistry::instance().forEach([&out, &namesAsValues](const SignalSink& sink) {
+        auto found = std::ranges::find(namesAsValues, sink.name());
+        if (found != std::end(namesAsValues)) {
             out = out | sink.signalKind();
         }
     });
@@ -95,15 +70,11 @@ opendigitizer::SignalKind getChartBlockSignalKinds(const gr::BlockModel& block) 
 }
 
 bool blockHasSink(const gr::BlockModel& block, std::string_view sinkName) {
-    auto settings = block.settings().get();
-    auto it       = settings.find("data_sinks");
-    if (it == settings.end()) {
-        return false;
-    }
-    const gr::pmt::Value sinksVal(it->second);
-    auto                 sinkNames = sinksVal.value_or(gr::Tensor<gr::pmt::Value>{});
-    for (std::size_t i = 0; i < sinkNames.size(); ++i) {
-        if (sinkNames[i].value_or(std::string{}).find(sinkName) != std::string::npos) {
+    using TensorView = gr::TensorView<gr::pmt::Value>;
+    auto settings    = block.settings().get();
+    auto sinkNames   = settings.get_if<TensorView>("data_sinks").value_or(TensorView{});
+    for (const auto& value : sinkNames) {
+        if (value.value_or(std::string{}).find(sinkName) != std::string::npos) {
             return true;
         }
     }
@@ -112,13 +83,10 @@ bool blockHasSink(const gr::BlockModel& block, std::string_view sinkName) {
 
 std::size_t blockSinkCount(const gr::BlockModel& block) {
     auto settings = block.settings().get();
-    auto it       = settings.find("data_sinks");
-    if (it == settings.end()) {
-        return 0;
-    }
-    const gr::pmt::Value sinksVal = it->second;
-    const auto           tensor   = sinksVal.get_if<gr::TensorView<gr::pmt::Value>>();
-    return tensor ? tensor->size() : 0UL;
+    return settings
+        .get_if<gr::TensorView<gr::pmt::Value>>("data_sinks")                //
+        .transform([](const auto& tensorview) { return tensorview.size(); }) //
+        .value_or(std::size_t{0});
 }
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
@@ -141,6 +109,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 g_state.dashboardPage->draw(DigitizerUi::DashboardPage::Mode::Interaction);
                 ut::expect(!g_state.dashboard->uiWindows.empty());
+                g_state.dashboard->handleMessages();
             }
         };
 
@@ -155,16 +124,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto intensityDataSetSink = sinkRegistry.findSink([](const auto& s) { return s.name() == "IntensityDataSetSink"; });
 
             "all sinks registered"_test = [&] {
-                expect(dipoleSink != nullptr) << "DipoleCurrentSink not found";
-                expect(intensitySink != nullptr) << "IntensitySink not found";
-                expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
-                expect(intensityDataSetSink != nullptr) << "IntensityDataSetSink not found";
+                expect(dipoleSink != nullptr) << "DipoleCurrentSink not found\n" << fatal;
+                expect(intensitySink != nullptr) << "IntensitySink not found\n" << fatal;
+                expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found\n" << fatal;
+                expect(intensityDataSetSink != nullptr) << "IntensityDataSetSink not found\n" << fatal;
             };
-
-            if (!dipoleSink || !intensitySink || !dipoleDataSetSink || !intensityDataSetSink) {
-                g_state.stopScheduler();
-                return;
-            }
 
             "expected signal kinds per sink"_test = [&] {
                 expect(dipoleSink->signalKind() == opendigitizer::SignalKind::Streaming);
@@ -173,13 +137,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(intensityDataSetSink->signalKind() == opendigitizer::SignalKind::Dataset1D);
             };
 
-            g_state.waitForSchedulerActive();
+            g_state.waitForScheduler(ctx);
 
             while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0) {
                 ctx->Yield();
             }
-
-            g_state.stopScheduler();
 
             "expected UIWindow names"_test = [] {
                 expect(findWindowByName("Plot 1") != nullptr) << "Plot 1 window";
@@ -290,6 +252,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
                 captureScreenshot(*ctx);
             };
+
+            g_state.stopScheduler();
         };
     }
 };
@@ -311,15 +275,7 @@ int main(int argc, char* argv[]) {
 
     app.initImGui();
 
-    auto fs      = cmrc::ui_test_assets::get_filesystem();
-    auto grcFile = fs.open("examples/fg_dipole_intensity_ramp.grc");
-
-    auto dashboardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(g_state.restClient, dashboardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), //
-        [](gr::Graph&& grGraph) {                                               //
-            g_state.dashboard->emplaceGraph(std::move(grGraph));
-        });
+    g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/fg_dipole_intensity_ramp.grc");
 
     auto result = app.runTests();
     g_state.dashboard.reset();

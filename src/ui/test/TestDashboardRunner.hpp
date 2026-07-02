@@ -23,7 +23,7 @@ struct TestDashboardRunner {
     cmrc::embedded_filesystem previousReloadFilesystem = defaultGRCFilesystem;
     std::string               previousReloadGRCPath    = defaultGRCPath;
 
-    virtual ~TestDashboardRunner() = default;
+    virtual ~TestDashboardRunner() { onDashboardAboutToBeUnloaded(); }
 
     virtual void waitForScheduler(                                           //
         ImGuiTestContext*         ctx,                                       //
@@ -81,6 +81,7 @@ struct TestDashboardRunner {
     }
 
     virtual void onDashboardLoaded() { /* Handler, for qa_flowgraph and potentially other tests, which need to set the flowgraph's Dashboard* every time a reload occurs */ }
+    virtual void onDashboardAboutToBeUnloaded() { /* Handler where qa_flowgraph should unregister connections/pointers to dashboard */ }
 
     /// Creates a fresh Scheduler and Graph so that tests are more individual and deterministics (i.e. not influenced by previous test runs)
     void reload(const cmrc::embedded_filesystem& fs = defaultGRCFilesystem, const char* grc = defaultGRCPath, const char* dashboardName = "empty") {
@@ -90,7 +91,8 @@ struct TestDashboardRunner {
         auto grcFile = fs.open(grc);
 
         auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty(dashboardName);
-        dashboard                 = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
+        onDashboardAboutToBeUnloaded();
+        dashboard = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [this](gr::Graph&& grGraph) { //
             dashboard->emplaceGraph(std::move(grGraph));

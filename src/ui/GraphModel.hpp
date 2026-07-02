@@ -218,6 +218,8 @@ public:
     bool updatePosition = false;
     void storeXY();
 
+    std::string storedEditorSettings;
+
     UiGraphBlock(UiGraphModel* ownerGraph_, UiGraphBlock* parentBlock_) : ownerGraph(ownerGraph_), parentBlock(parentBlock_) {}
 
     UiGraphBlock(const UiGraphBlock&)            = delete;

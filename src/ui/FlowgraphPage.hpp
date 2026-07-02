@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <set>
 #include <stack>
 #include <vector>
 
@@ -56,6 +57,14 @@ private:
     float                                _timeSpentHoldingPin = 0.0;
     std::optional<ExportPortMessageData> _draggingPinExportRequest;
 
+    struct SuppressedPort {
+        std::string blockUniqueName;
+        std::string portDirection;
+        std::string portName;
+        auto        operator<=>(const SuppressedPort&) const = default;
+    };
+    std::set<SuppressedPort> _suppressedAutoExportPorts;
+
     static constexpr float borderExteriorHoverFadeTransitionDurationSeconds = 0.4f;
     float                  _timeSpentHoveringBoundingBoxExterior            = 0.0;
     bool                   _wasHoveringBoundingBoxExteriorThisFrame         = false;
@@ -66,6 +75,22 @@ private:
         ax::NodeEditor::Config config;
         config.SettingsFile = nullptr;
         config.UserPointer  = this;
+
+        config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /*reason*/, void* userPointer) -> bool {
+            auto* editor = static_cast<FlowgraphEditor*>(userPointer);
+            editor->_rootBlock->storedEditorSettings.assign(data, size);
+            return true;
+        };
+
+        config.LoadSettings = [](char* data, void* userPointer) -> size_t {
+            auto*       editor   = static_cast<FlowgraphEditor*>(userPointer);
+            const auto& settings = editor->_rootBlock->storedEditorSettings;
+            if (data) {
+                settings.copy(data, settings.size());
+            }
+            return settings.size();
+        };
+
         return config;
     }
 
@@ -98,6 +123,7 @@ public:
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
+    void                                 autoExportUnconnectedPorts();
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
@@ -114,6 +140,9 @@ public:
     }
 
     ~FlowgraphEditor() {
+        for (auto& child : _rootBlock->childBlocks) {
+            child->view.reset();
+        }
         makeCurrent();
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
@@ -131,6 +160,8 @@ public:
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
+
+    void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
     void drawGraph(const ImVec2& size);
 

@@ -18,16 +18,21 @@
 
 #include "common/LookAndFeel.hpp"
 
-#include "components/Dialog.hpp"
-#include "components/ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 
 #include "utils/TransparentStringHash.hpp"
 
-#include "App.hpp"
 #include "scope_exit.hpp"
 
 using namespace std::string_literals;
+
+namespace {
+bool isPortConnected(const DigitizerUi::UiGraphPort& port, const std::vector<DigitizerUi::UiGraphEdge>& edges) {
+    return std::ranges::any_of(edges, [&port](const auto& edge) { //
+        return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
+    });
+}
+} // namespace
 
 namespace DigitizerUi {
 
@@ -110,15 +115,15 @@ auto topologicalSort(const std::vector<std::unique_ptr<UiGraphBlock>>& blocks, c
 
 float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight) {
     const float spacing = blockHeight / (static_cast<float>(numPins) + 1);
-    return spacing * (static_cast<float>(index) + 1) - (pinHeight / 2);
+    // ImFloor here is to mimic what imgui node editor is doing internally, so our rectangles line up with the highlight rects they draw
+    return ImFloor(spacing * (static_cast<float>(index) + 1) - (pinHeight / 2));
 }
 
 void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
-    const ImVec2 rmin  = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
-    const ImVec2 rmax  = ImVec2(rmin.x + 1, rmin.y + 1);
+    const ImVec2 pivot = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
 
     if (input) {
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
@@ -127,7 +132,7 @@ void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2
     }
 
     ax::NodeEditor::BeginPin(id, kind);
-    ax::NodeEditor::PinPivotRect(rmin, rmax);
+    ax::NodeEditor::PinPivotRect(pivot, pivot);
     ax::NodeEditor::PinRect(min, max);
     ax::NodeEditor::EndPin();
 
@@ -167,6 +172,59 @@ void drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std
         }
     }
 };
+
+std::string getDefaultExportedName(const UiGraphPort* port) { return std::format("{}.{}", port->ownerBlock ? port->ownerBlock->blockName : "UNKNOWN", port->portName); }
+
+struct PinDrawInfo {
+    ImVec2  topLeft;
+    ImVec2  size;
+    ImFont* font     = nullptr;
+    float   fontSize = 0;
+};
+
+std::optional<std::string> exportedPortShortenedDisplayName(const UiGraphPort* port, const UiGraphBlock* exportedTo) {
+    auto exportedName = port->getExportedName(exportedTo);
+
+    if (!exportedName) {
+        return exportedName;
+    }
+
+    std::string name;
+    if (exportedName == getDefaultExportedName(port)) {
+        name = port->portName;
+    } else {
+        name = *exportedName;
+    }
+
+    constexpr std::size_t maxDisplayNameLength = 10;
+    if (name.size() > maxDisplayNameLength) {
+        name = "..." + name.substr(name.size() - maxDisplayNameLength);
+    }
+    return name;
+}
+
+PinDrawInfo calculatePinDrawInfo(const std::optional<std::string>& displayName, std::size_t index, std::size_t numPins, float anchorX, float blockTopY, float blockHeight, bool isInput) {
+    const auto& fg = LookAndFeel::instance().flowgraph;
+
+    if (!displayName) {
+        const float y = blockTopY + pinLocalPositionY(index, numPins, blockHeight, fg.pinHeight);
+        const float x = isInput ? (anchorX - fg.pinHeight) : anchorX;
+        return {.topLeft = {x, y}, .size = {fg.pinWidth, fg.pinHeight}};
+    }
+
+    auto* font = LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode];
+    if (!font) {
+        font = ImGui::GetFont();
+    }
+    const float fontSize = font->LegacySize;
+    const auto  textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, displayName->c_str());
+    const float tabW     = textSize.x + fg.exportedTabPaddingH * 2;
+    const float tabH     = textSize.y + fg.exportedTabPaddingV * 2;
+    const float tabY     = blockTopY + pinLocalPositionY(index, numPins, blockHeight, tabH);
+    const float tabX     = isInput ? (anchorX + fg.exportedTabOverlap - tabW) : (anchorX - fg.exportedTabOverlap);
+
+    return {.topLeft = {tabX, tabY}, .size = {tabW, tabH}, .font = font, .fontSize = fontSize};
+}
 
 std::string valToString(const gr::pmt::Value& val) {
     std::string out;
@@ -420,18 +478,19 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
     // Register ports with node editor, actual drawing comes later
-    auto registerPins = [&pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
+    auto registerPins = [this, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - pinHorizontalPadding;
         }
 
-        const float blockY    = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
-        const auto  pinHeight = LookAndFeel::instance().flowgraph.pinHeight;
-        const auto  pinWidth  = LookAndFeel::instance().flowgraph.pinWidth;
+        const float blockY  = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
+        const bool  isInput = pinType == ax::NodeEditor::PinKind::Input;
 
         for (std::size_t i = 0; i < ports.size(); ++i) {
-            position.y = blockY + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-            addPin(ax::NodeEditor::PinId(ports[i]), pinType, position, {pinWidth, pinHeight});
+            auto portDisplayName = exportedPortShortenedDisplayName(ports[i], _exportPortTargetBlock);
+            auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, blockSize.y, isInput);
+            auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
+            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
         }
     };
 
@@ -636,13 +695,25 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             ImGui::SetCursorScreenPos(blockPosition.topLeft);
             auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
-            auto drawPorts = [&](auto& ports, auto portLeftPos, bool rightAlign) {
-                const auto pinHeight = LookAndFeel::instance().flowgraph.pinHeight;
-                const auto pinWidth  = LookAndFeel::instance().flowgraph.pinWidth;
+            auto drawPorts = [&](auto& ports, auto portLeftPos, bool isInput) {
+                const auto& fg        = LookAndFeel::instance().flowgraph;
+                const float anchorX   = portLeftPos + padding.x;
+                const float blockTopY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y;
+
                 for (std::size_t i = 0; i < ports.size(); ++i) {
-                    const auto pinPositionX = portLeftPos + padding.x - (rightAlign ? pinHeight : 0);
-                    const auto pinPositionY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y + pinLocalPositionY(i, ports.size(), blockSize.y, pinHeight);
-                    drawPin(drawList, {pinPositionX, pinPositionY}, {pinWidth, pinHeight}, ports[i]->portName, ports[i]->portType);
+                    auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], _exportPortTargetBlock);
+                    auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockSize.y, isInput);
+
+                    if (!portExportedDisplayName) {
+                        drawPin(drawList, info.topLeft, info.size, ports[i]->portName, ports[i]->portType);
+                        continue;
+                    }
+
+                    const auto& typeStyle = FlowgraphPage::styleForDataType(ports[i]->portType);
+                    const auto  textColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphBg);
+                    drawList->AddRectFilled(info.topLeft, info.topLeft + info.size, typeStyle.color);
+                    drawList->AddRect(info.topLeft, info.topLeft + info.size, darkenOrLighten(typeStyle.color));
+                    drawList->AddText(info.font, info.fontSize, ImVec2{info.topLeft.x + fg.exportedTabPaddingH, info.topLeft.y + fg.exportedTabPaddingV}, textColor, portExportedDisplayName->c_str());
                 }
             };
 
@@ -859,40 +930,9 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             }
         }
 
-        const auto exportedPortsMenu = [this](auto text, auto portDirection, const auto& blockPorts) {
-            auto selectedBlockUniqueName = _selectedBlock->blockUniqueName;
-
-            auto exportPortsSubMenu = IMW::Menu{text, /*enabled*/ true};
-            if (!exportPortsSubMenu) {
-                return;
-            }
-
-            for (const UiGraphPort& knownPort : blockPorts) {
-                const auto  exportedName = knownPort.getExportedName(this->_exportPortTargetBlock);
-                std::string itemText     = exportedName ? std::format("{} (as {})", knownPort.portName, *exportedName) : knownPort.portName;
-
-                if (!ImGui::MenuItem(itemText.c_str(), nullptr, exportedName.has_value())) {
-                    continue;
-                }
-
-                ExportPortMessageData request{                          //
-                    .uniqueBlockName = _selectedBlock->blockUniqueName, //
-                    .portDirection   = portDirection,                   //
-                    .portName        = knownPort.portName,              //
-                    .exportedName    = {},                              //
-                    .exportFlag      = !exportedName.has_value()};
-                if (exportedName.has_value()) {
-                    requestExportPort(std::move(request));
-                } else {
-                    exportPortTextField = _selectedBlock->blockName + "." + knownPort.portName;
-                    exportPortRequest   = std::move(request);
-                }
-            }
-        };
-
         if (_editorLevel > 0) {
-            exportedPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
-            exportedPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
+            this->drawPortsMenu("Input ports", "input", _selectedBlock->_inputPorts);
+            this->drawPortsMenu("Output ports", "output", _selectedBlock->_outputPorts);
         }
     }
 
@@ -910,6 +950,60 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     } else {
         const float h = contentSize.y * ratio;
         requestBlockControlsPanel(_editPaneContext, {contentTopLeft.x, contentTopLeft.y + contentSize.y - h + halfSplitterWidth}, {contentSize.x, h - halfSplitterWidth}, false);
+    }
+}
+
+void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts) {
+    if (blockPorts.empty()) {
+        return;
+    }
+
+    auto portsSubMenu = IMW::Menu{text, /*enabled*/ true};
+    if (!portsSubMenu) {
+        return;
+    }
+
+    for (const UiGraphPort& knownPort : blockPorts) {
+        auto portSubMenu = IMW::Menu{knownPort.portName.c_str(), /*enabled*/ true};
+        if (!portSubMenu) {
+            continue;
+        }
+
+        const auto           exportedName = knownPort.getExportedName(this->_exportPortTargetBlock);
+        const SuppressedPort key{_selectedBlock->blockUniqueName, portDirection, knownPort.portName};
+        const bool           suppressed = _suppressedAutoExportPorts.contains(key);
+
+        if (ImGui::RadioButton("Auto-export on close", !suppressed)) {
+            if (suppressed) {
+                _suppressedAutoExportPorts.erase(key);
+            } else {
+                _suppressedAutoExportPorts.insert(key);
+            }
+        }
+
+        bool exported = exportedName.has_value();
+        if (ImGui::RadioButton("Exported", exported)) {
+            requestExportPort(ExportPortMessageData{
+                .uniqueBlockName = _selectedBlock->blockUniqueName,
+                .portDirection   = portDirection,
+                .portName        = knownPort.portName,
+                .exportedName    = !exported ? getDefaultExportedName(&knownPort) : std::string{},
+                .exportFlag      = !exported,
+            });
+        }
+
+        ImGui::BeginDisabled(!exportedName.has_value());
+        if (ImGui::MenuItem("Change exported name...")) {
+            exportPortTextField = *exportedName;
+            exportPortRequest   = ExportPortMessageData{
+                  .uniqueBlockName = _selectedBlock->blockUniqueName,
+                  .portDirection   = portDirection,
+                  .portName        = knownPort.portName,
+                  .exportedName    = {},
+                  .exportFlag      = true,
+            };
+        }
+        ImGui::EndDisabled();
     }
 }
 
@@ -971,6 +1065,40 @@ void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
     graphModel()->sendMessage(std::move(message));
 }
 
+void FlowgraphEditor::autoExportUnconnectedPorts() {
+    if (_editorLevel == 0) {
+        return;
+    }
+
+    const auto& edges = _rootBlock->childEdges;
+
+    for (const auto& block : _rootBlock->childBlocks) {
+        auto exportUnconnected = [&](const std::vector<UiGraphPort>& ports, const std::string& direction) {
+            for (const auto& port : ports) {
+                if (isPortConnected(port, edges)) {
+                    continue;
+                }
+                if (port.isExportedTo(_exportPortTargetBlock)) {
+                    continue;
+                }
+                if (_suppressedAutoExportPorts.contains(SuppressedPort{block->blockUniqueName, direction, port.portName})) {
+                    continue;
+                }
+                requestExportPort(ExportPortMessageData{
+                    .uniqueBlockName = block->blockUniqueName,
+                    .portDirection   = direction,
+                    .portName        = port.portName,
+                    .exportedName    = getDefaultExportedName(&port),
+                    .exportFlag      = true,
+                });
+            }
+        };
+
+        exportUnconnected(block->_inputPorts, "input");
+        exportUnconnected(block->_outputPorts, "output");
+    }
+}
+
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
 FlowgraphPage::~FlowgraphPage() = default;
@@ -1017,7 +1145,10 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     }
 
     if (_editors.size() > 1) {
-        editor.closeRequestedCallback = [&] { popEditor(); };
+        editor.closeRequestedCallback = [this] {
+            currentEditor().autoExportUnconnectedPorts();
+            popEditor();
+        };
     }
 }
 
