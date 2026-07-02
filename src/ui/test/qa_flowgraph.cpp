@@ -108,8 +108,11 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks() && flowgraphPage.editorCount() > 0) {
-            auto& editor = flowgraphPage.currentEditor();
-            editor.sortNodes(false);
+            auto& editor    = flowgraphPage.currentEditor();
+            auto* rootBlock = editor.rootBlock();
+            if (rootBlock) {
+                FlowgraphEditor::sortNodes(rootBlock, false);
+            }
             editor.drawGraph(ImGui::GetContentRegionAvail());
         }
     }
@@ -264,7 +267,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const bool recievedReplyAboutExport = waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
-                expect(targetPort->isExportedTo(editor._exportPortTargetBlock)) << "ui action should have caused port to become exported\n";
+                expect(targetPort->isExportedTo(editor.exportPortTargetBlock())) << "ui action should have caused port to become exported\n";
 
                 g_state.stopScheduler();
             };
