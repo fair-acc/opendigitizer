@@ -10,7 +10,7 @@ enum class DialogButton { None, Ok, Cancel };
 
 inline DialogButton DialogButtons(bool okEnabled = true) {
     float y = ImGui::GetContentRegionAvail().y;
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + y - 20);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + y - ImGui::GetFrameHeight());
     ImGui::Separator();
 
     {
