@@ -28,6 +28,8 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 CMRC_DECLARE(sample_dashboards);
 
@@ -75,17 +77,20 @@ struct DashboardDescription {
 
     static constexpr const char* fileExtension = ".ddd";
 
-    std::string                           name;
-    std::shared_ptr<DashboardStorageInfo> storageInfo;
-    std::string                           filename;
-    mutable bool                          isFavorite;
-    mutable OptionalTimePoint             lastUsed;
+    std::string                                  name;
+    std::shared_ptr<DashboardStorageInfo>        storageInfo;
+    std::string                                  filename;
+    mutable bool                                 isFavorite;
+    mutable OptionalTimePoint                    lastUsed;
+    std::vector<std::string>                     tags;
+    std::unordered_map<std::string, std::string> keyValueTags;
 
     DashboardDescription(PrivateTag, std::string _name, std::shared_ptr<DashboardStorageInfo> _storageInfo, std::string _filename, bool _isFavorite, OptionalTimePoint _lastUsed) : name(std::move(_name)), storageInfo(std::move(_storageInfo)), filename(std::move(_filename)), isFavorite(_isFavorite), lastUsed(std::move(_lastUsed)) {}
 
     void save();
 
     static void                                        loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb);
+    static void                                        loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb);
     static std::shared_ptr<const DashboardDescription> createEmpty(const std::string& name);
 };
 
