@@ -11,36 +11,9 @@
 #include <vector>
 
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 
 namespace DigitizerUi {
-
-namespace detail {
-inline ImVec4 lightenColor(const ImVec4& color, float percent) {
-    float h;
-    float s;
-    float v;
-    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    s = std::max(0.0f, s * percent);
-    float r;
-    float g;
-    float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
-}
-
-inline ImVec4 darkenColor(const ImVec4& color, float percent) {
-    float h;
-    float s;
-    float v;
-    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
-    v = std::max(0.0f, v * percent);
-    float r;
-    float g;
-    float b;
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return {r, g, b, color.w};
-}
-} // namespace detail
 
 struct MenuButton {
     using CallbackFun = std::variant<std::function<void()>, std::function<void(MenuButton&)>>;
@@ -80,8 +53,8 @@ struct MenuButton {
 
             auto styles = [&]() -> std::optional<ButtonStyle> {
                 if (!isTransparent) {
-                    ImVec4 buttonColorHover  = detail::lightenColor(buttonColor, 0.5f);
-                    ImVec4 buttonColorActive = detail::darkenColor(buttonColor, 0.7f);
+                    ImVec4 buttonColorHover  = lightenColor(buttonColor, 0.5f);
+                    ImVec4 buttonColorActive = darkenColor(buttonColor, 0.7f);
                     buttonColor.w            = 1.0;
                     buttonColorHover.w       = 1.0;
                     buttonColorActive.w      = 1.0;

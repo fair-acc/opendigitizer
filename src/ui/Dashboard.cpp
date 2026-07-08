@@ -185,6 +185,36 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
     errCb();
 }
 
+std::vector<std::string> readStringList(const gr::property_map& map, std::string_view key) {
+    std::vector<std::string> result;
+    const auto               value = map.find_value(key);
+    if (!value) {
+        return result;
+    }
+    const auto view = value->get_if<gr::TensorView<gr::pmt::Value>>();
+    if (!view) {
+        return result;
+    }
+    for (const auto& element : *view) {
+        if (element.is_string()) {
+            result.push_back(element.value_or(std::string{}));
+        }
+    }
+    return result;
+}
+
+std::unordered_map<std::string, std::string> readStringMap(const gr::property_map& map, std::string_view key) {
+    std::unordered_map<std::string, std::string> result;
+    if (const auto nested = map.get_if<gr::property_map>(key)) {
+        for (const auto& [entryKey, entryValue] : *nested) {
+            if (entryValue.is_string()) {
+                result.emplace(entryKey, entryValue.value_or(std::string{}));
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 DashboardStorageInfo::~DashboardStorageInfo() noexcept {
@@ -690,6 +720,18 @@ void Dashboard::save() {
     char                        lastUsed[11];
     std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
     headerYaml["lastUsed"] = std::string(lastUsed);
+
+    gr::Tensor<gr::pmt::Value> tagsTensor;
+    for (const std::string& tag : description->tags) {
+        tagsTensor.emplace_back(tag);
+    }
+    headerYaml["tags"] = std::move(tagsTensor);
+
+    property_map keyValueTagsMap;
+    for (const auto& [key, value] : description->keyValueTags) {
+        keyValueTagsMap[key] = value;
+    }
+    headerYaml["keyValueTags"] = std::move(keyValueTagsMap);
 
     property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
 
@@ -1216,9 +1258,16 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
 
             auto lastUsed = rootMap.contains("lastUsed") && valueForKey("lastUsed").is_string() ? getDate(valueForKey("lastUsed").value_or(std::string())) : std::nullopt;
 
-            cb(std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed));
+            auto dashboardDescription          = std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed);
+            dashboardDescription->tags         = readStringList(rootMap, "tags");
+            dashboardDescription->keyValueTags = readStringMap(rootMap, "keyValueTags");
+            cb(std::move(dashboardDescription));
         },
         [cb]() { cb({}); });
+}
+
+void DashboardDescription::loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb) {
+    fetch(std::move(client), storageInfo, filename, {What::Flowgraph}, [callback = std::move(cb)](std::array<std::string, 1>&& data) mutable { callback(std::move(data[0])); }, std::move(errCb));
 }
 
 std::shared_ptr<const DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(PrivateTag{}, name, DashboardStorageInfo::memoryDashboardStorage(), std::string{}, false, std::nullopt); }

@@ -26,7 +26,7 @@ constexpr inline auto kMaxPlots  = 16u;
 constexpr inline auto kGridWidth = 16u;
 } // namespace
 
-static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
+bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
         IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);

@@ -255,10 +255,18 @@ add_library(
   components/BlockNeighboursPreview.hpp
   components/Dialog.hpp
   components/Docking.cpp
+  components/DashboardPreview.hpp
+  components/DashboardPreview.cpp
   components/Docking.hpp
   components/ExportedPropertiesList.hpp
   components/ExportedPropertiesList.cpp
   components/FilterComboBoxes.hpp
+  components/FilterTagBar.hpp
+  components/FilterTagBar.cpp
+  components/SortFilterModel.hpp
+  components/SortFilterModel.cpp
+  components/SortFilterTreeModel.hpp
+  components/SortFilterTreeModel.cpp
   components/InputTextCompletion.hpp
   components/Keypad.hpp
   components/ListBox.hpp
@@ -274,6 +282,8 @@ add_library(
   components/Splitter.cpp
   components/Splitter.hpp
   components/Toolbar.hpp
+  components/VirtualScrollTable.hpp
+  components/VirtualScrollTable.cpp
   components/YesNoPopup.hpp
   utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
   utils/ImGuiDockSpaceState.cpp
@@ -292,6 +302,7 @@ target_link_libraries(
   PRIVATE opendigitizer-options
   PUBLIC implot
          implot3d
+         imguidatepicker
          imgui-node-editor
          od_acquisition
          services

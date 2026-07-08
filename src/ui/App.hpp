@@ -311,11 +311,9 @@ public:
                 dashboard->handleMessages();
             }
 
-            // Do not disable the open/save page when no dashboard is loaded — that is how the
-            // user loads the first one. Header buttons above this scope stay interactive either way.
-            IMW::Disabled disabled(dashboard == nullptr && mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD);
-
             if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
+                // Do not disable the open/save page when no dashboard is loaded — that is how the user loads the first one.
+                IMW::Disabled disabled(dashboard == nullptr && mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD);
                 components::Toolbar(toolbarBlocks);
             }
 
