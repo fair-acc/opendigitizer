@@ -108,8 +108,11 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks() && flowgraphPage.editorCount() > 0) {
-            auto& editor = flowgraphPage.currentEditor();
-            editor.sortNodes(false);
+            auto& editor    = flowgraphPage.currentEditor();
+            auto* rootBlock = editor.rootBlock();
+            if (rootBlock) {
+                FlowgraphEditor::sortNodes(rootBlock, false);
+            }
             editor.drawGraph(ImGui::GetContentRegionAvail());
         }
     }

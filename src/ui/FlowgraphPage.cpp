@@ -466,7 +466,9 @@ void FlowgraphEditor::applyNodePosition(UiGraphBlock& block, std::optional<Bound
         }
         boundingBox->minX += blockSize[0] + pinHorizontalPadding;
 
-        _rootBlock->shouldRearrangeBlocks = true;
+        if (auto rootBlock = this->rootBlock()) {
+            rootBlock->shouldRearrangeBlocks = true;
+        }
     } else if (block.updatePosition) {
         block.view->x        = block.storedXY.has_value() ? block.storedXY->x : boundingBox.value_or(defaultBoundingBox).minX;
         block.view->y        = block.storedXY.has_value() ? block.storedXY->y : boundingBox.value_or(defaultBoundingBox).maxY;
@@ -491,13 +493,16 @@ void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId inputP
         if (ax::NodeEditor::AcceptNewItem()) {
             // AcceptNewItem() return true when user release mouse button.
             gr::Message message;
-            message.cmd         = gr::message::Command::Set;
-            message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-            auto owner          = ownersForRoot();
-            message.serviceName = owner.scheduler;
+            message.cmd      = gr::message::Command::Set;
+            message.endpoint = gr::scheduler::property::kEmplaceEdge;
+            auto owner       = ownersForRoot();
+            if (!owner) {
+                return;
+            }
+            message.serviceName = owner->scheduler;
 
             message.data = gr::property_map{                                                                                  //
-                {"_targetGraph", owner.graph},                                                                                //
+                {"_targetGraph", owner->graph},                                                                               //
                 {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), outputPort->ownerBlock->blockUniqueName},     //
                 {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), outputPort->portName},                         //
                 {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), inputPort->ownerBlock->blockUniqueName}, //
@@ -563,8 +568,13 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
 }
 
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
-    const auto& graphBlocks = _rootBlock->childBlocks;
-    const auto& graphEdges  = _rootBlock->childEdges;
+    const auto* rootBlock = this->rootBlock();
+    if (!rootBlock) {
+        return;
+    }
+
+    const auto& graphBlocks = rootBlock->childBlocks;
+    const auto& graphEdges  = rootBlock->childEdges;
 
     makeCurrent();
 
@@ -694,6 +704,18 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 }
 
 void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor) {
+    auto* rootBlock = this->rootBlock();
+    if (!rootBlock) {
+        // maybe the graph doesn't exist yet, can happen after exchanging the graph + we still have an out of date root block name from the old graph
+        auto* schedulerInfo = _exportPortTargetBlock ? std::get_if<UiGraphBlock::SchedulerBlockInfo>(&_exportPortTargetBlock->blockCategoryInfo) : nullptr;
+        if (schedulerInfo && schedulerInfo->childrenLoaded && !_exportPortTargetBlock->childBlocks.empty()) {
+            _rootBlockUniqueName = _exportPortTargetBlock->childBlocks.front()->blockUniqueName;
+            rootBlock            = _exportPortTargetBlock->childBlocks.front().get();
+        } else {
+            return;
+        }
+    }
+
     makeCurrent();
 
     IMW::PushCursorPosition origCursorPos;
@@ -724,7 +746,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         horizontalSplit ? (ratio) : 1.0f);
 
     if (clicked.rearrangeBlocks) {
-        sortNodes(true);
+        sortNodes(rootBlock, true);
     }
 
     if (clicked.closeWindow && closeRequestedCallback) {
@@ -772,8 +794,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
     }
 
-    if (_rootBlock->shouldRearrangeBlocks) {
-        sortNodes(false);
+    if (rootBlock->shouldRearrangeBlocks) {
+        sortNodes(rootBlock, false);
     }
 
     auto originalFilterBlock = _filterBlock;
@@ -791,8 +813,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
         if (!block) {
             _editPaneContext.setSelectedBlock(nullptr, nullptr);
-        } else {
-            _editPaneContext.targetGraph = ownersForRoot().graph;
+        } else if (auto ownerNames = ownersForRoot()) {
+            _editPaneContext.targetGraph = ownerNames->graph;
             _editPaneContext.setSelectedBlock(block, _graphModel);
             _editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
@@ -840,17 +862,16 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
             if (IMW::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
                 for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                    if (availableParametrization != typeParams.parametrization) {
-                        if (ImGui::MenuItem(availableParametrization.c_str())) {
+                    if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
+                        if (auto owner = ownersForRoot()) {
                             gr::Message message;
                             message.cmd         = gr::message::Command::Set;
                             message.endpoint    = gr::scheduler::property::kReplaceBlock;
-                            auto owner          = ownersForRoot();
-                            message.serviceName = owner.scheduler;
+                            message.serviceName = owner->scheduler;
                             message.data        = gr::property_map{                                         //
                                 {"uniqueName", _selectedBlock->blockUniqueName},                     //
                                 {"type", std::move(typeParams.baseType) + availableParametrization}, //
-                                {"_targetGraph", owner.graph}};
+                                {"_targetGraph", owner->graph}};
 
                             _graphModel->sendMessage(std::move(message));
                         }
@@ -913,8 +934,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     }
 }
 
-void FlowgraphEditor::sortNodes(bool all) {
-    auto blockLevels = topologicalSort(_rootBlock->childBlocks, _rootBlock->childEdges);
+void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock, bool all) {
+    auto blockLevels = topologicalSort(rootBlock->childBlocks, rootBlock->childEdges);
 
     constexpr float ySpacing = 32;
     constexpr float xSpacing = 200;
@@ -941,19 +962,20 @@ void FlowgraphEditor::sortNodes(bool all) {
         x += levelWidth + xSpacing;
     }
 
-    _rootBlock->shouldRearrangeBlocks = false;
+    rootBlock->shouldRearrangeBlocks = false;
 }
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
-    gr::Message message;
-    message.endpoint    = gr::scheduler::property::kRemoveBlock;
-    auto owner          = ownersForRoot();
-    message.serviceName = owner.scheduler;
-    message.data        = gr::property_map{//
-        {"uniqueName", blockName},  //
-        {"_targetGraph", owner.graph}};
-    _graphModel->sendMessage(std::move(message));
+    if (auto owner = ownersForRoot()) {
+        gr::Message message;
+        message.endpoint    = gr::scheduler::property::kRemoveBlock;
+        message.serviceName = owner->scheduler;
+        message.data        = gr::property_map{//
+            {"uniqueName", blockName},  //
+            {"_targetGraph", owner->graph}};
+        _graphModel->sendMessage(std::move(message));
+    }
 }
 
 void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
@@ -999,16 +1021,18 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
 
     // This lambda is owned by editor, so it is safe to take it by reference
     editor.openNewBlockSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
-        _newBlockSelector.data = editor.graphModel()->knownBlockTypes;
-        auto owner             = editor.ownersForRoot();
-        _newBlockSelector.open(owner.scheduler, owner.graph);
+        if (auto owner = editor.ownersForRoot()) {
+            _newBlockSelector.data = editor.graphModel()->knownBlockTypes;
+            _newBlockSelector.open(owner->scheduler, owner->graph);
+        }
     };
 
     // This lambda is owned by editor, so it is safe to take it by reference
     editor.openNewSubGraphSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
-        _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
-        auto owner             = editor.ownersForRoot();
-        _newBlockSelector.open(owner.scheduler, owner.graph);
+        if (auto owner = editor.ownersForRoot()) {
+            _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
+            _newBlockSelector.open(owner->scheduler, owner->graph);
+        }
     };
 
     // We can add remote signals only to the root graph
@@ -1162,24 +1186,26 @@ void FlowgraphPage::drawLocalYamlTab() {
         _currentTabIsFlowGraph = false;
 
         if (!_editors.empty()) {
-            gr::Message message;
-            message.cmd         = gr::message::Command::Get;
-            message.endpoint    = gr::scheduler::property::kGraphGRC;
-            auto owner          = _editors.front().ownersForRoot();
-            message.serviceName = owner.scheduler;
-            _dashboard->graphModel.sendMessage(std::move(message));
+            if (auto owner = _editors.front().ownersForRoot()) {
+                gr::Message message;
+                message.cmd         = gr::message::Command::Get;
+                message.endpoint    = gr::scheduler::property::kGraphGRC;
+                message.serviceName = owner->scheduler;
+                _dashboard->graphModel.sendMessage(std::move(message));
+            }
         }
     }
 
     ImGui::SameLine();
     if (ImGui::Button("Apply")) {
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kGraphGRC;
-        message.data        = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
-        auto owner          = _editors.front().ownersForRoot();
-        message.serviceName = owner.scheduler;
-        _dashboard->graphModel.sendMessage(std::move(message));
+        if (auto owner = _editors.front().ownersForRoot()) {
+            gr::Message message;
+            message.cmd         = gr::message::Command::Set;
+            message.endpoint    = gr::scheduler::property::kGraphGRC;
+            message.data        = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+            message.serviceName = owner->scheduler;
+            _dashboard->graphModel.sendMessage(std::move(message));
+        }
     }
 
     ImGui::InputTextMultiline("##grc", &_dashboard->graphModel.m_localFlowgraphGrc, ImGui::GetContentRegionAvail());

@@ -33,8 +33,8 @@ private:
     std::string            _editorName;
     std::size_t            _editorLevel = 0UZ;
 
-    UiGraphModel* _graphModel            = nullptr;
-    UiGraphBlock* _rootBlock             = nullptr;
+    UiGraphModel* _graphModel = nullptr;
+    std::string   _rootBlockUniqueName;
     UiGraphBlock* _exportPortTargetBlock = nullptr;
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
@@ -69,13 +69,16 @@ private:
 
         config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /*reason*/, void* userPointer) -> bool {
             auto* editor = static_cast<FlowgraphEditor*>(userPointer);
-            editor->_rootBlock->storedEditorSettings.assign(data, size);
+            if (auto _rootBlock = editor->rootBlock()) {
+                _rootBlock->storedEditorSettings.assign(data, size);
+            }
             return true;
         };
 
         config.LoadSettings = [](char* data, void* userPointer) -> size_t {
-            auto*       editor   = static_cast<FlowgraphEditor*>(userPointer);
-            const auto& settings = editor->_rootBlock->storedEditorSettings;
+            auto*       editor     = static_cast<FlowgraphEditor*>(userPointer);
+            const auto  _rootBlock = editor->rootBlock();
+            const auto& settings   = _rootBlock ? _rootBlock->storedEditorSettings : std::string{};
             if (data) {
                 settings.copy(data, settings.size());
             }
@@ -115,23 +118,27 @@ public:
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
 
-    FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
+    FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
 
-        if (_rootBlock->blockCategory == "ScheduledBlockGroup") {
-            // the editor should show this scheduler's graph's children,
-            // not its own (as it only has one child -- the graph)
-            assert(_rootBlock->childBlocks.size() == 1);
-            _exportPortTargetBlock = _rootBlock;
-            _rootBlock             = _rootBlock->childBlocks.front().get();
+        if (rootBlock->blockCategory == "ScheduledBlockGroup") {
+            _exportPortTargetBlock = rootBlock;
+
+            if (!rootBlock->childBlocks.empty()) {
+                assert(std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo)->childrenLoaded);
+                _rootBlockUniqueName = rootBlock->childBlocks.front()->blockUniqueName;
+            }
+            // otherwise the children of the scheduler block are not loaded yet, we check every draw() to see if they are
         } else {
-            _exportPortTargetBlock = _rootBlock;
+            _exportPortTargetBlock = rootBlock;
         }
     }
 
     ~FlowgraphEditor() {
-        for (auto& child : _rootBlock->childBlocks) {
-            child->view.reset();
+        if (auto rootBlock = this->rootBlock()) {
+            for (auto& child : rootBlock->childBlocks) {
+                child->view.reset();
+            }
         }
         makeCurrent();
         ax::NodeEditor::DestroyEditor(_editorPtr);
@@ -180,7 +187,7 @@ public:
 
     Buttons drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
-    void sortNodes(bool all);
+    static void sortNodes(UiGraphBlock* rootBlock, bool all);
 
     void requestBlockDeletion(const std::string& blockName);
 
@@ -188,22 +195,35 @@ public:
 
     UiGraphModel* graphModel() const { return _graphModel; }
 
-    auto* rootBlock() const { return _rootBlock; }
+    UiGraphBlock* rootBlock() const {
+        if (!_rootBlockUniqueName.empty()) {
+            return _graphModel->recursiveFindBlockByUniqueName(_rootBlockUniqueName).block;
+        }
+        return nullptr;
+    }
 
     struct SchedulerGraphPair {
         std::string scheduler;
         std::string graph;
     };
-    SchedulerGraphPair ownersForRoot() const {
-        if (std::get_if<UiGraphBlock::SchedulerBlockInfo>(&_rootBlock->blockCategoryInfo)) {
-            assert(_rootBlock->childBlocks.size() == 1);
-            return {_rootBlock->blockUniqueName, _rootBlock->childBlocks.front()->blockUniqueName};
-        } else if (auto* graphInfo = std::get_if<UiGraphBlock::GraphBlockInfo>(&_rootBlock->blockCategoryInfo)) {
-            return {graphInfo->ownerSchedulerUniqueName, _rootBlock->blockUniqueName};
-        } else {
-            assert(false && "A normal block can not be editor root, it can not have children and edges");
+    std::optional<SchedulerGraphPair> ownersForRoot() const {
+        auto* _rootBlock = rootBlock();
+        if (!_rootBlock) {
             return {};
         }
+        using RetType        = std::optional<SchedulerGraphPair>;
+        const auto graphCase = [_rootBlock](const UiGraphBlock::GraphBlockInfo& graphInfo) -> RetType { //
+            return SchedulerGraphPair{graphInfo.ownerSchedulerUniqueName, _rootBlock->blockUniqueName};
+        };
+        const auto schedulerCase = [_rootBlock](const UiGraphBlock::SchedulerBlockInfo&) -> RetType {
+            assert(_rootBlock->childBlocks.size() == 1);
+            return SchedulerGraphPair{_rootBlock->blockUniqueName, _rootBlock->childBlocks.front()->blockUniqueName};
+        };
+        const auto elseCase = [](const auto&) -> RetType {
+            assert(false && "A normal block can not be editor root because it cannot have children nor edges");
+            return {};
+        };
+        return std::visit(gr::meta::overloaded{graphCase, schedulerCase, elseCase}, _rootBlock->blockCategoryInfo);
     }
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
