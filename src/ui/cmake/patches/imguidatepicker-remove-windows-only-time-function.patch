@@ -1,0 +1,32 @@
+diff --git a/ImGuiDatePicker.cpp b/ImGuiDatePicker.cpp
+index 8c81b2b..425131f 100644
+--- a/ImGuiDatePicker.cpp
++++ b/ImGuiDatePicker.cpp
+@@ -149,12 +149,19 @@ namespace ImGui
+     inline static tm Today() noexcept
+     {
+         std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+-        std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
+-
+-        tm res;
+-        gmtime_s(&res, &currentTime);
++        time_t currentTime = std::chrono::system_clock::to_time_t(now);
++
++        tm res{};
++#ifdef _WIN32
++        if (gmtime_s(&res, &currentTime) == 0)
++#else
++        if (gmtime_r(&currentTime, &res))
++#endif
++        {
++            return res;
++        }
+ 
+-        return res;
++        return {};
+     }
+ 
+     inline static tm PreviousMonth(const tm& timePoint) noexcept
+-- 
+2.54.0
+

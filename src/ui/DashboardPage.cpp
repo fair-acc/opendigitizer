@@ -28,7 +28,7 @@ constexpr inline auto kMaxPlots  = 16u;
 constexpr inline auto kGridWidth = 16u;
 } // namespace
 
-static bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
+bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
         IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
@@ -459,19 +459,19 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
 void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
     using enum DigitizerUi::DockingLayoutType;
     IMW::Group layout;
-    if (plotButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize)) {
+    if (plotSquareIconButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize)) {
         _dockSpace.setLayoutType(Row);
     }
     ImGui::SameLine();
-    if (plotButton("\u{F7A4}", "change to the vertical layout", plotButtonSize)) {
+    if (plotSquareIconButton("\u{F7A4}", "change to the vertical layout", plotButtonSize)) {
         _dockSpace.setLayoutType(Column);
     }
     ImGui::SameLine();
-    if (plotButton("\u{F58D}", "change to the grid layout", plotButtonSize)) {
+    if (plotSquareIconButton("\u{F58D}", "change to the grid layout", plotButtonSize)) {
         _dockSpace.setLayoutType(Grid);
     }
     ImGui::SameLine();
-    if (plotButton("\u{F248}", "change to the free layout", plotButtonSize)) {
+    if (plotSquareIconButton("\u{F248}", "change to the free layout", plotButtonSize)) {
         _dockSpace.setLayoutType(Free);
     }
     ImGui::SameLine();
@@ -550,7 +550,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
 
     if (mode != Mode::View) {
         namespace dnd = opendigitizer::charts::dnd;
-        if (plotButton("\u{F201}", "create new chart", plotButtonSize)) {
+        if (plotSquareIconButton("\u{F201}", "create new chart", plotButtonSize)) {
             clickResult.shouldOpenNewPlotModal = true;
         }
         const bool dropped = dnd::handleDropTarget(
@@ -583,7 +583,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
 
     if (mode == Mode::Interaction && _dashboard) {
         ImGui::SameLine();
-        if (plotButton("\u{F067}", "add signal", plotButtonSize)) {
+        if (plotSquareIconButton("\u{F067}", "add signal", plotButtonSize)) {
             // 'plus' button in the global legend, adds a new signal to the dashboard
             try {
                 if (!_remoteSignalSelector) {
@@ -631,7 +631,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
     const float cursorBeforeButtons = ImGui::GetCursorPosX();
 
     for (const auto& button : buttons) {
-        if (plotButton(button.icon, button.tooltip, plotButtonSize)) {
+        if (plotSquareIconButton(button.icon, button.tooltip, plotButtonSize)) {
             button.action();
         }
         ImGui::SameLine();

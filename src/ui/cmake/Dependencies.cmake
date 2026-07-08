@@ -23,6 +23,13 @@ FetchContent_Declare(
                 ${CMAKE_CURRENT_LIST_DIR}/patches/implot3d-dynamic-tick-label-offset.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
+  imguidatepicker
+  GIT_REPOSITORY https://github.com/DnA-IntRicate/ImGuiDatePicker.git
+  GIT_TAG ca5e3a20f945c221e76e6bde3b09101acf589b5c
+        PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-remove-windows-only-time-function.patch && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-make-datepicker-just-a-popup.patch
+  EXCLUDE_FROM_ALL SYSTEM)
+
+FetchContent_Declare(
   imgui-node-editor
   # Upstream https://github.com/thedmd/imgui-node-editor.git
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
@@ -53,6 +60,7 @@ set(FETCH_CONTENT_UI_TARGETS
     imgui
     implot
     implot3d
+    imguidatepicker
     imgui-node-editor
     stb
     opencmw-cpp
@@ -221,6 +229,10 @@ add_library(implot STATIC ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_D
                           ${implot_SOURCE_DIR}/implot.cpp)
 target_include_directories(implot SYSTEM BEFORE PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PUBLIC imgui)
+
+add_library(imguidatepicker OBJECT ${imguidatepicker_SOURCE_DIR}/ImGuiDatePicker.cpp)
+target_include_directories(imguidatepicker SYSTEM BEFORE PUBLIC ${imguidatepicker_SOURCE_DIR})
+target_link_libraries(imguidatepicker PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
 add_library(
   implot3d STATIC

@@ -252,21 +252,30 @@ target_link_libraries(
 
 add_library(
   opendigitizer-ui-components STATIC
+  components/DateInput.hpp
   components/Dialog.hpp
+  components/EditableStringList.hpp
   components/FilterComboBoxes.hpp
+  components/FilterTagBar.hpp
+  components/FilterTagBar.cpp
   components/ImGuiNotify.hpp
   components/InputTextCompletion.hpp
   components/Keypad.hpp
   components/ListBox.hpp
   components/PopupMenu.hpp
+  components/SearchAndFilterComponents.cpp
+  components/SearchAndFilterComponents.hpp
   components/SelectedLabelsView.hpp
+  components/SortFilterModel.hpp
+  components/SortFilterTreeModel.hpp
   components/Splitter.cpp
   components/Splitter.hpp
+  components/VirtualScrollTable.hpp
   components/YesNoPopup.hpp)
 target_link_libraries(
   opendigitizer-ui-components
   PRIVATE opendigitizer-options
-  PUBLIC opendigitizer-look-and-feel)
+  PUBLIC opendigitizer-look-and-feel imguidatepicker)
 
 add_library(opendigitizer-charts INTERFACE)
 target_sources(
@@ -344,6 +353,7 @@ add_library(
   Dashboard.hpp
   DashboardPage.cpp
   DashboardPage.hpp
+  DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
   MapUtils.hpp
@@ -361,6 +371,8 @@ add_library(
   components/Block.hpp
   components/BlockNeighboursPreview.cpp
   components/BlockNeighboursPreview.hpp
+  components/DashboardPreview.cpp
+  components/DashboardPreview.hpp
   components/DataTypeStyle.cpp
   components/DataTypeStyle.hpp
   components/Docking.cpp

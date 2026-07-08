@@ -18,6 +18,11 @@ target_link_libraries(qa_ChartAbstraction PRIVATE ut opendigitizer-uilib opendig
 target_include_directories(qa_ChartAbstraction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_ChartAbstraction COMMAND qa_ChartAbstraction)
 
+add_executable(qa_SortFilterModels qa_SortFilterModels.cpp)
+target_link_libraries(qa_SortFilterModels PRIVATE ut opendigitizer-uilib opendigitizer-options)
+target_include_directories(qa_SortFilterModels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_SortFilterModels COMMAND qa_SortFilterModels)
+
 add_executable(qa_FuzzySearch qa_FuzzySearch.cpp)
 target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_FuzzySearch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -31,6 +36,11 @@ add_test(NAME qa_TouchHandler COMMAND qa_TouchHandler)
 add_executable(qa_Scheduler qa_Scheduler.cpp)
 target_link_libraries(qa_Scheduler PRIVATE ut opendigitizer::dashboard opendigitizer-options)
 add_test(NAME qa_Scheduler COMMAND qa_Scheduler)
+
+add_executable(qa_DashboardPreview qa_DashboardPreview.cpp)
+target_link_libraries(qa_DashboardPreview PRIVATE ut opendigitizer-uilib opendigitizer-options)
+target_include_directories(qa_DashboardPreview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_DashboardPreview COMMAND qa_DashboardPreview)
 
 add_executable(qa_TestSpectrumGenerator qa_TestSpectrumGenerator.cpp)
 target_link_libraries(
