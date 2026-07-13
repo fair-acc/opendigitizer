@@ -34,6 +34,31 @@ bool isPortConnected(const DigitizerUi::UiGraphPort& port, const std::vector<Dig
         return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
     });
 }
+
+std::string simplerName(std::string_view rawName) {
+    std::string result;
+    result.reserve(rawName.size());
+
+    const auto isIdentifierCharacter = [](const char c) {
+        // whether this can be part of a c++ identifier
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    };
+
+    // remove namespace::identifiers by copying the string, and whenever we get
+    // a ::, just erase backwards to the beginning of the identifier before the
+    // ::
+    for (size_t i = 0; i < rawName.size(); ++i) {
+        if (i + 1 < rawName.size() && rawName[i] == ':' && rawName[i + 1] == ':') {
+            while (!result.empty() && isIdentifierCharacter(result.back())) {
+                result.pop_back();
+            }
+            ++i;
+        } else {
+            result += rawName[i];
+        }
+    }
+    return result;
+}
 } // namespace
 
 namespace DigitizerUi {
@@ -443,7 +468,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
 
     // Draw block title
-    ImGui::TextUnformatted(block.blockName.c_str());
+    ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
     // Draw block properties
@@ -1157,7 +1182,6 @@ void FlowgraphEditor::exportAllUnusedPorts() {
         exportUnconnected(block->_outputPorts, "output");
     }
 }
-
 
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
