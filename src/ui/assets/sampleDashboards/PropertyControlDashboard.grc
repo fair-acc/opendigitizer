@@ -74,14 +74,14 @@ blocks:
       start_value: 0
       signal_trigger: "CMD_BP_START"
     ctx_parameters:
-      - context: "FAIR.SELECTOR.C=1:S=1:P=1"
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=1"
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: 100
           sample_rate: 1000
           signal_type: Const
-      - context: "FAIR.SELECTOR.C=1:S=1:P=2"  # start pre-ramp
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=2"  # start pre-ramp
+        gr:ctx_time: !!uint64 0
         parameters:
           duration: 0.1
           start_value: 100
@@ -89,14 +89,14 @@ blocks:
           round_off_time: 0.02
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: "FAIR.SELECTOR.C=1:S=1:P=3"  # lower-plateau
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=3"  # lower-plateau
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: 500
           sample_rate: 1000
           signal_type: Const
-      - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
+        gr:ctx_time: !!uint64 0
         parameters:
           duration: 0.5
           start_value: 500
@@ -104,22 +104,22 @@ blocks:
           round_off_time: 0.2
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: "FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=5" # upper-plateau
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: 3000
           sample_rate: 1000
           signal_type: Const
-      - context: "FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=6" # start ramp-down
+        gr:ctx_time: !!uint64 0
         parameters:
           duration: 0.3
           start_value: 3000
           final_value: 100
           sample_rate: 1000
           signal_type: CubicSpline
-      - context: "FAIR.SELECTOR.C=1:S=1:P=7" # upper-plateau
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=7" # upper-plateau
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: 100
           sample_rate: 1000
@@ -132,22 +132,22 @@ blocks:
       start_value: 0
       signal_trigger: "CMD_BP_START"
     ctx_parameters:
-      - context: "FAIR.SELECTOR.C=1:S=1:P=3" # lower-plateau
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=3" # lower-plateau
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: !!float32 40e9
           sample_rate: 1000
           signal_type: Const
-      - context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=4" # start main-ramp
+        gr:ctx_time: !!uint64 0
         parameters:
           duration: 0.500000
           start_value: !!float32 40e9
           final_value: !!float32 38e9
           sample_rate: 1000
           signal_type: CubicSpline
-      - context: "FAIR.SELECTOR.C=1:S=1:P=5"
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=5"
+        gr:ctx_time: !!uint64 0
         parameters:
           duration: 2
           start_value: !!float32 38e9
@@ -155,8 +155,8 @@ blocks:
           round_off_time: 0.3
           sample_rate: 1000
           signal_type: ParabolicRamp
-      - context: "FAIR.SELECTOR.C=1:S=1:P=6"
-        ctx_time: !!uint64 0
+      - gr:context: "FAIR.SELECTOR.C=1:S=1:P=6"
+        gr:ctx_time: !!uint64 0
         parameters:
           start_value: 0
           sample_rate: 1000

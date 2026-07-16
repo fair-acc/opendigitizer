@@ -55,6 +55,9 @@ private:
     float                                _timeSpentHoldingPin = 0.0;
     std::optional<ExportPortMessageData> _draggingPinExportRequest;
 
+    // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
+    std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
+
     static constexpr float borderExteriorHoverFadeTransitionDurationSeconds = 0.4f;
     float                  _timeSpentHoveringBoundingBoxExterior            = 0.0;
     bool                   _wasHoveringBoundingBoxExteriorThisFrame         = false;
@@ -109,9 +112,10 @@ public:
 
     std::function<void()> closeRequestedCallback;
 
-    std::function<void(UiGraphModel*)> openNewBlockSelectorCallback;
-    std::function<void(UiGraphModel*)> openNewSubGraphSelectorCallback;
-    std::function<void(UiGraphModel*)> openAddRemoteSignalCallback;
+    std::function<void(UiGraphModel*)>            openNewBlockSelectorCallback;
+    std::function<void(UiGraphModel*)>            openNewSubGraphSelectorCallback;
+    std::function<void(UiGraphModel*)>            openAddRemoteSignalCallback;
+    std::function<void(std::vector<std::string>)> openGroupBlocksSelectorCallback;
 
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
@@ -208,6 +212,14 @@ public:
 
     void requestBlockDeletion(const std::string& blockName);
 
+    void requestBlocksGrouping(std::string graphType, const std::vector<std::string>& uniqueNames);
+
+    void requestBlocksUngrouping(const std::string& uniqueName);
+
+    [[nodiscard]] std::vector<std::string> selectedBlockUniqueNames();
+
+    void drawGroupingMenuItems(std::vector<std::string> uniqueNames);
+
     void setFilterBlock(const UiGraphBlock* block) { _filterBlock = block; }
 
     UiGraphModel* graphModel() const { return _graphModel; }
@@ -290,7 +302,6 @@ public:
 
     void setDashboard(Dashboard* dashboard) {
         _dashboard = dashboard;
-        _newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
         _remoteSignalSelector.reset();
         reset();
     }
