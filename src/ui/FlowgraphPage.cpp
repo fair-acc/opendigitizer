@@ -823,6 +823,8 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             _graphModel->requestFullUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
+
+        drawGroupingMenuItems(selectedBlockUniqueNames());
     }
 
     if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
@@ -835,6 +837,19 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                 requestGraphEdit(_selectedBlock);
             }
         }
+
+        auto groupNames = selectedBlockUniqueNames();
+        if (std::ranges::find(groupNames, _selectedBlock->blockUniqueName) == groupNames.end()) {
+            groupNames.push_back(_selectedBlock->blockUniqueName);
+        }
+
+        if (_selectedBlock->isGraph() || _selectedBlock->isScheduler()) {
+            if (ImGui::MenuItem("Ungroup blocks")) {
+                requestBlocksUngrouping(_selectedBlock->blockUniqueName);
+            }
+        }
+
+        drawGroupingMenuItems(std::move(groupNames));
 
         auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
         if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
@@ -894,6 +909,13 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             exportedPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
             exportedPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
         }
+    }
+
+    if (_pendingGroupBlocksRequest) {
+        if (openGroupBlocksSelectorCallback) {
+            openGroupBlocksSelectorCallback(std::move(*_pendingGroupBlocksRequest));
+        }
+        _pendingGroupBlocksRequest.reset();
     }
 
     // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
@@ -956,6 +978,60 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     _graphModel->sendMessage(std::move(message));
 }
 
+void FlowgraphEditor::requestBlocksGrouping(std::string graphType, const std::vector<std::string>& uniqueNames) {
+    gr::Tensor<gr::pmt::Value> names(gr::extents_from, {uniqueNames.size()});
+    for (std::size_t i = 0; i < uniqueNames.size(); ++i) {
+        names[i] = uniqueNames[i];
+    }
+
+    gr::Message message;
+    message.cmd         = gr::message::Command::Set;
+    message.endpoint    = gr::scheduler::property::kGroupBlocks;
+    auto owner          = ownersForRoot();
+    message.serviceName = owner.scheduler;
+    message.data        = gr::property_map{       //
+        {"type", std::move(graphType)},    //
+        {"uniqueNames", std::move(names)}, //
+        {"_targetGraph", owner.graph}};
+    _graphModel->sendMessage(std::move(message));
+}
+
+void FlowgraphEditor::requestBlocksUngrouping(const std::string& uniqueName) {
+    gr::Message message;
+    message.cmd         = gr::message::Command::Set;
+    message.endpoint    = gr::scheduler::property::kUngroupBlocks;
+    auto owner          = ownersForRoot();
+    message.serviceName = owner.scheduler;
+    message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", owner.graph}};
+    _graphModel->sendMessage(std::move(message));
+}
+
+std::vector<std::string> FlowgraphEditor::selectedBlockUniqueNames() {
+    makeCurrent();
+    std::vector<ax::NodeEditor::NodeId> selectedNodes(static_cast<std::size_t>(ax::NodeEditor::GetSelectedObjectCount()));
+    const auto                          nodeCount = ax::NodeEditor::GetSelectedNodes(selectedNodes.data(), static_cast<int>(selectedNodes.size()));
+
+    std::vector<std::string> result;
+    result.reserve(static_cast<std::size_t>(nodeCount));
+    for (const auto& nodeId : selectedNodes | std::views::take(nodeCount)) {
+        if (const auto* block = nodeId.AsPointer<UiGraphBlock>()) {
+            result.push_back(block->blockUniqueName);
+        }
+    }
+    return result;
+}
+
+void FlowgraphEditor::drawGroupingMenuItems(std::vector<std::string> uniqueNames) {
+    const bool haveSelection = !uniqueNames.empty();
+    const bool singular      = uniqueNames.size() == 1;
+    if (ImGui::MenuItem(singular ? "Group block" : "Group blocks", nullptr, false, haveSelection)) {
+        requestBlocksGrouping("gr::Graph", uniqueNames);
+    }
+    if (ImGui::MenuItem(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...", nullptr, false, haveSelection)) {
+        _pendingGroupBlocksRequest = std::move(uniqueNames);
+    }
+}
+
 void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
     gr::Message message;
 
@@ -969,6 +1045,15 @@ void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
         {"exportedName", request.exportedName},       //
         {"exportFlag", request.exportFlag}};
     graphModel()->sendMessage(std::move(message));
+}
+
+void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::SchedulerGraphPair& owner, std::string type) {
+    gr::Message message;
+    message.cmd         = gr::message::Command::Set;
+    message.endpoint    = gr::scheduler::property::kEmplaceBlock;
+    message.serviceName = owner.scheduler;
+    message.data        = gr::property_map{{"type", std::move(type)}, {"_targetGraph", owner.graph}};
+    graphModel.sendMessage(std::move(message));
 }
 
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
@@ -1000,15 +1085,21 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     // This lambda is owned by editor, so it is safe to take it by reference
     editor.openNewBlockSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
         _newBlockSelector.data = editor.graphModel()->knownBlockTypes;
-        auto owner             = editor.ownersForRoot();
-        _newBlockSelector.open(owner.scheduler, owner.graph);
+        _newBlockSelector.open([graphModel = editor.graphModel(), owner = editor.ownersForRoot()](std::string type) { sendEmplaceBlockMessage(*graphModel, owner, std::move(type)); });
     };
 
     // This lambda is owned by editor, so it is safe to take it by reference
     editor.openNewSubGraphSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
         _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
-        auto owner             = editor.ownersForRoot();
-        _newBlockSelector.open(owner.scheduler, owner.graph);
+        _newBlockSelector.open([graphModel = editor.graphModel(), owner = editor.ownersForRoot()](std::string type) { sendEmplaceBlockMessage(*graphModel, owner, std::move(type)); });
+    };
+
+    // This lambda is owned by editor, so it is safe to take it by reference
+    editor.openGroupBlocksSelectorCallback = [this, &editor](std::vector<std::string> uniqueNames) {
+        _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
+        _newBlockSelector.open([&editor, uniqueNames = std::move(uniqueNames)](std::string graphType) { //
+            editor.requestBlocksGrouping(std::move(graphType), uniqueNames);
+        });
     };
 
     // We can add remote signals only to the root graph

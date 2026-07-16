@@ -150,6 +150,12 @@ void UiGraphBlock::handlePortExported(const gr::property_map& data) {
         }
     }
 
+    // refresh our ports based on what is now exported, and adjust any edges in
+    // the parent graph which might now have invalid pointers
+    if (subgraphRebuildVisiblePortsFromExportedPorts() && parentBlock) {
+        parentBlock->graphResolveEdgePortPointersAndRemoveIfInvalid();
+    }
+
     requestBlockUpdate();
 }
 
@@ -198,10 +204,11 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
                 handleChildBlockEmplaced(*blockData);
             }
         }
-    } else {
-        const auto& children = getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "blocks"s);
-        for (const auto& blockData : children) {
-            const auto mapOpt = blockData.get_if<gr::property_map>();
+    } else if (const auto graphData = getOptionalProperty<gr::property_map>(data, "graph"s); graphData.has_value()) {
+        using TensorView = gr::TensorView<gr::pmt::Value>;
+        auto maybeView   = graphData->template get_if<TensorView>("blocks");
+        for (auto blockData : maybeView.value_or(TensorView{})) {
+            const auto mapOpt = blockData.template get_if<gr::property_map>();
             if (!mapOpt) {
                 continue;
             }
@@ -244,6 +251,23 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
                 childEdges.emplace_back(std::move(*edge));
             } else {
                 components::Notification::error("Invalid edge ignored");
+            }
+        }
+    } else if (const auto graphData = getOptionalProperty<gr::property_map>(data, "graph"s); graphData.has_value()) {
+        // this is an alternative way edges may appear for unmanaged subgraphs...
+        // these could probably be made consistent in GR?
+        using TensorView = gr::TensorView<gr::pmt::Value>;
+        auto maybeView   = graphData->template get_if<TensorView>("connections");
+        for (auto connection_ : maybeView.value_or(TensorView{})) {
+            const auto connection = connection_.template get_if<gr::TensorView<gr::pmt::Value>>();
+            if (!connection) {
+                continue;
+            }
+            auto edge = parseSubgraphEdgeData(*connection);
+            if (edge) {
+                childEdges.emplace_back(std::move(*edge));
+            } else {
+                components::Notification::error("Invalid connection ignored");
             }
         }
     }
@@ -298,6 +322,12 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
         message.data        = gr::property_map{};
         ownerGraph->sendMessage(std::move(message));
     }
+
+    if (subgraphRebuildVisiblePortsFromExportedPorts() && parentBlock && !parentBlock->newGraphDataBeingSet) {
+        // this update did not come through the parent, so the parent's edges may
+        // point into the port collections we have just rebuilt
+        parentBlock->graphResolveEdgePortPointersAndRemoveIfInvalid();
+    }
 }
 
 void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
@@ -338,42 +368,11 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
         updateFieldFrom(blockTypeName, blockData, {}, gr::serialization_fields::BLOCK_ID);
     }
 
-    // Meta information needs special handling as it contains the
-    // information about the exported ports
-    if (auto metaInformation = getOptionalProperty<gr::property_map>(blockData, gr::serialization_fields::BLOCK_META_INFORMATION); metaInformation.has_value()) {
+    updateFieldFrom(blockMetaInformation, blockData, {}, gr::serialization_fields::BLOCK_META_INFORMATION);
 
-        blockMetaInformation   = *metaInformation;
-        auto readExportedPorts = [this](auto& destination, const std::string& key) {
-            auto it = blockMetaInformation.find(key);
-            if (it == blockMetaInformation.end()) {
-                return;
-            }
-
-            destination.clear();
-            auto map = it->second.get_if<gr::property_map>();
-            if (!map) {
-                return;
-            }
-
-            for (const auto& [subBlockName, portMappings_] : *map) {
-                const auto portMappings = portMappings_.template get_if<gr::property_map>();
-                if (!portMappings) {
-                    continue;
-                }
-                for (const auto& [portName, portMapping_] : *portMappings) {
-                    const auto portMapping = portMapping_.template get_if<gr::property_map>();
-                    if (!portMapping) {
-                        continue;
-                    }
-                    if (auto portIt = portMapping->find("exportedName"); portIt != portMapping->end()) {
-                        destination[std::string(subBlockName)].insert(PortNameMapper{std::string(portName), portIt->second.value_or(std::string())});
-                    }
-                }
-            }
-        };
-
-        readExportedPorts(exportedInputPorts, "exportedInputPorts"s);
-        readExportedPorts(exportedOutputPorts, "exportedOutputPorts"s);
+    // subgraphs have a "graph" entry for exported ports
+    if (const auto graphData = getOptionalProperty<gr::property_map>(blockData, "graph"s); graphData.has_value()) {
+        parseExportedPorts(*graphData);
     }
 
     blockSettings.erase(std::pmr::string(gr::serialization_fields::BLOCK_UNIQUE_NAME));
@@ -384,43 +383,22 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     updateFieldFrom(blockIsBlocking, blockData, blockIsBlocking, "is_blocking"s);
 
     auto processPorts = [&blockData, this](auto& portsCollection, std::string_view portsField, gr::PortDirection direction) {
+        // we traverse the children of graphs and look for exported ports to figure out what ports are exposed from a
+        // subgraph, see subgraphRebuildVisiblePortsFromExportedPorts()
+        if (isGraph() || isScheduler()) {
+            return;
+        }
+
         portsCollection.clear();
-
-        // if (exportedInputPorts.empty() && exportedOutputPorts.empty()) {
-        if (blockCategory != "ScheduledBlockGroup") {
-            for (const auto& [portName, portData_] : getProperty<gr::property_map>(blockData, portsField)) {
-                const auto portData = portData_.get_if<gr::property_map>();
-                if (!portData) {
-                    continue;
-                }
-                auto& port         = portsCollection.emplace_back(/*owner*/ this);
-                port.portName      = portName;
-                port.portType      = getProperty<std::string>(*portData, "type"s);
-                port.portDirection = direction;
+        for (const auto& [portName, portData_] : getProperty<gr::property_map>(blockData, portsField)) {
+            const auto portData = portData_.get_if<gr::property_map>();
+            if (!portData) {
+                continue;
             }
-        } else {
-            assert(childBlocks.size() <= 1);
-            if (childBlocks.size() != 0) {
-                auto* graph         = childBlocks[0].get();
-                auto& exportedPorts = direction == gr::PortDirection::INPUT ? exportedInputPorts : exportedOutputPorts;
-                for (const auto& [childBlockName, portDefinitions] : exportedPorts) {
-                    auto* child = graph->findBlockByUniqueName(childBlockName);
-                    if (child == nullptr) {
-                        continue;
-                    }
-                    for (const auto& portDefinition : portDefinitions) {
-                        auto portFound = child->findPortIteratorByName(direction == gr::PortDirection::INPUT ? child->inputPorts() : child->outputPorts(), portDefinition.internalName);
-                        if (!portFound.second) {
-                            continue;
-                        }
-
-                        auto& port         = portsCollection.emplace_back(/*owner*/ this);
-                        port.portName      = portDefinition.exportedName;
-                        port.portType      = (portFound.first)->portType;
-                        port.portDirection = direction;
-                    }
-                }
-            }
+            auto& port         = portsCollection.emplace_back(/*owner*/ this);
+            port.portName      = portName;
+            port.portType      = getProperty<std::string>(*portData, "type"s);
+            port.portDirection = direction;
         }
     };
 
@@ -450,6 +428,88 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     shouldRearrangeBlocks = true;
 }
 
+void UiGraphBlock::parseExportedPorts(const gr::property_map& graphData) {
+    const auto exportedPorts = graphData.get_if<gr::TensorView<gr::pmt::Value>>("exported_ports");
+    if (!exportedPorts) {
+        return;
+    }
+
+    exportedInputPorts.clear();
+    exportedOutputPorts.clear();
+
+    for (const auto& entry_ : *exportedPorts) {
+        // each entry is [inner block unique name, "INPUT"/"OUTPUT", {internalPortName: {"exportedName": ...}}]
+        const auto entryView = entry_.template get_if<gr::TensorView<gr::pmt::Value>>();
+        if (!entryView || entryView->size() != 3) {
+            continue;
+        }
+        const gr::Tensor<gr::pmt::Value> entry = entryView->owned();
+
+        const auto innerBlockUniqueName = entry.data()[0].value_or(std::string());
+        const auto direction            = entry.data()[1].value_or(std::string());
+        const auto portMappings         = entry.data()[2].template get_if<gr::property_map>();
+        if (innerBlockUniqueName.empty() || !portMappings) {
+            continue;
+        }
+
+        auto& destination = direction == "INPUT"s ? exportedInputPorts : exportedOutputPorts;
+        for (const auto& [internalPortName, portMapping_] : *portMappings) {
+            const auto portMapping = portMapping_.template get_if<gr::property_map>();
+            if (!portMapping) {
+                continue;
+            }
+            if (auto exportedNameIt = portMapping->find("exportedName"); exportedNameIt != portMapping->end()) {
+                destination[innerBlockUniqueName].insert(PortNameMapper{std::string(internalPortName), exportedNameIt->second.value_or(std::string())});
+            } else {
+            }
+        }
+    }
+}
+
+UiGraphBlock* UiGraphBlock::getBlockWithGraphChildren() {
+    if (isGraph()) {
+        return this;
+    }
+    if (isScheduler()) {
+        // schedulers keep their blocks in the single wrapped graph child
+        assert(childBlocks.size() <= 1);
+        return childBlocks.empty() ? nullptr : childBlocks[0].get();
+    }
+    return nullptr;
+}
+
+bool UiGraphBlock::subgraphRebuildVisiblePortsFromExportedPorts() {
+    if (!isGraph() && !isScheduler()) {
+        return false;
+    }
+
+    _inputPorts.clear();
+    _outputPorts.clear();
+
+    UiGraphBlock* graph     = getBlockWithGraphChildren();
+    auto          fillPorts = [this, graph](std::vector<UiGraphPort>& portsCollection, gr::PortDirection direction) {
+        const auto& exportedPorts = direction == gr::PortDirection::INPUT ? exportedInputPorts : exportedOutputPorts;
+        for (const auto& [childBlockName, portDefinitions] : exportedPorts) {
+            UiGraphBlock* child = graph ? graph->findBlockByUniqueName(childBlockName) : nullptr;
+            for (const auto& portDefinition : portDefinitions) {
+                auto& port         = portsCollection.emplace_back(/*owner*/ this);
+                port.portName      = portDefinition.exportedName;
+                port.portDirection = direction;
+                if (child) {
+                    auto portFound = child->findPortIteratorByName(direction == gr::PortDirection::INPUT ? child->_inputPorts : child->_outputPorts, portDefinition.internalName);
+                    if (portFound.second) {
+                        port.portType = portFound.first->portType;
+                    }
+                }
+            }
+        }
+    };
+
+    fillPorts(_inputPorts, gr::PortDirection::INPUT);
+    fillPorts(_outputPorts, gr::PortDirection::OUTPUT);
+    return true;
+}
+
 std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& edgeData) {
     UiGraphEdge edge;
     updateFieldFrom(edge.edgeSourceBlockName, edgeData, {}, gr::serialization_fields::EDGE_SOURCE_BLOCK);
@@ -469,39 +529,8 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
     edge.edgeSourcePortDefinition      = portDefinitionFor(std::string(gr::serialization_fields::EDGE_SOURCE_PORT));
     edge.edgeDestinationPortDefinition = portDefinitionFor(std::string(gr::serialization_fields::EDGE_DESTINATION_PORT));
 
-    auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
-        auto [it, found] = findBlockIteratorByUniqueName(currentBlockName);
-        if (!found) {
-            return nullptr;
-        }
-
-        auto& block = *it;
-        auto& ports = std::invoke(member, block);
-
-        return std::visit(gr::meta::overloaded{//
-                              [&ports](const gr::PortDefinition::IndexBased& indexBasedDefinition) -> UiGraphPort* {
-                                  // TODO: sub-index for ports -- when we add UI support for
-                                  // port arrays
-                                  if (indexBasedDefinition.topLevel >= ports.size()) {
-                                      return nullptr;
-                                  }
-
-                                  return std::addressof(ports[indexBasedDefinition.topLevel]);
-                              },
-                              [&ports](const gr::PortDefinition::StringBased& stringBasedDefinition) -> UiGraphPort* { //
-                                  auto portIt = std::ranges::find_if(ports, [&](const auto& port) {                    //
-                                      return port.portName == stringBasedDefinition.name;
-                                  });
-                                  if (portIt == ports.end()) {
-                                      return nullptr;
-                                  }
-                                  return std::addressof(*portIt);
-                              }},
-            portDefinition_.definition);
-    };
-
-    edge.edgeSourcePort      = findPortFor(edge.edgeSourceBlockName, &UiGraphBlock::_outputPorts, edge.edgeSourcePortDefinition);
-    edge.edgeDestinationPort = findPortFor(edge.edgeDestinationBlockName, &UiGraphBlock::_inputPorts, edge.edgeDestinationPortDefinition);
+    edge.edgeSourcePort      = resolveChildPort(edge.edgeSourceBlockName, gr::PortDirection::OUTPUT, edge.edgeSourcePortDefinition);
+    edge.edgeDestinationPort = resolveChildPort(edge.edgeDestinationBlockName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
 
     if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
         std::println("Warning: Edge definition invalid source {} destination {}", !!edge.edgeSourcePort, !!edge.edgeDestinationPort);
@@ -519,16 +548,121 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
     return edge;
 }
 
+UiGraphPort* UiGraphBlock::resolveChildPort(const std::string& childUniqueName, gr::PortDirection direction, const gr::PortDefinition& portDefinition) {
+    auto [it, found] = findBlockIteratorByUniqueName(childUniqueName);
+    if (!found) {
+        return nullptr;
+    }
+
+    auto& ports = direction == gr::PortDirection::INPUT ? (*it)->_inputPorts : (*it)->_outputPorts;
+
+    return std::visit(gr::meta::overloaded{//
+                          [&ports](const gr::PortDefinition::IndexBased& indexBasedDefinition) -> UiGraphPort* {
+                              // TODO: sub-index for ports -- when we add UI support for
+                              // port arrays
+                              if (indexBasedDefinition.topLevel >= ports.size()) {
+                                  return nullptr;
+                              }
+
+                              return std::addressof(ports[indexBasedDefinition.topLevel]);
+                          },
+                          [&ports](const gr::PortDefinition::StringBased& stringBasedDefinition) -> UiGraphPort* { //
+                              auto portIt = std::ranges::find_if(ports, [&](const auto& port) {                    //
+                                  return port.portName == stringBasedDefinition.name;
+                              });
+                              if (portIt == ports.end()) {
+                                  return nullptr;
+                              }
+                              return std::addressof(*portIt);
+                          }},
+        portDefinition.definition);
+}
+
+std::optional<UiGraphEdge> UiGraphBlock::parseSubgraphEdgeData(const gr::TensorView<gr::pmt::Value>& connectionView) {
+    // connections are of the format [sourceBlockName, sourcePort, destinationBlockName, destinationPort, ?minBufferSize]
+    if (connectionView.size() < 4) {
+        return {};
+    }
+    // copy so that indexing returns an owned thing instead of a temporary
+    const gr::Tensor<gr::pmt::Value> connection = connectionView.owned();
+
+    const auto uniqueNameForBlockName = [this](const std::string& childName) -> std::optional<std::string> {
+        auto [it, found] = findBlockIteratorBy({SearchProperty::Name}, childName);
+        if (!found) {
+            return {};
+        }
+        return (*it)->blockUniqueName;
+    };
+
+    const auto portDefinitionFor = [](const gr::pmt::Value& portField) -> std::optional<gr::PortDefinition> {
+        if (portField.is_string()) {
+            return gr::PortDefinition(portField.value_or(std::string()));
+        }
+        if (const auto indexPair = portField.get_if<gr::TensorView<gr::pmt::Value>>(); indexPair && indexPair->size() == 2) {
+            const gr::Tensor<gr::pmt::Value> indices = indexPair->owned();
+
+            const auto topLevel = indices.data()[0].get_if<std::int64_t>();
+            const auto subIndex = indices.data()[1].get_if<std::int64_t>();
+            if (!topLevel || !subIndex) {
+                return {};
+            }
+            return gr::PortDefinition(static_cast<std::size_t>(*topLevel), static_cast<std::size_t>(*subIndex));
+        }
+        if (const auto index = portField.get_if<std::int64_t>()) {
+            return gr::PortDefinition(static_cast<std::size_t>(*index));
+        }
+        return {};
+    };
+
+    const auto sourceBlockUniqueName      = uniqueNameForBlockName(connection.data()[0].value_or(std::string()));
+    const auto sourcePort                 = portDefinitionFor(connection.data()[1]);
+    const auto destinationBlockUniqueName = uniqueNameForBlockName(connection.data()[2].value_or(std::string()));
+    const auto destinationPort            = portDefinitionFor(connection.data()[3]);
+    if (!sourceBlockUniqueName || !sourcePort || !destinationBlockUniqueName || !destinationPort) {
+        return {};
+    }
+
+    UiGraphEdge edge;
+    edge.edgeSourceBlockName           = *sourceBlockUniqueName;
+    edge.edgeSourcePortDefinition      = *sourcePort;
+    edge.edgeDestinationBlockName      = *destinationBlockUniqueName;
+    edge.edgeDestinationPortDefinition = *destinationPort;
+    edge.edgeSourcePort                = resolveChildPort(edge.edgeSourceBlockName, gr::PortDirection::OUTPUT, edge.edgeSourcePortDefinition);
+    edge.edgeDestinationPort           = resolveChildPort(edge.edgeDestinationBlockName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
+    if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
+        return {};
+    }
+
+    if (connection.size() >= 5) {
+        if (const auto minBufferSize = connection.data()[4].get_if<gr::Size_t>()) {
+            edge.edgeMinBufferSize = static_cast<std::size_t>(*minBufferSize);
+        }
+    }
+    return edge;
+}
+
+void UiGraphBlock::graphResolveEdgePortPointersAndRemoveIfInvalid() {
+    std::erase_if(childEdges, [this](UiGraphEdge& edge) {
+        edge.edgeSourcePort      = resolveChildPort(edge.edgeSourceBlockName, gr::PortDirection::OUTPUT, edge.edgeSourcePortDefinition);
+        edge.edgeDestinationPort = resolveChildPort(edge.edgeDestinationBlockName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
+        return edge.edgeSourcePort == nullptr || edge.edgeDestinationPort == nullptr;
+    });
+}
+
 void UiGraphBlock::removeEdgesForBlock(UiGraphBlock& block) {
     std::erase_if(childEdges, [blockPtr = std::addressof(block)](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
     });
 
-    if (parentBlock) {
-        parentBlock->exportedInputPorts.erase(block.blockUniqueName);
-        parentBlock->exportedOutputPorts.erase(block.blockUniqueName);
-        parentBlock->requestBlockUpdate();
+    UiGraphBlock* exportOwner = (parentBlock && parentBlock->isScheduler()) ? parentBlock : this;
+    const bool    hadExports  = exportOwner->exportedInputPorts.erase(block.blockUniqueName) > 0 || //
+                            exportOwner->exportedOutputPorts.erase(block.blockUniqueName) > 0;
+    if (hadExports) {
+        if (exportOwner->subgraphRebuildVisiblePortsFromExportedPorts() && exportOwner->parentBlock) {
+            exportOwner->parentBlock->graphResolveEdgePortPointersAndRemoveIfInvalid();
+        }
+        exportOwner->requestBlockUpdate();
     }
 }
 
@@ -909,6 +1043,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // setBlockData, but force setting children data
         targetBlock.block->setBasicBlockData(data);
         targetBlock.block->setSchedulerGraph(data);
+        if (targetBlock.block->subgraphRebuildVisiblePortsFromExportedPorts() && targetBlock.parentGraph) {
+            targetBlock.parentGraph->graphResolveEdgePortPointersAndRemoveIfInvalid();
+        }
         targetBlock.block->blockCategoryInfo = UiGraphBlock::SchedulerBlockInfo{.childrenLoaded = true};
         requestedFullUpdate                  = false;
 
@@ -951,6 +1088,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         }
     } else if (message.endpoint == graph::kSubgraphExportedPort) {
         targetBlock.block->handlePortExported(data);
+
+    } else if (message.endpoint == scheduler::kBlocksGrouped || message.endpoint == scheduler::kBlocksUngrouped) {
+        requestFullUpdate();
 
     } else {
         if (!message.data) {

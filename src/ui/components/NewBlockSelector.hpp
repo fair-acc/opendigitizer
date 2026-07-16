@@ -3,13 +3,12 @@
 
 #include <imgui.h>
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
 
 namespace DigitizerUi {
-
-class UiGraphModel;
 
 class NewBlockSelector {
 private:
@@ -20,25 +19,21 @@ private:
     std::string m_currentlySelectedType;
     std::string m_previouslySelectedType;
     std::string m_selectedTypeParametrizationListName;
-    std::string m_targetSchedulerUniqueName;
-    std::string m_targetGraphUniqueName;
 
-    UiGraphModel* m_graphModel = nullptr;
+    std::function<void(std::string)> m_onTypeSelected;
 
     void drawNamespaceTree(const ImVec2& size);
 
 public:
     std::map<std::string, std::set<std::string>> data;
 
-    void open(std::string targetSchedulerUniqueName, std::string targetGraphUniqueName) {
-        m_targetSchedulerUniqueName = targetSchedulerUniqueName;
-        m_targetGraphUniqueName     = targetGraphUniqueName;
-        assert(!m_targetGraphUniqueName.empty() && !m_targetSchedulerUniqueName.empty());
+    /// onTypeSelected is invoked with the chosen type when the user confirms with OK
+    void open(std::function<void(std::string)> onTypeSelected) {
+        m_onTypeSelected = std::move(onTypeSelected);
+        assert(m_onTypeSelected);
         ImGui::OpenPopup(m_windowName.c_str());
     }
     void draw();
-
-    void setGraphModel(UiGraphModel* newModel) { m_graphModel = newModel; }
 };
 } // namespace DigitizerUi
 
