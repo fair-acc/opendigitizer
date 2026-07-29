@@ -222,6 +222,8 @@ public:
 
     UiGraphBlock(UiGraphModel* ownerGraph_, UiGraphBlock* parentBlock_) : ownerGraph(ownerGraph_), parentBlock(parentBlock_) {}
 
+    ~UiGraphBlock();
+
     UiGraphBlock(const UiGraphBlock&)            = delete;
     UiGraphBlock& operator=(const UiGraphBlock&) = delete;
     UiGraphBlock(UiGraphBlock&&)                 = delete;
@@ -261,6 +263,10 @@ public:
     std::map<std::string, std::set<std::string>> knownSchedulerTypes;
 
     UiGraphBlock* selectedBlock = nullptr;
+
+    // child blocks will increment this when they are destroyed. it serves as a
+    // generation so the editor can know its node id pointers are invalid
+    std::uint64_t blockDestructionCount = 0;
 
     /**
      * @return true if consumed the message
