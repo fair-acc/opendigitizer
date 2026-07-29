@@ -91,6 +91,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         graphModel.sendMessage(std::move(message));
     }
 
+    static void sendRemoveBlock(const std::string& uniqueName) {
+        auto&       graphModel = g_state.dashboard->graphModel;
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kRemoveBlock;
+        message.serviceName = graphModel.rootBlock.blockUniqueName;
+        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", rootGraph()->blockUniqueName}};
+        graphModel.sendMessage(std::move(message));
+    }
+
     static const UiGraphEdge* findEdge(const UiGraphBlock* graph, std::string_view sourceBlockUniqueName, std::string_view destinationBlockUniqueName) {
         auto it = std::ranges::find_if(graph->childEdges, [&](const UiGraphEdge& edge) { //
             return edge.edgeSourceBlockName == sourceBlockUniqueName && edge.edgeDestinationBlockName == destinationBlockUniqueName;
@@ -404,6 +414,89 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(edge == nullptr || (edge->edgeSourcePort != nullptr && edge->edgeDestinationPort != nullptr)) << "restored edge should resolve its ports";
             }
 
+            g_state.stopScheduler();
+        });
+
+        registerMessageTest("removing the selected block clears the selection", [](ImGuiTestContext* ctx) {
+            reloadAndWait(ctx, reloadGrouping);
+
+            UiGraphBlock* loner1 = findByName("loner1");
+            expect(loner1 != nullptr) << fatal;
+            const auto loner1UniqueName = loner1->blockUniqueName;
+
+            g_state.dashboard->graphModel.selectedBlock = loner1;
+
+            sendRemoveBlock(loner1UniqueName);
+            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm block removal";
+            expect(awaitCondition(ctx, [loner1UniqueName] { return rootGraph()->findBlockByUniqueName(loner1UniqueName) == nullptr; })) << fatal << "removed block should disappear from the graph model";
+
+            expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            g_state.stopScheduler();
+        });
+
+        registerMessageTest("removing a subgraph clears the selection of an inner block", [](ImGuiTestContext* ctx) {
+            reloadAndWait(ctx, reloadGrouping);
+
+            UiGraphBlock* loner1 = findByName("loner1");
+            UiGraphBlock* loner2 = findByName("loner2");
+            expect(loner1 != nullptr && loner2 != nullptr) << fatal;
+            const auto loner1UniqueName = loner1->blockUniqueName;
+            const auto loner2UniqueName = loner2->blockUniqueName;
+
+            UiGraphBlock* subgraph = groupAndWait(ctx, {loner1UniqueName, loner2UniqueName});
+            expect(subgraph != nullptr) << fatal;
+
+            g_state.dashboard->graphModel.selectedBlock = subgraph;
+
+            sendRemoveBlock(subgraph->blockUniqueName);
+            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm subgraph removal";
+            expect(awaitCondition(ctx, [] { return findSubgraphIn(rootGraph()) == nullptr; })) << fatal << "removed subgraph should disappear from the graph model";
+
+            expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            g_state.stopScheduler();
+        });
+
+        registerMessageTest("reinspection not reporting the selected block clears the selection", [](ImGuiTestContext* ctx) {
+            reloadAndWait(ctx, reloadGrouping);
+
+            UiGraphBlock* loner1 = findByName("loner1");
+            expect(loner1 != nullptr) << fatal;
+            g_state.dashboard->graphModel.selectedBlock = loner1;
+
+            // simulate an inspection reply which no longer reports any of the child blocks
+            rootGraph()->setGraphChildren(gr::property_map{});
+            expect(rootGraph()->childBlocks.empty()) << fatal;
+
+            expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            g_state.stopScheduler();
+        });
+
+        registerMessageTest("ungrouping clears the selection of an inner block", [](ImGuiTestContext* ctx) {
+            reloadAndWait(ctx, reloadGrouping);
+
+            UiGraphBlock* loner1 = findByName("loner1");
+            UiGraphBlock* loner2 = findByName("loner2");
+            expect(loner1 != nullptr && loner2 != nullptr) << fatal;
+            const auto loner1UniqueName = loner1->blockUniqueName;
+            const auto loner2UniqueName = loner2->blockUniqueName;
+
+            UiGraphBlock* subgraph = groupAndWait(ctx, {loner1UniqueName, loner2UniqueName});
+            expect(subgraph != nullptr) << fatal;
+
+            g_state.dashboard->graphModel.selectedBlock = subgraph;
+
+            sendUngroupBlocks(subgraph->blockUniqueName);
+            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
+            expect(awaitCondition(ctx,
+                [loner1UniqueName, loner2UniqueName] {
+                    UiGraphBlock* root = rootGraph();
+                    return root->findBlockByUniqueName(loner1UniqueName) != nullptr && //
+                           root->findBlockByUniqueName(loner2UniqueName) != nullptr && //
+                           findSubgraphIn(root) == nullptr;
+                }))
+                << fatal << "ungrouped blocks should return to the root graph";
+
+            expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
             g_state.stopScheduler();
         });
     }

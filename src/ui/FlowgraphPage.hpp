@@ -42,6 +42,10 @@ private:
     const UiGraphBlock* _filterBlock   = nullptr;
     UiGraphBlock*       _selectedBlock = nullptr;
 
+    // keep track of whether a block has been destroyed and if so refresh things, so we don't have dangling NodeIds
+    std::uint64_t _seenBlockDestructionCount = 0;
+    void          dropReferencesToDeletedBlocks();
+
     struct ExportPortMessageData {
         std::string uniqueBlockName;
         std::string portDirection;
@@ -176,6 +180,8 @@ public:
     [[nodiscard]] std::vector<std::string> selectedBlockUniqueNames();
 
     void drawGroupingMenuItems(std::vector<std::string> uniqueNames);
+
+    void drawBlockContextMenu();
 
     void setFilterBlock(const UiGraphBlock* block) { _filterBlock = block; }
 

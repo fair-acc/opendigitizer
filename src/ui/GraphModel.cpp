@@ -16,6 +16,15 @@
 
 using namespace std::string_literals;
 
+UiGraphBlock::~UiGraphBlock() {
+    if (ownerGraph) {
+        ownerGraph->blockDestructionCount++;
+        if (ownerGraph->selectedBlock == this) {
+            ownerGraph->selectedBlock = nullptr;
+        }
+    }
+}
+
 auto UiGraphBlock::findBlockIteratorBy(std::initializer_list<SearchProperty> searchProperties, std::string_view value) {
     assert(std::get_if<GraphBlockInfo>(&blockCategoryInfo) && "This makes sense only for graphs");
     auto it = std::ranges::find_if(childBlocks, [&](const auto& block) {
@@ -108,10 +117,6 @@ bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
     }
 
     removeEdgesForBlock(*blockIt->get());
-
-    if (blockIt->get() == ownerGraph->selectedBlock) {
-        ownerGraph->selectedBlock = nullptr;
-    }
 
     childBlocks.erase(blockIt);
     shouldRearrangeBlocks = true;
