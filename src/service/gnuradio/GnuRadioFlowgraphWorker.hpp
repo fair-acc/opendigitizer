@@ -104,13 +104,15 @@ private:
             return;
         }
 
-        std::lock_guard lockGuard(_flowgraphLock);
-        auto            grGraph = gr::loadGrc(*_pluginLoader, initialFlowGraph.serialisedFlowgraph);
-        if (!grGraph.has_value()) {
-            throw std::invalid_argument(std::format("Could not parse flow graph: {}", grGraph.error().message));
+        {
+            std::lock_guard lockGuard(_flowgraphLock);
+            if (auto grGraph = gr::loadGrc(*_pluginLoader, initialFlowGraph.serialisedFlowgraph); grGraph.has_value()) {
+                _flowgraph = std::move(initialFlowGraph);
+                _acquisitionWorker.scheduleGraphChange(std::move(*grGraph));
+            } else {
+                throw std::invalid_argument(std::format("Could not parse flow graph: {}", grGraph.error()));
+            }
         }
-        _flowgraph = std::move(initialFlowGraph);
-        _acquisitionWorker.scheduleGraphChange(std::move(grGraph).value());
     }
 
     void handleGetRequest(flowgraph::Flowgraph& out) {
@@ -125,14 +127,15 @@ private:
     void replaceGraphGRC(const flowgraph::Flowgraph& in, flowgraph::Flowgraph& out) {
         {
             std::lock_guard lockGuard(_flowgraphLock);
-            auto            grGraph = gr::loadGrc(*_pluginLoader, in.serialisedFlowgraph);
-            if (!grGraph.has_value()) {
-                throw std::invalid_argument(std::format("Could not parse flow graph: {}", grGraph.error().message));
-            }
-            _flowgraph = in;
-            out        = in;
+            if (auto grGraph = gr::loadGrc(*_pluginLoader, in.serialisedFlowgraph); grGraph.has_value()) {
+                _flowgraph = in;
+                out        = in;
 
-            _acquisitionWorker.scheduleGraphChange(std::move(grGraph).value());
+                _acquisitionWorker.scheduleGraphChange(std::move(*grGraph));
+
+            } else {
+                throw std::invalid_argument(std::format("Could not parse flow graph: {}", grGraph.error()));
+            }
         }
         notifyUpdate();
     }

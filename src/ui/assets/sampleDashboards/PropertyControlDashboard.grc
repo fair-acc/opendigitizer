@@ -151,7 +151,7 @@ blocks:
         parameters:
           duration: 2
           start_value: !!float32 38e9
-          final_value: !!float32 0
+          final_value: !!float32 00e9
           round_off_time: 0.3
           sample_rate: 1000
           signal_type: ParabolicRamp

@@ -1110,12 +1110,12 @@ gr::BlockModel* Dashboard::emplaceChartBlock(std::string_view chartTypeName, con
     }
 
     // Create block via registry
-    auto blockModel = uiGraph.emplaceBlock(resolvedTypeName, initParams);
-    if (!blockModel.has_value()) {
+    const auto& blockModelRef = uiGraph.emplaceBlock(resolvedTypeName, initParams);
+    if (!blockModelRef) {
         return nullptr;
     }
 
-    return blockModel.value().get();
+    return blockModelRef->get();
 }
 
 void Dashboard::Service::execute() {
