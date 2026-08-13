@@ -141,6 +141,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 g_state.dashboardPage->draw(DigitizerUi::DashboardPage::Mode::Interaction);
                 ut::expect(!g_state.dashboard->uiWindows.empty());
+                g_state.dashboard->handleMessages();
             }
         };
 
@@ -178,8 +179,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0) {
                 ctx->Yield();
             }
-
-            g_state.stopScheduler();
 
             "expected UIWindow names"_test = [] {
                 expect(findWindowByName("Plot 1") != nullptr) << "Plot 1 window";
@@ -290,6 +289,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
                 captureScreenshot(*ctx);
             };
+
+            g_state.stopScheduler();
         };
     }
 };

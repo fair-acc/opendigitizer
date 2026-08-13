@@ -195,7 +195,7 @@ void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<
     }
 }
 
-gr::Tag makeFairTimingTag(std::uint64_t triggerTime, int eventNumber, std::optional<int> chainIndex = {}, std::optional<int> sequenceIndex = {}, std::optional<int> processIndex = {}, std::optional<int> timingGroupID = {}) {
+gr::property_map makeFairTimingTagMap(std::uint64_t triggerTime, int eventNumber, std::optional<int> chainIndex = {}, std::optional<int> sequenceIndex = {}, std::optional<int> processIndex = {}, std::optional<int> timingGroupID = {}) {
     gr::property_map metaInfo;
     metaInfo.emplace("EVENT-NO", eventNumber);
     if (chainIndex) {
@@ -215,7 +215,7 @@ gr::Tag makeFairTimingTag(std::uint64_t triggerTime, int eventNumber, std::optio
     tagMap.emplace(gr::tag::TRIGGER_TIME.shortKey(), triggerTime);
     tagMap.emplace(gr::tag::CONTEXT.shortKey(), "FAIR-TIMING:C=1.S=1.P=1.T=1");
     tagMap.emplace(gr::tag::TRIGGER_META_INFO.shortKey(), metaInfo);
-    return gr::Tag{0, std::move(tagMap)};
+    return tagMap;
 }
 } // namespace
 
@@ -1092,7 +1092,8 @@ connections:
             return acq;
         };
 
-        state.updateFromTags(std::array{makeFairTimingTag(1000, TimingEventState::CmdBpStartEventNumber, 11, 22, 33, 44)});
+        const auto bpStartTagMap = makeFairTimingTagMap(1000, TimingEventState::CmdBpStartEventNumber, 11, 22, 33, 44);
+        state.updateFromTags(std::array{gr::Tag{0, bpStartTagMap}});
         auto acq = apply();
         expect(eq(acq.chainIndex.value(), 11));
         expect(eq(acq.sequenceIndex.value(), 22));
@@ -1105,7 +1106,8 @@ connections:
         expect(eq(acq.sequenceStartStamp.value(), 1000LL));
         expect(eq(acq.processStartStamp.value(), 1000LL));
 
-        state.updateFromTags(std::array{makeFairTimingTag(1100, 777)});
+        const auto eventTagMap = makeFairTimingTagMap(1100, 777);
+        state.updateFromTags(std::array{gr::Tag{0, eventTagMap}});
         acq = apply();
         expect(eq(acq.chainIndex.value(), 11));
         expect(eq(acq.sequenceIndex.value(), 22));
@@ -1118,7 +1120,8 @@ connections:
         expect(eq(acq.sequenceStartStamp.value(), 1000LL));
         expect(eq(acq.processStartStamp.value(), 1000LL));
 
-        state.updateFromTags(std::array{makeFairTimingTag(1200, TimingEventState::CmdBpStartEventNumber, 11, 22, 34, 44)});
+        const auto nextBpStartTagMap = makeFairTimingTagMap(1200, TimingEventState::CmdBpStartEventNumber, 11, 22, 34, 44);
+        state.updateFromTags(std::array{gr::Tag{0, nextBpStartTagMap}});
         acq = apply();
         expect(eq(acq.chainIndex.value(), 11));
         expect(eq(acq.sequenceIndex.value(), 22));

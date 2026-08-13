@@ -58,17 +58,22 @@ inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property
     } result;
 
     for (const auto& [diff, map] : tags) {
-        if (auto triggerNameIt = map.find(gr::tag::TRIGGER_NAME.shortKey()); triggerNameIt != map.end()) {
+        auto findTag = [&map](const auto& tag) {
+            auto it = map.find(std::string_view{tag});
+            return it != map.end() ? it : map.find(tag.shortKey());
+        };
+
+        if (auto triggerNameIt = findTag(gr::tag::TRIGGER_NAME); triggerNameIt != map.end()) {
             std::string name = triggerNameIt->second.value_or(std::string());
 
-            if (auto contextIt = map.find(gr::tag::CONTEXT.shortKey()); contextIt != map.end()) {
+            if (auto contextIt = findTag(gr::tag::CONTEXT); contextIt != map.end()) {
                 const auto context = contextIt->second.value_or(std::string());
                 if (!context.empty()) {
                     name = std::format("{}/{}", name, context);
                 }
             }
 
-            if (auto timeIt = map.find(gr::tag::TRIGGER_TIME.shortKey()); timeIt != map.end()) {
+            if (auto timeIt = findTag(gr::tag::TRIGGER_TIME); timeIt != map.end()) {
                 result = {name, timeIt->second.value_or(std::uint64_t{0})};
             } else {
                 result = {name, std::uint64_t{0}};
