@@ -339,8 +339,11 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
 
         gr::Graph grGraph = [this, &rootMap]() -> gr::Graph {
             try {
-                gr::Graph resultGraph;
-                gr::detail::loadGraphFromMap(*pluginLoader, resultGraph, rootMap);
+                gr::Graph  resultGraph;
+                const auto loadResult = gr::detail::loadGraphFromMap(*pluginLoader, resultGraph, rootMap);
+                if (!loadResult.has_value()) {
+                    throw gr::exception(loadResult.error().message, loadResult.error().sourceLocation);
+                }
                 return resultGraph;
             } catch (const gr::exception& e) {
                 throw;
@@ -1107,12 +1110,12 @@ gr::BlockModel* Dashboard::emplaceChartBlock(std::string_view chartTypeName, con
     }
 
     // Create block via registry
-    auto& blockModelRef = uiGraph.emplaceBlock(resolvedTypeName, initParams);
-    if (!blockModelRef) {
+    auto blockModel = uiGraph.emplaceBlock(resolvedTypeName, initParams);
+    if (!blockModel.has_value()) {
         return nullptr;
     }
 
-    return blockModelRef.get();
+    return blockModel.value().get();
 }
 
 void Dashboard::Service::execute() {

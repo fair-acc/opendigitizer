@@ -17,8 +17,13 @@ struct CountSource : public gr::Block<CountSource<T>> {
     float                    signal_max      = std::numeric_limits<float>::max();    ///< maximum value of the signal
     std::string              direction       = "up";                                 ///< direction of the count, "up" or "down"
     std::vector<std::string> timing_tags;
-    std::size_t              _produced = 0;
-    std::deque<gr::Tag>      _pending_tags;
+    struct PendingTag {
+        std::size_t      index;
+        gr::property_map map;
+    };
+
+    std::size_t            _produced = 0;
+    std::deque<PendingTag> _pending_tags;
 
     GR_MAKE_REFLECTABLE(CountSource, out, n_samples, initial_value, sample_rate, signal_name, signal_unit, signal_quantity, signal_min, signal_max, direction, timing_tags);
 
@@ -27,10 +32,10 @@ struct CountSource : public gr::Block<CountSource<T>> {
         _pending_tags.clear();
 
         auto genTrigger = [](std::size_t index, std::string triggerName, std::string triggerCtx = {}) {
-            return gr::Tag{index, {{gr::tag::TRIGGER_NAME.shortKey(), triggerName},         //
-                                      {gr::tag::TRIGGER_TIME.shortKey(), std::uint64_t(0)}, //
-                                      {gr::tag::TRIGGER_OFFSET.shortKey(), 0.f},            //
-                                      {gr::tag::CONTEXT.shortKey(), triggerCtx}}};
+            return PendingTag{index, gr::property_map{{gr::tag::TRIGGER_NAME, std::move(triggerName)}, //
+                                         {gr::tag::TRIGGER_TIME, std::uint64_t{0}},                    //
+                                         {gr::tag::TRIGGER_OFFSET, 0.f},                               //
+                                         {gr::tag::CONTEXT, std::move(triggerCtx)}}};
         };
 
         for (const auto& tagStr : timing_tags) {
