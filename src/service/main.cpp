@@ -322,14 +322,18 @@ connections:
             auto dns = dnsEntriesForSignal(signal);
             toUnregisterEntries.insert(toUnregisterEntries.end(), dns.begin(), dns.end());
         }
-        dns_client.unregisterSignals(std::move(toUnregisterEntries));
+        if (!toUnregisterEntries.empty()) {
+            dns_client.unregisterSignals(std::move(toUnregisterEntries));
+        }
 
         std::vector<dns::Entry> toRegisterEntries;
         for (const auto& signal : toRegister) {
             auto dns = dnsEntriesForSignal(signal);
             toRegisterEntries.insert(toRegisterEntries.end(), dns.begin(), dns.end());
         }
-        dns_client.registerSignals(std::move(toRegisterEntries));
+        if (!toRegisterEntries.empty()) {
+            dns_client.registerSignals(std::move(toRegisterEntries));
+        }
         registeredSignals = std::move(signals);
     });
 
