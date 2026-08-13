@@ -7,13 +7,10 @@
 #include "../components/Dialog.hpp"
 #include "../components/ListBox.hpp"
 
-#include "../ui/GraphModel.hpp"
-
 #include "NewBlockSelectorFuzzySearch.hpp"
 #include "scope_exit.hpp"
 
-#include <gnuradio-4.0/Message.hpp>
-#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/meta/utils.hpp>
 
 using namespace std::string_literals;
 using DigitizerUi::components::FilterResult;
@@ -287,20 +284,13 @@ void NewBlockSelector::draw() {
         }
     }
 
-    const bool okEnabled = !m_currentlySelectedType.empty();
-    if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
-        if (!m_currentlySelectedType.empty() && selectedParametrization) {
-            gr::Message message;
-            std::string type    = std::format("{}{}", m_currentlySelectedType, selectedParametrization.value_or(std::string{}));
-            message.cmd         = gr::message::Command::Set;
-            message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-            message.serviceName = m_targetSchedulerUniqueName;
-            message.data        = gr::property_map{{"type", std::move(type)}};
-            if (!m_targetGraphUniqueName.empty()) {
-                (*message.data)["_targetGraph"] = m_targetGraphUniqueName;
-            }
-            m_graphModel->sendMessage(message);
-        }
+    const bool okEnabled    = !m_currentlySelectedType.empty();
+    const auto dialogResult = components::DialogButtons(okEnabled);
+    if (dialogResult == components::DialogButton::Ok && !m_currentlySelectedType.empty() && selectedParametrization && m_onTypeSelected) {
+        m_onTypeSelected(std::format("{}{}", m_currentlySelectedType, selectedParametrization.value_or(std::string{})));
+    }
+    if (dialogResult != components::DialogButton::None) {
+        m_onTypeSelected = {}; // release captured state once the popup closes
     }
 }
 } // namespace DigitizerUi

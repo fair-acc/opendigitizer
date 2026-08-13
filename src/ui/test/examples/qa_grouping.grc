@@ -1,0 +1,23 @@
+blocks:
+  - id: opendigitizer::SineSource<float32>
+    parameters:
+      name: source
+  - id: gr::testing::Copy<float32>
+    parameters:
+      name: middleA
+  - id: gr::testing::Copy<float32>
+    parameters:
+      name: middleB
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: sink
+  - id: opendigitizer::SineSource<float32>
+    parameters:
+      name: loner1
+  - id: opendigitizer::SineSource<float32>
+    parameters:
+      name: loner2
+connections:
+  - [source, 0, middleA, 0]
+  - [middleA, 0, middleB, 0]
+  - [middleB, 0, sink, 0]
