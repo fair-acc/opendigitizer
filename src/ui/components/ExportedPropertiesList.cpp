@@ -79,9 +79,9 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
     decltype(UiGraphBlock::blockSettingsMetaInformation)::iterator metaIterator,    //
     const ExportedPropertyList::Params&                            parameters       //
 ) {
-    const gr::pmt::Value& current               = settingIterator->second;
-    const auto&           meta                  = metaIterator->second;
-    const auto            propertyUiControlType = meta.controlType(settingIterator->first, current);
+    const auto [settingName, current] = *settingIterator;
+    const auto& meta                  = metaIterator->second;
+    const auto  propertyUiControlType = meta.controlType(settingName, current);
 
     // filter properties not matching type
     if (parameters.typeFilter && parameters.typeFilter != propertyUiControlType) {
@@ -90,7 +90,7 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
 
     IMW::Group property;
 
-    const std::string settingKey(settingIterator->first);
+    const std::string settingKey(settingName);
     const std::string settingId = std::format("{}{}", block->blockName, settingKey);
     IMW::ChangeStrId  id(settingId.c_str());
 
@@ -121,7 +121,7 @@ static ValidExportedPropertyResult drawValidExportedProperty(                   
         const auto    labelSize = ImGui::CalcTextSize(settingKey.c_str());
         ImGui::SetNextItemWidth(-(labelSize + moreOptionsButtonSize + ImGui::GetStyle().ItemSpacing * 2.f).x);
         if (auto newValue = editBlockProperty(settingKey.c_str(), settingKey, current, meta)) {
-            block->setSetting(settingIterator->first, std::move(newValue));
+            block->setSetting(settingKey, std::move(newValue));
         }
     }
 

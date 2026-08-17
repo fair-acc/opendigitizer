@@ -52,17 +52,17 @@ static void alignForWidth(float width, float alignment = 0.5f) noexcept {
 }
 
 struct PropertyInfo {
-    const gr::pmt::Value&                        currentValue;
+    gr::pmt::Value                               currentValue;
     const UiGraphBlock::SettingsMetaInformation& meta;
     UiGraphBlock&                                block;
 };
 
 static std::optional<PropertyInfo> getPropertyInfo(UiGraphModel& graphModel, const std::string& blockName, const std::string& propertyName) {
     if (auto* block = graphModel.recursiveFindBlockByName(blockName).block) {
-        const auto propertyIter = block->blockSettings.find(propertyName);
-        const auto metaIter     = block->blockSettingsMetaInformation.find(propertyName);
-        if (propertyIter != std::end(block->blockSettings) && metaIter != std::end(block->blockSettingsMetaInformation)) {
-            return PropertyInfo{propertyIter->second, metaIter->second, *block};
+        auto       propertyValue = block->blockSettings.find_value(propertyName, std::pmr::get_default_resource());
+        const auto metaIter      = block->blockSettingsMetaInformation.find(propertyName);
+        if (propertyValue && metaIter != std::end(block->blockSettingsMetaInformation)) {
+            return PropertyInfo{std::move(*propertyValue), metaIter->second, *block};
         }
     }
     return {};
