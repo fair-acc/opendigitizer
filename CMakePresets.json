@@ -54,13 +54,31 @@
     {
       "name": "wasm-release",
       "inherits": "base",
-      "displayName": "WASM Release",
+      "displayName": "WASM Release (dynload plugins)",
+      "description": "Load SIDE_MODULE *Plugin.wasm at runtime; expects GR4 from ci-latest-wasm (/opt/gnuradio4-emscripten)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "/opt/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
         "DISABLE_WASM_BUILD": "ON",
         "OPENDIGITIZER_ENABLE_TESTING": "OFF",
-        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH"
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-emscripten",
+        "OD_WASM_STATIC_BLOCKLIBS": "OFF"
+      }
+    },
+    {
+      "name": "wasm-static-blocklibs",
+      "inherits": "base",
+      "displayName": "WASM Release (static blocklibs)",
+      "description": "Link Gr*Blocks into the main module; expects GR4 from ci-latest-wasm-static (/opt/gnuradio4-emscripten-static)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "/opt/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "DISABLE_WASM_BUILD": "ON",
+        "OPENDIGITIZER_ENABLE_TESTING": "OFF",
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-emscripten-static",
+        "OD_WASM_STATIC_BLOCKLIBS": "ON"
       }
     }
   ],
@@ -69,6 +87,7 @@
     { "name": "gcc-release", "configurePreset": "gcc-release", "jobs": 6 },
     { "name": "clang-debug", "configurePreset": "clang-debug", "jobs": 6 },
     { "name": "clang-release", "configurePreset": "clang-release", "jobs": 6 },
-    { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 }
+    { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 },
+    { "name": "wasm-static-blocklibs", "configurePreset": "wasm-static-blocklibs", "jobs": 6 }
   ]
 }

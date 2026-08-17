@@ -194,6 +194,17 @@ public:
         header.requestApplicationStop        = [this] { isRunning = false; };
         header.loadAssets();
 
+#ifdef __EMSCRIPTEN__
+        // Skip auto-load: opening a dashboard dlopen()s SIDE_MODULE plugins on the main thread
+        // (~60MB). That races the first paint and leaves the HTML spinner up. Also avoid the
+        // default RemoteStream URL against the static file server (404 → noisy fetch/exit path).
+        // Let the user pick a sample from the open-dashboard page after the UI is up.
+        (void)argc;
+        (void)argv;
+        if (dashboard == nullptr) {
+            mainViewMode = ViewMode::OPEN_SAVE_DASHBOARD;
+        }
+#else
         if (argc > 1) { // load dashboard if specified on the command line/query parameter
             const char* url = argv[1];
             if (strlen(url) > 0) {
@@ -221,6 +232,7 @@ public:
         if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
             loadDashboard(firstDashboard);
         }
+#endif
     }
 
     [[nodiscard]] bool viewModeReturnIsExitRequested(float startHeight) const noexcept {
@@ -270,7 +282,9 @@ public:
                 dashboard->handleMessages();
             }
 
-            IMW::Disabled disabled(dashboard == nullptr);
+            // Do not disable the open/save page when no dashboard is loaded — that is how the
+            // user loads the first one. Header buttons above this scope stay interactive either way.
+            IMW::Disabled disabled(dashboard == nullptr && mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD);
 
             if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
                 components::Toolbar(toolbarBlocks);

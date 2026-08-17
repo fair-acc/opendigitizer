@@ -14,6 +14,8 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+#include "PluginPaths.hpp"
+
 #include <RestClient.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -131,12 +133,10 @@ struct Dashboard {
     };
 
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
-        std::vector<std::string> pluginPaths;
-#ifndef __EMSCRIPTEN__
-        pluginPaths.push_back((std::filesystem::current_path() / "plugins").string());
-#endif
+        auto pluginPaths = Digitizer::resolvePluginSearchPaths();
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     }();
+
     std::atomic<bool>               isInUse = false;
     std::function<void(Dashboard*)> requestClose;
 
@@ -161,6 +161,7 @@ struct Dashboard {
 
     void load();
     void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
+    void loadPlugins(std::function<void()> done);
     void save();
     void saveStore(gr::property_map& headerYaml, gr::property_map& dashboardYaml); // actually send message to save endpoint with serialized dashboard
     void doLoad(const gr::property_map& dashboard);
