@@ -65,6 +65,13 @@ set(FETCH_CONTENT_UI_TARGETS
   plf_colony
 )
 
+# OpenDigitizer links GR4 block libraries directly into the WASM UI.
+if(EMSCRIPTEN)
+  set(INTERNAL_ENABLE_BLOCK_PLUGINS
+      OFF
+      CACHE BOOL "Build GR4 static block libraries for the OpenDigitizer WASM UI" FORCE)
+endif()
+
 find_package(gnuradio4 4.0.0 QUIET)
 if (NOT gnuradio4_FOUND)
   message(STATUS "Pre-built gnuradio4 not found, fetching and building from source...")
