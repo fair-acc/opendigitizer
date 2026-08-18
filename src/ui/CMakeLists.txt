@@ -18,6 +18,9 @@ set(GR_MAX_WASM_THREAD_COUNT
 
 if(EMSCRIPTEN)
   message(STATUS "Emscripten version: ${EMSCRIPTEN_VERSION}")
+  # MAIN_MODULE=1 (gnuradio-core-dynload) requires PIC; the standalone src/ui
+  # ExternalProject does not inherit the root CMAKE_POSITION_INDEPENDENT_CODE.
+  set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
   # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
@@ -303,18 +306,20 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
-         gnuradio4::vir
-         gnuradio4::gnuradio-blocklib-core)
+         gnuradio4::vir)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-core-dynload)
+  # LINK_ONLY: blocklib-core's INTERFACE pulls gnuradio-core without WHOLE_ARCHIVE,
+  # which CMake rejects next to dynload's WHOLE_ARCHIVE of the same archive.
+  target_link_libraries(${target_name}lib PUBLIC "$<LINK_ONLY:gnuradio4::gnuradio-blocklib-core>"
+                                                 gnuradio4::gnuradio-core-dynload)
 elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
   # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-core)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
   target_compile_definitions(${target_name}lib PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
   target_compile_definitions(${target_name} PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
 else()
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-core-dynload)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
 endif()
 
 # Native always links blocklibs. WASM dynload loads SIDE_MODULE plugins at runtime;

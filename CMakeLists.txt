@@ -80,17 +80,13 @@ option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
   # BOTH: emscripten cmake otherwise ignores host CMAKE_PREFIX_PATH when finding gnuradio4.
-  # Put the Emscripten GR4 prefix first so find_package does not pick a native install.
+  # Use only the Emscripten GR4 prefix so find_package does not pick a native install.
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
-  set(_wasm_cmake_prefix_path "${OD_WASM_GNURADIO4_PREFIX}")
-  if(CMAKE_PREFIX_PATH)
-    list(APPEND _wasm_cmake_prefix_path ${CMAKE_PREFIX_PATH})
-  endif()
   string(
     REPLACE ";"
             "|"
             _wasm_cmake_prefix_path
-            "${_wasm_cmake_prefix_path}")
+            "${OD_WASM_GNURADIO4_PREFIX}")
   ExternalProject_Add(
     ui-wasm
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
@@ -102,7 +98,7 @@ if(NOT DISABLE_WASM_BUILD)
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
       -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER}
       -DOPENDIGITIZER_WARNINGS_AS_ERRORS=${OPENDIGITIZER_WARNINGS_AS_ERRORS} ${OD_WASM_CMAKE_OPTIONS}
-    BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
+    BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm --parallel
     BINARY_DIR ${BUILD_DIR}/ui-wasm
     BUILD_ALWAYS 1
     INSTALL_COMMAND "" # skip install
