@@ -51,6 +51,9 @@ message("ENABLE_IMGUI_TEST_ENGINE     : ${ENABLE_IMGUI_TEST_ENGINE}")
 set(OD_WASM_CMAKE_OPTIONS
     ""
     CACHE STRING "Additional cmake options to pass to the emscripten ui build")
+set(OD_WASM_GNURADIO4_PREFIX
+    "/opt/gnuradio4-emscripten"
+    CACHE PATH "Installed Emscripten gnuradio4 prefix for the ui-wasm ExternalProject")
 
 set(WITH_DOCS OFF)
 set(SDL_TEST OFF)
@@ -76,15 +79,18 @@ add_subdirectory(src/ui)
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
-  # -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH is needed to find dependencies for the WASM build, otherwise it would
-  # ignore the host system and fail to find gnuradio even if we pass it on CMAKE_PREFIX_PATH
-
+  # BOTH: emscripten cmake otherwise ignores host CMAKE_PREFIX_PATH when finding gnuradio4.
+  # Put the Emscripten GR4 prefix first so find_package does not pick a native install.
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
+  set(_wasm_cmake_prefix_path "${OD_WASM_GNURADIO4_PREFIX}")
+  if(CMAKE_PREFIX_PATH)
+    list(APPEND _wasm_cmake_prefix_path ${CMAKE_PREFIX_PATH})
+  endif()
   string(
     REPLACE ";"
             "|"
             _wasm_cmake_prefix_path
-            "${CMAKE_PREFIX_PATH}")
+            "${_wasm_cmake_prefix_path}")
   ExternalProject_Add(
     ui-wasm
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
@@ -106,10 +112,8 @@ if(NOT DISABLE_WASM_BUILD)
   add_custom_command(
     TARGET ui-wasm
     POST_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E make_directory ${ROOT_BUILD_DIR}/ui-wasm/web && ${CMAKE_COMMAND} -E copy
-      ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.wasm
-      ${ROOT_BUILD_DIR}/ui-wasm/web)
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${WASM_BUILD_DIR}/web ${ROOT_BUILD_DIR}/ui-wasm/web
+    COMMENT "Copy WASM UI and SIDE_MODULE plugins to ui-wasm/web")
 endif()
 
 if(NOT EMSCRIPTEN)
