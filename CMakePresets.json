@@ -63,7 +63,6 @@
         "CMAKE_CXX_COMPILER": "g++-14",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "EMCMAKE_COMMAND": "emcmake",
         "CMAKE_PREFIX_PATH": "/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten"
       }
     },

@@ -6,10 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
-set(EMCMAKE_COMMAND
-    "emcmake"
-    CACHE FILEPATH "Path to the emcmake command")
-
 include(ExternalProject)
 
 # Mainly for FMT
@@ -79,6 +75,11 @@ add_subdirectory(src/ui)
 option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
 
 if(NOT DISABLE_WASM_BUILD)
+  # FILEPATH cache would turn a bare "emcmake" into ${CMAKE_SOURCE_DIR}/emcmake.
+  find_program(EMCMAKE_COMMAND emcmake)
+  if(NOT EMCMAKE_COMMAND)
+    message(FATAL_ERROR "emcmake not found; source emsdk_env.sh or set -DEMCMAKE_COMMAND=")
+  endif()
   # BOTH: emscripten cmake otherwise ignores host CMAKE_PREFIX_PATH when finding gnuradio4.
   # Use only the Emscripten GR4 prefix so find_package does not pick a native install.
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
