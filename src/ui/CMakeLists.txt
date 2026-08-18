@@ -309,9 +309,15 @@ target_link_libraries(
          gnuradio4::vir)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
-  # LINK_ONLY: blocklib-core's INTERFACE pulls gnuradio-core without WHOLE_ARCHIVE,
-  # which CMake rejects next to dynload's WHOLE_ARCHIVE of the same archive.
-  target_link_libraries(${target_name}lib PUBLIC "$<LINK_ONLY:gnuradio4::gnuradio-blocklib-core>"
+  # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY
+  # (dynload-impl). CMake 3.31 rejects that next to dynload's WHOLE_ARCHIVE.
+  if(TARGET gnuradio4::gnuradio-blocklib-core)
+    set_property(TARGET gnuradio4::gnuradio-blocklib-core PROPERTY INTERFACE_LINK_LIBRARIES "")
+  endif()
+  if(TARGET gnuradio4::gnuradio-core-dynload-impl)
+    set_property(TARGET gnuradio4::gnuradio-core-dynload-impl PROPERTY INTERFACE_LINK_LIBRARIES "")
+  endif()
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core
                                                  gnuradio4::gnuradio-core-dynload)
 elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
   # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).

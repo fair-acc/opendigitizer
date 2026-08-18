@@ -1,8 +1,9 @@
 add_library(od_acquisition INTERFACE)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
-  # dynload already WHOLE_ARCHIVEs gnuradio-core; a second DEFAULT edge is rejected by CMake.
-  target_link_libraries(od_acquisition INTERFACE gnuradio4::gnuradio-core-dynload)
+  # Headers/compile defs only. The UI links gnuradio-core-dynload (WHOLE_ARCHIVE);
+  # a DEFAULT/LINK_ONLY edge of gnuradio-core here is rejected by CMake 3.31+.
+  target_link_libraries(od_acquisition INTERFACE "$<COMPILE_ONLY:gnuradio4::gnuradio-core>")
 else()
   target_link_libraries(od_acquisition INTERFACE gnuradio4::gnuradio-core)
 endif()
