@@ -91,7 +91,7 @@
       "description": "Load SIDE_MODULE *Plugin.wasm at runtime; expects GR4 from ci-latest-wasm (/opt/gnuradio4-emscripten)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "/opt/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
         "DISABLE_WASM_BUILD": "ON",
         "OPENDIGITIZER_ENABLE_TESTING": "OFF",
         "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",
@@ -106,7 +106,7 @@
       "description": "Link Gr*Blocks into the main module; expects GR4 from ci-latest-wasm-static (/opt/gnuradio4-emscripten-static)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "/opt/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
         "DISABLE_WASM_BUILD": "ON",
         "OPENDIGITIZER_ENABLE_TESTING": "OFF",
         "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",

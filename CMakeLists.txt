@@ -80,8 +80,8 @@ if(NOT DISABLE_WASM_BUILD)
   if(NOT EMCMAKE_COMMAND)
     message(FATAL_ERROR "emcmake not found; source emsdk_env.sh or set -DEMCMAKE_COMMAND=")
   endif()
-  # BOTH: emscripten cmake otherwise ignores host CMAKE_PREFIX_PATH when finding gnuradio4.
-  # Use only the Emscripten GR4 prefix so find_package does not pick a native install.
+  # BOTH: emscripten cmake otherwise ignores host CMAKE_PREFIX_PATH when finding gnuradio4. Use only the Emscripten GR4
+  # prefix so find_package does not pick a native install.
   set(WASM_BUILD_DIR ${BUILD_DIR}/ui-wasm)
   string(
     REPLACE ";"

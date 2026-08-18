@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && strcmp(argv[1], "--list-registered-blocks") == 0) {
         gr::BlockRegistry registry;
         registerTestBlocks(registry);
-        const auto pluginPaths = Digitizer::resolvePluginSearchPaths();
+        const auto       pluginPaths = Digitizer::resolvePluginSearchPaths();
         gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
 
         std::print("Plugin search paths:\n");

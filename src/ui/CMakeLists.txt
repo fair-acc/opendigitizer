@@ -10,16 +10,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 option(OD_DISABLE_DEMO_FLOWGRAPHS "Disable adding the demo flowgraphs to UI" OFF)
-option(OD_WASM_STATIC_BLOCKLIBS
-       "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" OFF)
+option(OD_WASM_STATIC_BLOCKLIBS "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" OFF)
 set(GR_MAX_WASM_THREAD_COUNT
     60
     CACHE STRING "Max number of threads for WASM pthread pool")
 
 if(EMSCRIPTEN)
   message(STATUS "Emscripten version: ${EMSCRIPTEN_VERSION}")
-  # MAIN_MODULE=1 (gnuradio-core-dynload) requires PIC; the standalone src/ui
-  # ExternalProject does not inherit the root CMAKE_POSITION_INDEPENDENT_CODE.
+  # MAIN_MODULE=1 (gnuradio-core-dynload) requires PIC; the standalone src/ui ExternalProject does not inherit the root
+  # CMAKE_POSITION_INDEPENDENT_CODE.
   set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
@@ -50,8 +49,8 @@ if(EMSCRIPTEN)
     "SHELL:-s USE_SDL=3"
     -pthread)
 
-  # Main-module link flags. Dynload host contract (MAIN_MODULE, --export-all, WHOLE_ARCHIVE
-  # core, gnuradio_dynlink_post.js) comes from gnuradio4::gnuradio-core-dynload.
+  # Main-module link flags. Dynload host contract (MAIN_MODULE, --export-all, WHOLE_ARCHIVE core,
+  # gnuradio_dynlink_post.js) comes from gnuradio4::gnuradio-core-dynload.
   set(_od_emscripten_main_link_options
       "SHELL:-s WASM=1"
       "SHELL:-sFULL_ES3=1"
@@ -309,16 +308,15 @@ target_link_libraries(
          gnuradio4::vir)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
-  # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY
-  # (dynload-impl). CMake 3.31 rejects that next to dynload's WHOLE_ARCHIVE.
+  # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY (dynload-impl). CMake 3.31 rejects
+  # that next to dynload's WHOLE_ARCHIVE.
   if(TARGET gnuradio4::gnuradio-blocklib-core)
     set_property(TARGET gnuradio4::gnuradio-blocklib-core PROPERTY INTERFACE_LINK_LIBRARIES "")
   endif()
   if(TARGET gnuradio4::gnuradio-core-dynload-impl)
     set_property(TARGET gnuradio4::gnuradio-core-dynload-impl PROPERTY INTERFACE_LINK_LIBRARIES "")
   endif()
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core
-                                                 gnuradio4::gnuradio-core-dynload)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
 elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
   # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).
   target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
@@ -328,8 +326,8 @@ else()
   target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
 endif()
 
-# Native always links blocklibs. WASM dynload loads SIDE_MODULE plugins at runtime;
-# WASM static links them into the main module like native.
+# Native always links blocklibs. WASM dynload loads SIDE_MODULE plugins at runtime; WASM static links them into the main
+# module like native.
 if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
   target_link_libraries(
     ${target_name}lib
@@ -365,20 +363,31 @@ if(EMSCRIPTEN)
     # Host contract (MAIN_MODULE / --export-all / WHOLE_ARCHIVE core / dynlink post-js) is on
     # gnuradio4::gnuradio-core-dynload. Copy SIDE_MODULE artefacts next to index.wasm.
     if(NOT GNURADIO4_WASM_PLUGIN_FILES)
-      message(FATAL_ERROR
-        "GNURADIO4_WASM_PLUGIN_FILES is empty. Install GR4 with ci-latest-wasm "
-        "(/opt/gnuradio4-emscripten), or use the wasm-static-blocklibs preset with "
-        "ci-latest-wasm-static (/opt/gnuradio4-emscripten-static).")
+      message(
+        FATAL_ERROR
+          "GNURADIO4_WASM_PLUGIN_FILES is empty. Install GR4 with ci-latest-wasm "
+          "(/opt/gnuradio4-emscripten), or use the wasm-static-blocklibs preset with "
+          "ci-latest-wasm-static (/opt/gnuradio4-emscripten-static).")
     endif()
 
     set(_od_plugin_wasm_files ${GNURADIO4_WASM_PLUGIN_FILES})
     # Audio needs Web Audio / device APIs the UI does not use yet.
-    list(FILTER _od_plugin_wasm_files EXCLUDE REGEX "Audio")
+    list(
+      FILTER
+      _od_plugin_wasm_files
+      EXCLUDE
+      REGEX
+      "Audio")
 
     # Prefer smallest first so early SIDE_MODULE instantiate returns to the event loop sooner.
     set(_od_plugin_sized "")
     foreach(_wasm IN LISTS _od_plugin_wasm_files)
-      string(REGEX REPLACE "^lib(.+)\\.wasm$" "\\1" _plugin_target_leaf "${_wasm}")
+      string(
+        REGEX
+        REPLACE "^lib(.+)\\.wasm$"
+                "\\1"
+                _plugin_target_leaf
+                "${_wasm}")
       if(NOT TARGET gnuradio4::${_plugin_target_leaf})
         message(FATAL_ERROR "Missing gnuradio4::${_plugin_target_leaf} for ${_wasm}")
       endif()
@@ -398,17 +407,28 @@ if(EMSCRIPTEN)
     set(_od_plugin_targets "")
     set(_od_plugin_name_list "")
     foreach(_entry IN LISTS _od_plugin_sized)
-      string(REPLACE "|" ";" _parts "${_entry}")
-      list(GET _parts 1 _wasm)
-      list(GET _parts 2 _plugin_target_leaf)
+      string(
+        REPLACE "|"
+                ";"
+                _parts
+                "${_entry}")
+      list(
+        GET
+        _parts
+        1
+        _wasm)
+      list(
+        GET
+        _parts
+        2
+        _plugin_target_leaf)
       string(APPEND _od_plugin_names_code "    \"${_wasm}\",\n")
       list(APPEND _od_plugin_name_list "${_wasm}")
 
       set(_plugin_target "od_plugin_${_plugin_target_leaf}")
       add_custom_target(
         ${_plugin_target}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE:gnuradio4::${_plugin_target_leaf}>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:gnuradio4::${_plugin_target_leaf}>"
                 "${EXECUTABLE_OUTPUT_PATH}/$<TARGET_FILE_NAME:gnuradio4::${_plugin_target_leaf}>"
         DEPENDS gnuradio4::${_plugin_target_leaf}
         COMMENT "Copy ${_wasm} next to index.wasm")
@@ -418,8 +438,9 @@ if(EMSCRIPTEN)
     list(LENGTH _od_plugin_name_list _od_plugin_count)
     set(_od_plugin_wasm_header "${CMAKE_CURRENT_BINARY_DIR}/include/PluginWasmNames.hpp")
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include")
-    file(WRITE "${_od_plugin_wasm_header}"
-"#pragma once
+    file(
+      WRITE "${_od_plugin_wasm_header}"
+      "#pragma once
 #include <array>
 #include <string_view>
 

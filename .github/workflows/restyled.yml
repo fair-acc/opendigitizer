@@ -13,7 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          # Fork PRs often use the same branch name as the base (e.g. main).
+          # Checkout the head repo + SHA so Restyled does not restyle fair-acc/main.
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: restyled-io/actions/setup@v4
       - id: restyler
