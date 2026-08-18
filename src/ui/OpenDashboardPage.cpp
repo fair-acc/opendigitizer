@@ -272,7 +272,16 @@ components::SortFilterTreeModelParams OpenDashboardPage::makeSortFilterTreeModel
 std::vector<std::string> OpenDashboardPage::dashboardTreePath(std::size_t index) const {
     const DashboardDescription& dashboard = *dashboards()[index];
     std::vector<std::string>    path{dashboard.storageInfo->path};
-    for (const auto& component : std::filesystem::path(dashboard.filename).parent_path()) {
+    std::filesystem::path       parentPath = std::filesystem::path(dashboard.filename).parent_path();
+#ifndef NDEBUG
+    // keeping testdata in the testing directory is nice for organization, but it is annoying to
+    // unfold many tree nodes. so pretend these entries are in root level `testdata/` instead
+    constexpr std::string_view kTestdataDir = "src/ui/test/testdata/dashboards";
+    if (const std::string parentStr = parentPath.generic_string(); parentStr.starts_with(kTestdataDir)) {
+        parentPath = "testdata" + parentStr.substr(kTestdataDir.size());
+    }
+#endif
+    for (const auto& component : parentPath) {
         path.push_back(component.native());
     }
     path.push_back(dashboard.name);

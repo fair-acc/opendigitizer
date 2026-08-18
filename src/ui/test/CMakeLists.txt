@@ -1,3 +1,5 @@
+add_subdirectory(testdata)
+
 # define unit-tests
 
 add_executable(qa_FlowgraphLayout qa_FlowgraphLayout.cpp ../FlowgraphLayout.cpp)
