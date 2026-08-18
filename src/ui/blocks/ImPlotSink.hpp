@@ -529,9 +529,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 break; // only process tags at the start of the span
             }
             const gr::property_map& tagMap = tagMapRef.get();
-            if (tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-                const auto   offset       = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
-                const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tagMap, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
+            if (tagMap.contains(gr::tag::TRIGGER_TIME)) {
+                const auto   offset       = static_cast<double>(getValueOrDefault<float>(tagMap, std::string{gr::tag::TRIGGER_OFFSET}, 0.f));
+                const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tagMap, std::string{gr::tag::TRIGGER_TIME}, 0U)) + offset;
                 const double tagEventTime = utcTime * 1e-9 + offset; // [s]
                 bool         tagOK        = true;
 

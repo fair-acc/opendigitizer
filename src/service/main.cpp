@@ -20,8 +20,12 @@
 #endif
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
 #include <fstream>
+#include <ranges>
+#include <string>
+#include <string_view>
 #include <thread>
 
 #include <gnuradio-4.0/Export.hpp>
@@ -265,7 +269,18 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), {});
+    std::vector<std::string> pluginPaths;
+    pluginPaths.push_back((std::filesystem::current_path() / "plugins").string());
+    pluginPaths.push_back((std::filesystem::current_path() / "assets").string());
+    // GR_ASSET_PATHS: semicolon-separated list of additional local paths or HTTP asset root URLs.
+    if (const auto* envPaths = std::getenv("GR_ASSET_PATHS"); envPaths && *envPaths) {
+        for (auto part : std::string_view(envPaths) | std::views::split(';')) {
+            if (!part.empty()) {
+                pluginPaths.emplace_back(std::string_view(part));
+            }
+        }
+    }
+    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), pluginPaths);
     GrAcqWorker                                            grAcqWorker(*broker, &pluginLoader, 50ms);
     GrFgWorker                                             grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};

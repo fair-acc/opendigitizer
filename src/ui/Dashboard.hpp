@@ -23,7 +23,9 @@
 #endif
 #include <plf_colony.h>
 
+#include <filesystem>
 #include <functional>
+#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -134,7 +136,17 @@ struct Dashboard {
         std::vector<std::string> pluginPaths;
 #ifndef __EMSCRIPTEN__
         pluginPaths.push_back((std::filesystem::current_path() / "plugins").string());
+        pluginPaths.push_back((std::filesystem::current_path() / "assets").string());
 #endif
+        // GR_ASSET_PATHS: semicolon-separated list of additional local paths or HTTP asset root URLs.
+        if (const auto* envPaths = std::getenv("GR_ASSET_PATHS"); envPaths && *envPaths) {
+            for (auto part : std::string_view(envPaths) | std::views::split(';')) {
+                if (!part.empty()) {
+                    pluginPaths.emplace_back(std::string_view(part));
+                }
+            }
+        }
+        std::println("Loading plugins from: {}", pluginPaths);
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     }();
     std::atomic<bool>               isInUse = false;

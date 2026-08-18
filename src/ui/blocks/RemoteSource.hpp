@@ -467,11 +467,11 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
                     continue;
                 }
                 auto map = gr::property_map{
-                    {gr::tag::TRIGGER_NAME.shortKey(), {trigger}},
-                    {gr::tag::TRIGGER_OFFSET.shortKey(), {offset}},
+                    {gr::tag::TRIGGER_NAME, {trigger}},
+                    {gr::tag::TRIGGER_OFFSET, {offset}},
                 };
                 if (timestamp != 0) {
-                    map.insert({gr::tag::TRIGGER_TIME.shortKey(), {static_cast<std::uint64_t>(timestamp)}});
+                    map.insert({gr::tag::TRIGGER_TIME, {static_cast<std::uint64_t>(timestamp)}});
                     const auto now     = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
                     auto       latency = now - std::chrono::nanoseconds(timestamp);
                     map.insert({"REMOTE_SOURCE_LATENCY", static_cast<int64_t>(latency.count())}); // compares the current system time with the time inside the tag
