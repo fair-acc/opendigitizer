@@ -278,7 +278,11 @@ void NewBlockSelector::draw() {
             auto parameterization = components::FilteredListBox(m_selectedTypeParametrizationListName.c_str(), listSize, //
                 typeIt->second, [index = 0](auto& parametrization) mutable -> std::pair<int, std::string> {
                     index++;
-                    return std::pair{index, parametrization};
+                    if (parametrization.empty()) {
+                        return std::pair{index, "default"s};
+                    } else {
+                        return std::pair{index, parametrization};
+                    }
                 });
 
             if (parameterization) {
@@ -291,7 +295,10 @@ void NewBlockSelector::draw() {
     if (components::DialogButtons(okEnabled) == components::DialogButton::Ok) {
         if (!m_currentlySelectedType.empty() && selectedParametrization) {
             gr::Message message;
-            std::string type    = std::format("{}{}", m_currentlySelectedType, selectedParametrization.value_or(std::string{}));
+            std::string type = m_currentlySelectedType;
+            if (*selectedParametrization != "default"s) {
+                type += *selectedParametrization;
+            }
             message.cmd         = gr::message::Command::Set;
             message.endpoint    = gr::scheduler::property::kEmplaceBlock;
             message.serviceName = m_targetSchedulerUniqueName;

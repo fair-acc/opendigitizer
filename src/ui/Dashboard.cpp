@@ -339,7 +339,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
 
         gr::Graph grGraph = [this, &rootMap]() -> gr::Graph {
             try {
-                gr::Graph  resultGraph;
+                gr::Graph  resultGraph(*pluginLoader);
                 const auto loadResult = gr::detail::loadGraphFromMap(*pluginLoader, resultGraph, rootMap);
                 if (!loadResult.has_value()) {
                     throw gr::exception(loadResult.error().message, loadResult.error().sourceLocation);
@@ -370,7 +370,9 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         if (const auto dashboard = rootMap.find_value("dashboard").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
             doLoad(*dashboard);
         } else {
-            throw gr::exception("dashboard field is not a property_map");
+            throw gr::exception(std::format("dashboard field is not a property_map, it is {}, in the map {}", //
+                rootMap.find_value("dashboard"),                                                              //
+                rootMap));
         }
         isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {

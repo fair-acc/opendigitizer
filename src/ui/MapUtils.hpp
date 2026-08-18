@@ -78,6 +78,11 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
             return std::unexpected(gr::Error(std::format("Field {} has incorrect type; expected {}", propertyName, gr::meta::type_name<T>())));
         }
         return std::pmr::string(it->second.value_or(std::string_view{}));
+    } else if constexpr (gr::TensorLike<T>) {
+        const gr::pmt::Value val = it->second;
+        if (const auto tv = val.get_if<gr::TensorView<typename T::value_type>>()) {
+            return tv->owned();
+        }
     } else if constexpr (!allow_conversion) {
         if constexpr (requires(const gr::pmt::Value& value) { value.template get_if<T>(); }) {
             if (const auto p = it->second.get_if<T>()) {

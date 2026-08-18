@@ -92,7 +92,7 @@ client::ClientContext makeClient(zmq::Context& ctx) {
     return client::ClientContext{std::move(clients)};
 }
 
-void waitWhile(auto condition) {
+[[nodiscard]] bool waitWhile(auto condition, std::source_location location = std::source_location::current()) {
     // Use very generous timeout to avoid flakiness when run under gcov
     // (on my system, creating 6 blocks from GRC already takes about 6 seconds)
     constexpr auto kTimeout       = 20s;
@@ -100,12 +100,13 @@ void waitWhile(auto condition) {
     auto           elapsed        = 0ms;
     while (elapsed < kTimeout) {
         if (!condition()) {
-            return;
+            return true;
         }
         std::this_thread::sleep_for(kSleepInterval);
         elapsed += kSleepInterval;
     }
-    expect(false);
+    expect(false) << std::format("timeout at {}:{}", location.file_name(), location.line());
+    return false;
 }
 
 template<typename T>
@@ -344,14 +345,14 @@ struct TestApp {
         client.set(URI(std::string(mdpHost) + "/GnuRadio/FlowGraph"s), std::move(callback), std::move(buffer));
     }
 
-    void setGrc(std::string_view grc) {
+    [[nodiscard]] bool setGrc(std::string_view grc) {
         std::atomic<bool> receivedReply = false;
         setGrc(grc, [&](const auto& reply) {
             expect(eq(reply.error, std::string{}));
             expect(!reply.data.empty());
             receivedReply = true;
         });
-        waitWhile([&receivedReply] { return !receivedReply.load(); });
+        return waitWhile([&receivedReply] { return !receivedReply.load(); });
     }
 
     ~TestApp() {
@@ -451,9 +452,10 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
 
-        waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; });
+        if (!test.setGrc(grc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
+            return;
+        }
 
         expect(eq(receivedUpData.size(), kExpectedSamples)) << config.toString();
         expect(eq(receivedUpData, expectedUpData)) << config.toString();
@@ -486,7 +488,9 @@ connections:
         TestApp                    test;
         std::atomic<std::size_t>   receivedCount = 0;
 
-        test.setGrc(grc);
+        if (!test.setGrc(grc)) {
+            return;
+        }
         std::this_thread::sleep_for(200ms);
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCount, &config](const auto& acq) {
@@ -496,7 +500,8 @@ connections:
             receivedCount = samples.size();
         });
 
-        waitWhile([&] { return receivedCount == 0; });
+        // ignore as it is the last step of the test
+        std::ignore = waitWhile([&] { return receivedCount == 0; });
     } | testConfigs;
 
     "Flow graph management"_test = [] {
@@ -574,11 +579,12 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc1);
-        waitWhile([&] { return receivedUpCount < kExpectedSamples; });
-        test.setGrc(grc2);
-
-        waitWhile([&] { return receivedDownCount < kExpectedSamples; });
+        if (!test.setGrc(grc1) ||                                             //
+            !waitWhile([&] { return receivedUpCount < kExpectedSamples; }) || //
+            !test.setGrc(grc2) ||                                             //
+            !waitWhile([&] { return receivedDownCount < kExpectedSamples; })) {
+            return;
+        }
 
         expect(eq(receivedUpData.size(), kExpectedSamples));
         expect(eq(receivedUpData, expectedUpData));
@@ -642,17 +648,23 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc1);
-        std::this_thread::sleep_for(2000ms);
+        if (!test.setGrc(grc1)) {
+            return;
+        }
 
+        std::this_thread::sleep_for(2000ms);
         {
             std::lock_guard lock(dnsMutex);
             checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f}, "");
         }
-        test.setGrc(grc2);
+        if (!test.setGrc(grc2)) {
+            return;
+        }
 
         constexpr auto kExpectedSamples = 50000UZ;
-        waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; });
+        if (!waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; })) {
+            return;
+        }
 
         std::lock_guard lock(dnsMutex);
         checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
@@ -698,9 +710,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&] { return receivedCount < 20; });
+        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+            return;
+        }
 
         expect(eq(receivedData, getIota(20, 45)));
     };
@@ -746,9 +758,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&] { return receivedCount < 20; });
+        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+            return;
+        }
 
         expect(eq(receivedData, getIota(20, 799995)));
     };
@@ -799,9 +811,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&] { return receivedCount < 20; });
+        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+            return;
+        }
         std::this_thread::sleep_for(50ms);
 
         expect(eq(receivedData, getIota(20, 50)));
@@ -857,9 +869,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&] { return receivedCount == 0; });
+        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount == 0; })) {
+            return;
+        }
 
         std::this_thread::sleep_for(50ms);
 
@@ -911,9 +923,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&receivedCount] { return receivedCount < 97UZ; });
+        if (!test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
+            return;
+        }
         expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
         checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {/*1.0f*/}, config.toString()); // TODO: verify correct handling of sample rate
@@ -965,9 +977,9 @@ connections:
         });
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-
-        waitWhile([&receivedCount] { return receivedCount < 12UZ; });
+        if (!test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
+            return;
+        }
         expect(eq(receivedCount.load(), 12UZ)) << config.toString();
         expect(eq(receivedDataSetCount.load(), 3UZ)) << config.toString();
         std::vector<float> expectedData = {18.f, 19.f, 20.f, 21.f, 48.f, 49.f, 50.f, 51.f, 68.f, 69.f, 70.f, 71.f};
@@ -1002,7 +1014,9 @@ connections:
             receivedReply = true;
         });
 
-        waitWhile([&] { return !receivedReply; });
+        if (!waitWhile([&] { return !receivedReply; })) {
+            return;
+        }
         expect(receivedReply.load());
     };
 
@@ -1061,8 +1075,9 @@ connections:
         };
 
         std::this_thread::sleep_for(50ms);
-        test.setGrc(grc);
-        waitWhile([&] { return !hasExpectedDnsEntries(); });
+        if (!test.setGrc(grc) || !waitWhile([&] { return !hasExpectedDnsEntries(); })) {
+            return;
+        }
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedUpCount](const Acquisition& acq) {
             const auto nSamples = samplesForSignalIndex(acq.channelValues, 0).size();
@@ -1075,7 +1090,9 @@ connections:
             checkAcquisitionMeta(acq, 1UZ, nSamples, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {0.f}, {100.f}, "");
             receivedDownCount += nSamples;
         });
-        waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; });
+        if (!waitWhile([&] { return receivedUpCount == 0 || receivedDownCount == 0; })) {
+            return;
+        }
 
         expect(receivedUpCount > 0);
         expect(receivedDownCount > 0);
