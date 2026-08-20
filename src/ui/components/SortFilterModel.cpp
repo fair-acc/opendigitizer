@@ -1,5 +1,8 @@
 #include "SortFilterModel.hpp"
 
+#include "../common/Events.hpp"
+#include "../common/FramePacer.hpp"
+
 #include <algorithm>
 #include <cassert>
 
@@ -54,6 +57,11 @@ void SortFilterModel::work() {
             // move this off to another thread
             _shownItems.insert(std::ranges::upper_bound(_shownItems, item, _ordering), item);
         }
+    }
+
+    // request more work if we need it
+    if (_nextItemToProcess < _params.numViewedItems) {
+        EventLoop::instance().executeLater([] { globalFramePacer().requestFrame(); });
     }
 }
 

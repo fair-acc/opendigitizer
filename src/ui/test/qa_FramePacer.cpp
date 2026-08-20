@@ -23,6 +23,12 @@ using namespace std::chrono_literals;
 
 namespace {
 
+void markPendingFramesAsRendered(DigitizerUi::FramePacer& pacer) {
+    for (std::uint32_t i = 0U; i < DigitizerUi::FramePacer::numRedrawsAfterDirty; ++i) {
+        pacer.rendered();
+    }
+}
+
 const suite<"FramePacer basics"> _1 = [] {
     "construction"_test = [] {
         "default values"_test = [] {
@@ -67,7 +73,7 @@ const suite<"FramePacer basics"> _1 = [] {
 const suite<"FramePacer render logic"> _2 = [] {
     "should render when dirty and min period elapsed"_test = [] {
         DigitizerUi::FramePacer pacer{1s, 5ms};
-        pacer.rendered(); // clear dirty, set lastRender to now
+        pacer.rendered(); // set lastRender to now
 
         pacer.requestFrame();
         expect(pacer.isDirty());
@@ -87,20 +93,31 @@ const suite<"FramePacer render logic"> _2 = [] {
 
     "should render when_max period elapsed regardless of dirty"_test = [] {
         DigitizerUi::FramePacer pacer{10ms, 5ms};
-        pacer.rendered();
+        markPendingFramesAsRendered(pacer);
         expect(!pacer.isDirty());
 
         std::this_thread::sleep_for(12ms);
         expect(pacer.shouldRender()) << "forced refresh";
     };
 
-    "rendered clears dirty flag"_test = [] {
+    "rendered decrements requested frame count"_test = [] {
         DigitizerUi::FramePacer pacer;
+        markPendingFramesAsRendered(pacer);
+        expect(!pacer.isDirty());
+
         pacer.requestFrame();
-        expect(pacer.isDirty());
+        expect(eq(pacer.pendingFrames(), DigitizerUi::FramePacer::numRedrawsAfterDirty));
 
         pacer.rendered();
+        expect(pacer.isDirty()) << "expected more than one frame to be requested with each requestFrame()";
+
+        for (std::uint32_t i = 1U; i < DigitizerUi::FramePacer::numRedrawsAfterDirty; ++i) {
+            pacer.rendered();
+        }
         expect(!pacer.isDirty());
+
+        pacer.rendered();
+        expect(eq(pacer.pendingFrames(), 0U)) << "counter should do a saturating subtrack";
     };
 };
 
@@ -126,7 +143,7 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
 
     "returns long timeout when clean"_test = [] {
         DigitizerUi::FramePacer pacer{500ms, 16ms};
-        pacer.rendered();
+        markPendingFramesAsRendered(pacer);
         expect(!pacer.isDirty());
 
         const int timeout = pacer.getWaitTimeoutMs();
@@ -215,9 +232,9 @@ const suite<"FramePacer SDL event"> _6 = [] {
     "multiple requests while dirty do not spam events"_test = [] {
         DigitizerUi::FramePacer pacer;
         expect(eq(DigitizerUi::FramePacer::_sdlEventType, 1));
-        pacer.rendered(); // clear dirty
+        markPendingFramesAsRendered(pacer);
 
-        pacer.requestFrame(); // clean→dirty: pushes event
+        pacer.requestFrame(); // clean→pending: pushes event
         expect(not eq(DigitizerUi::FramePacer::_sdlEventType, 0)) << "subsequent requests shouldn't register new events";
         expect(pacer.isDirty());
 
