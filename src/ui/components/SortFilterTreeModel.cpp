@@ -1,5 +1,8 @@
 #include "SortFilterTreeModel.hpp"
 
+#include "../common/Events.hpp"
+#include "../common/FramePacer.hpp"
+
 #include <algorithm>
 #include <cassert>
 
@@ -40,6 +43,11 @@ void SortFilterTreeModel::work() {
     const std::size_t chunkEnd = std::min(_params.numItems, _nextItemToProcess + _maxWorkPerCall);
     for (; _nextItemToProcess < chunkEnd; ++_nextItemToProcess) {
         insertItem(_nextItemToProcess);
+    }
+
+    // request more work if we need it
+    if (!isComplete()) {
+        EventLoop::instance().executeLater([] { globalFramePacer().requestFrame(); });
     }
 }
 

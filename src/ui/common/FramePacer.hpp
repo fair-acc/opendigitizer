@@ -50,12 +50,19 @@ struct FramePacer {
     using time_point = clock::time_point;
     using duration   = clock::duration;
 
+    // ImGui does not have a supported CPU idle mode, so it is not cooperating with us to tell us if any animations or things that take multiple frames are happening.
+    // For example, opening a combobox takes two frames: the frame after you release the mouse, and then the frame after that the popup is opened and drawn. This
+    // appears unresponsive if these two frames are paced by minRateHz. Luckily imgui does not really do animations, pretty much everything takes about 1-2 frames.
+    // We request 3 frames here to also account for the possibility of interaction changing the size of an element which then needs to be measured and re-laid-out on
+    // yet another frame.
+    static constexpr std::uint32_t numRedrawsAfterDirty = 3U;
+
     static inline std::uint32_t _sdlEventType{0};
 
-    std::chrono::nanoseconds _maxPeriod;
-    std::chrono::nanoseconds _minPeriod;
-    time_point               _lastRender{clock::now() - _maxPeriod};
-    std::atomic<bool>        _dirty{true};
+    std::chrono::nanoseconds   _maxPeriod;
+    std::chrono::nanoseconds   _minPeriod;
+    time_point                 _lastRender{clock::now() - _maxPeriod};
+    std::atomic<std::uint32_t> _pendingFrames{numRedrawsAfterDirty};
 
     time_point                 _statsStart{clock::now()};
     std::atomic<std::uint64_t> _requestCount{0};
@@ -71,7 +78,7 @@ struct FramePacer {
             return true;
         }();
 
-        if (initSdlEvent && !_dirty.exchange(true, std::memory_order_acq_rel)) {
+        if (initSdlEvent && _pendingFrames.exchange(numRedrawsAfterDirty, std::memory_order_acq_rel) == 0U) {
             SDL_Event event{.type = _sdlEventType};
             SDL_PushEvent(&event);
         }
@@ -80,18 +87,21 @@ struct FramePacer {
 
     [[nodiscard]] bool shouldRender() const noexcept {
         const auto sinceLast = clock::now() - _lastRender;
-        return sinceLast >= _maxPeriod || (_dirty.load(std::memory_order_acquire) && sinceLast >= _minPeriod);
+        return sinceLast >= _maxPeriod || (_pendingFrames.load(std::memory_order_acquire) > 0U && sinceLast >= _minPeriod);
     }
 
     void rendered() noexcept {
         _lastRender = clock::now();
-        _dirty.store(false, std::memory_order_release);
+        // saturating atomic subtract
+        std::uint32_t pending = _pendingFrames.load(std::memory_order_acquire);
+        while (pending > 0U && !_pendingFrames.compare_exchange_weak(pending, pending - 1U, std::memory_order_acq_rel)) {
+        }
         ++_renderCount;
     }
 
     [[nodiscard]] int getWaitTimeoutMs() const noexcept {
         const auto sinceLast = clock::now() - _lastRender;
-        const auto waitUntil = (_dirty.load(std::memory_order_acquire) ? _minPeriod : _maxPeriod) - sinceLast;
+        const auto waitUntil = (_pendingFrames.load(std::memory_order_acquire) > 0U ? _minPeriod : _maxPeriod) - sinceLast;
 
         if (waitUntil <= duration::zero()) {
             return 0;
@@ -111,7 +121,8 @@ struct FramePacer {
     [[nodiscard]] double minRateHz() const noexcept { return 1e9 / static_cast<double>(_maxPeriod.count()); }
     [[nodiscard]] double maxRateHz() const noexcept { return 1e9 / static_cast<double>(_minPeriod.count()); }
 
-    [[nodiscard]] bool          isDirty() const noexcept { return _dirty.load(std::memory_order_acquire); }
+    [[nodiscard]] bool          isDirty() const noexcept { return _pendingFrames.load(std::memory_order_acquire) > 0U; }
+    [[nodiscard]] std::uint32_t pendingFrames() const noexcept { return _pendingFrames.load(std::memory_order_acquire); }
     [[nodiscard]] std::uint64_t requestCount() const noexcept { return _requestCount.load(std::memory_order_relaxed); }
     [[nodiscard]] std::uint64_t renderCount() const noexcept { return _renderCount.load(std::memory_order_relaxed); }
 
