@@ -421,15 +421,24 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             }
         }();
 
-        if (const auto dashboardUri = opencmw::URI<>(std::string(description->storageInfo->path)); dashboardUri.hostName().has_value()) {
-            const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
-            gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri](auto& block) {
-                if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
-                    auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
-                    sourceBlock->host = remoteUri.str();
-                }
-            });
-        }
+        // figure out what the host is for RemoteSourceBlocks that use relative URIs for their source
+        // If the dashboard's storage path does not start with http/https, that probably indicates a
+        // local file path and where the user is running the service on their machine.
+        const std::string_view storagePath     = description->storageInfo->path;
+        const bool             isRemoteStorage = storagePath.starts_with("http://") || storagePath.starts_with("https://");
+        const std::string      sourceHost      = [&]() -> std::string {
+            if (!isRemoteStorage) {
+                return "https://localhost:8443";
+            }
+            const opencmw::URI<> dashboardUri{std::string(storagePath)};
+            return dashboardUri.factory().hostName(dashboardUri.hostName().value_or("localhost")).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build().str();
+        }();
+        gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&sourceHost](auto& block) {
+            if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
+                auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
+                sourceBlock->host = sourceHost;
+            }
+        });
 
         assignScheduler(std::move(grGraph));
 
