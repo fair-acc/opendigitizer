@@ -309,14 +309,21 @@ target_link_libraries(
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
   # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY (dynload-impl). CMake 3.31 rejects
-  # that next to dynload's WHOLE_ARCHIVE.
-  if(TARGET gnuradio4::gnuradio-blocklib-core)
-    set_property(TARGET gnuradio4::gnuradio-blocklib-core PROPERTY INTERFACE_LINK_LIBRARIES "")
-  endif()
-  if(TARGET gnuradio4::gnuradio-core-dynload-impl)
-    set_property(TARGET gnuradio4::gnuradio-core-dynload-impl PROPERTY INTERFACE_LINK_LIBRARIES "")
-  endif()
+  # that next to dynload's WHOLE_ARCHIVE. FetchContent exposes gnuradio4::* as ALIAS — mutate the real target.
+  foreach(_od_gr4_tgt IN ITEMS gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload-impl)
+    if(TARGET ${_od_gr4_tgt})
+      get_target_property(_od_gr4_real ${_od_gr4_tgt} ALIASED_TARGET)
+      if(NOT _od_gr4_real)
+        set(_od_gr4_real ${_od_gr4_tgt})
+      endif()
+      set_property(TARGET ${_od_gr4_real} PROPERTY INTERFACE_LINK_LIBRARIES "")
+    endif()
+  endforeach()
   target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
+  # Headers only (FetchContent). Must be COMPILE_ONLY — gr-basic/gr-filter INTERFACE-link gnuradio-core as DEFAULT,
+  # which CMake 3.31 rejects next to dynload's WHOLE_ARCHIVE.
+  target_link_libraries(${target_name}lib PUBLIC "$<COMPILE_ONLY:gnuradio4::gr-basic>"
+                                                 "$<COMPILE_ONLY:gnuradio4::gr-filter>")
 elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
   # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).
   target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
@@ -340,6 +347,7 @@ if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
            gnuradio4::GrMathBlocksShared
            gnuradio4::GrTestingBlocksShared)
 endif()
+
 if(NOT EMSCRIPTEN)
   target_link_libraries(${target_name}lib PUBLIC fair-picoscope) # PicoScope blocks (gr-digitizers), native-only
 endif()
@@ -366,8 +374,9 @@ if(EMSCRIPTEN)
       message(
         FATAL_ERROR
           "GNURADIO4_WASM_PLUGIN_FILES is empty. Install GR4 with ci-latest-wasm "
-          "(/opt/gnuradio4-emscripten), or use the wasm-static-blocklibs preset with "
-          "ci-latest-wasm-static (/opt/gnuradio4-emscripten-static).")
+          "(/opt/gnuradio4-emscripten), build GR4 from source with INTERNAL_ENABLE_BLOCK_PLUGINS=ON, "
+          "or use the wasm-static-blocklibs preset with ci-latest-wasm-static "
+          "(/opt/gnuradio4-emscripten-static).")
     endif()
 
     set(_od_plugin_wasm_files ${GNURADIO4_WASM_PLUGIN_FILES})
@@ -379,7 +388,9 @@ if(EMSCRIPTEN)
       REGEX
       "Audio")
 
-    # Prefer smallest first so early SIDE_MODULE instantiate returns to the event loop sooner.
+    # Prefer smallest first so early SIDE_MODULE instantiate returns to the event loop sooner. Installed packages expose
+    # IMPORTED_LOCATION; FetchContent builds use $<TARGET_FILE> at build time (configure-time size may be 0 until the
+    # plugin is linked).
     set(_od_plugin_sized "")
     foreach(_wasm IN LISTS _od_plugin_wasm_files)
       string(
@@ -391,14 +402,14 @@ if(EMSCRIPTEN)
       if(NOT TARGET gnuradio4::${_plugin_target_leaf})
         message(FATAL_ERROR "Missing gnuradio4::${_plugin_target_leaf} for ${_wasm}")
       endif()
+      set(_plugin_bytes 0)
       get_target_property(_plugin_loc gnuradio4::${_plugin_target_leaf} IMPORTED_LOCATION_RELEASE)
       if(NOT _plugin_loc)
         get_target_property(_plugin_loc gnuradio4::${_plugin_target_leaf} IMPORTED_LOCATION)
       endif()
-      if(NOT _plugin_loc OR NOT EXISTS "${_plugin_loc}")
-        message(FATAL_ERROR "Cannot locate ${_wasm} via gnuradio4::${_plugin_target_leaf}")
+      if(_plugin_loc AND EXISTS "${_plugin_loc}")
+        file(SIZE "${_plugin_loc}" _plugin_bytes)
       endif()
-      file(SIZE "${_plugin_loc}" _plugin_bytes)
       list(APPEND _od_plugin_sized "${_plugin_bytes}|${_wasm}|${_plugin_target_leaf}")
     endforeach()
     list(SORT _od_plugin_sized COMPARE NATURAL)
@@ -451,7 +462,7 @@ ${_od_plugin_names_code}};
 } // namespace Digitizer
 ")
     target_include_directories(${target_name}lib PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
-    message(STATUS "Using installed gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")
+    message(STATUS "Using gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")
     add_dependencies(${target_name} ${_od_plugin_targets})
   endif()
 endif()
