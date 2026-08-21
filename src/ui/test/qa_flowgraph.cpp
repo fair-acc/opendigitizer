@@ -24,8 +24,6 @@
 #include "blocks/SineSource.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
 
-#include "scope_exit.hpp"
-
 #include <cmrc/cmrc.hpp>
 
 #include <memory.h>
@@ -43,8 +41,9 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     }
 
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
+    void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
 
-    ~TestState() override = default;
+    ~TestState() override { TestState::onDashboardAboutToBeUnloaded(); }
 
     void waitForScheduler(                                                   //
         ImGuiTestContext*         ctx,                                       //
@@ -108,8 +107,11 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     void drawGraph() {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks() && flowgraphPage.editorCount() > 0) {
-            auto& editor = flowgraphPage.currentEditor();
-            editor.sortNodes(false);
+            auto& editor    = flowgraphPage.currentEditor();
+            auto* rootBlock = editor.rootBlock();
+            if (rootBlock) {
+                FlowgraphEditor::sortNodes(rootBlock, false);
+            }
             editor.drawGraph(ImGui::GetContentRegionAvail());
         }
     }
@@ -129,6 +131,14 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         }
         assert(false && "No subgraph block found in graph children");
     }
+
+    UiGraphBlock& currentRootBlock() {
+        if (auto* ptr = flowgraphPage.currentEditor().rootBlock()) {
+            return *ptr;
+        }
+        expect(false) << "flowgraph page should have an editor and some contents";
+        std::unreachable();
+    }
 };
 
 TestState g_state;
@@ -136,11 +146,18 @@ TestState g_state;
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
-    [[nodiscard]] static bool waitForReplyOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint) {
+    [[nodiscard]] static bool waitForRepliesOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1) {
         std::optional<gr::Message>   outReply;
-        auto                         subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint](const gr::Message& reply) {
+        std::size_t                  remaining    = count;
+        const auto                   subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint, &remaining](const gr::Message& reply) {
             if (reply.endpoint == endpoint) {
-                outReply = reply;
+                std::println("\tWhile waiting, got reply on endpoint: {}, remaining: {}", reply.data.value_or(gr::property_map{}), remaining - 1);
+            }
+            if (remaining > 0 && reply.endpoint == endpoint) {
+                --remaining;
+                if (remaining == 0) {
+                    outReply = reply;
+                }
             }
         });
         Digitizer::utils::scope_exit unsubscribe  = [subscription] { g_state.dashboard->graphModel.unsubscribeFromResponses(subscription); };
@@ -228,7 +245,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto& editor = g_state.flowgraphPage.currentEditor();
 
                 DigitizerUi::UiGraphPort* targetPort = nullptr;
-                for (auto& block : editor.rootBlock()->childBlocks) {
+                for (auto& block : g_state.currentRootBlock().childBlocks) {
                     if (!block->_outputPorts.empty()) {
                         targetPort = &block->_outputPorts.front();
                         break;
@@ -261,10 +278,100 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->Yield();
                 ctx->MouseUp(ImGuiMouseButton_Left);
 
-                const bool recievedReplyAboutExport = waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
+                const bool recievedReplyAboutExport = waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
                 expect(targetPort->isExportedTo(editor._exportPortTargetBlock)) << "ui action should have caused port to become exported\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Auto-export unconnected ports on close");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = basicGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                g_state.reloadSubgraph();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                g_state.enterSubgraphEditor();
+                expect(g_state.flowgraphPage.editorCount() > 1) << fatal;
+
+                auto& editor = g_state.flowgraphPage.currentEditor();
+
+                const auto isConnected = [](const UiGraphPort& port) {
+                    return std::ranges::any_of(g_state.currentRootBlock().childEdges, [&port](const auto& edge) { //
+                        return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
+                    });
+                };
+
+                std::size_t totalUnconnectedPorts = 0;
+                for (auto& block : g_state.currentRootBlock().childBlocks) {
+                    for (const auto& port : block->_inputPorts) {
+                        totalUnconnectedPorts += isConnected(port) ? 0 : 1;
+                    }
+                    for (const auto& port : block->_outputPorts) {
+                        totalUnconnectedPorts += isConnected(port) ? 0 : 1;
+                    }
+                }
+                expect(totalUnconnectedPorts > 0_ul) << "subgraph should have unconnected ports";
+
+                const auto expectAndUnexportAllWithFilter = [ctx, &editor, &isConnected](std::span<UiGraphPort> ports, UiGraphPort* filter = nullptr, std::source_location location = std::source_location::current()) {
+                    for (const auto& port : ports) {
+                        if (std::addressof(port) == filter || isConnected(port)) {
+                            continue;
+                        }
+                        expect(port.isExportedTo(editor._exportPortTargetBlock)) << "all ports should be exported, this was not: " << port.portName << " of " << port.ownerBlock->blockName << std::format(" - line {}\n", location.line());
+                        editor.requestExportPort({
+                            .uniqueBlockName = port.ownerBlock->blockUniqueName,
+                            .portDirection   = port.portDirection == gr::PortDirection::INPUT ? "input" : "output",
+                            .portName        = port.portName,
+                            .exportFlag      = false,
+                        });
+                        expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "Scheduler never responded about the request to un-export a port\n" << fatal;
+                        expect(!port.isExportedTo(editor._exportPortTargetBlock)) << "failed to un-export" << port.portName << "of" << port.ownerBlock->blockName << std::format("- line {}\n", location.line()) << fatal;
+                    }
+                };
+
+                "auto-export all unconnected ports"_test = [ctx, &editor, &expectAndUnexportAllWithFilter, totalUnconnectedPorts] {
+                    editor.autoExportUnconnectedPorts();
+                    std::println("waitForRepliesOnEndpoint() about to be called for all port messages, {} in total...", totalUnconnectedPorts);
+                    expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort, totalUnconnectedPorts)) << "Scheduler never responded about the request to export all ports\n" << fatal;
+
+                    for (const auto& block : g_state.currentRootBlock().childBlocks) {
+                        expectAndUnexportAllWithFilter(block->_outputPorts);
+                        expectAndUnexportAllWithFilter(block->_inputPorts);
+                    }
+                };
+
+                "auto-export skips suppressed ports"_test = [ctx, &editor, &expectAndUnexportAllWithFilter, totalUnconnectedPorts, &isConnected] {
+                    auto blockIterator = std::ranges::find_if(g_state.currentRootBlock().childBlocks, [](const std::unique_ptr<UiGraphBlock>& block) { return !block->_outputPorts.empty(); });
+                    expect(blockIterator != std::end(g_state.currentRootBlock().childBlocks)) << fatal;
+                    auto& block = *blockIterator;
+                    auto& port  = block->_outputPorts.front();
+                    expect(!isConnected(port)) << "test relies on port being unconnected initially";
+
+                    block->setPortAutoExportSuppressed(port, true);
+
+                    editor.autoExportUnconnectedPorts();
+                    std::println("waitForRepliesOnEndpoint() about to be called for all but one port messages, {} in total...", totalUnconnectedPorts - 1);
+                    expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort, totalUnconnectedPorts - 1)) << "Scheduler never responded about the request to export all ports\n" << fatal;
+
+                    expect(!port.isExportedTo(editor._exportPortTargetBlock)) << "suppressed port was exported";
+
+                    for (const auto& childBlock : g_state.currentRootBlock().childBlocks) {
+                        expectAndUnexportAllWithFilter(childBlock->_inputPorts, &port);
+                        expectAndUnexportAllWithFilter(childBlock->_outputPorts, &port);
+                    }
+
+                    block->setPortAutoExportSuppressed(port, false);
+                };
 
                 g_state.stopScheduler();
             };
@@ -341,6 +448,6 @@ int main(int argc, char* argv[]) {
     g_state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");
 
     auto result = app.runTests();
-    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
+    g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

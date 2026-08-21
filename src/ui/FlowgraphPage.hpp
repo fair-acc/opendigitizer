@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <stack>
 #include <vector>
 
 #include "common/ImguiWrap.hpp"
@@ -22,19 +21,23 @@ namespace DigitizerUi {
 
 // Returns the pin positionY relative to the block
 float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight);
-void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true);
+void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, gr::PortDirection pinDirection, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true, bool isSupressed = true);
+
+class FlowgraphPage;
 
 class FlowgraphEditor {
+public:
     friend struct ::TestState;
     friend struct ::TestApp;
+    friend class ::FlowgraphPage;
 
 private:
     ax::NodeEditor::Config _editorConfig;
     std::string            _editorName;
     std::size_t            _editorLevel = 0UZ;
 
-    UiGraphModel* _graphModel            = nullptr;
-    UiGraphBlock* _rootBlock             = nullptr;
+    UiGraphModel* _graphModel = nullptr;
+    std::string   _rootBlockUniqueName;
     UiGraphBlock* _exportPortTargetBlock = nullptr;
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
@@ -66,6 +69,25 @@ private:
         ax::NodeEditor::Config config;
         config.SettingsFile = nullptr;
         config.UserPointer  = this;
+
+        config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /*reason*/, void* userPointer) -> bool {
+            auto* editor = static_cast<FlowgraphEditor*>(userPointer);
+            if (auto _rootBlock = editor->rootBlock()) {
+                _rootBlock->storedEditorSettings.assign(data, size);
+            }
+            return true;
+        };
+
+        config.LoadSettings = [](char* data, void* userPointer) -> size_t {
+            auto*       editor     = static_cast<FlowgraphEditor*>(userPointer);
+            const auto  _rootBlock = editor->rootBlock();
+            const auto& settings   = _rootBlock ? _rootBlock->storedEditorSettings : std::string{};
+            if (data) {
+                settings.copy(data, settings.size());
+            }
+            return settings.size();
+        };
+
         return config;
     }
 
@@ -98,22 +120,40 @@ public:
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
+    void                                 autoExportUnconnectedPorts();
 
-    FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlock(rootBlock), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
+    struct UnexportPortRequest {
+        ExportPortMessageData message;      // exportFlag = false
+        std::string           exportedName; // name of the port as exported on the subgraph block
+        bool                  suppressAfter = false;
+    };
+    std::optional<UnexportPortRequest> unexportPortRequest;
+
+    [[nodiscard]] bool hasExternalEdgesForExportedPort(const std::string& exportedName) const;
+    void               suppressPortAutoExport(const ExportPortMessageData& request);
+
+    FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
 
-        if (_rootBlock->blockCategory == "ScheduledBlockGroup") {
-            // the editor should show this scheduler's graph's children,
-            // not its own (as it only has one child -- the graph)
-            assert(_rootBlock->childBlocks.size() == 1);
-            _exportPortTargetBlock = _rootBlock;
-            _rootBlock             = _rootBlock->childBlocks.front().get();
+        if (rootBlock->blockCategory == "ScheduledBlockGroup") {
+            _exportPortTargetBlock = rootBlock;
+
+            if (!rootBlock->childBlocks.empty()) {
+                assert(std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo)->childrenLoaded);
+                _rootBlockUniqueName = rootBlock->childBlocks.front()->blockUniqueName;
+            }
+            // otherwise the children of the scheduler block are not loaded yet, we check every draw() to see if they are
         } else {
-            _exportPortTargetBlock = _rootBlock;
+            _exportPortTargetBlock = rootBlock;
         }
     }
 
     ~FlowgraphEditor() {
+        if (auto rootBlock = this->rootBlock()) {
+            for (auto& child : rootBlock->childBlocks) {
+                child->view.reset();
+            }
+        }
         makeCurrent();
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
@@ -131,6 +171,9 @@ public:
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
+
+    void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
+    void drawPortExportOptionsMenu(const UiGraphPort& port, const char* portDirection);
 
     void drawGraph(const ImVec2& size);
 
@@ -161,7 +204,7 @@ public:
 
     Buttons drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
-    void sortNodes(bool all);
+    static void sortNodes(UiGraphBlock* rootBlock, bool all);
 
     void requestBlockDeletion(const std::string& blockName);
 
@@ -169,22 +212,35 @@ public:
 
     UiGraphModel* graphModel() const { return _graphModel; }
 
-    auto* rootBlock() const { return _rootBlock; }
+    UiGraphBlock* rootBlock() const {
+        if (!_rootBlockUniqueName.empty()) {
+            return _graphModel->recursiveFindBlockByUniqueName(_rootBlockUniqueName).block;
+        }
+        return nullptr;
+    }
 
     struct SchedulerGraphPair {
         std::string scheduler;
         std::string graph;
     };
-    SchedulerGraphPair ownersForRoot() const {
-        if (std::get_if<UiGraphBlock::SchedulerBlockInfo>(&_rootBlock->blockCategoryInfo)) {
-            assert(_rootBlock->childBlocks.size() == 1);
-            return {_rootBlock->blockUniqueName, _rootBlock->childBlocks.front()->blockUniqueName};
-        } else if (auto* graphInfo = std::get_if<UiGraphBlock::GraphBlockInfo>(&_rootBlock->blockCategoryInfo)) {
-            return {graphInfo->ownerSchedulerUniqueName, _rootBlock->blockUniqueName};
-        } else {
-            assert(false && "A normal block can not be editor root, it can not have children and edges");
+    std::optional<SchedulerGraphPair> ownersForRoot() const {
+        auto* _rootBlock = rootBlock();
+        if (!_rootBlock) {
             return {};
         }
+        using RetType        = std::optional<SchedulerGraphPair>;
+        const auto graphCase = [_rootBlock](const UiGraphBlock::GraphBlockInfo& graphInfo) -> RetType { //
+            return SchedulerGraphPair{graphInfo.ownerSchedulerUniqueName, _rootBlock->blockUniqueName};
+        };
+        const auto schedulerCase = [_rootBlock](const UiGraphBlock::SchedulerBlockInfo&) -> RetType {
+            assert(_rootBlock->childBlocks.size() == 1);
+            return SchedulerGraphPair{_rootBlock->blockUniqueName, _rootBlock->childBlocks.front()->blockUniqueName};
+        };
+        const auto elseCase = [](const auto&) -> RetType {
+            assert(false && "A normal block can not be editor root because it cannot have children nor edges");
+            return {};
+        };
+        return std::visit(gr::meta::overloaded{graphCase, schedulerCase, elseCase}, _rootBlock->blockCategoryInfo);
     }
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
