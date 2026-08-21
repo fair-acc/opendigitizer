@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: "${{ matrix.configurations.name }} | ${{ matrix.cmake-build-type }}"
+    name: "${{ matrix.preset }}"
     runs-on: ubuntu-latest
     container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
     env:
@@ -25,10 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configurations:
-          - name: Ubuntu gcc 14
-            compiler: gcc-14
-        cmake-build-type: [ Release, Debug ]
+        preset: [ci-gcc-debug, ci-gcc-release]
 
     steps:
     - uses: actions/checkout@v6
@@ -49,7 +46,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: /home/runner/work/ccache
-        key: ${{ runner.os }}-ccache-${{ matrix.compiler.cc }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}
+        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}
         restore-keys: |
           ${{ runner.os }}-ccache-
 
@@ -63,8 +60,8 @@ jobs:
       env:
         cache-name: cache-fetchContent-cache
       with:
-        path: ${{runner.workspace}}/build/_deps
-        key: ${{ matrix.configurations.compiler }}-${{ matrix.cmake-build-type }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+        path: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/_deps
+        key: ${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
     - name: Install image comparing tools
       shell: bash
@@ -80,40 +77,34 @@ jobs:
         gh release download latest \
           --repo fair-acc/gnuradio4 \
           --pattern "gnuradio4-gcc_*_amd64.deb" \
-          --pattern "gnuradio4-emscripten-static_*_all.deb" \
+          --pattern "gnuradio4-emscripten_*_all.deb" \
           --dir /tmp/gr4-pkgs
         sudo apt install /tmp/gr4-pkgs/*.deb -y || true
 
     - name: Configure CMake
       shell: bash
-      env:
-        CC: gcc-14
-        CXX: g++-14
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
-        cmake -S . -B ../build \
-        -DCMAKE_BUILD_TYPE=${{ matrix.cmake-build-type }} \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DENABLE_IMGUI_TEST_ENGINE=ON \
-        -DEMCMAKE_COMMAND=`which emcmake` \
-        -DCMAKE_PREFIX_PATH="/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten-static"
+        cmake --preset ${{ matrix.preset }}
 
     - name: Build
       shell: bash
+      env:
+        # Shared by parent cmake --build and the ui-wasm ExternalProject child.
+        CMAKE_BUILD_PARALLEL_LEVEL: 2
       run: |
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
-        cmake --build ../build
+        cmake --build --preset ${{ matrix.preset }}
 
     - name: Install Xvfb
       run: sudo apt-get install -y xvfb || true
 
     - name: execute tests
-      if: matrix.configurations.compiler != 'gcc-14' || matrix.cmake-build-type != 'Debug'
+      if: matrix.preset != 'ci-gcc-debug'
       timeout-minutes: 10
-      working-directory: ${{runner.workspace}}/build
+      working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
       shell: bash
       env:
         XDG_RUNTIME_DIR: /tmp/runtime-dir
@@ -126,9 +117,9 @@ jobs:
         ctest --output-on-failure
 
     - name: execute tests with coverage
-      if: matrix.configurations.compiler == 'gcc-14' && matrix.cmake-build-type == 'Debug'
+      if: matrix.preset == 'ci-gcc-debug'
       timeout-minutes: 10
-      working-directory: ${{runner.workspace}}/build
+      working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
       shell: bash
       env:
         XDG_RUNTIME_DIR: /tmp/runtime-dir
@@ -142,30 +133,30 @@ jobs:
 
     # only for Release, as this might generate PR comments (which we don't want to duplicate)
     - name: compare captures
-      if: ${{ github.event_name == 'pull_request' && matrix.cmake-build-type != 'Debug' }}
+      if: ${{ github.event_name == 'pull_request' && matrix.preset == 'ci-gcc-release' }}
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
-        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} /__w/opendigitizer/build/reference_captures /__w/opendigitizer/build/captures
+        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/reference_captures ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/captures
 
     - name: Setup Pages
-      if: matrix.cmake-build-type == 'Release'
+      if: matrix.preset == 'ci-gcc-release'
       uses: actions/configure-pages@v5
     - name: "Fetch cors header workaround" # we're unable to set custom headers on github pages, workaround according to: https://stackoverflow.com/a/68675301
-      if: matrix.cmake-build-type == 'Release'
+      if: matrix.preset == 'ci-gcc-release'
       run: |
         npm i --save coi-serviceworker
-        cp node_modules/coi-serviceworker/coi-serviceworker.js ../build/CMakeExternals/Build/ui-wasm/web/
-        sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i ../build/CMakeExternals/Build/ui-wasm/web/index.html
+        cp node_modules/coi-serviceworker/coi-serviceworker.js cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/
+        sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/index.html
     - name: Upload artifact
-      if: matrix.cmake-build-type == 'Release'
+      if: matrix.preset == 'ci-gcc-release'
       uses: actions/upload-pages-artifact@v3
       with:
-        path: '../build/CMakeExternals/Build/ui-wasm/web/'
+        path: 'cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/'
     - name: enable uploading pages
       id: enableUploadPages
-      if: matrix.cmake-build-type == 'Release'
+      if: matrix.preset == 'ci-gcc-release'
       run: echo "builtPages=1" >> "$GITHUB_OUTPUT"
 
     - name: Show final ccache stats

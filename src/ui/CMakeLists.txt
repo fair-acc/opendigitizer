@@ -10,17 +10,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 option(OD_DISABLE_DEMO_FLOWGRAPHS "Disable adding the demo flowgraphs to UI" OFF)
+option(OD_WASM_STATIC_BLOCKLIBS "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" OFF)
 set(GR_MAX_WASM_THREAD_COUNT
     60
     CACHE STRING "Max number of threads for WASM pthread pool")
 
 if(EMSCRIPTEN)
   message(STATUS "Emscripten version: ${EMSCRIPTEN_VERSION}")
+  # MAIN_MODULE=1 (gnuradio-core-dynload) requires PIC; the standalone src/ui ExternalProject does not inherit the root
+  # CMAKE_POSITION_INDEPENDENT_CODE.
+  set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
   # locate the "executable" output in the build/web directory
   set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/web)
   # necessary to tell CMake (with emscripten) to extend the standard .js and .wasm output with .html output (so that we
   # can execute it with the webserver)
   set(CMAKE_EXECUTABLE_SUFFIX ".html")
+
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(_od_emscripten_optimisation_flags -g -Os)
     set(_od_emscripten_assertions_flag "SHELL:-s ASSERTIONS=1")
@@ -43,26 +48,29 @@ if(EMSCRIPTEN)
     -fexceptions
     "SHELL:-s USE_SDL=3"
     -pthread)
-  add_link_options(
-    "SHELL:-s WASM=1"
-    "SHELL:-sFULL_ES3=1"
-    "SHELL:-sMAX_WEBGL_VERSION=2"
-    "SHELL:-sMIN_WEBGL_VERSION=2"
-    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
-    "SHELL:-s NO_EXIT_RUNTIME=0"
-    ${_od_emscripten_assertions_flag}
-    "SHELL:-s INITIAL_MEMORY=300MB"
-    "SHELL:-s STACK_SIZE=5MB"
-    "SHELL:-s MINIFY_HTML=0"
-    --shell-file
-    ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
-    "SHELL:-s PTHREAD_POOL_SIZE=${GR_MAX_WASM_THREAD_COUNT}"
-    "SHELL:-s USE_SDL=3"
-    ${_od_emscripten_debug_info_flags}
-    -fexceptions
-    -pthread
-    "-sFETCH=1" # needed for file_io
-    "--bind" # needed for Clipboard
+
+  # Main-module link flags. Dynload host contract (MAIN_MODULE, --export-all, WHOLE_ARCHIVE core,
+  # gnuradio_dynlink_post.js) comes from gnuradio4::gnuradio-core-dynload.
+  set(_od_emscripten_main_link_options
+      "SHELL:-s WASM=1"
+      "SHELL:-sFULL_ES3=1"
+      "SHELL:-sMAX_WEBGL_VERSION=2"
+      "SHELL:-sMIN_WEBGL_VERSION=2"
+      "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+      "SHELL:-s NO_EXIT_RUNTIME=0"
+      ${_od_emscripten_assertions_flag}
+      "SHELL:-s INITIAL_MEMORY=300MB"
+      "SHELL:-s STACK_SIZE=5MB"
+      "SHELL:-s MINIFY_HTML=0"
+      --shell-file
+      ${CMAKE_CURRENT_SOURCE_DIR}/shell_minimal.html
+      "SHELL:-s PTHREAD_POOL_SIZE=${GR_MAX_WASM_THREAD_COUNT}"
+      "SHELL:-s USE_SDL=3"
+      ${_od_emscripten_debug_info_flags}
+      -fexceptions
+      -pthread
+      "-sFETCH=1" # needed for file_io
+      "--bind" # needed for Clipboard
   )
 endif()
 
@@ -154,14 +162,19 @@ if(EMSCRIPTEN)
     "\n"
     "class Handler(http.server.SimpleHTTPRequestHandler):\n"
     "    def end_headers(self):\n"
+    "        # COOP/COEP for SharedArrayBuffer (pthreads); CORP so COEP allow same-origin wasm/js.\n"
     "        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')\n"
     "        self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')\n"
+    "        self.send_header('Cross-Origin-Resource-Policy', 'same-origin')\n"
     "        super().end_headers()\n"
     "    def log_message(self, fmt, *args):\n"
     "        pass  # silence per-request logs\n"
     "\n"
-    "class ReuseServer(http.server.HTTPServer):\n"
+    "# ThreadingHTTPServer: large plugin .wasm transfers (e.g. 24MB BasicBlocks) must not\n"
+    "# block serving index.js/wasm on a single-threaded server or the page hangs on spinner.\n"
+    "class ReuseServer(http.server.ThreadingHTTPServer):\n"
     "    allow_reuse_address = True\n"
+    "    daemon_threads = True\n"
     "\n"
     "# HTTP server (fallback)\n"
     "http_server = ReuseServer(('', HTTP_PORT), Handler)\n"
@@ -292,19 +305,51 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
-         gnuradio4::vir
-         gnuradio4::gnuradio-core
-         gnuradio4::gnuradio-blocklib-core
-         gnuradio4::GrBasicBlocksShared
-         gnuradio4::GrElectricalBlocksShared
-         gnuradio4::GrFileIoBlocksShared
-         gnuradio4::GrFilterBlocksShared
-         gnuradio4::GrFourierBlocksShared
-         gnuradio4::GrHttpBlocksShared
-         gnuradio4::GrMathBlocksShared
-         gnuradio4::GrTestingBlocksShared)
-if(NOT EMSCRIPTEN) # PicoScope blocks (gr-digitizers), native-only
-  target_link_libraries(${target_name}lib PUBLIC fair-picoscope)
+         gnuradio4::vir)
+
+if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
+  # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY (dynload-impl). CMake 3.31 rejects
+  # that next to dynload's WHOLE_ARCHIVE. FetchContent exposes gnuradio4::* as ALIAS — mutate the real target.
+  foreach(_od_gr4_tgt IN ITEMS gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload-impl)
+    if(TARGET ${_od_gr4_tgt})
+      get_target_property(_od_gr4_real ${_od_gr4_tgt} ALIASED_TARGET)
+      if(NOT _od_gr4_real)
+        set(_od_gr4_real ${_od_gr4_tgt})
+      endif()
+      set_property(TARGET ${_od_gr4_real} PROPERTY INTERFACE_LINK_LIBRARIES "")
+    endif()
+  endforeach()
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
+  # Headers only (FetchContent). Must be COMPILE_ONLY — gr-basic/gr-filter INTERFACE-link gnuradio-core as DEFAULT,
+  # which CMake 3.31 rejects next to dynload's WHOLE_ARCHIVE.
+  target_link_libraries(${target_name}lib PUBLIC "$<COMPILE_ONLY:gnuradio4::gr-basic>"
+                                                 "$<COMPILE_ONLY:gnuradio4::gr-filter>")
+elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
+  # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
+  target_compile_definitions(${target_name}lib PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
+  target_compile_definitions(${target_name} PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
+else()
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
+endif()
+
+# Native always links blocklibs. WASM dynload loads SIDE_MODULE plugins at runtime; WASM static links them into the main
+# module like native.
+if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
+  target_link_libraries(
+    ${target_name}lib
+    PUBLIC gnuradio4::GrBasicBlocksShared
+           gnuradio4::GrElectricalBlocksShared
+           gnuradio4::GrFileIoBlocksShared
+           gnuradio4::GrFilterBlocksShared
+           gnuradio4::GrFourierBlocksShared
+           gnuradio4::GrHttpBlocksShared
+           gnuradio4::GrMathBlocksShared
+           gnuradio4::GrTestingBlocksShared)
+endif()
+
+if(NOT EMSCRIPTEN)
+  target_link_libraries(${target_name}lib PUBLIC fair-picoscope) # PicoScope blocks (gr-digitizers), native-only
 endif()
 if(OD_DISABLE_DEMO_FLOWGRAPHS)
   target_compile_definitions(${target_name}lib PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
@@ -316,6 +361,111 @@ if(NOT EMSCRIPTEN)
   target_compile_definitions(${target_name}lib PUBLIC GL_GLEXT_PROTOTYPES)
 endif()
 target_link_libraries(${target_name} PRIVATE ${target_name}lib opendigitizer-options)
+
+if(EMSCRIPTEN)
+  target_link_options(${target_name} PRIVATE ${_od_emscripten_main_link_options})
+
+  if(OD_WASM_STATIC_BLOCKLIBS)
+    message(STATUS "OD_WASM_STATIC_BLOCKLIBS: linking Gr*Blocks into the main module (no SIDE_MODULE plugins)")
+  else()
+    # Host contract (MAIN_MODULE / --export-all / WHOLE_ARCHIVE core / dynlink post-js) is on
+    # gnuradio4::gnuradio-core-dynload. Copy SIDE_MODULE artefacts next to index.wasm.
+    if(NOT GNURADIO4_WASM_PLUGIN_FILES)
+      message(
+        FATAL_ERROR
+          "GNURADIO4_WASM_PLUGIN_FILES is empty. Install GR4 with ci-latest-wasm "
+          "(/opt/gnuradio4-emscripten), build GR4 from source with INTERNAL_ENABLE_BLOCK_PLUGINS=ON, "
+          "or use the wasm-static-blocklibs preset with ci-latest-wasm-static "
+          "(/opt/gnuradio4-emscripten-static).")
+    endif()
+
+    set(_od_plugin_wasm_files ${GNURADIO4_WASM_PLUGIN_FILES})
+    # Audio needs Web Audio / device APIs the UI does not use yet.
+    list(
+      FILTER
+      _od_plugin_wasm_files
+      EXCLUDE
+      REGEX
+      "Audio")
+
+    # Prefer smallest first so early SIDE_MODULE instantiate returns to the event loop sooner. Installed packages expose
+    # IMPORTED_LOCATION; FetchContent builds use $<TARGET_FILE> at build time (configure-time size may be 0 until the
+    # plugin is linked).
+    set(_od_plugin_sized "")
+    foreach(_wasm IN LISTS _od_plugin_wasm_files)
+      string(
+        REGEX
+        REPLACE "^lib(.+)\\.wasm$"
+                "\\1"
+                _plugin_target_leaf
+                "${_wasm}")
+      if(NOT TARGET gnuradio4::${_plugin_target_leaf})
+        message(FATAL_ERROR "Missing gnuradio4::${_plugin_target_leaf} for ${_wasm}")
+      endif()
+      set(_plugin_bytes 0)
+      get_target_property(_plugin_loc gnuradio4::${_plugin_target_leaf} IMPORTED_LOCATION_RELEASE)
+      if(NOT _plugin_loc)
+        get_target_property(_plugin_loc gnuradio4::${_plugin_target_leaf} IMPORTED_LOCATION)
+      endif()
+      if(_plugin_loc AND EXISTS "${_plugin_loc}")
+        file(SIZE "${_plugin_loc}" _plugin_bytes)
+      endif()
+      list(APPEND _od_plugin_sized "${_plugin_bytes}|${_wasm}|${_plugin_target_leaf}")
+    endforeach()
+    list(SORT _od_plugin_sized COMPARE NATURAL)
+
+    set(_od_plugin_names_code "")
+    set(_od_plugin_targets "")
+    set(_od_plugin_name_list "")
+    foreach(_entry IN LISTS _od_plugin_sized)
+      string(
+        REPLACE "|"
+                ";"
+                _parts
+                "${_entry}")
+      list(
+        GET
+        _parts
+        1
+        _wasm)
+      list(
+        GET
+        _parts
+        2
+        _plugin_target_leaf)
+      string(APPEND _od_plugin_names_code "    \"${_wasm}\",\n")
+      list(APPEND _od_plugin_name_list "${_wasm}")
+
+      set(_plugin_target "od_plugin_${_plugin_target_leaf}")
+      add_custom_target(
+        ${_plugin_target}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:gnuradio4::${_plugin_target_leaf}>"
+                "${EXECUTABLE_OUTPUT_PATH}/$<TARGET_FILE_NAME:gnuradio4::${_plugin_target_leaf}>"
+        DEPENDS gnuradio4::${_plugin_target_leaf}
+        COMMENT "Copy ${_wasm} next to index.wasm")
+      list(APPEND _od_plugin_targets ${_plugin_target})
+    endforeach()
+
+    list(LENGTH _od_plugin_name_list _od_plugin_count)
+    set(_od_plugin_wasm_header "${CMAKE_CURRENT_BINARY_DIR}/include/PluginWasmNames.hpp")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include")
+    file(
+      WRITE "${_od_plugin_wasm_header}"
+      "#pragma once
+#include <array>
+#include <string_view>
+
+namespace Digitizer {
+// Generated from GNURADIO4_WASM_PLUGIN_FILES (Audio excluded), sorted smallest-first.
+inline constexpr std::array<std::string_view, ${_od_plugin_count}> kPluginWasmNames{
+${_od_plugin_names_code}};
+} // namespace Digitizer
+")
+    target_include_directories(${target_name}lib PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
+    message(STATUS "Using gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")
+    add_dependencies(${target_name} ${_od_plugin_targets})
+  endif()
+endif()
 
 if(OPENDIGITIZER_ENABLE_TESTING)
   add_subdirectory(test)

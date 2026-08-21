@@ -10,6 +10,10 @@
 #include <format>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
+#if defined(__EMSCRIPTEN__) && !defined(OD_WASM_STATIC_BLOCKLIBS)
+#include "PluginWasmNames.hpp"
+#endif
+
 #include "common/Events.hpp"
 #include "common/ImguiWrap.hpp"
 
@@ -305,27 +309,60 @@ std::unique_ptr<Dashboard> Dashboard::create(std::shared_ptr<opencmw::client::Re
 
 void Dashboard::setNewDescription(const std::shared_ptr<DashboardDescription>& desc) { description = desc; }
 
+void Dashboard::loadPlugins(std::function<void()> done) {
+#if defined(__EMSCRIPTEN__) && !defined(OD_WASM_STATIC_BLOCKLIBS)
+    // Bare filenames next to index.html — filesystem::path must not see full URLs
+    // (collapses "http://" → "http:/"). Sequential: parallel dlopen of ~60MB freezes
+    // the main thread and can stall the HTML spinner via run-dependencies.
+    std::vector<std::string> names;
+    names.reserve(Digitizer::kPluginWasmNames.size());
+    for (const auto name : Digitizer::kPluginWasmNames) {
+        names.emplace_back(name);
+    }
+    std::println("[Plugins] loading {} side-modules sequentially", names.size());
+    pluginLoader->loadPluginsAsync(
+        names,
+        [done = std::move(done)](std::expected<void, gr::Error> result) {
+            if (!result) {
+                std::println("[Plugins] FAILED: {}", result.error().message);
+            } else {
+                std::println("[Plugins] all side-modules finished");
+            }
+            if (done) {
+                done();
+            }
+        },
+        /*sequential=*/true);
+#else
+    if (done) {
+        done();
+    }
+#endif
+}
+
 void Dashboard::load() {
     if (!description->storageInfo->isInMemoryDashboardStorage()) {
         isInitialised.store(false, std::memory_order_release);
         isInUse = true;
 
-        fetch(
-            restClient, description->storageInfo, description->filename, {What::Flowgraph}, //
-            [this](std::array<std::string, 1>&& data) {
-                //
-                loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { scheduler.emplaceGraph(std::move(graph)); });
-                isInUse = false;
-            },
-            [this]() {
-                auto error = std::format("Invalid flowgraph for dashboard {}/{}", description->storageInfo->path, description->filename);
-                components::Notification::error(error);
+        auto doFetch = [this]() {
+            fetch(
+                restClient, description->storageInfo, description->filename, {What::Flowgraph}, //
+                [this](std::array<std::string, 1>&& data) {
+                    loadAndThen(std::move(data[0]), [this](gr::Graph&& graph) { scheduler.emplaceGraph(std::move(graph)); });
+                    isInUse = false;
+                },
+                [this]() {
+                    auto error = std::format("Invalid flowgraph for dashboard {}/{}", description->storageInfo->path, description->filename);
+                    components::Notification::error(error);
+                    isInUse = false;
+                    if (requestClose) {
+                        requestClose(this);
+                    }
+                });
+        };
 
-                isInUse = false;
-                if (requestClose) {
-                    requestClose(this);
-                }
-            });
+        loadPlugins([doFetch = std::move(doFetch)]() { doFetch(); });
     }
 }
 

@@ -52,15 +52,66 @@
       }
     },
     {
+      "name": "ci-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/cmake-build-${presetName}",
+      "cacheVariables": {
+        "OPENDIGITIZER_ENABLE_TESTING": "ON",
+        "ENABLE_IMGUI_TEST_ENGINE": "ON",
+        "CMAKE_C_COMPILER": "gcc-14",
+        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten"
+      }
+    },
+    {
+      "name": "ci-gcc-debug",
+      "inherits": "ci-base",
+      "displayName": "CI GCC 14 Debug (native + ui-wasm)",
+      "description": "Matches GitHub Actions gcc-14 Debug: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "ci-gcc-release",
+      "inherits": "ci-base",
+      "displayName": "CI GCC 14 Release (native + ui-wasm)",
+      "description": "Matches GitHub Actions gcc-14 Release: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "wasm-release",
       "inherits": "base",
-      "displayName": "WASM Release",
+      "displayName": "WASM Release (dynload plugins)",
+      "description": "Load SIDE_MODULE *Plugin.wasm at runtime; expects GR4 from ci-latest-wasm (/opt/gnuradio4-emscripten)",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
         "DISABLE_WASM_BUILD": "ON",
         "OPENDIGITIZER_ENABLE_TESTING": "OFF",
-        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH"
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-emscripten",
+        "OD_WASM_STATIC_BLOCKLIBS": "OFF"
+      }
+    },
+    {
+      "name": "wasm-static-blocklibs",
+      "inherits": "base",
+      "displayName": "WASM Release (static blocklibs)",
+      "description": "Link Gr*Blocks into the main module; expects GR4 from ci-latest-wasm-static (/opt/gnuradio4-emscripten-static)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "DISABLE_WASM_BUILD": "ON",
+        "OPENDIGITIZER_ENABLE_TESTING": "OFF",
+        "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "BOTH",
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-emscripten-static",
+        "OD_WASM_STATIC_BLOCKLIBS": "ON"
       }
     }
   ],
@@ -69,6 +120,9 @@
     { "name": "gcc-release", "configurePreset": "gcc-release", "jobs": 6 },
     { "name": "clang-debug", "configurePreset": "clang-debug", "jobs": 6 },
     { "name": "clang-release", "configurePreset": "clang-release", "jobs": 6 },
-    { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 }
+    { "name": "ci-gcc-debug", "configurePreset": "ci-gcc-debug" },
+    { "name": "ci-gcc-release", "configurePreset": "ci-gcc-release" },
+    { "name": "wasm-release", "configurePreset": "wasm-release", "jobs": 6 },
+    { "name": "wasm-static-blocklibs", "configurePreset": "wasm-static-blocklibs", "jobs": 6 }
   ]
 }

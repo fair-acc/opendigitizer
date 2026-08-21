@@ -42,7 +42,7 @@
 
 #include <version.hpp>
 
-// TODO instead of including and registering blocks manually here, rely on the plugin system
+#include "PluginPaths.hpp"
 #include "build_configuration.hpp"
 #include "settings.hpp"
 
@@ -178,8 +178,16 @@ int main(int argc, char** argv) {
     if (argc > 1 && strcmp(argv[1], "--list-registered-blocks") == 0) {
         gr::BlockRegistry registry;
         registerTestBlocks(registry);
+        const auto       pluginPaths = Digitizer::resolvePluginSearchPaths();
+        gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
+
+        std::print("Plugin search paths:\n");
+        for (const auto& pluginPath : pluginPaths) {
+            std::print("  - {}\n", pluginPath);
+        }
+
         std::print("Available blocks:\n");
-        for (auto& blockName : registry.keys()) {
+        for (const auto& blockName : pluginLoader.availableBlocks()) {
             std::print("  - {}\n", blockName);
         }
         return 0;
@@ -265,7 +273,8 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), {});
+    const auto                                             pluginPaths = Digitizer::resolvePluginSearchPaths();
+    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
     GrAcqWorker                                            grAcqWorker(*broker, &pluginLoader, 50ms);
     GrFgWorker                                             grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};

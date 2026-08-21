@@ -65,11 +65,17 @@ set(FETCH_CONTENT_UI_TARGETS
   plf_colony
 )
 
-# OpenDigitizer links GR4 block libraries directly into the WASM UI.
+# WASM dynload needs SIDE_MODULE *Plugin.wasm; static-blocklibs matches ci-latest-wasm-static.
 if(EMSCRIPTEN)
-  set(INTERNAL_ENABLE_BLOCK_PLUGINS
-      OFF
-      CACHE BOOL "Build GR4 static block libraries for the OpenDigitizer WASM UI" FORCE)
+  if(OD_WASM_STATIC_BLOCKLIBS)
+    set(INTERNAL_ENABLE_BLOCK_PLUGINS
+        OFF
+        CACHE BOOL "Build GR4 static block libraries for the OpenDigitizer WASM UI" FORCE)
+  else()
+    set(INTERNAL_ENABLE_BLOCK_PLUGINS
+        ON
+        CACHE BOOL "Build GR4 SIDE_MODULE plugins for the OpenDigitizer WASM UI" FORCE)
+  endif()
 endif()
 
 find_package(gnuradio4 4.0.0 QUIET)
@@ -85,6 +91,12 @@ if (NOT gnuradio4_FOUND)
 endif()
 
 FetchContent_MakeAvailable(${FETCH_CONTENT_UI_TARGETS})
+
+# find_package sets GNURADIO4_WASM_PLUGIN_FILES from the install manifest; FetchContent exposes the
+# same basenames via GLOBAL property GR4_WASM_PLUGIN_FILES.
+if(NOT GNURADIO4_WASM_PLUGIN_FILES)
+  get_property(GNURADIO4_WASM_PLUGIN_FILES GLOBAL PROPERTY GR4_WASM_PLUGIN_FILES)
+endif()
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 
