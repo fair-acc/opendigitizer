@@ -21,6 +21,7 @@
 #include "OpenDashboardPage.hpp"
 
 #include "settings.hpp"
+#include "utils/EmscriptenHelper.hpp"
 
 #include <IoSerialiserYaS.hpp>
 #include <LoadTest.hpp>
@@ -122,6 +123,14 @@ public:
         dashboard->requestClose = [this](Dashboard*) { closeDashboard(); };
 
         flowgraphPage.setDashboard(dashboard.get());
+
+#ifdef __EMSCRIPTEN__
+        if (desc && desc->storageInfo && !desc->storageInfo->isInMemoryDashboardStorage()) {
+            setBrowserDashboardFragment(desc->name);
+        } else {
+            setBrowserDashboardFragment({});
+        }
+#endif
     }
 
     void loadDashboard(std::string_view url) {
