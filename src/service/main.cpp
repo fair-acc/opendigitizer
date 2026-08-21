@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
         }
 
         std::print("Available blocks:\n");
-        for (auto& blockName : registry.keys()) {
+        for (const auto& blockName : pluginLoader.availableBlocks()) {
             std::print("  - {}\n", blockName);
         }
         return 0;

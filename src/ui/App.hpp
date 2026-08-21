@@ -4,6 +4,7 @@
 #include <atomic>
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,7 @@ public:
     // next frame.
     bool                                        prepareForANewDashboardToLoad = false;
     std::shared_ptr<const DashboardDescription> dashboardToLoad;
+    std::optional<std::string>                  deferredDashboardUrl;
 
     components::AppHeader header;
 
@@ -194,24 +196,7 @@ public:
         header.requestApplicationStop        = [this] { isRunning = false; };
         header.loadAssets();
 
-#ifdef __EMSCRIPTEN__
-        // Skip auto-load: opening a dashboard dlopen()s SIDE_MODULE plugins on the main thread
-        // (~60MB). That races the first paint and leaves the HTML spinner up. Also avoid the
-        // default RemoteStream URL against the static file server (404 → noisy fetch/exit path).
-        // Let the user pick a sample from the open-dashboard page after the UI is up.
-        (void)argc;
-        (void)argv;
-        if (dashboard == nullptr) {
-            mainViewMode = ViewMode::OPEN_SAVE_DASHBOARD;
-        }
-#else
-        if (argc > 1) { // load dashboard if specified on the command line/query parameter
-            const char* url = argv[1];
-            if (strlen(url) > 0) {
-                std::print("Loading dashboard from '{}'\n", url);
-                loadDashboard(url);
-            }
-        } else if (!settings.defaultDashboard.empty()) {
+        auto resolveDefaultDashboardPath = [&settings]() -> std::string {
             // TODO: add subscription to remote dashboard worker if needed
             std::string dashboardPath = settings.defaultDashboard;
             if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
@@ -227,7 +212,36 @@ public:
                     }
                 }
             }
-            loadDashboard(dashboardPath);
+            return dashboardPath;
+        };
+
+#ifdef __EMSCRIPTEN__
+        // Defer argv / #dashboard= loads until after the first ImGui frame so SIDE_MODULE
+        // dlopen (~60MB) does not race the first paint. Skip stock RemoteStream auto-load
+        // against the static file server (404 → noisy fetch); show the picker instead.
+        if (argc > 1) {
+            const char* url = argv[1];
+            if (strlen(url) > 0) {
+                std::print("Loading dashboard from '{}' (deferred)\n", url);
+                deferredDashboardUrl          = url;
+                prepareForANewDashboardToLoad = true;
+            }
+        } else if (settings.dashboardFromUrlFragment && !settings.defaultDashboard.empty()) {
+            deferredDashboardUrl          = resolveDefaultDashboardPath();
+            prepareForANewDashboardToLoad = true;
+            std::print("Loading dashboard from '{}' (deferred)\n", *deferredDashboardUrl);
+        } else if (dashboard == nullptr) {
+            mainViewMode = ViewMode::OPEN_SAVE_DASHBOARD;
+        }
+#else
+        if (argc > 1) { // load dashboard if specified on the command line/query parameter
+            const char* url = argv[1];
+            if (strlen(url) > 0) {
+                std::print("Loading dashboard from '{}'\n", url);
+                loadDashboard(url);
+            }
+        } else if (!settings.defaultDashboard.empty()) {
+            loadDashboard(resolveDefaultDashboardPath());
         }
         if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
             loadDashboard(firstDashboard);
@@ -270,6 +284,12 @@ public:
             if (prepareForANewDashboardToLoad) {
                 prepareForANewDashboardToLoad = false;
                 return;
+            }
+
+            if (deferredDashboardUrl) {
+                const std::string url = std::move(*deferredDashboardUrl);
+                deferredDashboardUrl.reset();
+                loadDashboard(url);
             }
 
             if (dashboardToLoad) {
