@@ -109,15 +109,16 @@
             progressElement.value = null;
             progressElement.max = null;
             progressElement.hidden = true;
-            if (!text) spinnerElement.hidden = true;
-            statusElement.hidden = true;
+            spinnerElement.hidden = true;
+            statusElement.hidden = !text;
           }
           statusElement.innerHTML = text;
         },
         totalDependencies: 0,
         monitorRunDependencies: (left) => {
           this.totalDependencies = Math.max(this.totalDependencies, left);
-          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+          // Empty status clears the spinner (non-empty 'All downloads complete.' used to leave it spinning).
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : '');
         }
       };
       Module.setStatus('Downloading...');

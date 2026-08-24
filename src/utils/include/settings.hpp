@@ -67,6 +67,7 @@ struct Settings {
     std::string wasmServeDir{""};
     std::string defaultDashboard{"RemoteStream"};
     std::string remoteDashboards{"../dashboard/defaultDashboards"};
+    bool        dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
 
 private:
     Settings() {
@@ -141,7 +142,8 @@ private:
         for (auto param : std::ranges::split_view(fragment, "&"sv)) {
             auto sv = std::string_view(param.begin(), param.end());
             if (sv.starts_with("dashboard=")) {
-                defaultDashboard = sv.substr("dashboard="sv.length());
+                defaultDashboard         = sv.substr("dashboard="sv.length());
+                dashboardFromUrlFragment = true;
             } else if (sv.starts_with("darkMode=")) {
                 darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
             } else if (sv.starts_with("darkMode")) {

@@ -36,6 +36,7 @@
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
 
+#if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrElectricalBlocks.hpp>
 #include <gnuradio-4.0/GrFileIoBlocks.hpp>
@@ -44,6 +45,7 @@
 #include <gnuradio-4.0/GrHttpBlocks.hpp>
 #include <gnuradio-4.0/GrMathBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
+#endif
 
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
@@ -229,8 +231,10 @@ int main(int argc, char** argv) {
     Digitizer::Settings::instance();
     opendigitizer::ColourManager::instance();
 
-    // Register blocks
+    // Register blocks. On WASM dynload, Gr* blocklibs arrive via SIDE_MODULE plugins.
+    // On native / WASM-static they are linked in and registered here.
     auto* registry = grGlobalBlockRegistry();
+#if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
     gr::blocklib::initGrBasicBlocks(*registry);
     gr::blocklib::initGrElectricalBlocks(*registry);
     gr::blocklib::initGrFileIoBlocks(*registry);
@@ -239,6 +243,7 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrHttpBlocks(*registry);
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
+#endif
 
     // decimating BasicFilterProto variants: the ratio is the Resampling<in,out> template integers, and the
     // gr::filter blocklib registers only the <1,1> identity (used by PulsedPowerDemo.grc).
