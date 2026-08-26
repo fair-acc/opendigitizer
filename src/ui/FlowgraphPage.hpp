@@ -118,13 +118,22 @@ public:
     void                                 requestExportPort(const ExportPortMessageData& request);
     void                                 exportAllUnusedPorts();
 
+    enum class EdgeConflict { InputHasInternalConnection, UnexportingPortHasExternalConnection };
+    EdgeConflict _popupEdgeConflict{};
+
     struct UnexportPortRequest {
         ExportPortMessageData message;      // exportFlag = false
         std::string           exportedName; // name of the port as exported on the subgraph block
     };
     std::optional<UnexportPortRequest> unexportPortRequest;
 
-    [[nodiscard]] bool hasExternalEdgesForExportedPort(const std::string& exportedName) const;
+    // export deferred until the user confirms disconnecting the internal edge of the input port
+    std::optional<ExportPortMessageData> exportConflictRequest;
+
+    [[nodiscard]] std::vector<const UiGraphEdge*> externalEdgesForExportedPort(const std::string& exportedName) const;
+    [[nodiscard]] bool                            hasExternalEdgesForExportedPort(const std::string& exportedName) const { return !externalEdgesForExportedPort(exportedName).empty(); }
+    [[nodiscard]] const UiGraphEdge*              internalEdgeForInputPort(const ExportPortMessageData& request) const;
+    void                                          requestEdgeRemoval(const UiGraphEdge& edge);
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _exportPortTargetBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();

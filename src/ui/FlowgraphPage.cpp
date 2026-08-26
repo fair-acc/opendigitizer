@@ -507,7 +507,8 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
     // Register ports with node editor, actual drawing comes later
-    auto registerPins = [this, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
+    auto exportTarget = exportPortTargetBlock();
+    auto registerPins = [exportTarget, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - pinHorizontalPadding;
         }
@@ -516,7 +517,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
         const bool  isInput = pinType == ax::NodeEditor::PinKind::Input;
 
         for (std::size_t i = 0; i < ports.size(); ++i) {
-            auto portDisplayName = exportedPortShortenedDisplayName(ports[i], _exportPortTargetBlock);
+            auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
             auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, blockSize.y, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
             addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
@@ -648,7 +649,13 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
         }
     } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         if (_draggingPinExportRequest && !boundingBox.contains(ImGui::GetMousePos())) {
-            requestExportPort(*_draggingPinExportRequest);
+            if (internalEdgeForInputPort(*_draggingPinExportRequest)) {
+                // defer to a confirmation popup, an exported input port cannot also have an internal edge
+                _popupEdgeConflict    = EdgeConflict::InputHasInternalConnection;
+                exportConflictRequest = *_draggingPinExportRequest;
+            } else {
+                requestExportPort(*_draggingPinExportRequest);
+            }
         }
         _draggingPinExportRequest  = {};
         this->_timeSpentHoldingPin = 0.f;
@@ -742,7 +749,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
                 const float blockTopY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
                 for (std::size_t i = 0; i < ports.size(); ++i) {
-                    auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], _exportPortTargetBlock);
+                    auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
                     auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockSize.y, isInput);
 
                     if (!portExportedDisplayName) {
@@ -902,28 +909,56 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
     }
 
-    constexpr components::YesNoPopupOptions popupOptions{
-        .yesText   = "Yes, unexport and disconnect all",
-        .noText    = "Cancel and keep external connections",
-        .titleText = "Unexporting port will disconnect external edges. Are you sure?",
-    };
-
-    constexpr static const char* unexportPortPopupId = "##Unexport port";
-    if (unexportPortRequest) {
-        ImGui::OpenPopup(unexportPortPopupId);
+    constexpr static const char* edgeConflictPopupId = "##Edge conflict";
+    if (unexportPortRequest || exportConflictRequest) {
+        ImGui::OpenPopup(edgeConflictPopupId);
 
         using namespace components;
-        const auto popupResult = beginYesNoPopup(unexportPortPopupId, popupOptions, ImGuiWindowFlags_AlwaysAutoResize);
+        const YesNoPopupOptions popupOptions = [this] {
+            switch (_popupEdgeConflict) {
+            case EdgeConflict::InputHasInternalConnection:
+                return YesNoPopupOptions{
+                    .yesText   = "Disconnect internal edge before exporting",
+                    .noText    = "Cancel exporting",
+                    .titleText = "An input port can only have one connection",
+                };
+            case EdgeConflict::UnexportingPortHasExternalConnection:
+                return YesNoPopupOptions{
+                    .yesText   = "Yes, unexport and disconnect all",
+                    .noText    = "Cancel and keep external connections",
+                    .titleText = "Unexporting port will disconnect external edges. Are you sure?",
+                };
+            }
+            std::unreachable();
+        }();
+
+        const auto popupResult = beginYesNoPopup(edgeConflictPopupId, popupOptions, ImGuiWindowFlags_AlwaysAutoResize);
         if (isPopupConfirmed(popupResult)) {
-            requestExportPort(unexportPortRequest->message);
+            if (unexportPortRequest) {
+                for (const UiGraphEdge* externalEdge : externalEdgesForExportedPort(unexportPortRequest->exportedName)) {
+                    requestEdgeRemoval(*externalEdge);
+                }
+                requestExportPort(unexportPortRequest->message);
+            }
+            if (exportConflictRequest) {
+                if (const UiGraphEdge* internalEdge = internalEdgeForInputPort(*exportConflictRequest)) {
+                    requestEdgeRemoval(*internalEdge);
+                }
+                if (exportConflictRequest->exportedName.empty()) {
+                    exportPortRequest = std::move(*exportConflictRequest); // ask for the exported name next
+                } else {
+                    requestExportPort(*exportConflictRequest);
+                }
+            }
         }
         if (isPopupOpen(popupResult)) {
             ImGui::EndPopup();
         }
 
-        if (!ImGui::IsPopupOpen(unexportPortPopupId)) {
+        if (!ImGui::IsPopupOpen(edgeConflictPopupId)) {
             // popup closed, so the user's request is either cancelled or applied
             unexportPortRequest.reset();
+            exportConflictRequest.reset();
         }
     }
 
@@ -1047,14 +1082,22 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
         }
 
         if (exported) {
-            exportPortTextField = getDefaultExportedName(&port);
-            exportPortRequest   = ExportPortMessageData{
-                  .uniqueBlockName = _selectedBlock->blockUniqueName,
-                  .portDirection   = portDirection,
-                  .portName        = port.portName,
-                  .exportedName    = "", // -Wmissing-designated-field-initializers
-                  .exportFlag      = true,
+            ExportPortMessageData exportMessage{
+                .uniqueBlockName = _selectedBlock->blockUniqueName,
+                .portDirection   = portDirection,
+                .portName        = port.portName,
+                .exportedName    = "", // -Wmissing-designated-field-initializers
+                .exportFlag      = true,
             };
+            exportPortTextField = getDefaultExportedName(&port);
+
+            if (internalEdgeForInputPort(exportMessage)) {
+                // defer to a confirmation popup, an exported input port cannot also have an internal edge
+                _popupEdgeConflict    = EdgeConflict::InputHasInternalConnection;
+                exportConflictRequest = std::move(exportMessage);
+            } else {
+                exportPortRequest = std::move(exportMessage);
+            }
             continue;
         }
 
@@ -1068,6 +1111,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
 
         if (const auto exportedName = port.getExportedName(exportTarget); exportedName && hasExternalEdgesForExportedPort(*exportedName)) {
             // defer to a confirmation popup, external edges would be disconnected
+            _popupEdgeConflict  = EdgeConflict::UnexportingPortHasExternalConnection;
             unexportPortRequest = UnexportPortRequest{.message = std::move(unexportMessage), .exportedName = *exportedName};
         } else {
             requestExportPort(unexportMessage);
@@ -1134,17 +1178,60 @@ void FlowgraphEditor::requestExportPort(const ExportPortMessageData& request) {
     graphModel()->sendMessage(std::move(message));
 }
 
-bool FlowgraphEditor::hasExternalEdgesForExportedPort(const std::string& exportedName) const {
-    const auto  exportTarget = exportPortTargetBlock();
+std::vector<const UiGraphEdge*> FlowgraphEditor::externalEdgesForExportedPort(const std::string& exportedName) const {
+    const auto* exportTarget = exportPortTargetBlock();
     const auto* parentGraph  = exportTarget ? exportTarget->parentBlock : nullptr;
     if (!parentGraph) {
-        return false;
+        return {};
     }
 
-    return std::ranges::any_of(parentGraph->childEdges, [exportTarget, &exportedName](const UiGraphEdge& edge) {
+    const auto isExternalEdge = [exportTarget, &exportedName](const UiGraphEdge& edge) {
         const auto matches = [&](const UiGraphPort* port) { return port && port->ownerBlock == exportTarget && port->portName == exportedName; };
         return matches(edge.edgeSourcePort) || matches(edge.edgeDestinationPort);
+    };
+    return parentGraph->childEdges | std::views::filter(isExternalEdge) | std::views::transform([](const UiGraphEdge& edge) { return &edge; }) | std::ranges::to<std::vector>();
+}
+
+const UiGraphEdge* FlowgraphEditor::internalEdgeForInputPort(const ExportPortMessageData& request) const {
+    if (request.portDirection != "input") {
+        return nullptr;
+    }
+    const auto* root = rootBlock();
+    if (!root) {
+        return nullptr;
+    }
+
+    const auto it = std::ranges::find_if(root->childEdges, [&request](const UiGraphEdge& edge) {
+        return edge.edgeDestinationPort && edge.edgeDestinationPort->ownerBlock &&                 //
+               edge.edgeDestinationPort->ownerBlock->blockUniqueName == request.uniqueBlockName && //
+               edge.edgeDestinationPort->portName == request.portName;
     });
+    return it != root->childEdges.end() ? std::addressof(*it) : nullptr;
+}
+
+void FlowgraphEditor::requestEdgeRemoval(const UiGraphEdge& edge) {
+    // This has a bug where it disconnects unrelated edges which share this output port. TODO: implement disconnecting edges by destination port in gnuradio
+    auto* sourceBlock = edge.getBlock(UiGraphPort::Role::Source);
+    if (!sourceBlock || !sourceBlock->parentBlock) {
+        return;
+    }
+
+    components::Notification::error("Edge removal behavior is currently unimplemented");
+
+    // TODO: implement this message when a new message type is added to GR which
+    // uniquely identifies edges (this method selects by source port, which may
+    // include edges that are not connected to the exported port)
+    //
+    // auto* owningGraph = sourceBlock->parentBlock;
+    // gr::Message message;
+    // message.cmd         = gr::message::Command::Set;
+    // message.endpoint    = gr::scheduler::property::kRemoveEdge;
+    // message.serviceName = owningGraph->ownerSchedulerUniqueName();
+    // message.data        = gr::property_map{                                                                   //
+    //     {"_targetGraph", owningGraph->blockUniqueName},                                                //
+    //     {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceBlock->blockUniqueName}, //
+    //     {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), edge.edgeSourcePort->portName}};
+    // _graphModel->sendMessage(std::move(message));
 }
 
 void FlowgraphEditor::exportAllUnusedPorts() {
