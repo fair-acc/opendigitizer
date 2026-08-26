@@ -427,12 +427,14 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
     // out vars, not set until after .render() and window callbacks below
     auto contextMenuAction = PropertyControlWindowContextMenuAction::None;
 
-    this->addPropertyControlWindows({
-        .output              = windows,
-        .pairs               = propertyPairsByWindowID,
-        .onContextMenuAction = [&contextMenuAction](PropertyControlWindowContextMenuAction action) { contextMenuAction = action; },
-        .removeList          = windowRemoveList,
-    });
+    if (mode != Mode::View) {
+        this->addPropertyControlWindows({
+            .output              = windows,
+            .pairs               = propertyPairsByWindowID,
+            .onContextMenuAction = [&contextMenuAction](PropertyControlWindowContextMenuAction action) { contextMenuAction = action; },
+            .removeList          = windowRemoveList,
+        });
+    }
 
     _dockSpace.render(windows, paneSize, mode == Mode::Layout);
 
@@ -476,7 +478,7 @@ void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
 ImVec2 DashboardPage::drawLegendCenter(Mode mode, ImVec2 chartPaneSize) noexcept {
     _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
     auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, chartPaneSize.x);
-    if (mode != Mode::Layout && !rightClickedSinkName.empty()) {
+    if (mode == Mode::Interaction && !rightClickedSinkName.empty()) {
         if (auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(rightClickedSinkName))) {
             _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
             _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;

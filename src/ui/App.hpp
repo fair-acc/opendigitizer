@@ -75,7 +75,7 @@ public:
     App() : flowgraphPage(restClient), openDashboardPage(restClient) {
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
         if (!Digitizer::Settings::instance().editableMode) {
-            // the exit-view-mode button will also check and be disabled in this case so things are fully non-editable
+            // start in view mode without application-authoring controls, while retaining chart interaction
             mainViewMode     = ViewMode::VIEW;
             previousViewMode = ViewMode::VIEW;
         }
@@ -258,14 +258,18 @@ public:
 #endif
     }
 
-    [[nodiscard]] bool viewModeReturnIsExitRequested(float startHeight) const noexcept {
+    [[nodiscard]] bool drawViewModeBlockerAndCheckExit(float startHeight) const noexcept {
+        if (!Digitizer::Settings::instance().editableMode) {
+            return false;
+        }
+
         const ImRect buttonArea{{0, startHeight}, ImGui::GetMainViewport()->Size};
         ImGui::SetNextWindowSize(buttonArea.GetSize());
         ImGui::SetNextWindowPos(buttonArea.GetTL());
         IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
         const auto  unlockPopupID = "Return dashboard to interactive mode?##lockModeDisableInputBlockerPopup";
         ImGui::SetCursorScreenPos(buttonArea.GetTL());
-        if ((ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) && Digitizer::Settings::instance().editableMode) {
+        if (ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
             ImGui::OpenPopup(unlockPopupID);
         }
 
@@ -361,7 +365,7 @@ public:
                 components::Notification::warning(msg);
             }
 
-            if (mainViewMode == ViewMode::VIEW && this->viewModeReturnIsExitRequested(lockedModeBlockerStart)) {
+            if (mainViewMode == ViewMode::VIEW && this->drawViewModeBlockerAndCheckExit(lockedModeBlockerStart)) {
                 mainViewMode = ViewMode::INTERACTION;
             }
         }

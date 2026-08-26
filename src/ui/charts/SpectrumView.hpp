@@ -147,7 +147,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         }
 
         drawTopPane(plotFlags, plotSize, showGrid, chartMode);
-        drawBottomPane(plotFlags, plotSize, showGrid);
+        drawBottomPane(plotFlags, plotSize, showGrid, chartMode);
 
         ImPlot::EndSubplots();
         return gr::work::Status::OK;
@@ -241,7 +241,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         });
     }
 
-    void drawBottomPane(ImPlotFlags plotFlags, const ImVec2& plotSize, bool showGrid) {
+    void drawBottomPane(ImPlotFlags plotFlags, const ImVec2& plotSize, bool showGrid, ChartMode chartMode) {
         const ImVec2 paneSize{plotSize.x, plotSize.y * _rowRatios[1]};
 
         ImGui::PushID("bottom");
@@ -271,8 +271,10 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             }
 
             tooltip::showPlotMouseTooltip();
-            drawContextMenu("SpectrumViewBottom");
-            handlePlotDropTarget();
+            drawContextMenu(chartMode, "SpectrumViewBottom");
+            if (chartMode == ChartMode::Interaction) {
+                handlePlotDropTarget();
+            }
             ImPlot::EndPlot();
         }
 
