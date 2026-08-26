@@ -122,8 +122,9 @@ public:
     EdgeConflict _popupEdgeConflict{};
 
     struct UnexportPortRequest {
-        ExportPortMessageData message;      // exportFlag = false
-        std::string           exportedName; // name of the port as exported on the subgraph block
+        ExportPortMessageData      message;           // exportFlag = false
+        std::string                exportedName;      // name of the port as exported on the subgraph block
+        std::optional<gr::Message> thenEmplaceEdge{}; // edge to create once the port is unexported
     };
     std::optional<UnexportPortRequest> unexportPortRequest;
 

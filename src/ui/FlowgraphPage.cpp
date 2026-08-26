@@ -600,6 +600,25 @@ void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId inputP
                 {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                                 //
                 {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}};
 
+            // an exported input port cannot also have an internal edge, so unexport it before connecting
+            if (const auto exportedName = inputPort->getExportedName(exportPortTargetBlock())) {
+                ExportPortMessageData unexportMessage{
+                    .uniqueBlockName = inputPort->ownerBlock->blockUniqueName,
+                    .portDirection   = "input",
+                    .portName        = inputPort->portName,
+                    .exportedName    = "", // -Wmissing-designated-field-initializers
+                    .exportFlag      = false,
+                };
+
+                if (hasExternalEdgesForExportedPort(*exportedName)) {
+                    // defer to a confirmation popup, external edges would be disconnected
+                    _popupEdgeConflict  = EdgeConflict::UnexportingPortHasExternalConnection;
+                    unexportPortRequest = UnexportPortRequest{.message = std::move(unexportMessage), .exportedName = *exportedName, .thenEmplaceEdge = std::move(message)};
+                    return;
+                }
+                requestExportPort(unexportMessage);
+            }
+
             _graphModel->sendMessage(std::move(message));
         }
     }
@@ -939,6 +958,9 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                     requestEdgeRemoval(*externalEdge);
                 }
                 requestExportPort(unexportPortRequest->message);
+                if (unexportPortRequest->thenEmplaceEdge) {
+                    _graphModel->sendMessage(std::move(*unexportPortRequest->thenEmplaceEdge));
+                }
             }
             if (exportConflictRequest) {
                 if (const UiGraphEdge* internalEdge = internalEdgeForInputPort(*exportConflictRequest)) {
