@@ -922,8 +922,10 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::GetWindowDrawList()->AddCallback(SurfaceGpuRenderer::renderCallback, &_gpuRenderer);
         }
 
-        drawSurfaceContextMenu();
-        handleSurfaceDropTarget();
+        drawSurfaceContextMenu(chartMode);
+        if (chartMode == ChartMode::Interaction) {
+            handleSurfaceDropTarget();
+        }
 
         return gr::work::Status::OK;
     }
@@ -972,8 +974,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         }
     }
 
-    void drawSurfaceContextMenu() {
-        if (!_savedPlot) {
+    void drawSurfaceContextMenu(ChartMode mode) {
+        if (mode == ChartMode::Layout || !_savedPlot) {
             return;
         }
 
@@ -1020,7 +1022,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
         // canvas context menu
         if (ImGui::BeginPopup("##Srf3DCanvas")) {
-            drawCommonContextMenuItems();
+            drawCommonContextMenuItems(mode);
             ImGui::EndPopup();
         }
     }
