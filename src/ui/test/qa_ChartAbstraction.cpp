@@ -2,8 +2,12 @@
 
 #include <boost/ut.hpp>
 
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <string>
+#include <string_view>
 #include <thread>
 
 int main() {
@@ -107,6 +111,54 @@ int main() {
         auto yyChart = makeYYChart();
         expect(yyChart != nullptr);
         expect(eq(yyChart->chartTypeName(), std::string_view("YYChart")));
+    };
+
+    "Minimal scientific values remain normalized without redundant exponents"_test = [] {
+        expect(eq(axis::formatMinimalScientific(0.0), std::string{"0"}));
+        expect(eq(axis::formatMinimalScientific(1.23), std::string{"1.23"}));
+        expect(eq(axis::formatMinimalScientific(9.9999), std::string{"1E1"}));
+        expect(eq(axis::formatMinimalScientific(99'400.0), std::string{"9.94E4"}));
+        expect(eq(axis::formatMinimalScientific(99'999.0), std::string{"1E5"}));
+        expect(eq(axis::formatMinimalScientific(-99'999.0), std::string{"-1E5"}));
+        expect(eq(axis::formatMinimalScientific(std::numeric_limits<double>::quiet_NaN()), std::string{"nan"}));
+        expect(eq(axis::formatMinimalScientific(std::numeric_limits<double>::infinity()), std::string{"inf"}));
+        expect(eq(axis::formatMinimalScientific(-std::numeric_limits<double>::infinity()), std::string{"-inf"}));
+    };
+
+    "Scientific axis labels preserve values and units across display ranges"_test = [] {
+        const auto formatScientific = [](double value, std::string_view unit) {
+            std::array<char, 64UZ> buffer{};
+            std::string            unitStorage(unit);
+            const int              count = axis::formatScientific(value, buffer.data(), static_cast<int>(buffer.size()), unitStorage.data());
+            const std::string      result(buffer.data());
+            expect(eq(count, static_cast<int>(result.size())));
+            return result;
+        };
+
+        expect(eq(formatScientific(0.0, "Hz"), std::string{"0Hz"}));
+        expect(eq(formatScientific(1.23, "Hz"), std::string{"1.23Hz"}));
+        expect(eq(formatScientific(99'999.0, "Hz"), std::string{"1E5Hz"}));
+        expect(eq(formatScientific(0.00099999, "Hz"), std::string{"1E-3Hz"}));
+        expect(eq(formatScientific(std::numeric_limits<double>::quiet_NaN(), "Hz"), std::string{"nanHz"}));
+    };
+
+    "Metric axis labels select SI prefixes and preserve units"_test = [] {
+        const auto formatMetric = [](double value, std::string_view unit) {
+            std::array<char, 64UZ> buffer{};
+            std::string            unitStorage(unit);
+            const int              count = axis::formatMetric(value, buffer.data(), static_cast<int>(buffer.size()), unitStorage.data());
+            const std::string      result(buffer.data());
+            expect(eq(count, static_cast<int>(result.size())));
+            return result;
+        };
+
+        expect(eq(formatMetric(0.0, "Hz"), std::string{"0Hz"}));
+        expect(eq(formatMetric(1'234.0, "Hz"), std::string{"1.234kHz"}));
+        expect(eq(formatMetric(47.0, "Hz"), std::string{"47Hz"}));
+        expect(eq(formatMetric(0.0033, "Hz"), std::string{"3.3mHz"}));
+        expect(eq(formatMetric(std::numeric_limits<double>::quiet_NaN(), "Hz"), std::string{"nanHz"}));
+        expect(eq(formatMetric(std::numeric_limits<double>::infinity(), "Hz"), std::string{"infHz"}));
+        expect(eq(formatMetric(-std::numeric_limits<double>::infinity(), "Hz"), std::string{"-infHz"}));
     };
 
     "Signal shared between multiple charts"_test = [] {
