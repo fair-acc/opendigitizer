@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <expected>
 #include <format>
 #include <functional>
@@ -50,7 +51,7 @@ struct TagData {
 };
 
 template<typename T>
-T getValueOrDefault(const gr::property_map& map, const std::string& key, const T& defaultValue, std::source_location location = std::source_location::current()) {
+T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& defaultValue, std::source_location location = std::source_location::current()) {
     if (auto it = map.find(key); it != map.end()) {
         constexpr bool                strictChecks   = false;
         std::expected<T, std::string> convertedValue = gr::pmt::convert_safely<T, strictChecks>(it->second);
@@ -529,13 +530,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 break; // only process tags at the start of the span
             }
             const gr::property_map& tagMap = tagMapRef.get();
-            if (tagMap.contains(gr::tag::TRIGGER_TIME.shortKey())) {
-                const auto   offset       = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET.shortKey(), 0.f));
-                const auto   utcTime      = static_cast<double>(getValueOrDefault<uint64_t>(tagMap, gr::tag::TRIGGER_TIME.shortKey(), 0U)) + offset;
-                const double tagEventTime = utcTime * 1e-9 + offset; // [s]
-                bool         tagOK        = true;
+            if (tagMap.contains(gr::tag::TRIGGER_TIME)) {
+                const auto   offsetSeconds = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET, 0.f));
+                const auto   triggerTimeNs = getValueOrDefault<std::uint64_t>(tagMap, gr::tag::TRIGGER_TIME, 0U);
+                const double tagEventTime  = static_cast<double>(triggerTimeNs) * 1e-9 + offsetSeconds;
+                bool         tagOK         = true;
 
-                if ((utcTime > 0.0 || tagEventTime > 0.0) && (tagEventTime > _xUtcOffset || !_xUtcOffsetInitialised)) {
+                if ((triggerTimeNs > 0U || tagEventTime > 0.0) && (tagEventTime > _xUtcOffset || !_xUtcOffsetInitialised)) {
                     _xUtcOffset            = tagEventTime;
                     _sample_count          = 0UZ;
                     _xUtcOffsetInitialised = true;
@@ -552,7 +553,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
 
             // surface dropped-sample tags at the current position so the gap is visible in the plot
-            if (plot_tags && IsStreaming && tagMap.contains("droppedSamples")) {
+            if (plot_tags && IsStreaming && tagMap.contains(gr::tag::N_DROPPED_SAMPLES)) {
                 _tagValues.push_back({.timestamp = _xUtcOffset + static_cast<double>(_sample_count) * _sample_period, .map = tagMap});
             }
         }

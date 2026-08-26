@@ -212,9 +212,9 @@ gr::property_map makeFairTimingTagMap(std::uint64_t triggerTime, int eventNumber
     }
 
     gr::property_map tagMap;
-    tagMap.emplace(gr::tag::TRIGGER_TIME.shortKey(), triggerTime);
-    tagMap.emplace(gr::tag::CONTEXT.shortKey(), "FAIR-TIMING:C=1.S=1.P=1.T=1");
-    tagMap.emplace(gr::tag::TRIGGER_META_INFO.shortKey(), metaInfo);
+    tagMap.emplace(gr::tag::TRIGGER_TIME, triggerTime);
+    tagMap.emplace(gr::tag::CONTEXT, "FAIR-TIMING:C=1.S=1.P=1.T=1");
+    tagMap.emplace(gr::tag::TRIGGER_META_INFO, metaInfo);
     return tagMap;
 }
 } // namespace
