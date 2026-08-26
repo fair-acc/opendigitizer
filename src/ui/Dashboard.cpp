@@ -1064,7 +1064,7 @@ void Dashboard::Service::reload() {
     opencmw::client::Command command;
     command.command  = opencmw::mdp::Command::Get;
     command.topic    = opencmw::URI<>(uri);
-    command.callback = [&](const opencmw::mdp::Message& rep) {
+    command.callback = [this](const opencmw::mdp::Message& rep) {
         auto buf = rep.data;
 
         opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage;
@@ -1074,11 +1074,12 @@ void Dashboard::Service::reload() {
         auto        newFlowgraph = opendigitizer::flowgraph::getFlowgraphFromMessage(message);
 
         if (newFlowgraph) {
-            this->grc    = newFlowgraph->serialisedFlowgraph;
-            this->layout = newFlowgraph->serialisedUiLayout;
-
+            EventLoop::instance().executeLater([this, newGrc = std::move(newFlowgraph->serialisedFlowgraph), newLayout = std::move(newFlowgraph->serialisedUiLayout)]() mutable {
+                this->grc    = std::move(newGrc);
+                this->layout = std::move(newLayout);
+            });
         } else {
-            components::Notification::warning("Error reading flowgraph from the service reply");
+            EventLoop::instance().executeLater([] { components::Notification::warning("Error reading flowgraph from the service reply"); });
         }
     };
     restClient->request(command);
@@ -1101,9 +1102,9 @@ void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
     opencmw::serialise<opencmw::Json>(command.data, serialisedMessage);
 
     command.topic    = opencmw::URI<>(uri);
-    command.callback = [&](const opencmw::mdp::Message& rep) {
+    command.callback = [](const opencmw::mdp::Message& rep) {
         if (!rep.error.empty()) {
-            components::Notification::warning(rep.error);
+            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
         }
     };
     restClient->request(command);
@@ -1165,9 +1166,9 @@ void Dashboard::Service::execute() {
     opencmw::serialise<opencmw::Json>(command.data, request);
 
     command.topic    = opencmw::URI<>(uri);
-    command.callback = [&](const opencmw::mdp::Message& rep) {
+    command.callback = [](const opencmw::mdp::Message& rep) {
         if (!rep.error.empty()) {
-            components::Notification::warning(rep.error);
+            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
         }
     };
     restClient->request(command);
