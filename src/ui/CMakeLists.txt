@@ -12,7 +12,7 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 option(OD_DISABLE_DEMO_FLOWGRAPHS "Disable adding the demo flowgraphs to UI" OFF)
 option(OD_WASM_STATIC_BLOCKLIBS "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" OFF)
 set(GR_MAX_WASM_THREAD_COUNT
-    60
+    16
     CACHE STRING "Max number of threads for WASM pthread pool")
 
 if(EMSCRIPTEN)
