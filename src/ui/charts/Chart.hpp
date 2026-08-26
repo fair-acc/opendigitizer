@@ -247,6 +247,9 @@ inline int formatMetric(double value, char* buff, int size, void* data) {
     if (value == 0.0) {
         return enforceNullTerminate(buff, size, std::format_to_n(buff, static_cast<std::ptrdiff_t>(size), "0{}", unit));
     }
+    if (!std::isfinite(value)) {
+        return enforceNullTerminate(buff, size, std::format_to_n(buff, static_cast<std::ptrdiff_t>(size), "{:g}{}", value, unit));
+    }
 
     std::string_view prefix      = kPrefixes.back();
     double           scaledValue = value / kScales.back();
@@ -266,8 +269,18 @@ inline std::string formatMinimalScientific(double value, int maxDecimals = 2) {
     if (value == 0.0) {
         return "0";
     }
-    const int    exponent = static_cast<int>(std::floor(std::log10(std::abs(value))));
-    const double mantissa = value / std::pow(10.0, exponent);
+    if (!std::isfinite(value)) {
+        return std::format("{}", value);
+    }
+
+    int          exponent = static_cast<int>(std::floor(std::log10(std::abs(value))));
+    double       mantissa = value / std::pow(10.0, exponent);
+    const double scale    = std::pow(10.0, maxDecimals);
+    mantissa              = std::round(mantissa * scale) / scale;
+    if (std::abs(mantissa) >= 10.0) {
+        mantissa /= 10.0;
+        ++exponent;
+    }
 
     std::string mantissaStr = std::format("{:.{}f}", mantissa, maxDecimals);
     while (!mantissaStr.empty() && mantissaStr.back() == '0') {
@@ -275,6 +288,9 @@ inline std::string formatMinimalScientific(double value, int maxDecimals = 2) {
     }
     if (!mantissaStr.empty() && mantissaStr.back() == '.') {
         mantissaStr.pop_back();
+    }
+    if (exponent == 0) {
+        return mantissaStr;
     }
     return std::format("{}E{}", mantissaStr, exponent);
 }
