@@ -44,11 +44,17 @@ option(ENABLE_IMGUI_TEST_ENGINE "Enable ImGui Test Engine" ${DEFAULT_ENABLE_IMGU
 message("OPENDIGITIZER_ENABLE_TESTING : ${OPENDIGITIZER_ENABLE_TESTING}")
 message("ENABLE_IMGUI_TEST_ENGINE     : ${ENABLE_IMGUI_TEST_ENGINE}")
 
+option(OD_WASM_STATIC_BLOCKLIBS "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" ON)
+if(OD_WASM_STATIC_BLOCKLIBS)
+  set(DEFAULT_OD_WASM_GNURADIO4_PREFIX "/opt/gnuradio4-emscripten-static")
+else()
+  set(DEFAULT_OD_WASM_GNURADIO4_PREFIX "/opt/gnuradio4-emscripten")
+endif()
 set(OD_WASM_CMAKE_OPTIONS
     ""
     CACHE STRING "Additional cmake options to pass to the emscripten ui build")
 set(OD_WASM_GNURADIO4_PREFIX
-    "/opt/gnuradio4-emscripten"
+    "${DEFAULT_OD_WASM_GNURADIO4_PREFIX}"
     CACHE PATH "Installed Emscripten gnuradio4 prefix for the ui-wasm ExternalProject")
 
 set(WITH_DOCS OFF)
@@ -98,7 +104,8 @@ if(NOT DISABLE_WASM_BUILD)
       -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path} -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
       -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER}
-      -DOPENDIGITIZER_WARNINGS_AS_ERRORS=${OPENDIGITIZER_WARNINGS_AS_ERRORS} ${OD_WASM_CMAKE_OPTIONS}
+      -DOPENDIGITIZER_WARNINGS_AS_ERRORS=${OPENDIGITIZER_WARNINGS_AS_ERRORS}
+      -DOD_WASM_STATIC_BLOCKLIBS:BOOL=${OD_WASM_STATIC_BLOCKLIBS} ${OD_WASM_CMAKE_OPTIONS}
     # No --parallel here: inherits CMAKE_BUILD_PARALLEL_LEVEL from the parent build.
     BUILD_COMMAND cmake --build ${BUILD_DIR}/ui-wasm
     BINARY_DIR ${BUILD_DIR}/ui-wasm
