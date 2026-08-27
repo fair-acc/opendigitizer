@@ -111,6 +111,7 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         if (hasBlocks() && flowgraphPage.editorCount() > 0) {
             auto& editor    = flowgraphPage.currentEditor();
             auto* rootBlock = editor.rootBlock();
+            editor.makeCurrent(); // sortNodes() operates on the globally current editor, which may be a destroyed one after popEditor()
             if (rootBlock) {
                 FlowgraphEditor::sortNodes(rootBlock, false);
             }
