@@ -6,6 +6,7 @@
 
 #include <boost/ut.hpp>
 
+#include <algorithm>
 #include <format>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
@@ -115,6 +116,8 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     }
 
     void reloadSubgraph() { reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_subgraph.grc", "subgraph_test"); }
+
+    void reloadGrouping() { reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_grouping.grc", "grouping_test"); }
 
     void enterSubgraphEditor() {
         auto& graphChildren = blocks();
@@ -265,6 +268,60 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
                 expect(targetPort->isExportedTo(editor._exportPortTargetBlock)) << "ui action should have caused port to become exported\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Selection does not report blocks deleted by grouping");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = basicGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reloadGrouping();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                auto& graphModel = g_state.dashboard->graphModel;
+                auto& editor     = g_state.flowgraphPage.currentEditor();
+
+                DigitizerUi::UiGraphBlock* loner1 = graphModel.recursiveFindBlockByName("loner1").block;
+                DigitizerUi::UiGraphBlock* loner2 = graphModel.recursiveFindBlockByName("loner2").block;
+                expect(loner1 != nullptr && loner2 != nullptr) << fatal;
+                const std::vector<std::string> groupedNames{loner1->blockUniqueName, loner2->blockUniqueName};
+
+                ctx->Yield(2); // the node editor needs a frame before nodes become selectable
+
+                editor.makeCurrent();
+                ax::NodeEditor::SelectNode(ax::NodeEditor::NodeId(loner1), true);
+                ax::NodeEditor::SelectNode(ax::NodeEditor::NodeId(loner2), true);
+                expect(eq(editor.selectedBlockUniqueNames().size(), 2UZ)) << fatal << "both blocks should report as selected before grouping";
+
+                editor.requestBlocksGrouping("gr::Graph", groupedNames);
+                expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << "scheduler should confirm grouping";
+
+                const auto groupedBlocksLeftRootGraph = [&] {
+                    return std::ranges::none_of(editor.rootBlock()->childBlocks, [&](const auto& child) { //
+                        return std::ranges::contains(groupedNames, child->blockUniqueName);
+                    });
+                };
+                const auto start = std::chrono::high_resolution_clock::now();
+                while (!groupedBlocksLeftRootGraph() && std::chrono::high_resolution_clock::now() - start < std::chrono::seconds(10)) {
+                    ctx->Yield();
+                }
+                expect(groupedBlocksLeftRootGraph()) << fatal << "grouped blocks should have moved into the subgraph";
+
+                ctx->Yield(); // draw a frame so the editor can observe the model change
+
+                const std::vector<std::string> selectedAfter = editor.selectedBlockUniqueNames();
+                for (const std::string& name : selectedAfter) {
+                    expect(graphModel.recursiveFindBlockByUniqueName(name).block != nullptr) << "selection reported a block that does not exist: " << name;
+                }
+                expect(selectedAfter.empty()) << "blocks deleted by grouping should not be reported as selected";
 
                 g_state.stopScheduler();
             };
