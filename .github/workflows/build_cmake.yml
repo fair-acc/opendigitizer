@@ -77,7 +77,7 @@ jobs:
         gh release download latest \
           --repo fair-acc/gnuradio4 \
           --pattern "gnuradio4-gcc_*_amd64.deb" \
-          --pattern "gnuradio4-emscripten_*_all.deb" \
+          --pattern "gnuradio4-emscripten-static_*_all.deb" \
           --dir /tmp/gr4-pkgs
         sudo apt install /tmp/gr4-pkgs/*.deb -y || true
 

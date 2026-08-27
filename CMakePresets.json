@@ -63,14 +63,16 @@
         "CMAKE_CXX_COMPILER": "g++-14",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten"
+        "CMAKE_PREFIX_PATH": "/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten-static",
+        "OD_WASM_STATIC_BLOCKLIBS": "ON",
+        "OD_WASM_GNURADIO4_PREFIX": "/opt/gnuradio4-emscripten-static"
       }
     },
     {
       "name": "ci-gcc-debug",
       "inherits": "ci-base",
       "displayName": "CI GCC 14 Debug (native + ui-wasm)",
-      "description": "Matches GitHub Actions gcc-14 Debug: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten",
+      "description": "Matches GitHub Actions gcc-14 Debug: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -79,7 +81,7 @@
       "name": "ci-gcc-release",
       "inherits": "ci-base",
       "displayName": "CI GCC 14 Release (native + ui-wasm)",
-      "description": "Matches GitHub Actions gcc-14 Release: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten",
+      "description": "Matches GitHub Actions gcc-14 Release: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
