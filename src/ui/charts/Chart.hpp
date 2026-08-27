@@ -74,6 +74,19 @@ struct AxisConfig {
     bool                     plotTags = true;
 };
 
+[[nodiscard]] inline std::optional<AxisKind> axisKindOf(std::string_view name) noexcept {
+    if (name == "X" || name == "x") {
+        return AxisKind::X;
+    }
+    if (name == "Y" || name == "y") {
+        return AxisKind::Y;
+    }
+    if (name == "Z" || name == "z") {
+        return AxisKind::Z;
+    }
+    return std::nullopt;
+}
+
 inline constexpr float defaultAxisLabelWidth = std::numeric_limits<float>::max();
 
 [[nodiscard]] inline float axisLabelWidthOrDefault(const std::optional<AxisConfig>& config, float defaultWidth = defaultAxisLabelWidth) noexcept { return config && std::isfinite(config->width) ? config->width : defaultWidth; }
@@ -124,13 +137,8 @@ struct LogFreqRange {
             continue;
         }
         const auto axisStr    = axisStrIt->second.value_or(std::string_view{});
-        AxisKind   parsedKind = AxisKind::Y;
-        if (axisStr == "X" || axisStr == "x") {
-            parsedKind = AxisKind::X;
-        } else if (axisStr == "Z" || axisStr == "z") {
-            parsedKind = AxisKind::Z;
-        }
-        if (parsedKind != targetKind) {
+        const auto parsedKind = axisKindOf(axisStr);
+        if (!parsedKind || *parsedKind != targetKind) {
             continue;
         }
         if (count != index) {
@@ -139,7 +147,7 @@ struct LogFreqRange {
         }
 
         AxisConfig cfg;
-        cfg.axis = parsedKind;
+        cfg.axis = *parsedKind;
         // accept both integer and floating-point literals from the .grc (value_or<float> alone returns NaN on an int)
         if (auto it = axisMap->find("min"); it != axisMap->end()) {
             if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
@@ -1241,8 +1249,9 @@ struct Chart {
         for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
             sinks[i] = self.data_sinks.value[i];
         }
-        std::ignore = self.settings().set(gr::property_map{{std::pmr::string("data_sinks"), std::move(sinks)}});
-        std::ignore = self.settings().applyStagedParameters();
+        const gr::property_map parameters{{std::pmr::string("data_sinks"), std::move(sinks)}};
+        std::ignore = self.settings().set(parameters);
+        std::ignore = self.settings().setStaged(parameters);
     }
 
     template<typename Self>
@@ -1255,8 +1264,9 @@ struct Chart {
             for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
                 sinks[i] = self.data_sinks.value[i];
             }
-            std::ignore = self.settings().set(gr::property_map{{std::pmr::string("data_sinks"), std::move(sinks)}});
-            std::ignore = self.settings().applyStagedParameters();
+            const gr::property_map parameters{{std::pmr::string("data_sinks"), std::move(sinks)}};
+            std::ignore = self.settings().set(parameters);
+            std::ignore = self.settings().setStaged(parameters);
         }
         self.addSignalSink(std::move(sink));
     }
@@ -1431,16 +1441,21 @@ struct Chart {
         };
 
         if constexpr (requires {
-                          self.getAxisScale(AxisKind::X);
-                          self.setAxisScale(AxisKind::X, AxisScale::Linear);
+                          self.getAxisScale(AxisKind::X, 0UZ);
+                          self.setAxisScale(AxisKind::X, AxisScale::Linear, 0UZ);
                       }) {
+            drawEnumCombo(menu_icons::kScale, "scale:", "##scale", self.getAxisScale(axis, axisIndex).value_or(AxisScale::Linear), [&](AxisScale s) { self.setAxisScale(axis, s, axisIndex); });
+        } else if constexpr (requires {
+                                 self.getAxisScale(AxisKind::X);
+                                 self.setAxisScale(AxisKind::X, AxisScale::Linear);
+                             }) {
             drawEnumCombo(menu_icons::kScale, "scale:", "##scale", self.getAxisScale(axis).value_or(AxisScale::Linear), [&](AxisScale s) { self.setAxisScale(axis, s); });
         }
         if constexpr (requires {
-                          self.getAxisFormat(AxisKind::X);
-                          self.setAxisFormat(AxisKind::X, LabelFormat::Auto);
+                          self.getAxisFormat(AxisKind::X, 0UZ);
+                          self.setAxisFormat(AxisKind::X, LabelFormat::Auto, 0UZ);
                       }) {
-            drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis), [&](LabelFormat f) { self.setAxisFormat(axis, f); });
+            drawEnumCombo(menu_icons::kFormat, "format:", "##format", self.getAxisFormat(axis, axisIndex), [&](LabelFormat f) { self.setAxisFormat(axis, f, axisIndex); });
         }
 
         if constexpr (requires {
@@ -1812,6 +1827,9 @@ struct Chart {
 
     template<typename Self>
     DrawPrologue prepareDrawPrologue(this Self& self, const gr::property_map& config) {
+        if (self.settings().changed()) {
+            std::ignore = self.settings().applyStagedParameters();
+        }
         self.processAcceptedDndRemoval();
         self.syncSinksIfNeeded(self.data_sinks.value);
         self.refreshCapacityIfNeeded();
@@ -1861,25 +1879,25 @@ struct Chart {
     }
 
     template<typename Self>
-    [[nodiscard]] std::optional<AxisScale> getAxisScale(this const Self& self, AxisKind axis) noexcept {
-        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis)) {
+    [[nodiscard]] std::optional<AxisScale> getAxisScale(this const Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) noexcept {
+        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis, axisIndex)) {
             return cfg->scale;
         }
         return std::nullopt;
     }
 
     template<typename Self>
-    [[nodiscard]] LabelFormat getAxisFormat(this const Self& self, AxisKind axis) noexcept {
-        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis)) {
+    [[nodiscard]] LabelFormat getAxisFormat(this const Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) noexcept {
+        if (auto cfg = parseAxisConfig(self.ui_constraints.value, axis, axisIndex)) {
             return cfg->format;
         }
         return LabelFormat::Auto;
     }
 
     template<typename Self, typename E>
-    void setAxisConstraintField(this Self& self, AxisKind axis, std::string_view key, E value) {
+    void setAxisConstraintField(this Self& self, AxisKind axis, std::size_t axisIndex, std::string_view key, E value) {
         static constexpr std::array kAxisNames  = {"X", "Y", "Z"};
-        auto&                       constraints = self.ui_constraints.value;
+        gr::property_map            constraints = self.ui_constraints.value;
 
         gr::Tensor<gr::pmt::Value> axesVec;
         if (const auto it = constraints.find("axes"); it != constraints.end()) {
@@ -1889,46 +1907,61 @@ struct Chart {
             }
         }
 
-        const std::string targetAxis = kAxisNames[static_cast<std::size_t>(axis)];
-        bool              found      = false;
+        const std::string targetAxis   = kAxisNames[static_cast<std::size_t>(axis)];
+        bool              found        = false;
+        std::size_t       matchingAxes = 0UZ;
         for (auto& axisPmt : axesVec) {
-            auto axisMapOpt = axisPmt.get_if<gr::property_map>();
-            if (!axisMapOpt) {
+            const auto axisMapView = axisPmt.get_if<gr::property_map>();
+            if (!axisMapView) {
                 continue;
             }
-            auto axisStrIt = axisMapOpt->find("axis");
-            if (axisStrIt == axisMapOpt->end()) {
+            const auto axisStrIt = axisMapView->find("axis");
+            if (axisStrIt == axisMapView->end()) {
                 continue;
             }
             if (!axisStrIt->second.is_string()) {
                 continue;
             }
-            const auto axisStr = axisStrIt->second.value_or(std::string_view{});
-            if (axisStr == targetAxis || (axisStr.size() == 1 && std::tolower(axisStr[0]) == std::tolower(targetAxis[0]))) {
-                (*axisMapOpt)[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
-                axisPmt                              = gr::pmt::Value(std::move(*axisMapOpt));
-                found                                = true;
+            const auto axisStr    = axisStrIt->second.value_or(std::string_view{});
+            const auto parsedKind = axisKindOf(axisStr);
+            if (parsedKind && *parsedKind == axis) {
+                if (matchingAxes++ != axisIndex) {
+                    continue;
+                }
+                gr::property_map axisMap = axisMapView->owned();
+                axisMap.insert_or_assign(key, std::pmr::string(magic_enum::enum_name(value)));
+                axisPmt = gr::pmt::Value(std::move(axisMap));
+                found   = true;
                 break;
             }
         }
         if (!found) {
+            for (; matchingAxes < axisIndex; ++matchingAxes) {
+                gr::property_map placeholder;
+                placeholder.insert_or_assign("axis", targetAxis);
+                axesVec.push_back(std::move(placeholder));
+            }
+
             gr::property_map newAxis;
-            newAxis["axis"]                = targetAxis;
-            newAxis[std::pmr::string(key)] = std::pmr::string(magic_enum::enum_name(value));
-            axesVec.push_back(newAxis);
+            newAxis.insert_or_assign("axis", targetAxis);
+            newAxis.insert_or_assign(key, std::pmr::string(magic_enum::enum_name(value)));
+            axesVec.push_back(std::move(newAxis));
         }
-        constraints["axes"] = axesVec;
-        std::ignore         = self.settings().set({{"ui_constraints", constraints}});
+        constraints.insert_or_assign("axes", std::move(axesVec));
+        self.ui_constraints.value = std::move(constraints);
+        const gr::property_map parameters{{"ui_constraints", self.ui_constraints.value}};
+        std::ignore = self.settings().set(parameters);
+        std::ignore = self.settings().setStaged(parameters);
     }
 
     template<typename Self>
-    void setAxisScale(this Self& self, AxisKind axis, AxisScale scale) {
-        self.setAxisConstraintField(axis, "scale", scale);
+    void setAxisScale(this Self& self, AxisKind axis, AxisScale scale, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, axisIndex, "scale", scale);
     }
 
     template<typename Self>
-    void setAxisFormat(this Self& self, AxisKind axis, LabelFormat format) {
-        self.setAxisConstraintField(axis, "format", format);
+    void setAxisFormat(this Self& self, AxisKind axis, LabelFormat format, std::size_t axisIndex = 0UZ) {
+        self.setAxisConstraintField(axis, axisIndex, "format", format);
     }
 
     template<typename Self>
