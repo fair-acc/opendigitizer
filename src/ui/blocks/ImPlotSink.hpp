@@ -513,12 +513,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] std::mutex&                 dataMutex() const { return *_dataMutex; }
     [[nodiscard]] std::shared_ptr<std::mutex> sharedDataMutex() const { return _dataMutex; }
 
-    void pruneTags(double minX) {
-        if constexpr (IsStreaming) {
-            std::erase_if(_tagValues, [minX](const auto& tag) { return tag.timestamp < minX; });
-        }
-    }
-
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         std::lock_guard lock(*_dataMutex);
 
@@ -544,7 +538,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                     tagOK = false; // mark fishy tag
                 }
 
-                if (plot_tags) {
+                if (plot_tags && IsStreaming) {
                     _tagValues.push_back({.timestamp = _xUtcOffset, .map = tagMap});
                     if (!tagOK) {
                         _tagValues.back().map[std::pmr::string(kFishyTagKey)] = true;
@@ -568,6 +562,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
             if constexpr (IsDataSet) {
                 updateAxisMetadataFromDataSet(sample);
+            }
+        }
+
+        if constexpr (IsStreaming) {
+            if (!_xValues.empty()) {
+                const double oldestSampleTime = _xValues.get_span(0).front();
+                std::erase_if(_tagValues, [oldestSampleTime](const auto& tag) { return tag.timestamp < oldestSampleTime; });
             }
         }
 
@@ -658,7 +659,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
                 tagColor.w *= 0.35f; // semi-transparent tags
-                std::erase_if(_tagValues, [minX](const auto& tag) { return tag.timestamp < minX; });
                 drawTags(
                     [&](auto&& fn) {
                         for (const auto& t : _tagValues) {

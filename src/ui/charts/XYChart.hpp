@@ -218,7 +218,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                         ImVec4      tagColor   = baseColor;
                         tagColor.w *= 0.35f;
                         tags::drawTags([&](auto&& fn) { sink->forEachTag(fn); }, xAxisScale, xMin, xMax, tagColor);
-                        sink->pruneTags(std::min(xMin, xMax));
                         tagsDrawnForFirstSink = true;
                     }
                 }
