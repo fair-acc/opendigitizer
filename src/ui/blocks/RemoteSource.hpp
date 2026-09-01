@@ -425,20 +425,30 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
         std::lock_guard lock(this->_queue->mutex);
         while (written < output.size() && !this->_queue->data.empty()) {
             auto& d = this->_queue->data.front();
-            updateSettingsFromAcquisition(d.acq);
 
             const auto nSignals = static_cast<std::size_t>(d.acq.channelValues.n(0));
             const auto nSamples = static_cast<std::size_t>(d.acq.channelValues.n(1));
             if (nSignals == 0 || nSamples == 0) {
+                this->_queue->data.pop_front();
                 continue;
             }
 
             if (nSignals != 1) {
                 this->emitErrorMessage("processBulk(..)", gr::Error(std::format("Expected exactly one channel, but got {} channelValues", nSignals)));
+                this->_queue->data.pop_front();
                 continue;
             }
+
+            const auto valueCount = d.acq.channelValues.elements().size();
+            if (valueCount != nSamples || d.read >= nSamples) {
+                this->emitErrorMessage("processBulk(..)", gr::Error(std::format("Inconsistent acquisition: {} values, {} samples, read offset {}", valueCount, nSamples, d.read)));
+                this->_queue->data.pop_front();
+                continue;
+            }
+
+            updateSettingsFromAcquisition(d.acq);
             // Only one signal is stored
-            const auto nSamplesToCopy = std::min(output.size() - written, d.acq.channelValues.elements().size() - d.read);
+            const auto nSamplesToCopy = std::min(output.size() - written, nSamples - d.read);
             auto       inValues       = std::span{d.acq.channelValues.elements()}.subspan(d.read, nSamplesToCopy);
             auto       outIt          = output.begin() + cast_to_signed(written);
             if constexpr (std::is_same_v<T, float>) {
