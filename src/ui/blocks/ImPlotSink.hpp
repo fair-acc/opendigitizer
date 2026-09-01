@@ -530,7 +530,24 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 const double tagEventTime  = static_cast<double>(triggerTimeNs) * 1e-9 + offsetSeconds;
                 bool         tagOK         = true;
 
-                if ((triggerTimeNs > 0U || tagEventTime > 0.0) && (tagEventTime > _xUtcOffset || !_xUtcOffsetInitialised)) {
+                const bool firstTrigger = !_xUtcOffsetInitialised;
+
+                if ((triggerTimeNs > 0U || tagEventTime > 0.0) && (firstTrigger || tagEventTime > _xUtcOffset)) {
+                    if constexpr (IsStreaming) {
+                        if (firstTrigger) {
+                            // Rebase provisional history so the next sample starts at the first valid trigger time.
+                            const double      timestampShift = tagEventTime - (_xUtcOffset + static_cast<double>(_sample_count) * _sample_period);
+                            const std::size_t historySize    = _xValues.size();
+                            for (std::size_t i = 0UZ; i < historySize; ++i) {
+                                const double timestamp = _xValues.front(); // Copy before pop_front()
+                                _xValues.pop_front();
+                                _xValues.push_back(timestamp + timestampShift);
+                            }
+                            for (auto& tag : _tagValues) {
+                                tag.timestamp += timestampShift;
+                            }
+                        }
+                    }
                     _xUtcOffset            = tagEventTime;
                     _sample_count          = 0UZ;
                     _xUtcOffsetInitialised = true;
