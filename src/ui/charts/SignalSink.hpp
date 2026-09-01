@@ -290,9 +290,6 @@ struct SignalSink {
     /// get a lazy range over (x, y, tags) tuples (caller must hold dataGuard())
     [[nodiscard]] virtual XYTagRange xyTagRange(double tMin = -std::numeric_limits<double>::infinity(), double tMax = +std::numeric_limits<double>::infinity()) const = 0;
 
-    /// remove tags with timestamp < minX (called after rendering to prevent unbounded growth)
-    virtual void pruneTags(double minX) = 0;
-
     /// acquire a guard for thread-safe data access
     [[nodiscard]] virtual DataGuard dataGuard() const = 0;
 
@@ -750,16 +747,6 @@ struct SinkAdapter : public SignalSink {
             return XYTagRange{};
         }
         return XYTagRange{XYTagIterator{this, range.start_index, range.start_index + range.count}, XYTagIterator{this, range.start_index + range.count, range.start_index + range.count}};
-    }
-
-    void pruneTags(double minX) override {
-        auto* b = blockPtr();
-        if (!b) {
-            return;
-        }
-        if constexpr (requires { b->pruneTags(minX); }) {
-            b->pruneTags(minX);
-        }
     }
 
     [[nodiscard]] DataGuard dataGuard() const override {

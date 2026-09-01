@@ -134,7 +134,6 @@ public:
         }
         return XYTagRange{XYTagIterator{this, range.start_index, range.start_index + range.count}, XYTagIterator{this, range.start_index + range.count, range.start_index + range.count}};
     }
-    void pruneTags(double /*minX*/) override {}
 
     [[nodiscard]] opendigitizer::DataGuard dataGuard() const override { return opendigitizer::DataGuard(_mutex); }
 
@@ -250,7 +249,6 @@ public:
     [[nodiscard]] YRangeResult   getY(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
     [[nodiscard]] TagRangeResult getTags(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
     [[nodiscard]] XYTagRange     xyTagRange(double /*tMin*/, double /*tMax*/) const override { return XYTagRange{}; }
-    void                         pruneTags(double /*minX*/) override {}
 
     [[nodiscard]] opendigitizer::DataGuard dataGuard() const override { return opendigitizer::DataGuard(_mutex); }
 
