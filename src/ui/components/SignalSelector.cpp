@@ -61,6 +61,7 @@ SignalSelector::SignalSelector(UiGraphModel& graphModel) {
     };
 
     buildIndex();
+    m_signalList.update();
 }
 
 void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const ImGuiSelectionBasicStorage& selection) {

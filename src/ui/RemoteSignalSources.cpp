@@ -72,10 +72,7 @@ void QueryFilterElementList::drawFilters() {
     }
 }
 
-SignalList::SignalList(QueryFilterElementList& _filters) : filters(_filters) {
-    filters.onChange.emplace_back(myOnChange);
-    update();
-}
+SignalList::SignalList(QueryFilterElementList& _filters) : filters(_filters) { filters.onChange.emplace_back(myOnChange); }
 SignalList::~SignalList() {
     auto it = std::find_if(filters.onChange.begin(), filters.onChange.end(), [this](auto e) { return e == myOnChange; });
     assert(it != filters.onChange.end());
@@ -91,8 +88,8 @@ void SignalList::update() {
 
         auto it = std::find_if(filters.begin(), filters.end(), [&member](const auto& f) { return f.selectedField() == refl::descriptor::get_display_name(member); });
         // we pick the first
-        auto& strValue = it->filterText;
-        if (it != filters.end() && strValue != "") {
+        if (it != filters.end() && !it->filterText.empty()) {
+            const auto& strValue = it->filterText;
             if constexpr (std::is_integral_v<std::remove_cvref_t<decltype(member(queryEntry))>>) {
                 std::remove_cvref_t<decltype(member(queryEntry))> val{};
                 std::from_chars(strValue.data(), strValue.data() + strValue.size(), val);

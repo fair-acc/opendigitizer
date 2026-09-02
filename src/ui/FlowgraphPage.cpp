@@ -1,6 +1,7 @@
 #include "FlowgraphPage.hpp"
 
 #include <algorithm>
+#include <exception>
 
 #include <crude_json.h>
 #include <cstdint>
@@ -1012,8 +1013,20 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     };
 
     // We can add remote signals only to the root graph
-    if (_remoteSignalSelector && _editors.size() == 1) {
-        editor.openAddRemoteSignalCallback = [&](UiGraphModel* /*_graphModel*/) { _remoteSignalSelector->open(); };
+    if (_dashboard && _editors.size() == 1) {
+        editor.openAddRemoteSignalCallback = [this](UiGraphModel* editorGraphModel) {
+            if (!editorGraphModel) {
+                return;
+            }
+            try {
+                if (!_remoteSignalSelector) {
+                    _remoteSignalSelector = std::make_unique<SignalSelector>(*editorGraphModel);
+                }
+                _remoteSignalSelector->open();
+            } catch (const std::exception& error) {
+                components::Notification::error(std::format("Failed to open signal selector: {}", error.what()));
+            }
+        };
     }
 
     if (_editors.size() > 1) {
