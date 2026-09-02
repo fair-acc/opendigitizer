@@ -149,13 +149,8 @@ public:
     /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
 
     void setDashboard(Dashboard& dashboard) {
+        _remoteSignalSelector.reset();
         _dashboard = std::addressof(dashboard);
-#ifndef OPENDIGITIZER_TEST
-        // SignalSelector triggers RemoteSignalSources which uses opencmw::client::ClientContext
-        // making self-contained tests difficult to write. Everything is tightly coupled and
-        // this is the best place to break the dependency.
-        _remoteSignalSelector = std::make_unique<SignalSelector>(dashboard.graphModel);
-#endif
         // set up g_addSinkToChart callback for D&D add operations
         opendigitizer::charts::dnd::g_addSinkToChart = [this](std::string_view chartId, std::string_view sinkName) {
             if (!_dashboard) {

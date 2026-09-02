@@ -228,11 +228,7 @@ public:
     void setDashboard(Dashboard* dashboard) {
         _dashboard = dashboard;
         _newBlockSelector.setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
-        if (dashboard) {
-            _remoteSignalSelector = std::make_unique<SignalSelector>(dashboard->graphModel);
-        } else {
-            _remoteSignalSelector.reset();
-        }
+        _remoteSignalSelector.reset();
         reset();
     }
     void reset();

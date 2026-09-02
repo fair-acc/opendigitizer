@@ -1,5 +1,6 @@
 #include "DashboardPage.hpp"
 
+#include <exception>
 #include <format>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/Tag.hpp>
@@ -10,6 +11,7 @@
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
+#include "components/ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
 #include "components/YesNoPopup.hpp"
 
@@ -570,16 +572,24 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
         _legendBox = this->drawLegendCenter(mode, chartPaneSize);
     }
 
-    if (mode == Mode::Interaction && _dashboard && _remoteSignalSelector) {
+    if (mode == Mode::Interaction && _dashboard) {
         ImGui::SameLine();
         if (plotButton("\u{F067}", "add signal", plotButtonSize)) {
-            // 'plus' button in the global legend, adds a new signal
-            // to the dashboard
-            _remoteSignalSelector->open();
+            // 'plus' button in the global legend, adds a new signal to the dashboard
+            try {
+                if (!_remoteSignalSelector) {
+                    _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->graphModel);
+                }
+                _remoteSignalSelector->open();
+            } catch (const std::exception& error) {
+                components::Notification::error(std::format("Failed to open signal selector: {}", error.what()));
+            }
         }
 
-        for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
-            this->addSelectedRemoteSignal(selectedRemoteSignal);
+        if (_remoteSignalSelector) {
+            for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
+                this->addSelectedRemoteSignal(selectedRemoteSignal);
+            }
         }
     }
 
