@@ -3,8 +3,6 @@
 
 #include <imgui.h>
 
-#include <optional>
-
 namespace DigitizerUi::components {
 
 enum class YesNoPopupResult {
@@ -14,23 +12,29 @@ enum class YesNoPopupResult {
 };
 
 struct YesNoPopupOptions {
-    const char* yesText = "Yes";
-    const char* noText  = "Cancel";
+    const char* yesText   = "Yes";
+    const char* noText    = "Cancel";
+    const char* titleText = nullptr;
 };
 
 [[nodiscard]] constexpr bool isPopupOpen(YesNoPopupResult result) { return result != YesNoPopupResult::PopupNotOpen; }
 [[nodiscard]] constexpr bool isPopupConfirmed(YesNoPopupResult result) { return result == YesNoPopupResult::PopupOpen_YesPressed; }
 
-inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions options) {
+inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions options, ImGuiWindowFlags windowFlags = ImGuiWindowFlags_None) {
     const auto   spacing     = ImGui::GetStyle().ItemSpacing;
     const float  buttonSizeY = (ImGui::GetTextLineHeight() * 3) + spacing.y * 2;
+    const float  textHeight  = options.titleText ? ImGui::GetTextLineHeightWithSpacing() : 0.f;
     const ImVec2 popupCenter = ImGui::GetMainViewport()->GetCenter();
-    const ImVec2 popupSize{300.f, (buttonSizeY * 3.f) + (spacing.y * 2.f)};
+    const ImVec2 popupSize{300.f, (buttonSizeY * 3.f) + (spacing.y * 2.f) + textHeight};
     ImGui::SetNextWindowPos(popupCenter - popupSize / 2.f, ImGuiCond_Appearing, ImVec2{0.5f, 0.5f});
     ImGui::SetNextWindowSize(ImVec2{300, 0}, ImGuiCond_Appearing);
 
     using enum YesNoPopupResult;
-    if (ImGui::BeginPopupModal(id)) {
+    if (ImGui::BeginPopupModal(id, nullptr, windowFlags)) {
+        if (options.titleText) {
+            ImGui::TextUnformatted(options.titleText);
+        }
+
         bool        pressedYes  = false;
         const float buttonSizeX = ImGui::GetContentRegionAvail().x;
 

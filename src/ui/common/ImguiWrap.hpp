@@ -66,6 +66,7 @@ using DragDropSource = stdex::c_resource<bool, ImGui::BeginDragDropSource, ImGui
 using DragDropTarget = stdex::c_resource<bool, ImGui::BeginDragDropTarget, ImGui::EndDragDropTarget>;
 
 using Font            = stdex::c_resource<void, static_cast<void (*)(ImFont*)>(ImGui::PushFont), ImGui::PopFont, true>;
+using FontWithSize    = stdex::c_resource<void, static_cast<void (*)(ImFont*, float)>(ImGui::PushFont), ImGui::PopFont, true>;
 using ItemWidth       = stdex::c_resource<void, ImGui::PushItemWidth, ImGui::PopItemWidth, true>;
 using StyleColor      = stdex::c_resource<void, static_cast<void (*)(ImGuiCol, const ImVec4&)>(ImGui::PushStyleColor), +detail::singlePop<ImGui::PopStyleColor>(), true>;
 using StyleNamedColor = stdex::c_resource<void, static_cast<void (*)(ImGuiCol, ImU32)>(ImGui::PushStyleColor), +detail::singlePop<ImGui::PopStyleColor>(), true>;

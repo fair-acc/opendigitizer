@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 
 #include <gnuradio-4.0/Block.hpp>
@@ -36,6 +37,8 @@ struct UiGraphPort {
     /// Returns the exported name of the port, if it is exported, and null otherwise.
     [[nodiscard]] std::optional<std::string> getExportedName(const UiGraphBlock* exportedTo) const;
     [[nodiscard]] bool                       isExportedTo(const UiGraphBlock* exportedTo) const { return getExportedName(exportedTo).has_value(); }
+
+    [[nodiscard]] bool isAutoExportSuppressed() const;
 };
 
 struct UiGraphEdge {
@@ -119,6 +122,9 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
+
+    void setPortAutoExportSuppressed(const UiGraphPort& port, bool suppressed);
+    void applyUiConstraints(const gr::property_map& constraints);
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
@@ -215,8 +221,14 @@ public:
     };
     std::optional<StoredXY> storedXY;
 
+    // ports of this block that must not be auto-exported when the owning subgraph is closed
+    std::set<std::string> suppressedAutoExportInputPorts;
+    std::set<std::string> suppressedAutoExportOutputPorts;
+
     bool updatePosition = false;
-    void storeXY();
+    void submitUiConstraints();
+
+    std::string storedEditorSettings;
 
     UiGraphBlock(UiGraphModel* ownerGraph_, UiGraphBlock* parentBlock_) : ownerGraph(ownerGraph_), parentBlock(parentBlock_) {}
 
@@ -307,6 +319,7 @@ public:
 private:
     void handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData);
     void handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data);
+    void handleBlockUiConstraintsChanged(const std::string& uniqueName, const gr::property_map& data);
     void handleBlockSettingsStaged(const std::string& uniqueName, const gr::property_map& data);
     void handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data);
     void handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data);
