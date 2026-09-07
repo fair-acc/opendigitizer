@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 /// Place for Docking related components generic and agnostic to Opendigitizer code
 
@@ -29,11 +30,12 @@ inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
 
 /// Hosts a group of dock windows
 class DockSpace {
-    gr::property_map  _lastFreeLayout;
-    DockingLayoutType _layoutType      = DockingLayoutType::Free;
-    bool              _needsRelayout   = true;
-    bool              _lastIsEditable  = false;
-    size_t            _lastWindowCount = 0;
+    mutable gr::property_map _lastFreeLayout;
+    std::vector<std::string> _lastWindowNames;
+    ImGuiID                  _lastDockspaceID = 0;
+    DockingLayoutType        _layoutType      = DockingLayoutType::Free;
+    bool                     _needsRelayout   = true;
+    bool                     _lastIsEditable  = false;
 
 public:
     struct Window;
@@ -50,11 +52,13 @@ public:
     void render(const Windows& windows, ImVec2 paneSize, bool isEditable);
 
     // save and load the free layout (including any floating windows)
-    const gr::property_map& saveFreeLayout() const { return _lastFreeLayout; }
+    const gr::property_map& saveFreeLayout() const;
     void                    loadFreeLayout(const gr::property_map& layout) { _lastFreeLayout = layout; }
 
 private:
     static ImGuiID dockspaceID();
+
+    void captureFreeLayout() const;
 
     void renderWindows(const Windows& windows, bool isEditable);
     void drawEditableWindowDragArea();
