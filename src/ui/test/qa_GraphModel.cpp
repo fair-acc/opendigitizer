@@ -79,6 +79,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 while (!g_state.hasBlocks()) {
                     ctx->Yield();
                 }
+                Digitizer::utils::scope_exit stopScheduler = [] { g_state.stopScheduler(); };
 
                 UiGraphBlock* rootBlock = g_state.dashboard->graphModel.recursiveFindBlockByName("simpleScheduler").block;
                 expect(rootBlock) << fatal;

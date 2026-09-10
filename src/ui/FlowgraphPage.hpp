@@ -112,6 +112,11 @@ public:
     }
 
     ~FlowgraphEditor() {
+        if (auto rootBlock = this->rootBlock()) {
+            for (auto& child : rootBlock->childBlocks) {
+                child->view.reset();
+            }
+        }
         makeCurrent();
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
