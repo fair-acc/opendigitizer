@@ -186,7 +186,7 @@ public:
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 
-    void sendPinsConnectedGraphMessage(ax::NodeEditor::PinId inputPinId, ax::NodeEditor::PinId outputPinId);
+    void sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId);
 
     void drawComputeDomainTag(UiGraphBlock& block);
 

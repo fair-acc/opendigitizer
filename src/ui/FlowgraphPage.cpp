@@ -570,15 +570,19 @@ void FlowgraphEditor::applyNodePosition(UiGraphBlock& block, std::optional<Bound
     }
 }
 
-void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId inputPinId, ax::NodeEditor::PinId outputPinId) {
+void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId) {
     // both are valid, let's accept link
-    auto* inputPort  = inputPinId.AsPointer<UiGraphPort>();
-    auto* outputPort = outputPinId.AsPointer<UiGraphPort>();
+    auto* startPort = startPinId.AsPointer<UiGraphPort>();
+    auto* endPort   = endPinId.AsPointer<UiGraphPort>();
 
-    if (inputPort->portDirection == outputPort->portDirection) {
+    if (startPort->portDirection == endPort->portDirection) {
         ax::NodeEditor::RejectNewItem();
 
     } else {
+        // the pins arrive in drag order (start, end), so normalize by port direction
+        auto* outputPort = startPort->portDirection == gr::PortDirection::OUTPUT ? startPort : endPort;
+        auto* inputPort  = startPort->portDirection == gr::PortDirection::INPUT ? startPort : endPort;
+
         if (ax::NodeEditor::AcceptNewItem()) {
             // AcceptNewItem() return true when user release mouse button.
             gr::Message message;
@@ -633,21 +637,19 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
         }
         this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime;
 
-        ax::NodeEditor::PinId inputPinId, outputPinId;
-        if (ax::NodeEditor::QueryNewLink(&outputPinId, &inputPinId)) {
+        ax::NodeEditor::PinId startPinId, endPinId;
+        if (ax::NodeEditor::QueryNewLink(&startPinId, &endPinId)) {
             // QueryNewLink returns true if editor wants to create new link between pins.
             //
             // Link can be created only for two valid pins, it is up to you to
             // validate if connection make sense. Editor is happy to make any.
             //
-            // Link always goes from input to output. User may choose to drag
-            // link from output pin or input pin. This determines which pin ids
-            // are valid and which are not:
-            //   * input valid, output invalid - user started to drag new link from input pin
-            //   * input invalid, output valid - user started to drag new link from output pin
-            //   * input valid, output valid   - user dragged link over other pin, can be validated
-            if (inputPinId && outputPinId) {
-                this->sendPinsConnectedGraphMessage(inputPinId, outputPinId);
+            // The pins are yielded in drag order (start, end), regardless of
+            // their direction: the user may drag from either an input or an
+            // output pin. The end pin is only valid once the user dragged the
+            // link over another pin.
+            if (startPinId && endPinId) {
+                this->sendPinsConnectedGraphMessage(startPinId, endPinId);
             }
         }
 

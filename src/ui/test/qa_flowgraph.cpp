@@ -290,6 +290,33 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Connect two pins dragging backwards from input to output");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = basicGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reloadFromYamlString(simpleGraph);
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                auto* sourcePort      = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSineSource", gr::PortDirection::OUTPUT);
+                auto* destinationPort = findFirstPortOfBlock(g_state.currentRootBlock(), "connectDataSink", gr::PortDirection::INPUT);
+                expect(sourcePort != nullptr) << fatal;
+                expect(destinationPort != nullptr) << fatal;
+
+                // drag starting from the input pin towards the output pin
+                dragPinToPin(ctx, g_state.flowgraphPage.currentEditor(), destinationPort, sourcePort);
+
+                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSineSource", "in"); })) << "edge should appear in the UI when connecting backwards\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Export all unused ports");
             t->SetVarsDataType<TestState>();
 
