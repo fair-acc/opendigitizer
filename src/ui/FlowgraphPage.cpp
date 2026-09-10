@@ -306,6 +306,10 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
                 result.closeWindow = placeButtonRight("Close");
             }
 
+            if (buttons.exportAllUnusedPorts) {
+                result.exportAllUnusedPorts = placeButtonRight("Export all unused ports");
+            }
+
             if (buttons.rearrangeBlocks) {
                 result.rearrangeBlocks = placeButtonRight("Rearrange blocks");
             }
@@ -815,12 +819,17 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             .openNewSubGraphDialog    = static_cast<bool>(openNewSubGraphSelectorCallback),
             .openRemoteSignalSelector = static_cast<bool>(openAddRemoteSignalCallback),
             .rearrangeBlocks          = true,
+            .exportAllUnusedPorts     = _editorLevel > 0,
             .closeWindow              = static_cast<bool>(closeRequestedCallback),
         },
         horizontalSplit ? (ratio) : 1.0f);
 
     if (clicked.rearrangeBlocks) {
         sortNodes(rootBlock, true);
+    }
+
+    if (clicked.exportAllUnusedPorts) {
+        exportAllUnusedPorts();
     }
 
     if (clicked.closeWindow && closeRequestedCallback) {
@@ -1112,6 +1121,43 @@ bool FlowgraphEditor::hasExternalEdgesForExportedPort(const std::string& exporte
         return matches(edge.edgeSourcePort) || matches(edge.edgeDestinationPort);
     });
 }
+
+void FlowgraphEditor::exportAllUnusedPorts() {
+    if (_editorLevel == 0) {
+        return;
+    }
+    auto* rootBlock = this->rootBlock();
+    if (!rootBlock) {
+        return;
+    }
+
+    const auto& edges        = rootBlock->childEdges;
+    const auto* exportTarget = exportPortTargetBlock();
+
+    for (const auto& block : rootBlock->childBlocks) {
+        auto exportUnconnected = [this, exportTarget, &block, &edges](const std::vector<UiGraphPort>& ports, const std::string& direction) {
+            for (const auto& port : ports) {
+                if (isPortConnected(port, edges)) {
+                    continue;
+                }
+                if (port.isExportedTo(exportTarget)) {
+                    continue;
+                }
+                requestExportPort(ExportPortMessageData{
+                    .uniqueBlockName = block->blockUniqueName,
+                    .portDirection   = direction,
+                    .portName        = port.portName,
+                    .exportedName    = getDefaultExportedName(&port),
+                    .exportFlag      = true,
+                });
+            }
+        };
+
+        exportUnconnected(block->_inputPorts, "input");
+        exportUnconnected(block->_outputPorts, "output");
+    }
+}
+
 
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 

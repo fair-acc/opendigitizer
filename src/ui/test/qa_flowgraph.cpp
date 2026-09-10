@@ -139,11 +139,18 @@ TestState g_state;
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
-    [[nodiscard]] static bool waitForReplyOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint) {
+    [[nodiscard]] static bool waitForRepliesOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1) {
         std::optional<gr::Message>   outReply;
-        auto                         subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint](const gr::Message& reply) {
+        std::size_t                  remaining    = count;
+        const auto                   subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint, &remaining](const gr::Message& reply) {
             if (reply.endpoint == endpoint) {
-                outReply = reply;
+                std::println("\tWhile waiting, got reply on endpoint: {}, remaining: {}", reply.data.value_or(gr::property_map{}), remaining - 1);
+            }
+            if (remaining > 0 && reply.endpoint == endpoint) {
+                --remaining;
+                if (remaining == 0) {
+                    outReply = reply;
+                }
             }
         });
         Digitizer::utils::scope_exit unsubscribe  = [subscription] { g_state.dashboard->graphModel.unsubscribeFromResponses(subscription); };
@@ -264,10 +271,77 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->Yield();
                 ctx->MouseUp(ImGuiMouseButton_Left);
 
-                const bool recievedReplyAboutExport = waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
+                const bool recievedReplyAboutExport = waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
                 expect(targetPort->isExportedTo(editor.exportPortTargetBlock())) << "ui action should have caused port to become exported\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Export all unused ports");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = basicGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                g_state.reloadSubgraph();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                g_state.enterSubgraphEditor();
+                expect(g_state.flowgraphPage.editorCount() > 1) << fatal;
+
+                auto& editor = g_state.flowgraphPage.currentEditor();
+
+                const auto isConnected = [](const UiGraphPort& port) {
+                    return std::ranges::any_of(g_state.currentRootBlock().childEdges, [&port](const auto& edge) { //
+                        return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
+                    });
+                };
+
+                std::size_t totalUnconnectedPorts = 0;
+                for (auto& block : g_state.currentRootBlock().childBlocks) {
+                    for (const auto& port : block->_inputPorts) {
+                        totalUnconnectedPorts += isConnected(port) ? 0 : 1;
+                    }
+                    for (const auto& port : block->_outputPorts) {
+                        totalUnconnectedPorts += isConnected(port) ? 0 : 1;
+                    }
+                }
+                expect(totalUnconnectedPorts > 0_ul) << "subgraph should have unconnected ports";
+
+                const auto expectAndUnexportAllWithFilter = [ctx, &editor, &isConnected](std::span<UiGraphPort> ports, UiGraphPort* filter = nullptr, std::source_location location = std::source_location::current()) {
+                    for (const auto& port : ports) {
+                        if (std::addressof(port) == filter || isConnected(port)) {
+                            continue;
+                        }
+                        expect(port.isExportedTo(editor.exportPortTargetBlock())) << "all ports should be exported, this was not: " << port.portName << " of " << port.ownerBlock->blockName << std::format(" - line {}\n", location.line());
+                        editor.requestExportPort({
+                            .uniqueBlockName = port.ownerBlock->blockUniqueName,
+                            .portDirection   = port.portDirection == gr::PortDirection::INPUT ? "input" : "output",
+                            .portName        = port.portName,
+                            .exportFlag      = false,
+                        });
+                        expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "Scheduler never responded about the request to un-export a port\n" << fatal;
+                        expect(!port.isExportedTo(editor.exportPortTargetBlock())) << "failed to un-export" << port.portName << "of" << port.ownerBlock->blockName << std::format("- line {}\n", location.line()) << fatal;
+                    }
+                };
+
+                "export all unconnected ports"_test = [ctx, &editor, &expectAndUnexportAllWithFilter, totalUnconnectedPorts] {
+                    editor.exportAllUnusedPorts();
+                    std::println("waitForRepliesOnEndpoint() about to be called for all port messages, {} in total...", totalUnconnectedPorts);
+                    expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort, totalUnconnectedPorts)) << "Scheduler never responded about the request to export all ports\n" << fatal;
+
+                    for (const auto& block : g_state.currentRootBlock().childBlocks) {
+                        expectAndUnexportAllWithFilter(block->_outputPorts);
+                        expectAndUnexportAllWithFilter(block->_inputPorts);
+                    }
+                };
 
                 g_state.stopScheduler();
             };

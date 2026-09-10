@@ -117,6 +117,7 @@ public:
     std::string                          exportPortTextField;
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
+    void                                 exportAllUnusedPorts();
 
     struct UnexportPortRequest {
         ExportPortMessageData message;      // exportFlag = false
@@ -188,6 +189,7 @@ public:
         bool openNewSubGraphDialog : 1    = false;
         bool openRemoteSignalSelector : 1 = false;
         bool rearrangeBlocks : 1          = false;
+        bool exportAllUnusedPorts : 1     = false;
         bool closeWindow : 1              = false;
     };
 
