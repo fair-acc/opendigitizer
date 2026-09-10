@@ -66,6 +66,25 @@ private:
         ax::NodeEditor::Config config;
         config.SettingsFile = nullptr;
         config.UserPointer  = this;
+
+        config.SaveSettings = [](const char* data, size_t size, ax::NodeEditor::SaveReasonFlags /*reason*/, void* userPointer) -> bool {
+            auto* editor = static_cast<FlowgraphEditor*>(userPointer);
+            if (auto _rootBlock = editor->rootBlock()) {
+                _rootBlock->storedEditorSettings.assign(data, size);
+            }
+            return true;
+        };
+
+        config.LoadSettings = [](char* data, void* userPointer) -> size_t {
+            auto*       editor     = static_cast<FlowgraphEditor*>(userPointer);
+            const auto  _rootBlock = editor->rootBlock();
+            const auto& settings   = _rootBlock ? _rootBlock->storedEditorSettings : std::string{};
+            if (data) {
+                settings.copy(data, settings.size());
+            }
+            return settings.size();
+        };
+
         return config;
     }
 
