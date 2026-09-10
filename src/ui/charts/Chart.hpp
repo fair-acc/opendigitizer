@@ -1033,6 +1033,7 @@ int registerChartSignalCompatibility() {
 /// Derived classes must: inherit gr::Block<Derived>, define kChartTypeName, data_sinks.
 struct Chart {
     static constexpr std::size_t kDefaultHistorySize             = 4096;
+    static constexpr std::size_t kDefaultDataSetHistorySize      = 8;
     static constexpr double      kCapacityRefreshIntervalSeconds = 30.0; // refresh before 60s timeout
     static constexpr double      kCapacityDebounceSeconds        = 0.3;  // debounce resize to avoid discontinuities
 
@@ -1140,13 +1141,21 @@ struct Chart {
         if (!sink) {
             return;
         }
+        const auto requestedSinkCapacity = [&self, &sink]() -> std::size_t {
+            if (sink->signalKind() == SignalKind::Dataset1D) {
+                if constexpr (requires { self.max_history_count.value; }) {
+                    return std::max(kDefaultDataSetHistorySize, static_cast<std::size_t>(self.max_history_count.value));
+                }
+                return kDefaultDataSetHistorySize;
+            }
+            if constexpr (requires { self.n_history.value; }) {
+                return static_cast<std::size_t>(self.n_history.value);
+            }
+            return kDefaultHistorySize;
+        };
+        sink->requestCapacity(std::string(self.unique_name), requestedSinkCapacity());
         auto it = std::find(self._signalSinks.begin(), self._signalSinks.end(), sink);
         if (it == self._signalSinks.end()) {
-            std::size_t capacity = kDefaultHistorySize;
-            if constexpr (requires { self.n_history.value; }) {
-                capacity = static_cast<std::size_t>(self.n_history.value);
-            }
-            sink->requestCapacity(std::string(self.unique_name), capacity);
             self._signalSinks.push_back(std::move(sink));
         }
     }
@@ -1208,14 +1217,8 @@ struct Chart {
     template<typename Self>
     void onDataSinksChanged(this Self& self, const std::vector<std::string>& sinkNames) {
         self.syncSinksFromNames(sinkNames);
-        std::size_t capacity = kDefaultHistorySize;
-        if constexpr (requires { self.n_history.value; }) {
-            capacity = static_cast<std::size_t>(self.n_history.value);
-        }
         for (auto& sink : self._signalSinks) {
-            if (sink) {
-                sink->requestCapacity(std::string(self.unique_name), capacity);
-            }
+            self.addSignalSink(sink);
         }
     }
 
@@ -1796,14 +1799,8 @@ struct Chart {
 
     template<typename Self>
     void updateAllSinksCapacity(this Self& self) {
-        std::size_t capacity = kDefaultHistorySize;
-        if constexpr (requires { self.n_history.value; }) {
-            capacity = static_cast<std::size_t>(self.n_history.value);
-        }
         for (auto& sink : self._signalSinks) {
-            if (sink) {
-                sink->requestCapacity(std::string(self.unique_name), capacity);
-            }
+            self.addSignalSink(sink);
         }
         self._lastCapacityRefreshTime = ImGui::GetTime();
     }
@@ -1873,6 +1870,11 @@ struct Chart {
         }
         if constexpr (requires { self.n_history; }) {
             if (newSettings.contains("n_history")) {
+                self.updateAllSinksCapacity();
+            }
+        }
+        if constexpr (requires { self.max_history_count; }) {
+            if (newSettings.contains("max_history_count")) {
                 self.updateAllSinksCapacity();
             }
         }

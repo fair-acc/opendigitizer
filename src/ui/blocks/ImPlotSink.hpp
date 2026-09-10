@@ -98,7 +98,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                    sample_rate       = 1000.0f;
     A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                abscissa_quantity = "time";
     A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                  abscissa_unit     = "s";
-    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                    required_size     = gr::DataSetLike<T> ? 10U : 2048U;
+    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                    required_size     = gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
     A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                           dataset_index     = std::numeric_limits<gr::Size_t>::max();
     A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                      n_history         = 3U;
     A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>> history_offset    = 0.01f;
@@ -355,7 +355,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         _capacityRequests[std::string(source)] = CapacityRequest{capacity, expiry_time};
 
         // recalculate required_size from all active requests (supports both increase and decrease)
-        std::size_t maxCapacity = gr::DataSetLike<T> ? 10UZ : 2048UZ;
+        std::size_t maxCapacity = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ;
         for (const auto& [_, request] : _capacityRequests) {
             maxCapacity = std::max(maxCapacity, request.capacity);
         }
@@ -373,7 +373,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         std::erase_if(_capacityRequests, [now](const auto& pair) { return pair.second.expiry_time < now; });
 
         // Recalculate required_size from remaining requests
-        std::size_t maxCapacity = gr::DataSetLike<T> ? 10UZ : 2048UZ; // minimum default
+        std::size_t maxCapacity = gr::DataSetLike<T> ? charts::Chart::kDefaultDataSetHistorySize : 2048UZ; // minimum default
         for (const auto& [_, request] : _capacityRequests) {
             maxCapacity = std::max(maxCapacity, request.capacity);
         }

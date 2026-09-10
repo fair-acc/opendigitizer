@@ -1,4 +1,5 @@
 #include "TestSinks.hpp"
+#include "blocks/ImPlotSink.hpp"
 
 #include <boost/ut.hpp>
 
@@ -14,6 +15,24 @@ int main() {
     using namespace boost::ut;
     using namespace opendigitizer::charts;
     using namespace opendigitizer::test;
+
+    "SpectrumPlot requests small default dataset capacity"_test = [] {
+        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
+        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        SpectrumPlot                                  chart;
+        chart.addSignalSink(adapter);
+        expect(eq(sink.bufferCapacity(), 8UZ));
+    };
+
+    "XYChart requests dataset capacity from max_history_count"_test = [] {
+        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
+        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        XYChart                                       chart;
+        chart.n_history         = 30'000U; // should be ignored for DataSets
+        chart.max_history_count = 16U;
+        chart.addSignalSink(adapter);
+        expect(eq(sink.bufferCapacity(), 16UZ));
+    };
 
     "XYChart creation via makeXYChart"_test = [] {
         auto chart = makeXYChart("TestChart");
@@ -162,7 +181,7 @@ int main() {
     };
 
     "Signal shared between multiple charts"_test = [] {
-        auto sink = makeTestStreamingSink("shared_signal");
+        auto sink = makeTestStreamingSink("shared_signal", 16);
 
         for (int i = 0; i < 100; ++i) {
             sink->pushSample(static_cast<double>(i) * 0.01, std::sin(static_cast<float>(i) * 0.1f));
@@ -171,15 +190,17 @@ int main() {
         auto chart1 = makeXYChart();
         auto chart2 = makeXYChart();
 
+        chart1->n_history         = 30U;
+        chart2->n_history         = 50U;
+        chart1->max_history_count = 64U; // above n_history; ignored for streaming samples
+        chart2->max_history_count = 128U;
         chart1->addSignalSink(sink);
+        expect(eq(sink->bufferCapacity(), 30UZ));
         chart2->addSignalSink(sink);
 
         expect(eq(chart1->signalSinks()[0]->size(), chart2->signalSinks()[0]->size()));
 
-        sink->requestCapacity(chart1->uniqueId(), 3000);
-        sink->requestCapacity(chart2->uniqueId(), 5000);
-
-        expect(eq(sink->bufferCapacity(), 5000UZ));
+        expect(eq(sink->bufferCapacity(), 50UZ));
     };
 
     "PlotData can be used for rendering"_test = [] {
