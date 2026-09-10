@@ -507,8 +507,8 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
     // Register ports with node editor, actual drawing comes later
-    auto exportTarget = exportPortTargetBlock();
-    auto registerPins = [exportTarget, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
+    auto* exportTarget = exportPortTargetBlock();
+    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - pinHorizontalPadding;
         }
