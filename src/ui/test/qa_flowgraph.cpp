@@ -43,8 +43,9 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     }
 
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
+    void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
 
-    ~TestState() override = default;
+    ~TestState() override { TestState::onDashboardAboutToBeUnloaded(); }
 
     void waitForScheduler(                                                   //
         ImGuiTestContext*         ctx,                                       //
@@ -132,6 +133,14 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         }
         assert(false && "No subgraph block found in graph children");
     }
+
+    UiGraphBlock& currentRootBlock() {
+        if (auto* ptr = flowgraphPage.currentEditor().rootBlock()) {
+            return *ptr;
+        }
+        expect(false) << "flowgraph page should have an editor and some contents";
+        std::unreachable();
+    }
 };
 
 TestState g_state;
@@ -164,7 +173,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return outReply.has_value();
     }
 
-    void registerTests() override {
+    void registerTests() override { // NOSONAR (cognitive complexity)
         constexpr auto basicGuiFunc = [](ImGuiTestContext*) {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
             ImGui::SetWindowPos({0, 0});
@@ -238,7 +247,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto& editor = g_state.flowgraphPage.currentEditor();
 
                 DigitizerUi::UiGraphPort* targetPort = nullptr;
-                for (auto& block : editor.rootBlock()->childBlocks) {
+                for (auto& block : g_state.currentRootBlock().childBlocks) {
                     if (!block->_outputPorts.empty()) {
                         targetPort = &block->_outputPorts.front();
                         break;
@@ -418,6 +427,6 @@ int main(int argc, char* argv[]) {
     g_state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");
 
     auto result = app.runTests();
-    g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
+    g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }
