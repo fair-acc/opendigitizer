@@ -118,6 +118,14 @@ public:
     std::optional<ExportPortMessageData> exportPortRequest;
     void                                 requestExportPort(const ExportPortMessageData& request);
 
+    struct UnexportPortRequest {
+        ExportPortMessageData message;      // exportFlag = false
+        std::string           exportedName; // name of the port as exported on the subgraph block
+    };
+    std::optional<UnexportPortRequest> unexportPortRequest;
+
+    [[nodiscard]] bool hasExternalEdgesForExportedPort(const std::string& exportedName) const;
+
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _exportPortTargetBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
 
@@ -153,6 +161,8 @@ public:
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
+
+    void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
     void drawGraph(const ImVec2& size);
 
