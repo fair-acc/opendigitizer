@@ -143,6 +143,15 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
     }
 };
 
+constexpr const char* simpleGraph = "connections: []\n"
+                                    "blocks:\n"
+                                    "  - parameters:\n"
+                                    "      name: \"connectSineSource\"\n"
+                                    "    id: \"opendigitizer::SineSource<float32>\"\n"
+                                    "  - parameters:\n"
+                                    "      name: \"connectDataSink\"\n"
+                                    "    id: \"gr::basic::DataSink<float32>\"";
+
 TestState g_state;
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
@@ -171,6 +180,70 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
         return outReply.has_value();
+    }
+
+    [[nodiscard]] static bool waitFor(ImGuiTestContext* ctx, const std::function<bool()>& predicate, std::chrono::seconds timeout = std::chrono::seconds(10)) {
+        auto start = std::chrono::high_resolution_clock::now();
+        while (!predicate() && (std::chrono::high_resolution_clock::now() - start < timeout)) {
+            ctx->Yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+        return predicate();
+    }
+
+    static void dragPinToPin(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphPort* fromPort, const DigitizerUi::UiGraphPort* toPort) {
+        ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
+
+        editor.makeCurrent();
+        ctx->Yield();
+        ax::NodeEditor::NavigateToContent(0.0f);
+        ctx->Yield();
+
+        auto* editorContext = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        auto* fromPin       = editorContext->FindPin(ax::NodeEditor::PinId(fromPort));
+        auto* toPin         = editorContext->FindPin(ax::NodeEditor::PinId(toPort));
+        expect(fromPin != nullptr) << fatal;
+        expect(toPin != nullptr) << fatal;
+
+        ctx->MouseTeleportToPos(ax::NodeEditor::CanvasToScreen(fromPin->m_Bounds.GetCenter()));
+        ctx->Yield();
+        ctx->MouseDown(ImGuiMouseButton_Left);
+        ctx->Yield();
+        ctx->MouseLiftDragThreshold(ImGuiMouseButton_Left);
+        ctx->Yield();
+        ctx->MouseMoveToPos(ax::NodeEditor::CanvasToScreen(toPin->m_Bounds.GetCenter()));
+        ctx->Yield();
+        ctx->MouseUp(ImGuiMouseButton_Left);
+    }
+
+    [[nodiscard]] static bool edgeExistsIn(const DigitizerUi::UiGraphBlock& graph, std::string_view sourceBlockName, std::string_view destinationPortName) {
+        return std::ranges::any_of(graph.childEdges, [&](const DigitizerUi::UiGraphEdge& edge) {
+            return edge.edgeSourcePort && edge.edgeSourcePort->ownerBlock && edge.edgeSourcePort->ownerBlock->blockName == sourceBlockName && //
+                   edge.edgeDestinationPort && edge.edgeDestinationPort->portName == destinationPortName;
+        });
+    }
+
+    [[nodiscard]] static DigitizerUi::UiGraphPort* findFirstPortOfBlock(DigitizerUi::UiGraphBlock& graph, std::string_view blockName, gr::PortDirection direction) {
+        for (auto& block : graph.childBlocks) {
+            if (block->blockName != blockName) {
+                continue;
+            }
+            auto& ports = direction == gr::PortDirection::INPUT ? block->_inputPorts : block->_outputPorts;
+            return ports.empty() ? nullptr : std::addressof(ports.front());
+        }
+        return nullptr;
+    }
+
+    static void requestEmplaceBlock(DigitizerUi::FlowgraphEditor& editor, std::string blockType) {
+        auto owner = editor.ownersForRoot();
+        expect(owner.has_value()) << fatal;
+
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kEmplaceBlock;
+        message.serviceName = owner->scheduler;
+        message.data        = gr::property_map{{"type", std::move(blockType)}, {"_targetGraph", owner->graph}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
     void registerTests() override { // NOSONAR (cognitive complexity)
@@ -284,6 +357,105 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
                 expect(targetPort->isExportedTo(editor.exportPortTargetBlock())) << "ui action should have caused port to become exported\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Connect root graph block to exported input port");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = basicGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                g_state.reloadFromYamlString(simpleGraph);
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                // create the scheduler subgraph, as if through the "Add sub graph..." dialog (bug does not happen if the scheduler is loaded at the same time as its contents)
+                requestEmplaceBlock(g_state.flowgraphPage.currentEditor(), "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>");
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the subgraph\n" << fatal;
+
+                const auto findSubgraphBlock = []() -> DigitizerUi::UiGraphBlock* {
+                    for (auto& block : g_state.currentRootBlock().childBlocks) {
+                        if (block->isScheduler()) {
+                            return block.get();
+                        }
+                    }
+                    return nullptr;
+                };
+                expect(waitFor(ctx,
+                    [&] {
+                        auto* subgraphBlock = findSubgraphBlock();
+                        return subgraphBlock && !subgraphBlock->childBlocks.empty();
+                    }))
+                    << "subgraph and its child graph should appear in the model\n"
+                    << fatal;
+
+                g_state.enterSubgraphEditor();
+                expect(g_state.flowgraphPage.editorCount() > 1) << fatal;
+
+                // place a DataSink inside the subgraph, as if through the "Add block..." dialog
+                requestEmplaceBlock(g_state.flowgraphPage.currentEditor(), "gr::basic::DataSink<float32>");
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlockEmplaced)) << "Scheduler never responded about the request to create the DataSink\n" << fatal;
+
+                const auto findSinkPort = []() -> DigitizerUi::UiGraphPort* {
+                    for (auto& block : g_state.currentRootBlock().childBlocks) {
+                        if (block->blockTypeName.starts_with("gr::basic::DataSink") && !block->_inputPorts.empty()) {
+                            return std::addressof(block->_inputPorts.front());
+                        }
+                    }
+                    return nullptr;
+                };
+                expect(waitFor(ctx, [&] { return findSinkPort() != nullptr; })) << "the DataSink should appear in the subgraph\n" << fatal;
+
+                {
+                    auto& subgraphEditor = g_state.flowgraphPage.currentEditor();
+                    auto* sinkPort       = findSinkPort();
+
+                    subgraphEditor.requestExportPort({
+                        .uniqueBlockName = sinkPort->ownerBlock->blockUniqueName,
+                        .portDirection   = "input",
+                        .portName        = sinkPort->portName,
+                        .exportedName    = "exported_in",
+                        .exportFlag      = true,
+                    });
+                    expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "Scheduler never responded about the request to export a port\n" << fatal;
+                    // re-find the port each time, the model may have been rebuilt in the meantime
+                    expect(waitFor(ctx,
+                        [&] {
+                            auto* port = findSinkPort();
+                            return port && port->isExportedTo(g_state.flowgraphPage.currentEditor().exportPortTargetBlock());
+                        }))
+                        << "port should be exported\n"
+                        << fatal;
+                }
+
+                g_state.flowgraphPage.popEditor();
+                expect(g_state.flowgraphPage.editorCount() == 1_ul) << fatal;
+
+                // wait for the full model update triggered by popEditor() so the
+                // subgraph block in the root graph gains the exported input port
+                const auto findExportedPort = [&]() -> DigitizerUi::UiGraphPort* {
+                    auto* subgraphBlock = findSubgraphBlock();
+                    if (!subgraphBlock) {
+                        return nullptr;
+                    }
+                    auto portIterator = std::ranges::find_if(subgraphBlock->_inputPorts, [](const UiGraphPort& port) { return port.portName == "exported_in"; });
+                    return portIterator != subgraphBlock->_inputPorts.end() ? std::addressof(*portIterator) : nullptr;
+                };
+                expect(waitFor(ctx, [&] { return findExportedPort() != nullptr; })) << "exported input port should appear on the subgraph block in the root graph\n" << fatal;
+
+                auto* sourcePort = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSineSource", gr::PortDirection::OUTPUT);
+                expect(sourcePort != nullptr) << fatal;
+
+                // a normal forwards drag, from the source's output pin to the exported input pin
+                dragPinToPin(ctx, g_state.flowgraphPage.currentEditor(), sourcePort, findExportedPort());
+
+                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSineSource", "exported_in"); })) << "edge from root graph block to exported input port should appear in the UI\n";
 
                 g_state.stopScheduler();
             };
