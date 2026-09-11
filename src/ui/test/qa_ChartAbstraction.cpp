@@ -285,6 +285,42 @@ int main() {
         SinkRegistry::instance().unregisterSink(sink2->uniqueName());
     };
 
+    "Axis parsing selects the n-th entry per axis kind"_test = [] {
+        expect(!parseAxisConfig({}, AxisKind::X));
+        expect(!parseAxisConfig({{"axes", "not a tensor"}}, AxisKind::X));
+
+        gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {7UZ});
+        axes[0] = gr::property_map{{"axis", "Y"}, {"min", 1}, {"max", 2.5f}};
+        axes[1] = gr::property_map{{"axis", "X"}, {"scale", "tImE"}, {"format", "mEtRiC"}, {"plot_tags", 0}};
+        axes[2] = 42;
+        axes[3] = gr::property_map{{"axis", 1}};
+        axes[4] = gr::property_map{{"scale", "Log10"}};
+        axes[5] = gr::property_map{{"axis", "unknown"}};
+        axes[6] = gr::property_map{{"axis", "y"}, {"scale", 7}, {"format", 7}, {"width", 80}, {"plot_tags", false}};
+        const gr::property_map constraints{{"axes", std::move(axes)}};
+        const auto             x  = parseAxisConfig(constraints, AxisKind::X);
+        const auto             y  = parseAxisConfig(constraints, AxisKind::Y);
+        const auto             y2 = parseAxisConfig(constraints, AxisKind::Y, 1UZ);
+
+        expect(x && y && y2) << fatal;
+        expect(x->scale == AxisScale::Time);
+        expect(x->format == LabelFormat::Metric);
+        expect(x->plotTags);
+        expect(eq(y->min, 1.f));
+        expect(eq(y->max, 2.5f));
+        expect(std::isnan(y->width));
+        expect(y->plotTags);
+        expect(!y->scale);
+        expect(y->format == LabelFormat::Auto);
+        expect(std::isnan(y2->min) && std::isnan(y2->max));
+        expect(!y2->scale);
+        expect(y2->format == LabelFormat::Auto);
+        expect(eq(y2->width, 80.f));
+        expect(!y2->plotTags);
+        expect(!parseAxisConfig(constraints, AxisKind::X, 1UZ));
+        expect(!parseAxisConfig(constraints, AxisKind::Y, 2UZ));
+    };
+
     // --- Axis-grouping edge-case tests ---
 
     "findOrCreateCategory with 3 different groups"_test = [] {
