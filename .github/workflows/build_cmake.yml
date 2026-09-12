@@ -20,6 +20,7 @@ jobs:
     container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
     env:
       CCACHE_DIR: /home/runner/work/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
     outputs:
       builtPages: ${{ steps.enableUploadPages.outputs.builtPages }}
     strategy:
@@ -42,17 +43,23 @@ jobs:
         echo "Disk space after clearing:"
         df -h
 
-    - name: Cache ccache
-      uses: actions/cache@v5
+    - name: Restore ccache
+      uses: actions/cache/restore@v5
       with:
         path: /home/runner/work/ccache
-        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}
+        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-ccache-
+          ${{ runner.os }}-ccache-${{ matrix.preset }}-
 
     - name: Configure ccache
       run: |
-        ccache --max-size=12G
+        ccache --max-size=4G
+        ccache --set-config=compression=true
+        ccache --set-config=compression_level=6
+        ccache --set-config=depend_mode=true
+        ccache --set-config=hash_dir=false
+        ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
+        ccache -z
         ccache --show-stats
 
     - name: Cache fetchContent
@@ -97,6 +104,13 @@ jobs:
         $EMSDK_HOME/emsdk activate $EMSDK_VERSION
         source $EMSDK_HOME/emsdk_env.sh
         cmake --build --preset ${{ matrix.preset }}
+
+    - name: Save ccache
+      if: ${{ !cancelled() && github.event_name == 'push' }}
+      uses: actions/cache/save@v5
+      with:
+        path: /home/runner/work/ccache
+        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
 
     - name: Install Xvfb
       run: sudo apt-get install -y xvfb || true
