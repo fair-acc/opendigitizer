@@ -1,6 +1,9 @@
 #ifndef MAPUTILS_H
 #define MAPUTILS_H
 
+#include <gnuradio-4.0/Message.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
+
 inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel = -1UZ, std::size_t level = 0) {
     if (level == maxLevel) {
         return;
@@ -79,7 +82,13 @@ inline std::expected<T, gr::Error> getOptionalProperty(const gr::property_map& m
         }
         return std::pmr::string(it->second.value_or(std::string_view{}));
     } else if constexpr (!allow_conversion) {
-        if constexpr (requires(const gr::pmt::Value& value) { value.template get_if<T>(); }) {
+        if constexpr (gr::TensorLike<T> && !gr::TensorViewLike<T>) {
+            const gr::pmt::Value value = it->second;
+            if (const auto tensor = value.get_if<gr::TensorView<typename T::value_type>>()) {
+                return tensor->owned(value.resource());
+            }
+        } else {
+            static_assert(requires(const gr::pmt::Value& value) { value.template get_if<T>(); }, "Unsupported property type");
             if (const auto p = it->second.get_if<T>()) {
                 return *p;
             }
