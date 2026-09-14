@@ -897,14 +897,6 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
     }
 
-    // Create a new ImGui window for an overlay over the NodeEditor , where we can place our buttons
-    // if we don't put the buttons in this overlay, the click events will go to the editor instead of the buttons
-    if (horizontalSplit) {
-        ImGui::SetNextWindowPos({origCursorPos.saved.x, origCursorPos.saved.y + contentSize.y - 37.f}, ImGuiCond_Always);
-    } else {
-        ImGui::SetNextWindowPos({origCursorPos.saved.x, origCursorPos.saved.y + contentSize.y * (1.f - ratio) - 39.f}, ImGuiCond_Always); // on vertical, we need some extra space for the splitter
-    }
-
     if (horizontalSplit) {
         const float w = contentSize.x * ratio;
         requestBlockControlsPanel(_editPaneContext, {contentTopLeft.x + contentSize.x - w + halfSplitterWidth, contentTopLeft.y}, {w - halfSplitterWidth, contentSize.y}, true);
