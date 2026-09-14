@@ -3,6 +3,7 @@
 #include "../ui/components/ImGuiNotify.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <ranges>
 
 #include <imgui_internal.h>
@@ -75,6 +76,7 @@ static void dockAtBottomIfWanted(const DockSpace::Windows& windows, ImGuiID dock
 
 void DockSpace::setLayoutType(DockingLayoutType type) {
     if (type != _layoutType) {
+        captureFreeLayout();
         _layoutType = type;
 
         setNeedsRelayout(true);
@@ -95,8 +97,23 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
 
         ImGui::PopStyleVar();
 
-        setNeedsRelayout(_needsRelayout || _lastWindowCount != windows.size() || !ImGui::DockBuilderGetNode(dockspaceID()));
-        _lastWindowCount = windows.size();
+        const ImGuiID currentDockspaceID = dockspaceID();
+        const auto    windowName         = [](const auto& window) -> const std::string& { return window->name; };
+        const bool    windowsChanged     = !std::ranges::is_permutation(_lastWindowNames, windows, {}, {}, windowName);
+        const bool    dockspaceMissing   = ImGui::DockBuilderGetNode(currentDockspaceID) == nullptr;
+
+        if (!_needsRelayout && isFreeLayout() && windowsChanged) {
+            captureFreeLayout();
+        }
+
+        _lastDockspaceID = currentDockspaceID;
+        if (windowsChanged) {
+            _lastWindowNames.clear();
+            _lastWindowNames.reserve(windows.size());
+            std::ranges::transform(windows, std::back_inserter(_lastWindowNames), [](const auto& window) { return window->name; });
+        }
+
+        setNeedsRelayout(_needsRelayout || windowsChanged || dockspaceMissing);
 
         if (_needsRelayout) {
             relayout(windows, isEditable, requestsExactFreeLayout);
@@ -105,19 +122,25 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
             _lastIsEditable = isEditable;
         }
 
-        // save a description of split layout and floating windows every frame. this could instead
-        // occur only before relayouting + before switching to the dashboard load/save page.
-        if (!_needsRelayout && !requestsExactFreeLayout && layoutType() == DockingLayoutType::Free) {
-            constexpr auto toWindowName = [](const auto& ptr) { return std::string_view{ptr->name}; };
-            const auto     windowNames  = windows | std::views::transform(toWindowName) | std::ranges::to<std::vector<std::string_view>>();
-            _lastFreeLayout             = DigitizerUi::saveDockSpaceState(windowNames, dockspaceID()); // saves nothing on first frame, before windows exist
-        }
-
         ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
-        ImGui::DockSpace(dockspaceID(), ImVec2(0.0f, 0.0f), dockspace_flags, nullptr);
+        ImGui::DockSpace(currentDockspaceID, ImVec2(0.0f, 0.0f), dockspace_flags, nullptr);
     }
 
     renderWindows(windows, isEditable);
+}
+
+const gr::property_map& DockSpace::saveFreeLayout() const {
+    captureFreeLayout();
+    return _lastFreeLayout;
+}
+
+void DockSpace::captureFreeLayout() const {
+    if (_needsRelayout || !isFreeLayout() || _lastDockspaceID == 0 || !ImGui::DockBuilderGetNode(_lastDockspaceID)) {
+        return;
+    }
+
+    const auto windowNames = _lastWindowNames | std::views::transform([](const std::string& name) { return std::string_view{name}; }) | std::ranges::to<std::vector<std::string_view>>();
+    _lastFreeLayout        = DigitizerUi::saveDockSpaceState(windowNames, _lastDockspaceID);
 }
 
 void DockSpace::renderWindows(const Windows& windows, bool isEditable) {

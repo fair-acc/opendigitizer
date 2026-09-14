@@ -615,10 +615,9 @@ private:
             reply.channelRangeMax   = {pollerEntry.signal_max ? static_cast<float>(*pollerEntry.signal_max) : std::numeric_limits<float>::max()};
             pollerEntry.timingEventState.applyToReply(reply);
 
-            const auto                    nSamples = static_cast<uint32_t>(data.size());
-            const std::array<uint32_t, 2> dims{1U, nSamples}; // 1 signal, N samples
-            reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), dims);
-            reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), dims);
+            const auto nSamples = static_cast<uint32_t>(data.size());
+            reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), std::array<uint32_t, 2>{1U, nSamples});
+            reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), std::array<uint32_t, 2>{1U, nSamples});
             reply.channelTimeSinceRefTrigger.resize(nSamples);
             if (pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f) {
                 const float ts = 1.f / *pollerEntry.sample_rate;

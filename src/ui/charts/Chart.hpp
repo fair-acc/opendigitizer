@@ -113,12 +113,7 @@ struct LogFreqRange {
 }
 
 [[nodiscard]] inline std::optional<AxisConfig> parseAxisConfig(const gr::property_map& constraints, AxisKind targetKind, std::size_t index = 0) {
-    auto axesIt = constraints.find("axes");
-    if (axesIt == constraints.end()) {
-        return std::nullopt;
-    }
-    const gr::pmt::Value axesVal = axesIt->second;
-    const auto           axesVec = axesVal.get_if<gr::TensorView<gr::pmt::Value>>();
+    const auto axesVec = constraints.get_if<gr::TensorView<gr::pmt::Value>>("axes");
     if (!axesVec) {
         return std::nullopt;
     }
@@ -129,15 +124,7 @@ struct LogFreqRange {
         if (!axisMap) {
             continue;
         }
-        auto axisStrIt = axisMap->find("axis");
-        if (axisStrIt == axisMap->end()) {
-            continue;
-        }
-        if (!axisStrIt->second.is_string()) {
-            continue;
-        }
-        const auto axisStr    = axisStrIt->second.value_or(std::string_view{});
-        const auto parsedKind = axisKindOf(axisStr);
+        const auto parsedKind = axisKindOf(axisMap->value_or<std::string_view>("axis", std::string_view{}));
         if (!parsedKind || *parsedKind != targetKind) {
             continue;
         }
@@ -159,24 +146,18 @@ struct LogFreqRange {
                 cfg.max = *v;
             }
         }
-        if (auto it = axisMap->find("scale"); it != axisMap->end()) {
-            if (it->second.is_string()) {
-                cfg.scale = magic_enum::enum_cast<AxisScale>(it->second.value_or(std::string()), magic_enum::case_insensitive).value_or(AxisScale::Linear);
-            }
+        if (const auto scale = axisMap->get_if<std::string_view>("scale")) {
+            cfg.scale = magic_enum::enum_cast<AxisScale>(*scale, magic_enum::case_insensitive).value_or(AxisScale::Linear);
         }
-        if (auto it = axisMap->find("format"); it != axisMap->end()) {
-            if (it->second.is_string()) {
-                cfg.format = magic_enum::enum_cast<LabelFormat>(it->second.value_or(std::string()), magic_enum::case_insensitive).value_or(LabelFormat::Auto);
-            }
+        if (const auto format = axisMap->get_if<std::string_view>("format")) {
+            cfg.format = magic_enum::enum_cast<LabelFormat>(*format, magic_enum::case_insensitive).value_or(LabelFormat::Auto);
         }
         if (auto it = axisMap->find("width"); it != axisMap->end()) {
             if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
                 cfg.width = *v;
             }
         }
-        if (auto it = axisMap->find("plot_tags"); it != axisMap->end()) {
-            cfg.plotTags = it->second.value_or(true);
-        }
+        cfg.plotTags = axisMap->value_or<bool>("plot_tags", true);
         return cfg;
     }
     return std::nullopt;
@@ -1033,6 +1014,7 @@ int registerChartSignalCompatibility() {
 /// Derived classes must: inherit gr::Block<Derived>, define kChartTypeName, data_sinks.
 struct Chart {
     static constexpr std::size_t kDefaultHistorySize             = 4096;
+    static constexpr std::size_t kDefaultDataSetHistorySize      = 8;
     static constexpr double      kCapacityRefreshIntervalSeconds = 30.0; // refresh before 60s timeout
     static constexpr double      kCapacityDebounceSeconds        = 0.3;  // debounce resize to avoid discontinuities
 
@@ -1140,13 +1122,21 @@ struct Chart {
         if (!sink) {
             return;
         }
+        const auto requestedSinkCapacity = [&]() -> std::size_t {
+            if (sink->signalKind() == SignalKind::Dataset1D) {
+                if constexpr (requires { self.max_history_count.value; }) {
+                    return std::max(kDefaultDataSetHistorySize, static_cast<std::size_t>(self.max_history_count.value));
+                }
+                return kDefaultDataSetHistorySize;
+            }
+            if constexpr (requires { self.n_history.value; }) {
+                return static_cast<std::size_t>(self.n_history.value);
+            }
+            return kDefaultHistorySize;
+        };
+        sink->requestCapacity(std::string(self.unique_name), requestedSinkCapacity());
         auto it = std::find(self._signalSinks.begin(), self._signalSinks.end(), sink);
         if (it == self._signalSinks.end()) {
-            std::size_t capacity = kDefaultHistorySize;
-            if constexpr (requires { self.n_history.value; }) {
-                capacity = static_cast<std::size_t>(self.n_history.value);
-            }
-            sink->requestCapacity(std::string(self.unique_name), capacity);
             self._signalSinks.push_back(std::move(sink));
         }
     }
@@ -1208,14 +1198,8 @@ struct Chart {
     template<typename Self>
     void onDataSinksChanged(this Self& self, const std::vector<std::string>& sinkNames) {
         self.syncSinksFromNames(sinkNames);
-        std::size_t capacity = kDefaultHistorySize;
-        if constexpr (requires { self.n_history.value; }) {
-            capacity = static_cast<std::size_t>(self.n_history.value);
-        }
         for (auto& sink : self._signalSinks) {
-            if (sink) {
-                sink->requestCapacity(std::string(self.unique_name), capacity);
-            }
+            self.addSignalSink(sink);
         }
     }
 
@@ -1796,14 +1780,8 @@ struct Chart {
 
     template<typename Self>
     void updateAllSinksCapacity(this Self& self) {
-        std::size_t capacity = kDefaultHistorySize;
-        if constexpr (requires { self.n_history.value; }) {
-            capacity = static_cast<std::size_t>(self.n_history.value);
-        }
         for (auto& sink : self._signalSinks) {
-            if (sink) {
-                sink->requestCapacity(std::string(self.unique_name), capacity);
-            }
+            self.addSignalSink(sink);
         }
         self._lastCapacityRefreshTime = ImGui::GetTime();
     }
@@ -1876,6 +1854,11 @@ struct Chart {
                 self.updateAllSinksCapacity();
             }
         }
+        if constexpr (requires { self.max_history_count; }) {
+            if (newSettings.contains("max_history_count")) {
+                self.updateAllSinksCapacity();
+            }
+        }
     }
 
     template<typename Self>
@@ -1900,11 +1883,8 @@ struct Chart {
         gr::property_map            constraints = self.ui_constraints.value;
 
         gr::Tensor<gr::pmt::Value> axesVec;
-        if (const auto it = constraints.find("axes"); it != constraints.end()) {
-            const gr::pmt::Value axesVal = it->second;
-            if (const auto existing = axesVal.get_if<gr::TensorView<gr::pmt::Value>>()) {
-                axesVec = existing->owned();
-            }
+        if (const auto existing = constraints.get_if<gr::TensorView<gr::pmt::Value>>("axes")) {
+            axesVec = existing->owned();
         }
 
         const std::string targetAxis   = kAxisNames[static_cast<std::size_t>(axis)];
@@ -1915,15 +1895,7 @@ struct Chart {
             if (!axisMapView) {
                 continue;
             }
-            const auto axisStrIt = axisMapView->find("axis");
-            if (axisStrIt == axisMapView->end()) {
-                continue;
-            }
-            if (!axisStrIt->second.is_string()) {
-                continue;
-            }
-            const auto axisStr    = axisStrIt->second.value_or(std::string_view{});
-            const auto parsedKind = axisKindOf(axisStr);
+            const auto parsedKind = axisKindOf(axisMapView->value_or<std::string_view>("axis", std::string_view{}));
             if (parsedKind && *parsedKind == axis) {
                 if (matchingAxes++ != axisIndex) {
                     continue;

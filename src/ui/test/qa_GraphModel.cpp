@@ -3,6 +3,7 @@
 
 #include <Dashboard.hpp>
 #include <GraphModel.hpp>
+#include <MapUtils.hpp>
 #include <common/ImguiWrap.hpp>
 
 #include <blocks/Arithmetic.hpp>
@@ -29,6 +30,38 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     void registerTests() override {
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "property decoding");
+            t->TestFunc  = [](ImGuiTestContext*) {
+                "tensor property decoding"_test = [] {
+                    using Tensor = gr::Tensor<gr::pmt::Value>;
+                    const gr::property_map child{{"unique_name", "test-block"}};
+                    const gr::property_map data{{"graph", gr::property_map{{"blocks", Tensor(gr::data_from, {gr::pmt::Value(child)})}}}};
+                    const auto             children = getOptionalProperty<Tensor>(data, "graph", "blocks");
+                    expect(children.has_value()) << fatal;
+                    expect(eq(children->size(), 1UZ)) << fatal;
+                    const auto block = (*children)[0].get_if<gr::property_map>();
+                    expect(block.has_value()) << fatal;
+                    expect(eq(getProperty<std::string>(*block, "unique_name"), std::string("test-block")));
+                    expect(!getOptionalProperty<Tensor>(gr::property_map{{"blocks", "not a tensor"}}, "blocks"));
+                };
+                "registry type decoding"_test = [] {
+                    UiGraphModel           model;
+                    const gr::property_map data{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("opendigitizer::SineSource<float32>")})}};
+                    model.handleAvailableGraphBlockTypes(data);
+                    expect(eq(model.knownBlockTypes.size(), 1UZ));
+                    const auto type = model.knownBlockTypes.find("opendigitizer::SineSource");
+                    expect(type != model.knownBlockTypes.end()) << fatal;
+                    expect(eq(type->second.size(), 1UZ));
+                    expect(type->second.contains("<float32>"));
+
+                    const gr::property_map schedulerData{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>")})}};
+                    model.handleAvailableGraphSchedulerTypes(schedulerData);
+                    const std::map<std::string, std::set<std::string>> expectedSchedulers{{"gr::Graph", {"<>"}}, {"gr::scheduler::Simple", {"<gr::scheduler::ExecutionPolicy::singleThreaded>"}}};
+                    expect(model.knownSchedulerTypes == expectedSchedulers);
+                };
+            };
+        }
         {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "port exporting from subgraphs");
             t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();

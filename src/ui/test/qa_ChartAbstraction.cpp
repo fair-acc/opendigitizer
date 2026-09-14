@@ -1,4 +1,5 @@
 #include "TestSinks.hpp"
+#include "blocks/ImPlotSink.hpp"
 
 #include <boost/ut.hpp>
 
@@ -14,6 +15,24 @@ int main() {
     using namespace boost::ut;
     using namespace opendigitizer::charts;
     using namespace opendigitizer::test;
+
+    "SpectrumPlot requests small default dataset capacity"_test = [] {
+        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
+        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        SpectrumPlot                                  chart;
+        chart.addSignalSink(adapter);
+        expect(eq(sink.bufferCapacity(), 8UZ));
+    };
+
+    "XYChart requests dataset capacity from max_history_count"_test = [] {
+        opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
+        auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        XYChart                                       chart;
+        chart.n_history         = 30'000U; // should be ignored for DataSets
+        chart.max_history_count = 16U;
+        chart.addSignalSink(adapter);
+        expect(eq(sink.bufferCapacity(), 16UZ));
+    };
 
     "XYChart creation via makeXYChart"_test = [] {
         auto chart = makeXYChart("TestChart");
@@ -162,7 +181,7 @@ int main() {
     };
 
     "Signal shared between multiple charts"_test = [] {
-        auto sink = makeTestStreamingSink("shared_signal");
+        auto sink = makeTestStreamingSink("shared_signal", 16);
 
         for (int i = 0; i < 100; ++i) {
             sink->pushSample(static_cast<double>(i) * 0.01, std::sin(static_cast<float>(i) * 0.1f));
@@ -171,15 +190,17 @@ int main() {
         auto chart1 = makeXYChart();
         auto chart2 = makeXYChart();
 
+        chart1->n_history         = 30U;
+        chart2->n_history         = 50U;
+        chart1->max_history_count = 64U; // above n_history; ignored for streaming samples
+        chart2->max_history_count = 128U;
         chart1->addSignalSink(sink);
+        expect(eq(sink->bufferCapacity(), 30UZ));
         chart2->addSignalSink(sink);
 
         expect(eq(chart1->signalSinks()[0]->size(), chart2->signalSinks()[0]->size()));
 
-        sink->requestCapacity(chart1->uniqueId(), 3000);
-        sink->requestCapacity(chart2->uniqueId(), 5000);
-
-        expect(eq(sink->bufferCapacity(), 5000UZ));
+        expect(eq(sink->bufferCapacity(), 50UZ));
     };
 
     "PlotData can be used for rendering"_test = [] {
@@ -262,6 +283,42 @@ int main() {
 
         SinkRegistry::instance().unregisterSink(sink1->uniqueName());
         SinkRegistry::instance().unregisterSink(sink2->uniqueName());
+    };
+
+    "Axis parsing selects the n-th entry per axis kind"_test = [] {
+        expect(!parseAxisConfig({}, AxisKind::X));
+        expect(!parseAxisConfig({{"axes", "not a tensor"}}, AxisKind::X));
+
+        gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {7UZ});
+        axes[0] = gr::property_map{{"axis", "Y"}, {"min", 1}, {"max", 2.5f}};
+        axes[1] = gr::property_map{{"axis", "X"}, {"scale", "tImE"}, {"format", "mEtRiC"}, {"plot_tags", 0}};
+        axes[2] = 42;
+        axes[3] = gr::property_map{{"axis", 1}};
+        axes[4] = gr::property_map{{"scale", "Log10"}};
+        axes[5] = gr::property_map{{"axis", "unknown"}};
+        axes[6] = gr::property_map{{"axis", "y"}, {"scale", 7}, {"format", 7}, {"width", 80}, {"plot_tags", false}};
+        const gr::property_map constraints{{"axes", std::move(axes)}};
+        const auto             x  = parseAxisConfig(constraints, AxisKind::X);
+        const auto             y  = parseAxisConfig(constraints, AxisKind::Y);
+        const auto             y2 = parseAxisConfig(constraints, AxisKind::Y, 1UZ);
+
+        expect(x && y && y2) << fatal;
+        expect(x->scale == AxisScale::Time);
+        expect(x->format == LabelFormat::Metric);
+        expect(x->plotTags);
+        expect(eq(y->min, 1.f));
+        expect(eq(y->max, 2.5f));
+        expect(std::isnan(y->width));
+        expect(y->plotTags);
+        expect(!y->scale);
+        expect(y->format == LabelFormat::Auto);
+        expect(std::isnan(y2->min) && std::isnan(y2->max));
+        expect(!y2->scale);
+        expect(y2->format == LabelFormat::Auto);
+        expect(eq(y2->width, 80.f));
+        expect(!y2->plotTags);
+        expect(!parseAxisConfig(constraints, AxisKind::X, 1UZ));
+        expect(!parseAxisConfig(constraints, AxisKind::Y, 2UZ));
     };
 
     // --- Axis-grouping edge-case tests ---
