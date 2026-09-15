@@ -134,7 +134,6 @@ struct UiGraphBlock {
     void handleChildEdgeEmplaced(const gr::property_map& data);
     bool handleChildBlockRemoved(const std::string& uniqueName);
     void handleChildEdgeRemoved(const gr::property_map& data);
-    void handlePortExported(const gr::property_map& data);
 
     UiGraphBlock* findBlockByUniqueName(const std::string& uniqueName);
 

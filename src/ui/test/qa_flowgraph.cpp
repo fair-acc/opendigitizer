@@ -320,13 +320,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 auto& editor = g_state.flowgraphPage.currentEditor();
 
-                DigitizerUi::UiGraphPort* targetPort = nullptr;
-                for (auto& block : g_state.currentRootBlock().childBlocks) {
-                    if (!block->_outputPorts.empty()) {
-                        targetPort = &block->_outputPorts.front();
-                        break;
+                const auto findTargetPort = []() -> DigitizerUi::UiGraphPort* {
+                    for (auto& block : g_state.currentRootBlock().childBlocks) {
+                        if (!block->_outputPorts.empty()) {
+                            return &block->_outputPorts.front();
+                        }
                     }
-                }
+                    return nullptr;
+                };
+                DigitizerUi::UiGraphPort* targetPort = findTargetPort();
                 expect(targetPort != nullptr) << fatal;
 
                 ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
@@ -357,7 +359,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const bool recievedReplyAboutExport = waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort);
                 expect(recievedReplyAboutExport) << "Scheduler never responded about the request to export a port\n";
 
-                expect(targetPort->isExportedTo(editor.exportPortTargetBlock())) << "ui action should have caused port to become exported\n";
+                // there are two messages, one to confirm the export happened
+                // (already done, as per recievedReplyAboutExport), and then one
+                // to send a full block update, which we have to wait for
+                expect(waitFor(ctx, [&] {
+                    auto* port = findTargetPort();
+                    return port && port->isExportedTo(editor.exportPortTargetBlock());
+                })) << "ui action should have caused port to become exported\n";
 
                 g_state.stopScheduler();
             };
@@ -529,7 +537,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         if (std::addressof(port) == filter || isConnected(port)) {
                             continue;
                         }
-                        expect(port.isExportedTo(editor.exportPortTargetBlock())) << "all ports should be exported, this was not: " << port.portName << " of " << port.ownerBlock->blockName << std::format(" - line {}\n", location.line());
+                        expect(waitFor(ctx, [&] { return port.isExportedTo(editor.exportPortTargetBlock()); })) << "all ports should be exported, this was not: " << port.portName << " of " << port.ownerBlock->blockName << std::format(" - line {}\n", location.line());
                         editor.requestExportPort({
                             .uniqueBlockName = port.ownerBlock->blockUniqueName,
                             .portDirection   = port.portDirection == gr::PortDirection::INPUT ? "input" : "output",
@@ -537,7 +545,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                             .exportFlag      = false,
                         });
                         expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "Scheduler never responded about the request to un-export a port\n" << fatal;
-                        expect(!port.isExportedTo(editor.exportPortTargetBlock())) << "failed to un-export" << port.portName << "of" << port.ownerBlock->blockName << std::format("- line {}\n", location.line()) << fatal;
+                        expect(waitFor(ctx, [&] { return !port.isExportedTo(editor.exportPortTargetBlock()); })) << "failed to un-export" << port.portName << "of" << port.ownerBlock->blockName << std::format("- line {}\n", location.line()) << fatal;
                     }
                 };
 

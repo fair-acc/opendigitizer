@@ -130,27 +130,6 @@ void UiGraphBlock::handleChildEdgeEmplaced(const gr::property_map& data) {
 
 void UiGraphBlock::handleChildEdgeRemoved(const gr::property_map& /* data */) { ownerGraph->requestFullUpdate(); }
 
-void UiGraphBlock::handlePortExported(const gr::property_map& data) {
-    const auto valueForKey             = [&data](std::string_view key) { return data.find_value(key).value_or(gr::pmt::Value{}); };
-    auto&      exportedPortsCollection = valueForKey("portDirection") == "input"s ? exportedInputPorts : exportedOutputPorts;
-    const auto targetBlockUniqueName   = valueForKey("uniqueBlockName").value_or(std::string());
-    const auto internalPortName        = valueForKey("portName").value_or(std::string());
-    const auto exportedPortName        = valueForKey("exportedName").value_or(std::string());
-
-    auto& exportedPortsOfBlock = exportedPortsCollection[targetBlockUniqueName];
-
-    if (valueForKey("exportFlag").value_or(false)) {
-        exportedPortsOfBlock.insert(UiGraphBlock::PortNameMapper{internalPortName, exportedPortName});
-    } else {
-        auto it = std::ranges::find_if(exportedPortsOfBlock, [&internalPortName](const auto& internalExternalPair) { return internalExternalPair.internalName == internalPortName; });
-        if (it != exportedPortsOfBlock.end()) {
-            exportedPortsOfBlock.erase(it);
-        }
-    }
-
-    requestBlockUpdate();
-}
-
 void UiGraphBlock::setSchedulerGraph(const gr::property_map& data) {
     assert(blockCategory == "ScheduledBlockGroup");
     const auto& children = getProperty<gr::property_map>(data, "children"s);
@@ -1014,7 +993,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
             assert(false);
         }
     } else if (message.endpoint == graph::kSubgraphExportedPort) {
-        targetBlock.block->handlePortExported(data);
+        // read exported ports out of meta information, easier to treat this as
+        // source of truth than update our own cache based on these export events
+        targetBlock.block->requestBlockUpdate();
 
     } else {
         if (!message.data) {
