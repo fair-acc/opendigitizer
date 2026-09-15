@@ -78,6 +78,10 @@ struct LookAndFeel {
 
         float flowgraphBoundingBoxExteriorSelectionOutlineThickness        = 1.f;
         float flowgraphBoundingBoxExteriorSelectionOutlineThicknessHovered = 3.f;
+
+        float exportedTabOverlap  = 6.0f;
+        float exportedTabPaddingH = 4.0f;
+        float exportedTabPaddingV = 2.0f;
     };
 
 #ifdef __EMSCRIPTEN__

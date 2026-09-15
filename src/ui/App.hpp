@@ -118,6 +118,7 @@ public:
             }
         }
 
+        flowgraphPage.setDashboard(nullptr);
         dashboard = Dashboard::create(restClient, desc);
         dashboard->load();
         dashboard->requestClose = [this](Dashboard*) { closeDashboard(); };
