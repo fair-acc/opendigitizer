@@ -11,14 +11,20 @@ blocks:
       outputInDb: true
       outputInDeg: true
       unwrapPhase: true
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sineSource1
+      signal_type: Sin
       frequency: 2
-  - id: opendigitizer::SineSource<float32>
+      sample_rate: 1000
+      chunk_size: 40
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sineSource2
+      signal_type: Sin
       frequency: 5
+      sample_rate: 1000
+      chunk_size: 40
       ui_constraints:
         x: 30
         y: 40
