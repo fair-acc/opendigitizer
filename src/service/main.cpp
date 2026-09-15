@@ -20,8 +20,12 @@
 #endif
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
 #include <fstream>
+#include <ranges>
+#include <string>
+#include <string_view>
 #include <thread>
 
 #include <gnuradio-4.0/Export.hpp>
@@ -273,10 +277,12 @@ connections:
     using GrFgWorker  = GnuRadioFlowGraphWorker<GrAcqWorker, "/flowgraph", description<"Provides access to the GnuRadio flow graph">>;
     gr::BlockRegistry registry;
     registerTestBlocks(registry);
-    const auto                                             pluginPaths = Digitizer::resolvePluginSearchPaths();
-    gr::PluginLoader                                       pluginLoader(registry, gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
-    GrAcqWorker                                            grAcqWorker(*broker, &pluginLoader, 50ms);
-    GrFgWorker                                             grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
+
+    auto             pluginPaths = Digitizer::resolvePluginSearchPaths();
+    gr::PluginLoader pluginLoader(registry, gr::globalSchedulerRegistry(), pluginPaths);
+    GrAcqWorker      grAcqWorker(*broker, &pluginLoader, 50ms);
+    GrFgWorker       grFgWorker(*broker, &pluginLoader, opendigitizer::flowgraph::Flowgraph{grc, {}}, grAcqWorker);
+
     std::optional<opencmw::majordomo::load_test::Worker<>> loadTestWorker{};
     if (loadTest) {
         loadTestWorker.emplace(*broker);

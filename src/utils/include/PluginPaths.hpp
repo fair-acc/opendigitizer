@@ -1,11 +1,11 @@
 #ifndef OPENDIGITIZER_PLUGIN_PATHS_H
 #define OPENDIGITIZER_PLUGIN_PATHS_H
 
-#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <ranges>
 #include <set>
 #include <span>
 #include <string>
@@ -28,48 +28,46 @@ inline std::string trimWhitespace(std::string_view text) {
     return std::string(text.substr(start, end - start));
 }
 
-inline std::vector<std::string> splitPluginPathList(std::string_view pathList) {
-#ifdef _WIN32
-    constexpr char kPathSeparator = ';';
-#else
-    constexpr char kPathSeparator = ':';
-#endif
-
+struct SearchPaths {
     std::vector<std::string> paths;
-    std::size_t              offset = 0;
 
-    while (offset <= pathList.size()) {
-        const auto separator = pathList.find(kPathSeparator, offset);
-        const auto tokenEnd  = separator == std::string_view::npos ? pathList.size() : separator;
-        auto       token     = trimWhitespace(pathList.substr(offset, tokenEnd - offset));
-        if (!token.empty()) {
-            paths.push_back(std::filesystem::path(token).lexically_normal().string());
+    inline static std::string normalisePath(std::string_view path) {
+        auto trimmedPath = trimWhitespace(path);
+        if (trimmedPath.empty() || trimmedPath.starts_with("http://") || trimmedPath.starts_with("https://")) {
+            return trimmedPath;
         }
 
-        if (separator == std::string_view::npos) {
-            break;
-        }
-        offset = separator + 1;
+        return std::filesystem::path(trimmedPath).lexically_normal().string();
     }
 
-    return paths;
-}
+    void append(std::string_view _path) {
+        if (auto path = normalisePath(_path); !path.empty()) {
+            paths.push_back(path);
+        }
+    }
+
+    void appendList(std::string_view pathList, char separator) {
+        for (const auto token : pathList | std::views::split(separator)) {
+            append(std::string_view(token));
+        }
+    }
+};
 
 inline std::vector<std::string> resolvePluginSearchPaths(std::span<const std::string> additionalPaths = {}) {
 #if defined(__EMSCRIPTEN__)
     (void)additionalPaths;
     return {};
 #else
-    std::vector<std::string> resolvedPaths;
+    SearchPaths searchPaths;
 
-    auto appendPath = [&resolvedPaths](std::string_view path) {
-        if (!path.empty()) {
-            resolvedPaths.push_back(std::filesystem::path(path).lexically_normal().string());
-        }
-    };
+#ifdef _WIN32
+    constexpr char kPluginPathSeparator = ';';
+#else
+    constexpr char kPluginPathSeparator = ':';
+#endif
 
     for (const auto& path : additionalPaths) {
-        appendPath(path);
+        searchPaths.append(path);
     }
 
     constexpr std::array<std::string_view, 3> kPluginPathEnvVars = {
@@ -79,13 +77,18 @@ inline std::vector<std::string> resolvePluginSearchPaths(std::span<const std::st
     };
     for (const auto envVar : kPluginPathEnvVars) {
         if (const auto* value = std::getenv(std::string(envVar).c_str()); value != nullptr) {
-            for (const auto& path : splitPluginPathList(value)) {
-                appendPath(path);
-            }
+            searchPaths.appendList(value, kPluginPathSeparator);
         }
     }
 
-    appendPath((std::filesystem::current_path() / "plugins").string());
+    const auto currentPath = std::filesystem::current_path();
+    searchPaths.append((currentPath / "plugins").string());
+    searchPaths.append((currentPath / "assets").string());
+
+    // GR_ASSET_PATHS: semicolon-separated list of additional local paths or HTTP asset root URLs.
+    if (const auto* value = std::getenv("GR_ASSET_PATHS"); value != nullptr) {
+        searchPaths.appendList(value, ';');
+    }
 
     constexpr std::array<std::string_view, 5> kDefaultPluginDirectories = {
         "/opt/gnuradio4/plugins",
@@ -95,14 +98,14 @@ inline std::vector<std::string> resolvePluginSearchPaths(std::span<const std::st
         "/usr/lib/gnuradio/plugins",
     };
     for (const auto defaultDir : kDefaultPluginDirectories) {
-        appendPath(defaultDir);
+        searchPaths.append(defaultDir);
     }
 
     std::vector<std::string> uniquePaths;
     std::set<std::string>    seen;
-    uniquePaths.reserve(resolvedPaths.size());
+    uniquePaths.reserve(searchPaths.paths.size());
 
-    for (const auto& path : resolvedPaths) {
+    for (const auto& path : searchPaths.paths) {
         if (seen.emplace(path).second) {
             uniquePaths.push_back(path);
         }

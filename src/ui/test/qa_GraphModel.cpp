@@ -164,6 +164,51 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(!orphanPort.isExportedTo(rootBlock));
                 };
 
+                "transparent subgraph exposes exported ports after emplace data"_test = [] {
+                    DigitizerUi::UiGraphModel model;
+
+                    const auto makePortData        = [](std::string_view portType) { return gr::property_map{{"type", std::string(portType)}}; };
+                    const auto makeNormalBlockData = [&](const std::string& uniqueName, gr::property_map inputPorts, gr::property_map outputPorts) {
+                        return gr::property_map{
+                            {std::pmr::string(gr::serialization_fields::BLOCK_UNIQUE_NAME), uniqueName},
+                            {std::pmr::string(gr::serialization_fields::BLOCK_CATEGORY), "NormalBlock"},
+                            {"name", uniqueName},
+                            {"type_name", "test::Block"},
+                            {std::pmr::string(gr::serialization_fields::BLOCK_INPUT_PORTS), std::move(inputPorts)},
+                            {std::pmr::string(gr::serialization_fields::BLOCK_OUTPUT_PORTS), std::move(outputPorts)},
+                        };
+                    };
+
+                    const std::string sourceUniqueName = "source#1";
+                    const std::string sinkUniqueName   = "sink#1";
+
+                    const auto subgraphData = gr::property_map{
+                        {std::pmr::string(gr::serialization_fields::BLOCK_UNIQUE_NAME), "subgraph#1"},
+                        {std::pmr::string(gr::serialization_fields::BLOCK_CATEGORY), "TransparentBlockGroup"},
+                        {"name", "subgraph"},
+                        {"type_name", "SUBGRAPH"},
+                        {std::pmr::string(gr::serialization_fields::BLOCK_META_INFORMATION),
+                            gr::property_map{
+                                {"exportedInputPorts", gr::property_map{{sinkUniqueName, gr::property_map{{"in", gr::property_map{{"exportedName", "exposedIn"}}}}}}},
+                                {"exportedOutputPorts", gr::property_map{{sourceUniqueName, gr::property_map{{"out", gr::property_map{{"exportedName", "exposedOut"}}}}}}},
+                            }},
+                        {"children",
+                            gr::property_map{
+                                {sourceUniqueName, makeNormalBlockData(sourceUniqueName, {}, gr::property_map{{"out", makePortData("float32")}})},
+                                {sinkUniqueName, makeNormalBlockData(sinkUniqueName, gr::property_map{{"in", makePortData("float32")}}, {})},
+                            }},
+                    };
+
+                    auto subgraph = model.makeGraphBlock(&model.rootBlock, subgraphData, "scheduler#1", "parentGraph#1");
+
+                    expect(subgraph->inputPorts().size() == 1UZ);
+                    expect(subgraph->outputPorts().size() == 1UZ);
+                    expect(subgraph->inputPorts().front().portName == std::string("exposedIn"));
+                    expect(subgraph->outputPorts().front().portName == std::string("exposedOut"));
+                    expect(subgraph->inputPorts().front().portType == std::string("float32"));
+                    expect(subgraph->outputPorts().front().portType == std::string("float32"));
+                };
+
                 g_state.stopScheduler();
             };
         }

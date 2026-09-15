@@ -112,6 +112,7 @@ struct UiGraphBlock {
     void                       setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
     void                       setBlockData(const gr::property_map& data);
     void                       setBasicBlockData(const gr::property_map& blockData);
+    void                       updatePorts(const gr::property_map& blockData);
     void                       setGraphChildren(const gr::property_map& data);
     void                       setSchedulerGraph(const gr::property_map& data);
     std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
@@ -140,7 +141,6 @@ struct UiGraphBlock {
 private:
     enum class SearchProperty { UniqueName, Name };
     auto findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
-    auto findBlockIteratorByUniqueName(std::string_view uniqueName);
     auto findPortIteratorByName(auto& ports, const std::string& portName);
 
 public:
