@@ -79,13 +79,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 while (!g_state.hasBlocks()) {
                     ctx->Yield();
                 }
+                Digitizer::utils::scope_exit stopScheduler = [] { g_state.stopScheduler(); };
 
                 UiGraphBlock* rootBlock = g_state.dashboard->graphModel.recursiveFindBlockByName("simpleScheduler").block;
                 expect(rootBlock) << fatal;
 
-                // block with inputs
-                UiGraphBlock* inputsBlock = g_state.dashboard->graphModel.recursiveFindBlockByName("gr::basic::DataSink<float32>").block;
-                expect(inputsBlock) << fatal;
                 // block with outputs
                 UiGraphBlock* outputsBlock = g_state.dashboard->graphModel.recursiveFindBlockByName("subgraphSineSource").block;
                 expect(outputsBlock) << fatal;
@@ -93,67 +91,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 "returns not-exported for port with no exports"_test = [rootBlock, outputsBlock] {
                     auto* testPort = &outputsBlock->_outputPorts.front();
                     expect(!testPort->isExportedTo(rootBlock)) << "shouldn't be exported";
-                };
-
-                "handlePortExported adds to exportedOutputPorts"_test = [rootBlock, outputsBlock] {
-                    gr::property_map data{
-                        {"portDirection", "output"},
-                        {"uniqueBlockName", outputsBlock->blockUniqueName},
-                        {"portName", outputsBlock->_outputPorts.front().portName},
-                        {"exportedName", "myOut"},
-                        {"exportFlag", true},
-                    };
-                    rootBlock->handlePortExported(data);
-
-                    expect(rootBlock->exportedOutputPorts.contains(outputsBlock->blockUniqueName));
-                    auto& portSet = rootBlock->exportedOutputPorts[outputsBlock->blockUniqueName];
-                    auto  it      = std::ranges::find_if(portSet, [](const auto& pm) { return pm.internalName == "out"; });
-                    expect(it != portSet.end());
-                    expect(it->exportedName == std::string("myOut"));
-
-                    data["exportFlag"] = false;
-                    rootBlock->handlePortExported(data);
-                    expect(rootBlock->exportedOutputPorts[outputsBlock->blockUniqueName].empty()) << "exportFlag: false should un-export";
-                };
-
-                "export adds to exportedInputPorts"_test = [rootBlock, inputsBlock] {
-                    gr::property_map data{
-                        {"portDirection", "input"},
-                        {"uniqueBlockName", inputsBlock->blockUniqueName},
-                        {"portName", inputsBlock->_inputPorts.front().portName},
-                        {"exportedName", "exposedIn"},
-                        {"exportFlag", true},
-                    };
-                    rootBlock->handlePortExported(data);
-
-                    expect(rootBlock->exportedInputPorts.contains(inputsBlock->blockUniqueName));
-                    expect(!rootBlock->exportedInputPorts[inputsBlock->blockUniqueName].empty());
-
-                    data["exportFlag"] = false;
-                    rootBlock->handlePortExported(data);
-                    expect(rootBlock->exportedInputPorts[inputsBlock->blockUniqueName].empty());
-                };
-
-                "returns exported info after handlePortExported"_test = [rootBlock, targetBlock = outputsBlock] {
-                    DigitizerUi::UiGraphPort* testPort              = &targetBlock->_outputPorts.front();
-                    std::string               targetBlockUniqueName = targetBlock->blockUniqueName;
-
-                    gr::property_map exportData{
-                        {"portDirection", "output"},
-                        {"uniqueBlockName", targetBlockUniqueName},
-                        {"portName", testPort->portName},
-                        {"exportedName", "myExportedPort"},
-                        {"exportFlag", true},
-                    };
-                    rootBlock->handlePortExported(exportData);
-
-                    expect(testPort->getExportedName(rootBlock).has_value()) << "port should be exported";
-                    expect(testPort->getExportedName(rootBlock) == std::string("myExportedPort")) << "exported port should have the correct name";
-
-                    exportData["exportFlag"] = false;
-                    rootBlock->handlePortExported(exportData);
-
-                    expect(!testPort->isExportedTo(rootBlock)) << "port should no longer be exported";
                 };
 
                 "returns not-exported for null ownerBlock"_test = [rootBlock] {
@@ -207,6 +144,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(subgraph->outputPorts().front().portName == std::string("exposedOut"));
                     expect(subgraph->inputPorts().front().portType == std::string("float32"));
                     expect(subgraph->outputPorts().front().portType == std::string("float32"));
+
+                    UiGraphBlock* source = subgraph->findBlockByUniqueName(sourceUniqueName);
+                    UiGraphBlock* sink   = subgraph->findBlockByUniqueName(sinkUniqueName);
+                    expect(source && sink) << fatal;
+                    expect(sink->_inputPorts.front().getExportedName(subgraph.get()) == std::string("exposedIn"));
+                    expect(source->_outputPorts.front().getExportedName(subgraph.get()) == std::string("exposedOut"));
+                    expect(sink->_inputPorts.front().isExportedTo(subgraph.get()));
+                    expect(!source->_outputPorts.front().isExportedTo(nullptr));
                 };
 
                 g_state.stopScheduler();

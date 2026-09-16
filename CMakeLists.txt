@@ -70,6 +70,9 @@ add_library(opendigitizer-options INTERFACE)
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(opendigitizer-options)
+# sanitizer options if supported by compiler
+include(cmake/Sanitizers.cmake)
+enable_sanitizers(opendigitizer-options)
 
 if(NOT EMSCRIPTEN)
   add_subdirectory(src/acquisition)

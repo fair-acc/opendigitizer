@@ -61,6 +61,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 page.setDashboard(*g_state.dashboard);
                 page.draw();
                 ut::expect(!g_state.dashboard->uiWindows.empty());
+                g_state.dashboard->handleMessages();
             }
         };
 
@@ -114,15 +115,7 @@ int main(int argc, char* argv[]) {
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
 
-    auto fs      = cmrc::ui_test_assets::get_filesystem();
-    auto grcFile = fs.open("examples/fg_dipole_intensity_ramp.grc");
-
-    auto dashboardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
-    g_state.dashboard         = DigitizerUi::Dashboard::create(g_state.restClient, dashboardDescription);
-    g_state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), //
-        [](gr::Graph&& grGraph) {                                               //
-            g_state.dashboard->emplaceGraph(std::move(grGraph));
-        });
+    g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/fg_dipole_intensity_ramp.grc");
 
     auto result = app.runTests();
     g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
