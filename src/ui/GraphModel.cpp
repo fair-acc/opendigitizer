@@ -446,15 +446,22 @@ bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
             }
         };
 
-        if (isScheduler()) {
+        // When inspecting a scheduler, the scheduler's own exported ports are not reported.
+        // This indicates that descriptions of child blocks will arrive later, so we should
+        // wait to see those materialize before figuring out what our exported ports are.
+        // TODO: check if gnuradio can just serialize the exported ports when doing a
+        // scheduler inspect message, so we do not have to do updatePorts()
+        const bool hasPorts = blockData.contains(portsField);
+
+        if (hasPorts || !(isGraph() || isScheduler())) {
+            appendDeclaredPorts();
+        } else if (isScheduler()) {
             assert(childBlocks.size() <= 1);
             if (!childBlocks.empty()) {
                 appendExportedPorts(*childBlocks.front());
             }
-        } else if (isGraph()) {
-            appendExportedPorts(*this);
         } else {
-            appendDeclaredPorts();
+            appendExportedPorts(*this);
         }
     };
 
