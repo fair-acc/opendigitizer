@@ -38,6 +38,9 @@ private:
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
 
+    bool _firstDraw          = true;
+    bool _rearrangeRequested = false;
+
     const UiGraphBlock* _filterBlock   = nullptr;
     UiGraphBlock*       _selectedBlock = nullptr;
 
@@ -149,11 +152,6 @@ public:
     }
 
     ~FlowgraphEditor() {
-        if (auto rootBlock = this->rootBlock()) {
-            for (auto& child : rootBlock->childBlocks) {
-                child->view.reset();
-            }
-        }
         makeCurrent();
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
@@ -181,8 +179,6 @@ public:
         float  bottomY;
     };
     NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
-
-    void applyNodePosition(UiGraphBlock& block, std::optional<BoundingBox>& boundingBox, float pinHorizontalPadding);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 

@@ -1,10 +1,12 @@
 #ifndef GRAPHMODEL_H
 #define GRAPHMODEL_H
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/Graph.hpp>
@@ -126,8 +128,7 @@ struct UiGraphBlock {
     std::vector<std::unique_ptr<UiGraphBlock>> childBlocks;
     std::vector<UiGraphEdge>                   childEdges;
 
-    bool newGraphDataBeingSet  = false;
-    bool shouldRearrangeBlocks = false;
+    bool newGraphDataBeingSet = false;
 
     // Handlers for graph and schdeuler events
     void handleChildBlockEmplaced(const gr::property_map& blockData);
@@ -200,22 +201,11 @@ public:
 
     // UI-related data
 
-    struct ViewData {
-        float x      = 0;
-        float y      = 0;
-        float width  = 0;
-        float height = 0;
-    };
-    std::optional<ViewData> view;
-
     struct StoredXY {
         float x = 0;
         float y = 0;
     };
     std::optional<StoredXY> storedXY;
-
-    bool updatePosition = false;
-    void storeXY();
 
     std::string storedEditorSettings;
 
@@ -268,6 +258,7 @@ public:
 
     void requestFullUpdate(std::source_location location = std::source_location::current());
     void requestAvailableBlocksTypesUpdate();
+    void saveBlockPositions(gr::property_map& graphData);
 
     /// Returns whether a block is connected directly or indirectly to another block
     bool blockInTree(const UiGraphBlock& block, const UiGraphBlock& tree) const;

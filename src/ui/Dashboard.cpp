@@ -1,6 +1,7 @@
 #include "Dashboard.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <fstream>
@@ -473,11 +474,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
     };
 
-    if (const auto layoutPmt = dashboard.find_value("layout")) {
-        if (layoutPmt->is_string()) {
-            layoutType = magic_enum::enum_cast<DockingLayoutType>(layoutPmt->value_or(std::string()), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
-        }
-    }
+    layoutType                 = magic_enum::enum_cast<DockingLayoutType>(dashboard.value_or<std::string>("layout", {}), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     const bool hasWindowLayout = dashboard.contains("windowLayout");
     if (hasWindowLayout) {
         if (const auto windowLayoutOpt = dashboard.find_value("windowLayout").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
@@ -622,31 +619,23 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
     }
 }
 
-void Dashboard::saveStore(gr::property_map& headerYaml, gr::property_map& dashboardYaml) {
+void Dashboard::saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml) {
     using namespace gr;
+    const auto headerYamlStr = pmt::yaml::serialize(headerYaml);
+    const auto graphYamlStr  = pmt::yaml::serialize(graphYaml);
     if (description->storageInfo->path.starts_with("http://") || description->storageInfo->path.starts_with("https://")) {
         auto path = std::filesystem::path(description->storageInfo->path) / description->filename;
 
         opencmw::client::Command hcommand;
-        hcommand.command          = opencmw::mdp::Command::Set;
-        std::string headerYamlStr = pmt::yaml::serialize(headerYaml);
+        hcommand.command = opencmw::mdp::Command::Set;
         hcommand.data.put(std::string_view(headerYamlStr.c_str(), headerYamlStr.size()));
         hcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "header").build();
         hcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(hcommand);
 
-        opencmw::client::Command dcommand;
-        dcommand.command             = opencmw::mdp::Command::Set;
-        std::string dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
-        dcommand.data.put(std::string_view(dashboardYamlStr.c_str(), dashboardYamlStr.size()));
-        dcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "dashboard").build();
-        dcommand.callback = [](const opencmw::mdp::Message&) {};
-        restClient->request(dcommand);
-
         opencmw::client::Command fcommand;
         fcommand.command = opencmw::mdp::Command::Set;
-        std::stringstream stream;
-        fcommand.data.put(stream.str());
+        fcommand.data.put(std::string_view(graphYamlStr));
         fcommand.topic    = opencmw::URI<opencmw::STRICT>::UriFactory().path(path.native()).addQueryParameter("what", "flowgraph").build();
         fcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(fcommand);
@@ -654,27 +643,21 @@ void Dashboard::saveStore(gr::property_map& headerYaml, gr::property_map& dashbo
 #ifndef EMSCRIPTEN
         auto path = std::filesystem::path(description->storageInfo->path);
 
-        std::ofstream stream(path / (description->name + DashboardDescription::fileExtension), std::ios::out | std::ios::trunc);
+        std::ofstream stream(path / description->filename, std::ios::out | std::ios::trunc | std::ios::binary);
         if (!stream.is_open()) {
             auto msg = std::format("can't open file for writing");
             components::Notification::warning(msg);
             return;
         }
 
-        uint32_t      headerStart      = 32;
-        std::string   headerYamlStr    = pmt::yaml::serialize(headerYaml);
-        std::string   dashboardYamlStr = pmt::yaml::serialize(dashboardYaml);
-        std::uint32_t headerSize       = static_cast<uint32_t>(headerYamlStr.size());
-        std::uint32_t dashboardStart   = headerStart + headerSize + 1;
-        std::uint32_t dashboardSize    = static_cast<uint32_t>(dashboardYamlStr.size());
-        stream.write(reinterpret_cast<char*>(&headerStart), 4);
-        stream.write(reinterpret_cast<char*>(&headerSize), 4);
-        stream.write(reinterpret_cast<char*>(&dashboardStart), 4);
-        stream.write(reinterpret_cast<char*>(&dashboardSize), 4);
-
-        stream.seekp(headerStart);
-        stream << headerYamlStr.c_str() << '\n';
-        stream << dashboardYamlStr.c_str() << '\n';
+        constexpr std::uint32_t headerStart = 32;
+        const auto              headerSize  = static_cast<std::uint32_t>(headerYamlStr.size());
+        const auto              graphStart  = headerStart + headerSize + 1;
+        const auto              graphSize   = static_cast<std::uint32_t>(graphYamlStr.size());
+        // The reader expects the flowgraph offset and size at byte 16.
+        const std::array<std::uint32_t, 8> offsets{headerStart, headerSize, 0, 0, graphStart, graphSize, 0, 0};
+        stream.write(reinterpret_cast<const char*>(offsets.data()), sizeof(offsets));
+        stream << headerYamlStr << '\n' << graphYamlStr << '\n';
 #endif
     }
 }
@@ -682,24 +665,24 @@ void Dashboard::saveStore(gr::property_map& headerYaml, gr::property_map& dashbo
 void Dashboard::save() {
     using namespace gr;
 
-    if (description->storageInfo->isInMemoryDashboardStorage()) {
+    if (description->storageInfo->isInMemoryDashboardStorage() || !scheduler) {
         return;
     }
 
     property_map headerYaml;
     headerYaml["favorite"] = description->isFavorite;
     std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(description->lastUsed.value()));
-    char                        lastUsed[11];
-    std::format_to(lastUsed, "{:02}/{:02}/{:04}", static_cast<unsigned>(ymd.day()), static_cast<unsigned>(ymd.month()), static_cast<int>(ymd.year()));
-    headerYaml["lastUsed"] = std::string(lastUsed);
+    headerYaml["lastUsed"] = std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()), static_cast<unsigned>(ymd.month()), static_cast<unsigned>(ymd.day()));
 
-    property_map dashboardYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
+    auto graphYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
+    graphModel.saveBlockPositions(graphYaml);
+    property_map dashboardYaml;
 
     gr::Tensor<gr::pmt::Value> sources;
     // Use SinkRegistry with SignalSink interface for serialization
     opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
-        // TODO: Port saving and loading flowgraph layouts
         property_map map;
+        map["block"] = std::string(sink.name());
         map["name"]  = std::string(sink.name());
         map["color"] = sink.color();
 
@@ -707,6 +690,7 @@ void Dashboard::save() {
     });
     dashboardYaml["sources"] = sources;
 
+    dashboardYaml["layout"]       = std::string(dockingLayoutName(layoutType));
     dashboardYaml["windowLayout"] = windowLayout;
 
     dashboardYaml["propertyControlWindows"] = [this] {
@@ -769,7 +753,8 @@ void Dashboard::save() {
     }
     dashboardYaml["plots"] = plots;
 
-    saveStore(headerYaml, dashboardYaml);
+    graphYaml["dashboard"] = std::move(dashboardYaml);
+    saveStore(headerYaml, graphYaml);
 }
 
 DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(std::string_view chartType, const gr::property_map& chartInitialParameters) {
@@ -1203,17 +1188,29 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
             bool                    isFavorite  = rootMap.contains("favorite") && valueForKey("favorite").value_or(false);
 
             auto getDate = [](const std::string& str) -> decltype(DashboardDescription::lastUsed) {
-                if (str.size() < 10) {
+                if (str.size() != 10) {
                     return {};
                 }
+                const bool legacyFormat = str[2] == '/' && str[5] == '/';
+                if (!legacyFormat && (str[4] != '-' || str[7] != '-')) {
+                    return {};
+                }
+                const auto parse = [&str](std::size_t offset, std::size_t size, auto& value) {
+                    const auto* end         = str.data() + offset + size;
+                    const auto [parsed, ec] = std::from_chars(str.data() + offset, end, value);
+                    return ec == std::errc{} && parsed == end;
+                };
                 int      year  = 0;
                 unsigned month = 0;
                 unsigned day   = 0;
-                std::from_chars(str.data(), str.data() + 4, year);
-                std::from_chars(str.data() + 5, str.data() + 7, month);
-                std::from_chars(str.data() + 8, str.data() + 10, day);
+                if (!parse(legacyFormat ? 6UZ : 0UZ, 4UZ, year) || !parse(legacyFormat ? 3UZ : 5UZ, 2UZ, month) || !parse(legacyFormat ? 0UZ : 8UZ, 2UZ, day)) {
+                    return {};
+                }
 
                 std::chrono::year_month_day date{std::chrono::year{year}, std::chrono::month{month}, std::chrono::day{day}};
+                if (!date.ok()) {
+                    return {};
+                }
                 return std::chrono::sys_days(date);
             };
 

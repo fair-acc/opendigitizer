@@ -198,6 +198,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
             auto newDesc         = std::make_shared<DashboardDescription>(*desc);
             newDesc->name        = name;
             newDesc->storageInfo = storageInfo;
+            newDesc->filename    = storageInfo->path.starts_with("http://") || storageInfo->path.starts_with("https://") ? name : name + DashboardDescription::fileExtension;
             m_dashboards.push_back(newDesc);
 
             if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {

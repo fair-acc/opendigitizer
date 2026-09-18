@@ -5,10 +5,12 @@
 #include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/YamlPmt.hpp>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include <cmath>
 #include <memory>
 #include <set>
 
@@ -94,7 +96,6 @@ void UiGraphBlock::handleChildBlockEmplaced(const gr::property_map& blockData) {
         // and initialize its owner graph and scheduler
         childBlocks.push_back(ownerGraph->makeGraphBlock(this, blockData, newBlockOwnerSchedulerUniqueName, newBlockOwnerGraphUniqueName));
     }
-    shouldRearrangeBlocks = true;
 }
 
 bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
@@ -112,7 +113,6 @@ bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
     }
 
     childBlocks.erase(blockIt);
-    shouldRearrangeBlocks = true;
 
     return true;
 }
@@ -246,8 +246,6 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
             }
         }
     }
-
-    shouldRearrangeBlocks = true;
 }
 
 void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue) {
@@ -385,27 +383,13 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
 
     updatePorts(blockData);
 
-    if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
-        const auto uiParameters = parametersIt->second.get_if<gr::property_map>();
-        if (uiParameters) {
-            if (auto uiConstraintsIt = uiParameters->find("ui_constraints"); uiConstraintsIt != uiParameters->end()) {
-                const auto uiConstraints = uiConstraintsIt->second.get_if<gr::property_map>();
-                if (uiConstraints) {
-                    auto x = getOptionalProperty<float, true>(*uiConstraints, "x");
-                    auto y = getOptionalProperty<float, true>(*uiConstraints, "y");
-                    if (x && y && (!storedXY.has_value() || (storedXY->x != *x || storedXY->y != *y))) {
-                        storedXY = UiGraphBlock::StoredXY{
-                            .x = *x,
-                            .y = *y,
-                        };
-                        updatePosition = true;
-                    }
-                }
-            }
+    if (!storedXY) {
+        const auto x = getOptionalProperty<float, true>(blockSettings, "ui_constraints", "x");
+        const auto y = getOptionalProperty<float, true>(blockSettings, "ui_constraints", "y");
+        if (x && y && std::isfinite(*x) && std::isfinite(*y)) {
+            storedXY = StoredXY{*x, *y};
         }
     }
-
-    shouldRearrangeBlocks = true;
 }
 
 void UiGraphBlock::updatePorts(const gr::property_map& blockData) {
@@ -593,15 +577,6 @@ void UiGraphBlock::removeContext(const ContextTime& contextTime) {
         .endpoint        = gr::block::property::kSettingsCtx,
         .data            = gr::property_map{{"gr:context", context}, {"gr:ctx_time", time}},
     });
-}
-
-void UiGraphBlock::storeXY() {
-    storedXY = UiGraphBlock::StoredXY{
-        .x = view->x,
-        .y = view->y,
-    };
-
-    setSetting("ui_constraints", gr::property_map{{"x", storedXY->x}, {"y", storedXY->y}});
 }
 
 void UiGraphBlock::requestBlockUpdate() {
@@ -838,6 +813,44 @@ UiGraphModel::AvailableParametrizationsResult UiGraphModel::availableParametriza
     return UiGraphModel::AvailableParametrizationsResult{std::string(), std::string(), nullptr};
 }
 
+void UiGraphModel::saveBlockPositions(gr::property_map& graphData) {
+    const auto blocksView = graphData.get_if<gr::TensorView<gr::pmt::Value>>("blocks");
+    if (!blocksView) {
+        return;
+    }
+    auto blocks = blocksView->owned();
+    for (auto& blockValue : blocks) {
+        if (!blockValue.is_map()) {
+            continue;
+        }
+        auto       block    = blockValue.value_or(gr::property_map{});
+        const auto found    = recursiveFindBlockByUniqueName(block.value_or<std::string>("unique_name", {}));
+        const auto position = found ? found.block->storedXY : std::nullopt;
+        if (position && std::isfinite(position->x) && std::isfinite(position->y)) {
+            const auto scheduler         = block.get_if<gr::ValueMapView>("scheduler");
+            auto       settings          = scheduler ? scheduler->owned() : block;
+            auto       parameters        = settings.value_or<gr::property_map>("parameters", {});
+            auto       constraints       = parameters.value_or<gr::property_map>("ui_constraints", {});
+            constraints["x"]             = position->x;
+            constraints["y"]             = position->y;
+            parameters["ui_constraints"] = std::move(constraints);
+            settings["parameters"]       = std::move(parameters);
+            if (scheduler) {
+                block["scheduler"] = std::move(settings);
+            } else {
+                block = std::move(settings);
+            }
+        }
+        if (const auto nestedGraphView = block.get_if<gr::ValueMapView>("graph")) {
+            auto nestedGraph = nestedGraphView->owned();
+            saveBlockPositions(nestedGraph);
+            block["graph"] = std::move(nestedGraph);
+        }
+        blockValue = std::move(block);
+    }
+    graphData["blocks"] = std::move(blocks);
+}
+
 bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph     = gr::graph::property;
     namespace scheduler = gr::scheduler::property;
@@ -927,8 +940,16 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         targetBlock.block->handleChildBlockRemoved(uniqueName("uniqueName"));
 
     } else if (message.endpoint == scheduler::kBlockReplaced) {
-        targetBlock.block->handleChildBlockRemoved(uniqueName("replacedBlockUniqueName"));
+        const auto  replacedName  = uniqueName("replacedBlockUniqueName");
+        const auto* replacedBlock = targetBlock.block->findBlockByUniqueName(replacedName);
+        const auto  position      = replacedBlock ? replacedBlock->storedXY : std::nullopt;
+        targetBlock.block->handleChildBlockRemoved(replacedName);
         targetBlock.block->handleChildBlockEmplaced(data);
+        if (position) {
+            if (auto* replacement = targetBlock.block->findBlockByUniqueName(uniqueName())) {
+                replacement->storedXY = position;
+            }
+        }
 
     } else if (message.endpoint == graph::kBlockInspected) {
         handleBlockDataUpdated(uniqueName(), data);
@@ -988,7 +1009,13 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     } else if (message.endpoint == scheduler::kGraphGRC) {
         if (auto valueIt = data.find("value"); valueIt != data.end()) {
             std::println("Retrieved Graph GRC YAML");
-            m_localFlowgraphGrc = valueIt->second.value_or(std::string());
+            auto graphData = gr::pmt::yaml::deserialize(valueIt->second.value_or(std::string{}));
+            if (!graphData) {
+                components::Notification::error(std::format("Could not parse flowgraph YAML: {}", graphData.error().message));
+                return false;
+            }
+            saveBlockPositions(*graphData);
+            m_localFlowgraphGrc = gr::pmt::yaml::serialize(*graphData);
         } else {
             assert(false);
         }
@@ -1063,23 +1090,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
 
     auto* block = found.block;
     for (const auto& [key, value] : data) {
-        if (std::string_view(key) == "ui_constraints") {
-            const auto map = value.get_if<gr::property_map>();
-            if (map && !map->empty()) {
-                const auto x = map->contains("x") ? map->find_value("x").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
-                const auto y = map->contains("y") ? map->find_value("y").value_or(gr::pmt::Value{}).value_or(0.0f) : 0.0f;
-
-                if (!block->storedXY.has_value() || (block->storedXY.value().x != x || block->storedXY.value().y != y)) {
-                    block->storedXY = UiGraphBlock::StoredXY{
-                        .x = x,
-                        .y = y,
-                    };
-                    block->updatePosition = true;
-
-                    rootBlock.shouldRearrangeBlocks = true;
-                }
-            }
-        } else if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
+        if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
             block->blockSettings.insert_or_assign(key, value);
             block->updateBlockSettingsMetaInformation();
         }
@@ -1103,8 +1114,6 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
         .context = ctx,
         .time    = time,
     };
-
-    rootBlock.shouldRearrangeBlocks = true;
 }
 
 void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
@@ -1131,8 +1140,6 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
         });
     }
     found.block->contexts = contextAndTimes;
-
-    rootBlock.shouldRearrangeBlocks = true;
 }
 
 void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
@@ -1145,8 +1152,6 @@ void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, 
 
     found.block->getAllContexts();
     found.block->getActiveContext();
-
-    rootBlock.shouldRearrangeBlocks = true;
 }
 
 std::unique_ptr<UiGraphBlock> UiGraphModel::makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName) {
