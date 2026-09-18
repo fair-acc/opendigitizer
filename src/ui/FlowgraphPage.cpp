@@ -537,39 +537,6 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     return NodeDrawResult{position, blockBottomY};
 }
 
-void FlowgraphEditor::applyNodePosition(UiGraphBlock& block, std::optional<BoundingBox>& boundingBox, float pinHorizontalPadding) {
-    auto blockId = ax::NodeEditor::NodeId(std::addressof(block));
-    if (!block.view.has_value()) {
-        auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-        block.view     = UiGraphBlock::ViewData{
-                .x      = block.storedXY.has_value() ? block.storedXY->x : boundingBox.value_or(defaultBoundingBox).minX,
-                .y      = block.storedXY.has_value() ? block.storedXY->y : boundingBox.value_or(defaultBoundingBox).maxY,
-                .width  = blockSize[0],
-                .height = blockSize[1],
-        };
-        block.updatePosition = false;
-        ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
-
-        if (!boundingBox.has_value()) {
-            boundingBox = defaultBoundingBox;
-        }
-        boundingBox->minX += blockSize[0] + pinHorizontalPadding;
-
-        if (auto rootBlock = this->rootBlock()) {
-            rootBlock->shouldRearrangeBlocks = true;
-        }
-    } else if (block.updatePosition) {
-        block.view->x        = block.storedXY.has_value() ? block.storedXY->x : boundingBox.value_or(defaultBoundingBox).minX;
-        block.view->y        = block.storedXY.has_value() ? block.storedXY->y : boundingBox.value_or(defaultBoundingBox).maxY;
-        block.updatePosition = false;
-        ax::NodeEditor::SetNodePosition(blockId, ImVec2(block.view->x, block.view->y));
-    } else if (ax::NodeEditor::GetWasUserPositioned(blockId)) {
-        if (!block.storedXY.has_value() || (block.storedXY.value().x != block.view->x || block.storedXY.value().y != block.view->y)) {
-            block.storeXY();
-        }
-    }
-}
-
 void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId) {
     // both are valid, let's accept link
     auto* startPort = startPinId.AsPointer<UiGraphPort>();
@@ -684,7 +651,7 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
 }
 
 void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
-    const auto* rootBlock = this->rootBlock();
+    auto* rootBlock = this->rootBlock();
     if (!rootBlock) {
         return;
     }
@@ -696,6 +663,24 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
     makeCurrent();
 
+    for (const auto& block : graphBlocks) {
+        if (block->storedXY) {
+            ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block.get()), {block->storedXY->x, block->storedXY->y});
+        } else if (_firstDraw) {
+            _rearrangeRequested = true;
+        }
+    }
+    if (!graphBlocks.empty()) {
+        _firstDraw = false;
+    }
+
+    // NodeEditor applies dragging when its Editor scope ends.
+    Digitizer::utils::scope_exit capturePositions = [&] {
+        for (const auto& block : graphBlocks) {
+            const auto position = ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block.get()));
+            block->storedXY     = UiGraphBlock::StoredXY{position.x, position.y};
+        }
+    };
     IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
 
@@ -727,8 +712,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         return sortedPorts;
     };
 
-    // We need to pass all blocks in order for NodeEditor to calculate
-    // the sizes. Then, we can arrange those that are newly created
+    // Draw every block before measuring and arranging.
     for (auto& block : graphBlocks) {
         const auto blockId     = ax::NodeEditor::NodeId(block.get());
         auto       inputPorts  = transformPorts(*block, block->inputPorts());
@@ -748,11 +732,8 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         const auto blockSize     = ax::NodeEditor::GetNodeSize(blockId);
 
         // Update bounding box
-        if (block->view.has_value()) {
-            auto position  = ax::NodeEditor::GetNodePosition(blockId);
-            block->view->x = position[0];
-            block->view->y = position[1];
-            addRectangleToBoundingBox(position, blockSize);
+        if (block->storedXY) {
+            addRectangleToBoundingBox(ax::NodeEditor::GetNodePosition(blockId), blockSize);
         }
 
         // The input/output pins are drawn after ending the node because otherwise
@@ -792,7 +773,18 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     }
 
     for (auto& block : graphBlocks) {
-        this->applyNodePosition(*block, boundingBox, padding.x);
+        if (!block->storedXY) {
+            const auto   bounds = boundingBox.value_or(defaultBoundingBox);
+            const ImVec2 position{bounds.minX, bounds.maxY + 32.f};
+            const auto   blockId = ax::NodeEditor::NodeId(block.get());
+            ax::NodeEditor::SetNodePosition(blockId, position);
+            addRectangleToBoundingBox(position, ax::NodeEditor::GetNodeSize(blockId));
+        }
+    }
+
+    // Arrange only after drawing has measured every block.
+    if (std::exchange(_rearrangeRequested, false)) {
+        sortNodes(rootBlock, true);
     }
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
@@ -842,6 +834,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         if (schedulerInfo && schedulerInfo->childrenLoaded && !exportTarget->childBlocks.empty()) {
             _rootBlockUniqueName = exportTarget->childBlocks.front()->blockUniqueName;
             rootBlock            = exportTarget->childBlocks.front().get();
+            _firstDraw           = true;
         } else {
             return;
         }
@@ -878,7 +871,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         horizontalSplit ? (ratio) : 1.0f);
 
     if (clicked.rearrangeBlocks) {
-        sortNodes(rootBlock, true);
+        _rearrangeRequested = true;
     }
 
     if (clicked.exportAllUnusedPorts) {
@@ -984,10 +977,6 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             unexportPortRequest.reset();
             exportConflictRequest.reset();
         }
-    }
-
-    if (rootBlock->shouldRearrangeBlocks) {
-        sortNodes(rootBlock, false);
     }
 
     auto originalFilterBlock = _filterBlock;
@@ -1170,8 +1159,6 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock, bool all) {
 
         x += levelWidth + xSpacing;
     }
-
-    rootBlock->shouldRearrangeBlocks = false;
 }
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
@@ -1298,14 +1285,7 @@ FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restCl
 
 FlowgraphPage::~FlowgraphPage() = default;
 
-void FlowgraphPage::reset() {
-    if (_dashboard) {
-        _dashboard->graphModel.rootBlock.childEdges.clear();
-        _dashboard->graphModel.rootBlock.childBlocks.clear();
-    }
-
-    _editors.clear();
-}
+void FlowgraphPage::reset() { _editors.clear(); }
 
 void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock) {
     assert(rootBlock && "An editor needs to have a root block defined");

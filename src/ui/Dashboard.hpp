@@ -144,7 +144,7 @@ struct Dashboard {
     std::shared_ptr<const DashboardDescription>            description = nullptr;
     std::vector<UIWindow>                                  uiWindows;
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
-    DockingLayoutType                                      layoutType;
+    DockingLayoutType                                      layoutType = DockingLayoutType::Grid;
     gr::property_map                                       windowLayout;
     gr::property_map                                       exportedProperties;
     std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
@@ -163,7 +163,7 @@ struct Dashboard {
     void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
     void loadPlugins(std::function<void()> done);
     void save();
-    void saveStore(gr::property_map& headerYaml, gr::property_map& dashboardYaml); // actually send message to save endpoint with serialized dashboard
+    void saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
     void doLoad(const gr::property_map& dashboard);
 
     UIWindow& newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
