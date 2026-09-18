@@ -14,8 +14,14 @@
 #include <gnuradio-4.0/basic/DataSink.hpp>
 
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
+#include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -262,6 +268,10 @@ struct StreamingPollerEntry {
     std::optional<float>                                    signal_min;
     std::optional<float>                                    signal_max;
     TimingEventState                                        timingEventState;
+    std::optional<std::int64_t>                             _lastRefTimestampFromTag;
+    std::optional<float>                                    _sampleRateForLastRefTimestamp;
+    std::uint64_t                                           _sampleCountFromLastRefTimestamp = 0;
+    std::string                                             _lastTriggerNameFromTag;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
@@ -298,6 +308,62 @@ struct StreamingPollerEntry {
             update(tag.map, tag::SIGNAL_MAX, signal_max);
         }
         return errors;
+    }
+
+    void updateTimestamp(Acquisition& reply, std::span<const gr::Tag> tags, std::size_t chunkSampleCount) {
+        reply.refTriggerStamp   = 0;
+        reply.acqLocalTimeStamp = 0;
+        reply.refTriggerName    = "NO_REF_TRIGGER";
+
+        if (sample_rate != _sampleRateForLastRefTimestamp) {
+            _lastRefTimestampFromTag.reset();
+            _sampleCountFromLastRefTimestamp = 0;
+        }
+
+        if (sample_rate.has_value() && std::isfinite(*sample_rate) && *sample_rate > 0.f) {
+            const auto elapsedNanoseconds = [rate = *sample_rate](std::uint64_t samples) -> std::optional<std::int64_t> {
+                const double duration = std::round(static_cast<double>(samples) * 1'000'000'000. / static_cast<double>(rate));
+                if (!std::isfinite(duration) || duration >= static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
+                    return {};
+                }
+                return static_cast<std::int64_t>(duration);
+            };
+
+            std::optional<std::int64_t> refTimestamp;
+            for (const auto& tag : tags) {
+                const auto nameIt = tag.map.find(gr::tag::TRIGGER_NAME);
+                const auto timeIt = tag.map.find(gr::tag::TRIGGER_TIME);
+                if (nameIt == tag.map.end() || timeIt == tag.map.end() || !nameIt->second.is_string() || !timeIt->second.is_integral()) {
+                    continue;
+                }
+                const auto name   = nameIt->second.value_or(std::string{});
+                const auto time   = gr::pmt::convert_safely<std::int64_t>(timeIt->second);
+                const auto offset = elapsedNanoseconds(tag.index);
+                if (name.empty() || !time.has_value() || !offset.has_value() || *time <= *offset) {
+                    continue;
+                }
+                refTimestamp                     = *time - *offset;
+                _lastRefTimestampFromTag         = refTimestamp;
+                _sampleRateForLastRefTimestamp   = sample_rate;
+                _sampleCountFromLastRefTimestamp = 0;
+                _lastTriggerNameFromTag          = name;
+                break;
+            }
+            if (!refTimestamp.has_value() && _lastRefTimestampFromTag.has_value()) {
+                const auto elapsed = elapsedNanoseconds(_sampleCountFromLastRefTimestamp);
+                if (elapsed.has_value() && *elapsed <= std::numeric_limits<std::int64_t>::max() - *_lastRefTimestampFromTag) {
+                    refTimestamp = *_lastRefTimestampFromTag + *elapsed;
+                }
+            }
+            if (refTimestamp.has_value()) {
+                reply.refTriggerStamp        = *refTimestamp;
+                reply.acqLocalTimeStamp      = reply.refTriggerStamp.value();
+                reply.refTriggerName.value() = _lastTriggerNameFromTag;
+            }
+        }
+        if (_lastRefTimestampFromTag.has_value()) {
+            _sampleCountFromLastRefTimestamp += chunkSampleCount;
+        }
     }
 };
 
@@ -606,8 +672,8 @@ private:
 
         auto processData = [&reply, signalName, &pollerEntry](std::span<const StreamingPollerEntry::SampleType> data, std::span<const gr::Tag> tags) {
             std::vector<std::string> errors = pollerEntry.populateFromTags(tags);
+            pollerEntry.updateTimestamp(reply, tags, data.size());
             pollerEntry.timingEventState.updateFromTags(tags);
-            reply.refTriggerName    = "NO_REF_TRIGGER";
             reply.channelNames      = {pollerEntry.signal_name.value_or(std::string(signalName))};
             reply.channelUnits      = {pollerEntry.signal_unit.value_or("N/A")};
             reply.channelQuantities = {pollerEntry.signal_quantity.value_or("N/A")};
@@ -619,7 +685,7 @@ private:
             reply.channelValues = opencmw::MultiArray<float, 2>(std::vector<float>(data.begin(), data.end()), std::array<uint32_t, 2>{1U, nSamples});
             reply.channelErrors = opencmw::MultiArray<float, 2>(std::vector<float>(nSamples, 0.f), std::array<uint32_t, 2>{1U, nSamples});
             reply.channelTimeSinceRefTrigger.resize(nSamples);
-            if (pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f) {
+            if (pollerEntry.sample_rate.has_value() && std::isfinite(*pollerEntry.sample_rate) && *pollerEntry.sample_rate > 0.f) {
                 const float ts = 1.f / *pollerEntry.sample_rate;
                 for (uint32_t i = 0; i < nSamples; ++i) {
                     reply.channelTimeSinceRefTrigger[i] = static_cast<float>(i) * ts;
@@ -636,19 +702,6 @@ private:
             reply.triggerOffsets.reserve(tags.size());
             reply.triggerYamlPropertyMaps.reserve(tags.size());
             for (auto& [idx, tagMap] : tags) {
-                if (tagMap.contains(gr::tag::TRIGGER_NAME) && tagMap.contains(gr::tag::TRIGGER_TIME)) {
-                    const float Ts_ns       = pollerEntry.sample_rate && *pollerEntry.sample_rate > 0.f ? 1'000'000'000.f / *pollerEntry.sample_rate : 0.f;
-                    const auto  offset      = static_cast<int64_t>(static_cast<float>(idx) * Ts_ns);
-                    const auto  triggerTime = [&](const gr::property_map& m) { return m.find_value(gr::tag::TRIGGER_TIME).value_or(gr::pmt::Value{}).value_or(std::uint64_t{0}); };
-                    const auto  triggerName = [&](const gr::property_map& m) { return std::string(m.find_value(gr::tag::TRIGGER_NAME).value_or(gr::pmt::Value{}).value_or(std::string_view{})); };
-                    if (reply.acqLocalTimeStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.acqLocalTimeStamp = static_cast<int64_t>(triggerTime(tagMap)) - offset;
-                    }
-                    if (reply.refTriggerStamp == 0) { // just take the value of the first tag. probably should correct for the tag index times samplerate
-                        reply.refTriggerName  = triggerName(tagMap);
-                        reply.refTriggerStamp = cast_to_signed(triggerTime(tagMap)) - offset;
-                    }
-                }
                 reply.triggerIndices.push_back(cast_to_signed(idx));
                 reply.triggerEventNames.push_back(tagMap.contains(gr::tag::TRIGGER_NAME) ? std::string(tagMap.find_value(gr::tag::TRIGGER_NAME).value_or(gr::pmt::Value{}).value_or(std::string_view{})) : ""s);
                 reply.triggerTimestamps.push_back(tagMap.contains(gr::tag::TRIGGER_TIME) ? static_cast<int64_t>(tagMap.find_value(gr::tag::TRIGGER_TIME).value_or(gr::pmt::Value{}).value_or(std::uint64_t{0})) : 0LL);
