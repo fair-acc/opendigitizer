@@ -695,6 +695,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     const auto& graphEdges  = rootBlock->childEdges;
 
     makeCurrent();
+    dropReferencesToDeletedBlocks();
 
     IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
     const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
@@ -1037,45 +1038,17 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             _graphModel->requestFullUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
         }
+
+        drawGroupingMenuItems(selectedBlockUniqueNames());
     }
 
-    if (auto menu = IMW::Popup("block_ctx_menu", 0)) {
-        if (ImGui::MenuItem("Delete this block")) {
-            requestBlockDeletion(_selectedBlock->blockUniqueName);
-        }
+    drawBlockContextMenu();
 
-        if (_selectedBlock->blockCategory == "TransparentBlockGroup" || _selectedBlock->blockCategory == "ScheduledBlockGroup") {
-            if (ImGui::MenuItem("Edit block graph...")) {
-                requestGraphEdit(_selectedBlock);
-            }
+    if (_pendingGroupBlocksRequest) {
+        if (openGroupBlocksSelectorCallback) {
+            openGroupBlocksSelectorCallback(std::move(*_pendingGroupBlocksRequest));
         }
-
-        auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
-        if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
-            if (IMW::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
-                for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                    if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
-                        if (auto owner = ownersForRoot()) {
-                            gr::Message message;
-                            message.cmd         = gr::message::Command::Set;
-                            message.endpoint    = gr::scheduler::property::kReplaceBlock;
-                            message.serviceName = owner->scheduler;
-                            message.data        = gr::property_map{                                         //
-                                {"uniqueName", _selectedBlock->blockUniqueName},                     //
-                                {"type", std::move(typeParams.baseType) + availableParametrization}, //
-                                {"_targetGraph", owner->graph}};
-
-                            _graphModel->sendMessage(std::move(message));
-                        }
-                    }
-                }
-            }
-        }
-
-        if (_editorLevel > 0) {
-            this->drawPortsMenu("Input ports", "input", _selectedBlock->_inputPorts);
-            this->drawPortsMenu("Output ports", "output", _selectedBlock->_outputPorts);
-        }
+        _pendingGroupBlocksRequest.reset();
     }
 
     if (horizontalSplit) {
@@ -1092,15 +1065,20 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
         return;
     }
 
+    const auto* exportTarget = exportPortTargetBlock();
+    if (!exportTarget) {
+        return; // probably in the root graph. in any case there is nowhere to export to, so this menu would be useless
+    }
+
     auto portsSubMenu = IMW::Menu{text, /*enabled*/ true};
     if (!portsSubMenu) {
         return;
     }
 
-    const auto* exportTarget = exportPortTargetBlock();
-
     for (const UiGraphPort& port : blockPorts) {
         bool exported = port.isExportedTo(exportTarget);
+
+        // only one item in the menu: a checkbox to toggle whether exported
         if (!ImGui::Checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
             continue;
         }
@@ -1143,7 +1121,71 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
     }
 }
 
+void FlowgraphEditor::drawBlockContextMenu() {
+    auto menu = IMW::Popup("block_ctx_menu", 0);
+    if (!menu) {
+        return;
+    }
+
+    if (_selectedBlock == nullptr) {
+        // the block was deleted while the menu was open
+        ImGui::CloseCurrentPopup();
+        return;
+    }
+
+    if (ImGui::MenuItem("Delete this block")) {
+        requestBlockDeletion(_selectedBlock->blockUniqueName);
+    }
+
+    if (_selectedBlock->blockCategory == "TransparentBlockGroup" || _selectedBlock->blockCategory == "ScheduledBlockGroup") {
+        if (ImGui::MenuItem("Edit block graph...")) {
+            requestGraphEdit(_selectedBlock);
+        }
+    }
+
+    auto groupNames = selectedBlockUniqueNames();
+    if (std::ranges::find(groupNames, _selectedBlock->blockUniqueName) == groupNames.end()) {
+        groupNames.push_back(_selectedBlock->blockUniqueName);
+    }
+
+    if (_selectedBlock->isGraph() || _selectedBlock->isScheduler()) {
+        if (ImGui::MenuItem("Ungroup blocks")) {
+            requestBlocksUngrouping(_selectedBlock->blockUniqueName);
+        }
+    }
+
+    drawGroupingMenuItems(std::move(groupNames));
+
+    auto typeParams = _graphModel->availableParametrizationsFor(_selectedBlock->blockTypeName);
+    if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
+        if (IMW::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
+            for (const auto& availableParametrization : *typeParams.availableParametrizations) {
+                if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
+                    if (auto owner = ownersForRoot()) {
+                        gr::Message message;
+                        message.cmd         = gr::message::Command::Set;
+                        message.endpoint    = gr::scheduler::property::kReplaceBlock;
+                        message.serviceName = owner->scheduler;
+                        message.data        = gr::property_map{                                         //
+                            {"uniqueName", _selectedBlock->blockUniqueName},                     //
+                            {"type", std::move(typeParams.baseType) + availableParametrization}, //
+                            {"_targetGraph", owner->graph}};
+
+                        _graphModel->sendMessage(std::move(message));
+                    }
+                }
+            }
+        }
+    }
+
+    if (_editorLevel > 0) {
+        this->drawPortsMenu("Exported input ports...", "input", _selectedBlock->_inputPorts);
+        this->drawPortsMenu("Exported output ports...", "output", _selectedBlock->_outputPorts);
+    }
+}
+
 void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock, bool all) {
+    assert(rootBlock);
     auto blockLevels = topologicalSort(rootBlock->childBlocks, rootBlock->childEdges);
 
     constexpr float ySpacing = 32;
@@ -1184,6 +1226,90 @@ void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
             {"uniqueName", blockName},  //
             {"_targetGraph", owner->graph}};
         _graphModel->sendMessage(std::move(message));
+    }
+}
+
+void FlowgraphEditor::requestBlocksGrouping(std::string graphType, const std::vector<std::string>& uniqueNames) {
+    if (auto owner = ownersForRoot()) {
+        gr::Tensor<gr::pmt::Value> names(gr::extents_from, {uniqueNames.size()});
+        for (std::size_t i = 0; i < uniqueNames.size(); ++i) {
+            names[i] = uniqueNames[i];
+        }
+
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kGroupBlocks;
+        message.serviceName = owner->scheduler;
+        message.data        = gr::property_map{       //
+            {"type", std::move(graphType)},    //
+            {"uniqueNames", std::move(names)}, //
+            {"_targetGraph", owner->graph}};
+        _graphModel->sendMessage(std::move(message));
+    }
+}
+
+void FlowgraphEditor::requestBlocksUngrouping(const std::string& uniqueName) {
+    if (auto owner = ownersForRoot()) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kUngroupBlocks;
+        message.serviceName = owner->scheduler;
+        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", owner->graph}};
+        _graphModel->sendMessage(std::move(message));
+    }
+}
+
+void FlowgraphEditor::dropReferencesToDeletedBlocks() {
+    if (_seenBlockDestructionCount == _graphModel->blockDestructionCount) {
+        return;
+    }
+    _seenBlockDestructionCount = _graphModel->blockDestructionCount;
+
+    // unfortunately we must always clear the selection if any block has been
+    // destroyed, because we do not have a way to identify whether a given
+    // NodeId points to a now-freed block. Could be solved by smart pointers
+    // or generation/index handles
+    makeCurrent();
+    ax::NodeEditor::ClearSelection();
+
+    const auto isLiveChild = [this](const UiGraphBlock* block) { //
+        if (auto* rootBlock = this->rootBlock()) {
+            return std::ranges::contains(rootBlock->childBlocks, block, [](const auto& child) { return child.get(); });
+        }
+        return false;
+    };
+    if (_selectedBlock != nullptr && !isLiveChild(_selectedBlock)) {
+        _selectedBlock = nullptr;
+    }
+    if (_filterBlock != nullptr && !isLiveChild(_filterBlock)) {
+        _filterBlock = nullptr;
+    }
+}
+
+std::vector<std::string> FlowgraphEditor::selectedBlockUniqueNames() {
+    makeCurrent();
+    dropReferencesToDeletedBlocks();
+    std::vector<ax::NodeEditor::NodeId> selectedNodes(static_cast<std::size_t>(ax::NodeEditor::GetSelectedObjectCount()));
+    const auto                          nodeCount = ax::NodeEditor::GetSelectedNodes(selectedNodes.data(), static_cast<int>(selectedNodes.size()));
+
+    std::vector<std::string> result;
+    result.reserve(static_cast<std::size_t>(nodeCount));
+    for (const auto& nodeId : selectedNodes | std::views::take(nodeCount)) {
+        if (const auto* block = nodeId.AsPointer<UiGraphBlock>()) {
+            result.push_back(block->blockUniqueName);
+        }
+    }
+    return result;
+}
+
+void FlowgraphEditor::drawGroupingMenuItems(std::vector<std::string> uniqueNames) {
+    const bool haveSelection = !uniqueNames.empty();
+    const bool singular      = uniqueNames.size() == 1;
+    if (ImGui::MenuItem(singular ? "Group block" : "Group blocks", nullptr, false, haveSelection)) {
+        requestBlocksGrouping("gr::Graph", uniqueNames);
+    }
+    if (ImGui::MenuItem(singular ? "Group block and pick graph type..." : "Group blocks and pick graph type...", nullptr, false, haveSelection)) {
+        _pendingGroupBlocksRequest = std::move(uniqueNames);
     }
 }
 
@@ -1294,6 +1420,15 @@ void FlowgraphEditor::exportAllUnusedPorts() {
     }
 }
 
+void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::SchedulerGraphPair& owner, std::string type) {
+    gr::Message message;
+    message.cmd         = gr::message::Command::Set;
+    message.endpoint    = gr::scheduler::property::kEmplaceBlock;
+    message.serviceName = owner.scheduler;
+    message.data        = gr::property_map{{"type", std::move(type)}, {"_targetGraph", owner.graph}};
+    graphModel.sendMessage(std::move(message));
+}
+
 FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
 
 FlowgraphPage::~FlowgraphPage() = default;
@@ -1324,7 +1459,7 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     editor.openNewBlockSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
         if (auto owner = editor.ownersForRoot()) {
             _newBlockSelector.data = editor.graphModel()->knownBlockTypes;
-            _newBlockSelector.open(owner->scheduler, owner->graph);
+            _newBlockSelector.open([graphModel = editor.graphModel(), owner = std::move(*owner)](std::string type) { sendEmplaceBlockMessage(*graphModel, owner, std::move(type)); });
         }
     };
 
@@ -1332,8 +1467,16 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     editor.openNewSubGraphSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
         if (auto owner = editor.ownersForRoot()) {
             _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
-            _newBlockSelector.open(owner->scheduler, owner->graph);
+            _newBlockSelector.open([graphModel = editor.graphModel(), owner = std::move(*owner)](std::string type) { sendEmplaceBlockMessage(*graphModel, owner, std::move(type)); });
         }
+    };
+
+    // This lambda is owned by editor, so it is safe to take it by reference
+    editor.openGroupBlocksSelectorCallback = [this, &editor](std::vector<std::string> uniqueNames) {
+        _newBlockSelector.data = editor.graphModel()->knownSchedulerTypes;
+        _newBlockSelector.open([&editor, uniqueNames = std::move(uniqueNames)](std::string graphType) { //
+            editor.requestBlocksGrouping(std::move(graphType), uniqueNames);
+        });
     };
 
     // We can add remote signals only to the root graph

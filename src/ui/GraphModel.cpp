@@ -16,6 +16,15 @@
 
 using namespace std::string_literals;
 
+UiGraphBlock::~UiGraphBlock() {
+    if (ownerGraph) {
+        ownerGraph->blockDestructionCount++;
+        if (ownerGraph->selectedBlock == this) {
+            ownerGraph->selectedBlock = nullptr;
+        }
+    }
+}
+
 auto UiGraphBlock::findBlockIteratorBy(std::initializer_list<SearchProperty> searchProperties, std::string_view value) {
     assert(std::get_if<GraphBlockInfo>(&blockCategoryInfo) && "This makes sense only for graphs");
     auto it = std::ranges::find_if(childBlocks, [&](const auto& block) {
@@ -106,10 +115,6 @@ bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
     }
 
     removeEdgesForBlock(*blockIt->get());
-
-    if (blockIt->get() == ownerGraph->selectedBlock) {
-        ownerGraph->selectedBlock = nullptr;
-    }
 
     childBlocks.erase(blockIt);
     shouldRearrangeBlocks = true;
@@ -227,15 +232,20 @@ void UiGraphBlock::setGraphChildren(const gr::property_map& data) {
         const auto& edges = getProperty<gr::Tensor<gr::pmt::Value>>(data, "graph"s, "connections"s);
         for (const auto& edgeData : edges) {
             const auto edgeProperties = edgeData.value_or(gr::Tensor<gr::pmt::Value>{});
+            if (edgeProperties.size() < 4) {
+                components::Notification::error("Invalid connection ignored");
+                continue;
+            }
 
+            // edge format: [sourceBlockName, sourcePort, destinationBlockName, destinationPort, ?minBufferSize]
             gr::property_map map{
                 {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), edgeProperties[0]},      //
                 {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), edgeProperties[1]},       //
                 {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), edgeProperties[2]}, //
-                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), edgeProperties[3]}  //
+                {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), edgeProperties[3]}   //
             };
             if (edgeProperties.size() > 4) {
-                map[std::pmr::string(gr::serialization_fields::EDGE_BUFFER_SIZE)] = edgeProperties[4];
+                map[std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE)] = edgeProperties[4];
             }
 
             auto edge = parseEdgeData(map);
@@ -286,7 +296,6 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
 
     if (isGraph()) {
         setGraphChildren(data);
-        updatePorts(data);
     } else if (isScheduler()) {
         // When we get new data for a scheduler, we can only set the
         // basic data and send the inspection message for the scheduler
@@ -297,6 +306,14 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
         message.serviceName = blockUniqueName;
         message.data        = gr::property_map{};
         ownerGraph->sendMessage(std::move(message));
+    }
+
+    // graphs and schedulers derive their ports from their children, so this has to
+    // run once the children are known
+    if (updatePorts(data) && parentBlock && !parentBlock->newGraphDataBeingSet) {
+        // this update did not come through the parent, so the parent's edges may
+        // point into the port collections we have just rebuilt
+        parentBlock->graphResolveEdgePortPointersAndRemoveIfInvalid();
     }
 }
 
@@ -383,8 +400,6 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     updateFieldFrom(blockUiCategory, blockData, blockUiCategory, "ui_category"s);
     updateFieldFrom(blockIsBlocking, blockData, blockIsBlocking, "is_blocking"s);
 
-    updatePorts(blockData);
-
     if (auto parametersIt = blockData.find("parameters"); parametersIt != blockData.end()) {
         const auto uiParameters = parametersIt->second.get_if<gr::property_map>();
         if (uiParameters) {
@@ -408,7 +423,7 @@ void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     shouldRearrangeBlocks = true;
 }
 
-void UiGraphBlock::updatePorts(const gr::property_map& blockData) {
+bool UiGraphBlock::updatePorts(const gr::property_map& blockData) {
     auto processPorts = [&blockData, this](auto& portsCollection, std::string_view portsField, gr::PortDirection direction) {
         portsCollection.clear();
 
@@ -447,84 +462,73 @@ void UiGraphBlock::updatePorts(const gr::property_map& blockData) {
             }
         };
 
-        if (isScheduler()) {
+        // When inspecting a scheduler, the scheduler's own exported ports are not reported.
+        // This indicates that descriptions of child blocks will arrive later, so we should
+        // wait to see those materialize before figuring out what our exported ports are.
+        // TODO: check if gnuradio can just serialize the exported ports when doing a
+        // scheduler inspect message, so we do not have to do updatePorts()
+        const bool hasPorts = blockData.contains(portsField);
+
+        if (hasPorts || !(isGraph() || isScheduler())) {
+            appendDeclaredPorts();
+        } else if (isScheduler()) {
             assert(childBlocks.size() <= 1);
             if (!childBlocks.empty()) {
                 appendExportedPorts(*childBlocks.front());
             }
-        } else if (isGraph()) {
-            appendExportedPorts(*this);
         } else {
-            appendDeclaredPorts();
+            appendExportedPorts(*this);
         }
     };
 
     processPorts(_inputPorts, gr::serialization_fields::BLOCK_INPUT_PORTS, gr::PortDirection::INPUT);
     processPorts(_outputPorts, gr::serialization_fields::BLOCK_OUTPUT_PORTS, gr::PortDirection::OUTPUT);
+
+    return isGraph() || isScheduler();
 }
 
 std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& edgeData) {
     UiGraphEdge edge;
-    updateFieldFrom(edge.edgeSourceBlockName, edgeData, {}, gr::serialization_fields::EDGE_SOURCE_BLOCK);
-    updateFieldFrom(edge.edgeDestinationBlockName, edgeData, {}, gr::serialization_fields::EDGE_DESTINATION_BLOCK);
+    // this may be unique name (edge message, gr::serializeEdge) or regular name (from saveGraphToMap)
+    updateFieldFrom(edge.edgeSourceBlockUniqueName, edgeData, {}, gr::serialization_fields::EDGE_SOURCE_BLOCK);
+    updateFieldFrom(edge.edgeDestinationBlockUniqueName, edgeData, {}, gr::serialization_fields::EDGE_DESTINATION_BLOCK);
 
     auto portDefinitionFor = [&edgeData](std::string key) -> gr::PortDefinition {
-        auto stringPortDefinition = getOptionalProperty<std::string>(edgeData, key);
-        if (stringPortDefinition) {
-            return gr::PortDefinition(*stringPortDefinition);
-        } else {
-            auto topLevel = getProperty<std::size_t>(edgeData, key + ".top_level");
-            auto subIndex = getProperty<std::size_t>(edgeData, key + ".sub_index");
-            return gr::PortDefinition(topLevel, subIndex);
+        const auto portField = edgeData.find_value(key).value_or(gr::pmt::Value{});
+
+        if (portField.is_string()) {
+            return gr::PortDefinition(portField.value_or(std::string()));
         }
+        if (const auto indices = portField.value_or(gr::Tensor<gr::pmt::Value>{}); indices.size() == 2) {
+            // this is a collection in format [topLevel, subIndex]. it is serialized in this form by saveGraphToMap
+            return gr::PortDefinition(static_cast<std::size_t>(indices[0].value_or(std::int64_t{})), static_cast<std::size_t>(indices[1].value_or(std::int64_t{})));
+        }
+        if (const auto index = portField.get_if<std::int64_t>()) { // regular port definition, by index
+            return gr::PortDefinition(static_cast<std::size_t>(*index));
+        }
+
+        // gr::serializeEdge write port collections in this format
+        return gr::PortDefinition(getProperty<std::size_t>(edgeData, key + ".top_level"), getProperty<std::size_t>(edgeData, key + ".sub_index"));
     };
 
     edge.edgeSourcePortDefinition      = portDefinitionFor(std::string(gr::serialization_fields::EDGE_SOURCE_PORT));
     edge.edgeDestinationPortDefinition = portDefinitionFor(std::string(gr::serialization_fields::EDGE_DESTINATION_PORT));
 
-    auto findPortFor = [this](std::string& currentBlockName, auto member, const gr::PortDefinition& portDefinition_) -> UiGraphPort* {
-        auto [it, found] = findBlockIteratorBy({SearchProperty::UniqueName, SearchProperty::Name}, currentBlockName);
-        if (!found) {
-            std::println("parseEdgeData: Block {} not found", currentBlockName);
-            return nullptr;
-        }
-
-        auto& block = *it;
-        auto& ports = std::invoke(member, block);
-
-        return std::visit(gr::meta::overloaded{//
-                              [&](const gr::PortDefinition::IndexBased& indexBasedDefinition) -> UiGraphPort* {
-                                  // TODO: sub-index for ports -- when we add UI support for
-                                  // port arrays
-                                  if (indexBasedDefinition.topLevel >= ports.size()) {
-                                      std::println("parseEdgeData: Block {}, port index {} not found", currentBlockName, indexBasedDefinition.topLevel);
-                                      return nullptr;
-                                  }
-
-                                  return std::addressof(ports[indexBasedDefinition.topLevel]);
-                              },
-                              [&](const gr::PortDefinition::StringBased& stringBasedDefinition) -> UiGraphPort* { //
-                                  auto portIt = std::ranges::find_if(ports, [&](const auto& port) {               //
-                                      return port.portName == stringBasedDefinition.name;
-                                  });
-                                  if (portIt == ports.end()) {
-                                      std::println("parseEdgeData: Block {}, port named {} not found", currentBlockName, stringBasedDefinition.name);
-                                      return nullptr;
-                                  }
-                                  return std::addressof(*portIt);
-                              }},
-            portDefinition_.definition);
-    };
-
-    edge.edgeSourcePort      = findPortFor(edge.edgeSourceBlockName, &UiGraphBlock::_outputPorts, edge.edgeSourcePortDefinition);
-    edge.edgeDestinationPort = findPortFor(edge.edgeDestinationBlockName, &UiGraphBlock::_inputPorts, edge.edgeDestinationPortDefinition);
+    edge.edgeSourcePort      = resolveChildPort(edge.edgeSourceBlockUniqueName, gr::PortDirection::OUTPUT, edge.edgeSourcePortDefinition);
+    edge.edgeDestinationPort = resolveChildPort(edge.edgeDestinationBlockUniqueName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
 
     if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
         std::println("Warning: Edge definition invalid! source {} ({} {}) destination {} ({} {})", //
-            !!edge.edgeSourcePort, edge.edgeSourceBlockName, edge.edgeSourcePortDefinition,        //
-            !!edge.edgeDestinationPort, edge.edgeDestinationBlockName, edge.edgeDestinationPortDefinition);
+            !!edge.edgeSourcePort, edge.edgeSourceBlockUniqueName, edge.edgeSourcePortDefinition,  //
+            !!edge.edgeDestinationPort, edge.edgeDestinationBlockUniqueName, edge.edgeDestinationPortDefinition);
         return {};
     }
+
+    // if this is a graph description saved with saveGraphToMap, then it used regular names, because that function is for persisting the graph
+    // if this is an edge message that only exists at runtime, then it used unique name. To make things easier elsewhere we always use unique
+    // name in the UI and not what was written in the message.
+    edge.edgeSourceBlockUniqueName      = edge.edgeSourcePort->ownerBlock->blockUniqueName;
+    edge.edgeDestinationBlockUniqueName = edge.edgeDestinationPort->ownerBlock->blockUniqueName;
 
     updateFieldFrom(edge.edgeWeight, edgeData, {}, gr::serialization_fields::EDGE_WEIGHT);
     updateFieldFrom(edge.edgeName, edgeData, {}, gr::serialization_fields::EDGE_NAME);
@@ -537,16 +541,55 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
     return edge;
 }
 
+UiGraphPort* UiGraphBlock::resolveChildPort(const std::string& childNameOrUniqueName, gr::PortDirection direction, const gr::PortDefinition& portDefinition) {
+    auto [it, found] = findBlockIteratorBy({SearchProperty::UniqueName, SearchProperty::Name}, childNameOrUniqueName);
+    if (!found) {
+        return nullptr;
+    }
+
+    auto& ports = direction == gr::PortDirection::INPUT ? (*it)->_inputPorts : (*it)->_outputPorts;
+
+    return std::visit(gr::meta::overloaded{//
+                          [&ports](const gr::PortDefinition::IndexBased& indexBasedDefinition) -> UiGraphPort* {
+                              // TODO: sub-index for ports -- when we add UI support for
+                              // port arrays
+                              if (indexBasedDefinition.topLevel >= ports.size()) {
+                                  return nullptr;
+                              }
+
+                              return std::addressof(ports[indexBasedDefinition.topLevel]);
+                          },
+                          [&ports](const gr::PortDefinition::StringBased& stringBasedDefinition) -> UiGraphPort* { //
+                              auto portIt = std::ranges::find_if(ports, [&](const auto& port) {                    //
+                                  return port.portName == stringBasedDefinition.name;
+                              });
+                              if (portIt == ports.end()) {
+                                  return nullptr;
+                              }
+                              return std::addressof(*portIt);
+                          }},
+        portDefinition.definition);
+}
+
+void UiGraphBlock::graphResolveEdgePortPointersAndRemoveIfInvalid() {
+    std::erase_if(childEdges, [this](UiGraphEdge& edge) {
+        edge.edgeSourcePort      = resolveChildPort(edge.edgeSourceBlockUniqueName, gr::PortDirection::OUTPUT, edge.edgeSourcePortDefinition);
+        edge.edgeDestinationPort = resolveChildPort(edge.edgeDestinationBlockUniqueName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
+        return edge.edgeSourcePort == nullptr || edge.edgeDestinationPort == nullptr;
+    });
+}
+
 void UiGraphBlock::removeEdgesForBlock(UiGraphBlock& block) {
     std::erase_if(childEdges, [blockPtr = std::addressof(block)](const auto& edge) {
         return edge.edgeSourcePort->ownerBlock == blockPtr || //
                edge.edgeDestinationPort->ownerBlock == blockPtr;
     });
 
-    if (parentBlock) {
-        parentBlock->exportedInputPorts.erase(block.blockUniqueName);
-        parentBlock->exportedOutputPorts.erase(block.blockUniqueName);
-        parentBlock->requestBlockUpdate();
+    UiGraphBlock* exportOwner      = (parentBlock && parentBlock->isScheduler()) ? parentBlock : this;
+    const bool    hadInputExports  = exportOwner->exportedInputPorts.erase(block.blockUniqueName) > 0;
+    const bool    hadOutputExports = exportOwner->exportedOutputPorts.erase(block.blockUniqueName) > 0;
+    if (hadInputExports || hadOutputExports) {
+        exportOwner->requestBlockUpdate();
     }
 }
 
@@ -951,7 +994,11 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // setBlockData, but force setting children data
         targetBlock.block->setBasicBlockData(data);
         targetBlock.block->setSchedulerGraph(data);
-        targetBlock.block->updatePorts(data);
+        if (targetBlock.block->updatePorts(data) && targetBlock.parentGraph) {
+            // the scheduler's ports were just rebuilt, so the parent's edges may
+            // point into the port collections we have replaced
+            targetBlock.parentGraph->graphResolveEdgePortPointersAndRemoveIfInvalid();
+        }
         targetBlock.block->blockCategoryInfo = UiGraphBlock::SchedulerBlockInfo{.childrenLoaded = true};
         requestedFullUpdate                  = false;
 
@@ -996,6 +1043,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // read exported ports out of meta information, easier to treat this as
         // source of truth than update our own cache based on these export events
         targetBlock.block->requestBlockUpdate();
+
+    } else if (message.endpoint == scheduler::kBlocksGrouped || message.endpoint == scheduler::kBlocksUngrouped) {
+        requestFullUpdate();
 
     } else {
         if (!message.data) {

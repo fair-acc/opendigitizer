@@ -1,6 +1,7 @@
 #ifndef GRAPHMODEL_H
 #define GRAPHMODEL_H
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -42,9 +43,9 @@ struct UiGraphEdge {
     UiGraphPort* edgeSourcePort      = nullptr;
     UiGraphPort* edgeDestinationPort = nullptr;
 
-    std::string        edgeSourceBlockName;
+    std::string        edgeSourceBlockUniqueName;
     gr::PortDefinition edgeSourcePortDefinition;
-    std::string        edgeDestinationBlockName;
+    std::string        edgeDestinationBlockUniqueName;
     gr::PortDefinition edgeDestinationPortDefinition;
 
     std::int32_t edgeWeight        = 0;
@@ -109,13 +110,22 @@ struct UiGraphBlock {
     const std::vector<UiGraphPort>& inputPorts() { return _inputPorts; }
     const std::vector<UiGraphPort>& outputPorts() { return _outputPorts; }
 
-    void                       setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
-    void                       setBlockData(const gr::property_map& data);
-    void                       setBasicBlockData(const gr::property_map& blockData);
-    void                       updatePorts(const gr::property_map& blockData);
+    void setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
+    void setBlockData(const gr::property_map& data);
+    void setBasicBlockData(const gr::property_map& blockData);
+    /// Rebuilds _inputPorts and _outputPorts. Graphs and schedulers take them from the
+    /// exported ports of their children, every other block from its own port list.
+    /// Returns true if they were derived from exported ports, i.e. if a change in ports
+    /// may have occurred.
+    [[nodiscard]] bool         updatePorts(const gr::property_map& blockData);
     void                       setGraphChildren(const gr::property_map& data);
     void                       setSchedulerGraph(const gr::property_map& data);
     std::optional<UiGraphEdge> parseEdgeData(const gr::property_map& edgeData);
+
+    /// Resolves all childEdges' port pointers based on port and block names, removing
+    /// any that don't resolve to an actual port. This is necessary because subgraph
+    /// blocks can change their ports due to changes in exported/imported ports.
+    void graphResolveEdgePortPointersAndRemoveIfInvalid();
 
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
@@ -139,8 +149,9 @@ struct UiGraphBlock {
 
 private:
     enum class SearchProperty { UniqueName, Name };
-    auto findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
-    auto findPortIteratorByName(auto& ports, const std::string& portName);
+    auto         findBlockIteratorBy(std::initializer_list<SearchProperty>, std::string_view value);
+    auto         findPortIteratorByName(auto& ports, const std::string& portName);
+    UiGraphPort* resolveChildPort(const std::string& childNameOrUniqueName, gr::PortDirection direction, const gr::PortDefinition& portDefinition);
 
 public:
     void removeEdgesForBlock(UiGraphBlock& block);
@@ -221,6 +232,8 @@ public:
 
     UiGraphBlock(UiGraphModel* ownerGraph_, UiGraphBlock* parentBlock_) : ownerGraph(ownerGraph_), parentBlock(parentBlock_) {}
 
+    ~UiGraphBlock();
+
     UiGraphBlock(const UiGraphBlock&)            = delete;
     UiGraphBlock& operator=(const UiGraphBlock&) = delete;
     UiGraphBlock(UiGraphBlock&&)                 = delete;
@@ -260,6 +273,10 @@ public:
     std::map<std::string, std::set<std::string>> knownSchedulerTypes;
 
     UiGraphBlock* selectedBlock = nullptr;
+
+    // child blocks will increment this when they are destroyed. it serves as a
+    // generation so the editor can know its node id pointers are invalid
+    std::uint64_t blockDestructionCount = 0;
 
     /**
      * @return true if consumed the message

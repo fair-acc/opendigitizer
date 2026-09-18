@@ -63,6 +63,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     NAMESPACE
     ui_test_assets
     examples/fg_dipole_intensity_ramp.grc
+    examples/qa_grouping.grc
     examples/qa_layout.grc
     examples/qa_subgraph.grc)
 
