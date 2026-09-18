@@ -27,6 +27,7 @@
 #include <array>
 #include <boost/ut.hpp>
 #include <format>
+#include <limits>
 #include <print>
 
 #include "GnuRadioAcquisitionWorker.hpp"
@@ -217,6 +218,19 @@ gr::property_map makeFairTimingTagMap(std::uint64_t triggerTime, int eventNumber
     tagMap.emplace(gr::tag::CONTEXT, "FAIR-TIMING:C=1.S=1.P=1.T=1");
     tagMap.emplace(gr::tag::TRIGGER_META_INFO, metaInfo);
     return tagMap;
+}
+
+gr::property_map makeStreamingTriggerTagMap(std::uint64_t triggerTime, std::string_view name = "trigger") {
+    gr::property_map tagMap;
+    tagMap.emplace(gr::tag::TRIGGER_NAME, name);
+    tagMap.emplace(gr::tag::TRIGGER_TIME, triggerTime);
+    return tagMap;
+}
+
+void checkStreamingTimestamp(const Acquisition& acq, std::int64_t expected, std::string_view referenceName = "trigger") {
+    expect(eq(acq.refTriggerStamp.value(), expected));
+    expect(eq(acq.acqLocalTimeStamp.value(), expected));
+    expect(eq(acq.refTriggerName.value(), referenceName));
 }
 } // namespace
 
@@ -1098,6 +1112,59 @@ connections:
         expect(receivedDownCount > 0);
 
         checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_A", "Signal_B"}, {"Unit_A", "Unit_B"}, {"Quantity_A", "Quantity_B"}, {}, "");
+    };
+
+    "Streaming timestamp fallback"_test = [] {
+        constexpr std::int64_t epoch = 1'800'000'000'000'000'123LL;
+        StreamingPollerEntry   entry(nullptr);
+        entry.sample_rate  = 1'000.f;
+        const auto process = [&entry](std::size_t chunkSampleCount, std::span<const gr::Tag> tags = {}) {
+            Acquisition acq;
+            entry.updateTimestamp(acq, tags, chunkSampleCount);
+            return acq;
+        };
+
+        checkStreamingTimestamp(process(2UZ), 0LL, "NO_REF_TRIGGER");
+        const auto invalidTrigger = gr::property_map{{gr::tag::TRIGGER_NAME, "invalid"}, {gr::tag::TRIGGER_TIME, "invalid"}};
+        const auto firstTrigger   = makeStreamingTriggerTagMap(epoch + 1'000'000LL);
+        const auto laterTrigger   = makeStreamingTriggerTagMap(epoch + 20'000'000LL, "later trigger");
+        checkStreamingTimestamp(process(3UZ, std::array{gr::Tag{0UZ, invalidTrigger}, gr::Tag{1UZ, firstTrigger}, gr::Tag{2UZ, laterTrigger}}), epoch);
+        checkStreamingTimestamp(process(2UZ), epoch + 3'000'000LL);
+        checkStreamingTimestamp(process(1UZ), epoch + 5'000'000LL);
+        checkStreamingTimestamp(process(2UZ, std::array{gr::Tag{1UZ, makeStreamingTriggerTagMap(epoch + 101'000'000LL, "new trigger")}}), epoch + 100'000'000LL, "new trigger");
+        checkStreamingTimestamp(process(1UZ), epoch + 102'000'000LL, "new trigger");
+    };
+
+    "Streaming timestamp validation"_test = [] {
+        StreamingPollerEntry entry(nullptr);
+        const auto           process = [&entry](std::size_t chunkSampleCount, std::span<const gr::Tag> tags = {}) {
+            Acquisition acq;
+            entry.updateTimestamp(acq, tags, chunkSampleCount);
+            return acq;
+        };
+        const auto trigger = makeStreamingTriggerTagMap(10'000'000'000);
+        checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 0LL, "NO_REF_TRIGGER");
+        entry.sample_rate = 0.f;
+        checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 0LL, "NO_REF_TRIGGER");
+        entry.sample_rate = 1'000.f;
+        checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 10'000'000'000LL);
+
+        entry.sample_rate = 2'000.f;
+        checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
+        entry.sample_rate = 1'000.f;
+        checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
+        entry.sample_rate = 2'000.f;
+        checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, trigger}}), 10'000'000'000LL);
+        checkStreamingTimestamp(process(1UZ), 10'000'500'000LL);
+
+        entry.sample_rate.reset();
+        checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
+        entry.sample_rate = 2'000.f;
+        checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
+
+        const auto limit = makeStreamingTriggerTagMap(std::numeric_limits<std::int64_t>::max());
+        checkStreamingTimestamp(process(1UZ, std::array{gr::Tag{0UZ, limit}}), std::numeric_limits<std::int64_t>::max());
+        checkStreamingTimestamp(process(1UZ), 0LL, "NO_REF_TRIGGER");
     };
 
     "Timing event state"_test = [] {
