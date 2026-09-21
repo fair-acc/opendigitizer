@@ -422,11 +422,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 {
                     auto& subgraphEditor = g_state.flowgraphPage.currentEditor();
                     auto* sinkPort       = findSinkPort();
+                    expect(sinkPort) << fatal;
 
                     subgraphEditor.requestExportPort({
-                        .uniqueBlockName = sinkPort->ownerBlock->blockUniqueName,
+                        .uniqueBlockName = sinkPort ? sinkPort->ownerBlock->blockUniqueName : "", // -Werror=null-dereference
                         .portDirection   = "input",
-                        .portName        = sinkPort->portName,
+                        .portName        = sinkPort ? sinkPort->portName : "", // -Werror=null-dereference
                         .exportedName    = "exported_in",
                         .exportFlag      = true,
                     });
