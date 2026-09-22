@@ -12,14 +12,18 @@
 #include <blocks/SineSource.hpp>
 #include <blocks/TestSpectrumGenerator.hpp>
 
+#include <gnuradio-4.0/AtomicRef.hpp>
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrFourierBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/testing/NullSources.hpp>
 
 #include <scope_exit.hpp>
 
 #include <boost/ut.hpp>
+
+#include <array>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -31,6 +35,16 @@ opendigitizer::test::TestDashboardRunner g_state;
 
 void reloadSubgraph() { g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_subgraph.grc", "subgraph_test"); }
 void reloadGrouping() { g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_grouping.grc", "grouping_test"); }
+
+struct SubgraphBlockTypenameAndDescription {
+    std::string_view description;
+    std::string_view typeName;
+};
+
+constexpr std::array kSubgraphBlockTypenameAndDescriptions{
+    SubgraphBlockTypenameAndDescription{"unmanaged subgraph", "gr::Graph"},
+    SubgraphBlockTypenameAndDescription{"managed subgraph", "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>"},
+};
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
@@ -44,16 +58,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return condition();
     }
 
-    [[nodiscard]] static bool waitForReplyOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint) {
-        std::optional<gr::Message>   outReply;
-        auto                         subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint](const gr::Message& reply) {
-            if (reply.endpoint == endpoint) {
-                outReply = reply;
-            }
+    [[nodiscard]] static bool waitForReplyOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ) {
+        const bool replied = awaitCondition(ctx, [endpoint, count] { //
+            return static_cast<std::size_t>(std::ranges::count_if(g_state.collectedMessages, [endpoint](const gr::Message& message) { return message.endpoint == endpoint; })) >= count;
         });
-        Digitizer::utils::scope_exit unsubscribe  = [subscription] { g_state.dashboard->graphModel.unsubscribeFromResponses(subscription); };
-
-        return awaitCondition(ctx, [&outReply] { return outReply.has_value(); });
+        g_state.clearMessages(); // each wait only sees messages since the last wait
+        return replied;
     }
 
     static UiGraphBlock* rootGraph() {
@@ -86,38 +96,78 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return it == graph->childBlocks.end() ? nullptr : it->get();
     }
 
-    static void sendGroupBlocks(std::vector<std::string> uniqueNames, const std::string& graphType) {
-        auto&                      graphModel = g_state.dashboard->graphModel;
-        gr::Tensor<gr::pmt::Value> names;
-        for (auto& name : uniqueNames) {
-            names.push_back(gr::pmt::Value(std::move(name)));
+    // like FlowgraphEditor::ownersForRoot()
+    struct Owners {
+        std::string scheduler;
+        std::string graph;
+    };
+
+    static Owners ownersFor(UiGraphBlock* graphOrScheduler) {
+        expect(graphOrScheduler != nullptr) << fatal;
+        if (graphOrScheduler->isScheduler()) {
+            expect(!graphOrScheduler->childBlocks.empty()) << fatal << "a scheduler block must have its graph loaded";
+            return Owners{graphOrScheduler->blockUniqueName, graphOrScheduler->childBlocks.front()->blockUniqueName};
+        }
+        return Owners{graphOrScheduler->ownerSchedulerUniqueName(), graphOrScheduler->blockUniqueName};
+    }
+
+    static Owners rootOwners() { return ownersFor(rootGraph()); }
+
+    static void sendGroupBlocks(const std::vector<std::string>& uniqueNames, const std::string& graphType, const Owners& owners) {
+        gr::Tensor<gr::pmt::Value> names(gr::extents_from, {uniqueNames.size()});
+        for (std::size_t i = 0; i < uniqueNames.size(); ++i) {
+            names[i] = uniqueNames[i];
         }
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kGroupBlocks;
-        message.serviceName = graphModel.rootBlock.blockUniqueName;
-        message.data        = gr::property_map{{"type", graphType}, {"uniqueNames", std::move(names)}, {"_targetGraph", rootGraph()->blockUniqueName}};
-        graphModel.sendMessage(std::move(message));
+        message.serviceName = owners.scheduler;
+        message.data        = gr::property_map{{"type", graphType}, {"uniqueNames", std::move(names)}, {"_targetGraph", owners.graph}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
-    static void sendUngroupBlocks(const std::string& subgraphUniqueName) {
-        auto&       graphModel = g_state.dashboard->graphModel;
+    static void sendUngroupBlocks(const std::string& subgraphUniqueName, const Owners& owners) {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kUngroupBlocks;
-        message.serviceName = graphModel.rootBlock.blockUniqueName;
-        message.data        = gr::property_map{{"uniqueName", subgraphUniqueName}, {"_targetGraph", rootGraph()->blockUniqueName}};
-        graphModel.sendMessage(std::move(message));
+        message.serviceName = owners.scheduler;
+        message.data        = gr::property_map{{"uniqueName", subgraphUniqueName}, {"_targetGraph", owners.graph}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
-    static void sendRemoveBlock(const std::string& uniqueName) {
-        auto&       graphModel = g_state.dashboard->graphModel;
+    static void sendRemoveBlock(const std::string& uniqueName, const Owners& owners) {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kRemoveBlock;
-        message.serviceName = graphModel.rootBlock.blockUniqueName;
-        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", rootGraph()->blockUniqueName}};
-        graphModel.sendMessage(std::move(message));
+        message.serviceName = owners.scheduler;
+        message.data        = gr::property_map{{"uniqueName", uniqueName}, {"_targetGraph", owners.graph}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
+    }
+
+    static void sendEmplaceBlock(const std::string& type, const Owners& owners) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kEmplaceBlock;
+        message.serviceName = owners.scheduler;
+        message.data        = gr::property_map{{"type", type}, {"_targetGraph", owners.graph}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
+    }
+
+    static void sendEmplaceEdge(const std::string& sourceUniqueName, const std::string& sourcePort, const std::string& destinationUniqueName, const std::string& destinationPort, const Owners& owners) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.endpoint    = gr::scheduler::property::kEmplaceEdge;
+        message.serviceName = owners.scheduler;
+        message.data        = gr::property_map{                                                                 //
+            {"_targetGraph", owners.graph},                                                              //
+            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceUniqueName},           //
+            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), sourcePort},                  //
+            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), destinationUniqueName}, //
+            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), destinationPort},        //
+            {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},        //
+            {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                //
+            {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"s}};
+        g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
     static const UiGraphEdge* findEdge(const UiGraphBlock* graph, std::string_view sourceBlockUniqueName, std::string_view destinationBlockUniqueName) {
@@ -125,6 +175,65 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             return edge.edgeSourceBlockUniqueName == sourceBlockUniqueName && edge.edgeDestinationBlockUniqueName == destinationBlockUniqueName;
         });
         return it == graph->childEdges.end() ? nullptr : std::to_address(it);
+    }
+
+    // get unique name given regular name
+    static std::string uniqueNameOf(std::string_view name) {
+        UiGraphBlock* block = findByName(name);
+        expect(block != nullptr) << fatal << std::format("expected a block named {}", name);
+        return block->blockUniqueName;
+    }
+
+    // does a block with the given name exist, and is it a child of the root graph
+    static bool isRootChild(std::string_view name) {
+        const auto found = g_state.dashboard->graphModel.recursiveFindBlockByName(name);
+        return found.block != nullptr && found.parentGraph == rootGraph();
+    }
+
+    // the normal configuration for qa_grouping, which is useful to verify that the graph is in (or has returned to) its normal state
+    static void expectEdges_qa_grouping() {
+        for (const auto& [from, to] : {std::pair{"source", "middleA"}, {"middleA", "middleB"}, {"middleB", "sink"}}) {
+            const UiGraphEdge* edge = findEdge(rootGraph(), uniqueNameOf(from), uniqueNameOf(to));
+            expect(edge != nullptr) << std::format("edge {} -> {} should be present in the root graph", from, to);
+            expect(edge == nullptr || (edge->edgeSourcePort != nullptr && edge->edgeDestinationPort != nullptr)) << "the edge should resolve its ports";
+        }
+    }
+
+    using CountingSink = gr::testing::AtomicCountingSink<float>;
+
+    // qa_grouping.grc has a counting sink in it, find the actual BlockModel so we can read the # of samples processed
+    static CountingSink* findCountingSink(std::string_view uniqueName) {
+        auto blocks     = g_state.dashboard->scheduler->graph().blocks();
+        auto findResult = std::ranges::find(blocks, uniqueName, &gr::BlockModel::uniqueName);
+        return findResult == std::end(blocks) ? nullptr : static_cast<CountingSink*>((*findResult)->raw());
+    }
+
+    static gr::Size_t sampleCount(CountingSink* sink) { return gr::atomic_ref(sink->count.value).load_acquire(); }
+
+    static bool waitForSamples(ImGuiTestContext* ctx, CountingSink* sink) {
+        const gr::Size_t baseline = sampleCount(sink);
+        return awaitCondition(ctx, [sink, baseline] { return sampleCount(sink) > baseline; });
+    }
+
+    /// Returns true if any edges are pointing to blocks that don't exist
+    [[nodiscard]] static bool hasInvalidEdges() {
+        bool hasInvalid = false;
+        g_state.dashboard->graphModel.recursiveForEachBlock([&hasInvalid](const UiGraphModel::FindBlockResult& element) {
+            for (const UiGraphEdge& edge : element.block->childEdges) {
+                if (edge.edgeSourcePort == nullptr || edge.edgeDestinationPort == nullptr) {
+                    hasInvalid = true;
+                    return UiGraphModel::VisitorResult::Break;
+                }
+            }
+            return UiGraphModel::VisitorResult::Recurse;
+        });
+        return hasInvalid;
+    }
+
+    static void expectGraphRunningAndConnected(ImGuiTestContext* ctx, CountingSink* sink, std::string_view stage) {
+        expect(gr::lifecycle::isActive(g_state.dashboard->scheduler->state())) << std::format("{}: the scheduler should still be active", stage);
+        expect(!hasInvalidEdges()) << std::format("{}: every edge should resolve to real ports, unresolved", stage);
+        expect(waitForSamples(ctx, sink)) << std::format("{}: samples should keep arriving at the counting sink", stage);
     }
 
     void registerTests() override { // NOSONAR (cognitive complexity)
@@ -172,11 +281,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
-                reloadSubgraph();
-                g_state.waitForScheduler(ctx);
-                while (!g_state.hasBlocks()) {
-                    ctx->Yield();
-                }
+                reloadAndWait(ctx, reloadSubgraph);
                 Digitizer::utils::scope_exit stopScheduler = [] { g_state.stopScheduler(); };
 
                 UiGraphBlock* rootBlock = g_state.dashboard->graphModel.recursiveFindBlockByName("simpleScheduler").block;
@@ -263,7 +368,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             UiGraphBlock* innerSource = findByName("subgraphSineSource");
             expect(subgraph != nullptr && innerSource != nullptr) << fatal;
 
-            sendExportPort(subgraph, innerSource, "output", "out", "sigOut");
+            sendExportPort(subgraph->blockUniqueName, innerSource->blockUniqueName, "output", "out", "sigOut");
             expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
 
             const auto subgraphHasExportedPort = [uniqueName = subgraph->blockUniqueName] {
@@ -283,7 +388,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(subgraph != nullptr && innerSource != nullptr) << fatal;
             const auto& subgraphUniqueName = subgraph->blockUniqueName;
 
-            sendExportPort(subgraph, innerSource, "output", "out", "sigOut");
+            sendExportPort(subgraph->blockUniqueName, innerSource->blockUniqueName, "output", "out", "sigOut");
             expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler never replied about the port export";
             expect(awaitCondition(ctx,
                 [subgraphUniqueName] {
@@ -292,15 +397,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }))
                 << fatal << "exported port did not show up on the subgraph block";
 
-            auto& graphModel = g_state.dashboard->graphModel;
-            {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Set;
-                message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-                message.serviceName = graphModel.rootBlock.blockUniqueName;
-                message.data        = gr::property_map{{"type", "gr::basic::DataSink<float32>"s}, {"_targetGraph", rootGraph()->blockUniqueName}};
-                graphModel.sendMessage(std::move(message));
-            }
+            sendEmplaceBlock("gr::basic::DataSink<float32>", rootOwners());
 
             const auto findOuterSink = [subgraphUniqueName] {
                 auto& children = rootGraph()->childBlocks;
@@ -312,22 +409,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(awaitCondition(ctx, [&] { return findOuterSink() != nullptr; })) << fatal << "emplaced sink did not show up in the root graph";
             const auto& outerSinkUniqueName = findOuterSink()->blockUniqueName;
 
-            {
-                gr::Message message;
-                message.cmd         = gr::message::Command::Set;
-                message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-                message.serviceName = graphModel.rootBlock.blockUniqueName;
-                message.data        = gr::property_map{                                                               //
-                    {"_targetGraph", rootGraph()->blockUniqueName},                                            //
-                    {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), subgraphUniqueName},       //
-                    {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), "sigOut"s},                 //
-                    {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), outerSinkUniqueName}, //
-                    {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"s},                //
-                    {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},      //
-                    {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                              //
-                    {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"s}};
-                graphModel.sendMessage(std::move(message));
-            }
+            sendEmplaceEdge(subgraphUniqueName, "sigOut", outerSinkUniqueName, "in", rootOwners());
 
             expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kEdgeEmplaced)) << "edge should be reported as emplaced by the scheduler";
 
@@ -339,34 +421,25 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             g_state.stopScheduler();
         });
 
-        constexpr static auto groupBlocksInMiddleOfChainTest = [](ImGuiTestContext* ctx, bool isManaged) { // NOSONAR (cognitive complexity)
+        registerGroupingTest("group middle blocks of a chain", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
             reloadAndWait(ctx, reloadGrouping);
-
-            UiGraphBlock* source  = findByName("source");
-            UiGraphBlock* middleA = findByName("middleA");
-            UiGraphBlock* middleB = findByName("middleB");
-            UiGraphBlock* sink    = findByName("sink");
-            expect(source != nullptr && middleA != nullptr && middleB != nullptr && sink != nullptr) << fatal;
-            const auto& sourceUniqueName  = source->blockUniqueName;
-            const auto  middleAUniqueName = middleA->blockUniqueName;
-            const auto  middleBUniqueName = middleB->blockUniqueName;
-            const auto& sinkUniqueName    = sink->blockUniqueName;
+            CountingSink* sink = findCountingSink(uniqueNameOf("sink"));
+            expect(sink != nullptr) << fatal << "qa_grouping.grc should end in an AtomicCountingSink";
 
             ImGui::notifications.clear();
 
-            auto          graphType = isManaged ? "gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreaded>"s : "gr::Graph"s;
-            UiGraphBlock* subgraph  = groupAndWait(ctx, {middleAUniqueName, middleBUniqueName}, std::move(graphType));
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("middleA"), uniqueNameOf("middleB")});
             expect(subgraph != nullptr) << fatal;
-            expect(isManaged ? subgraph->isScheduler() : subgraph->isGraph()) << fatal << "grouping did not create the expected type of block";
+            expect(isManagedVariant(ctx) ? subgraph->isScheduler() : subgraph->isGraph()) << fatal << "grouping did not create the expected type of block";
             expect(awaitCondition(ctx, [] { return rootGraph()->childEdges.size() == 2UZ; })) << fatal << "boundary edges did not show up in the root graph";
 
             UiGraphBlock* interior = getGraph(subgraph);
             expect(interior != nullptr) << fatal;
-            UiGraphBlock* innerA = interior->findBlockByUniqueName(middleAUniqueName);
-            UiGraphBlock* innerB = interior->findBlockByUniqueName(middleBUniqueName);
+            UiGraphBlock* innerA = interior->findBlockByUniqueName(uniqueNameOf("middleA"));
+            UiGraphBlock* innerB = interior->findBlockByUniqueName(uniqueNameOf("middleB"));
             expect(innerA != nullptr && innerB != nullptr) << fatal;
 
-            const UiGraphEdge* interiorEdge = findEdge(interior, middleAUniqueName, middleBUniqueName);
+            const UiGraphEdge* interiorEdge = findEdge(interior, uniqueNameOf("middleA"), uniqueNameOf("middleB"));
             expect(interiorEdge != nullptr) << fatal << "interior edge middleA->middleB should stay inside the graph";
             expect(interiorEdge->edgeSourcePort != nullptr && interiorEdge->edgeDestinationPort != nullptr);
             expect(eq(interior->childEdges.size(), 1UZ));
@@ -378,94 +451,181 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             expect(innerA->_inputPorts.front().getExportedName(subgraph) == subgraph->inputPorts().front().portName);
             expect(innerB->_outputPorts.front().getExportedName(subgraph) == subgraph->outputPorts().front().portName);
 
-            const UiGraphEdge* inEdge = findEdge(rootGraph(), sourceUniqueName, subgraph->blockUniqueName);
+            const UiGraphEdge* inEdge = findEdge(rootGraph(), uniqueNameOf("source"), subgraph->blockUniqueName);
             expect(inEdge != nullptr) << fatal << "source should be connected to the subgraph";
             expect(inEdge->edgeDestinationPort != nullptr && inEdge->edgeDestinationPort->ownerBlock == subgraph);
             expect(inEdge->edgeDestinationPort->portName == subgraph->inputPorts().front().portName);
 
-            const UiGraphEdge* outEdge = findEdge(rootGraph(), subgraph->blockUniqueName, sinkUniqueName);
+            const UiGraphEdge* outEdge = findEdge(rootGraph(), subgraph->blockUniqueName, uniqueNameOf("sink"));
             expect(outEdge != nullptr) << fatal << "subgraph should be connected to the sink";
             expect(outEdge->edgeSourcePort != nullptr && outEdge->edgeSourcePort->ownerBlock == subgraph);
             expect(outEdge->edgeSourcePort->portName == subgraph->outputPorts().front().portName);
+
+            expectGraphRunningAndConnected(ctx, sink, "after grouping the middle of the chain");
 
             const auto errors = takeAllErrorNotifications();
             expect(errors.empty()) << std::format("grouping reported errors: {}", errors);
 
             g_state.stopScheduler();
-        };
+        });
 
-        registerMessageTest("group middle blocks of a chain, managed subgraph", [](ImGuiTestContext* ctx) { groupBlocksInMiddleOfChainTest(ctx, true); });
-        registerMessageTest("group middle blocks of a chain, unmanaged subgraph", [](ImGuiTestContext* ctx) { groupBlocksInMiddleOfChainTest(ctx, false); });
-
-        registerMessageTest("group and ungroup unconnected blocks", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+        registerGroupingTest("group and ungroup a single block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
             reloadAndWait(ctx, reloadGrouping);
+            CountingSink* sink = findCountingSink(uniqueNameOf("sink"));
+            expect(sink != nullptr) << fatal;
 
-            UiGraphBlock* loner1 = findByName("loner1");
-            UiGraphBlock* loner2 = findByName("loner2");
-            expect(loner1 != nullptr && loner2 != nullptr) << fatal;
-            const auto loner1UniqueName = loner1->blockUniqueName;
-            const auto loner2UniqueName = loner2->blockUniqueName;
-
-            UiGraphBlock* subgraph = groupAndWait(ctx, {loner1UniqueName, loner2UniqueName});
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("middleA")});
             expect(subgraph != nullptr) << fatal;
+            const std::string subgraphUniqueName = subgraph->blockUniqueName;
 
-            expect(subgraph != nullptr) << fatal;
+            UiGraphBlock* interior = getGraph(subgraph);
+            expect(interior != nullptr) << fatal;
+            expect(eq(interior->childBlocks.size(), 1UZ)) << "only middleA should have moved into the subgraph";
+            expect(interior->childEdges.empty()) << "a single grouped block cannot have interior edges";
 
-            expect(subgraph->isGraph()) << "grouping into gr::Graph should create a transparent subgraph";
-            expect(subgraph->inputPorts().empty()) << "no connections + nothing to export";
-            expect(subgraph->outputPorts().empty()) << "no connections + nothing to export";
-            expect(subgraph->childEdges.empty());
-            expect(subgraph->exportedInputPorts.empty());
-            expect(subgraph->exportedOutputPorts.empty());
-            expect(subgraph->findBlockByUniqueName(loner1UniqueName) != nullptr);
-            expect(subgraph->findBlockByUniqueName(loner2UniqueName) != nullptr);
-            expect(rootGraph()->findBlockByUniqueName(loner1UniqueName) == nullptr) << "grouped block should no longer be a direct child of the root graph";
-            expect(eq(rootGraph()->childEdges.size(), 3UZ)) << "other edges should still be intact after grouping";
+            expect(awaitCondition(ctx, [] { return rootGraph()->childEdges.size() == 3UZ; })) << fatal << "the chain should still have three edges, now routed through the subgraph";
+            expect(subgraph->inputPorts().size() == 1UZ) << fatal << "middleA's input should be exported";
+            expect(subgraph->outputPorts().size() == 1UZ) << fatal << "middleA's output should be exported";
+            expect(findEdge(rootGraph(), uniqueNameOf("source"), subgraphUniqueName) != nullptr) << "source should feed the subgraph";
+            expect(findEdge(rootGraph(), subgraphUniqueName, uniqueNameOf("middleB")) != nullptr) << "the subgraph should feed middleB";
+            expect(!isRootChild("middleA")) << "middleA should no longer be a direct child of the root graph";
 
-            sendUngroupBlocks(subgraph->blockUniqueName);
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
+            expectGraphRunningAndConnected(ctx, sink, "after grouping a single block");
 
-            expect(awaitCondition(ctx, [loner1UniqueName, loner2UniqueName] {
-                UiGraphBlock* root = rootGraph();
-                return root->findBlockByUniqueName(loner1UniqueName) != nullptr && //
-                       root->findBlockByUniqueName(loner2UniqueName) != nullptr && //
-                       findSubgraphIn(root) == nullptr;
-            })) << "ungrouped blocks should return to the root graph and the empty subgraph should disappear";
+            ungroupAndWait(ctx, subgraphUniqueName);
+
+            expect(awaitCondition(ctx, [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "middleA and the original chain should be restored";
+            expectEdges_qa_grouping();
+            expectGraphRunningAndConnected(ctx, sink, "after ungrouping a single block");
 
             g_state.stopScheduler();
         });
 
-        registerMessageTest("ungroup restores boundary connections", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+        registerGroupingTest("group and ungroup unconnected blocks", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
             reloadAndWait(ctx, reloadGrouping);
+            CountingSink* sink = findCountingSink(uniqueNameOf("sink"));
+            expect(sink != nullptr) << fatal;
 
-            UiGraphBlock* source  = findByName("source");
-            UiGraphBlock* middleA = findByName("middleA");
-            UiGraphBlock* middleB = findByName("middleB");
-            UiGraphBlock* sink    = findByName("sink");
-            expect(source != nullptr && middleA != nullptr && middleB != nullptr && sink != nullptr) << fatal;
-            const auto& sourceUniqueName  = source->blockUniqueName;
-            const auto  middleAUniqueName = middleA->blockUniqueName;
-            const auto  middleBUniqueName = middleB->blockUniqueName;
-            const auto& sinkUniqueName    = sink->blockUniqueName;
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("loner1"), uniqueNameOf("loner2")});
+            expect(subgraph != nullptr) << fatal;
+            const std::string subgraphUniqueName = subgraph->blockUniqueName;
 
-            UiGraphBlock* subgraph = groupAndWait(ctx, {middleAUniqueName, middleBUniqueName});
+            expect(isManagedVariant(ctx) ? subgraph->isScheduler() : subgraph->isGraph()) << "grouping did not create the expected type of block";
+            expect(subgraph->inputPorts().empty()) << "no connections + nothing to export";
+            expect(subgraph->outputPorts().empty()) << "no connections + nothing to export";
+            expect(subgraph->exportedInputPorts.empty());
+            expect(subgraph->exportedOutputPorts.empty());
+
+            // blocks and edges live in the graph, which for a managed subgraph is the scheduler's only child
+            UiGraphBlock* interior = getGraph(subgraph);
+            expect(interior != nullptr) << fatal;
+            expect(interior->childEdges.empty());
+            expect(interior->findBlockByUniqueName(uniqueNameOf("loner1")) != nullptr);
+            expect(interior->findBlockByUniqueName(uniqueNameOf("loner2")) != nullptr);
+            expect(!isRootChild("loner1")) << "grouped block should no longer be a direct child of the root graph";
+            expect(eq(rootGraph()->childEdges.size(), 3UZ)) << "other edges should still be intact after grouping";
+            expectGraphRunningAndConnected(ctx, sink, "after grouping unconnected blocks");
+
+            ungroupAndWait(ctx, subgraphUniqueName);
+
+            expect(awaitCondition(ctx, [] { return isRootChild("loner1") && isRootChild("loner2"); })) << "ungrouped blocks should return to the root graph";
+            expectEdges_qa_grouping();
+            expectGraphRunningAndConnected(ctx, sink, "after ungrouping unconnected blocks");
+
+            g_state.stopScheduler();
+        });
+
+        registerGroupingTest("ungroup restores boundary connections", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+            reloadAndWait(ctx, reloadGrouping);
+            CountingSink* sink = findCountingSink(uniqueNameOf("sink"));
+            expect(sink != nullptr) << fatal;
+
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("middleA"), uniqueNameOf("middleB")});
             expect(subgraph != nullptr) << fatal;
 
-            sendUngroupBlocks(subgraph->blockUniqueName);
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
+            ungroupAndWait(ctx, subgraph->blockUniqueName);
 
+            expect(awaitCondition(ctx, [] { return isRootChild("middleA") && rootGraph()->childEdges.size() == 3UZ; })) << fatal << "chain was not restored in the root graph";
+            expectEdges_qa_grouping();
+            expectGraphRunningAndConnected(ctx, sink, "after ungrouping");
+
+            g_state.stopScheduler();
+        });
+
+        registerGroupingTest("group blocks inside a subgraph", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+            reloadAndWait(ctx, reloadGrouping);
+            CountingSink* sink = findCountingSink(uniqueNameOf("sink"));
+            expect(sink != nullptr) << fatal;
+
+            // group last three, source -> (middleA -> middleB -> sink)
+            UiGraphBlock* outer = groupAndWait(ctx, {uniqueNameOf("middleA"), uniqueNameOf("middleB"), uniqueNameOf("sink")});
+            expect(outer != nullptr) << fatal;
+            const std::string outerUniqueName = outer->blockUniqueName;
+
+            UiGraphBlock* outerInterior = getGraph(outer);
+            expect(outerInterior != nullptr) << fatal;
+            const std::string outerInteriorUniqueName = outerInterior->blockUniqueName;
+            expect(eq(outerInterior->childBlocks.size(), 3UZ));
+            expect(eq(outerInterior->childEdges.size(), 2UZ)) << "middleA->middleB and middleB->sink should stay inside";
+            expect(eq(outer->inputPorts().size(), 1UZ)) << fatal << "only middleA's input goes between graphs";
+            expect(outer->outputPorts().empty()) << "there should be no output from the outer subgraph. the sink is grouped";
+            expect(eq(rootGraph()->childEdges.size(), 1UZ));
+            expect(findEdge(rootGraph(), uniqueNameOf("source"), outerUniqueName) != nullptr) << fatal << "there should be an edge between the source block and the outer subgraph";
+            expectGraphRunningAndConnected(ctx, sink, "after making a group");
+
+            // now group two of the blocks that are already inside that subgraph
+            UiGraphBlock* inner = groupAndWait(ctx, {uniqueNameOf("middleB"), uniqueNameOf("sink")}, outerInterior);
+            expect(inner != nullptr) << fatal;
+            const std::string innerUniqueName = inner->blockUniqueName;
+
+            UiGraphBlock* innerInterior = getGraph(inner);
+            expect(innerInterior != nullptr) << fatal;
+            expect(eq(innerInterior->childBlocks.size(), 2UZ));
+            expect(eq(innerInterior->childEdges.size(), 1UZ)) << "middleB->sink should stay inside the inner subgraph";
+            expect(eq(inner->inputPorts().size(), 1UZ)) << fatal << "only middleB's input goes between the inner subgraph and outer subgraph";
+            expect(inner->outputPorts().empty());
+
+            UiGraphBlock* reOuterInterior = g_state.dashboard->graphModel.recursiveFindBlockByUniqueName(outerInteriorUniqueName).block;
+            expect(reOuterInterior != nullptr) << fatal;
+            expect(eq(reOuterInterior->childBlocks.size(), 2UZ)) << "middleA and the new inner subgraph";
+            expect(eq(reOuterInterior->childEdges.size(), 1UZ));
+            expect(findEdge(reOuterInterior, uniqueNameOf("middleA"), innerUniqueName) != nullptr) << "middleA should now go into a port of the innermost subgraph";
+            expect(eq(rootGraph()->childEdges.size(), 1UZ)) << "the root graph looks the same";
+            expectGraphRunningAndConnected(ctx, sink, "after making a nested group");
+
+            g_state.stopScheduler();
+        });
+
+        registerGroupingTest("exported ports are removed when unexporting a port in a subgraph", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+            reloadAndWait(ctx, reloadGrouping);
+
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("middleA")});
+            expect(subgraph != nullptr) << fatal;
+            const std::string subgraphUniqueName = subgraph->blockUniqueName;
+            expect(eq(subgraph->inputPorts().size(), 1UZ)) << fatal;
+            expect(eq(subgraph->outputPorts().size(), 1UZ)) << fatal;
+            expect(findEdge(rootGraph(), uniqueNameOf("source"), subgraphUniqueName) != nullptr) << fatal;
+
+            // unexporting takes the internal port name, see FlowgraphEditor::drawPortsMenu
+            sendExportPort(subgraphUniqueName, uniqueNameOf("middleA"), "input", "in", "", /*exportFlag*/ false);
+            expect(waitForReplyOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "scheduler did not confirm unexporting";
+
+            const auto findSubgraphBlock = [subgraphUniqueName] { return g_state.dashboard->graphModel.recursiveFindBlockByUniqueName(subgraphUniqueName).block; };
             expect(awaitCondition(ctx,
-                [middleAUniqueName] {
-                    UiGraphBlock* root = rootGraph();
-                    return root->findBlockByUniqueName(middleAUniqueName) != nullptr && findSubgraphIn(root) == nullptr && root->childEdges.size() == 3UZ;
+                [&findSubgraphBlock] {
+                    UiGraphBlock* block = findSubgraphBlock();
+                    return block && block->inputPorts().empty();
                 }))
-                << fatal << "chain was not restored in the root graph";
+                << fatal << "the unexported input should be removed from the subgraph block";
 
-            for (const auto& [from, to] : {std::pair{sourceUniqueName, middleAUniqueName}, {middleAUniqueName, middleBUniqueName}, {middleBUniqueName, sinkUniqueName}}) {
-                const UiGraphEdge* edge = findEdge(rootGraph(), from, to);
-                expect(edge != nullptr) << std::format("edge {} -> {} should be restored", from, to);
-                expect(edge == nullptr || (edge->edgeSourcePort != nullptr && edge->edgeDestinationPort != nullptr)) << "restored edge should resolve its ports";
-            }
+            UiGraphBlock* unexported = findSubgraphBlock();
+            expect(unexported != nullptr) << fatal;
+            expect(eq(unexported->outputPorts().size(), 1UZ)) << "the output export should be the same";
+            expect(unexported->exportedInputPorts.empty()) << "the input export mapping should be gone";
+            expect(findEdge(rootGraph(), uniqueNameOf("source"), subgraphUniqueName) == nullptr) << "the edge into the unexported port should be gone";
+            expect(findEdge(rootGraph(), subgraphUniqueName, uniqueNameOf("middleB")) != nullptr) << "the other edge what connects to an exported port should not have been destroyed/removed";
+            expect(!hasInvalidEdges()) << "no edge should be left pointing at a port that no longer exists";
+            expect(gr::lifecycle::isActive(g_state.dashboard->scheduler->state())) << "unexporting a port should not stop/pause/error the scheduler";
 
             g_state.stopScheduler();
         });
@@ -475,37 +635,41 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             UiGraphBlock* loner1 = findByName("loner1");
             expect(loner1 != nullptr) << fatal;
-            const auto loner1UniqueName = loner1->blockUniqueName;
 
             g_state.dashboard->graphModel.selectedBlock = loner1;
 
-            sendRemoveBlock(loner1UniqueName);
+            sendRemoveBlock(loner1->blockUniqueName, rootOwners());
             expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm block removal";
-            expect(awaitCondition(ctx, [loner1UniqueName] { return rootGraph()->findBlockByUniqueName(loner1UniqueName) == nullptr; })) << fatal << "removed block should disappear from the graph model";
+            expect(awaitCondition(ctx, [] { return findByName("loner1") == nullptr; })) << fatal << "removed block should disappear from the graph model";
 
             expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
             g_state.stopScheduler();
         });
 
-        registerMessageTest("removing a subgraph clears the selection of an inner block", [](ImGuiTestContext* ctx) {
+        registerGroupingTest("removing a subgraph clears the selection of an inner block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
             reloadAndWait(ctx, reloadGrouping);
 
-            UiGraphBlock* loner1 = findByName("loner1");
-            UiGraphBlock* loner2 = findByName("loner2");
-            expect(loner1 != nullptr && loner2 != nullptr) << fatal;
-            const auto loner1UniqueName = loner1->blockUniqueName;
-            const auto loner2UniqueName = loner2->blockUniqueName;
+            const auto groupAndRemoveWithSelection = [ctx](bool selectInnerBlock) {
+                UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("loner1"), uniqueNameOf("loner2")});
+                expect(subgraph != nullptr) << fatal;
+                const std::string subgraphUniqueName = subgraph->blockUniqueName;
 
-            UiGraphBlock* subgraph = groupAndWait(ctx, {loner1UniqueName, loner2UniqueName});
-            expect(subgraph != nullptr) << fatal;
+                UiGraphBlock* innerBlock = findByName("loner1");
+                expect(innerBlock != nullptr) << fatal << "the grouped block should still exist, one level deeper";
+                g_state.dashboard->graphModel.selectedBlock = selectInnerBlock ? innerBlock : subgraph;
 
-            g_state.dashboard->graphModel.selectedBlock = subgraph;
+                sendRemoveBlock(subgraphUniqueName, rootOwners());
+                expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm subgraph removal";
+                expect(awaitCondition(ctx, [subgraphUniqueName] { return rootGraph()->findBlockByUniqueName(subgraphUniqueName) == nullptr; })) << fatal << "removed subgraph should disappear from the graph model";
 
-            sendRemoveBlock(subgraph->blockUniqueName);
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << "scheduler did not confirm subgraph removal";
-            expect(awaitCondition(ctx, [] { return findSubgraphIn(rootGraph()) == nullptr; })) << fatal << "removed subgraph should disappear from the graph model";
+                expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << (selectInnerBlock ? "selection should be cleared when a block nested inside the deleted subgraph is selected" : "selection should be cleared when the deleted subgraph itself is selected");
+            };
 
-            expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
+            groupAndRemoveWithSelection(/*selectInnerBlock*/ false);
+
+            reloadAndWait(ctx, reloadGrouping);
+            groupAndRemoveWithSelection(/*selectInnerBlock*/ true);
+
             g_state.stopScheduler();
         });
 
@@ -524,30 +688,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             g_state.stopScheduler();
         });
 
-        registerMessageTest("ungrouping clears the selection of an inner block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
+        registerGroupingTest("ungrouping clears the selection of an inner block", [](ImGuiTestContext* ctx) { // NOSONAR (cognitive complexity)
             reloadAndWait(ctx, reloadGrouping);
 
-            UiGraphBlock* loner1 = findByName("loner1");
-            UiGraphBlock* loner2 = findByName("loner2");
-            expect(loner1 != nullptr && loner2 != nullptr) << fatal;
-            const auto loner1UniqueName = loner1->blockUniqueName;
-            const auto loner2UniqueName = loner2->blockUniqueName;
-
-            UiGraphBlock* subgraph = groupAndWait(ctx, {loner1UniqueName, loner2UniqueName});
+            UiGraphBlock* subgraph = groupAndWait(ctx, {uniqueNameOf("loner1"), uniqueNameOf("loner2")});
             expect(subgraph != nullptr) << fatal;
 
             g_state.dashboard->graphModel.selectedBlock = subgraph;
 
-            sendUngroupBlocks(subgraph->blockUniqueName);
-            expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
-            expect(awaitCondition(ctx,
-                [loner1UniqueName, loner2UniqueName] {
-                    UiGraphBlock* root = rootGraph();
-                    return root->findBlockByUniqueName(loner1UniqueName) != nullptr && //
-                           root->findBlockByUniqueName(loner2UniqueName) != nullptr && //
-                           findSubgraphIn(root) == nullptr;
-                }))
-                << fatal << "ungrouped blocks should return to the root graph";
+            ungroupAndWait(ctx, subgraph->blockUniqueName);
+            expect(awaitCondition(ctx, [] { return isRootChild("loner1") && isRootChild("loner2"); })) << fatal << "ungrouped blocks should return to the root graph";
 
             expect(g_state.dashboard->graphModel.selectedBlock == nullptr) << "selection should be cleared when the selected block is deleted";
             g_state.stopScheduler();
@@ -562,38 +712,78 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
     }
 
-    static void sendExportPort(UiGraphBlock* subgraph, UiGraphBlock* innerBlock, const std::string& direction, const std::string& portName, const std::string& exportedName) {
+    static void sendExportPort(const std::string& subgraphUniqueName, const std::string& innerBlockUniqueName, const std::string& direction, const std::string& portName, const std::string& exportedName, bool exportFlag = true) {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::graph::property::kSubgraphExportPort;
-        message.serviceName = subgraph->blockUniqueName;
-        message.data        = gr::property_map{{"uniqueBlockName", innerBlock->blockUniqueName}, {"portDirection", direction}, {"portName", portName}, {"exportedName", exportedName}, {"exportFlag", true}};
+        message.serviceName = subgraphUniqueName;
+        message.data        = gr::property_map{{"uniqueBlockName", innerBlockUniqueName}, {"portDirection", direction}, {"portName", portName}, {"exportedName", exportedName}, {"exportFlag", exportFlag}};
         g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
-    static UiGraphBlock* groupAndWait(ImGuiTestContext* ctx, const std::vector<std::string>& uniqueNames, const std::string& graphType = "gr::Graph"s) {
-        sendGroupBlocks(uniqueNames, graphType);
+    static std::string graphTypeFor(ImGuiTestContext* ctx) { return std::string(kSubgraphBlockTypenameAndDescriptions[static_cast<std::size_t>(ctx->Test->ArgVariant)].typeName); }
+
+    static bool isManagedVariant(ImGuiTestContext* ctx) { return !graphTypeFor(ctx).starts_with("gr::Graph"); }
+
+    // group some blocks and return the ui graphmodel representation of the resulting subgraph. which type of scheduler/graph is determined by the test params
+    static UiGraphBlock* groupAndWait(ImGuiTestContext* ctx, const std::vector<std::string>& uniqueNames, UiGraphBlock* parentGraph = nullptr) {
+        const std::string parentUniqueName = (parentGraph ? parentGraph : rootGraph())->blockUniqueName;
+        const auto        reFindParent     = [parentUniqueName] { return g_state.dashboard->graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
+
+        sendGroupBlocks(uniqueNames, graphTypeFor(ctx), ownersFor(reFindParent()));
         expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << "scheduler should confirm grouping";
 
-        const bool grouped = awaitCondition(ctx, [expectedChildren = uniqueNames.size()] {
-            UiGraphBlock* subgraph = findSubgraphIn(rootGraph());
+        const bool grouped = awaitCondition(ctx, [&] {
+            UiGraphBlock* parent   = reFindParent();
+            UiGraphBlock* subgraph = parent ? findSubgraphIn(parent) : nullptr;
             UiGraphBlock* interior = subgraph ? getGraph(subgraph) : nullptr;
-            return interior && interior->childBlocks.size() == expectedChildren;
+            if (!interior || interior->childBlocks.size() != uniqueNames.size()) {
+                return false;
+            }
+            return std::ranges::all_of(uniqueNames, [interior](const std::string& name) { return interior->findBlockByUniqueName(name) != nullptr; });
         });
         expect(grouped) << "subgraph with grouped blocks should also appear in the graph model";
-        return grouped ? findSubgraphIn(rootGraph()) : nullptr;
+        return grouped ? findSubgraphIn(reFindParent()) : nullptr;
+    }
+
+    static void ungroupAndWait(ImGuiTestContext* ctx, const std::string& subgraphUniqueName, UiGraphBlock* parentGraph = nullptr) {
+        const std::string parentUniqueName = (parentGraph ? parentGraph : rootGraph())->blockUniqueName;
+        const auto        reFindParent     = [parentUniqueName] { return g_state.dashboard->graphModel.recursiveFindBlockByUniqueName(parentUniqueName).block; };
+
+        sendUngroupBlocks(subgraphUniqueName, ownersFor(reFindParent()));
+        expect(waitForReplyOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << "scheduler did not confirm ungrouping";
+        expect(awaitCondition(ctx,
+            [&] {
+                UiGraphBlock* parent = reFindParent();
+                return parent && parent->findBlockByUniqueName(subgraphUniqueName) == nullptr;
+            }))
+            << fatal << "the graph block from an ungrouped subgraph should no longer exist";
+    }
+
+    static void messageTestGuiFunc(ImGuiTestContext*) {
+        IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::SetWindowPos({0, 0});
+        ImGui::SetWindowSize(ImVec2(800, 800));
+        g_state.dashboard->handleMessages();
     }
 
     void registerMessageTest(const char* name, ImGuiTestTestFunc testFunc) {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "graphmodel", name);
         t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
-        t->GuiFunc = [](ImGuiTestContext*) {
-            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
-            ImGui::SetWindowPos({0, 0});
-            ImGui::SetWindowSize(ImVec2(800, 800));
-            g_state.dashboard->handleMessages();
-        };
+        t->GuiFunc  = &messageTestGuiFunc;
         t->TestFunc = testFunc;
+    }
+
+    /// run test foreach item in kSubgraphBlockTypenameAndDescriptions
+    void registerGroupingTest(const char* name, ImGuiTestTestFunc testFunc) {
+        for (std::size_t variant = 0UZ; variant < kSubgraphBlockTypenameAndDescriptions.size(); ++variant) {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "graphmodel", name);
+            t->SetOwnedName(std::format("{}, {}", name, kSubgraphBlockTypenameAndDescriptions[variant].description).c_str());
+            t->ArgVariant = static_cast<int>(variant);
+            t->SetVarsDataType<opendigitizer::test::TestDashboardRunner>();
+            t->GuiFunc  = &messageTestGuiFunc;
+            t->TestFunc = testFunc;
+        }
     }
 };
 
@@ -605,6 +795,8 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
+    // TODO: fix gnuradio having this keyed under CountingSinkImpl
+    gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {

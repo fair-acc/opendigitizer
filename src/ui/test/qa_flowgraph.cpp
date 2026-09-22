@@ -15,6 +15,7 @@
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrFourierBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
+#include <gnuradio-4.0/testing/NullSources.hpp>
 
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
@@ -23,9 +24,7 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
-#include "blocks/TestSpectrumGenerator.hpp"
-
-#include "scope_exit.hpp"
+#include "blocks/TestSpectrumGenerator.hpp" // although the symbol is unused by this file, we need this for static block registration
 
 #include <cmrc/cmrc.hpp>
 
@@ -156,29 +155,12 @@ TestState g_state;
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
-    [[nodiscard]] static bool waitForRepliesOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1) {
-        std::optional<gr::Message>   outReply;
-        std::size_t                  remaining    = count;
-        const auto                   subscription = g_state.dashboard->graphModel.subscribeToResponses([&outReply, endpoint, &remaining](const gr::Message& reply) {
-            if (reply.endpoint == endpoint) {
-                std::println("\tWhile waiting, got reply on endpoint: {}, remaining: {}", reply.data.value_or(gr::property_map{}), remaining - 1);
-            }
-            if (remaining > 0 && reply.endpoint == endpoint) {
-                --remaining;
-                if (remaining == 0) {
-                    outReply = reply;
-                }
-            }
+    [[nodiscard]] static bool waitForRepliesOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ) {
+        const bool replied = waitFor(ctx, [endpoint, count] { //
+            return static_cast<std::size_t>(std::ranges::count_if(g_state.collectedMessages, [endpoint](const gr::Message& message) { return message.endpoint == endpoint; })) >= count;
         });
-        Digitizer::utils::scope_exit unsubscribe  = [subscription] { g_state.dashboard->graphModel.unsubscribeFromResponses(subscription); };
-
-        auto start   = std::chrono::high_resolution_clock::now();
-        auto timeout = std::chrono::seconds(10);
-        while (!outReply && (std::chrono::high_resolution_clock::now() - start < timeout)) {
-            ctx->Yield();
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-        }
-        return outReply.has_value();
+        g_state.clearMessages();
+        return replied;
     }
 
     [[nodiscard]] static bool waitFor(ImGuiTestContext* ctx, const std::function<bool()>& predicate, std::chrono::seconds timeout = std::chrono::seconds(10)) {
@@ -233,6 +215,83 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return nullptr;
     }
 
+    // do Yield(2) before calling this if the node was just created
+    static ImVec2 nodeCentreOnScreen(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
+        editor.makeCurrent();
+        const auto   nodeId   = ax::NodeEditor::NodeId(block);
+        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
+        const ImVec2 size     = ax::NodeEditor::GetNodeSize(nodeId);
+        expect(position.x < FLT_MAX && position.y < FLT_MAX) << fatal << "the node editor does not know about this block yet";
+        expect(size.x > 0.f && size.y > 0.f) << fatal << "the node has not been laid out yet, probably do Yield(2) in the test";
+        return ax::NodeEditor::CanvasToScreen(position + size * 0.5f);
+    }
+
+    static void clickNode(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, ImGuiMouseButton button) {
+        ctx->MouseMoveToPos(nodeCentreOnScreen(editor, block));
+        ctx->Yield();
+        ctx->MouseClick(button);
+        ctx->Yield();
+    }
+
+    /// Moves the mouse onto the node for real, but makes the selection through the node editor's API.
+    /// TODO: figure out why imgui MouseClick and other testing mouse actions don't seem to work for
+    /// selecting nodes
+    static void selectNode(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, bool addToSelection = false) {
+        ctx->MouseMoveToPos(nodeCentreOnScreen(editor, block));
+        ctx->Yield();
+        editor.makeCurrent();
+        ax::NodeEditor::SelectNode(ax::NodeEditor::NodeId(block), addToSelection);
+        ctx->Yield();
+    }
+
+    [[nodiscard]] static ImGuiID frontmostPopupId() {
+        const ImGuiContext& g = *GImGui;
+        return g.OpenPopupStack.Size > 0 && g.OpenPopupStack.back().Window ? g.OpenPopupStack.back().Window->ID : 0;
+    }
+
+    static void clickInBlockContextMenu(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, const char* menuItem) {
+        clickNode(ctx, editor, block, ImGuiMouseButton_Right);
+        ctx->Yield();
+        const ImGuiID contextMenuId = frontmostPopupId();
+        expect(contextMenuId != 0u) << fatal << "right-clicking a block should open its context menu";
+        ctx->SetRef(contextMenuId);
+        ctx->ItemClick(menuItem);
+        ctx->Yield();
+        ctx->SetRef("Test Window");
+    }
+
+    static void chooseInBlockSelector(ImGuiTestContext* ctx, const char* typeName, const char* parametrization) {
+        ctx->SetRef("//New Block");
+        ctx->ItemClick("**/##filterTypenameType");
+        ctx->KeyCharsReplace(typeName);
+        ctx->Yield();
+        ctx->ItemClick(std::format("**/##{}", typeName).c_str());
+        ctx->Yield();
+        ctx->ItemClick(std::format("**/{}", parametrization).c_str());
+        ctx->Yield();
+        ctx->ItemClick("Ok");
+        ctx->Yield();
+        ctx->SetRef("Test Window");
+    }
+
+    static DigitizerUi::UiGraphBlock* findRootChildByName(std::string_view blockName) {
+        auto& children = g_state.currentRootBlock().childBlocks;
+        auto  it       = std::ranges::find(children, blockName, [](const auto& child) { return std::string_view(child->blockName); });
+        return it == children.end() ? nullptr : it->get();
+    }
+
+    static DigitizerUi::UiGraphBlock* findRootChildByUniqueName(std::string_view uniqueName) {
+        auto& children = g_state.currentRootBlock().childBlocks;
+        auto  it       = std::ranges::find(children, uniqueName, [](const auto& child) { return std::string_view(child->blockUniqueName); });
+        return it == children.end() ? nullptr : it->get();
+    }
+
+    static DigitizerUi::UiGraphBlock* findSubgraphInCurrentRoot() {
+        auto& children = g_state.currentRootBlock().childBlocks;
+        auto  it       = std::ranges::find_if(children, [](const auto& child) { return child->isGraph() || child->isScheduler(); });
+        return it == children.end() ? nullptr : it->get();
+    }
+
     static void requestEmplaceBlock(DigitizerUi::FlowgraphEditor& editor, std::string blockType) {
         auto owner = editor.ownersForRoot();
         expect(owner.has_value()) << fatal;
@@ -252,6 +311,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowSize(ImVec2(800, 800));
             g_state.drawGraph();
             g_state.dashboard->handleMessages();
+        };
+
+        constexpr auto pageGuiFunc = [](ImGuiTestContext*) {
+            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::SetWindowPos({0, 0});
+            ImGui::SetWindowSize(ImVec2(1024, 800));
+            if (g_state.dashboard) {
+                g_state.flowgraphPage.draw();
+                g_state.dashboard->handleMessages();
+            }
         };
 
         {
@@ -616,6 +685,208 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 g_state.stopScheduler();
             };
         }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Place a block using the new block selector");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = pageGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reloadFromYamlString(simpleGraph);
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                auto& graphModel = g_state.dashboard->graphModel;
+                graphModel.requestAvailableBlocksTypesUpdate();
+                expect(waitFor(ctx, [&graphModel] { return graphModel.knownBlockTypes.contains("opendigitizer::Arithmetic"); })) << fatal << "the block registry should have reached the UI before the selector is opened\n";
+
+                const auto arithmeticBlockCount = [] { return std::ranges::count_if(g_state.currentRootBlock().childBlocks, [](const auto& child) { return child->blockTypeName == "opendigitizer::Arithmetic<float64>"; }); };
+                expect(arithmeticBlockCount() == 0) << fatal << "initial number of blocks should be 0, verifying that it increases to 1";
+
+                ctx->SetRef("Test Window");
+                ctx->ItemClick("//Button Overlay/Add block...");
+                ctx->Yield();
+
+                chooseInBlockSelector(ctx, "opendigitizer::Arithmetic", "<float64>");
+
+                expect(waitFor(ctx, [&] { return arithmeticBlockCount() == 1; })) << "the type chosen in the dialog should be emplaced into the graph\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Deleting a block clears the node selection");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = pageGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reloadGrouping();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                ctx->SetRef("Test Window");
+                auto& editor = g_state.flowgraphPage.currentEditor();
+                ctx->Yield(2);
+                editor.makeCurrent();
+                ax::NodeEditor::NavigateToContent(0.0f);
+                ctx->Yield(2);
+
+                DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
+                DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
+                DigitizerUi::UiGraphBlock* loner1  = findRootChildByName("loner1");
+                expect(middleA != nullptr && middleB != nullptr && loner1 != nullptr) << fatal;
+                const std::string loner1UniqueName = loner1->blockUniqueName;
+
+                selectNode(ctx, editor, middleA);
+                selectNode(ctx, editor, middleB, /*addToSelection*/ true);
+                expect(eq(editor.selectedBlockUniqueNames().size(), 2UZ)) << fatal << "both blocks should be selected before the deletion\n";
+
+                // test that deleting a block clears the selection
+                editor.requestBlockDeletion(loner1UniqueName);
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlockRemoved)) << fatal << "scheduler did not confirm the removal\n";
+                expect(waitFor(ctx, [&] { return findRootChildByUniqueName(loner1UniqueName) == nullptr; })) << fatal << "the deleted block should disappear from the graph model\n";
+                ctx->Yield(); // let the editor draw once, which is where stale node ids are dropped
+
+                expect(findRootChildByName("middleA") != nullptr && findRootChildByName("middleB") != nullptr) << "the selected blocks themselves should still be there\n";
+                expect(editor.selectedBlockUniqueNames().empty()) << "deleting a block should clear the node editor selection\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Group and ungroup blocks from the context menu");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = pageGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                g_state.reloadGrouping();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                ctx->SetRef("Test Window");
+                auto& editor = g_state.flowgraphPage.currentEditor();
+                ctx->Yield(2);
+                editor.makeCurrent();
+                ax::NodeEditor::NavigateToContent(0.0f);
+                ctx->Yield(2);
+
+                DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
+                DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
+                expect(middleA != nullptr && middleB != nullptr) << fatal;
+                const std::vector<std::string> groupedNames{middleA->blockUniqueName, middleB->blockUniqueName};
+
+                selectNode(ctx, editor, middleA);
+                selectNode(ctx, editor, middleB, /*addToSelection*/ true);
+                expect(eq(editor.selectedBlockUniqueNames().size(), 2UZ)) << fatal << "clicking and ctrl-clicking should select both blocks\n";
+
+                clickInBlockContextMenu(ctx, editor, middleB, "Group blocks");
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << fatal << "the menu item should have asked the scheduler to group the selection\n";
+
+                expect(waitFor(ctx,
+                    [&] {
+                        DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                        DigitizerUi::UiGraphBlock* interior = subgraph && subgraph->isScheduler() ? (subgraph->childBlocks.empty() ? nullptr : subgraph->childBlocks.front().get()) : subgraph;
+                        return interior && std::ranges::all_of(groupedNames, [interior](const std::string& name) { //
+                            return interior->findBlockByUniqueName(name) != nullptr && findRootChildByUniqueName(name) == nullptr;
+                        });
+                    }))
+                    << fatal << "both selected blocks should have moved into a new subgraph\n";
+
+                ctx->Yield(3); // let the editor lay out the node for the new subgraph
+
+                DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                expect(subgraph != nullptr) << fatal;
+                clickInBlockContextMenu(ctx, editor, subgraph, "Ungroup blocks");
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlocksUngrouped)) << fatal << "the menu item should have asked the scheduler to ungroup\n";
+
+                expect(waitFor(ctx, [&] {
+                    return findSubgraphInCurrentRoot() == nullptr && //
+                           std::ranges::all_of(groupedNames, [](const std::string& name) { return findRootChildByUniqueName(name) != nullptr; });
+                })) << "ungrouping through the context menu should bring both blocks back to the root graph\n";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        for (bool pickGraphTypeInDialog : {false, true}) {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Group blocks inside a subgraph editor");
+            t->SetOwnedName(pickGraphTypeInDialog ? "Group blocks inside a subgraph editor, managed subgraph picked in the dialog" : "Group blocks inside a subgraph editor, unmanaged subgraph");
+            t->ArgVariant = pickGraphTypeInDialog ? 1 : 0;
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = pageGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                const bool pickInDialog = ctx->Test->ArgVariant == 1;
+
+                g_state.reloadSubgraph();
+                g_state.waitForScheduler(ctx);
+                while (!g_state.hasBlocks()) {
+                    ctx->Yield();
+                }
+
+                g_state.enterSubgraphEditor();
+                expect(g_state.flowgraphPage.editorCount() > 1) << fatal;
+
+                auto& graphModel = g_state.dashboard->graphModel;
+                graphModel.requestAvailableBlocksTypesUpdate();
+                expect(waitFor(ctx, [&graphModel] { return graphModel.knownSchedulerTypes.contains("gr::scheduler::Simple"); })) << fatal << "the scheduler registry should have reached the UI\n";
+
+                ctx->SetRef("Test Window");
+                auto& editor = g_state.flowgraphPage.currentEditor();
+                ctx->Yield(2);
+                editor.makeCurrent();
+                ax::NodeEditor::NavigateToContent(0.0f);
+                ctx->Yield(2);
+
+                auto& innerBlocks = g_state.currentRootBlock().childBlocks;
+                expect(innerBlocks.size() >= 2UZ) << fatal << "qa_subgraph.grc should have at least two blocks inside its subgraph\n";
+                DigitizerUi::UiGraphBlock*     first  = innerBlocks[0].get();
+                DigitizerUi::UiGraphBlock*     second = innerBlocks[1].get();
+                const std::vector<std::string> groupedNames{first->blockUniqueName, second->blockUniqueName};
+
+                selectNode(ctx, editor, first);
+                selectNode(ctx, editor, second, /*addToSelection*/ true);
+                expect(eq(editor.selectedBlockUniqueNames().size(), 2UZ)) << fatal << "both blocks inside the subgraph should be selected\n";
+
+                if (pickInDialog) {
+                    clickInBlockContextMenu(ctx, editor, second, "Group blocks and pick graph type...");
+                    chooseInBlockSelector(ctx, "gr::scheduler::Simple", "<gr::scheduler::ExecutionPolicy::singleThreaded>");
+                } else {
+                    clickInBlockContextMenu(ctx, editor, second, "Group blocks");
+                }
+
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << fatal << "grouping inside a subgraph editor should reach the owning scheduler\n";
+
+                expect(waitFor(ctx,
+                    [&] {
+                        DigitizerUi::UiGraphBlock* nested = findSubgraphInCurrentRoot();
+                        if (!nested) {
+                            return false;
+                        }
+                        DigitizerUi::UiGraphBlock* interior = nested->isScheduler() ? (nested->childBlocks.empty() ? nullptr : nested->childBlocks.front().get()) : nested;
+                        return interior && std::ranges::all_of(groupedNames, [interior](const std::string& name) { return interior->findBlockByUniqueName(name) != nullptr; });
+                    }))
+                    << fatal << "a nested subgraph holding both blocks should appear inside the subgraph editor\n";
+
+                DigitizerUi::UiGraphBlock* nested = findSubgraphInCurrentRoot();
+                expect(nested != nullptr) << fatal;
+                expect(pickInDialog ? nested->isScheduler() : nested->isGraph()) << "the type of subgraph should match what the user asked for\n";
+
+                g_state.stopScheduler();
+            };
+        }
     }
 };
 
@@ -624,9 +895,11 @@ template<typename Registry>
 void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
+    gr::registerBlock<opendigitizer::Arithmetic, float, double>(registry);
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
+    // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
+    gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 
     std::print("Available blocks:\n");
     for (auto& blockName : registry.keys()) {
