@@ -23,6 +23,12 @@ struct TestDashboardRunner {
     cmrc::embedded_filesystem previousReloadFilesystem = defaultGRCFilesystem;
     std::string               previousReloadGRCPath    = defaultGRCPath;
 
+    // sometimes, a UI testing interaction such as MouseClick will both cause a
+    // message to be sent and then some frames to be processed, resulting in a
+    // missed message. For this reason, we listen to all messages since the last
+    // wait-for-reply (which clears the collection), or the start of the test case
+    std::vector<gr::Message> collectedMessages;
+
     virtual ~TestDashboardRunner() = default;
 
     virtual void waitForScheduler(                                           //
@@ -30,6 +36,11 @@ struct TestDashboardRunner {
         std::chrono::milliseconds timeout  = std::chrono::seconds(5),        //
         std::source_location      location = std::source_location::current() //
     ) {
+        // this is a bit weird to put here semantically, but we need to remember to call it at the start of each test
+        // case and in practice any test that needs to listen for messages will be calling waitForScheduler once at
+        // start of test anyways, so just put this here
+        clearMessages();
+
         if (!dashboard || !dashboard->scheduler || dashboard->scheduler->state() == gr::lifecycle::State::STOPPED) {
             reload(previousReloadFilesystem, previousReloadGRCPath.c_str());
         }
@@ -95,6 +106,13 @@ struct TestDashboardRunner {
         assert(dashboard->scheduler);
 
         onDashboardLoaded();
+
+        // loading a new dashboard, listen to messages sent to it. the
+        // subscription will stick around until the dashboard is destroyed,
+        // that's okay because we only have one dashboard at a time.
+        clearMessages();
+        std::ignore = this->dashboard->graphModel.subscribeToResponses( //
+            [this](const gr::Message& reply) { collectedMessages.push_back(reply); });
     }
 
     /// Creates a fresh Scheduler and Graph so that tests are more individual and deterministics (i.e. not influenced by previous test runs)
@@ -126,10 +144,7 @@ struct TestDashboardRunner {
         }
     }
 
-    void startScheduler() {
-        assert(dashboard && dashboard->scheduler && "startScheduler called with no scheduler");
-        std::ignore = dashboard->scheduler->stop();
-    }
+    void clearMessages() { this->collectedMessages.clear(); }
 };
 } // namespace opendigitizer::test
 

@@ -8,7 +8,7 @@ blocks:
   - id: gr::testing::Copy<float32>
     parameters:
       name: middleB
-  - id: gr::basic::DataSink<float32>
+  - id: gr::testing::AtomicCountingSink<float32>
     parameters:
       name: sink
   - id: opendigitizer::SineSource<float32>
