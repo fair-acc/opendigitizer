@@ -62,6 +62,12 @@ const Palette& LookAndFeel::palette() const noexcept {
         .rowBgAlt = rgba(0x333333),
 
         .highlightedSearchResultsBg = rgba(0x1A94F0, 0x66), // saturated but transparent blue, goes behind white text
+
+        .errorColor = rgba(0xFF0000),
+
+        .currentDashboardPanelBg = rgba(0xFFFFFF, 0x33),
+
+        .contentSeparator = rgba(0xFFFFFF, 0x33),
     };
     static const Palette lightModePalette{
         .gridLines = quarterTransparentBlack,
@@ -88,6 +94,12 @@ const Palette& LookAndFeel::palette() const noexcept {
         .rowBgAlt = rgba(0xCCCCCC),
 
         .highlightedSearchResultsBg = rgba(0xFFFF00, 0x88),
+
+        .errorColor = rgba(0xFF0000),
+
+        .currentDashboardPanelBg = rgba(0x000000, 0x33),
+
+        .contentSeparator = rgba(0x000000, 0x33),
     };
 
     return style == Style::Light ? lightModePalette : darkModePalette;
@@ -108,7 +120,7 @@ void LookAndFeel::loadFonts() {
         0x2200, 0x22FF,                                                           // Mathematical Operators (√, ∑, ∫, ≤, ≥, ≠, ∞, etc.)
         0, 0};
     static const ImWchar              glyphRanges[]          = {// pick individual glyphs and specific sub-ranges rather than full range
-        0XF005, 0XF2ED,                   // 0xf005 is "", 0xf2ed is "trash can"
+        0XF002, 0XF2ED,                   // 0xf002 is "magnifying glass", 0xf005 is "", 0xf2ed is "trash can"
         0X2B, 0X2B,                       // plus
         0XF055, 0XF055,                   // circle-plus
         0XF201, 0XF83E,                   // fa-chart-line, fa-wave-square

@@ -20,6 +20,9 @@
 
 namespace DigitizerUi {
 
+/// square main-window icon button, sized via LookAndFeel::mainWindowIconButtonSize()
+bool plotButton(const char* glyph, const char* tooltip, float buttonSize) noexcept;
+
 class DashboardPage {
 public:
     enum class Mode { View, Interaction, Layout };

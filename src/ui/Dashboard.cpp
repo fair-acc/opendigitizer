@@ -186,6 +186,36 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
     errCb();
 }
 
+std::vector<std::string> readStringList(const gr::property_map& map, std::string_view key) {
+    std::vector<std::string> result;
+    const auto               value = map.find_value(key);
+    if (!value) {
+        return result;
+    }
+    const auto view = value->get_if<gr::TensorView<gr::pmt::Value>>();
+    if (!view) {
+        return result;
+    }
+    for (const auto& element : *view) {
+        if (element.is_string()) {
+            result.push_back(element.value_or(std::string{}));
+        }
+    }
+    return result;
+}
+
+std::unordered_map<std::string, std::string> readStringMap(const gr::property_map& map, std::string_view key) {
+    std::unordered_map<std::string, std::string> result;
+    if (const auto nested = map.get_if<gr::property_map>(key)) {
+        for (const auto& [entryKey, entryValue] : *nested) {
+            if (entryValue.is_string()) {
+                result.emplace(entryKey, entryValue.value_or(std::string{}));
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 DashboardStorageInfo::~DashboardStorageInfo() noexcept {
@@ -392,15 +422,24 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
             }
         }();
 
-        if (const auto dashboardUri = opencmw::URI<>(std::string(description->storageInfo->path)); dashboardUri.hostName().has_value()) {
-            const auto remoteUri = dashboardUri.factory().hostName(*dashboardUri.hostName()).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build();
-            gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&remoteUri](auto& block) {
-                if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
-                    auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
-                    sourceBlock->host = remoteUri.str();
-                }
-            });
-        }
+        // figure out what the host is for RemoteSourceBlocks that use relative URIs for their source
+        // If the dashboard's storage path does not start with http/https, that probably indicates a
+        // local file path and where the user is running the service on their machine.
+        const std::string_view storagePath     = description->storageInfo->path;
+        const bool             isRemoteStorage = storagePath.starts_with("http://") || storagePath.starts_with("https://");
+        const std::string      sourceHost      = [&]() -> std::string {
+            if (!isRemoteStorage) {
+                return "https://localhost:8443";
+            }
+            const opencmw::URI<> dashboardUri{std::string(storagePath)};
+            return dashboardUri.factory().hostName(dashboardUri.hostName().value_or("localhost")).port(dashboardUri.port().value_or(8080)).scheme(dashboardUri.scheme().value_or("https")).build().str();
+        }();
+        gr::graph::forEachBlock<gr::block::Category::NormalBlock>(grGraph, [&sourceHost](auto& block) {
+            if (block->typeName().starts_with("opendigitizer::RemoteStreamSource") || block->typeName().starts_with("opendigitizer::RemoteDataSetSource")) {
+                auto* sourceBlock = static_cast<opendigitizer::RemoteSourceBase*>(block->raw());
+                sourceBlock->host = sourceHost;
+            }
+        });
 
         assignScheduler(std::move(grGraph));
 
@@ -673,6 +712,18 @@ void Dashboard::save() {
     headerYaml["favorite"] = description->isFavorite;
     std::chrono::year_month_day ymd(std::chrono::floor<std::chrono::days>(description->lastUsed.value()));
     headerYaml["lastUsed"] = std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()), static_cast<unsigned>(ymd.month()), static_cast<unsigned>(ymd.day()));
+
+    gr::Tensor<gr::pmt::Value> tagsTensor;
+    for (const std::string& tag : description->tags) {
+        tagsTensor.emplace_back(tag);
+    }
+    headerYaml["tags"] = std::move(tagsTensor);
+
+    property_map keyValueTagsMap;
+    for (const auto& [key, value] : description->keyValueTags) {
+        keyValueTagsMap[key] = value;
+    }
+    headerYaml["keyValueTags"] = std::move(keyValueTagsMap);
 
     auto graphYaml = gr::detail::saveGraphToMap(*pluginLoader, scheduler->graph());
     graphModel.saveBlockPositions(graphYaml);
@@ -1216,9 +1267,16 @@ void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClie
 
             auto lastUsed = rootMap.contains("lastUsed") && valueForKey("lastUsed").is_string() ? getDate(valueForKey("lastUsed").value_or(std::string())) : std::nullopt;
 
-            cb(std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed));
+            auto dashboardDescription          = std::make_shared<DashboardDescription>(PrivateTag{}, std::filesystem::path(name).stem().native(), storageInfo, name, isFavorite, lastUsed);
+            dashboardDescription->tags         = readStringList(rootMap, "tags");
+            dashboardDescription->keyValueTags = readStringMap(rootMap, "keyValueTags");
+            cb(std::move(dashboardDescription));
         },
         [cb]() { cb({}); });
+}
+
+void DashboardDescription::loadFlowgraphAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& filename, std::function<void(std::string&&)>&& cb, std::function<void()>&& errCb) {
+    fetch(std::move(client), storageInfo, filename, {What::Flowgraph}, [callback = std::move(cb)](std::array<std::string, 1>&& data) mutable { callback(std::move(data[0])); }, std::move(errCb));
 }
 
 std::shared_ptr<const DashboardDescription> DashboardDescription::createEmpty(const std::string& name) { return std::make_shared<DashboardDescription>(PrivateTag{}, name, DashboardStorageInfo::memoryDashboardStorage(), std::string{}, false, std::nullopt); }

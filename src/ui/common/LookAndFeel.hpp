@@ -31,6 +31,36 @@ constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
+inline ImVec4 lightenColor(const ImVec4& color, float percent) {
+    float h;
+    float s;
+    float v;
+    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
+    s = std::max(0.0f, s * percent);
+    float r;
+    float g;
+    float b;
+    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
+    return {r, g, b, color.w};
+}
+
+inline ImVec4 darkenColor(const ImVec4& color, float percent) {
+    float h;
+    float s;
+    float v;
+    ImGui::ColorConvertRGBtoHSV(color.x, color.y, color.z, h, s, v);
+    v = std::max(0.0f, v * percent);
+    float r;
+    float g;
+    float b;
+    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
+    return {r, g, b, color.w};
+}
+
+/// Depends on LookAndFeel, defined after. reads whether it is light or dark
+/// mode, and lightens if in dark mode or darkens if in light mode
+inline ImVec4 darkenOrLighten(ImVec4 color, float percentage);
+
 struct ImFont;
 
 namespace DigitizerUi {
@@ -66,6 +96,12 @@ struct Palette {
     ImVec4 rowBgAlt;
 
     ImVec4 highlightedSearchResultsBg;
+
+    ImVec4 errorColor;
+
+    ImVec4 currentDashboardPanelBg;
+
+    ImVec4 contentSeparator; // subtle divider lines between page content areas
 };
 
 struct LookAndFeel {
@@ -132,5 +168,9 @@ private:
 };
 
 } // namespace DigitizerUi
+
+inline ImVec4 darkenOrLighten(ImVec4 color, float percentage) { //
+    return DigitizerUi::LookAndFeel::instance().style == DigitizerUi::LookAndFeel::Style::Dark ? lightenColor(color, percentage) : darkenColor(color, percentage);
+};
 
 #endif

@@ -1,0 +1,117 @@
+diff --git a/ImGuiDatePicker.cpp b/ImGuiDatePicker.cpp
+index 8c81b2b..a7e8caf 100644
+--- a/ImGuiDatePicker.cpp
++++ b/ImGuiDatePicker.cpp
+@@ -224,7 +224,7 @@ namespace ImGui
+         return res;
+     }
+ 
+-    bool DatePickerEx(const std::string& label, tm& v, ImFont* altFont, bool clampToBorder, float itemSpacing)
++    bool DatePickerEx(const std::string& popupID, tm& v, ImFont* altFont, bool clampToBorder, float itemSpacing)
+     {
+         bool res = false;
+ 
+@@ -232,29 +232,20 @@ namespace ImGui
+         if (window->SkipItems)
+             return false;
+ 
+-        bool hiddenLabel = label.substr(0, 2) == "##";
+-        std::string myLabel = (hiddenLabel) ? label.substr(2) : label;
+-
+-        if (!hiddenLabel)
+-        {
+-            Text("%s", label.c_str());
+-            SameLine((itemSpacing == 0.0f) ? 0.0f : GetCursorPos().x + itemSpacing);
+-        }
+-
+         if (clampToBorder)
+-            SetNextItemWidth(GetContentRegionAvail().x);
++            SetNextWindowSize({GetContentRegionAvail().x, 0.F});
+ 
+         const ImVec2 windowSize = ImVec2(274.5f, 301.5f);
+         SetNextWindowSize(windowSize);
+ 
+-        if (BeginCombo(std::string("##" + myLabel).c_str(), TimePointToLongString(v).c_str()))
++        if (BeginPopup(popupID.c_str(), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize))
+         {
+             int monthIdx = GET_MONTH_UNSCALED(v);
+             int year = GET_YEAR(v);
+ 
+             PushItemWidth((GetContentRegionAvail().x * 0.5f));
+ 
+-            if (ComboBox("##CmbMonth_" + myLabel, MONTHS, monthIdx, altFont))
++            if (ComboBox("##CmbMonth", MONTHS, monthIdx, altFont))
+             {
+                 SET_MONTH(v, monthIdx + 1);
+                 res = true;
+@@ -264,7 +255,7 @@ namespace ImGui
+             SameLine();
+             PushItemWidth(GetContentRegionAvail().x);
+ 
+-            if (InputInt(std::string("##IntYear_" + myLabel).c_str(), &year))
++            if (InputInt("##IntYear", &year))
+             {
+                 SET_YEAR(v, std::min(std::max(IMGUI_DATEPICKER_YEAR_MIN, year), IMGUI_DATEPICKER_YEAR_MAX));
+                 res = true;
+@@ -286,7 +277,7 @@ namespace ImGui
+             PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+             BeginDisabled(IsMinDate(v));
+ 
+-            if (ArrowButtonEx(std::string("##ArrowLeft_" + myLabel).c_str(), ImGuiDir_Left, ImVec2(arrowSize, arrowSize)))
++            if (ArrowButtonEx("##ArrowLeft", ImGuiDir_Left, ImVec2(arrowSize, arrowSize)))
+             {
+                 v = PreviousMonth(v);
+                 res = true;
+@@ -298,7 +289,7 @@ namespace ImGui
+             PushStyleColor(ImGuiCol_Button, GetStyleColorVec4(ImGuiCol_Text));
+             SetCursorPosY(GetCursorPosY() + 2.0f);
+ 
+-            if (ButtonEx(std::string("##ArrowMid_" + myLabel).c_str(), ImVec2(bulletSize, bulletSize)))
++            if (ButtonEx("##ArrowMid", ImVec2(bulletSize, bulletSize)))
+             {
+                 v = Today();
+                 res = true;
+@@ -311,7 +302,7 @@ namespace ImGui
+             PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+             BeginDisabled(IsMaxDate(v));
+ 
+-            if (ArrowButtonEx(std::string("##ArrowRight_" + myLabel).c_str(), ImGuiDir_Right, ImVec2(arrowSize, arrowSize)))
++            if (ArrowButtonEx("##ArrowRight", ImGuiDir_Right, ImVec2(arrowSize, arrowSize)))
+             {
+                 v = NextMonth(v);
+                 res = true;
+@@ -324,7 +315,7 @@ namespace ImGui
+             constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit |
+                 ImGuiTableFlags_NoHostExtendX | ImGuiTableFlags_NoHostExtendY;
+ 
+-            if (BeginTable(std::string("##Table_" + myLabel).c_str(), 7, TABLE_FLAGS, GetContentRegionAvail()))
++            if (BeginTable("##Table", 7, TABLE_FLAGS, GetContentRegionAvail()))
+             {
+                 for (const auto& day : DAYS)
+                     TableSetupColumn(day.c_str(), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHeaderWidth, 30.0f);
+@@ -380,7 +371,7 @@ namespace ImGui
+                 EndTable();
+             }
+ 
+-            EndCombo();
++            EndPopup();
+         }
+ 
+         return res;
+diff --git a/ImGuiDatePicker.hpp b/ImGuiDatePicker.hpp
+index 91ed569..da045d7 100644
+--- a/ImGuiDatePicker.hpp
++++ b/ImGuiDatePicker.hpp
+@@ -13,7 +13,7 @@
+ 
+ namespace ImGui
+ {
+-    IMGUI_API bool DatePickerEx(const std::string& label, tm& v, ImFont* altFont, bool clampToBorder = false, float itemSpacing = 130.0f);
++    IMGUI_API bool DatePickerEx(const std::string& popupID, tm& v, ImFont* altFont, bool clampToBorder = false, float itemSpacing = 130.0f);
+ 
+-    IMGUI_API bool DatePicker(const std::string& label, tm& v, bool clampToBorder = false, float itemSpacing = 130.0f);
++    IMGUI_API bool DatePicker(const std::string& popupID, tm& v, bool clampToBorder = false, float itemSpacing = 130.0f);
+ }
+-- 
+2.51.0
+
