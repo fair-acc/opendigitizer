@@ -97,7 +97,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), [[maybe_unused]] auto&&... deviceContext) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
