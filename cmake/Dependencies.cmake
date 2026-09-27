@@ -1,6 +1,6 @@
 include(FetchContent)
-include(DependenciesSHAs)
-include(CompileGr4Release)
+include(${CMAKE_CURRENT_LIST_DIR}/DependenciesSHAs.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/CompileGr4Release.cmake)
 
 find_package(gnuradio4 4.0.0 QUIET)
 if (NOT gnuradio4_FOUND)

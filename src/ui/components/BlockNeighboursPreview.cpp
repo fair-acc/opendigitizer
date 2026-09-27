@@ -1,11 +1,11 @@
 #include "BlockNeighboursPreview.hpp"
-#include "../FlowgraphPage.hpp"
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 #include "Block.hpp"
+#include "DataTypeStyle.hpp"
 
 #include <imgui.h>
-#include <imgui_node_editor.h>
 #include <ranges>
 #include <string>
 
@@ -82,8 +82,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         return;
     }
 
-    if (!ax::NodeEditor::GetCurrentEditor()) {
-        // no node editor context active (e.g. DashboardPage) — skip preview
+    if (!context.showNeighboursPreview) {
         return;
     }
 
@@ -162,13 +161,13 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     const float middleBlockX = startX + (hasLeft ? leftRectsMaxWidth + blockSpacing : 0);
     const float rightBlocksX = middleBlockX + centerBlockWidth + blockSpacing;
 
-    const auto& style = ax::NodeEditor::GetStyle();
-
-    const ImU32 fillColor        = ImGui::ColorConvertFloat4ToU32(style.Colors[ax::NodeEditor::StyleColor_NodeBg]);
-    const ImU32 hoverColor       = ImGui::ColorConvertFloat4ToU32(style.Colors[ax::NodeEditor::StyleColor_HovNodeBorder]);
-    const ImU32 borderColor      = ImGui::ColorConvertFloat4ToU32(style.Colors[ax::NodeEditor::StyleColor_NodeBorder]);
-    const ImU32 bgColor          = ImGui::ColorConvertFloat4ToU32(style.Colors[ax::NodeEditor::StyleColor_Bg]);
-    const ImU32 outerBorderColor = ImGui::ColorConvertFloat4ToU32(style.Colors[ax::NodeEditor::StyleColor_SelNodeBorder]);
+    // same colours as the flowgraph editor: palette entries, hover/selection as imgui-node-editor's defaults
+    const auto& palette          = LookAndFeel::instance().palette();
+    const ImU32 fillColor        = ImGui::ColorConvertFloat4ToU32(palette.flowgraphNodeBg);
+    const ImU32 hoverColor       = IM_COL32(50, 176, 255, 255);
+    const ImU32 borderColor      = ImGui::ColorConvertFloat4ToU32(palette.flowgraphNodeBorder);
+    const ImU32 bgColor          = ImGui::ColorConvertFloat4ToU32(palette.flowgraphBg);
+    const ImU32 outerBorderColor = IM_COL32(255, 176, 50, 255);
     const float borderThickness  = 2.0f;
     const ImU32 lineColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
     const ImU32 textColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
@@ -184,7 +183,9 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor);
 
     auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, UiGraphPort& port) { //
-        drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portName, port.portType, /*mainFlowGraph=*/false);
+        if (drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portType)) {
+            ImGui::SetTooltip("%s (%s)", port.portName.c_str(), port.portType.c_str());
+        }
     };
 
     // Draw left ports first for middle block

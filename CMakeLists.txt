@@ -23,7 +23,15 @@ if(USE_DWARF4)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gdwarf-4")
 endif()
 
-option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ON)
+if(PROJECT_IS_TOP_LEVEL)
+  set(OD_IS_SUBPROJECT OFF)
+else()
+  set(OD_IS_SUBPROJECT ON)
+endif()
+# as a sub-project only the libraries are configured
+option(OPENDIGITIZER_ENABLE_TESTING "Enable unit tests" ${PROJECT_IS_TOP_LEVEL})
+option(OPENDIGITIZER_BUILD_SERVICE "Build the OpenDigitizer service" ${PROJECT_IS_TOP_LEVEL})
+option(OPENDIGITIZER_BUILD_UI_APP "Build the OpenDigitizer UI application by default" ${PROJECT_IS_TOP_LEVEL})
 option(OPENDIGITIZER_WARNINGS_AS_ERRORS "Treat OpenDigitizer compiler warnings as errors" ON)
 
 # Set proper default for ENABLE_IMGUI_TEST_ENGINE, the idea is:
@@ -60,11 +68,12 @@ set(OD_WASM_GNURADIO4_PREFIX
 set(WITH_DOCS OFF)
 set(SDL_TEST OFF)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(cmake/Dependencies.cmake)
-include(cmake/StandardProjectSettings.cmake)
-include(cmake/PreventInSourceBuilds.cmake)
-include(cmake/Cache.cmake) # enable cache system
+if(PROJECT_IS_TOP_LEVEL)
+  include(cmake/StandardProjectSettings.cmake)
+  include(cmake/PreventInSourceBuilds.cmake)
+  include(cmake/Cache.cmake) # enable cache system
+endif()
 include(cmake/CMakeRC.cmake)
 add_library(opendigitizer-options INTERFACE)
 # standard compiler warnings
@@ -80,8 +89,11 @@ if(NOT EMSCRIPTEN)
 endif()
 
 add_subdirectory(src/ui)
+if(OPENDIGITIZER_ENABLE_TESTING AND NOT EMSCRIPTEN)
+  add_subdirectory(src/ui/test/consumer ${CMAKE_BINARY_DIR}/src/ui/test/consumer)
+endif()
 
-option(DISABLE_WASM_BUILD "Skip building WASM UI" OFF)
+option(DISABLE_WASM_BUILD "Skip building WASM UI" ${OD_IS_SUBPROJECT})
 
 if(NOT DISABLE_WASM_BUILD)
   # FILEPATH cache would turn a bare "emcmake" into ${CMAKE_SOURCE_DIR}/emcmake.
@@ -99,13 +111,14 @@ if(NOT DISABLE_WASM_BUILD)
             "${OD_WASM_GNURADIO4_PREFIX}")
   ExternalProject_Add(
     ui-wasm
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/ui
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
     PREFIX ${PREFIX_DIR}/ui-wasm
     LIST_SEPARATOR |
     CONFIGURE_COMMAND
-      ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_SOURCE_DIR}/src/ui -B ${BUILD_DIR}/ui-wasm
-      -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path} -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
-      -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM=${CMAKE_SOURCE_DIR}/emmake_make.sh
+      ${EMCMAKE_COMMAND} ${CMAKE_COMMAND} -G "Unix Makefiles" -S ${CMAKE_CURRENT_SOURCE_DIR}/src/ui -B
+      ${BUILD_DIR}/ui-wasm -DCMAKE_PREFIX_PATH:STRING=${_wasm_cmake_prefix_path}
+      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+      -DCMAKE_MAKE_PROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/emmake_make.sh
       -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
       -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
       -DGNURADIO_PARSE_REGISTRATIONS_TOOL_CXX_COMPLILER=${CMAKE_CXX_COMPILER}
@@ -116,8 +129,6 @@ if(NOT DISABLE_WASM_BUILD)
     BINARY_DIR ${BUILD_DIR}/ui-wasm
     BUILD_ALWAYS 1
     INSTALL_COMMAND "" # skip install
-    CMAKE_ARGS -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE} -DCMAKE_MAKE_PROGRAM:FILEPATH=${CMAKE_MAKE_PROGRAM}
-               -DCMAKE_MODULE_PATH="${CMAKE_SOURCE_DIR}/cmake"
     BUILD_BYPRODUCTS ${WASM_BUILD_DIR}/web/index.html ${WASM_BUILD_DIR}/web/index.js ${WASM_BUILD_DIR}/web/index.wasm)
   add_custom_command(
     TARGET ui-wasm
@@ -126,6 +137,6 @@ if(NOT DISABLE_WASM_BUILD)
     COMMENT "Copy WASM UI and SIDE_MODULE plugins to ui-wasm/web")
 endif()
 
-if(NOT EMSCRIPTEN)
+if(OPENDIGITIZER_BUILD_SERVICE AND NOT EMSCRIPTEN)
   add_subdirectory(src/service)
 endif()

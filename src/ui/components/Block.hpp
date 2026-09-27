@@ -31,6 +31,7 @@ struct BlockControlsPanelContext {
     Mode mode = Mode::None;
 
     bool wantsSelectedBlockTab = true;
+    bool showNeighboursPreview = false;
 
     ExportedPropertyList propertyList;
 

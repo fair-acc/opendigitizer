@@ -67,7 +67,8 @@ int main(int argc, char* argv[]) {
     blocks.push_back(std::move(sourceBlock));
     blocks.push_back(std::move(destBlock));
 
-    g_context.graphModel = &graphModel;
+    g_context.graphModel            = &graphModel;
+    g_context.showNeighboursPreview = true;
 
     // Get pointers to blocks from the vector since we moved our local pointers
     auto* mainBlock = graphModel.rootBlock.childBlocks[0].get();
