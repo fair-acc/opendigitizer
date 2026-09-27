@@ -120,8 +120,8 @@ inline bool initImGui(const std::string& glslVersion) {
     ImGui_ImplSDL3_InitForOpenGL(g_Window, g_GLContext);
 
     ImGuiIO& io                  = ImGui::GetIO();
-    ImPlot::GetInputMap().Select = ImGuiPopupFlags_MouseButtonLeft;
-    ImPlot::GetInputMap().Pan    = ImGuiPopupFlags_MouseButtonMiddle;
+    ImPlot::GetInputMap().Select = ImGuiMouseButton_Left;
+    ImPlot::GetInputMap().Pan    = ImGuiMouseButton_Middle;
 
     // For an Emscripten build we are disabling file-system access, so let's not
     // attempt to do a fopen() of the imgui.ini file. You may manually call

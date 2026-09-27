@@ -136,7 +136,7 @@ static void renderFrameOnly(App* app, gr::profiling::PeriodicTimer& tim) {
     tim.begin();
 
     imgui_helper::newFrame();
-    TouchHandler<>::applyToImGui();
+    TouchHandler<>::endFrame();
 
     app->processAndRender();
     tim.snapshot("processAndRender");

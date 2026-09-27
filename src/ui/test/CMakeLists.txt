@@ -23,6 +23,11 @@ target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib opendigitize
 target_include_directories(qa_FuzzySearch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_FuzzySearch COMMAND qa_FuzzySearch)
 
+add_executable(qa_TouchHandler qa_TouchHandler.cpp)
+target_link_libraries(qa_TouchHandler PRIVATE ut opendigitizer-uilib opendigitizer-options)
+target_include_directories(qa_TouchHandler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_TouchHandler COMMAND qa_TouchHandler)
+
 add_executable(qa_TestSpectrumGenerator qa_TestSpectrumGenerator.cpp)
 target_link_libraries(
   qa_TestSpectrumGenerator

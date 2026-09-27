@@ -10,6 +10,7 @@
 
 #include "../common/AppDefinitions.hpp"
 #include "../common/ImguiWrap.hpp"
+#include "../common/TouchHandler.hpp"
 #include "../components/ImGuiNotify.hpp"
 
 #include <SDL3/SDL_opengl.h>
@@ -251,11 +252,11 @@ public:
                 rightMenu.addButton<false, newLine>(
                     "",
                     [](MenuButton& button) {
-                        LookAndFeel::mutableInstance().touchDiagnostics = !LookAndFeel::instance().touchDiagnostics;
-                        button.font                                     = LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig;
-                        button.toolTip                                  = LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
+                        TouchHandler<>::diagnostics = !TouchHandler<>::diagnostics;
+                        button.font                 = TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig;
+                        button.toolTip              = TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
                     },
-                    LookAndFeel::instance().touchDiagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().touchDiagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
+                    TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
             }
 
             if (LookAndFeel::instance().isDesktop) {

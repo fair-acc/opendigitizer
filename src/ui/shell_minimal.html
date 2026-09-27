@@ -18,6 +18,7 @@
         top: 0px;
         left: 0px;
         margin: 0px;
+        touch-action: none; /* otherwise the browser claims drags as pan gestures and SDL never sees them */
         overflow: hidden;
         display: block;
         image-rendering: optimizeSpeed;

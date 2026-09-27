@@ -85,12 +85,11 @@ struct LookAndFeel {
     };
 
 #ifdef __EMSCRIPTEN__
-    const bool isDesktop = false;
+    static constexpr bool isDesktop = false;
 #else
-    const bool isDesktop = true;
+    static constexpr bool isDesktop = true;
 #endif
-    bool                      prototypeMode    = false;
-    bool                      touchDiagnostics = false;
+    bool                      prototypeMode = false;
     std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
     float                     defaultDPI  = 76.2f;
     float                     verticalDPI = defaultDPI;
