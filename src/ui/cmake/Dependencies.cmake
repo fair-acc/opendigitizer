@@ -214,7 +214,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
 
   target_compile_options(imgui PRIVATE -Wno-old-style-cast -Wno-deprecated-enum-enum-conversion -Wno-double-promotion)
 
-  target_include_directories(imgui PUBLIC ${imgui_test_engine_SOURCE_DIR})
+  target_include_directories(imgui SYSTEM PUBLIC ${imgui_test_engine_SOURCE_DIR})
 endif()
 
 add_library(implot OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_DIR}/implot_items.cpp

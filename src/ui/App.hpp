@@ -103,7 +103,10 @@ public:
                 if (dashboard->isInUse) {
                     wait = true;
                 } else if (dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
-                    dashboard->scheduler->stop();
+                    if (auto stopped = dashboard->scheduler.stopUnlessPending(); !stopped) {
+                        components::Notification::error(std::format("Failed to stop current flowgraph, can not load the dashboard: {}", stopped.error().message));
+                        return;
+                    }
                     wait = true;
                 }
 
@@ -149,7 +152,9 @@ public:
 
     void closeDashboard() {
         if (dashboard && dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
-            dashboard->scheduler->stop();
+            if (auto stopped = dashboard->scheduler.stopUnlessPending(); !stopped) {
+                components::Notification::error(std::format("Failed to stop flowgraph: {}", stopped.error().message));
+            }
         }
         dashboardPage.reset();
         flowgraphPage.setDashboard(nullptr);

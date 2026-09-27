@@ -12,7 +12,7 @@ using namespace boost;
 
 DigitizerUi::components::BlockControlsPanelContext g_context;
 
-class TestApp : public DigitizerUi::test::ImGuiTestApp {
+struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 private:
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 

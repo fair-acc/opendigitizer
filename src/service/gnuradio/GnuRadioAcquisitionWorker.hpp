@@ -605,7 +605,11 @@ private:
 
                     {
                         std::lock_guard lg{_graphChangeMutex};
-                        schedulerThread = std::jthread([scheduler = _scheduler.get()] { scheduler->runAndWait(); });
+                        schedulerThread = std::jthread([scheduler = _scheduler.get()] {
+                            if (auto schedulerResult = scheduler->runAndWait(); !schedulerResult) {
+                                std::println(std::cerr, "Scheduler stopped with error: {}", schedulerResult.error().message);
+                            }
+                        });
                     }
                 }
 
@@ -776,14 +780,13 @@ private:
             return true;
         }
 
-        const auto& key         = pollerIt->first;
-        auto&       pollerEntry = pollerIt->second;
+        auto& pollerEntry = pollerIt->second;
 
         if (pollerEntry.poller == nullptr) {
             return true;
         }
         Acquisition reply;
-        auto        processData = [&reply, &key, signalName, &pollerEntry](std::span<const gr::DataSet<DataSetPollerEntry::SampleType>> dataSets) {
+        auto        processData = [&reply, signalName](std::span<const gr::DataSet<DataSetPollerEntry::SampleType>> dataSets) {
             const auto& dataSet = dataSets[0];
 
             if (!dataSet.timing_events.empty()) {

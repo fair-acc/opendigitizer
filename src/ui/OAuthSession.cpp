@@ -12,7 +12,9 @@ OAuthSession& OAuthSession::instance() {
 void OAuthSession::signIn(const std::string& scope, const std::string& clientid, const std::string& endpoint) {
     if (secret.empty()) {
         opencmw::IoBuffer   inBuf;
-        opencmw::OAuthInput in{scope, clientid};
+        opencmw::OAuthInput in;
+        in.scope                        = scope;
+        in.clientId                     = clientid;
         std::tie(publicKey, privateKey) = opencmw::majordomo::cryptography::generateKeyPair();
         publicHash                      = opencmw::majordomo::cryptography::publicKeyHash(publicKey);
         in.publicKey                    = std::string(publicKey.key, publicKey.key + crypto_sign_PUBLICKEYBYTES);
@@ -33,8 +35,10 @@ void OAuthSession::signIn(const std::string& scope, const std::string& clientid,
     }
     if (accessToken.empty()) {
         opencmw::IoBuffer   inBuf;
-        opencmw::OAuthInput in{scope, clientid};
-        in.secret = secret;
+        opencmw::OAuthInput in;
+        in.scope    = scope;
+        in.clientId = clientid;
+        in.secret   = secret;
         opencmw::serialise<opencmw::YaS>(inBuf, in);
         clientContext.set(
             opencmw::URI(endpoint),

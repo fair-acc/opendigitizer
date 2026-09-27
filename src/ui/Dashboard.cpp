@@ -793,7 +793,9 @@ void Dashboard::deleteChart(UIWindow* win) {
         return;
     }
     // Remove block from UI graph
-    uiGraph.removeBlockByName(win->block->uniqueName());
+    if (auto removed = uiGraph.removeBlockByName(win->block->uniqueName()); !removed) {
+        components::Notification::warning(std::format("Failed to remove chart '{}': {}", win->block->uniqueName(), removed.error().message));
+    }
     // Remove the UIWindow
     std::erase_if(uiWindows, [win](const UIWindow& w) { return &w == win; });
 }
@@ -888,7 +890,9 @@ bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) 
     std::string              windowName         = win.window ? win.window->name : oldUniqueName;
 
     // Remove old block from UI graph
-    uiGraph.removeBlockByName(oldUniqueName);
+    if (auto removed = uiGraph.removeBlockByName(oldUniqueName); !removed) {
+        components::Notification::warning(std::format("Failed to remove chart '{}': {}", oldUniqueName, removed.error().message));
+    }
 
     // Create new chart block with preserved sink names
     gr::property_map chartParameters;

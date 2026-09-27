@@ -122,9 +122,9 @@ public:
     [[nodiscard]] YRangeResult getY(double tMin, double tMax) const override {
         auto [startIdx, count] = getXRange(tMin, tMax);
         if (count == 0) {
-            return {{}, 0.0, 0.0};
+            return {};
         }
-        return {std::span<const float>(_yValues.data() + startIdx, count), _xValues[startIdx], _xValues[startIdx + count - 1]};
+        return {std::span<const float>(_yValues.data() + startIdx, count), _xValues[startIdx], _xValues[startIdx + count - 1], nullptr};
     }
     [[nodiscard]] TagRangeResult getTags(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
     [[nodiscard]] XYTagRange     xyTagRange(double tMin, double tMax) const override {
@@ -246,7 +246,7 @@ public:
     [[nodiscard]] DataRange getTagRange(double /*tMin*/, double /*tMax*/) const override { return {0, 0}; }
 
     [[nodiscard]] XRangeResult   getX(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
-    [[nodiscard]] YRangeResult   getY(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
+    [[nodiscard]] YRangeResult   getY(double /*tMin*/, double /*tMax*/) const override { return {}; }
     [[nodiscard]] TagRangeResult getTags(double /*tMin*/, double /*tMax*/) const override { return {{}, 0.0, 0.0}; }
     [[nodiscard]] XYTagRange     xyTagRange(double /*tMin*/, double /*tMax*/) const override { return XYTagRange{}; }
 
