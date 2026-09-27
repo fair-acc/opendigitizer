@@ -289,12 +289,7 @@ target_sources(
             charts/YYChart.hpp
             components/ColourManager.hpp
             utils/ShaderHelper.hpp)
-target_link_libraries(
-  opendigitizer-charts
-  INTERFACE opendigitizer-ui-components
-            implot3d
-            $<TARGET_OBJECTS:implot3d>
-            gnuradio4::vir)
+target_link_libraries(opendigitizer-charts INTERFACE opendigitizer-ui-components implot3d gnuradio4::vir)
 target_compile_definitions(opendigitizer-charts INTERFACE GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT})
 if(NOT EMSCRIPTEN)
   target_compile_definitions(opendigitizer-charts INTERFACE GL_GLEXT_PROTOTYPES)
