@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstring>
 #include <type_traits>
+#include <utility>
 
 /**
  * @brief RAII wrapper for managing C-style resources in a C++ context, supporting various API schemas.

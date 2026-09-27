@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 option(OD_DISABLE_DEMO_FLOWGRAPHS "Disable adding the demo flowgraphs to UI" OFF)
+option(OPENDIGITIZER_BUILD_UI_APP "Build the OpenDigitizer UI application by default" ON)
 option(OD_WASM_STATIC_BLOCKLIBS "WASM: statically link Gr*Blocks into the main module (no SIDE_MODULE dlopen)" ON)
 set(GR_MAX_WASM_THREAD_COUNT
     16
@@ -40,7 +41,6 @@ if(EMSCRIPTEN)
   # (e.g. -option A -option B => -option A B)(CMake default behaviour), but instead keep them separated (needed for
   # proper operation of emscripten)
   add_compile_options(
-    -DIMGUI_DISABLE_FILE_FUNCTIONS
     -Wall
     -Wformat
     ${_od_emscripten_optimisation_flags}
@@ -75,7 +75,6 @@ if(EMSCRIPTEN)
 endif()
 
 # dependencies: needs to be after adding the emscripten option so they are applied to dependency targets as well
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(../../cmake/CMakeRC.cmake)
 include(cmake/Dependencies.cmake)
 
@@ -85,8 +84,6 @@ if(NOT TARGET opendigitizer-options)
   include(../../cmake/CompilerWarnings.cmake)
   set_project_warnings(opendigitizer-options)
 endif()
-
-add_compile_definitions(GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT}) # propagate to C++
 
 if(NOT TARGET od_acquisition)
   add_subdirectory(../acquisition acquisition)
@@ -229,85 +226,79 @@ else() # native build
   endif()
 endif()
 
-# All ui/ translation-units (except main.cpp) are built by ${target_name}lib static lib just so they can be shared by
-# the tests and not build N times
+# each layer links only the one below; consumers pick the lowest layer they need via the opendigitizer:: aliases
 add_library(
-  ${target_name}lib STATIC
-  App.hpp
-  FlowgraphPage.cpp
-  FlowgraphPage.hpp
-  FlowgraphLayout.cpp
-  FlowgraphLayout.hpp
-  GraphModel.cpp
-  GraphModel.hpp
-  Dashboard.cpp
-  Dashboard.hpp
-  DashboardPage.cpp
-  DashboardPage.hpp
-  OAuthSession.cpp
-  OAuthSession.hpp
-  OpenDashboardPage.cpp
-  OpenDashboardPage.hpp
-  RemoteSignalSources.cpp
-  RemoteSignalSources.hpp
-  components/AppHeader.hpp
-  components/Block.cpp
-  components/Block.hpp
-  components/BlockNeighboursPreview.cpp
-  components/BlockNeighboursPreview.hpp
+  opendigitizer-ui-common STATIC
+  common/AppDefinitions.hpp
+  common/Events.hpp
+  common/FramePacer.hpp
+  common/ImguiWrap.cpp
+  common/ImguiWrap.hpp
+  common/LookAndFeel.hpp
+  common/TouchHandler.hpp
+  utils/EmscriptenHelper.hpp
+  utils/TransparentStringHash.hpp)
+target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+target_link_libraries(
+  opendigitizer-ui-common
+  PRIVATE opendigitizer-options
+  PUBLIC implot raii_wrapper digitizer_common_utils)
+
+add_library(opendigitizer-look-and-feel STATIC common/LookAndFeel.cpp)
+target_link_libraries(
+  opendigitizer-look-and-feel
+  PRIVATE opendigitizer-options
+  PUBLIC opendigitizer-ui-common fonts ui_assets)
+
+add_library(
+  opendigitizer-ui-components STATIC
   components/Dialog.hpp
-  components/Docking.cpp
-  components/Docking.hpp
-  components/ExportedPropertiesList.hpp
-  components/ExportedPropertiesList.cpp
   components/FilterComboBoxes.hpp
+  components/ImGuiNotify.hpp
   components/InputTextCompletion.hpp
   components/Keypad.hpp
   components/ListBox.hpp
-  components/ImGuiNotify.hpp
   components/PopupMenu.hpp
   components/SelectedLabelsView.hpp
-  components/SignalSelector.hpp
-  components/SignalSelector.cpp
-  components/NewBlockSelector.hpp
-  components/NewBlockSelector.cpp
-  components/NewBlockSelectorFuzzySearch.hpp
-  components/NewBlockSelectorFuzzySearch.cpp
   components/Splitter.cpp
   components/Splitter.hpp
-  components/Toolbar.hpp
-  components/YesNoPopup.hpp
-  utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
-  utils/ImGuiDockSpaceState.cpp
-  common/AppDefinitions.hpp
-  common/Events.hpp
-  common/ImguiWrap.hpp
-  common/ImguiWrap.cpp
-  common/LookAndFeel.hpp
-  common/LookAndFeel.cpp
-  common/TouchHandler.hpp)
-
-target_sources(${target_name} PRIVATE main.cpp)
-
+  components/YesNoPopup.hpp)
 target_link_libraries(
-  ${target_name}lib
+  opendigitizer-ui-components
   PRIVATE opendigitizer-options
-  PUBLIC implot
-         implot3d
-         imgui-node-editor
-         od_acquisition
-         services
-         opendigitizer_version
-         plf_colony
-         ui_assets
-         core
-         client
-         stb
-         fonts
-         digitizer_settings
-         digitizer_common_utils
-         raii_wrapper
-         gnuradio4::vir)
+  PUBLIC opendigitizer-look-and-feel)
+
+add_library(opendigitizer-charts INTERFACE)
+target_sources(
+  opendigitizer-charts
+  INTERFACE FILE_SET
+            HEADERS
+            FILES
+            blocks/ImPlotSink.hpp
+            charts/Chart.hpp
+            charts/Charts.hpp
+            charts/SignalSink.hpp
+            charts/SinkRegistry.hpp
+            charts/SpectrumDensity.hpp
+            charts/SpectrumHelper.hpp
+            charts/SpectrumPlot.hpp
+            charts/SpectrumView.hpp
+            charts/SurfacePlot.hpp
+            charts/WaterfallPlot.hpp
+            charts/XYChart.hpp
+            charts/YYChart.hpp
+            components/ColourManager.hpp
+            utils/ShaderHelper.hpp)
+target_link_libraries(
+  opendigitizer-charts
+  INTERFACE opendigitizer-ui-components
+            implot3d
+            $<TARGET_OBJECTS:implot3d>
+            gnuradio4::vir)
+target_compile_definitions(opendigitizer-charts INTERFACE GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT})
+if(NOT EMSCRIPTEN)
+  target_compile_definitions(opendigitizer-charts INTERFACE GL_GLEXT_PROTOTYPES)
+endif()
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
   # Imported targets re-add gnuradio-core as DEFAULT (blocklib-core) or LINK_ONLY (dynload-impl). CMake 3.31 rejects
@@ -321,46 +312,140 @@ if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)
       set_property(TARGET ${_od_gr4_real} PROPERTY INTERFACE_LINK_LIBRARIES "")
     endif()
   endforeach()
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
+  target_link_libraries(opendigitizer-charts INTERFACE gnuradio4::gnuradio-blocklib-core
+                                                       gnuradio4::gnuradio-core-dynload)
   # Headers only (FetchContent). Must be COMPILE_ONLY — gr-basic/gr-filter INTERFACE-link gnuradio-core as DEFAULT,
   # which CMake 3.31 rejects next to dynload's WHOLE_ARCHIVE.
-  target_link_libraries(${target_name}lib PUBLIC "$<COMPILE_ONLY:gnuradio4::gr-basic>"
-                                                 "$<COMPILE_ONLY:gnuradio4::gr-filter>")
+  target_link_libraries(opendigitizer-charts INTERFACE "$<COMPILE_ONLY:gnuradio4::gr-basic>"
+                                                       "$<COMPILE_ONLY:gnuradio4::gr-filter>")
 elseif(EMSCRIPTEN AND OD_WASM_STATIC_BLOCKLIBS)
   # Old behaviour: bake blocklibs into the main module (no MAIN_MODULE / dlopen).
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
-  target_compile_definitions(${target_name}lib PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
+  target_link_libraries(opendigitizer-charts INTERFACE gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core)
+  target_compile_definitions(opendigitizer-charts INTERFACE OD_WASM_STATIC_BLOCKLIBS=1)
   target_compile_definitions(${target_name} PUBLIC OD_WASM_STATIC_BLOCKLIBS=1)
 else()
-  target_link_libraries(${target_name}lib PUBLIC gnuradio4::gnuradio-blocklib-core gnuradio4::gnuradio-core-dynload)
+  target_link_libraries(opendigitizer-charts INTERFACE gnuradio4::gnuradio-blocklib-core
+                                                       gnuradio4::gnuradio-core-dynload)
 endif()
 
 # Native always links blocklibs. WASM dynload loads SIDE_MODULE plugins at runtime; WASM static links them into the main
 # module like native.
 if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
   target_link_libraries(
-    ${target_name}lib
-    PUBLIC gnuradio4::GrBasicBlocksShared
-           gnuradio4::GrElectricalBlocksShared
-           gnuradio4::GrFileIoBlocksShared
-           gnuradio4::GrFilterBlocksShared
-           gnuradio4::GrFourierBlocksShared
-           gnuradio4::GrHttpBlocksShared
-           gnuradio4::GrMathBlocksShared
-           gnuradio4::GrTestingBlocksShared)
+    opendigitizer-charts
+    INTERFACE gnuradio4::GrBasicBlocksShared
+              gnuradio4::GrElectricalBlocksShared
+              gnuradio4::GrFileIoBlocksShared
+              gnuradio4::GrFilterBlocksShared
+              gnuradio4::GrFourierBlocksShared
+              gnuradio4::GrHttpBlocksShared
+              gnuradio4::GrMathBlocksShared
+              gnuradio4::GrTestingBlocksShared)
 endif()
 
+add_library(
+  opendigitizer-dashboard STATIC
+  Dashboard.cpp
+  Dashboard.hpp
+  DashboardPage.cpp
+  DashboardPage.hpp
+  GraphModel.cpp
+  GraphModel.hpp
+  MapUtils.hpp
+  RemoteSignalSources.cpp
+  RemoteSignalSources.hpp
+  Scheduler.hpp
+  blocks/Arithmetic.hpp
+  blocks/RemoteSource.hpp
+  blocks/SineSource.hpp
+  blocks/StridedWindow.hpp
+  blocks/TagToSample.hpp
+  blocks/TestSpectrumGenerator.hpp
+  blocks/meta.hpp
+  components/Block.cpp
+  components/Block.hpp
+  components/BlockNeighboursPreview.cpp
+  components/BlockNeighboursPreview.hpp
+  components/DataTypeStyle.cpp
+  components/DataTypeStyle.hpp
+  components/Docking.cpp
+  components/Docking.hpp
+  components/ExportedPropertiesList.cpp
+  components/ExportedPropertiesList.hpp
+  components/GlobalSignalLegend.hpp
+  components/SignalSelector.cpp
+  components/SignalSelector.hpp
+  utils/ImGuiDockSpaceState.cpp
+  utils/ImGuiDockSpaceState.hpp
+  utils/emscripten_compat.hpp)
+target_link_libraries(
+  opendigitizer-dashboard
+  PRIVATE opendigitizer-options
+  PUBLIC opendigitizer-charts
+         od_acquisition
+         services
+         core
+         client
+         plf_colony
+         digitizer_settings)
+if(OD_DISABLE_DEMO_FLOWGRAPHS)
+  target_compile_definitions(opendigitizer-dashboard PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
+else()
+  target_link_libraries(opendigitizer-dashboard PUBLIC sample_dashboards)
+endif()
+
+add_library(
+  opendigitizer-flowgraph-editor STATIC
+  FlowgraphLayout.cpp
+  FlowgraphLayout.hpp
+  FlowgraphPage.cpp
+  FlowgraphPage.hpp
+  common/ImguiNodeEditorWrap.hpp
+  components/NewBlockSelector.cpp
+  components/NewBlockSelector.hpp
+  components/NewBlockSelectorFuzzySearch.cpp
+  components/NewBlockSelectorFuzzySearch.hpp)
+target_link_libraries(
+  opendigitizer-flowgraph-editor
+  PRIVATE opendigitizer-options
+  PUBLIC opendigitizer-dashboard imgui-node-editor)
+
+add_library(
+  ${target_name}lib STATIC
+  App.hpp
+  OAuthSession.cpp
+  OAuthSession.hpp
+  OpenDashboardPage.cpp
+  OpenDashboardPage.hpp
+  blocks/ToolbarBlock.hpp
+  common/ImGuiHelperSDL.hpp
+  common/ImguiXKCD.hpp
+  components/AppHeader.hpp
+  components/Toolbar.hpp
+  utils/stb_impl.cpp) # STB is a library with linking issues -- impl instantiated only here
+target_link_libraries(
+  ${target_name}lib
+  PRIVATE opendigitizer-options
+  PUBLIC opendigitizer-flowgraph-editor opendigitizer_version stb)
 if(NOT EMSCRIPTEN)
   target_link_libraries(${target_name}lib PUBLIC fair-picoscope) # PicoScope blocks (gr-digitizers), native-only
 endif()
-if(OD_DISABLE_DEMO_FLOWGRAPHS)
-  target_compile_definitions(${target_name}lib PUBLIC OD_DISABLE_DEMO_FLOWGRAPHS)
-else()
-  target_link_libraries(${target_name}lib PUBLIC sample_dashboards)
-endif()
-target_compile_definitions(${target_name}lib PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
-if(NOT EMSCRIPTEN)
-  target_compile_definitions(${target_name}lib PUBLIC GL_GLEXT_PROTOTYPES)
+
+foreach(
+  _odLayer IN
+  ITEMS ui-common
+        look-and-feel
+        ui-components
+        charts
+        dashboard
+        flowgraph-editor)
+  add_library(opendigitizer::${_odLayer} ALIAS opendigitizer-${_odLayer})
+endforeach()
+add_library(opendigitizer::ui-app ALIAS ${target_name}lib)
+
+target_sources(${target_name} PRIVATE main.cpp)
+if(NOT OPENDIGITIZER_BUILD_UI_APP)
+  set_target_properties(${target_name} PROPERTIES EXCLUDE_FROM_ALL ON)
 endif()
 target_link_libraries(${target_name} PRIVATE ${target_name}lib opendigitizer-options)
 
@@ -463,7 +548,7 @@ inline constexpr std::array<std::string_view, ${_od_plugin_count}> kPluginWasmNa
 ${_od_plugin_names_code}};
 } // namespace Digitizer
 ")
-    target_include_directories(${target_name}lib PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
+    target_include_directories(opendigitizer-dashboard PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/include")
     message(STATUS "Using gnuradio4 SIDE_MODULE plugins: ${_od_plugin_name_list}")
     add_dependencies(${target_name} ${_od_plugin_targets})
   endif()

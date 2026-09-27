@@ -25,7 +25,6 @@
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 
-#include "../Dashboard.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 

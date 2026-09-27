@@ -3,8 +3,6 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/Message.hpp>
 
-#include "../App.hpp"
-
 #include "../blocks/RemoteSource.hpp"
 #include "FAIR/DeviceNameHelper.hpp"
 

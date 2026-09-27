@@ -3,12 +3,13 @@
 #include <functional>
 #include <vector>
 
-#include "common/ImguiWrap.hpp"
+#include "common/ImguiNodeEditorWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
 #include "Dashboard.hpp"
 
 #include "components/Block.hpp"
+#include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 
@@ -20,8 +21,6 @@ struct TestApp;
 namespace DigitizerUi {
 
 // Returns the pin positionY relative to the block
-float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight);
-void  drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& name, const std::string& type, bool mainFlowGraph = true);
 
 class FlowgraphEditor {
     friend struct ::TestState;
@@ -149,6 +148,7 @@ public:
 
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _exportPortTargetBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
+        _editPaneContext.showNeighboursPreview = true;
 
         if (rootBlock->blockCategory == "ScheduledBlockGroup") {
             if (!rootBlock->childBlocks.empty()) {
@@ -292,12 +292,6 @@ private:
     void drawRemoteYamlTab(Dashboard::Service& service);
 
 public:
-    struct DataTypeStyle {
-        std::uint32_t color;
-        bool          unsignedMarker = false;
-        bool          datasetMarker  = false;
-    };
-
     explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~FlowgraphPage();
 
@@ -315,8 +309,6 @@ public:
     void popEditor();
 
     void updateStyle(); // reads from LookAndFeel::instance().style
-
-    static const DataTypeStyle& styleForDataType(std::string_view type);
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 

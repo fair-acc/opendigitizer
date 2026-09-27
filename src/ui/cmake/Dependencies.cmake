@@ -1,9 +1,6 @@
 include(FetchContent)
-include(DependenciesSHAs)
-include(CompileGr4Release)
-
-# Enable Unicode planes for icons used in notifications
-add_compile_definitions(IMGUI_USE_WCHAR32)
+include(${CMAKE_CURRENT_LIST_DIR}/../../../cmake/DependenciesSHAs.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../../../cmake/CompileGr4Release.cmake)
 
 FetchContent_Declare(
   imgui
@@ -11,22 +8,19 @@ FetchContent_Declare(
   GIT_TAG v1.92.6-docking # latest as of 2026-03-17
   EXCLUDE_FROM_ALL SYSTEM)
 
-# Enables 32 bit vertex indices for ImGui
-add_compile_definitions("ImDrawIdx=unsigned int")
-
 FetchContent_Declare(
   implot
   GIT_REPOSITORY https://github.com/epezent/implot.git
   GIT_TAG v0.17 # latest as of 2024-11-30
-  PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot-imgui-1.92.6-compatibility.patch
-  EXCLUDE_FROM_ALL SYSTEM)
+  PATCH_COMMAND git checkout -- . && git apply
+                ${CMAKE_CURRENT_LIST_DIR}/patches/implot-imgui-1.92.6-compatibility.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   implot3d
   GIT_REPOSITORY https://github.com/brenocq/implot3d.git
   GIT_TAG v0.3
-        PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/implot3d-dynamic-tick-label-offset.patch
-  EXCLUDE_FROM_ALL SYSTEM)
+  PATCH_COMMAND git checkout -- . && git apply
+                ${CMAKE_CURRENT_LIST_DIR}/patches/implot3d-dynamic-tick-label-offset.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   imgui-node-editor
@@ -56,14 +50,22 @@ FetchContent_Declare(
   EXCLUDE_FROM_ALL SYSTEM)
 
 set(FETCH_CONTENT_UI_TARGETS
-  imgui
-  implot
-  implot3d
-  imgui-node-editor
-  stb
-  opencmw-cpp
-  plf_colony
-)
+    imgui
+    implot
+    implot3d
+    imgui-node-editor
+    stb
+    opencmw-cpp
+    plf_colony)
+
+if(OPENDIGITIZER_ENABLE_TESTING)
+  FetchContent_Declare(
+    ut
+    GIT_REPOSITORY https://github.com/boost-ext/ut.git
+    GIT_TAG ${GIT_SHA_UT}
+    SYSTEM EXCLUDE_FROM_ALL)
+  list(APPEND FETCH_CONTENT_UI_TARGETS ut)
+endif()
 
 # WASM dynload needs SIDE_MODULE *Plugin.wasm; static-blocklibs matches ci-latest-wasm-static.
 if(EMSCRIPTEN)
@@ -79,21 +81,20 @@ if(EMSCRIPTEN)
 endif()
 
 find_package(gnuradio4 4.0.0 QUIET)
-if (NOT gnuradio4_FOUND)
+if(NOT gnuradio4_FOUND)
   message(STATUS "Pre-built gnuradio4 not found, fetching and building from source...")
   FetchContent_Declare(
     gnuradio4
     GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
     GIT_TAG ${GIT_SHA_GNURADIO4}
-    OVERRIDE_FIND_PACKAGE
-    SYSTEM EXCLUDE_FROM_ALL)
+    OVERRIDE_FIND_PACKAGE SYSTEM EXCLUDE_FROM_ALL)
   list(APPEND FETCH_CONTENT_UI_TARGETS gnuradio4)
 endif()
 
 FetchContent_MakeAvailable(${FETCH_CONTENT_UI_TARGETS})
 
-# find_package sets GNURADIO4_WASM_PLUGIN_FILES from the install manifest; FetchContent exposes the
-# same basenames via GLOBAL property GR4_WASM_PLUGIN_FILES.
+# find_package sets GNURADIO4_WASM_PLUGIN_FILES from the install manifest; FetchContent exposes the same basenames via
+# GLOBAL property GR4_WASM_PLUGIN_FILES.
 if(NOT GNURADIO4_WASM_PLUGIN_FILES)
   get_property(GNURADIO4_WASM_PLUGIN_FILES GLOBAL PROPERTY GR4_WASM_PLUGIN_FILES)
 endif()
@@ -101,14 +102,14 @@ endif()
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 
 # PicoScope blocks (gr-digitizers) for local hardware dashboards; native-only (SDK + USB, not under emscripten)
-if (NOT EMSCRIPTEN)
-    FetchContent_Declare(
-            gr-digitizers
-            GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
-            GIT_TAG ${GIT_SHA_GR_DIGITIZERS}
-            EXCLUDE_FROM_ALL SYSTEM)
-    FetchContent_MakeAvailable(gr-digitizers)
-endif ()
+if(NOT EMSCRIPTEN)
+  FetchContent_Declare(
+    gr-digitizers
+    GIT_REPOSITORY https://github.com/fair-acc/gr-digitizers.git
+    GIT_TAG ${GIT_SHA_GR_DIGITIZERS}
+    EXCLUDE_FROM_ALL SYSTEM)
+  FetchContent_MakeAvailable(gr-digitizers)
+endif()
 
 if(NOT EMSCRIPTEN)
   find_package(SDL3 QUIET)
@@ -120,7 +121,8 @@ if(NOT EMSCRIPTEN)
     message(STATUS "SDL3 not found system-wide; falling back to FetchContent.")
     # set(SDL3_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
     set(SDL3_DISABLE_SDL3MAIN ON CACHE BOOL "" FORCE)
-    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+    set(SDL_SHARED ON CACHE BOOL "")
+    set(SDL_STATIC OFF CACHE BOOL "")
 
     FetchContent_Declare(
       sdl3
@@ -136,8 +138,7 @@ if(NOT EMSCRIPTEN)
   find_package(SDL3 REQUIRED)
   find_package(OpenGL REQUIRED COMPONENTS OpenGL)
 else() # Emscripten build
-  # SDL3 is provided by Emscripten ports (-s USE_SDL=3 in compile/link flags)
-  # WebGL is provided natively — no find_package needed
+  # SDL3 comes from the Emscripten ports (-s USE_SDL=3), WebGL from the browser
 endif()
 message(STATUS "SDL3_FOUND: ${SDL3_FOUND}")
 message(STATUS "SDL3_INCLUDE_DIRS: ${SDL3_INCLUDE_DIRS}")
@@ -196,6 +197,12 @@ if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to sp
 endif()
 
 target_include_directories(imgui SYSTEM BEFORE PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+# ImGui configuration changes its ABI and must reach every consumer of its headers: 32-bit vertex indices, Unicode
+# planes for the notification icons
+target_compile_definitions(imgui PUBLIC "ImDrawIdx=unsigned int" IMGUI_USE_WCHAR32 IMGUI_DEFINE_MATH_OPERATORS)
+if(EMSCRIPTEN)
+  target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_FILE_FUNCTIONS)
+endif()
 
 if(ENABLE_IMGUI_TEST_ENGINE)
   target_compile_definitions(
@@ -215,8 +222,12 @@ add_library(implot OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_D
 target_include_directories(implot SYSTEM BEFORE PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
-add_library(implot3d OBJECT ${implot3d_SOURCE_DIR}/implot3d.cpp ${implot3d_SOURCE_DIR}/implot3d_items.cpp
-                            ${implot3d_SOURCE_DIR}/implot3d_meshes.cpp ${implot3d_SOURCE_DIR}/implot3d_demo.cpp)
+add_library(
+  implot3d OBJECT
+  ${implot3d_SOURCE_DIR}/implot3d.cpp
+  ${implot3d_SOURCE_DIR}/implot3d_items.cpp
+  ${implot3d_SOURCE_DIR}/implot3d_meshes.cpp
+  ${implot3d_SOURCE_DIR}/implot3d_demo.cpp)
 target_include_directories(implot3d SYSTEM BEFORE PUBLIC ${implot3d_SOURCE_DIR})
 target_link_libraries(implot3d PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 

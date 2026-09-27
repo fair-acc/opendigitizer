@@ -4,7 +4,6 @@ set(CMAKE_CXX_STANDARD 23)
 project(opendigitizer-service LANGUAGES CXX)
 include(GNUInstallDirs)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../../cmake")
 include(cmake/Dependencies.cmake)
 
 if(NOT TARGET od_acquisition)
@@ -44,7 +43,6 @@ endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
 add_library(project_options INTERFACE)
-target_include_directories(project_options INTERFACE ${CMAKE_SOURCE_DIR}/3rd_party)
 
 target_compile_features(project_options INTERFACE cxx_std_23)
 
@@ -65,7 +63,8 @@ if(OPENDIGITIZER_ENABLE_TESTING)
   if(ENABLE_COVERAGE)
     if(UNIX AND NOT APPLE) # Linux
       message("Coverage reporting enabled")
-      include(cmake/CodeCoverage.cmake) # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
+      # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
+      include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/CodeCoverage.cmake)
       # (License: BSL-1.0)
       target_compile_options(
         project_options
@@ -111,7 +110,6 @@ add_subdirectory(gnuradio)
 add_subdirectory(rest) # worker providing access to static assets
 add_subdirectory(dashboard)
 
-message("COPY ${CMAKE_SOURCE_DIR}/demo_sslcert/demo_private.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR}")
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_private.key" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/demo_sslcert/demo_public.crt" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 

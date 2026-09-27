@@ -27,7 +27,6 @@
 #include <RestClient.hpp>
 #include <daq_api.hpp>
 
-#include "App.hpp"
 #include "GraphModel.hpp"
 
 #include "blocks/ImPlotSink.hpp"
