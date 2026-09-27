@@ -190,7 +190,7 @@ list(
   ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp)
 
 # imgui and implot are not CMake Projects, so we have to define their targets manually here
-add_library(imgui OBJECT ${IMGUI_SRCS})
+add_library(imgui STATIC ${IMGUI_SRCS})
 
 if(NOT EMSCRIPTEN) # emscripten comes with its own sdl, for native we have to specify the dependency
   target_link_libraries(imgui PUBLIC SDL3::SDL3 OpenGL::GL)
@@ -217,29 +217,29 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   target_include_directories(imgui SYSTEM PUBLIC ${imgui_test_engine_SOURCE_DIR})
 endif()
 
-add_library(implot OBJECT ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_DIR}/implot_items.cpp
+add_library(implot STATIC ${implot_SOURCE_DIR}/implot_demo.cpp ${implot_SOURCE_DIR}/implot_items.cpp
                           ${implot_SOURCE_DIR}/implot.cpp)
 target_include_directories(implot SYSTEM BEFORE PUBLIC ${implot_SOURCE_DIR})
-target_link_libraries(implot PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+target_link_libraries(implot PUBLIC imgui)
 
 add_library(
-  implot3d OBJECT
+  implot3d STATIC
   ${implot3d_SOURCE_DIR}/implot3d.cpp
   ${implot3d_SOURCE_DIR}/implot3d_items.cpp
   ${implot3d_SOURCE_DIR}/implot3d_meshes.cpp
   ${implot3d_SOURCE_DIR}/implot3d_demo.cpp)
 target_include_directories(implot3d SYSTEM BEFORE PUBLIC ${implot3d_SOURCE_DIR})
-target_link_libraries(implot3d PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+target_link_libraries(implot3d PUBLIC imgui)
 
 add_library(
-  imgui-node-editor OBJECT
+  imgui-node-editor STATIC
   ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor.cpp
   ${imgui-node-editor_SOURCE_DIR}/imgui_canvas.cpp
   ${imgui-node-editor_SOURCE_DIR}/imgui_node_editor_api.cpp
   ${imgui-node-editor_SOURCE_DIR}/crude_json.cpp)
 target_compile_options(imgui-node-editor PRIVATE -Wno-deprecated-declarations)
 target_include_directories(imgui-node-editor SYSTEM BEFORE PUBLIC ${imgui-node-editor_SOURCE_DIR})
-target_link_libraries(imgui-node-editor PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+target_link_libraries(imgui-node-editor PUBLIC imgui)
 
 add_library(stb INTERFACE)
 target_include_directories(stb SYSTEM INTERFACE ${stb_SOURCE_DIR})
