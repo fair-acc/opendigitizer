@@ -278,6 +278,7 @@ int main(int argc, char* argv[]) {
     g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/fg_dipole_intensity_ramp.grc");
 
     auto result = app.runTests();
+    g_state.dashboardPage.reset(); // before static destruction: its destructor deregisters from SinkRegistry::instance()
     g_state.dashboard.reset();
     return result ? 0 : 1;
 }

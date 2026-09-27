@@ -11,6 +11,17 @@
 
 namespace DigitizerUi {
 
+// a second stop request while one is pending is an invalid lifecycle transition (REQUESTED_STOP -> STOPPED is the
+// scheduler's own), so stop() is only requested from states that can still be stopped
+template<typename TScheduler>
+[[nodiscard]] std::expected<void, gr::Error> stopUnlessPending(TScheduler& scheduler) {
+    const gr::lifecycle::State state = scheduler.state();
+    if (state == gr::lifecycle::State::REQUESTED_STOP || state == gr::lifecycle::State::STOPPED) {
+        return {};
+    }
+    return scheduler.stop();
+}
+
 struct Scheduler {
 private:
     // TODO: When GR gets a type-erased scheduler, this will be replaced with it
@@ -239,6 +250,14 @@ private:
             _uiUpdateShutdown = true;
             _uiUpdateShutdown.notify_all();
 
+            // the start-up thread may still be on its way to RUNNING: stopping is only possible once it left IDLE or
+            // INITIALISED, otherwise the stop below is skipped and join() waits for a scheduler that keeps running
+            if (_thread.joinable()) {
+                for (auto state = _scheduler.state(); state == gr::lifecycle::State::IDLE || state == gr::lifecycle::State::INITIALISED; state = _scheduler.state()) {
+                    _scheduler.waitOnState(state);
+                }
+            }
+
             // Direct state change (same approach as GR4's ~SchedulerBase).
             // The message-based stop() requires the scheduler's main loop to process
             // it, which may be blocked on waitUntilChanged.  changeStateTo sets the
@@ -282,6 +301,8 @@ public:
             _scheduler->handleMessages(graphModel);
         }
     }
+
+    [[nodiscard]] std::expected<void, gr::Error> stopUnlessPending() { return DigitizerUi::stopUnlessPending(*_scheduler); }
 
     auto*       operator->() { return _scheduler.operator->(); }
     const auto* operator->() const { return _scheduler.operator->(); }

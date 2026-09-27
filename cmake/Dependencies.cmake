@@ -3,14 +3,13 @@ include(${CMAKE_CURRENT_LIST_DIR}/DependenciesSHAs.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/CompileGr4Release.cmake)
 
 find_package(gnuradio4 4.0.0 QUIET)
-if (NOT gnuradio4_FOUND)
+if(NOT gnuradio4_FOUND)
   message(STATUS "Pre-built gnuradio4 not found, fetching and building from source...")
   FetchContent_Declare(
     gnuradio4
     GIT_REPOSITORY https://github.com/fair-acc/gnuradio4.git
     GIT_TAG ${GIT_SHA_GNURADIO4}
-    OVERRIDE_FIND_PACKAGE
-    SYSTEM EXCLUDE_FROM_ALL)
+    OVERRIDE_FIND_PACKAGE SYSTEM EXCLUDE_FROM_ALL)
   list(APPEND FETCH_CONTENT_MAIN_TARGETS gnuradio4)
 endif()
 
@@ -26,12 +25,20 @@ FetchContent_Declare(
   GIT_TAG ${GIT_SHA_UT}
   SYSTEM EXCLUDE_FROM_ALL)
 
-list(APPEND FETCH_CONTENT_MAIN_TARGETS
+list(
+  APPEND
+  FETCH_CONTENT_MAIN_TARGETS
   opencmw-cpp
-  ut
-)
+  ut)
 
 FetchContent_MakeAvailable(${FETCH_CONTENT_MAIN_TARGETS})
+
+# zeromq's polling_util.hpp uses std::nothrow without including <new>, which libc++ does not provide transitively
+foreach(_zmqTarget IN ITEMS objects libzmq libzmq-static)
+  if(TARGET ${_zmqTarget} AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${_zmqTarget} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-includenew>)
+  endif()
+endforeach()
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
 

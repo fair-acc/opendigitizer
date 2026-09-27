@@ -68,6 +68,11 @@ set(OD_WASM_GNURADIO4_PREFIX
 set(WITH_DOCS OFF)
 set(SDL_TEST OFF)
 
+# GR4 builds against libc++ with Clang; OD and all dependencies must use the same standard library
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT EMSCRIPTEN)
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
+  add_link_options(-stdlib=libc++)
+endif()
 include(cmake/Dependencies.cmake)
 if(PROJECT_IS_TOP_LEVEL)
   include(cmake/StandardProjectSettings.cmake)
@@ -137,6 +142,12 @@ if(NOT DISABLE_WASM_BUILD)
     COMMENT "Copy WASM UI and SIDE_MODULE plugins to ui-wasm/web")
 endif()
 
-if(OPENDIGITIZER_BUILD_SERVICE AND NOT EMSCRIPTEN)
+# gr-digitizers provides the timing library the service registers only for GCC
+if(OPENDIGITIZER_BUILD_SERVICE
+   AND NOT EMSCRIPTEN
+   AND NOT
+       CMAKE_CXX_COMPILER_ID
+       MATCHES
+       "Clang")
   add_subdirectory(src/service)
 endif()

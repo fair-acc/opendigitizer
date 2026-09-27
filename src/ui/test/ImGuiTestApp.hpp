@@ -52,9 +52,8 @@ struct TestOptions {
  */
 class ImGuiTestApp {
     std::unique_ptr<ImGuiApp> _app;
-    ImGuiTestEngine*          _engine   = nullptr;
-    ImGuiTestEngineIO*        _engineIO = nullptr;
-    const TestOptions         _options  = {};
+    ImGuiTestEngine*          _engine  = nullptr;
+    const TestOptions         _options = {};
 
 public:
     explicit ImGuiTestApp(const TestOptions& = {});

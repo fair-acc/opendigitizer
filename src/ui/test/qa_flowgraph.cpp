@@ -610,6 +610,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                             .uniqueBlockName = port.ownerBlock->blockUniqueName,
                             .portDirection   = port.portDirection == gr::PortDirection::INPUT ? "input" : "output",
                             .portName        = port.portName,
+                            .exportedName    = {},
                             .exportFlag      = false,
                         });
                         expect(waitForRepliesOnEndpoint(ctx, gr::graph::property::kSubgraphExportedPort)) << "Scheduler never responded about the request to un-export a port\n" << fatal;
