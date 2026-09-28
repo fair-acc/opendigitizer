@@ -80,7 +80,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
     explicit XYChart(gr::property_map initParameters = {}) : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
@@ -262,7 +262,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         ImPlot::SetNextLineStyle(sinkColor(sink.color()));
-        ImPlot::PlotLine(sink.signalName().data(), snap.x.data(), snap.y.data(), static_cast<int>(snap.x.size()));
+        ImPlot::PlotLine(plotLabel(sink).c_str(), snap.x.data(), snap.y.data(), static_cast<int>(snap.x.size()));
     }
 
     void drawDataSetSignal(const SignalSink& sink) {
@@ -275,7 +275,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         ImVec4      baseColor   = sinkColor(sink.color());
         std::size_t historySize = std::min(allDataSets.size(), static_cast<std::size_t>(max_history_count.value));
-        std::string baseName    = std::string(sink.signalName());
+        std::string baseLabel   = plotLabel(sink);
 
         // Draw from oldest to newest (so newest renders on top)
         // DataSets are ordered oldest-first in the span (push_back appends newest at the end)
@@ -292,7 +292,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             lineColor.w      = opacity;
             ImPlot::SetNextLineStyle(lineColor);
 
-            std::string label = isNewest ? baseName : std::format("##{}_hist_{}", baseName, i);
+            std::string label = isNewest ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
 
             // Get data count from DataSet's axis_values
             if (ds.axis_values.empty() || ds.axis_values[0].empty()) {

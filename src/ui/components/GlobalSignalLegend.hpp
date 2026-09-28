@@ -128,9 +128,7 @@ struct GlobalSignalLegend {
             if (auto dndSource = IMW::DragDropSource(ImGuiDragDropFlags_None)) {
                 using namespace opendigitizer::charts;
                 if (const auto& signalSink = SinkRegistry::instance().getSink(sink.blockUniqueName)) {
-                    dnd::Payload payload{.sink_type = signalSink->signalKind()};
-                    dnd::copyToBuffer(payload.sink_name, label);
-                    ImGui::SetDragDropPayload(dnd::kPayloadType, &payload, sizeof(payload));
+                    dnd::setupPayload(signalSink, {});
                     drawLegendItem(color, label, visible);
                 }
             }

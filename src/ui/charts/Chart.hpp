@@ -6,6 +6,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../components/ImGuiNotify.hpp"
 
 #include <imgui.h>
 #include <implot.h>
@@ -63,6 +64,21 @@ enum class HistoryUnit : int {
 enum class AxisKind { X = 0, Y, Z };
 
 [[nodiscard]] inline ImVec4 sinkColor(std::uint32_t rgb) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb)); }
+
+[[nodiscard]] inline std::string plotLabel(const SignalSink& sink) { return std::format("{}###{}", sink.signalName().empty() ? sink.name() : sink.signalName(), sink.uniqueName()); }
+
+[[nodiscard]] inline std::string findSinkReference(const SignalSink& sink) {
+    for (const std::string_view name : {sink.name(), sink.signalName()}) {
+        if (name.empty()) {
+            continue;
+        }
+        const auto matches = SinkRegistry::instance().findSinks([name](const auto& entry) { return entry.name() == name || entry.signalName() == name; });
+        if (matches.size() == 1UZ && matches.front()->uniqueName() == sink.uniqueName()) {
+            return std::string(name);
+        }
+    }
+    return {};
+}
 
 struct AxisConfig {
     AxisKind                 axis = AxisKind::X;
@@ -755,23 +771,35 @@ constexpr void copyToBuffer(char (&dest)[N], std::string_view src) noexcept {
 }
 
 struct Payload {
-    char       sink_name[256]      = {};
-    char       source_chart_id[64] = {};
-    SignalKind sink_type           = SignalKind::None;
+    char       sink_unique_name[256] = {};
+    char       source_chart_id[64]   = {};
+    SignalKind sink_type             = SignalKind::None;
 
     [[nodiscard]] bool hasSource() const noexcept { return source_chart_id[0] != '\0'; }
-    [[nodiscard]] bool isValid() const noexcept { return sink_name[0] != '\0'; }
+    [[nodiscard]] bool isValid() const noexcept { return sink_unique_name[0] != '\0'; }
 };
+
+[[nodiscard]] inline Payload makePayload(const SignalSink& sink, std::string_view sourceChartId = {}) {
+    Payload payload{.sink_type = sink.signalKind()};
+    if (sink.uniqueName().size() >= sizeof(payload.sink_unique_name) || sourceChartId.size() >= sizeof(payload.source_chart_id)) {
+        return {};
+    }
+    copyToBuffer(payload.sink_unique_name, sink.uniqueName());
+    if (!sourceChartId.empty()) {
+        copyToBuffer(payload.source_chart_id, sourceChartId);
+    }
+    return payload;
+}
 
 struct State {
     bool        accepted = false;
     std::string source_chart_id;
-    std::string sink_name;
+    std::string sink_unique_name;
 
     void reset() {
         accepted = false;
         source_chart_id.clear();
-        sink_name.clear();
+        sink_unique_name.clear();
     }
 
     [[nodiscard]] bool isAcceptedFrom(std::string_view chartId) const { return accepted && source_chart_id == chartId; }
@@ -813,21 +841,20 @@ inline bool handleLegendDropTarget(const char* payloadType = kPayloadType) {
     return handleDropTarget([](const Payload& payload) { return payload.hasSource(); }, payloadType);
 }
 
-inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType, SignalKind signalKind = SignalKind::All) {
+inline void setupPayload(const std::shared_ptr<SignalSink>& sink, std::string_view sourceChartId, const char* payloadType = kPayloadType) {
     if (!sink) {
         return;
     }
-    Payload           dnd{.sink_type = signalKind};
-    const std::string sinkIdentifier = sink->signalName().empty() ? std::string(sink->name()) : std::string(sink->signalName());
-    dnd::copyToBuffer(dnd.sink_name, sinkIdentifier);
-    if (!sourceChartId.empty()) {
-        dnd::copyToBuffer(dnd.source_chart_id, sourceChartId);
+    const auto payload = makePayload(*sink, sourceChartId);
+    if (!payload.isValid()) {
+        g_state.reset();
+        return;
     }
-    ImGui::SetDragDropPayload(payloadType, &dnd, sizeof(dnd));
+    ImGui::SetDragDropPayload(payloadType, &payload, sizeof(payload));
 
-    g_state.accepted        = false;
-    g_state.source_chart_id = sourceChartId;
-    g_state.sink_name       = sinkIdentifier;
+    g_state.accepted         = false;
+    g_state.source_chart_id  = sourceChartId;
+    g_state.sink_unique_name = sink->uniqueName();
 }
 
 inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
@@ -1052,6 +1079,53 @@ struct Chart {
         }
     }
 
+    template<typename Self>
+    void enableAxisAutoFit(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
+        if (axis == AxisKind::X) {
+            writeAutoScale(self.x_auto_scale, axisIndex, true);
+        } else {
+            writeAutoScale(self.y_auto_scale, axisIndex, true);
+        }
+
+        if (axis == AxisKind::X && logFreqRange(parseAxisConfig(self.ui_constraints.value, axis, axisIndex))) {
+            return;
+        }
+
+        const auto axes = self.ui_constraints.value.template get_if<gr::TensorView<gr::pmt::Value>>("axes");
+        if (!axes) {
+            return;
+        }
+        auto        updatedAxes  = axes->owned();
+        std::size_t matchingAxes = 0UZ;
+        for (auto& axisValue : updatedAxes) {
+            const auto axisMapView = axisValue.template get_if<gr::property_map>();
+            if (!axisMapView || axisKindOf(axisMapView->template value_or<std::string_view>("axis", std::string_view{})) != axis) {
+                continue;
+            }
+            if (matchingAxes++ != axisIndex) {
+                continue;
+            }
+            if (!axisMapView->contains("min") && !axisMapView->contains("max")) {
+                return;
+            }
+            auto axisMap = axisMapView->owned();
+            axisMap.erase("min");
+            axisMap.erase("max");
+            axisValue = gr::pmt::Value(std::move(axisMap));
+            self.ui_constraints.value.insert_or_assign("axes", std::move(updatedAxes));
+            const gr::property_map parameters{{"ui_constraints", self.ui_constraints.value}};
+            std::ignore = self.settings().set(parameters);
+            std::ignore = self.settings().setStaged(parameters);
+            return;
+        }
+    }
+
+    template<typename Self>
+    void requestAxisFit(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
+        self.enableAxisAutoFit(axis, axisIndex);
+        (axis == AxisKind::X ? self._fitOnceX : self._fitOnceY)[axisIndex] = 2;
+    }
+
     std::vector<std::shared_ptr<SignalSink>> _signalSinks;
 
     [[nodiscard]] auto enabledSinks() const {
@@ -1217,18 +1291,28 @@ struct Chart {
     }
 
     template<typename Self>
-    void onSinkRemovedFromDnd(this Self& self, std::string_view sinkName) {
-        // resolve the canonical block name for the sink being removed, since
-        // data_sinks may store either name() or signalName()
-        std::string blockName;
-        for (const auto& sink : self._signalSinks) {
-            if (sink && (sink->signalName() == sinkName || sink->name() == sinkName)) {
-                blockName = std::string(sink->name());
-                break;
+    void onSinkRemovedFromDnd(this Self& self, std::string_view sinkUniqueName) {
+        const auto sink = std::ranges::find_if(self._signalSinks, [&sinkUniqueName](const auto& entry) { return entry && entry->uniqueName() == sinkUniqueName; });
+        if (sink == self._signalSinks.end()) {
+            return;
+        }
+        const auto matchesRemovedSink = [&](std::string_view name) { return name == (*sink)->name() || name == (*sink)->signalName(); };
+        auto       remainingNames     = self.data_sinks.value;
+        std::erase_if(remainingNames, matchesRemovedSink);
+        for (const auto& other : self._signalSinks) {
+            if (other && other != *sink && (matchesRemovedSink(other->name()) || matchesRemovedSink(other->signalName()))) {
+                const std::string reference = findSinkReference(*other);
+                if (reference.empty()) {
+                    DigitizerUi::components::Notification::warning("Cannot remove this signal: give the other signals in the chart distinct block names first.");
+                    return;
+                }
+                if (std::ranges::find(remainingNames, reference) == remainingNames.end()) {
+                    remainingNames.push_back(reference);
+                }
             }
         }
-        // erase by both the DnD name and the resolved block name
-        std::erase_if(self.data_sinks.value, [&sinkName, &blockName](const std::string& entry) { return entry == sinkName || (!blockName.empty() && entry == blockName); });
+        self.data_sinks.value = std::move(remainingNames);
+        self._signalSinks.erase(sink);
         gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
         for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
             sinks[i] = self.data_sinks.value[i];
@@ -1239,11 +1323,17 @@ struct Chart {
     }
 
     template<typename Self>
-    void onSinkAddedFromDnd(this Self& self, std::string_view sinkName, std::shared_ptr<SignalSink> sink) {
-        // normalise to block name for consistent data_sinks storage
-        std::string canonicalName = sink ? std::string(sink->name()) : std::string(sinkName);
-        if (std::find(self.data_sinks.value.begin(), self.data_sinks.value.end(), canonicalName) == self.data_sinks.value.end()) {
-            self.data_sinks.value.push_back(canonicalName);
+    [[nodiscard]] bool onSinkAddedFromDnd(this Self& self, const dnd::Payload& payload) {
+        auto sink = SinkRegistry::instance().getSink(payload.sink_unique_name);
+        if (!sink || !detail::isCompatible(sink->signalKind(), Self::supportedSignals)) {
+            return false;
+        }
+        const std::string sinkName = findSinkReference(*sink);
+        if (sinkName.empty()) {
+            return false;
+        }
+        if (std::find(self.data_sinks.value.begin(), self.data_sinks.value.end(), sinkName) == self.data_sinks.value.end()) {
+            self.data_sinks.value.push_back(sinkName);
             gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {self.data_sinks.value.size()});
             for (std::size_t i = 0; i < self.data_sinks.value.size(); ++i) {
                 sinks[i] = self.data_sinks.value[i];
@@ -1253,13 +1343,23 @@ struct Chart {
             std::ignore = self.settings().setStaged(parameters);
         }
         self.addSignalSink(std::move(sink));
+        const auto fitAutoAxes = [&](AxisKind axis, const auto& autoScaleField) {
+            constexpr std::size_t axisCount = requires { autoScaleField.value[0]; } ? 3UZ : 1UZ;
+            for (std::size_t i = 0UZ; i < axisCount; ++i) {
+                if (readAutoScale(autoScaleField, i)) {
+                    self.enableAxisAutoFit(axis, i);
+                }
+            }
+        };
+        fitAutoAxes(AxisKind::X, self.x_auto_scale);
+        fitAutoAxes(AxisKind::Y, self.y_auto_scale);
+        return true;
     }
 
     template<typename Self>
     void processAcceptedDndRemoval(this Self& self) {
         if (dnd::g_state.isAcceptedFrom(self.unique_name)) {
-            self.onSinkRemovedFromDnd(dnd::g_state.sink_name);
-            self.removeSignalSink(dnd::g_state.sink_name);
+            self.onSinkRemovedFromDnd(dnd::g_state.sink_unique_name);
             dnd::g_state.reset();
         }
     }
@@ -1267,12 +1367,9 @@ struct Chart {
     template<typename Self>
     void setupLegendDragSources(this Self& self) {
         for (const auto& sink : self._signalSinks) {
-            std::string signalNameStr(sink->signalName());
-            if (signalNameStr.empty()) {
-                signalNameStr = std::string(sink->name());
-            }
-            if (ImPlot::BeginDragDropSourceItem(signalNameStr.c_str())) {
-                dnd::setupPayload(sink, self.unique_name, dnd::kPayloadType, sink->signalKind());
+            const auto label = plotLabel(*sink);
+            if (ImPlot::BeginDragDropSourceItem(label.c_str())) {
+                dnd::setupPayload(sink, self.unique_name);
                 dnd::renderDragTooltip(sink);
                 ImPlot::EndDragDropSource();
             }
@@ -1297,13 +1394,10 @@ struct Chart {
                 return false;
             }
 
-            std::string sinkName(payloadResult.payload->sink_name);
-            auto        sinkSharedPtr = SinkRegistry::instance().findSink([&sinkName](const auto& s) { return s.signalName() == sinkName || s.name() == sinkName; });
-            if (!sinkSharedPtr) {
+            if (!self.onSinkAddedFromDnd(*payloadResult.payload)) {
                 return false;
             }
 
-            self.onSinkAddedFromDnd(sinkName, sinkSharedPtr);
             if (payloadResult.payload->hasSource()) {
                 dnd::g_state.accepted = true;
             }
@@ -1451,8 +1545,7 @@ struct Chart {
                           self.y_auto_scale;
                       }) {
             auto drawAutoFitControls = [&](auto& autoScaleField, auto& minField, auto& maxField) {
-                bool       autoFit    = readAutoScale(autoScaleField, axisIndex);
-                const bool wasAutoFit = autoFit;
+                bool autoFit = readAutoScale(autoScaleField, axisIndex);
 
                 {
                     DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
@@ -1460,8 +1553,10 @@ struct Chart {
                 }
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
                 if (ImGui::Checkbox("##auto", &autoFit)) {
-                    writeAutoScale(autoScaleField, axisIndex, autoFit);
-                    if (wasAutoFit && !autoFit) {
+                    if (autoFit) {
+                        self.enableAxisAutoFit(axis, axisIndex);
+                    } else {
+                        writeAutoScale(autoScaleField, axisIndex, false);
                         writeLimit(minField, axisIndex, plotMin);
                         writeLimit(maxField, axisIndex, plotMax);
                     }
@@ -1471,8 +1566,7 @@ struct Chart {
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Fit once")) {
-                    writeAutoScale(autoScaleField, axisIndex, true);
-                    (isX ? self._fitOnceX : self._fitOnceY)[axisIndex] = 2;
+                    self.requestAxisFit(axis, axisIndex);
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Fit axis to data once, then return to manual mode");
@@ -2246,12 +2340,10 @@ struct Chart {
                 for (int i = 0; i < 3; ++i) {
                     auto idx = static_cast<std::size_t>(i);
                     if (ImPlot::IsAxisHovered(ImAxis_X1 + i) && self._fitOnceX[idx] == 0) {
-                        writeAutoScale(self.x_auto_scale, idx, true);
-                        self._fitOnceX[idx] = 2;
+                        self.requestAxisFit(AxisKind::X, idx);
                     }
                     if (ImPlot::IsAxisHovered(ImAxis_Y1 + i) && self._fitOnceY[idx] == 0) {
-                        writeAutoScale(self.y_auto_scale, idx, true);
-                        self._fitOnceY[idx] = 2;
+                        self.requestAxisFit(AxisKind::Y, idx);
                     }
                 }
             }

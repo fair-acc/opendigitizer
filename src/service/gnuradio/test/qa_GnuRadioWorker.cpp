@@ -55,7 +55,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<ForeverSource, float>(registry);
     gr::registerBlock<gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<gr::basic::DataSink, float>(registry);
-    gr::registerBlock<gr::blocks::fft::DefaultFFT, float>(registry);
+    gr::registerBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>(registry);
     gr::registerBlock<gr::testing::Delay, float>(registry);
     gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
 #pragma GCC diagnostic pop
@@ -908,9 +908,10 @@ blocks:
     parameters:
       name: delay
       delay_ms: 600
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>, gr::algorithm::FFT>
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
       name: fft
+      fft_size: 1024
   - id: gr::basic::DataSetSink<float32>
     parameters:
       name: test_sink
@@ -931,7 +932,7 @@ connections:
         std::atomic<std::size_t> receivedCount = 0;
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=FFTTestSignal&acquisitionModeFilter=dataset", [&receivedCount, &config](const auto& acq) {
-            checkAcquisitionMeta(acq, 4UZ, 512UZ, {"Magnitude(test signal)", "Phase(test signal)", "Re(FFT(test signal))", "Im(FFT(test signal))"}, {"test unit/√Hz", "rad", "Retest unit", "Imtest unit"}, //
+            checkAcquisitionMeta(acq, 4UZ, 513UZ, {"Magnitude(test signal)", "Phase(test signal)", "Re(FFT(test signal))", "Im(FFT(test signal))"}, {"test unit/√Hz", "rad", "Retest unit", "Imtest unit"}, //
                 {"Magnitude(FFT)", "Phase(FFT)", "Re(FFT)", "Im(FFT)"}, {}, {}, config.toString());
             receivedCount++;
         });

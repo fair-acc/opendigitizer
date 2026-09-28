@@ -2,6 +2,8 @@
 #include "blocks/ImPlotSink.hpp"
 
 #include <boost/ut.hpp>
+#include <gnuradio-4.0/Graph.hpp>
+#include <imgui_internal.h>
 
 #include <array>
 #include <chrono>
@@ -32,6 +34,105 @@ int main() {
         chart.max_history_count = 16U;
         chart.addSignalSink(adapter);
         expect(eq(sink.bufferCapacity(), 16UZ));
+    };
+
+    "DataSet keeps custom axis labels"_test = [] {
+        gr::Graph graph;
+        auto&     sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"signal_quantity", "amplitude"}, {"signal_unit", "dB"}});
+
+        gr::DataSet<float> ds;
+        ds.axis_names        = {"Frequency"};
+        ds.axis_units        = {"Hz"};
+        ds.signal_quantities = {"Magnitude(FFT)"};
+        ds.signal_units      = {"V/√Hz"};
+        sink.updateAxisMetadataFromDataSet(ds);
+
+        expect(eq(sink.abscissaQuantity(), std::string_view{"Frequency"}));
+        expect(eq(sink.abscissaUnit(), std::string_view{"Hz"}));
+        expect(eq(sink.signalQuantity(), std::string_view{"amplitude"}));
+        expect(eq(sink.signalUnit(), std::string_view{"dB"}));
+
+        ds.axis_names = {"Time"};
+        ds.axis_units = {"s"};
+        sink.updateAxisMetadataFromDataSet(ds);
+
+        expect(eq(sink.abscissaQuantity(), std::string_view{"Time"}));
+        expect(eq(sink.abscissaUnit(), std::string_view{"s"}));
+        expect(eq(sink.signalUnit(), std::string_view{"dB"}));
+    };
+
+    "DataSet supplies default axis labels"_test = [] {
+        gr::Graph graph;
+        auto&     sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>();
+
+        gr::DataSet<float> ds;
+        ds.axis_names        = {"Frequency"};
+        ds.axis_units        = {"Hz"};
+        ds.signal_quantities = {"Amplitude"};
+        ds.signal_units      = {"V"};
+        sink.updateAxisMetadataFromDataSet(ds);
+
+        expect(eq(sink.abscissaQuantity(), std::string_view{"Frequency"}));
+        expect(eq(sink.abscissaUnit(), std::string_view{"Hz"}));
+        expect(eq(sink.signalQuantity(), std::string_view{"Amplitude"}));
+        expect(eq(sink.signalUnit(), std::string_view{"V"}));
+    };
+
+    "DataSet drag keeps signal"_test = [] {
+        gr::Graph graph;
+        auto&     linearBlock = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"name", "linearSink"}, {"signal_name", "same signal"}});
+        auto&     dbBlock     = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"name", "dbSink"}, {"signal_name", "same signal"}});
+        auto      linearSink  = SinkRegistry::instance().getSink(linearBlock.unique_name);
+        auto      dbSink      = SinkRegistry::instance().getSink(dbBlock.unique_name);
+        expect(linearSink != nullptr);
+        expect(dbSink != nullptr);
+        if (!linearSink || !dbSink) {
+            return;
+        }
+
+        auto& chart = graph.emplaceBlock<XYChart>({{"chart_name", "drag test"}});
+        expect(chart.onSinkAddedFromDnd(dnd::makePayload(*linearSink)));
+        expect(chart.onSinkAddedFromDnd(dnd::makePayload(*dbSink)));
+        chart.data_sinks.value = {"pendingSink", "same signal", "dbSink"};
+
+        chart.onSinkRemovedFromDnd(dbSink->uniqueName());
+        std::ignore = chart.settings().applyStagedParameters();
+        chart.syncSinksIfNeeded(chart.data_sinks.value);
+        expect(chart.signalSinks() == std::vector{linearSink});
+        expect(chart.data_sinks.value == std::vector<std::string>{"pendingSink", "linearSink"});
+        chart.clearSignalSinks();
+        chart.syncSinksIfNeeded(chart.data_sinks.value);
+        expect(chart.signalSinks() == std::vector{linearSink});
+
+        expect(chart.onSinkAddedFromDnd(dnd::makePayload(*dbSink)));
+        std::ignore = chart.settings().applyStagedParameters();
+        expect(chart.signalSinks() == std::vector{linearSink, dbSink});
+        expect(chart.data_sinks.value == std::vector<std::string>{"pendingSink", "linearSink", "dbSink"});
+
+        dbBlock.signal_name = "dB";
+        chart.data_sinks.value.push_back("dB");
+        chart.onSinkRemovedFromDnd(dbSink->uniqueName());
+        std::ignore = chart.settings().applyStagedParameters();
+        chart.syncSinksIfNeeded(chart.data_sinks.value);
+        expect(chart.signalSinks() == std::vector{linearSink});
+        expect(chart.data_sinks.value == std::vector<std::string>{"pendingSink", "linearSink"});
+    };
+
+    "Legend keeps duplicate names separate"_test = [] {
+        auto first  = makeTestStreamingSink("first");
+        auto second = makeTestStreamingSink("second");
+        first->setSignalName("same signal");
+        second->setSignalName("same signal");
+
+        const auto firstLabel  = plotLabel(*first);
+        const auto secondLabel = plotLabel(*second);
+        const auto firstId     = ImHashStr(firstLabel.c_str());
+        expect(neq(firstId, ImHashStr(secondLabel.c_str())));
+        expect(eq(std::string_view(firstLabel.c_str(), ImGui::FindRenderedTextEnd(firstLabel.c_str())), std::string_view{"same signal"}));
+        expect(eq(std::string_view(secondLabel.c_str(), ImGui::FindRenderedTextEnd(secondLabel.c_str())), std::string_view{"same signal"}));
+
+        first->setSignalName("renamed signal");
+        expect(eq(ImHashStr(plotLabel(*first).c_str()), firstId));
     };
 
     "XYChart creation via makeXYChart"_test = [] {

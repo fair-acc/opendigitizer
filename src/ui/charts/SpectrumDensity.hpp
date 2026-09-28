@@ -74,7 +74,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
 
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
@@ -115,7 +115,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         for (const auto& sink : _signalSinks) {
             ImVec4 color = sinkColor(sink->color());
             ImPlot::SetNextLineStyle(color);
-            ImPlot::PlotDummy(std::string(sink->signalName()).c_str());
+            ImPlot::PlotDummy(plotLabel(*sink).c_str());
         }
 
         drawDensitySignals();
@@ -131,6 +131,14 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         _density.reset();
         _traces.reset();
         _lastSampleCount = std::numeric_limits<std::size_t>::max();
+    }
+
+    void enableAxisAutoFit(AxisKind axis, std::size_t axisIndex = 0UZ) {
+        if (axis == AxisKind::Y) {
+            writeAutoScale(y_auto_scale, axisIndex, true);
+            return;
+        }
+        Chart::enableAxisAutoFit(axis, axisIndex);
     }
 
     // effective Y-range considering dashboard config override (always finite, needed for histogram binning)

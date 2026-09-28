@@ -79,7 +79,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         return (axis == AxisKind::Y) ? AxisScale::LinearReverse : AxisScale::Linear;
     }
 
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
@@ -130,7 +130,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         for (const auto& sink : _signalSinks) {
             ImVec4 color = sinkColor(sink->color());
             ImPlot::SetNextLineStyle(color);
-            ImPlot::PlotDummy(std::string(sink->signalName()).c_str());
+            ImPlot::PlotDummy(plotLabel(*sink).c_str());
         }
 
         // phase 4: render waterfall image (always, even when no new data this frame)
