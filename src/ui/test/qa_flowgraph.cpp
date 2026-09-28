@@ -47,12 +47,8 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
 
     ~TestState() override { TestState::onDashboardAboutToBeUnloaded(); }
 
-    void waitForScheduler(                                                   //
-        ImGuiTestContext*         ctx,                                       //
-        std::chrono::milliseconds timeout  = std::chrono::seconds(3),        //
-        std::source_location      location = std::source_location::current() //
-        ) override {
-        opendigitizer::test::TestDashboardRunner::waitForScheduler(ctx, timeout, location);
+    void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) override {
+        opendigitizer::test::TestDashboardRunner::waitForScheduler(ctx, location);
 
         // the default waitForScheduler waits for the scheduler to become active. we also want to wait for inspection to complete
         if (flowgraphPage.editorCount() == 0) {
@@ -66,32 +62,14 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
             std::println("\tGraph does not need inspection / it seems populated already");
         }
 
-        auto start = std::chrono::high_resolution_clock::now();
-        while (std::chrono::high_resolution_clock::now() - start < timeout) {
-            dashboard->handleMessages();
-
-            if (!dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
-                std::println("\tInspection succeeded, we got a root editor");
-                flowgraphPage.pushEditor("rootBlock node editor", dashboard->graphModel, std::addressof(dashboard->graphModel.rootBlock));
-                break;
-            }
-        }
-        auto timeTaken = std::chrono::high_resolution_clock::now() - start;
-        if (timeTaken > timeout) {
-            std::exit(1);
-            throw gr::exception(std::format("waitForScheduler({}): timeout exceeded while waiting for inspection", timeTaken), location);
-        }
+        waitUntil(ctx, "the scheduler inspection yields a root block", [this] { return !dashboard->graphModel.rootBlock.blockUniqueName.empty(); }, location);
+        std::println("\tInspection succeeded, we got a root editor");
+        flowgraphPage.pushEditor("rootBlock node editor", dashboard->graphModel, std::addressof(dashboard->graphModel.rootBlock));
     }
 
-    // Waits for the graph to have exactly expectedBlockCount blocks
     // for testing topology changing messages
-    void waitForGraphModelUpdate(size_t expectedBlockCount, std::size_t maxCount = 20UZ) {
-        std::size_t count = 0;
-        while (blocks().size() != expectedBlockCount && count < maxCount) {
-            dashboard->handleMessages();
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            count++;
-        }
+    void waitForGraphModelUpdate(ImGuiTestContext* ctx, std::size_t expectedBlockCount) {
+        waitUntil(ctx, std::format("the graph has {} blocks", expectedBlockCount), [this, expectedBlockCount] { return blocks().size() == expectedBlockCount; });
     }
 
     void deleteBlock(const std::string& blockName) { flowgraphPage.currentEditor().requestBlockDeletion(blockName); }
@@ -163,13 +141,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return replied;
     }
 
-    [[nodiscard]] static bool waitFor(ImGuiTestContext* ctx, const std::function<bool()>& predicate, std::chrono::seconds timeout = std::chrono::seconds(10)) {
-        auto start = std::chrono::high_resolution_clock::now();
-        while (!predicate() && (std::chrono::high_resolution_clock::now() - start < timeout)) {
+    // no deadline, see TestDashboardRunner::waitUntil
+    [[nodiscard]] static bool waitFor(ImGuiTestContext* ctx, const std::function<bool()>& predicate) {
+        while (!predicate()) {
             ctx->Yield();
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
-        return predicate();
+        return true;
     }
 
     static void dragPinToPin(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphPort* fromPort, const DigitizerUi::UiGraphPort* toPort) {
@@ -349,7 +326,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                     // deletion is async, let's wait for kBlockRemoved
                     const auto expectedBlockCount = numBlocksBefore - 1;
-                    g_state.waitForGraphModelUpdate(expectedBlockCount);
+                    g_state.waitForGraphModelUpdate(ctx, expectedBlockCount);
 
                     const auto numBlocksAfter = g_state.blocks().size();
 
@@ -669,11 +646,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         return std::ranges::contains(groupedNames, child->blockUniqueName);
                     });
                 };
-                const auto start = std::chrono::high_resolution_clock::now();
-                while (!groupedBlocksLeftRootGraph() && std::chrono::high_resolution_clock::now() - start < std::chrono::seconds(10)) {
-                    ctx->Yield();
-                }
-                expect(groupedBlocksLeftRootGraph()) << fatal << "grouped blocks should have moved into the subgraph";
+                g_state.waitUntil(ctx, "the grouped blocks moved into the subgraph", groupedBlocksLeftRootGraph);
 
                 ctx->Yield(); // draw a frame so the editor can observe the model change
 

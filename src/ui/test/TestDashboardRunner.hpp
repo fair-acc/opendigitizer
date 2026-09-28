@@ -31,11 +31,21 @@ struct TestDashboardRunner {
 
     virtual ~TestDashboardRunner() = default;
 
-    virtual void waitForScheduler(                                           //
-        ImGuiTestContext*         ctx,                                       //
-        std::chrono::milliseconds timeout  = std::chrono::seconds(5),        //
-        std::source_location      location = std::source_location::current() //
-    ) {
+    // blocks until `condition` holds, processing scheduler replies and UI frames. There is deliberately no deadline:
+    // the outcome must not depend on machine load, and a condition that never holds is caught by the ctest timeout.
+    template<typename Condition>
+    void waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
+        if (condition()) {
+            return;
+        }
+        std::println("\twaiting until {} ({}:{})", what, location.file_name(), location.line());
+        while (!condition()) {
+            dashboard->handleMessages();
+            ctx->Yield();
+        }
+    }
+
+    virtual void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {
         // this is a bit weird to put here semantically, but we need to remember to call it at the start of each test
         // case and in practice any test that needs to listen for messages will be calling waitForScheduler once at
         // start of test anyways, so just put this here
@@ -45,23 +55,14 @@ struct TestDashboardRunner {
             reload(previousReloadFilesystem, previousReloadGRCPath.c_str());
         }
 
-        const auto start             = std::chrono::high_resolution_clock::now();
-        const auto isLoadedAndActive = [this] { return gr::lifecycle::isActive(dashboard->scheduler->state()) && !dashboard->graphModel.rootBlock.blockUniqueName.empty(); };
-        while (!isLoadedAndActive() && std::chrono::high_resolution_clock::now() - start < timeout) {
-            dashboard->handleMessages();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        if (!isLoadedAndActive()) {
-            throw gr::exception(std::format("waitForScheduler({}): timeout exceeded", timeout), location);
-        }
-
-        waitForAllSubgraphs(ctx, timeout, location);
+        waitUntil(ctx, "the scheduler is active and its root graph is known", [this] { return gr::lifecycle::isActive(dashboard->scheduler->state()) && !dashboard->graphModel.rootBlock.blockUniqueName.empty(); }, location);
+        waitForAllSubgraphs(ctx, location);
     }
 
-    void waitForAllSubgraphs(ImGuiTestContext* ctx, std::chrono::milliseconds timeout, std::source_location location) {
+    void waitForAllSubgraphs(ImGuiTestContext* ctx, std::source_location location) {
         assert(!dashboard->graphModel.rootBlock.blockUniqueName.empty() && "root scheduler must be loaded before waitForAllSubgraphs()");
 
-        // load and wait for inspection on all subgraphs
+        // every subgraph scheduler must report at least one child
         std::vector<UiGraphBlock*> schedulers;
         const auto                 gatherNotReadySchedulers = [this, &schedulers] {
             schedulers.clear();
@@ -76,17 +77,7 @@ struct TestDashboardRunner {
 
         while (gatherNotReadySchedulers()) {
             for (UiGraphBlock* scheduler : schedulers) {
-                auto innerStart = std::chrono::high_resolution_clock::now();
-                while (scheduler->childBlocks.empty() && std::chrono::high_resolution_clock::now() - innerStart < timeout) {
-                    dashboard->handleMessages();
-                    ctx->Yield();
-                }
-                if (scheduler->childBlocks.empty()) {
-                    auto msg = std::format("waitForScheduler({}): timeout waiting for scheduler {} exceeeded, or it has"
-                                           " no children (TestDashboardRunner requires schedulers to have at least one child)",
-                        timeout, scheduler->blockName);
-                    throw gr::exception(std::move(msg), location);
-                }
+                waitUntil(ctx, std::format("subgraph scheduler '{}' reports its children", scheduler->blockName), [scheduler] { return !scheduler->childBlocks.empty(); }, location);
             }
         }
     }
