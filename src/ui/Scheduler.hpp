@@ -36,8 +36,7 @@ private:
         virtual std::expected<void, gr::Error> pause()  = 0;
         virtual std::expected<void, gr::Error> resume() = 0;
 
-        virtual const gr::Graph& graph() const               = 0;
-        virtual void             setGraph(gr::Graph&& graph) = 0;
+        virtual const gr::Graph& graph() const = 0;
 
         virtual gr::lifecycle::State state() const = 0;
     };
@@ -54,6 +53,16 @@ private:
 
         template<typename... Args>
         explicit SchedulerImpl(Args&&... args) : _scheduler(std::forward<Args>(args)...) {
+            connectAndStart();
+        }
+
+        // the graph is exchanged before the thread starts: exchanging the graph of a starting scheduler races its start-up
+        SchedulerImpl(gr::Graph&& graph, gr::property_map initParams) : _scheduler(std::move(initParams)) {
+            std::ignore = _scheduler.exchange(std::move(graph));
+            connectAndStart();
+        }
+
+        void connectAndStart() {
             if (!_toScheduler.connect(_scheduler.msgIn)) {
                 throw gr::exception("Failed to connect _toScheduler -> _scheduler.msgIn");
             }
@@ -216,8 +225,21 @@ private:
             }
         }
 
+        // a stopped or idle scheduler has no running loop to read lifecycle messages, so it is restarted directly
+        [[nodiscard]] bool restartIfNotRunning() {
+            const gr::lifecycle::State state = _scheduler.state();
+            if (state != gr::lifecycle::State::STOPPED && state != gr::lifecycle::State::IDLE) {
+                return false;
+            }
+            startThread(gr::lifecycle::State::RUNNING);
+            return true;
+        }
+
         std::expected<void, gr::Error> start() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            if (restartIfNotRunning()) {
+                return {};
+            }
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
             return {};
         }
@@ -233,16 +255,14 @@ private:
         }
         std::expected<void, gr::Error> resume() final {
             std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
+            if (restartIfNotRunning()) {
+                return {};
+            }
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
             return {};
         }
 
         const gr::Graph& graph() const final { return _scheduler.graph(); }
-
-        void setGraph(gr::Graph&& graph) final {
-            // we do not need the old graph
-            std::ignore = _scheduler.exchange(std::move(graph));
-        }
 
         gr::lifecycle::State state() const final { return _scheduler.state(); }
 
@@ -284,8 +304,7 @@ public:
 
     void emplaceGraph(gr::Graph&& graph) {
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::singleThreadedBlocking>;
-        emplaceScheduler<TScheduler>();
-        _scheduler->setGraph(std::move(graph));
+        _scheduler       = std::make_unique<SchedulerImpl<TScheduler>>(std::move(graph), gr::property_map{});
     }
 
     std::string_view schedulerUniqueName() const { return _scheduler->uniqueName(); }
