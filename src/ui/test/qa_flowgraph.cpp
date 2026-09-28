@@ -38,9 +38,7 @@ using namespace boost::ut;
 struct TestState : public opendigitizer::test::TestDashboardRunner {
     DigitizerUi::FlowgraphPage flowgraphPage;
 
-    TestState() : flowgraphPage(restClient) {
-        flowgraphPage.requestBlockControlsPanel = [](DigitizerUi::components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool) { /* this is called unconditionally, so we have to define it to not crash */ };
-    }
+    TestState() : flowgraphPage(restClient) {}
 
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
     void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
@@ -655,6 +653,38 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(graphModel.recursiveFindBlockByUniqueName(name).block != nullptr) << "selection reported a block that does not exist: " << name;
                 }
                 expect(selectedAfter.empty()) << "blocks deleted by grouping should not be reported as selected";
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            // an embedding host draws the page away from the screen origin
+            static constexpr ImVec2 kHostPos{200.f, 150.f};
+            ImGuiTest*              t = IM_REGISTER_TEST(engine(), "flowgraph", "Button overlay stays inside an offset host window");
+            t->SetVarsDataType<TestState>();
+
+            t->GuiFunc = [](ImGuiTestContext*) {
+                IMW::Window window("Offset Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                ImGui::SetWindowPos(kHostPos);
+                ImGui::SetWindowSize(ImVec2(800, 600));
+                if (g_state.dashboard) {
+                    g_state.flowgraphPage.draw();
+                    g_state.dashboard->handleMessages();
+                }
+            };
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reloadFromYamlString(simpleGraph);
+                g_state.waitForScheduler(ctx);
+                g_state.waitUntil(ctx, "the graph has blocks", [] { return g_state.hasBlocks(); });
+                ctx->Yield(2);
+
+                const ImGuiWindow* host    = ImGui::FindWindowByName("Offset Host");
+                const ImGuiWindow* overlay = ImGui::FindWindowByName("Button Overlay");
+                expect(host != nullptr && overlay != nullptr) << fatal;
+                const ImRect hostRect(host->Pos, host->Pos + host->Size);
+                expect(hostRect.Contains(ImRect(overlay->Pos, overlay->Pos + overlay->Size))) << std::format("overlay at ({}, {}) outside host at ({}, {}) size ({}, {})", overlay->Pos.x, overlay->Pos.y, host->Pos.x, host->Pos.y, host->Size.x, host->Size.y);
 
                 g_state.stopScheduler();
             };

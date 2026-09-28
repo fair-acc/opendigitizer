@@ -168,7 +168,7 @@ std::string valToString(const gr::pmt::Value& val) {
     return out;
 }
 
-FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
+FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
     Buttons result;
 
     IMW::PushCursorPosition _;
@@ -177,7 +177,7 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentTopLe
     static constexpr float height  = 37.0f;
 
     {
-        ImGui::SetNextWindowPos({contentTopLeft.x, contentTopLeft.y + contentSize.y - height - padding});
+        ImGui::SetNextWindowPos({contentScreenTopLeft.x, contentScreenTopLeft.y + contentSize.y - height - padding});
         ImGui::SetNextWindowSize({contentSize.x * (1 - horizontalSplitRatio), height});
         IMW::Window overlay("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
 
@@ -742,6 +742,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     IMW::PushCursorPosition origCursorPos;
 
     ImGui::SetCursorPos(contentTopLeft);
+    const ImVec2 contentScreenTopLeft = ImGui::GetCursorScreenPos(); // SetNextWindowPos takes screen coordinates
 
     if (!isCurrentEditor) {
         // If this is not the enabled (top level editor) just draw the
@@ -756,7 +757,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
     const float     ratio             = components::Splitter(contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
 
-    const auto clicked = drawButtons(contentTopLeft, contentSize,
+    const auto clicked = drawButtons(contentScreenTopLeft, contentSize,
         {
             .openNewBlockDialog       = static_cast<bool>(openNewBlockSelectorCallback),
             .openNewSubGraphDialog    = static_cast<bool>(openNewSubGraphSelectorCallback),
@@ -936,12 +937,15 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         _pendingGroupBlocksRequest.reset();
     }
 
+    if (!requestBlockControlsPanel) {
+        return;
+    }
     if (horizontalSplit) {
         const float w = contentSize.x * ratio;
-        requestBlockControlsPanel(_editPaneContext, {contentTopLeft.x + contentSize.x - w + halfSplitterWidth, contentTopLeft.y}, {w - halfSplitterWidth, contentSize.y}, true);
+        requestBlockControlsPanel(_editPaneContext, {contentScreenTopLeft.x + contentSize.x - w + halfSplitterWidth, contentScreenTopLeft.y}, {w - halfSplitterWidth, contentSize.y}, true);
     } else {
         const float h = contentSize.y * ratio;
-        requestBlockControlsPanel(_editPaneContext, {contentTopLeft.x, contentTopLeft.y + contentSize.y - h + halfSplitterWidth}, {contentSize.x, h - halfSplitterWidth}, false);
+        requestBlockControlsPanel(_editPaneContext, {contentScreenTopLeft.x, contentScreenTopLeft.y + contentSize.y - h + halfSplitterWidth}, {contentSize.x, h - halfSplitterWidth}, false);
     }
 }
 

@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <string>
+#include <thread>
 
 CMRC_DECLARE(sample_dashboards);
 
@@ -22,6 +23,7 @@ CMRC_DECLARE(sample_dashboards);
 #endif
 
 using namespace boost::ut;
+using gr::lifecycle::State;
 
 namespace {
 
@@ -35,28 +37,73 @@ void registerDemoDashboardBlocks() {
     std::ignore = gr::registerBlock<opendigitizer::TestSpectrumGenerator, float>(registry);
 }
 
+std::string demoDashboardGrc() {
+    const auto file = cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/DemoDashboard.grc");
+    return {file.begin(), file.end()};
+}
+
+void loadGrc(DigitizerUi::Dashboard& dashboard, const std::string& grc) {
+    dashboard.loadAndThen(grc, [&dashboard](gr::Graph&& graph) { dashboard.emplaceGraph(std::move(graph)); });
+}
+
+// no deadline: a state that is never reached is caught by the ctest timeout
+template<typename Condition>
+void waitUntil(DigitizerUi::Dashboard& dashboard, Condition&& condition) {
+    while (!condition(dashboard.scheduler->state())) {
+        dashboard.handleMessages();
+        std::this_thread::yield();
+    }
+}
+
+constexpr auto kIsActive  = [](State state) { return gr::lifecycle::isActive(state); };
+constexpr auto kIsStopped = [](State state) { return state == State::STOPPED; };
+
+void stopAndWait(DigitizerUi::Dashboard& dashboard) {
+    waitUntil(dashboard, kIsActive);
+    expect(dashboard.scheduler.stopUnlessPending().has_value());
+    waitUntil(dashboard, kIsStopped);
+}
+
 } // namespace
 
 // tests run inside main(): the dashboard uses function-local statics (e.g. ColourManager) that are already destroyed
 // when statically registered suites run at exit
 int main() {
-    "demo dashboard loads through opendigitizer::dashboard alone"_test = [] {
-        ImGui::CreateContext();
-        ImPlot::CreateContext();
-        registerDemoDashboardBlocks();
+    ImGui::CreateContext();
+    ImPlot::CreateContext();
+    registerDemoDashboardBlocks();
+    const std::string grc        = demoDashboardGrc();
+    const auto        restClient = std::make_shared<opencmw::client::RestClient>();
 
-        const auto  file = cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/DemoDashboard.grc");
-        std::string grc(file.begin(), file.end());
-
-        auto restClient = std::make_shared<opencmw::client::RestClient>();
-        auto dashboard  = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
-        dashboard->loadAndThen(grc, [&dashboard](gr::Graph&& graph) { dashboard->emplaceGraph(std::move(graph)); });
+    "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
+        loadGrc(*dashboard, grc);
 
         expect(static_cast<bool>(dashboard->scheduler)) << "scheduler created from the .grc";
         expect(!dashboard->uiWindows.empty()) << "chart windows created from the .grc layout";
 
         dashboard.reset(); // stops the scheduler, also while its start-up thread is still initialising
-        ImPlot::DestroyContext();
-        ImGui::DestroyContext();
     };
+
+    "a stopped scheduler runs again after start()"_test = [&] {
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("restart"));
+        loadGrc(*dashboard, grc);
+        stopAndWait(*dashboard);
+
+        expect(dashboard->scheduler->start().has_value());
+        waitUntil(*dashboard, kIsActive);
+    };
+
+    "a dashboard loads again after its scheduler stopped"_test = [&] {
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("reload"));
+        loadGrc(*dashboard, grc);
+        stopAndWait(*dashboard);
+
+        loadGrc(*dashboard, grc);
+        waitUntil(*dashboard, kIsActive);
+        expect(!dashboard->uiWindows.empty());
+    };
+
+    ImPlot::DestroyContext();
+    ImGui::DestroyContext();
 }

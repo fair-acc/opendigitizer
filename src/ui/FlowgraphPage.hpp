@@ -207,7 +207,7 @@ public:
         bool closeWindow : 1              = false;
     };
 
-    Buttons drawButtons(const ImVec2& contentTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
+    Buttons drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
     static void sortNodes(UiGraphBlock* rootBlock);
 
