@@ -16,9 +16,10 @@ blocks:
     parameters:
       name: sineSum5
       n_inputs: 4
-  - id: gr::blocks::fft::FFT<float32>
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
       name: FFT
+      fft_size: 1024
   - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sineSource1

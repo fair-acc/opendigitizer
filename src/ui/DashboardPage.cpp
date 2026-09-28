@@ -118,7 +118,7 @@ DashboardPage::DashboardPage() {
 
         auto& uiWindow = _dashboard->newUIBlock();
         auto  names    = grc_compat::getBlockSinkNames(uiWindow.block.get());
-        names.push_back(sourceInWaiting.signalData.signalName);
+        names.emplace_back(sink.name());
         grc_compat::setBlockSinkNames(uiWindow.block.get(), names);
     });
 }
@@ -521,21 +521,22 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
             : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float64>") ? "<gr::DataSet<float64>>"s //
                                                                                                                       : /* otherwise error */ ""s;
 
+        const std::string baseName = std::format("{}_sink", remoteSource.uniqueName());
+        std::string       sinkName = baseName;
+        for (std::size_t suffix = 2UZ; _dashboard->graphModel.recursiveFindBlockByName(sinkName) || opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& sink) { return sink.name() == sinkName || sink.signalName() == sinkName; }); ++suffix) {
+            sinkName = std::format("{}_{}", baseName, suffix);
+        }
+        gr::property_map sinkProperties{{"name", std::move(sinkName)}, {"signal_name", selectedRemoteSignal.signalName}};
+        if (!selectedRemoteSignal.unit.empty()) {
+            sinkProperties.emplace("signal_unit", selectedRemoteSignal.unit);
+        }
+
         gr::Message message;
         message.cmd      = gr::message::Command::Set;
         message.endpoint = gr::scheduler::property::kEmplaceBlock;
         // The root block needs to be a scheduler
         message.serviceName = _dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
-        message.data        = gr::property_map{
-                   {"type", sinkBlockType + sinkBlockParams}, //
-                   {
-                "properties",
-                gr::property_map{
-                           {"signal_name", selectedRemoteSignal.signalName}, //
-                           {"signal_unit", selectedRemoteSignal.unit}        //
-                } //
-            } //
-        };
+        message.data        = gr::property_map{{"type", sinkBlockType + sinkBlockParams}, {"properties", std::move(sinkProperties)}};
         _dashboard->graphModel.sendMessage(std::move(message));
     });
 }
@@ -554,7 +555,15 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
         }
         const bool dropped = dnd::handleDropTarget(
             [&clickResult](const dnd::Payload& payload) {
-                clickResult.sinkForNewPlot = payload.sink_name;
+                const auto sink = opendigitizer::charts::SinkRegistry::instance().getSink(payload.sink_unique_name);
+                if (!sink) {
+                    return false;
+                }
+                std::string sinkName = opendigitizer::charts::findSinkReference(*sink);
+                if (sinkName.empty()) {
+                    return false;
+                }
+                clickResult.sinkForNewPlot = std::move(sinkName);
                 return true;
             },
             dnd::kPayloadType);

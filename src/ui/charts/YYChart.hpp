@@ -57,7 +57,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
     explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
@@ -155,7 +155,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             std::size_t       offset;
         };
         XYContext   ctx{sinkPtr.get(), offset};
-        std::string signalLabel{sinkPtr->signalName()};
+        std::string signalLabel = plotLabel(*sinkPtr);
 
         ImPlot::PlotLineG(
             signalLabel.c_str(),
@@ -231,9 +231,9 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         {
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX = static_cast<double>(sinkXPtr->yAt(offset));
-            double      dummyY = static_cast<double>(sinkYPtr->yAt(offset));
-            std::string xLegendLabel{sinkXPtr->signalName()};
+            double      dummyX       = static_cast<double>(sinkXPtr->yAt(offset));
+            double      dummyY       = static_cast<double>(sinkYPtr->yAt(offset));
+            std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
@@ -247,7 +247,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             std::size_t       offset;
         };
         CorrelationContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
-        std::string        yLegendLabel{sinkYPtr->signalName()};
+        std::string        yLegendLabel = plotLabel(*sinkYPtr);
 
         ImPlot::PlotLineG(
             yLegendLabel.c_str(),
@@ -353,9 +353,9 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             auto   lockX  = sinkXPtr->dataGuard();
             ImVec4 xColor = sinkColor(sinkXPtr->color());
             ImPlot::SetNextLineStyle(xColor);
-            double      dummyX = static_cast<double>(sinkXPtr->yAt(0));
-            double      dummyY = static_cast<double>(sinkXPtr->yAt(0));
-            std::string xLegendLabel{sinkXPtr->signalName()};
+            double      dummyX       = static_cast<double>(sinkXPtr->yAt(0));
+            double      dummyY       = static_cast<double>(sinkXPtr->yAt(0));
+            std::string xLegendLabel = plotLabel(*sinkXPtr);
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
@@ -395,7 +395,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::SetNextLineStyle(lineColor);
 
             PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
-            std::string yLabel{sinkYPtr->signalName()};
+            std::string yLabel = plotLabel(*sinkYPtr);
             ImPlot::PlotLineG(
                 yLabel.c_str(),
                 [](int idx, void* user_data) -> ImPlotPoint {

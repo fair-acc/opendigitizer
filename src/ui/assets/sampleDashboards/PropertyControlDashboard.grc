@@ -5,12 +5,13 @@ blocks:
       ui_constraints:
         x: 30
         y: 40
-  - id: gr::blocks::fft::FFT<float32>
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
       name: FFT
-      outputInDb: true
-      outputInDeg: true
-      unwrapPhase: true
+      fft_size: 1024
+      output_in_db: true
+      output_in_deg: true
+      unwrap_phase: true
   - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sine source 1

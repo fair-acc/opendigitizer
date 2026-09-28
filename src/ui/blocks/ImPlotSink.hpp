@@ -188,16 +188,17 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     void updateAxisMetadataFromDataSet(const T& ds) {
         if constexpr (IsDataSet) {
-            if (!ds.axis_names.empty() && !ds.axis_names[0].empty()) {
+            const auto& autoUpdate = this->settings().autoUpdateParameters(this->settings().activeContext());
+            if (autoUpdate.contains("abscissa_quantity") && !ds.axis_names.empty() && !ds.axis_names[0].empty()) {
                 abscissa_quantity = ds.axis_names[0];
             }
-            if (!ds.axis_units.empty() && !ds.axis_units[0].empty()) {
+            if (autoUpdate.contains("abscissa_unit") && !ds.axis_units.empty() && !ds.axis_units[0].empty()) {
                 abscissa_unit = ds.axis_units[0];
             }
-            if (!ds.signal_quantities.empty() && !ds.signal_quantities[0].empty()) {
+            if (autoUpdate.contains("signal_quantity") && !ds.signal_quantities.empty() && !ds.signal_quantities[0].empty()) {
                 signal_quantity = ds.signal_quantities[0];
             }
-            if (!ds.signal_units.empty() && !ds.signal_units[0].empty()) {
+            if (autoUpdate.contains("signal_unit") && !ds.signal_units.empty() && !ds.signal_units[0].empty()) {
                 signal_unit = ds.signal_units[0];
             }
         }
