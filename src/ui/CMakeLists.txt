@@ -279,6 +279,7 @@ add_library(
   components/YesNoPopup.hpp
   utils/stb_impl.cpp # STB is a library with linking issues -- impl instantiated only here
   utils/ImGuiDockSpaceState.cpp
+  utils/PngHelper.hpp
   common/AppDefinitions.hpp
   common/Events.hpp
   common/ImguiWrap.hpp
@@ -307,6 +308,7 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
+         PNG::PNG
          gnuradio4::vir)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)

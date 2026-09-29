@@ -21,6 +21,17 @@
 #include <imgui.h>
 #include <implot.h>
 
+#ifdef __EMSCRIPTEN__
+#include <GLES3/gl3.h>
+#else
+#ifndef GL_GLEXT_PROTOTYPES
+#define GL_GLEXT_PROTOTYPES
+#endif
+#include <SDL3/SDL_opengl.h>
+#endif
+
+#include "../utils/PngHelper.hpp"
+
 namespace opendigitizer::charts {
 
 struct DataSetPlotContext {
@@ -65,6 +76,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     std::array<std::vector<std::string>, 3UZ>    _xAxisGroups{};
     std::array<std::vector<std::string>, 3UZ>    _yAxisGroups{};
     mutable std::array<std::string, 6UZ>         _unitStringStorage{};
+    std::string                                  _exportLocation = "/tmp/export.png";
 
     struct StreamSnapshot {
         std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
@@ -101,6 +113,40 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         setupAxes(plotSize, showGrid);
         ImPlot::SetupFinish();
         drawSignals();
+
+        if (_exportDataset) {
+            if (!_bufferFlipped) {
+                ImGui::OpenPopup("Export image");
+                if (ImGui::BeginPopupModal("Export image")) {
+                    ImGui::Text("Enter the location of the exported file:");
+                    ImGui::InputText("##Input", &_exportLocation);
+                    if (ImGui::Button("OK")) {
+                        _bufferFlipped++;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel")) {
+                        _exportDataset = false;
+                    }
+                    ImGui::EndPopup();
+                }
+            } else if (_bufferFlipped == 1) {
+                _bufferFlipped++;
+            } else {
+                _exportDataset                    = false;
+                const auto                 pos    = ImGui::GetItemRectMin();
+                const auto                 size   = ImGui::GetItemRectSize();
+                const int                  x      = static_cast<int>(pos.x);
+                const int                  y      = static_cast<int>(pos.y);
+                const int                  width  = static_cast<int>(size.x);
+                const int                  height = static_cast<int>(size.y);
+                std::vector<unsigned char> pixels(width * height * 4);
+                const int                  yFlipped = static_cast<int>(ImGui::GetIO().DisplaySize.y) - y - height;
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadPixels(x, yFlipped, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                png::writePng(pixels, width, height, _exportLocation);
+            }
+        }
+
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
