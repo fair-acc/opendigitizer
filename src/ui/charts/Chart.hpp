@@ -10,6 +10,7 @@
 #include <imgui.h>
 #include <implot.h>
 #include <implot_internal.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include "../common/TouchHandler.hpp"
 
@@ -1069,6 +1070,8 @@ struct Chart {
     std::array<double, 3UZ> _prevYMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     std::array<bool, 3UZ>   _limitsForceAppliedX = {}; // true on frame where limits were force-applied
     std::array<bool, 3UZ>   _limitsForceAppliedY = {};
+    bool                    _exportDataset       = false;
+    int                     _bufferFlipped       = 0;
 
     template<typename Self>
     [[nodiscard]] inline SignalKind minimumSinkCompatibility(this const Self& self) noexcept {
@@ -1314,6 +1317,10 @@ struct Chart {
 
     template<typename Self>
     void drawChartTypeSubmenu(this Self& self) {
+        if (ImGui::MenuItem("Export as image")) {
+            self._exportDataset = true;
+            self._bufferFlipped = 0;
+        }
         if (menu_icons::beginMenuWithIcon(menu_icons::kChangeType, "Change Type")) {
             const auto minimumCompatibility = self.minimumSinkCompatibility();
             for (const auto& type : registeredChartTypes()) {
