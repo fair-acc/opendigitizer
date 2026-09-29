@@ -139,7 +139,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 const int                  y      = static_cast<int>(pos.y);
                 const int                  width  = static_cast<int>(size.x);
                 const int                  height = static_cast<int>(size.y);
-                std::vector<unsigned char> pixels(width * height * 4);
+                std::vector<unsigned char> pixels(static_cast<size_t>(width * height * 4));
                 const int                  yFlipped = static_cast<int>(ImGui::GetIO().DisplaySize.y) - y - height;
                 glPixelStorei(GL_PACK_ALIGNMENT, 1);
                 glReadPixels(x, yFlipped, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());

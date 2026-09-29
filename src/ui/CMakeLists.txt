@@ -308,7 +308,6 @@ target_link_libraries(
          digitizer_settings
          digitizer_common_utils
          raii_wrapper
-         PNG::PNG
          gnuradio4::vir)
 
 if(EMSCRIPTEN AND NOT OD_WASM_STATIC_BLOCKLIBS)

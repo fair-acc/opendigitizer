@@ -31,8 +31,6 @@ list(APPEND FETCH_CONTENT_MAIN_TARGETS
   ut
 )
 
-find_package(PNG REQUIRED)
-
 FetchContent_MakeAvailable(${FETCH_CONTENT_MAIN_TARGETS})
 
 od_set_release_flags_on_gnuradio_targets("${gnuradio4_SOURCE_DIR}")
