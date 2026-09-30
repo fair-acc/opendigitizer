@@ -43,6 +43,8 @@ struct SDLState;
 
 class App {
 public:
+    static constexpr std::string_view kBuiltinSamplesSource = "example://builtin-samples";
+
     std::string executable;
 
     std::unique_ptr<Dashboard>                   dashboard;
@@ -196,7 +198,7 @@ public:
         };
         openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
 #ifndef OD_DISABLE_DEMO_FLOWGRAPHS
-        openDashboardPage.addDashboard("example://builtin-samples");
+        openDashboardPage.addDashboard(kBuiltinSamplesSource);
 #endif
 
         // Flowgraph page
@@ -231,9 +233,18 @@ public:
         };
 
 #ifdef __EMSCRIPTEN__
+        auto builtinSampleUrl = []([[maybe_unused]] std::string_view name) -> std::optional<std::string> {
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
+            if (cmrc::sample_dashboards::get_filesystem().is_file(std::format("assets/sampleDashboards/{}.grc", name))) {
+                return std::format("{}/{}", kBuiltinSamplesSource, name);
+            }
+#endif
+            return std::nullopt;
+        };
+
         // Defer argv / #dashboard= loads until after the first ImGui frame so SIDE_MODULE
         // dlopen (~60MB) does not race the first paint. Skip stock RemoteStream auto-load
-        // against the static file server (404 → noisy fetch); show the picker instead.
+        // against the static file server (404 → noisy fetch); open the built-in demo instead.
         if (argc > 1) {
             const char* url = argv[1];
             if (strlen(url) > 0) {
@@ -242,7 +253,11 @@ public:
                 prepareForANewDashboardToLoad = true;
             }
         } else if (settings.dashboardFromUrlFragment && !settings.defaultDashboard.empty()) {
-            deferredDashboardUrl          = resolveDefaultDashboardPath();
+            deferredDashboardUrl          = builtinSampleUrl(settings.defaultDashboard).value_or(resolveDefaultDashboardPath());
+            prepareForANewDashboardToLoad = true;
+            std::print("Loading dashboard from '{}' (deferred)\n", *deferredDashboardUrl);
+        } else if (auto demoUrl = builtinSampleUrl("DemoDashboard")) {
+            deferredDashboardUrl          = std::move(demoUrl);
             prepareForANewDashboardToLoad = true;
             std::print("Loading dashboard from '{}' (deferred)\n", *deferredDashboardUrl);
         } else if (dashboard == nullptr) {
