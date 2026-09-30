@@ -15,14 +15,6 @@ blocks:
       output_in_db: false
       output_in_deg: true
       unwrap_phase: true
-  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
-    parameters:
-      name: FFTdB
-      fft_size: 1024
-      sample_rate: 1000
-      window: Hann
-      signal_unit: V
-      output_in_db: true
   - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sineSource1
@@ -69,15 +61,6 @@ blocks:
       abscissa_unit: Hz
       signal_quantity: amplitude
       signal_unit: V
-  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
-    parameters:
-      name: fftDbSink
-      dataset_index: 0
-      signal_name: 2 Hz + 5 Hz
-      abscissa_quantity: frequency
-      abscissa_unit: Hz
-      signal_quantity: magnitude
-      signal_unit: dB
   - id: gr::basic::ClockSource
     parameters:
       name: ClockSource
@@ -249,10 +232,8 @@ connections:
   - [ sineSource1, 0, sineSink1, 0 ]
   - [ sineSource2, 0, sineSink2, 0 ]
   - [ sineSum, 0, FFT, 0 ]
-  - [ sineSum, 0, FFTdB, 0 ]
   - [ sineSum, 0, sinesSink, 0 ]
   - [ FFT, 0, fftSink, 0 ]
-  - [ FFTdB, 0, fftDbSink, 0 ]
   - [ ClockSource, 0, DipoleCurrentGenerator, 0 ]
   - [ DipoleCurrentGenerator, 0, DipoleCurrentSink, 0 ]
   - [ ClockSource, 0, IntensityGenerator, 0 ]
@@ -271,11 +252,7 @@ dashboard:
             second: "Function Generators"
             first:
               hsplit:
-                second:
-                  vsplit:
-                    first: "FFT Amplitude"
-                    second: "FFT Magnitude (dB)"
-                    ratio: !!float32 0.5
+                second: "FFT Amplitude"
                 first: "Raw Signal"
                 ratio: !!float32 0.498815
             ratio: !!float32 0.4
@@ -285,8 +262,6 @@ dashboard:
       block: sinesSink
     - name: fftSink
       block: fftSink
-    - name: fftDbSink
-      block: fftDbSink
     - name: DipoleCurrentSink
       block: DipoleCurrentSink
       port: 0
@@ -332,22 +307,6 @@ dashboard:
           format: Default
       sources:
         - fftSink
-    - name: FFT Magnitude (dB)
-      parameters:
-        show_legend: true
-        max_history_count: 1
-      axes:
-        - axis: X
-          min: 0
-          max: 128
-          scale: Linear
-          format: MetricInline # options: Auto, Metric, MetricInline, Scientific, None, Default
-        - axis: Y
-          min: -150
-          max: 6
-          format: Default
-      sources:
-        - fftDbSink
     - name: Function Generators
       parameters:
         n_history: 10000 # number of samples to plot
