@@ -2,9 +2,9 @@ name: CMake
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   contents: write
@@ -29,152 +29,152 @@ jobs:
         preset: [ci-gcc-debug, ci-gcc-release]
 
     steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-    - name: Free disk space
-      run: |
-        echo "Disk space before clearing:"
-        df -h
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo rm -rf /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force || true
-        echo "Disk space after clearing:"
-        df -h
+      - name: Free disk space
+        run: |
+          echo "Disk space before clearing:"
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          echo "Disk space after clearing:"
+          df -h
 
-    - name: Restore ccache
-      uses: actions/cache/restore@v5
-      with:
-        path: /home/runner/work/ccache
-        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-ccache-${{ matrix.preset }}-
+      - name: Restore ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: /home/runner/work/ccache
+          key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ matrix.preset }}-
 
-    - name: Configure ccache
-      run: |
-        ccache --max-size=4G
-        ccache --set-config=compression=true
-        ccache --set-config=compression_level=6
-        ccache --set-config=depend_mode=true
-        ccache --set-config=hash_dir=false
-        ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
-        ccache -z
-        ccache --show-stats
+      - name: Configure ccache
+        run: |
+          ccache --max-size=4G
+          ccache --set-config=compression=true
+          ccache --set-config=compression_level=6
+          ccache --set-config=depend_mode=true
+          ccache --set-config=hash_dir=false
+          ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
+          ccache -z
+          ccache --show-stats
 
-    - name: Cache fetchContent
-      uses: actions/cache@v5
-      env:
-        cache-name: cache-fetchContent-cache
-      with:
-        path: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/_deps
-        key: ${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Cache fetchContent
+        uses: actions/cache@v5
+        env:
+          cache-name: cache-fetchContent-cache
+        with:
+          path: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/_deps
+          key: ${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt') }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
-    - name: Install image comparing tools
-      shell: bash
-      run: |
-        sudo rm -f /etc/apt/sources.list.d/picoscope* || true
-        sudo apt-get update
-        sudo apt-get -y install imagemagick || true
+      - name: Install image comparing tools
+        shell: bash
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/picoscope* || true
+          sudo apt-get update
+          sudo apt-get -y install imagemagick || true
 
-    - name: Install gnuradio4 packages
-      env:
-       GH_TOKEN: ${{ github.token }}
-      run: |
-        gh release download latest \
-          --repo fair-acc/gnuradio4 \
-          --pattern "gnuradio4-gcc_*_amd64.deb" \
-          --pattern "gnuradio4-emscripten-static_*_all.deb" \
-          --dir /tmp/gr4-pkgs
-        sudo apt install /tmp/gr4-pkgs/*.deb -y || true
+      - name: Install gnuradio4 packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download latest \
+            --repo fair-acc/gnuradio4 \
+            --pattern "gnuradio4-gcc_*_amd64.deb" \
+            --pattern "gnuradio4-emscripten-static_*_all.deb" \
+            --dir /tmp/gr4-pkgs
+          sudo apt install /tmp/gr4-pkgs/*.deb -y || true
 
-    - name: Configure CMake
-      shell: bash
-      run: |
-        $EMSDK_HOME/emsdk activate $EMSDK_VERSION
-        source $EMSDK_HOME/emsdk_env.sh
-        cmake --preset ${{ matrix.preset }}
+      - name: Configure CMake
+        shell: bash
+        run: |
+          $EMSDK_HOME/emsdk activate $EMSDK_VERSION
+          source $EMSDK_HOME/emsdk_env.sh
+          cmake --preset ${{ matrix.preset }}
 
-    - name: Build
-      shell: bash
-      env:
-        # Shared by parent cmake --build and the ui-wasm ExternalProject child.
-        CMAKE_BUILD_PARALLEL_LEVEL: 2
-      run: |
-        $EMSDK_HOME/emsdk activate $EMSDK_VERSION
-        source $EMSDK_HOME/emsdk_env.sh
-        cmake --build --preset ${{ matrix.preset }}
+      - name: Build
+        shell: bash
+        env:
+          # Shared by parent cmake --build and the ui-wasm ExternalProject child.
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: |
+          $EMSDK_HOME/emsdk activate $EMSDK_VERSION
+          source $EMSDK_HOME/emsdk_env.sh
+          cmake --build --preset ${{ matrix.preset }}
 
-    - name: Save ccache
-      if: ${{ !cancelled() && github.event_name == 'push' }}
-      uses: actions/cache/save@v5
-      with:
-        path: /home/runner/work/ccache
-        key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
+      - name: Save ccache
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@v5
+        with:
+          path: /home/runner/work/ccache
+          key: ${{ runner.os }}-ccache-${{ matrix.preset }}-${{ github.sha }}
 
-    - name: Install Xvfb
-      run: sudo apt-get install -y xvfb || true
+      - name: Install Xvfb
+        run: sudo apt-get install -y xvfb || true
 
-    - name: execute tests
-      if: matrix.preset != 'ci-gcc-debug'
-      timeout-minutes: 10
-      working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
-      shell: bash
-      env:
-        XDG_RUNTIME_DIR: /tmp/runtime-dir
-        SDL_VIDEODRIVER: x11
-        SDL_AUDIODRIVER: dummy
-      run: |
-        mkdir -p /tmp/runtime-dir
-        Xvfb :99 -screen 0 1600x1200x24 &
-        export DISPLAY=:99
-        ctest --output-on-failure
+      - name: execute tests
+        if: matrix.preset != 'ci-gcc-debug'
+        timeout-minutes: 10
+        working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
+        shell: bash
+        env:
+          XDG_RUNTIME_DIR: /tmp/runtime-dir
+          SDL_VIDEODRIVER: x11
+          SDL_AUDIODRIVER: dummy
+        run: |
+          mkdir -p /tmp/runtime-dir
+          Xvfb :99 -screen 0 1600x1200x24 &
+          export DISPLAY=:99
+          ctest --output-on-failure
 
-    - name: execute tests with coverage
-      if: matrix.preset == 'ci-gcc-debug'
-      timeout-minutes: 10
-      working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
-      shell: bash
-      env:
-        XDG_RUNTIME_DIR: /tmp/runtime-dir
-        SDL_VIDEODRIVER: x11
-        SDL_AUDIODRIVER: dummy
-      run: |
-        mkdir -p /tmp/runtime-dir
-        Xvfb :99 -screen 0 1600x1200x24 &
-        export DISPLAY=:99
-        cmake --build . --target opendigitizer_coverage
+      - name: execute tests with coverage
+        if: matrix.preset == 'ci-gcc-debug'
+        timeout-minutes: 10
+        working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
+        shell: bash
+        env:
+          XDG_RUNTIME_DIR: /tmp/runtime-dir
+          SDL_VIDEODRIVER: x11
+          SDL_AUDIODRIVER: dummy
+        run: |
+          mkdir -p /tmp/runtime-dir
+          Xvfb :99 -screen 0 1600x1200x24 &
+          export DISPLAY=:99
+          cmake --build . --target opendigitizer_coverage
 
-    # only for Release, as this might generate PR comments (which we don't want to duplicate)
-    - name: compare captures
-      if: ${{ github.event_name == 'pull_request' && matrix.preset == 'ci-gcc-release' }}
-      env:
-        GH_TOKEN: ${{ github.token }}
-      shell: bash
-      run: |
-        ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/reference_captures ${{ github.workspace }}/cmake-build-${{ matrix.preset }}/captures
+      # only for Release, as this might generate PR comments (which we don't want to duplicate)
+      - name: compare captures
+        if: ${{ github.event_name == 'pull_request' && matrix.preset == 'ci-gcc-release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          ./.github/compare_captures.sh ${{ github.event.pull_request.number }} ${{ github.repository }} "$GITHUB_WORKSPACE/cmake-build-${{ matrix.preset }}/reference_captures" "$GITHUB_WORKSPACE/cmake-build-${{ matrix.preset }}/captures"
 
-    - name: Setup Pages
-      if: matrix.preset == 'ci-gcc-release'
-      uses: actions/configure-pages@v5
-    - name: "Fetch cors header workaround" # we're unable to set custom headers on github pages, workaround according to: https://stackoverflow.com/a/68675301
-      if: matrix.preset == 'ci-gcc-release'
-      run: |
-        npm i --save coi-serviceworker
-        cp node_modules/coi-serviceworker/coi-serviceworker.js cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/
-        sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/index.html
-    - name: Upload artifact
-      if: matrix.preset == 'ci-gcc-release'
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: 'cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/'
-    - name: enable uploading pages
-      id: enableUploadPages
-      if: matrix.preset == 'ci-gcc-release'
-      run: echo "builtPages=1" >> "$GITHUB_OUTPUT"
+      - name: Setup Pages
+        if: matrix.preset == 'ci-gcc-release'
+        uses: actions/configure-pages@v5
+      - name: "Fetch cors header workaround" # we're unable to set custom headers on github pages, workaround according to: https://stackoverflow.com/a/68675301
+        if: matrix.preset == 'ci-gcc-release'
+        run: |
+          npm i --save coi-serviceworker
+          cp node_modules/coi-serviceworker/coi-serviceworker.js cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/
+          sed -e "s%</style>%</style><script src=\"coi-serviceworker.js\"></script>%" -i cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/index.html
+      - name: Upload artifact
+        if: matrix.preset == 'ci-gcc-release'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "cmake-build-${{ matrix.preset }}/CMakeExternals/Build/ui-wasm/web/"
+      - name: enable uploading pages
+        id: enableUploadPages
+        if: matrix.preset == 'ci-gcc-release'
+        run: echo "builtPages=1" >> "$GITHUB_OUTPUT"
 
-    - name: Show final ccache stats
-      run: ccache --show-stats
+      - name: Show final ccache stats
+        run: ccache --show-stats
 
   deploy_pages:
     name: Deploy to GitHub Pages
@@ -183,8 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-    - name: "Setup Pages"
-      uses: actions/configure-pages@v5
-    - name: "Deploy to pages"
-      id: deployment
-      uses: actions/deploy-pages@v4
+      - name: "Setup Pages"
+        uses: actions/configure-pages@v5
+      - name: "Deploy to pages"
+        id: deployment
+        uses: actions/deploy-pages@v4

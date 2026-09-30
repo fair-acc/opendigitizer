@@ -41,12 +41,19 @@ shopt -s nullglob &> /dev/null # bash
 
 # Download reference captures
 echo "Downloading release to ${REFERENCE_CAPTURES_DIR}"
-gh release download $REFERENCE_RELEASE_NAME -p "*.png" -D "$REFERENCE_CAPTURES_DIR"
+gh release download $REFERENCE_RELEASE_NAME -p "*.png" -D "$REFERENCE_CAPTURES_DIR" || exit 1
+
+pr_images=("$PR_CAPTURES_DIR"/*.png)
+if [ ${#pr_images[@]} -eq 0 ]; then
+    echo "Error: no captures found in $PR_CAPTURES_DIR"
+    exit 1
+fi
 
 # Let's accumulate the results in these arrays
 # so we can print them in one go in a single PR comment if we want
 
 images_with_differences=()
+declare -A changed_pixels
 new_images_in_pr=()
 images_missing_in_pr=()
 
@@ -59,10 +66,15 @@ for i in ${PR_CAPTURES_DIR}/*.png ; do
     md5sum "$PR_CAPTURES_DIR"/"$image_name"
 
     if [[ -f $reference_image ]] ; then
-        # 'compare' from GH's old Ubuntu always returns 1 even if files are the same. Guard with 'diff'
         if ! diff "$PR_CAPTURES_DIR"/"$image_name" "$reference_image" &> /dev/null ; then
             echo "Found differences for $image_name"
-            compare -compose src "$PR_CAPTURES_DIR"/"$image_name" "$reference_image" "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_diff.png
+            # ref -> now GIF plus diff PNG; OptimizeTransparency avoids 256-colour palette flicker
+            changed_pixels[$image_name]=$(magick -dispose Background -delay 80 -label ref "$reference_image" -label now "$PR_CAPTURES_DIR"/"$image_name" \
+                -layers TrimBounds -coalesce -background white -alpha remove \
+                \( -clone 0,1 -metric AE -precision 16 -compare -format '%[fx:round(%[distortion]*w*h)]' -write info: \
+                    -write "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_diff.png +delete \) \
+                -background '#202020' -gravity North -splice 0x26 -gravity NorthWest -fill white -pointsize 20 -annotate +6+2 '%l' \
+                -set dispose None -loop 0 -layers OptimizeTransparency "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_flicker.gif)
             images_with_differences+=($image_name)
 
             # we'll be uploading it so we can link it from PR, copy to diff dir
@@ -84,7 +96,7 @@ for i in ${REFERENCE_CAPTURES_DIR}/*.png ; do
 
     if [ ! -f "$pr_image" ] ; then
         echo "Could not find $image_name in PR"
-        images_missing_in_pr+=$image_name
+        images_missing_in_pr+=("$image_name")
     fi
 done
 
@@ -110,9 +122,18 @@ if ! gh release list | grep -q "$REFERENCE_RELEASE_NAME"  ; then
     gh release create ${REFERENCE_RELEASE_NAME} --notes "Reference screen captures"
 fi
 
+# GitHub caps a release at 1000 assets: delete the oldest images to make room for this upload
+new_uploads=("$DIFF_DIR"/*)
+asset_count=$(gh release view $DIFFS_RELEASE_NAME --json assets --jq '.assets | length')
+excess_count=$((asset_count + ${#new_uploads[@]} + 1 - 1000)) # 1 for the all-captures archive
+if ((excess_count > 0)); then
+    gh release view $DIFFS_RELEASE_NAME --json assets --jq '[.assets[] | select(.name | endswith(".png") or endswith(".gif"))] | sort_by(.createdAt)[].name' \
+        | head -n "$excess_count" | xargs -r -I{} gh release delete-asset $DIFFS_RELEASE_NAME {} --yes
+fi
+
 if [ -n "$(ls -A "$DIFF_DIR")" ]; then # if not-empty
     echo "Uploading diffs..."
-    gh release upload ${DIFFS_RELEASE_NAME} "$DIFF_DIR"/*png --clobber || exit 1
+    gh release upload ${DIFFS_RELEASE_NAME} "$DIFF_DIR"/* --clobber || exit 1
 fi
 
 tar cvzf "${PR_NUMBER}"-all-captures.tgz -C "$(dirname "$PR_CAPTURES_DIR")" "$(basename "$PR_CAPTURES_DIR")"
@@ -127,10 +148,9 @@ if [[ ${#images_with_differences[@]} -ne 0 ]] ; then
     pr_text+="# PR produced different images:\n\n"
     for i in "${images_with_differences[@]}" ; do
         pr_text+="<details>\n"
-        pr_text+="<summary>$i</summary>\n"
-        pr_text+="\n### Got:\n ![$i](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}) \n"
-        pr_text+="\n### Expected:\n ![$i](https://github.com/${REPO_NAME}/releases/download/${REFERENCE_RELEASE_NAME}/${i}) \n"
-        pr_text+="\n### Diff:\n ![$i](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}_diff.png) \n"
+        pr_text+="<summary>${i%.png} · ${changed_pixels[$i]} px changed</summary>\n"
+        pr_text+="\n![$i](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}_flicker.gif)\n"
+        pr_text+="\n[ref.png](https://github.com/${REPO_NAME}/releases/download/${REFERENCE_RELEASE_NAME}/${i}) · [now.png](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}) · [diff.png](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}_diff.png)\n"
         pr_text+="</details>\n"
     done
 fi
@@ -139,7 +159,7 @@ if [[ ${#new_images_in_pr[@]} -ne 0 ]] ; then
     pr_text+="\n# PR has new images:\n\n"
     for i in "${new_images_in_pr[@]}" ; do
         pr_text+="<details>\n\n"
-        pr_text+="<summary>$i</summary>\n"
+        pr_text+="<summary>${i%.png}</summary>\n"
         pr_text+="<img src=\"https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}\" style=\"max-width: 50%; height: auto;\" >"
         pr_text+="</details>\n"
     done
@@ -149,7 +169,7 @@ if [[ ${#images_missing_in_pr[@]} -ne 0 ]] ; then
     pr_text+="\n# PR didn't produce the following images:\n\n"
     for i in "${images_missing_in_pr[@]}" ; do
         pr_text+="<details>\n\n"
-        pr_text+="<summary>$i</summary>\n"
+        pr_text+="<summary>${i%.png}</summary>\n"
         pr_text+="<img src=\"https://github.com/${REPO_NAME}/releases/download/${REFERENCE_RELEASE_NAME}/${i}\" style=\"max-width: 50%; height: auto;\" >"
         pr_text+="</details>"
     done
