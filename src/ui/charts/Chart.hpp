@@ -1916,7 +1916,7 @@ struct Chart {
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {
-            effectiveShowLegend = chartMode == ChartMode::Interaction || self.show_legend.value;
+            effectiveShowLegend = chartMode == ChartMode::Interaction && self.show_legend.value;
         }
 
         float       layoutOffset = layoutMode ? 5.f : 0.f;
