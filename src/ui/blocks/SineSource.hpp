@@ -35,11 +35,11 @@ to the current wall-clock position.)"">;
 
     gr::PortOut<T> out;
 
-    A<float, "frequency", gr::Unit<"Hz">, gr::Visible>                                       frequency   = 1.f;
-    A<float, "amplitude", gr::Unit<"a.u.">>                                                  amplitude   = 1.f;
-    A<float, "phase", gr::Unit<"°">>                                                         phase       = 0.f;
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"output sample rate">, gr::Visible>      sample_rate = 1000.f;
-    A<float, "update_rate", gr::Unit<"Hz">, gr::Doc<"timer rate, 0=on-demand">, gr::Visible> update_rate = 0.f;
+    A<float, "frequency", gr::Unit<"Hz">, gr::Visible>                                  frequency   = 1.f;
+    A<float, "amplitude", gr::Unit<"a.u.">, gr::Visible>                                amplitude   = 1.f;
+    A<float, "phase", gr::Unit<"°">>                                                    phase       = 0.f;
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"output sample rate">, gr::Visible> sample_rate = 1000.f;
+    A<float, "update_rate", gr::Unit<"Hz">, gr::Doc<"timer rate, 0=on-demand">>         update_rate = 0.f;
 
     GR_MAKE_REFLECTABLE(SineSource, out, frequency, amplitude, phase, sample_rate, update_rate);
 
