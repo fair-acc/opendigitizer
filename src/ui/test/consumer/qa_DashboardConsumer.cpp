@@ -1,9 +1,11 @@
 #include "Dashboard.hpp"
+#include "Setup.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
 
 #include <boost/ut.hpp>
+#include <implot3d.h>
 
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
@@ -12,6 +14,8 @@
 
 #include <cmrc/cmrc.hpp>
 
+#include <algorithm>
+#include <format>
 #include <memory>
 #include <string>
 #include <thread>
@@ -70,10 +74,32 @@ void stopAndWait(DigitizerUi::Dashboard& dashboard) {
 // when statically registered suites run at exit
 int main() {
     ImGui::CreateContext();
-    ImPlot::CreateContext();
+    constexpr ImVec4 kHostWindowBg{0.25f, 0.5f, 0.75f, 1.f}; // a host theme OpenDigitizer must not overwrite
+    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = kHostWindowBg;
+    const auto hostStyleKept                    = [&] {
+        const ImVec4 c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        return c.x == kHostWindowBg.x && c.y == kHostWindowBg.y && c.z == kHostWindowBg.z && c.w == kHostWindowBg.w;
+    };
+
+    DigitizerUi::initialise();
     registerDemoDashboardBlocks();
     const std::string grc        = demoDashboardGrc();
     const auto        restClient = std::make_shared<opencmw::client::RestClient>();
+
+    "initialise() keeps the host's style and creates the plot contexts"_test = [&] {
+        expect(hostStyleKept());
+        expect(ImPlot::GetCurrentContext() != nullptr);
+        expect(ImPlot3D::GetCurrentContext() != nullptr);
+    };
+
+    "registerDashboardBlocks() registers every chart type and the plot sink, whatever the caller includes"_test = [] {
+        gr::BlockRegistry registry;
+        DigitizerUi::registerDashboardBlocks(registry);
+        for (std::string_view chart : {"XYChart", "YYChart", "SpectrumPlot", "SpectrumView", "SpectrumDensity", "WaterfallPlot", "SurfacePlot"}) {
+            expect(registry.contains(std::format("opendigitizer::charts::{}", chart))) << chart;
+        }
+        expect(std::ranges::any_of(registry.keys(), [](const auto& key) { return std::string_view(key).starts_with("opendigitizer::ImPlotSink"); })) << "ImPlotSink";
+    };
 
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
@@ -81,6 +107,7 @@ int main() {
 
         expect(static_cast<bool>(dashboard->scheduler)) << "scheduler created from the .grc";
         expect(!dashboard->uiWindows.empty()) << "chart windows created from the .grc layout";
+        expect(hostStyleKept()) << "creating a dashboard keeps the host's style";
 
         dashboard.reset(); // stops the scheduler, also while its start-up thread is still initialising
     };
@@ -104,6 +131,7 @@ int main() {
         expect(!dashboard->uiWindows.empty());
     };
 
+    ImPlot3D::DestroyContext();
     ImPlot::DestroyContext();
     ImGui::DestroyContext();
 }

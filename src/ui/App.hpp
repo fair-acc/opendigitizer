@@ -18,6 +18,7 @@
 #include "DashboardPage.hpp"
 #include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
+#include "Setup.hpp"
 
 #include "settings.hpp"
 #include "utils/EmscriptenHelper.hpp"
@@ -161,22 +162,8 @@ public:
         dashboard       = {};
     }
 
-    static void setImGuiStyle(LookAndFeel::Style style) {
-        switch (style) {
-        case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
-        case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
-        }
-        LookAndFeel::mutableInstance().style = style;
-
-        ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
-
-        // with the dark style the plot frame would have the same color as a button. make it have the
-        // same color as the window background instead.
-        ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-    }
-
     void setStyle(LookAndFeel::Style style) {
-        setImGuiStyle(style);
+        applyStyle(style);
         flowgraphPage.updateStyle();
     }
 

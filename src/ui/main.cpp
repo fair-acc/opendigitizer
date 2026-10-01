@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
     }
 
     Digitizer::Settings::instance();
-    opendigitizer::ColourManager::instance();
+    DigitizerUi::initialise(); // the App applies its style itself (App::setStyle)
 
     // Register blocks. On WASM dynload, Gr* blocklibs arrive via SIDE_MODULE plugins.
     // On native / WASM-static they are linked in and registered here.
@@ -274,7 +274,6 @@ int main(int argc, char** argv) {
     app.executable = argv[0];
 #endif
 
-    DigitizerUi::LookAndFeel::mutableInstance().loadFonts();
     app.init(argc, argv);
 
 #ifdef __EMSCRIPTEN__

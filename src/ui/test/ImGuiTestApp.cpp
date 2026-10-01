@@ -174,8 +174,7 @@ void ImGuiTestApp::initImGui() {
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
 
-    LookAndFeel::mutableInstance().loadFonts();
-    App::setImGuiStyle(LookAndFeel::Style::Dark);
+    initialise({.style = LookAndFeel::Style::Dark});
 
     registerTests();
 }

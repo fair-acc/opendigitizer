@@ -320,14 +320,6 @@ Dashboard::PropertyControlWindow::PropertyControlWindow(Dashboard& dashboard, Ui
 Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) : restClient(std::move(client)), description(desc) {
     description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
 
-    const auto style = Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light;
-    switch (style) {
-    case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
-    case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
-    }
-    LookAndFeel::mutableInstance().style         = style;
-    ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-
     graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { scheduler.sendMessage(std::move(message), std::move(location)); };
 }
 
