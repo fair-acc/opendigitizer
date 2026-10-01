@@ -16,6 +16,7 @@
 
 #include <imgui.h>
 #include <imgui_node_editor.h>
+#include <imgui_node_editor_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "common/LookAndFeel.hpp"
@@ -170,6 +171,9 @@ std::string valToString(const gr::pmt::Value& val) {
 
 FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
     Buttons result;
+    if (!(buttons.openNewBlockDialog || buttons.openNewSubGraphDialog || buttons.openRemoteSignalSelector || buttons.rearrangeBlocks || buttons.exportAllUnusedPorts || buttons.closeWindow)) {
+        return result; // an overlay window without items is an ImGui error
+    }
 
     IMW::PushCursorPosition _;
 
@@ -679,9 +683,23 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         }
     }
 
+    // the node editor restores the previous view when its canvas is resized, dropping a navigation made in the frame
+    // before; a fit followed by a resize is therefore repeated
+    const ImVec2 canvasSize    = ax::NodeEditor::GetScreenSize();
+    const bool   canvasResized = canvasSize.x != _lastCanvasSize.x || canvasSize.y != _lastCanvasSize.y;
+    _lastCanvasSize            = canvasSize;
+    if (std::exchange(_fitJustApplied, false) && canvasResized) {
+        _fitRequested = true;
+    }
+
     // Arrange only after drawing has measured every block.
     if (std::exchange(_rearrangeRequested, false)) {
         sortNodes(rootBlock);
+        _fitRequested = true;
+    } else if (_fitRequested) {
+        _fitRequested = false;
+        fitIntoView(*rootBlock);
+        _fitJustApplied = true;
     }
 
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
@@ -759,11 +777,11 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
     const auto clicked = drawButtons(contentScreenTopLeft, contentSize,
         {
-            .openNewBlockDialog       = static_cast<bool>(openNewBlockSelectorCallback),
-            .openNewSubGraphDialog    = static_cast<bool>(openNewSubGraphSelectorCallback),
-            .openRemoteSignalSelector = static_cast<bool>(openAddRemoteSignalCallback),
-            .rearrangeBlocks          = true,
-            .exportAllUnusedPorts     = _editorLevel > 0,
+            .openNewBlockDialog       = showEditorControls && openNewBlockSelectorCallback,
+            .openNewSubGraphDialog    = showEditorControls && openNewSubGraphSelectorCallback,
+            .openRemoteSignalSelector = showEditorControls && openAddRemoteSignalCallback,
+            .rearrangeBlocks          = showEditorControls,
+            .exportAllUnusedPorts     = showEditorControls && _editorLevel > 0,
             .closeWindow              = static_cast<bool>(closeRequestedCallback),
         },
         horizontalSplit ? (ratio) : 1.0f);
@@ -1120,6 +1138,36 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) {
     }
 }
 
+void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock) {
+    if (rootBlock.childBlocks.empty()) {
+        return;
+    }
+    ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
+    for (const auto& block : rootBlock.childBlocks) {
+        const auto blockId  = ax::NodeEditor::NodeId(block.get());
+        const auto position = ax::NodeEditor::GetNodePosition(blockId);
+        bounds.Add(ImRect(position, position + ax::NodeEditor::GetNodeSize(blockId)));
+    }
+
+    // EditorContext::NavigateTo(rect, zoomIn = true) widens the rect on each side by half of this fraction of its larger
+    // dimension before fitting it (c_NavigationZoomMargin in imgui_node_editor.cpp)
+    constexpr float kNavigationZoomMargin = 0.1f;
+    const auto      marginFor             = [](ImVec2 size) { return std::max(size.x, size.y) * kNavigationZoomMargin * 0.5f; };
+
+    auto*        editor   = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
+    const ImVec2 viewSize = ax::NodeEditor::GetScreenSize();
+    const float  margin   = marginFor(bounds.GetSize());
+    if (bounds.GetWidth() + 2.f * margin > viewSize.x || bounds.GetHeight() + 2.f * margin > viewSize.y) {
+        editor->NavigateTo(bounds, true);
+        return;
+    }
+
+    // fits at 1:1: a view-sized rect, shrunk by exactly the margin NavigateTo adds back, so the zoom ends at 1
+    const float viewMargin = std::max(viewSize.x, viewSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
+    const auto  halfInner  = (viewSize - ImVec2(2.f * viewMargin, 2.f * viewMargin)) * 0.5f;
+    editor->NavigateTo(ImRect(bounds.GetCenter() - halfInner, bounds.GetCenter() + halfInner), true);
+}
+
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
     if (auto owner = ownersForRoot()) {
@@ -1349,6 +1397,7 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
 
     editor.updateStyle();
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
+    editor.showEditorControls        = showEditorControls;
 
     editor.requestGraphEdit = [&](UiGraphBlock* block) { pushEditor(block->blockUniqueName, graphModel, block); };
 
@@ -1408,6 +1457,16 @@ void FlowgraphPage::popEditor() {
 void FlowgraphPage::updateStyle() {
     for (auto& editor : _editors) {
         editor.updateStyle();
+    }
+}
+
+void FlowgraphPage::drawLocalNodeEditor() {
+    if (!_editors.empty()) {
+        _currentTabIsFlowGraph = true;
+        drawNodeEditorTab();
+    } else if (!_dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
+        // We don't have an editor until the root graph is loaded
+        pushEditor("rootBlock node editor", _dashboard->graphModel, std::addressof(_dashboard->graphModel.rootBlock));
     }
 }
 
@@ -1496,16 +1555,15 @@ void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
 
 void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
+    if (!showEditorControls) {
+        drawLocalNodeEditor();
+        return;
+    }
+
     IMW::TabBar tabBar("maintabbar", 0);
 
     if (auto item = IMW::TabItem("Local", nullptr, 0)) {
-        if (!_editors.empty()) {
-            _currentTabIsFlowGraph = true;
-            drawNodeEditorTab();
-        } else if (!_dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
-            // We don't have an editor until the root graph is loaded
-            pushEditor("rootBlock node editor", _dashboard->graphModel, std::addressof(_dashboard->graphModel.rootBlock));
-        }
+        drawLocalNodeEditor();
     }
 
     if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {

@@ -148,7 +148,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     }
 
     static void dragPinToPin(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphPort* fromPort, const DigitizerUi::UiGraphPort* toPort) {
-        ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
+        ctx->Yield(2);                   // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
+        waitForSettledView(ctx, editor); // the editor fits the graph into the view after its first draw
 
         editor.makeCurrent();
         ctx->Yield();
@@ -279,6 +280,91 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         g_state.dashboard->graphModel.sendMessage(std::move(message));
     }
 
+    static constexpr std::array  kEditingButtons{"Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks"};
+    static constexpr const char* kLocalTabRef = "//Fit Window/maintabbar/Local";
+
+    static constexpr auto fitGuiFunc = [](ImGuiTestContext*) {
+        IMW::Window window("Fit Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::SetWindowPos({0, 0});
+        ImGui::SetWindowSize(ImVec2(640, 420));
+        if (g_state.dashboard) {
+            g_state.flowgraphPage.draw();
+            g_state.dashboard->handleMessages();
+        }
+    };
+
+    // independent SineSource -> DataSink pairs, which the layout stacks
+    static std::string sourceSinkPairsGraph(std::size_t nPairs) {
+        std::string blocks;
+        std::string connections;
+        for (std::size_t i = 0UZ; i < nPairs; ++i) {
+            blocks += std::format("  - id: \"opendigitizer::SineSource<float32>\"\n    parameters:\n      name: \"source{0}\"\n"
+                                  "  - id: \"gr::basic::DataSink<float32>\"\n    parameters:\n      name: \"sink{0}\"\n",
+                i);
+            connections += std::format("  - [source{0}, 0, sink{0}, 0]\n", i);
+        }
+        return std::format("blocks:\n{}connections:\n{}", blocks, connections);
+    }
+
+    static ImRect contentBounds(DigitizerUi::FlowgraphEditor& editor) {
+        editor.makeCurrent();
+        ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
+        for (const auto& block : g_state.blocks()) {
+            const auto id       = ax::NodeEditor::NodeId(block.get());
+            const auto position = ax::NodeEditor::GetNodePosition(id);
+            bounds.Add(ImRect(position, position + ax::NodeEditor::GetNodeSize(id)));
+        }
+        return bounds;
+    }
+
+    static std::vector<ImVec2> nodePositions(DigitizerUi::FlowgraphEditor& editor) {
+        editor.makeCurrent();
+        std::vector<ImVec2> positions;
+        for (const auto& block : g_state.blocks()) {
+            positions.push_back(ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block.get())));
+        }
+        return positions;
+    }
+
+    // screen pixels per canvas unit
+    static float viewZoom(DigitizerUi::FlowgraphEditor& editor) {
+        const auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        return context->GetRect().GetWidth() / context->GetViewRect().GetWidth();
+    }
+
+    static bool allNodesInView(DigitizerUi::FlowgraphEditor& editor) {
+        const auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        return context->GetViewRect().Contains(contentBounds(editor));
+    }
+
+    // the first draw arranges and then fits the graph, animated; settled once nothing is pending and the visible canvas
+    // rect stops changing
+    static void waitForSettledView(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+        const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        ImRect      previous     = context->GetViewRect();
+        std::size_t stableFrames = 0UZ;
+        for (std::size_t frame = 0UZ; frame < 600UZ && stableFrames < 5UZ; ++frame) {
+            ctx->Yield();
+            const ImRect current = context->GetViewRect();
+            const bool   pending = editor._firstDraw || editor._rearrangeRequested || editor._fitRequested || editor._fitJustApplied;
+            stableFrames         = (!pending && current.Min == previous.Min && current.Max == previous.Max) ? stableFrames + 1UZ : 0UZ;
+            previous             = current;
+        }
+        expect(stableFrames >= 5UZ) << fatal << "the editor view settles";
+    }
+
+    // waitForScheduler() pushes a root editor and the page pushes its own once the root is known; the second would find the
+    // blocks already arranged by the first, so only the page's editor is kept
+    static DigitizerUi::FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs) {
+        g_state.reloadFromYamlString(sourceSinkPairsGraph(nPairs));
+        g_state.waitForScheduler(ctx);
+        g_state.waitUntil(ctx, "the graph has blocks", [] { return g_state.hasBlocks(); });
+        while (g_state.flowgraphPage.editorCount() > 1UZ) {
+            g_state.flowgraphPage.popEditor();
+        }
+        return g_state.flowgraphPage.currentEditor();
+    }
+
     void registerTests() override { // NOSONAR (cognitive complexity)
         constexpr auto basicGuiFunc = [](ImGuiTestContext*) {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
@@ -375,6 +461,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 ctx->Yield(2); // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
 
+                waitForSettledView(ctx, g_state.flowgraphPage.currentEditor());
                 g_state.flowgraphPage.currentEditor().makeCurrent();
                 ctx->Yield();
                 ax::NodeEditor::NavigateToContent(0.0f);
@@ -738,6 +825,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
                 auto& editor = g_state.flowgraphPage.currentEditor();
                 ctx->Yield(2);
+                waitForSettledView(ctx, editor);
                 editor.makeCurrent();
                 ax::NodeEditor::NavigateToContent(0.0f);
                 ctx->Yield(2);
@@ -780,10 +868,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 ctx->SetRef("Test Window");
                 auto& editor = g_state.flowgraphPage.currentEditor();
-                ctx->Yield(2);
-                editor.makeCurrent();
-                ax::NodeEditor::NavigateToContent(0.0f);
-                ctx->Yield(2);
+                waitForSettledView(ctx, editor); // the first draw fits the graph; a zoom-to-fill would push blocks added by grouping under the button bar
 
                 DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
                 DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
@@ -807,7 +892,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     }))
                     << fatal << "both selected blocks should have moved into a new subgraph\n";
 
-                ctx->Yield(3); // let the editor lay out the node for the new subgraph
+                editor.requestRelayout(); // the new subgraph is placed below the fitted graph, outside the view
+                waitForSettledView(ctx, editor);
 
                 DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
                 expect(subgraph != nullptr) << fatal;
@@ -850,6 +936,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
                 auto& editor = g_state.flowgraphPage.currentEditor();
                 ctx->Yield(2);
+                waitForSettledView(ctx, editor);
                 editor.makeCurrent();
                 ax::NodeEditor::NavigateToContent(0.0f);
                 ctx->Yield(2);
@@ -888,6 +975,81 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(nested != nullptr) << fatal;
                 expect(pickInDialog ? nested->isScheduler() : nested->isGraph()) << "the type of subgraph should match what the user asked for\n";
 
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Editor controls are shown by default and relayout equals the button");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = fitGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadGraph(ctx, 2UZ);
+                waitForSettledView(ctx, editor);
+
+                for (const char* label : kEditingButtons) {
+                    expect(ctx->ItemExists(std::format("//Button Overlay/{}", label).c_str())) << std::format("'{}' shown by default", label);
+                }
+                expect(ctx->ItemExists(kLocalTabRef)) << "tab bar shown by default";
+
+                ctx->ItemClick("//Button Overlay/Rearrange blocks");
+                waitForSettledView(ctx, editor);
+                const auto arrangedByButton = nodePositions(editor);
+
+                auto& movedBlock = *g_state.blocks().front();
+                expect(movedBlock.storedXY.has_value()) << fatal << "an arranged block has a stored position";
+                movedBlock.storedXY = DigitizerUi::UiGraphBlock::StoredXY{movedBlock.storedXY->x + 150.f, movedBlock.storedXY->y + 90.f}; // as dragging it would
+                ctx->Yield(2);
+                expect(nodePositions(editor) != arrangedByButton) << fatal << "moving a block changes the layout";
+
+                g_state.flowgraphPage.requestRelayout();
+                waitForSettledView(ctx, editor);
+                expect(nodePositions(editor) == arrangedByButton) << "requestRelayout() arranges as the button does";
+                captureScreenshot(*ctx, "Fit Window");
+
+                g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Hidden editor controls and a relayout that fits the graph into the view");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = fitGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.flowgraphPage.showEditorControls = false;
+
+                auto& largeEditor = loadGraph(ctx, 8UZ);
+                waitForSettledView(ctx, largeEditor);
+
+                for (const char* label : kEditingButtons) {
+                    expect(!ctx->ItemExists(std::format("//Button Overlay/{}", label).c_str())) << std::format("'{}' hidden", label);
+                }
+                expect(!ctx->ItemExists(kLocalTabRef)) << "no tab bar";
+
+                expect(viewZoom(largeEditor) < 1.f) << fatal << "the large graph needs shrinking to fit the view";
+                expect(allNodesInView(largeEditor)) << "the first-draw arrange fits the whole graph into the view";
+                captureScreenshot(*ctx, "Fit Window");
+
+                auto& smallEditor = loadGraph(ctx, 1UZ);
+                waitForSettledView(ctx, smallEditor);
+
+                auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(smallEditor._editorPtr);
+                smallEditor.makeCurrent();
+                context->NavigateTo(ImRect(ImVec2(-3000.f, -3000.f), ImVec2(3000.f, 3000.f)), true, 0.f);
+                waitForSettledView(ctx, smallEditor);
+                expect(viewZoom(smallEditor) < 1.f) << fatal << "zoomed out before the relayout";
+
+                g_state.flowgraphPage.requestRelayout();
+                waitForSettledView(ctx, smallEditor);
+                expect(approx(viewZoom(smallEditor), 1.f, 1e-3f)) << "a graph that fits is shown at 1:1, never enlarged";
+                expect(allNodesInView(smallEditor));
+                const ImVec2 offCentre = contentBounds(smallEditor).GetCenter() - context->GetViewRect().GetCenter();
+                expect(std::abs(offCentre.x) < 1.f && std::abs(offCentre.y) < 1.f) << std::format("graph centred, offset ({}, {})", offCentre.x, offCentre.y);
+                captureScreenshot(*ctx, "Fit Window");
+
+                g_state.flowgraphPage.showEditorControls = true;
                 g_state.stopScheduler();
             };
         }
