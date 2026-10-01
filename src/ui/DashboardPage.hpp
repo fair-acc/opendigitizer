@@ -8,7 +8,8 @@
 #include <unordered_map>
 
 #include "Dashboard.hpp"
-#include "charts/Chart.hpp"        // For g_chartRequests
+#include "DashboardView.hpp"
+#include "charts/Chart.hpp"
 #include "charts/SinkRegistry.hpp" // For SinkRegistry listener
 #include "common/ImguiWrap.hpp"
 #include "components/Block.hpp"
@@ -32,8 +33,6 @@ private:
     static constexpr const char* addExportedPropertyPopupID           = "Add another exported property";
     static constexpr const char* propertyControLWindowContextWindowID = "propertyControlWindowContextMenu";
 
-    ImVec2 _legendBox{500, 40}; // updated by drawLegend(...)
-
     std::function<void()>     _requestViewOnlyMode;
     std::function<void(bool)> _requestSetLayoutMode;
 
@@ -48,10 +47,9 @@ private:
     };
     std::unordered_map<std::string, SourceBlockInWaiting> _addedSourceBlocksWaitingForSink;
 
-    DockSpace                             _dockSpace;
     components::BlockControlsPanelContext _editPane;
     std::unique_ptr<SignalSelector>       _remoteSignalSelector;
-    GlobalSignalLegend                    _signalLegend;
+    DashboardView                         _view;
 
     Dashboard* _dashboard = nullptr;
 
@@ -61,43 +59,21 @@ private:
     // dialog state for the currently exported properties popup
     std::size_t _propertyControlWindowID;
 
-    // deferred chart transmutation request (processed at start of next frame)
-    struct PendingTransmutation {
-        std::string chartId;
-        std::string newChartType;
-    };
-    std::optional<PendingTransmutation> _pendingTransmutation;
-
-    // deferred chart removal requests (processed at start of next frame)
-    std::vector<std::string> _pendingRemovals;
-    // transmutation and removal are deferred to the next frame: a chart must not be replaced while it draws
-    opendigitizer::charts::ChartRequests _chartRequests{
-        .transmute =
-            [this](std::string_view chartId, std::string_view newChartType) {
-                _pendingTransmutation = PendingTransmutation{std::string(chartId), std::string(newChartType)};
-                return true;
-            },
-        .duplicate = [this](std::string_view chartId) { _dashboard->copyChart(chartId); },
-        .remove    = [this](std::string_view chartId) { requestChartRemoval(chartId); },
-    };
-
     struct LegendItemClickResult {
         bool        shouldOpenEnterViewOnlyModeModal = false;
         bool        shouldOpenNewPlotModal           = false;
         std::string sinkForNewPlot;
     };
 
-    void                                drawNewPlotModal();                                         // modifies _showNewPlotModal if close is requested
-    [[nodiscard]] LegendItemClickResult drawLegend(Mode mode, ImVec2 chartPaneSize) noexcept;       // sets _legendBox
-    [[nodiscard]] ImVec2                drawLegendCenter(Mode mode, ImVec2 chartPaneSize) noexcept; // returns total size of centered legend part
-    void                                drawToolbarLayoutButtons(float plotButtonSize) noexcept;
-    void                                addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
-    void                                doViewModeOverlayArea() noexcept;
+    void drawNewPlotModal(); // modifies _showNewPlotModal if close is requested
+    void drawBarLeading(LegendItemClickResult& clickResult) noexcept;
+    void drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept;
+    void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
+    void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
+    void doViewModeOverlayArea() noexcept;
 
     struct ExportedPropertyPairsByWindowID;
 
-    // returns the size of area used for charts
-    [[nodiscard]] ImVec2                drawCharts(Mode mode, const ExportedPropertyPairsByWindowID& propertyPairsByWindowID, std::vector<std::size_t>& windowRemoveList);
     [[nodiscard]] LegendItemClickResult drawChartsLegendAndEditPane(Mode mode, const ExportedPropertyPairsByWindowID& propertyPairsByWindowID, std::vector<std::size_t>& windowRemoveList);
     void                                applyControlPanelWindowAction(const components::BlockControlsPanelResult& controlPanelAction, const ExportedPropertyPairsByWindowID& pairs, std::vector<std::size_t>& windowRemoveList);
 
@@ -147,8 +123,6 @@ private:
 public:
     DashboardPage();
     ~DashboardPage();
-    DashboardPage(const DashboardPage&)            = delete; // g_chartRequests points into this object
-    DashboardPage& operator=(const DashboardPage&) = delete;
 
     void draw(Mode mode = Mode::View) noexcept;
 
@@ -162,40 +136,7 @@ public:
 
     void setDashboard(Dashboard& dashboard) {
         _remoteSignalSelector.reset();
-        _dashboard                             = std::addressof(dashboard);
-        opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
-    }
-
-    void processPendingTransmutation() {
-        if (!_pendingTransmutation || !_dashboard) {
-            return;
-        }
-
-        auto request          = std::move(*_pendingTransmutation);
-        _pendingTransmutation = std::nullopt;
-
-        // find UIWindow by chartId and transmute
-        for (auto& uiWindow : _dashboard->uiWindows) {
-            if (uiWindow.block && uiWindow.block->uniqueName() == request.chartId) {
-                _dashboard->transmuteUIWindow(uiWindow, request.newChartType);
-                return;
-            }
-        }
-    }
-
-    void requestChartRemoval(std::string_view chartId) { _pendingRemovals.emplace_back(chartId); }
-
-    void processPendingRemovals() {
-        if (_pendingRemovals.empty() || !_dashboard) {
-            return;
-        }
-
-        for (const auto& chartId : _pendingRemovals) {
-            if (auto* uiWindow = _dashboard->findUIWindowByName(chartId)) {
-                _dashboard->deleteChart(uiWindow);
-            }
-        }
-        _pendingRemovals.clear();
+        _dashboard = std::addressof(dashboard);
     }
 };
 

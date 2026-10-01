@@ -60,7 +60,7 @@ private:
 
     void captureFreeLayout() const;
 
-    void renderWindows(const Windows& windows, bool isEditable);
+    void renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize);
     void drawEditableWindowDragArea();
 
     // positions all windows according to the current layout type

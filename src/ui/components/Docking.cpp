@@ -126,7 +126,7 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         ImGui::DockSpace(currentDockspaceID, ImVec2(0.0f, 0.0f), dockspace_flags, nullptr);
     }
 
-    renderWindows(windows, isEditable);
+    renderWindows(windows, isEditable, paneSize);
 }
 
 const gr::property_map& DockSpace::saveFreeLayout() const {
@@ -143,10 +143,10 @@ void DockSpace::captureFreeLayout() const {
     _lastFreeLayout        = DigitizerUi::saveDockSpaceState(windowNames, _lastDockspaceID);
 }
 
-void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
+void DockSpace::renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize) {
     for (const auto& window : windows) {
         constexpr float floatingWindowMinSizeFractionOfMainWindow = 1.f / 4.f;
-        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(ImGui::GetMainViewport()->WorkSize);
+        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(paneSize);
         const ImVec2    windowSizeMin                             = window->windowMinSizeOverride.value_or(ImVec2{
             std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfMainWindow),
             std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfMainWindow),

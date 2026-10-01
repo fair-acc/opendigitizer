@@ -234,19 +234,25 @@ bool ImGuiTestApp::runTests() {
 ImGuiTestEngine* ImGuiTestApp::engine() const { return _engine; }
 
 /** static */
-void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
+namespace {
+void resetCaptureWithNextFileName(ImGuiTestContext& ctx, const char* prefix) {
     ctx.CaptureReset();
+    static int suffixCounter = 0;
+    suffixCounter++;
+    ImFormatString(ctx.CaptureArgs->InOutputFile, IM_ARRAYSIZE(ctx.CaptureArgs->InOutputFile), OPENDIGITIZER_BUILD_DIRECTORY "/captures/%s_%04d%s", prefix, suffixCounter, ".png");
+}
+} // namespace
 
-    { // choose a nice name for the output file
-        auto*      args          = ctx.CaptureArgs;
-        static int suffixCounter = 0;
-        suffixCounter++;
-
-        ImFormatString(args->InOutputFile, IM_ARRAYSIZE(args->InOutputFile), OPENDIGITIZER_BUILD_DIRECTORY "/captures/%s_%04d%s", g_testApp->_options.screenshotPrefix, suffixCounter, ".png");
-    }
-
+void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
+    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
     ctx.CaptureAddWindow(ref);
     ctx.CaptureScreenshot(captureFlags);
+}
+
+void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, const ImRect& screenRect) {
+    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
+    ctx.CaptureArgs->InCaptureRect = screenRect;
+    ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor);
 }
 
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
