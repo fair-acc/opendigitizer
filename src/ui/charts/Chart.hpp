@@ -525,7 +525,8 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
-    DigitizerUi::IMW::Font titleFont(DigitizerUi::LookAndFeel::instance().fontTiny[DigitizerUi::LookAndFeel::instance().prototypeMode]);
+    const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
+    DigitizerUi::IMW::FontWithSize titleFont(lnf.fontTiny[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontTiny));
 
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
@@ -729,8 +730,9 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     };
 
     {
-        DigitizerUi::IMW::Font    font(DigitizerUi::LookAndFeel::instance().fontSmall[DigitizerUi::LookAndFeel::instance().prototypeMode ? 1UZ : 0UZ]);
-        DigitizerUi::IMW::ToolTip tip;
+        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
+        DigitizerUi::IMW::FontWithSize font(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall));
+        DigitizerUi::IMW::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
             drawAxisTooltip(plot, ImAxis_X1 + i);
         }
