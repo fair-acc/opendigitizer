@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 #include "Dashboard.hpp"
-#include "charts/Chart.hpp"        // For g_addSinkToChart, g_requestChartTransmutation
+#include "charts/Chart.hpp"        // For g_chartRequests
 #include "charts/SinkRegistry.hpp" // For SinkRegistry listener
 #include "common/ImguiWrap.hpp"
 #include "components/Block.hpp"
@@ -70,6 +70,16 @@ private:
 
     // deferred chart removal requests (processed at start of next frame)
     std::vector<std::string> _pendingRemovals;
+    // transmutation and removal are deferred to the next frame: a chart must not be replaced while it draws
+    opendigitizer::charts::ChartRequests _chartRequests{
+        .transmute =
+            [this](std::string_view chartId, std::string_view newChartType) {
+                _pendingTransmutation = PendingTransmutation{std::string(chartId), std::string(newChartType)};
+                return true;
+            },
+        .duplicate = [this](std::string_view chartId) { _dashboard->copyChart(chartId); },
+        .remove    = [this](std::string_view chartId) { requestChartRemoval(chartId); },
+    };
 
     struct LegendItemClickResult {
         bool        shouldOpenEnterViewOnlyModeModal = false;
@@ -137,6 +147,8 @@ private:
 public:
     DashboardPage();
     ~DashboardPage();
+    DashboardPage(const DashboardPage&)            = delete; // g_chartRequests points into this object
+    DashboardPage& operator=(const DashboardPage&) = delete;
 
     void draw(Mode mode = Mode::View) noexcept;
 
@@ -150,47 +162,8 @@ public:
 
     void setDashboard(Dashboard& dashboard) {
         _remoteSignalSelector.reset();
-        _dashboard = std::addressof(dashboard);
-        // set up g_addSinkToChart callback for D&D add operations
-        opendigitizer::charts::dnd::g_addSinkToChart = [this](std::string_view chartId, std::string_view sinkName) {
-            if (!_dashboard) {
-                return;
-            }
-            for (auto& uiWindow : _dashboard->uiWindows) {
-                if (uiWindow.block && uiWindow.block->uniqueName() == chartId) {
-                    auto names = grc_compat::getBlockSinkNames(uiWindow.block.get());
-                    if (std::find(names.begin(), names.end(), std::string(sinkName)) == names.end()) {
-                        names.push_back(std::string(sinkName));
-                        grc_compat::setBlockSinkNames(uiWindow.block.get(), names);
-                    }
-                    return;
-                }
-            }
-        };
-
-        // set up g_requestChartTransmutation callback for chart type changes
-        // transmutation is deferred to the start of next frame to avoid
-        // modifying/destroying charts during their draw() call
-        opendigitizer::charts::g_requestChartTransmutation = [this](std::string_view chartId, std::string_view newChartType) -> bool {
-            if (!_dashboard) {
-                return false;
-            }
-            // store request for deferred processing
-            _pendingTransmutation = PendingTransmutation{std::string(chartId), std::string(newChartType)};
-            return true;
-        };
-
-        // set up g_requestChartDuplication callback for "Duplicate Chart" menu item
-        opendigitizer::charts::g_requestChartDuplication = [this](std::string_view chartId) {
-            if (!_dashboard) {
-                return;
-            }
-            _dashboard->copyChart(chartId);
-        };
-
-        // set up g_requestChartRemoval callback for "Remove Chart" menu item
-        // removal is deferred to avoid modifying the chart collection during iteration
-        opendigitizer::charts::g_requestChartRemoval = [this](std::string_view chartId) { requestChartRemoval(chartId); };
+        _dashboard                             = std::addressof(dashboard);
+        opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
     }
 
     void processPendingTransmutation() {

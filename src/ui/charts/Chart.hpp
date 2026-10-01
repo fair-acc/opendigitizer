@@ -872,22 +872,17 @@ inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
     ImGui::TextUnformatted(signalName.data(), signalName.data() + signalName.size());
 }
 
-using AddSinkToChartCallback                   = std::function<void(std::string_view chartId, std::string_view sinkName)>;
-inline AddSinkToChartCallback g_addSinkToChart = nullptr;
-
 } // namespace dnd
 
-/// Callback for requesting chart type transmutation.
-using TransmuteChartCallback                              = std::function<bool(std::string_view chartId, std::string_view newChartType)>;
-inline TransmuteChartCallback g_requestChartTransmutation = nullptr;
+/// requests a chart makes about itself from its context menu; the receiver defers them, as the chart is being drawn
+struct ChartRequests {
+    std::function<bool(std::string_view chartId, std::string_view newChartType)> transmute;
+    std::function<void(std::string_view chartId)>                                duplicate;
+    std::function<void(std::string_view chartId)>                                remove;
+};
 
-/// Callback for requesting chart duplication.
-using DuplicateChartCallback                            = std::function<void(std::string_view chartId)>;
-inline DuplicateChartCallback g_requestChartDuplication = nullptr;
-
-/// Callback for requesting chart removal.
-using RemoveChartCallback                        = std::function<void(std::string_view chartId)>;
-inline RemoveChartCallback g_requestChartRemoval = nullptr;
+/// set by the dashboard view that draws the charts, cleared when it goes away; one dashboard is drawn at a time
+inline ChartRequests* g_chartRequests = nullptr;
 
 /// Font Awesome icon constants for context menus.
 namespace menu_icons {
@@ -958,16 +953,16 @@ inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled 
 
 inline void drawDuplicateChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kDuplicate, "Duplicate")) {
-        if (g_requestChartDuplication) {
-            g_requestChartDuplication(uniqueName);
+        if (g_chartRequests && g_chartRequests->duplicate) {
+            g_chartRequests->duplicate(uniqueName);
         }
     }
 }
 
 inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
-        if (g_requestChartRemoval) {
-            g_requestChartRemoval(uniqueName);
+        if (g_chartRequests && g_chartRequests->remove) {
+            g_chartRequests->remove(uniqueName);
         }
     }
 }
@@ -1435,8 +1430,8 @@ struct Chart {
                 DigitizerUi::IMW::Disabled _(disabled);
                 bool                       isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
                 if (ImGui::MenuItem(type.c_str(), nullptr, isCurrent)) {
-                    if (!isCurrent && g_requestChartTransmutation) {
-                        g_requestChartTransmutation(self.unique_name, type);
+                    if (!isCurrent && g_chartRequests && g_chartRequests->transmute) {
+                        g_chartRequests->transmute(self.unique_name, type);
                     }
                 }
             }

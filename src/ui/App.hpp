@@ -12,7 +12,6 @@
 #include "common/LookAndFeel.hpp"
 
 #include "components/AppHeader.hpp"
-#include "components/Toolbar.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
@@ -59,8 +58,6 @@ public:
     std::atomic<bool> isRunning        = true;
     ViewMode          mainViewMode     = ViewMode::INTERACTION;
     ViewMode          previousViewMode = ViewMode::INTERACTION;
-
-    std::vector<gr::BlockModel*> toolbarBlocks;
 
     // Since loading a dashboard blocks the main thread,
     // we want to have two steps, one which will prepare the
@@ -334,12 +331,6 @@ public:
 
             if (dashboard) {
                 dashboard->handleMessages();
-            }
-
-            if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
-                // Do not disable the open/save page when no dashboard is loaded — that is how the user loads the first one.
-                IMW::Disabled disabled(dashboard == nullptr && mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD);
-                components::Toolbar(toolbarBlocks);
             }
 
             if (dashboard != nullptr) {

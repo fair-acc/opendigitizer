@@ -123,7 +123,12 @@ DashboardPage::DashboardPage() {
     });
 }
 
-DashboardPage::~DashboardPage() { opendigitizer::charts::SinkRegistry::instance().removeListener(this); }
+DashboardPage::~DashboardPage() {
+    opendigitizer::charts::SinkRegistry::instance().removeListener(this);
+    if (opendigitizer::charts::g_chartRequests == std::addressof(_chartRequests)) {
+        opendigitizer::charts::g_chartRequests = nullptr;
+    }
+}
 
 DashboardPage::PropertyControlWindowContextMenuAction DashboardPage::drawPropertyControlWindowContextMenu(const PropertyControlWindowsDrawParams& params) {
     auto action = PropertyControlWindowContextMenuAction::None;
