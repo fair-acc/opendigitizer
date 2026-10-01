@@ -175,60 +175,31 @@ void parseFloatingChartRectAreas(const ChartParsingContext& context) {
     }
 }
 
-/// Applies rects to the dashboard preview if they are there, *and* we are in free layouut. returns true if the rects were applied
+DashboardPreview::Rect toPreviewRect(const LayoutRect& rect) { return {.x = rect.x, .y = rect.y, .w = rect.w, .h = rect.h}; }
+
+/// Applies rects to the dashboard preview if they are there, *and* we are in free layout. returns true if the rects were applied
 [[nodiscard]] bool assignChartRectAreasIfManuallySpecified(DashboardPreview& preview, DockingLayoutType layoutType, const std::vector<std::array<std::int64_t, 4>>& gridRects) {
     const std::size_t numCharts = preview.charts.size();
     if (numCharts == 0UZ || numCharts != gridRects.size() || layoutType != DockingLayoutType::Free) {
         return false;
     }
-
-    std::int64_t maxX = 1;
-    std::int64_t maxY = 1;
+    std::vector<std::array<std::size_t, 4>> cells;
+    cells.reserve(gridRects.size());
     for (const auto& rect : gridRects) {
-        maxX = std::max(maxX, rect[0] + rect[2]);
-        maxY = std::max(maxY, rect[1] + rect[3]);
+        cells.push_back({static_cast<std::size_t>(std::max<std::int64_t>(0, rect[0])), static_cast<std::size_t>(std::max<std::int64_t>(0, rect[1])), //
+            static_cast<std::size_t>(std::max<std::int64_t>(0, rect[2])), static_cast<std::size_t>(std::max<std::int64_t>(0, rect[3]))});
     }
+    const auto rects = freeLayoutRects(cells);
     for (std::size_t i = 0UZ; i < numCharts; ++i) {
-        const auto& rect       = gridRects[i];
-        preview.charts[i].rect = DashboardPreview::Rect{
-            .x = static_cast<float>(rect[0]) / static_cast<float>(maxX),
-            .y = static_cast<float>(rect[1]) / static_cast<float>(maxY),
-            .w = static_cast<float>(rect[2]) / static_cast<float>(maxX),
-            .h = static_cast<float>(rect[3]) / static_cast<float>(maxY),
-        };
+        preview.charts[i].rect = toPreviewRect(rects[i]);
     }
     return true;
 }
 
 void assignChartRectAreasFromAutoLayoutRules(DashboardPreview& preview, DockingLayoutType layoutType) {
-    const std::size_t n = preview.charts.size();
-    if (n == 0UZ) {
-        return;
-    }
-
-    const auto cellsPerAxis = [n](bool isRow, bool isColumn) -> std::pair<std::size_t, std::size_t> {
-        if (isRow) {
-            return {n, 1UZ};
-        }
-        if (isColumn) {
-            return {1UZ, n};
-        }
-        const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(n))));
-        return {columns, (n + columns - 1UZ) / columns};
-    };
-    const auto [columns, rows] = cellsPerAxis(layoutType == DockingLayoutType::Row, layoutType == DockingLayoutType::Column);
-
-    for (std::size_t i = 0UZ; i < n; ++i) {
-        const std::size_t column = i % columns;
-        const std::size_t row    = i / columns;
-        const float       x      = static_cast<float>(column) / static_cast<float>(columns);
-        preview.charts[i].rect   = DashboardPreview::Rect{
-              .x = x,
-              .y = static_cast<float>(row) / static_cast<float>(rows),
-            // layoutInGrid docks the last window into whatever remains of its row
-              .w = i + 1UZ == n ? 1.f - x : 1.f / static_cast<float>(columns),
-              .h = 1.f / static_cast<float>(rows),
-        };
+    const auto rects = autoLayoutRects(layoutType, preview.charts.size());
+    for (std::size_t i = 0UZ; i < rects.size(); ++i) {
+        preview.charts[i].rect = toPreviewRect(rects[i]);
     }
 }
 

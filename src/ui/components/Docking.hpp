@@ -5,9 +5,11 @@
 
 #include <imgui.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,28 @@ inline constexpr const char* dockingLayoutName(DockingLayoutType type) {
 
     return "unknown";
 }
+
+struct LayoutRect { // fractions of the layout area, in [0, 1]
+    float x = 0.f;
+    float y = 0.f;
+    float w = 0.f;
+    float h = 0.f;
+};
+
+struct GridShape {
+    std::size_t columns = 1UZ;
+    std::size_t rows    = 1UZ;
+};
+
+/// cells of the automatic layouts: Row puts all windows in one row, Column in one column, Grid (and Free without
+/// stored rectangles) in ceil(sqrt(n)) columns and as many rows as needed
+[[nodiscard]] GridShape gridShape(DockingLayoutType type, std::size_t windowCount) noexcept;
+
+/// window rectangles of the automatic layouts in window order; the last window takes the rest of its row
+[[nodiscard]] std::vector<LayoutRect> autoLayoutRects(DockingLayoutType type, std::size_t windowCount);
+
+/// window rectangles of a free layout given as grid cells {x, y, width, height}, scaled by the largest extent
+[[nodiscard]] std::vector<LayoutRect> freeLayoutRects(std::span<const std::array<std::size_t, 4>> cells);
 
 /// Hosts a group of dock windows
 class DockSpace {

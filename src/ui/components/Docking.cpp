@@ -3,6 +3,7 @@
 #include "../ui/components/ImGuiNotify.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <ranges>
 
@@ -254,10 +255,61 @@ void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction, bool isE
     }
 }
 
+GridShape DigitizerUi::gridShape(DockingLayoutType type, std::size_t windowCount) noexcept {
+    if (windowCount == 0UZ) {
+        return {};
+    }
+    switch (type) {
+    case DockingLayoutType::Row: return {.columns = windowCount, .rows = 1UZ};
+    case DockingLayoutType::Column: return {.columns = 1UZ, .rows = windowCount};
+    case DockingLayoutType::Grid:
+    case DockingLayoutType::Free: break;
+    }
+    const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(windowCount))));
+    return {.columns = columns, .rows = (windowCount + columns - 1UZ) / columns};
+}
+
+std::vector<LayoutRect> DigitizerUi::autoLayoutRects(DockingLayoutType type, std::size_t windowCount) {
+    const auto [columns, rows] = gridShape(type, windowCount);
+    std::vector<LayoutRect> rects;
+    rects.reserve(windowCount);
+    for (std::size_t i = 0UZ; i < windowCount; ++i) {
+        const float x = static_cast<float>(i % columns) / static_cast<float>(columns);
+        rects.push_back({
+            .x = x,
+            .y = static_cast<float>(i / columns) / static_cast<float>(rows),
+            .w = i + 1UZ == windowCount ? 1.f - x : 1.f / static_cast<float>(columns),
+            .h = 1.f / static_cast<float>(rows),
+        });
+    }
+    return rects;
+}
+
+std::vector<LayoutRect> DigitizerUi::freeLayoutRects(std::span<const std::array<std::size_t, 4>> cells) {
+    std::size_t maxX = 1UZ;
+    std::size_t maxY = 1UZ;
+    for (const auto& [x, y, width, height] : cells) {
+        maxX = std::max(maxX, x + width);
+        maxY = std::max(maxY, y + height);
+    }
+    std::vector<LayoutRect> rects;
+    rects.reserve(cells.size());
+    for (const auto& [x, y, width, height] : cells) {
+        rects.push_back({
+            .x = static_cast<float>(x) / static_cast<float>(maxX),
+            .y = static_cast<float>(y) / static_cast<float>(maxY),
+            .w = static_cast<float>(width) / static_cast<float>(maxX),
+            .h = static_cast<float>(height) / static_cast<float>(maxY),
+        });
+    }
+    return rects;
+}
+
 void DockSpace::layoutInGrid(const Windows& windows, bool isEditable) {
-    const size_t windowCount = windows.size();
-    const int    columns     = int(std::ceil(std::sqrt(windowCount)));
-    const int    rows        = int(std::ceil(double(windowCount) / static_cast<double>(columns)));
+    const size_t windowCount   = windows.size();
+    const auto [cols, rowsAll] = gridShape(DockingLayoutType::Grid, windowCount);
+    const int columns          = static_cast<int>(cols);
+    const int rows             = static_cast<int>(rowsAll);
 
     ImGuiID bottomId  = dockspaceID();
     size_t  windowIdx = 0;
