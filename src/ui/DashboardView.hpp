@@ -24,7 +24,7 @@ class DashboardView {
 public:
     using Mode = opendigitizer::charts::ChartMode;
 
-    enum class LegendPosition { Bottom, Top, None };
+    enum class LegendPosition { Bottom, Top, Left, Right, None };
 
     struct Options {
         ImVec2                                   size{0.f, 0.f}; // 0: the available region
@@ -63,9 +63,10 @@ private:
 
     DockSpace                           _dockSpace;
     GlobalSignalLegend                  _signalLegend;
-    ImVec2                              _legendBox{500, 40}; // size of the bar's centre part in the last frame
-    Dashboard*                          _dashboard     = nullptr;
-    bool                                _layoutApplied = false;
+    ImVec2                              _legendBox{500, 40};        // size of the bar's centre part in the last frame
+    float                               _legendColumnWidth = 150.f; // widest legend entry in the last frame (left/right)
+    Dashboard*                          _dashboard         = nullptr;
+    bool                                _layoutApplied     = false;
     std::optional<PendingTransmutation> _pendingTransmutation;
     std::vector<std::string>            _pendingRemovals;
 
@@ -83,6 +84,7 @@ private:
     void processPendingRequests();
     void drawCharts(Mode mode, const Options& options, ImVec2 paneSize);
     void drawBar(Mode mode, ImVec2 chartPaneSize, const Options& options, Result& result);
+    void drawLegendColumn(Mode mode, float height, const Options& options, Result& result);
 };
 
 /// moves the cursor so that an item of the given width is aligned within the remaining width (0: left, 1: right)

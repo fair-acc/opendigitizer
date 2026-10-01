@@ -112,6 +112,22 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         result.chartPaneSize = ImGui::GetContentRegionAvail();
         drawCharts(mode, options, result.chartPaneSize);
         break;
+    case LegendPosition::Left:
+    case LegendPosition::Right: {
+        const ImVec2 avail   = ImGui::GetContentRegionAvail();
+        const float  spacing = ImGui::GetStyle().ItemSpacing.x;
+        result.chartPaneSize = ImVec2(std::max(1.f, avail.x - _legendColumnWidth - spacing), avail.y);
+        if (options.legend == LegendPosition::Left) {
+            drawLegendColumn(mode, avail.y, options, result);
+            ImGui::SameLine();
+            drawCharts(mode, options, result.chartPaneSize);
+        } else {
+            drawCharts(mode, options, result.chartPaneSize);
+            ImGui::SameLine();
+            drawLegendColumn(mode, avail.y, options, result);
+        }
+        break;
+    }
     case LegendPosition::None:
         result.chartPaneSize = ImGui::GetContentRegionAvail();
         drawCharts(mode, options, result.chartPaneSize);
@@ -157,6 +173,24 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
     }
 
     _dockSpace.render(windows, paneSize, mode == Mode::Layout);
+}
+
+// one legend entry per line, in a column as wide as the widest entry of the last frame
+void DashboardView::drawLegendColumn(Mode mode, float height, const Options& options, Result& result) {
+    IMW::Child column("##legendColumn", ImVec2(_legendColumnWidth, height), false, ImGuiWindowFlags_NoScrollbar);
+    if (options.barLeading) {
+        options.barLeading();
+        ImGui::NewLine();
+    }
+    _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
+    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, 1.f); // narrower than any entry: one per line
+    if (mode == Mode::Interaction) {
+        result.rightClickedSinkName = std::string(rightClickedSinkName);
+    }
+    _legendColumnWidth = std::max(50.f, _signalLegend.legendSize().x + 2.f * ImGui::GetStyle().WindowPadding.x);
+    if (options.barTrailing) {
+        options.barTrailing();
+    }
 }
 
 void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& options, Result& result) {

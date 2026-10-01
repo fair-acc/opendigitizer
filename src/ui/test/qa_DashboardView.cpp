@@ -69,6 +69,14 @@ void waitForStableCharts(ImGuiTestContext* ctx) {
     expect(stableFrames >= 5UZ) << fatal << "chart windows settle";
 }
 
+ImRect chartsBounds() {
+    ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
+    for (const auto* window : chartWindows()) {
+        bounds.Add(ImRect(window->Pos, window->Pos + window->Size));
+    }
+    return bounds;
+}
+
 float topOfCharts() {
     float top = std::numeric_limits<float>::max();
     for (const auto* window : chartWindows()) {
@@ -143,6 +151,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 waitForStableCharts(ctx);
                 expect(topOfCharts() > topWithLegendBelow + 10.f) << std::format("top of charts {} with the legend on top, {} with it below", topOfCharts(), topWithLegendBelow);
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
+                state.legend = LegendPosition::Bottom;
+            };
+
+            "a legend on the left or right narrows the charts from that side, inside the host"_test = [&] {
+                state.mode   = Mode::View;
+                state.legend = LegendPosition::Bottom;
+                waitForStableCharts(ctx);
+                const ImRect withLegendBelow = chartsBounds();
+                const ImRect hostRect(kHostPos, kHostPos + kHostSize);
+
+                state.legend = LegendPosition::Left;
+                waitForStableCharts(ctx);
+                const ImRect withLegendLeft = chartsBounds();
+                expect(withLegendLeft.Min.x > withLegendBelow.Min.x + 30.f) << std::format("left edge {} with the legend on the left, {} with it below", withLegendLeft.Min.x, withLegendBelow.Min.x);
+                expect(hostRect.Contains(withLegendLeft));
+                captureScreenshot(*ctx, hostRect);
+
+                state.legend = LegendPosition::Right;
+                waitForStableCharts(ctx);
+                const ImRect withLegendRight = chartsBounds();
+                expect(withLegendRight.Max.x < withLegendBelow.Max.x - 30.f) << std::format("right edge {} with the legend on the right, {} with it below", withLegendRight.Max.x, withLegendBelow.Max.x);
+                expect(hostRect.Contains(withLegendRight));
+                captureScreenshot(*ctx, hostRect);
                 state.legend = LegendPosition::Bottom;
             };
             state.view.reset();
