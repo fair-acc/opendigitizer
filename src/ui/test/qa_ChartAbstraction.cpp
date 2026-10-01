@@ -18,6 +18,14 @@ int main() {
     using namespace opendigitizer::charts;
     using namespace opendigitizer::test;
 
+    "every chart mode survives the draw config, an absent mode is View"_test = [] {
+        for (const ChartMode mode : {ChartMode::View, ChartMode::Interaction, ChartMode::Layout}) {
+            expect(chartModeFrom(chartDrawConfig(mode)) == mode) << magic_enum::enum_name(mode);
+        }
+        expect(chartModeFrom(gr::property_map{}) == ChartMode::View);
+        expect(chartModeFrom(gr::property_map{{"chartMode", std::string("Interaction")}}) == ChartMode::Interaction) << "the dashboard writes the enumerator name";
+    };
+
     "SpectrumPlot requests small default dataset capacity"_test = [] {
         opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
         auto                                          adapter = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);

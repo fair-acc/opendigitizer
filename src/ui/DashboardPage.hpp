@@ -22,7 +22,7 @@ namespace DigitizerUi {
 
 class DashboardPage {
 public:
-    enum class Mode { View, Interaction, Layout };
+    using Mode = opendigitizer::charts::ChartMode;
 
 private:
     static constexpr const char* addChartPopupID                      = "New Chart";

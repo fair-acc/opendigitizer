@@ -972,11 +972,24 @@ inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     }
 }
 
-enum class ChartMode : std::uint8_t {
-    Interaction,
-    View,
-    Layout,
-};
+/// how a chart is drawn: View shows data only, Interaction adds zoom, legend drag and drop and context menus, Layout
+/// draws the chart as a placeholder while the dashboard layout is edited
+enum class ChartMode : std::uint8_t { View, Interaction, Layout };
+
+inline constexpr std::string_view kChartModeKey = "chartMode";
+
+[[nodiscard]] inline gr::property_map chartDrawConfig(ChartMode mode) { return {{std::pmr::string(kChartModeKey), std::string(magic_enum::enum_name(mode))}}; }
+
+/// View when the key is absent; an unknown value is a programming error
+[[nodiscard]] inline ChartMode chartModeFrom(const gr::property_map& config) {
+    const auto it = config.find(kChartModeKey);
+    if (it == config.end()) {
+        return ChartMode::View;
+    }
+    const auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}));
+    assert(mode.has_value() && "unknown chartMode");
+    return mode.value_or(ChartMode::View);
+}
 
 struct DrawPrologue {
     ImPlotFlags plotFlags;
@@ -1908,13 +1921,8 @@ struct Chart {
         self.syncSinksIfNeeded(self.data_sinks.value);
         self.refreshCapacityIfNeeded();
 
-        ChartMode chartMode = ChartMode::View;
-        if (const auto it = config.find("chartMode"); it != config.end()) {
-            if (auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}))) {
-                chartMode = *mode;
-            }
-        }
-        const bool layoutMode = chartMode == ChartMode::Layout;
+        const ChartMode chartMode  = chartModeFrom(config);
+        const bool      layoutMode = chartMode == ChartMode::Layout;
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {

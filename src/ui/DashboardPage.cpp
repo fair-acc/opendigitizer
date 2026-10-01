@@ -414,11 +414,7 @@ ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowI
 
         windows.push_back(uiWindow.window);
         // Capture shared_ptr by value to ensure block stays alive during render
-        uiWindow.window->renderFunc = [block = blockPtr, mode] {
-            gr::property_map drawConfig;
-            drawConfig["chartMode"] = magic_enum::enum_name(mode);
-            std::ignore             = block->draw(drawConfig);
-        };
+        uiWindow.window->renderFunc = [block = blockPtr, mode] { std::ignore = block->draw(opendigitizer::charts::chartDrawConfig(mode)); };
 
         uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
             opendigitizer::charts::drawDuplicateChartMenuItem(block->uniqueName());
