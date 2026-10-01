@@ -100,19 +100,21 @@ SortFilterTreeModelParams paramsFor(const PathList& paths) {
     return {
         .numItems            = paths.size(),
         .getItemPathFunction = [&paths](std::size_t index) { return paths[index]; },
+        .filters             = {},
+        .sortStrategy        = {},
     };
 }
 
-/// this is used in the tests to describe how a tree should look. it is a vector of pairs
+/// this is used in the tests to describe how a tree should look. it is a vector of named children
 /// so that the sorted order can be described
-struct TreeNode;
-using TreeChildren = std::vector<std::pair<std::string, gr::meta::indirect<TreeNode>>>;
-struct TreeNode {
+struct TreeChild;
+using TreeChildren = std::vector<TreeChild>;
+struct TreeChild {
+    std::string name;
     // either a leaf's item index, or a branch's children. uses int so it accepts int literals in the initializer
     std::variant<int, TreeChildren> value;
-    bool                            operator==(const TreeNode&) const = default;
+    bool                            operator==(const TreeChild&) const = default;
 };
-bool operator==(const gr::meta::indirect<TreeNode>& lhs, const gr::meta::indirect<TreeNode>& rhs) { return *lhs == *rhs; }
 
 /// Convert a SortFilterTreeModel into the TreeChildren above so we can compare it with == to the expected value
 TreeChildren resolveSortingAndReturnTree(SortFilterTreeModel& model) {
@@ -167,13 +169,13 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
 
     "testing sort stability by using sort strategies that say most things are equal"_test = [] {
         "SortFilterModel is a stable sort"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badComparatorFunction));
         };
 
         "SortFilterModel with a small work count"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
             model.setMaxWork(1UZ);
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badComparatorFunction));
@@ -182,13 +184,13 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
         constexpr static auto badSortByScoreStrategyFunction = [](std::size_t lhs, std::size_t rhs) { return BadSortByScoreStrategy{sampleWords}.score(lhs) > BadSortByScoreStrategy{sampleWords}.score(rhs); };
 
         "SortFilterModelSortByScoreStrategy is a stable sort"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badSortByScoreStrategyFunction));
         };
 
         "SortByScoreStrategy with small work size"_test = [] {
-            SortFilterModel model({.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
+            SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadSortByScoreStrategy>(sampleWords)});
             model.setMaxWork(1UZ);
 
             expect(resolveSortFilterOutput(model) == stableSortedIndices(sampleWords.size(), badSortByScoreStrategyFunction));
@@ -197,7 +199,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
 
     "SortByScoreStrategy is only evaluated once per item"_test = [] {
         std::size_t           numEvaluations = 0UZ;
-        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<CountingSortByScoreStrategy>(sampleWords, numEvaluations)};
+        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<CountingSortByScoreStrategy>(sampleWords, numEvaluations)};
         params.filters.filterObjects.emplace_back(std::make_unique<EvenIndexFilter>());
         SortFilterModel model(std::move(params));
 
@@ -206,7 +208,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Null sort strategy means items just stay in the same order"_test = [] {
-        SortFilterModel model({.numViewedItems = sampleWords.size()});
+        SortFilterModel model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = {}});
 
         std::vector<std::size_t> expected(sampleWords.size());
         std::iota(expected.begin(), expected.end(), 0UZ);
@@ -214,7 +216,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Filtering and sorting together works, and is the same as std::erase_if and std::stable_sort"_test = [] {
-        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadComparator>(sampleWords)};
+        SortFilterModelParams params{.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)};
         params.filters.filterObjects.emplace_back(std::make_unique<EvenIndexFilter>());
         SortFilterModel model(std::move(params));
 
@@ -224,7 +226,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "Number of work() calls looks like the expected amount"_test = [] {
-        SortFilterModel       model({.numViewedItems = sampleWords.size(), .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
+        SortFilterModel       model({.numViewedItems = sampleWords.size(), .filters = {}, .sortStrategy = std::make_unique<BadComparator>(sampleWords)});
         constexpr std::size_t maxWork = 3UZ;
         model.setMaxWork(maxWork);
 
@@ -239,7 +241,7 @@ const static boost::ut::suite<"SortFilterModel"> sortFilterModelTests = [] { // 
     };
 
     "an empty model resolves immediately"_test = [] {
-        SortFilterModel model({.numViewedItems = 0UZ});
+        SortFilterModel model({.numViewedItems = 0UZ, .filters = {}, .sortStrategy = {}});
         expect(model.isComplete());
         expect(eq(model.items().size(), 0UZ));
         expect(eq(model.progress(), 1.f));
