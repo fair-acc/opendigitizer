@@ -421,4 +421,5 @@ const static boost::ut::suite<"SortFilterTreeModel"> sortFilterTreeModelTests = 
     };
 };
 
-int main() { return 0; }
+// suites run here, not at exit, where the static data they use may already be destroyed
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }
