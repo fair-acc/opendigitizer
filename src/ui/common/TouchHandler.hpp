@@ -404,7 +404,7 @@ struct TouchHandler {
     //
     inline static bool BeginZoomablePlot(const std::string& plotName, const ImVec2& size, ImPlotFlags flags) {
         assert((zoomablePlotInit == 0) && "mismatched BeginZoomablePlot <-> EndZoomablePlot");
-        const ImGuiID ID = ImHashStr(plotName.c_str(), plotName.length());
+        const ImGuiID ID = ImGui::GetID(plotName.c_str()); // scoped to the window, as ImPlot's own plot id: charts in different windows may share a name
         zoomablePlotInit = ID;
 
         if (auto limits = plotLimits.find(ID); limits != plotLimits.end()) {

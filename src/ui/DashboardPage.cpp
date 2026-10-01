@@ -600,7 +600,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     const ImVec2 size = ImGui::GetContentRegionAvail();
 
     const bool  horizontalSplit = size.x > size.y;
-    const float ratio           = mode == Mode::Interaction ? components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
+    const float ratio           = mode == Mode::Interaction ? components::Splitter(_splitter, size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);

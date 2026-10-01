@@ -16,6 +16,7 @@
 #include "components/Docking.hpp"
 #include "components/GlobalSignalLegend.hpp"
 #include "components/SignalSelector.hpp"
+#include "components/Splitter.hpp"
 
 #include <memory>
 
@@ -48,6 +49,7 @@ private:
     std::unordered_map<std::string, SourceBlockInWaiting> _addedSourceBlocksWaitingForSink;
 
     components::BlockControlsPanelContext _editPane;
+    components::SplitterState             _splitter;
     std::unique_ptr<SignalSelector>       _remoteSignalSelector;
     DashboardView                         _view;
 

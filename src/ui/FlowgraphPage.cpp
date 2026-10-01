@@ -773,7 +773,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     const bool      horizontalSplit   = contentSize.x > contentSize.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
+    const float     ratio             = components::Splitter(_splitter, contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
 
     const auto clicked = drawButtons(contentScreenTopLeft, contentSize,
         {

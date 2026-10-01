@@ -12,6 +12,7 @@
 #include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
+#include "components/Splitter.hpp"
 
 #include "GraphModel.hpp"
 
@@ -59,6 +60,7 @@ private:
     };
 
     components::BlockControlsPanelContext _editPaneContext;
+    components::SplitterState             _splitter;
     ImVec2                                _contextMenuPosition;
 
     float                                _timeSpentHoldingPin = 0.0;
