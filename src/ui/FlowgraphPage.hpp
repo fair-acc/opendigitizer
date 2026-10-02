@@ -37,8 +37,11 @@ private:
 
     ax::NodeEditor::EditorContext* _editorPtr = nullptr;
 
-    bool _firstDraw          = true;
-    bool _rearrangeRequested = false;
+    bool   _firstDraw          = true;
+    bool   _rearrangeRequested = false;
+    bool   _fitRequested       = false;
+    bool   _fitJustApplied     = false;
+    ImVec2 _lastCanvasSize;
 
     const UiGraphBlock* _filterBlock   = nullptr;
     UiGraphBlock*       _selectedBlock = nullptr;
@@ -179,6 +182,12 @@ public:
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
 
+    /// re-arranges the blocks on the next draw, as the "Rearrange blocks" button does, then fits the graph into the view
+    void requestRelayout() { _rearrangeRequested = true; }
+
+    /// false hides the editing buttons ("Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks", "Export all unused ports"); "Close" stays
+    bool showEditorControls = true;
+
     void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
     void drawGraph(const ImVec2& size);
@@ -210,6 +219,9 @@ public:
     Buttons drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
     static void sortNodes(UiGraphBlock* rootBlock);
+
+    // zooms out until the whole graph is visible, never above 1:1
+    static void fitIntoView(const UiGraphBlock& rootBlock);
 
     void requestBlockDeletion(const std::string& blockName);
 
@@ -288,6 +300,7 @@ private:
     NewBlockSelector                _newBlockSelector;
 
     void drawNodeEditorTab();
+    void drawLocalNodeEditor();
     void drawLocalYamlTab();
     void drawRemoteYamlTab(Dashboard::Service& service);
 
@@ -309,6 +322,15 @@ public:
     void popEditor();
 
     void updateStyle(); // reads from LookAndFeel::instance().style
+
+    /// copied to every editor pushed afterwards; false also drops the tab bar and shows the local node editor only
+    bool showEditorControls = true;
+
+    void requestRelayout() {
+        if (!_editors.empty()) {
+            currentEditor().requestRelayout();
+        }
+    }
 
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
