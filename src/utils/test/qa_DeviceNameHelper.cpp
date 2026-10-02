@@ -185,4 +185,5 @@ const static boost::ut::suite<"FAIR Device Name Mapping"> deviceMappingTests = [
     };
 };
 
-int main() { /* not needed for ut */ }
+// suites run here, not at exit, where the static data they use may already be destroyed
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }
