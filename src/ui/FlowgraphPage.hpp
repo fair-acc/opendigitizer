@@ -304,7 +304,6 @@ private:
     void drawNodeEditorTab();
     void drawLocalNodeEditor();
     void drawLocalYamlTab();
-    void drawRemoteYamlTab(Dashboard::Service& service);
 
 public:
     explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);

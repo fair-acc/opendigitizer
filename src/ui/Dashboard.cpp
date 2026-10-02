@@ -21,10 +21,8 @@
 
 #include <opencmw.hpp>
 
-#include <IoSerialiserJson.hpp>
 #include <MdpMessage.hpp>
 #include <RestClient.hpp>
-#include <daq_api.hpp>
 
 #include "GraphModel.hpp"
 
@@ -1016,34 +1014,6 @@ void Dashboard::loadUIWindowSources() {
     }
 }
 
-void Dashboard::registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri) {
-    if (!uri) {
-        return;
-    }
-
-    const auto flowgraphUri = opencmw::URI<>::UriFactory(*uri).path("/flowgraph").setQuery({}).build().str();
-    std::print("block {} adds subscription to remote flowgraph service: {} -> {}\n", blockName, uri->str(), flowgraphUri);
-    flowgraphUriByRemoteSource.insert({std::string{blockName}, flowgraphUri});
-
-    const auto it = std::ranges::find_if(services, [&](const auto& s) { return s.uri == flowgraphUri; });
-    if (it == services.end()) {
-        auto msg = std::format("Registering to remote flow graph for '{}' at {}", blockName, flowgraphUri);
-        components::Notification::warning(msg);
-        auto& s = *services.emplace(restClient, flowgraphUri, flowgraphUri);
-        s.reload();
-    }
-    removeUnusedRemoteServices();
-}
-
-void Dashboard::unregisterRemoteService(std::string_view blockName) {
-    flowgraphUriByRemoteSource.erase(std::string{blockName});
-    removeUnusedRemoteServices();
-}
-
-void Dashboard::removeUnusedRemoteServices() {
-    std::erase_if(services, [&](const auto& s) { return std::ranges::none_of(flowgraphUriByRemoteSource | std::views::values, [&s](const auto& uri) { return uri == s.uri; }); });
-}
-
 void Dashboard::addRemoteSignal(const SignalData& signalData) {
     const auto& uriStr    = signalData.uri();
     auto        blockType = [&] {
@@ -1083,56 +1053,6 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
         {"properties", std::move(properties)}};
 
     graphModel.sendMessage(std::move(message));
-}
-
-void Dashboard::Service::reload() {
-    opencmw::client::Command command;
-    command.command  = opencmw::mdp::Command::Get;
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [this](const opencmw::mdp::Message& rep) {
-        auto buf = rep.data;
-
-        opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage;
-        opencmw::deserialise<opencmw::Json, opencmw::ProtocolCheck::LENIENT>(buf, serialisedMessage);
-
-        gr::Message message      = opendigitizer::gnuradio::deserialiseMessage(serialisedMessage.data);
-        auto        newFlowgraph = opendigitizer::flowgraph::getFlowgraphFromMessage(message);
-
-        if (newFlowgraph) {
-            EventLoop::instance().executeLater([this, newGrc = std::move(newFlowgraph->serialisedFlowgraph), newLayout = std::move(newFlowgraph->serialisedUiLayout)]() mutable {
-                this->grc    = std::move(newGrc);
-                this->layout = std::move(newLayout);
-            });
-        } else {
-            EventLoop::instance().executeLater([] { components::Notification::warning("Error reading flowgraph from the service reply"); });
-        }
-    };
-    restClient->request(command);
-}
-
-void Dashboard::Service::emplaceBlock(std::string type, std::string params) {
-    gr::Message message;
-    message.cmd      = gr::message::Command::Set;
-    message.endpoint = gr::scheduler::property::kEmplaceBlock;
-    message.data     = gr::property_map{
-            {"type", std::move(type)},        //
-            {"parameters", std::move(params)} //
-    };
-
-    opendigitizer::flowgraph::SerialisedFlowgraphMessage serialisedMessage{opendigitizer::gnuradio::serialiseMessage(message)};
-
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-
-    opencmw::serialise<opencmw::Json>(command.data, serialisedMessage);
-
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [](const opencmw::mdp::Message& rep) {
-        if (!rep.error.empty()) {
-            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
-        }
-    };
-    restClient->request(command);
 }
 
 gr::BlockModel* Dashboard::emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters) {
@@ -1179,38 +1099,6 @@ gr::BlockModel* Dashboard::emplaceChartBlock(std::string_view chartTypeName, con
     }
 
     return blockModel.value().get();
-}
-
-void Dashboard::Service::execute() {
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-
-    FlowgraphMessage request;
-    request.flowgraph = this->grc;
-    request.layout    = this->layout;
-    opencmw::serialise<opencmw::Json>(command.data, request);
-
-    command.topic    = opencmw::URI<>(uri);
-    command.callback = [](const opencmw::mdp::Message& rep) {
-        if (!rep.error.empty()) {
-            EventLoop::instance().executeLater([error = rep.error] { components::Notification::warning(error); });
-        }
-    };
-    restClient->request(command);
-}
-
-void Dashboard::saveRemoteServiceFlowgraph(Service* s) {
-    // TODO: Port loading and saving flowgraph layouts
-    std::stringstream stream;
-
-    opencmw::client::Command command;
-    command.command = opencmw::mdp::Command::Set;
-    command.topic   = opencmw::URI<>(s->uri);
-
-    FlowgraphMessage msg;
-    msg.flowgraph = std::move(stream).str();
-    opencmw::serialise<opencmw::Json>(command.data, msg);
-    s->restClient->request(command);
 }
 
 void DashboardDescription::loadAndThen(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<DashboardStorageInfo>& storageInfo, const std::string& name, const std::function<void(std::shared_ptr<const DashboardDescription>&&)>& cb) {

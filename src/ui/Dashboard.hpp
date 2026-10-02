@@ -25,7 +25,6 @@
 #ifdef EMSCRIPTEN
 #include "utils/emscripten_compat.hpp"
 #endif
-#include <plf_colony.h>
 
 #include <functional>
 #include <string>
@@ -126,20 +125,6 @@ struct Dashboard {
         PropertyControlWindow(Dashboard& dashboard, UiGraphBlock* block, std::string_view propertyName, std::string_view labelView);
     };
 
-    struct Service {
-        std::shared_ptr<opencmw::client::RestClient> restClient;
-        std::string                                  name;
-        std::string                                  uri;
-        std::string                                  layout;
-        std::string                                  grc;
-
-        Service(std::shared_ptr<opencmw::client::RestClient> client, std::string n, std::string u) : restClient{std::move(client)}, name(std::move(n)), uri(std::move(u)) {}
-
-        void reload();
-        void execute();
-        void emplaceBlock(std::string type, std::string params);
-    };
-
     std::shared_ptr<gr::PluginLoader> pluginLoader = [] {
         auto pluginPaths = Digitizer::resolvePluginSearchPaths();
         return std::make_shared<gr::PluginLoader>(gr::globalBlockRegistry(), gr::globalSchedulerRegistry(), std::span<const std::string>(pluginPaths));
@@ -155,8 +140,6 @@ struct Dashboard {
     DockingLayoutType                                      layoutType = DockingLayoutType::Grid;
     gr::property_map                                       windowLayout;
     gr::property_map                                       exportedProperties;
-    std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
-    plf::colony<Service>                                   services;
     std::atomic<bool>                                      isInitialised = false;
     Scheduler                                              scheduler;
     gr::Graph                                              uiGraph{*pluginLoader};
@@ -195,10 +178,6 @@ struct Dashboard {
     void            loadUIWindowSources();
 
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
-    void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
-    void unregisterRemoteService(std::string_view blockName);
-    void removeUnusedRemoteServices();
-    void saveRemoteServiceFlowgraph(Service* s);
 
     template<typename TScheduler, typename... Args>
     void emplaceScheduler(Args&&... args) {

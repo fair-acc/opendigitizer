@@ -1536,30 +1536,6 @@ void FlowgraphPage::drawLocalYamlTab() {
     ImGui::InputTextMultiline("##grc", &_dashboard->graphModel.m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
 }
 
-void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
-    std::string tabTitle = "Remote YAML for " + service.name;
-    if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
-        if (ImGui::Button("Reload from service")) {
-            service.reload();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Execute on service")) {
-            service.execute();
-        }
-
-        // TODO: For demonstration purposes only, remove
-        // once we have a proper server-side graph editor
-        // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
-        ImGui::SameLine();
-        if (ImGui::Button("Create a block")) {
-            service.emplaceBlock("gr::basic::DataSink", "float");
-        }
-        // }
-
-        ImGui::InputTextMultiline("##grc", &service.grc, ImGui::GetContentRegionAvail());
-    }
-}
-
 void FlowgraphPage::draw() noexcept {
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     if (!showEditorControls) {
@@ -1575,10 +1551,6 @@ void FlowgraphPage::draw() noexcept {
 
     if (auto item = IMW::TabItem("Local - YAML", nullptr, 0)) {
         drawLocalYamlTab();
-    }
-
-    for (auto& service : _dashboard->services) {
-        drawRemoteYamlTab(service);
     }
 }
 
