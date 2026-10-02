@@ -110,7 +110,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         _waterfall.setPreferGpu(gpu_acceleration);
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
@@ -168,7 +168,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupFrequencyAxis(paneSize, showGrid);
             setupMagnitudeAxis(paneSize, showGrid);
-            ImPlot::SetupFinish();
+            setupFinish();
 
             if (isDensity) {
                 drawDensitySignals();
@@ -261,7 +261,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
                 ImPlot::SetupAxisLimits(ImAxis_Y1, yLo, yHi, ImPlotCond_Always);
             }
 
-            ImPlot::SetupFinish();
+            setupFinish();
 
             constexpr bool newestAtTop = true;
             if (renderInfo) {

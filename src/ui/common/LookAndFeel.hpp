@@ -4,8 +4,10 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 #include <imgui.h>
+#include <implot.h>
 
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
 
@@ -98,6 +100,18 @@ struct Palette {
     ImVec4 contentSeparator; // subtle divider lines between page content areas
 };
 
+/// Chart look a host may set process-wide (`LookAndFeel::mutableInstance().chartStyle`); an unset field keeps ImPlot's
+/// current style, so the default reproduces the App's charts. Series colours are set by `ColourManager`'s palette.
+struct ChartStyle {
+    std::optional<ImVec4>         plotBackground;            // alpha 0: transparent
+    std::optional<float>          gridAlpha;                 // opacity of the grid lines, replaces ImPlot's
+    std::optional<float>          axisAlpha;                 // opacity of the tick marks and labels
+    std::optional<float>          lineWidth;                 // px, for every series
+    bool                          colourAxesBySignal = true; // with several axes, each axis takes its signals' colour
+    std::optional<ImPlotLocation> legendLocation;
+    std::optional<float>          legendAlpha; // opacity of the legend panel
+};
+
 struct LookAndFeel {
     enum class Style { Light, Dark };
 
@@ -137,6 +151,7 @@ struct LookAndFeel {
     ImFont*                   fontIconsSolidLarge;
     std::chrono::seconds      editPaneCloseDelay{15};
     Flowgraph                 flowgraph;
+    ChartStyle                chartStyle;
 
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;

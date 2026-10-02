@@ -67,7 +67,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
@@ -82,7 +82,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         }
 
         setupAxes(plotSize, showGrid);
-        ImPlot::SetupFinish();
+        setupFinish();
         drawSpectrumSignals();
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);

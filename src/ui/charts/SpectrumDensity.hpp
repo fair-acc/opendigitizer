@@ -79,7 +79,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
@@ -94,7 +94,7 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         }
 
         setupAxes(plotSize, showGrid);
-        ImPlot::SetupFinish();
+        setupFinish();
 
         // detect user zoom on Y-axis: if auto-fit is active and the actual plot limits
         // differ from what we programmatically set, the user zoomed → disable auto-fit

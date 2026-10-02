@@ -368,9 +368,13 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         flags |= ImPlotAxisFlags_Opposite;
     }
 
-    bool pushedColor = false;
-    if ((nTotalAxes > 1) && !isX) {
-        const ImVec4 col = sinkColor(category->color);
+    bool                           pushedColor = false;
+    const DigitizerUi::ChartStyle& chartStyle  = DigitizerUi::LookAndFeel::instance().chartStyle;
+    if ((nTotalAxes > 1) && !isX && chartStyle.colourAxesBySignal) {
+        ImVec4 col = sinkColor(category->color);
+        if (chartStyle.axisAlpha) {
+            col.w = *chartStyle.axisAlpha;
+        }
         ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
         ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
         pushedColor = true;
@@ -986,12 +990,63 @@ inline constexpr std::string_view kChartModeKey = "chartMode";
     return mode.value_or(ChartMode::View);
 }
 
+// pushes the set fields of a ChartStyle onto ImPlot's style stack for the lifetime of the object
+class ScopedChartStyle {
+    int _nColours = 0;
+    int _nVars    = 0;
+
+    void pushColour(ImPlotCol colourId, ImVec4 colour) {
+        ImPlot::PushStyleColor(colourId, colour);
+        ++_nColours;
+    }
+    void pushAlpha(ImPlotCol colourId, float alpha) {
+        ImVec4 colour = ImPlot::GetStyleColorVec4(colourId); // resolves ImPlot's automatic colours
+        colour.w      = alpha;
+        pushColour(colourId, colour);
+    }
+
+public:
+    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style) {
+        if (style.plotBackground) {
+            pushColour(ImPlotCol_PlotBg, *style.plotBackground);
+        }
+        if (style.gridAlpha) {
+            pushAlpha(ImPlotCol_AxisGrid, *style.gridAlpha);
+        }
+        if (style.axisAlpha) {
+            pushAlpha(ImPlotCol_AxisText, *style.axisAlpha);
+            pushAlpha(ImPlotCol_AxisTick, *style.axisAlpha);
+        }
+        if (style.legendAlpha) {
+            pushAlpha(ImPlotCol_LegendBg, *style.legendAlpha);
+        }
+        if (style.lineWidth) {
+            ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, *style.lineWidth);
+            ++_nVars;
+        }
+    }
+    ~ScopedChartStyle() {
+        ImPlot::PopStyleColor(_nColours);
+        ImPlot::PopStyleVar(_nVars);
+    }
+    ScopedChartStyle(const ScopedChartStyle&)            = delete;
+    ScopedChartStyle& operator=(const ScopedChartStyle&) = delete;
+};
+
+// ends a plot's setup; the parts of the chart style that ImPlot takes as setup are applied here
+inline void setupFinish() {
+    // ImPlot keeps a plot's legend location across frames, so an unset location is restored to ImPlot's default
+    ImPlot::SetupLegend(DigitizerUi::LookAndFeel::instance().chartStyle.legendLocation.value_or(ImPlotLocation_NorthWest));
+    ImPlot::SetupFinish();
+}
+
 struct DrawPrologue {
-    ImPlotFlags plotFlags;
-    ImVec2      plotSize;
-    bool        showLegend;
-    ChartMode   chartMode;
-    bool        showGrid;
+    ImPlotFlags      plotFlags;
+    ImVec2           plotSize;
+    bool             showLegend;
+    ChartMode        chartMode;
+    bool             showGrid;
+    ScopedChartStyle style; // the chart style applies until the chart's draw() returns
 };
 
 namespace detail {
@@ -1940,7 +1995,7 @@ struct Chart {
             effectiveShowGrid = self.show_grid.value;
         }
 
-        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid};
+        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(DigitizerUi::LookAndFeel::instance().chartStyle)};
     }
 
     template<typename Self>
@@ -2104,7 +2159,7 @@ struct Chart {
             ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_None);
             ImPlot::SetupAxisLimits(ImAxis_X1, -1.0, 1.0, ImPlotCond_Once);
             ImPlot::SetupAxisLimits(ImAxis_Y1, -1.0, 1.0, ImPlotCond_Once);
-            ImPlot::SetupFinish();
+            setupFinish();
             auto limits = ImPlot::GetPlotLimits();
             ImPlot::PlotText(message, (limits.X.Min + limits.X.Max) / 2, (limits.Y.Min + limits.Y.Max) / 2);
             tooltip::showPlotMouseTooltip();
