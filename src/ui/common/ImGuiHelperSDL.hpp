@@ -23,6 +23,7 @@
 #include "ImguiXKCD.hpp"
 
 #include <format>
+#include <functional>
 #include <print>
 
 namespace imgui_helper {
@@ -226,7 +227,7 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     return ret;
 }
 
-[[maybe_unused]] inline bool renderFrame() {
+[[maybe_unused]] inline bool renderFrame(const std::function<void()>& beforeSwap = {}) {
     ImGui::Render();
     if (DigitizerUi::LookAndFeel::instance().prototypeMode) {
         ImXkcd::Apply(ImGui::GetDrawData());
@@ -240,6 +241,9 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (beforeSwap) {
+        beforeSwap();
+    }
     SDL_GL_SwapWindow(g_Window);
     setWindowMode(g_Window, DigitizerUi::LookAndFeel::instance().windowMode);
     return true;

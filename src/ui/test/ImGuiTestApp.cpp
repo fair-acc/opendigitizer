@@ -68,10 +68,7 @@ inline static bool ImGuiApp_NewFrame(ImGuiApp* /*app*/) {
     return imgui_helper::newFrame();
 }
 
-inline static void ImGuiApp_Render(ImGuiApp* app) {
-    imgui_helper::renderFrame();
-    SDL_GL_SetSwapInterval(app->Vsync ? 1 : 0);
-}
+inline static void ImGuiApp_Render(ImGuiApp*) {} // the run loop renders, so that captures happen before the swap
 
 inline static void ImGuiApp_ShutdownCloseWindow(ImGuiApp*) { imgui_helper::teardownSDL(); }
 inline static void ImGuiApp_ShutdownBackends(ImGuiApp*) { imgui_helper::teardownSDL(); }
@@ -218,10 +215,10 @@ bool ImGuiTestApp::runTests() {
         // Render and swap
         _app->Vsync = !ImGuiTestEngine_GetIO(_engine).IsRequestingMaxAppSpeed;
         ImGui::Render();
-        _app->Render(&(*_app));
-
-        // Post-swap handler is REQUIRED in order to support screen capture
-        ImGuiTestEngine_PostSwap(_engine);
+        // the engine's capture reads the back buffer: before the swap it holds this frame, after it its content is
+        // undefined (captures showed frames rendered more than ten frames earlier)
+        imgui_helper::renderFrame([this] { ImGuiTestEngine_PostSwap(_engine); });
+        SDL_GL_SetSwapInterval(_app->Vsync ? 1 : 0);
     }
 
     int count_tested  = 0;
