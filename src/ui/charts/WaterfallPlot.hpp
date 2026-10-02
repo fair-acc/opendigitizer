@@ -255,7 +255,6 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::WaterfallPlot", opendigitizer::charts::WaterfallPlot)
-inline auto registerWaterfallPlot                = gr::registerBlock<opendigitizer::charts::WaterfallPlot>(gr::globalBlockRegistry());
 inline auto registerWaterfallPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::WaterfallPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_WATERFALLPLOT_HPP

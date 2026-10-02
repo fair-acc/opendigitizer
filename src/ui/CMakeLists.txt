@@ -360,6 +360,8 @@ add_library(
   RemoteSignalSources.cpp
   RemoteSignalSources.hpp
   Scheduler.hpp
+  Setup.cpp
+  Setup.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp

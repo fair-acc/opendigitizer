@@ -321,9 +321,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 } // namespace opendigitizer::charts
 
 // register XYChart with the GR4 block registry
-// GR_REGISTER_BLOCK is a marker macro for build tools; actual registration via gr::registerBlock
+// GR_REGISTER_BLOCK is a marker macro for build tools; registration: DigitizerUi::registerDashboardBlocks()
 GR_REGISTER_BLOCK("opendigitizer::charts::XYChart", opendigitizer::charts::XYChart)
-inline auto registerXYChart                = gr::registerBlock<opendigitizer::charts::XYChart>(gr::globalBlockRegistry());
 inline auto registerXYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::XYChart>();
 
 #endif // OPENDIGITIZER_CHARTS_XYCHART_HPP
