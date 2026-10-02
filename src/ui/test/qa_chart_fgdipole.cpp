@@ -79,18 +79,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ut::expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
 
                 g_state.waitForScheduler(ctx);
-
-                // Wait for sinks to accumulate data (DataSet sink needs the P=2→P=5 tag window at ~1s)
-                while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0 || intensitySink->size() == 0) {
-                    ImGuiTestEngine_Yield(ctx->Engine);
-                }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
 
                 // Verify sinks received data
                 expect(dipoleSink->size() > 0) << "DipoleCurrentSink has no data";
                 expect(intensitySink->size() > 0) << "IntensitySink has no data";
                 expect(dipoleDataSetSink->dataSetCount() > 0) << "DipoleCurrentDataSetSink has no datasets";
 
-                g_state.stopScheduler();
                 captureScreenshot(*ctx);
             };
         };

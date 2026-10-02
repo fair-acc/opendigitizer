@@ -53,36 +53,42 @@ blocks:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32>
     parameters:
       name: StreamToDataSetB
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32>
     parameters:
       name: StreamToDataSetC
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32>
     parameters:
       name: StreamToDataSetD
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32>
     parameters:
       name: StreamToDataSetE
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32>
     parameters:
       name: StreamToDataSetF
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::DataSetSink<float32>
     parameters:
       name: SinkDataSetA
@@ -118,15 +124,15 @@ blocks:
     parameters:
       name: SinkTotalActivePower
       signal_name: TotalActivePower
-  - parameters:
-    id: gr::filter::FrequencyEstimatorTimeDomain<float32>
+  - id: gr::filter::FrequencyEstimatorTimeDomain<float32>
+    parameters:
       name: FrequencyEstimatorU1
   - id: gr::basic::DataSink<float32>
     parameters:
       name: SinkFrequencyU1
       signal_name: FrequencyU1
 connections:
-  - [Picoscope4000, 0, DummySinkPicoDigi0, 0]
+  - [Picoscope4000, 0, DummySinkPicoDigital, 0]
   - [Picoscope4000,  [1, 0], SinkA, 0]
   - [Picoscope4000,  [1, 0], StreamToDataSetA, 0]
   - [StreamToDataSetA, 0, SinkDataSetA, 0]

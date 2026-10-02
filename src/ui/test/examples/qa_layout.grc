@@ -3,7 +3,7 @@ blocks:
     parameters:
       name: ClockSource1
       do_zero_order_hold: true
-      n_samples_max: 0
+      n_samples_max: 2048
       sample_rate: 4096
       verbose_console: false
   - id: gr::basic::SignalGenerator<float32>

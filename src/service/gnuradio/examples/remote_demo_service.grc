@@ -33,12 +33,14 @@ blocks:
       filter: "CMD_DIAG_TRIGGER1"
       n_pre: 200
       n_post: 600
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSet2
       filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2]"
       n_pre: 100
       n_post: 100
+      sample_rate: 1000
   - id: gr::basic::DataSink<float32>
     parameters:
       name: Sink1

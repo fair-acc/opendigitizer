@@ -108,36 +108,42 @@ blocks:
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSetB
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSetC
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSetD
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSetE
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
     parameters:
       name: StreamToDataSetF
       filter: "systemtime"
       n_pre: 10
       n_post: 50
+      sample_rate: 1000
   - id: gr::basic::DataSetSink<float32>
     parameters:
       name: SinkDataSetA
