@@ -222,8 +222,8 @@ public:
 
     static void sortNodes(UiGraphBlock* rootBlock);
 
-    // zooms out until the whole graph is visible, never above 1:1
-    static void fitIntoView(const UiGraphBlock& rootBlock);
+    // zooms out until the whole graph is visible above the reserved bottom band (the button bar), never above 1:1
+    static void fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels);
 
     void requestBlockDeletion(const std::string& blockName);
 

@@ -293,17 +293,26 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
     };
 
-    // independent SineSource -> DataSink pairs, which the layout stacks
-    static std::string sourceSinkPairsGraph(std::size_t nPairs) {
+    // independent SineSource -> DataSink pairs, which the layout stacks; scattered pairs carry stored, deliberately
+    // tangled positions (ui_constraints), so that loading neither arranges nor fits them
+    static std::string sourceSinkPairsGraph(std::size_t nPairs, bool scattered = false) {
+        const auto  position = [scattered](std::size_t seed) { return scattered ? std::format("      ui_constraints:\n        x: {}\n        y: {}\n", static_cast<int>((seed * 389UZ) % 1300UZ), static_cast<int>((seed * 233UZ) % 900UZ)) : std::string{}; };
         std::string blocks;
         std::string connections;
         for (std::size_t i = 0UZ; i < nPairs; ++i) {
-            blocks += std::format("  - id: \"opendigitizer::SineSource<float32>\"\n    parameters:\n      name: \"source{0}\"\n"
-                                  "  - id: \"gr::basic::DataSink<float32>\"\n    parameters:\n      name: \"sink{0}\"\n",
-                i);
+            blocks += std::format("  - id: \"opendigitizer::SineSource<float32>\"\n    parameters:\n      name: \"source{0}\"\n{1}"
+                                  "  - id: \"gr::basic::DataSink<float32>\"\n    parameters:\n      name: \"sink{0}\"\n{2}",
+                i, position(2UZ * i + 1UZ), position(2UZ * i + 2UZ));
             connections += std::format("  - [source{0}, 0, sink{0}, 0]\n", i);
         }
         return std::format("blocks:\n{}connections:\n{}", blocks, connections);
+    }
+
+    // every block ends above the band the button bar covers at the bottom of the editor
+    static bool allNodesAboveButtonBar(DigitizerUi::FlowgraphEditor& editor, float barPixels) {
+        const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        const float barTopCanvas = context->GetViewRect().Max.y - barPixels * context->GetViewRect().GetHeight() / context->GetRect().GetHeight();
+        return contentBounds(editor).Max.y <= barTopCanvas;
     }
 
     static ImRect contentBounds(DigitizerUi::FlowgraphEditor& editor) {
@@ -355,8 +364,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
     // waitForScheduler() pushes a root editor and the page pushes its own once the root is known; the second would find the
     // blocks already arranged by the first, so only the page's editor is kept
-    static DigitizerUi::FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs) {
-        g_state.reloadFromYamlString(sourceSinkPairsGraph(nPairs));
+    static DigitizerUi::FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs, bool scattered = false) {
+        g_state.reloadFromYamlString(sourceSinkPairsGraph(nPairs, scattered));
         g_state.waitForScheduler(ctx);
         g_state.waitUntil(ctx, "the graph has blocks", [] { return g_state.hasBlocks(); });
         while (g_state.flowgraphPage.editorCount() > 1UZ) {
@@ -1006,6 +1015,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 g_state.flowgraphPage.requestRelayout();
                 waitForSettledView(ctx, editor);
                 expect(nodePositions(editor) == arrangedByButton) << "requestRelayout() arranges as the button does";
+                expect(allNodesAboveButtonBar(editor, 53.f)) << "with the controls shown the fit leaves the button bar free";
                 captureScreenshot(*ctx, "Fit Window");
 
                 g_state.stopScheduler();
@@ -1051,6 +1061,43 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 g_state.flowgraphPage.showEditorControls = true;
                 g_state.stopScheduler();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "One graph with and without editor controls, as loaded and after a relayout");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = fitGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                for (const bool showControls : {true, false}) {
+                    g_state.flowgraphPage.showEditorControls = showControls;
+                    auto& editor                             = loadGraph(ctx, 8UZ, /*scattered*/ true);
+                    waitForSettledView(ctx, editor);
+
+                    const auto stored = [] {
+                        std::vector<ImVec2> positions;
+                        for (const auto& block : g_state.blocks()) {
+                            positions.emplace_back(block->storedXY ? ImVec2(block->storedXY->x, block->storedXY->y) : ImVec2(-1.f, -1.f));
+                        }
+                        return positions;
+                    }();
+                    expect(nodePositions(editor) == stored) << "as loaded: blocks keep their stored positions, not arranged";
+                    expect(approx(viewZoom(editor), 1.f, 1e-3f)) << "as loaded: not fitted";
+                    captureScreenshot(*ctx, "Fit Window");
+
+                    g_state.flowgraphPage.requestRelayout();
+                    waitForSettledView(ctx, editor);
+                    expect(nodePositions(editor) != stored) << "after the relayout the blocks are arranged";
+                    expect(allNodesInView(editor)) << "after the relayout the whole graph is visible";
+                    if (showControls) {
+                        expect(allNodesAboveButtonBar(editor, 53.f)) << "the button bar covers no block";
+                    }
+                    captureScreenshot(*ctx, "Fit Window");
+
+                    g_state.stopScheduler();
+                }
+                g_state.flowgraphPage.showEditorControls = true;
             };
         }
     }
