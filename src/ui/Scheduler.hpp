@@ -100,11 +100,14 @@ private:
         void runFramePacer() {
             gr::thread_pool::thread::setThreadName("ui-FramePacer");
             std::size_t oldProgress = _scheduler.graph().progress().value();
+            bool        wasPaused   = false;
             do {
                 while (!_uiUpdateShutdown && schedulerAlive()) {
-                    if (_scheduler.state() == gr::lifecycle::State::PAUSED) {
+                    const bool paused = _scheduler.state() == gr::lifecycle::State::PAUSED;
+                    if (paused && !wasPaused) {
                         DigitizerUi::components::Notification::info("Scheduler is paused");
                     }
+                    wasPaused = paused;
                     if (gr::lifecycle::isActive(_scheduler.state())) {
                         std::size_t newProgress = _scheduler.graph().progress().value();
                         if (oldProgress != newProgress) {

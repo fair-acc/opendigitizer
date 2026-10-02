@@ -1,14 +1,13 @@
 #ifndef OPENDIGITIZER_UI_TOOLBARVIEW_HPP
 #define OPENDIGITIZER_UI_TOOLBARVIEW_HPP
 
-#include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include <gnuradio-4.0/BlockModel.hpp>
 
 #include "Dashboard.hpp"
+#include "PaneBlocks.hpp"
 
 namespace DigitizerUi {
 
@@ -19,15 +18,10 @@ class ToolbarView {
 public:
     void draw(Dashboard& dashboard);
 
-    [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks; }
+    [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks.blocks(); }
 
 private:
-    const Dashboard*                             _dashboard = nullptr;
-    const void*                                  _scheduler = nullptr;
-    std::optional<std::uint64_t>                 _topologyGeneration;
-    std::vector<std::shared_ptr<gr::BlockModel>> _blocks;
-
-    void refreshBlocks(Dashboard& dashboard);
+    PaneBlocks _blocks{gr::UICategory::Toolbar};
 };
 
 } // namespace DigitizerUi

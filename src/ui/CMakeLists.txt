@@ -271,6 +271,7 @@ add_library(
   components/Splitter.cpp
   components/Splitter.hpp
   components/VirtualScrollTable.hpp
+  components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)
 target_link_libraries(
   opendigitizer-ui-components
@@ -358,17 +359,24 @@ add_library(
   DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
+  LogHistory.cpp
+  LogHistory.hpp
   MapUtils.hpp
+  PaneBlocks.cpp
+  PaneBlocks.hpp
   RemoteSignalSources.cpp
   RemoteSignalSources.hpp
   Scheduler.hpp
   Setup.cpp
   Setup.hpp
+  StatusBarView.cpp
+  StatusBarView.hpp
   ToolbarView.cpp
   ToolbarView.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp
+  blocks/StatusBarBlock.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp

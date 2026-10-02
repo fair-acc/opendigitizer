@@ -4,10 +4,13 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include "LogHistory.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/StatusBarBlock.hpp"
 #include "blocks/ToolbarBlock.hpp"
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
+#include "components/ImGuiNotify.hpp"
 
 namespace DigitizerUi {
 
@@ -23,6 +26,7 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(registry);
     std::ignore = gr::registerBlock<ToolbarButton>(registry);
     std::ignore = gr::registerBlock<ToolbarCheckbox>(registry);
+    std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 
 void applyStyle(LookAndFeel::Style style) {
@@ -51,6 +55,13 @@ void initialise(const InitialiseOptions& options) {
     }
     std::ignore = opendigitizer::ColourManager::instance();
     registerDashboardBlocks(options.registry ? *options.registry : gr::globalBlockRegistry());
+    if (options.captureLog) {
+        std::ignore                        = logHistory();
+        components::Notification::observer = [](ImGuiToastType type, std::string_view text) {
+            const gr::log::Level level = type == ImGuiToastType::Error ? gr::log::Level::error : type == ImGuiToastType::Warning ? gr::log::Level::warning : gr::log::Level::info;
+            logHistory().record(level, text);
+        };
+    }
     if (options.style) {
         applyStyle(*options.style);
     }

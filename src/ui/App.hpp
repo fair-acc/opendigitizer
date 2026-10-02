@@ -12,6 +12,7 @@
 #include "common/LookAndFeel.hpp"
 
 #include "components/AppHeader.hpp"
+#include "components/ViewModeBlocker.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
@@ -19,6 +20,7 @@
 #include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
 #include "Setup.hpp"
+#include "StatusBarView.hpp"
 #include "ToolbarView.hpp"
 
 #include "settings.hpp"
@@ -54,6 +56,7 @@ public:
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
     ToolbarView                    toolbarView;
+    StatusBarView                  statusBarView{logHistory()};
 
     FlowgraphPage     flowgraphPage;
     OpenDashboardPage openDashboardPage;
@@ -269,27 +272,8 @@ public:
         if (!Digitizer::Settings::instance().editableMode) {
             return false;
         }
-
-        const ImRect buttonArea{{0, startHeight}, ImGui::GetMainViewport()->Size};
-        ImGui::SetNextWindowSize(buttonArea.GetSize());
-        ImGui::SetNextWindowPos(buttonArea.GetTL());
-        IMW::Window window("coveringWindow", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
-        const auto  unlockPopupID = "Return dashboard to interactive mode?##lockModeDisableInputBlockerPopup";
-        ImGui::SetCursorScreenPos(buttonArea.GetTL());
-        if (ImGui::InvisibleButton("inputBlocker", buttonArea.GetSize()) || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
-            ImGui::OpenPopup(unlockPopupID);
-        }
-
-        bool exitRequested = false;
-        using namespace components;
-        if (const auto popup = beginYesNoPopup(unlockPopupID, {.yesText = "Make interactive"}); isPopupOpen(popup)) {
-            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-            if (isPopupConfirmed(popup)) {
-                exitRequested = true;
-            }
-            ImGui::EndPopup();
-        }
-        return exitRequested;
+        const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
+        return components::drawViewModeBlocker(ImRect({0.f, startHeight}, {viewportSize.x, viewportSize.y - StatusBarView::height()})); // the status bar stays usable
     }
 
     void processAndRender() {
@@ -306,74 +290,82 @@ public:
 
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 
-            if (prepareForANewDashboardToLoad) {
-                prepareForANewDashboardToLoad = false;
-                return;
+            {
+                IMW::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground); // leaves the status bar's height free
+                drawPage(lockedModeBlockerStart);
             }
-
-            if (deferredDashboardUrl) {
-                const std::string url = std::move(*deferredDashboardUrl);
-                deferredDashboardUrl.reset();
-                loadDashboard(url);
-            }
-
-            if (dashboardToLoad) {
-                loadDashboard(dashboardToLoad);
-                dashboardToLoad = nullptr;
-                mainViewMode    = ViewMode::VIEW;
-            }
-
-            if (dashboard) {
-                dashboard->handleMessages();
-            }
-
-            if (dashboard != nullptr) {
-                if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
-                    // Are we in the process of changing the dashboard?
-                    loadedDashboard = dashboard.get();
-                    dashboardPage   = std::make_unique<DashboardPage>();
-                    dashboardPage->setDashboard(*dashboard.get());
-                    dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
-                    dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
-                    flowgraphPage.reset();
-                }
-            }
-
-            if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
-                if (dashboard != nullptr && dashboard->isInitialised) {
-                    const auto mode = [&] {
-                        using enum DashboardPage::Mode;
-                        switch (mainViewMode) {
-                        case ViewMode::VIEW: return View;
-                        case ViewMode::INTERACTION: return Interaction;
-                        case ViewMode::LAYOUT: return Layout;
-                        default: assert(false); return View;
-                        }
-                    }();
-                    dashboardPage->draw(mode);
-                }
-            } else if (mainViewMode == ViewMode::FLOWGRAPH) {
-                if (dashboard != nullptr && dashboard->isInitialised) {
-                    if (previousViewMode != ViewMode::FLOWGRAPH) {
-                        dashboard->graphModel.requestFullUpdate();
-                        dashboard->graphModel.requestAvailableBlocksTypesUpdate();
-                    }
-
-                    flowgraphPage.draw();
-                }
-            } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
-                openDashboardPage.draw(dashboard.get(), dashboardPage.get());
-            } else {
-                auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
-                components::Notification::warning(msg);
-            }
-
-            if (mainViewMode == ViewMode::VIEW && this->drawViewModeBlockerAndCheckExit(lockedModeBlockerStart)) {
-                mainViewMode = ViewMode::INTERACTION;
-            }
+            statusBarView.draw(dashboard && dashboard->isInitialised ? dashboard.get() : nullptr);
         }
 
         previousViewMode = mainViewMode;
+    }
+
+    void drawPage(float lockedModeBlockerStart) {
+        if (prepareForANewDashboardToLoad) {
+            prepareForANewDashboardToLoad = false;
+            return;
+        }
+
+        if (deferredDashboardUrl) {
+            const std::string url = std::move(*deferredDashboardUrl);
+            deferredDashboardUrl.reset();
+            loadDashboard(url);
+        }
+
+        if (dashboardToLoad) {
+            loadDashboard(dashboardToLoad);
+            dashboardToLoad = nullptr;
+            mainViewMode    = ViewMode::VIEW;
+        }
+
+        if (dashboard) {
+            dashboard->handleMessages();
+        }
+
+        if (dashboard != nullptr) {
+            if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
+                // Are we in the process of changing the dashboard?
+                loadedDashboard = dashboard.get();
+                dashboardPage   = std::make_unique<DashboardPage>();
+                dashboardPage->setDashboard(*dashboard.get());
+                dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
+                dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
+                flowgraphPage.reset();
+            }
+        }
+
+        if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
+            if (dashboard != nullptr && dashboard->isInitialised) {
+                const auto mode = [&] {
+                    using enum DashboardPage::Mode;
+                    switch (mainViewMode) {
+                    case ViewMode::VIEW: return View;
+                    case ViewMode::INTERACTION: return Interaction;
+                    case ViewMode::LAYOUT: return Layout;
+                    default: assert(false); return View;
+                    }
+                }();
+                dashboardPage->draw(mode);
+            }
+        } else if (mainViewMode == ViewMode::FLOWGRAPH) {
+            if (dashboard != nullptr && dashboard->isInitialised) {
+                if (previousViewMode != ViewMode::FLOWGRAPH) {
+                    dashboard->graphModel.requestFullUpdate();
+                    dashboard->graphModel.requestAvailableBlocksTypesUpdate();
+                }
+
+                flowgraphPage.draw();
+            }
+        } else if (mainViewMode == ViewMode::OPEN_SAVE_DASHBOARD) {
+            openDashboardPage.draw(dashboard.get(), dashboardPage.get());
+        } else {
+            auto msg = std::format("unknown view mode {}", static_cast<int>(mainViewMode));
+            components::Notification::warning(msg);
+        }
+
+        if (mainViewMode == ViewMode::VIEW && this->drawViewModeBlockerAndCheckExit(lockedModeBlockerStart)) {
+            mainViewMode = ViewMode::INTERACTION;
+        }
     }
 };
 
