@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
@@ -28,8 +29,9 @@ using namespace boost;
 using namespace boost::ut;
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    DigitizerUi::DockingLayoutType          layoutType = DigitizerUi::DockingLayoutType::Row;
+    std::shared_ptr<DigitizerUi::Dashboard>     dashboard;
+    DigitizerUi::DockingLayoutType              layoutType = DigitizerUi::DockingLayoutType::Row;
+    std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
 };
 
 TestState* g_state = nullptr;
@@ -50,9 +52,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             if (g_state->dashboard) {
                 g_state->dashboard->layoutType = vars.layoutType;
-                DigitizerUi::DashboardPage page;
-                page.setDashboard(*g_state->dashboard);
-                page.draw();
+                if (!g_state->dashboardPage) {
+                    g_state->dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    g_state->dashboardPage->setDashboard(*g_state->dashboard);
+                }
+                g_state->dashboardPage->draw();
                 ut::expect(!g_state->dashboard->uiWindows.empty()) << ut::fatal;
             }
         };
@@ -63,6 +67,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
 
                 vars.layoutType = DigitizerUi::DockingLayoutType::Row;
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state->dashboard);
                 captureScreenshot(*ctx);
 
                 vars.layoutType = DigitizerUi::DockingLayoutType::Column;

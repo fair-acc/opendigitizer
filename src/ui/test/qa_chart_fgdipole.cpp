@@ -33,7 +33,11 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-opendigitizer::test::TestDashboardRunner g_state;
+struct TestState : public opendigitizer::test::TestDashboardRunner {
+    std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
+};
+
+TestState g_state;
 
 template<typename Registry>
 void registerTestBlocks(Registry& registry) {
@@ -57,9 +61,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowSize(ImVec2(1200, 800));
 
             if (g_state.dashboard) {
-                DigitizerUi::DashboardPage page;
-                page.setDashboard(*g_state.dashboard);
-                page.draw();
+                if (!g_state.dashboardPage) {
+                    g_state.dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    g_state.dashboardPage->setDashboard(*g_state.dashboard);
+                }
+                g_state.dashboardPage->draw();
                 ut::expect(!g_state.dashboard->uiWindows.empty());
                 g_state.dashboard->handleMessages();
             }
@@ -79,18 +85,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ut::expect(dipoleDataSetSink != nullptr) << "DipoleCurrentDataSetSink not found";
 
                 g_state.waitForScheduler(ctx);
-
-                // Wait for sinks to accumulate data (DataSet sink needs the P=2→P=5 tag window at ~1s)
-                while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0 || intensitySink->size() == 0) {
-                    ImGuiTestEngine_Yield(ctx->Engine);
-                }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
 
                 // Verify sinks received data
                 expect(dipoleSink->size() > 0) << "DipoleCurrentSink has no data";
                 expect(intensitySink->size() > 0) << "IntensitySink has no data";
                 expect(dipoleDataSetSink->dataSetCount() > 0) << "DipoleCurrentDataSetSink has no datasets";
 
-                g_state.stopScheduler();
                 captureScreenshot(*ctx);
             };
         };
@@ -118,6 +119,7 @@ int main(int argc, char* argv[]) {
     g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/fg_dipole_intensity_ramp.grc");
 
     auto result = app.runTests();
+    g_state.dashboardPage.reset();
     g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

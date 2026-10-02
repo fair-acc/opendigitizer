@@ -31,7 +31,11 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-opendigitizer::test::TestDashboardRunner g_state;
+struct TestState : public opendigitizer::test::TestDashboardRunner {
+    std::shared_ptr<DigitizerUi::DashboardPage> dashboardPage;
+};
+
+TestState g_state;
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
@@ -47,15 +51,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowSize(ImVec2(800, 800));
 
             if (g_state.dashboard) {
-                DigitizerUi::DashboardPage page;
-                page.setDashboard(*g_state.dashboard);
-                page.draw();
+                if (!g_state.dashboardPage) {
+                    g_state.dashboardPage = std::make_shared<DigitizerUi::DashboardPage>();
+                    g_state.dashboardPage->setDashboard(*g_state.dashboard);
+                }
+                g_state.dashboardPage->draw();
                 ut::expect(!g_state.dashboard->uiWindows.empty());
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            g_state.reload();
+            g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_chart.grc");
             g_state.waitForScheduler(ctx);
             while (!g_state.hasBlocks()) {
                 ctx->Yield();
@@ -64,16 +70,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "DashboardPage::drawPlot"_test = [ctx] {
                 ctx->SetRef("Test Window");
 
-                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
+                auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "sinesSink"; });
                 ut::expect(sinkPtr != nullptr);
 
-                // Wait for samples to accumulate using the SignalSink interface
-                const std::size_t maxSamples = 3000;
-                while (sinkPtr->size() < maxSamples) {
-                    ImGuiTestEngine_Yield(ctx->Engine);
-                }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
+                ut::expect(ut::eq(sinkPtr->size(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
 
-                g_state.stopScheduler();
                 captureScreenshot(*ctx);
             };
         };
@@ -120,6 +122,7 @@ int main(int argc, char* argv[]) {
     auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
 
     auto result = app.runTests();
+    g_state.dashboardPage.reset();
     g_state.dashboard.reset(); // ensure scheduler cleanup before global teardown
     return result ? 0 : 1;
 }

@@ -138,10 +138,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             g_state.waitForScheduler(ctx);
-
-            while (dipoleDataSetSink->dataSetCount() == 0 || dipoleSink->size() == 0) {
-                ctx->Yield();
-            }
+            opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
 
             "expected UIWindow names"_test = [] {
                 expect(findWindowByName("Plot 1") != nullptr) << "Plot 1 window";

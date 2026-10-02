@@ -399,6 +399,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     while (!g_state.hasBlocks()) {
                         ctx->Yield();
                     }
+                    opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
 
                     std::string firstBlockName = g_state.nameOfFirstBlock();
                     expect(that % !firstBlockName.empty()) << "There should be at least one block";
@@ -1163,7 +1164,7 @@ int main(int argc, char* argv[]) {
 
     auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
 
-    g_state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/DemoDashboard.grc");
+    g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_chart.grc");
 
     auto result = app.runTests();
     g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown

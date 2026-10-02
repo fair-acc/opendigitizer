@@ -9,12 +9,22 @@
 
 #include <Dashboard.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 
 namespace opendigitizer::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
 constexpr const char* defaultGRCPath       = "assets/sampleDashboards/DemoDashboard.grc";
+
+inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
+    const auto isChart     = [&dashboard](const auto& block) { return std::ranges::contains(dashboard.uiWindows, block, &DigitizerUi::Dashboard::UIWindow::block); };
+    const auto hasFinished = [&isChart](const auto& block) { return isChart(block) || block->state() == gr::lifecycle::State::STOPPED; }; // chart blocks run until the scheduler stops
+    while (!std::ranges::all_of(dashboard.session.graph().blocks(), hasFinished)) {
+        ctx->Yield();
+    }
+    ctx->SleepNoSkip(0.1f, 0.02f);
+}
 
 struct TestDashboardRunner {
     std::shared_ptr<opencmw::client::RestClient> restClient = std::make_shared<opencmw::client::RestClient>();

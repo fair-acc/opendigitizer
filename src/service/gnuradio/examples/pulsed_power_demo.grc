@@ -118,15 +118,15 @@ blocks:
     parameters:
       name: SinkTotalActivePower
       signal_name: TotalActivePower
-  - parameters:
-    id: gr::filter::FrequencyEstimatorTimeDomain<float32>
+  - id: gr::filter::FrequencyEstimatorTimeDomain<float32>
+    parameters:
       name: FrequencyEstimatorU1
   - id: gr::basic::DataSink<float32>
     parameters:
       name: SinkFrequencyU1
       signal_name: FrequencyU1
 connections:
-  - [Picoscope4000, 0, DummySinkPicoDigi0, 0]
+  - [Picoscope4000, 0, DummySinkPicoDigital, 0]
   - [Picoscope4000,  [1, 0], SinkA, 0]
   - [Picoscope4000,  [1, 0], StreamToDataSetA, 0]
   - [StreamToDataSetA, 0, SinkDataSetA, 0]

@@ -42,6 +42,7 @@ private:
                 ut::expect(g.OpenPopupStack.size() == 1);
                 auto keypadWindow = ImGui::FindWindowByID(g.OpenPopupStack[0].Window->ID);
 
+                ctx->SleepNoSkip(0.2f, 0.02f); // the modal background fades in over 1/6 s of frame time
                 captureScreenshot(*ctx, keypadWindow->ID);
 
                 // nothing edited yet
