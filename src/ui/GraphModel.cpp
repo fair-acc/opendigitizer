@@ -10,6 +10,8 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <set>
@@ -1081,6 +1083,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         return false;
     }
 
+    if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
+        ++topologyGeneration;
+    }
     return true;
 }
 

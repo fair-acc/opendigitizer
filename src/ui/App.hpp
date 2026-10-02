@@ -19,6 +19,7 @@
 #include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
 #include "Setup.hpp"
+#include "ToolbarView.hpp"
 
 #include "settings.hpp"
 #include "utils/EmscriptenHelper.hpp"
@@ -52,6 +53,7 @@ public:
 
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
+    ToolbarView                    toolbarView;
 
     FlowgraphPage     flowgraphPage;
     OpenDashboardPage openDashboardPage;
@@ -296,6 +298,11 @@ public:
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+
+            const bool showsDashboard = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT;
+            if (showsDashboard && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
+                toolbarView.draw(*dashboard); // above the View-mode input blocker: toolbar blocks stay operable
+            }
 
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 

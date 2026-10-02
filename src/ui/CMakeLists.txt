@@ -364,12 +364,15 @@ add_library(
   Scheduler.hpp
   Setup.cpp
   Setup.hpp
+  ToolbarView.cpp
+  ToolbarView.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ToolbarBlock.hpp
   blocks/meta.hpp
   components/Block.cpp
   components/Block.hpp
@@ -428,11 +431,9 @@ add_library(
   OAuthSession.hpp
   OpenDashboardPage.cpp
   OpenDashboardPage.hpp
-  blocks/ToolbarBlock.hpp
   common/ImGuiHelperSDL.hpp
   common/ImguiXKCD.hpp
   components/AppHeader.hpp
-  components/Toolbar.hpp
   utils/stb_impl.cpp) # STB is a library with linking issues -- impl instantiated only here
 target_link_libraries(
   ${target_name}lib

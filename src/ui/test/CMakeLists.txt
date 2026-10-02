@@ -92,6 +92,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_grouping.grc
     examples/qa_layout.grc
     examples/qa_subgraph.grc
+    examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 
   # Code shared between all tests
@@ -138,6 +139,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_layout)
   add_imgui_test(qa_DashboardBaseline)
   add_imgui_test(qa_DashboardView)
+  add_imgui_test(qa_ToolbarView)
   add_imgui_test(qa_ZoomablePlot)
   add_imgui_test(qa_ColourManager)
   add_imgui_test(qa_flowgraph)

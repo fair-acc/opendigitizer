@@ -268,6 +268,9 @@ public:
     // generation so the editor can know its node id pointers are invalid
     std::uint64_t blockDestructionCount = 0;
 
+    // incremented whenever blocks may have been added to, removed from or replaced in the scheduler's graph
+    std::uint64_t topologyGeneration = 0;
+
     /**
      * @return true if consumed the message
      */

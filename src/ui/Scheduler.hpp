@@ -242,11 +242,18 @@ private:
             output[0]   = std::move(message);
         }
 
+        // replies reach the UI as Final or Notify; a Set is a block's request addressed to another block
+        [[nodiscard]] bool isRequestBetweenBlocks(const gr::Message& message) const { return message.cmd == gr::message::Command::Set && !message.serviceName.empty() && message.serviceName != _scheduler.unique_name && message.serviceName != _scheduler.name; }
+
         void handleMessages(UiGraphModel& graphModel) final {
             const auto available = _fromScheduler.streamReader().available();
             if (available > 0) {
                 auto messages = _fromScheduler.streamReader().get(available);
                 for (const auto& message : messages) {
+                    if (isRequestBetweenBlocks(message)) { // e.g. from a toolbar block: the scheduler forwards it to the addressed block
+                        sendMessage(message);
+                        continue;
+                    }
                     if (message.endpoint == gr::scheduler::property::kGraphGRC) {
                         if (!message.data) {
                             DigitizerUi::components::Notification::error(std::format("Not processed: {} data: {}\n", message.endpoint, message.data.error().message));

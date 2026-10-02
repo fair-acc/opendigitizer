@@ -1,0 +1,43 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: ClockSource1
+      do_zero_order_hold: false
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: SignalGenerator1
+      frequency: 1
+      amplitude: 5
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSink1
+      color: 0xFF0000
+  - id: DigitizerUi::ToolbarCheckbox
+    parameters:
+      name: toolbar_b_hold
+      label: Hold
+      tooltip: hold the last clock tag
+      target_block: ClockSource1
+      target_setting: do_zero_order_hold
+  - id: ForeignToolbarBlock
+    parameters:
+      name: toolbar_c_foreign
+  - id: DigitizerUi::ToolbarButton
+    parameters:
+      name: toolbar_a_amplify
+      label: Amplify
+      tooltip: set the amplitude to 7
+      target_block: SignalGenerator1
+      payload:
+        amplitude: 7.0
+connections:
+  - [ClockSource1, 0, SignalGenerator1, 0]
+  - [SignalGenerator1, 0, PlotSink1, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []
