@@ -1,13 +1,18 @@
+#include "GraphModel.hpp"
 #include "Scheduler.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <format>
 #include <print>
+#include <source_location>
+#include <string_view>
 #include <thread>
 
 #include <boost/ut.hpp>
 
+#include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/LifeCycle.hpp>
 #include <gnuradio-4.0/testing/NullSources.hpp>
 #include <gnuradio-4.0/thread/thread_pool.hpp>
@@ -112,6 +117,46 @@ constexpr std::size_t kRepetitions = 50UZ;
     return graph;
 }
 
+constexpr std::string_view kReplacementGrc = R"(blocks:
+  - id: gr::testing::NullSource<float32>
+    parameters:
+      name: grcSource
+  - id: gr::testing::NullSink<float32>
+    parameters:
+      name: grcSink
+connections:
+  - [grcSource, 0, grcSink, 0]
+)";
+
+// the UI side of a scheduler as the App's frame loop drives it: messages are pumped into a graph model
+struct UiSide {
+    DigitizerUi::Scheduler    scheduler;
+    DigitizerUi::UiGraphModel graphModel;
+
+    UiSide() {
+        graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { scheduler.sendMessage(std::move(message), location); };
+        scheduler.emplaceGraph(makeRunningGraph());
+    }
+
+    void setGrc(std::string_view grc) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.serviceName = std::string(scheduler.schedulerUniqueName());
+        message.endpoint    = gr::scheduler::property::kGraphGRC;
+        message.data        = gr::property_map{{"value", std::string(grc)}};
+        scheduler.sendMessage(std::move(message), std::source_location::current());
+    }
+
+    [[nodiscard]] bool pumpUntil(auto predicate) {
+        return waitFor([&] {
+            scheduler.handleMessages(graphModel);
+            return predicate();
+        });
+    }
+
+    [[nodiscard]] bool showsReplacementGraph() { return static_cast<bool>(graphModel.recursiveFindBlockByName("grcSource")); }
+};
+
 const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
     "destroying a running scheduler returns"_test = [] {
         for (std::size_t i = 0; i < kRepetitions; ++i) {
@@ -133,7 +178,7 @@ const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
                 expect(scheduler->start().has_value());
                 expect(scheduler->start().has_value());
             });
-            expect(waitFor([&] { return hasState(scheduler, State::RUNNING); })) << "restarted exactly once and running";
+            expect(waitFor([&] { return hasState(scheduler, State::RUNNING); })) << std::format("restarted exactly once and running, state {}", magic_enum::enum_name(scheduler->state()));
         }
     };
 
@@ -155,9 +200,52 @@ const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
         expect(waitFor([&] { return hasState(*scheduler, State::STOPPED); }));
         expectReturns("destroying a stopped scheduler", [&] { scheduler.reset(); });
     };
+
+    "destroying a paused scheduler returns"_test = [] {
+        auto scheduler = std::make_unique<DigitizerUi::Scheduler>();
+        scheduler->emplaceGraph(makeRunningGraph());
+        expect(waitFor([&] { return hasState(*scheduler, State::RUNNING); }));
+        expect((*scheduler)->pause().has_value());
+        expect(waitFor([&] { return hasState(*scheduler, State::PAUSED); }));
+        expectReturns("destroying a paused scheduler", [&] { scheduler.reset(); });
+    };
+
+    "destroying a scheduler whose start has not run yet returns"_test = [] {
+        for (std::size_t i = 0; i < kRepetitions; ++i) {
+            auto scheduler = std::make_unique<DigitizerUi::Scheduler>();
+            scheduler->emplaceGraph(makeRunningGraph());
+            expectReturns("destroying a starting scheduler", [&] { scheduler.reset(); });
+        }
+    };
+
+    "the scheduler runs its graph on GR4's pool, not on the thread that started it"_test = [] {
+        DigitizerUi::Scheduler scheduler;
+        expectReturns("emplacing a graph", [&] { scheduler.emplaceGraph(makeRunningGraph()); });
+        expect(waitFor([&] { return hasState(scheduler, State::RUNNING); })) << "running while this thread is free";
+    };
+
+    "setting a .grc on a running scheduler runs the new graph"_test = [] {
+        UiSide ui;
+        expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::RUNNING); })) << fatal;
+        ui.setGrc(kReplacementGrc);
+        expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.scheduler, State::RUNNING); })) << "the UI model shows the new graph and the scheduler runs again";
+    };
+
+    "setting a .grc on a paused scheduler leaves the new graph paused"_test = [] {
+        UiSide ui;
+        expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::RUNNING); })) << fatal;
+        expect(ui.scheduler->pause().has_value());
+        expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::PAUSED); })) << fatal;
+        ui.setGrc(kReplacementGrc);
+        expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.scheduler, State::PAUSED); })) << "the UI model shows the new graph and the scheduler is paused again";
+    };
 };
 
 } // namespace
 
 // suites run here, not at exit, where the static state they use may already be destroyed
-int main() { return boost::ut::cfg<boost::ut::override>.run(); }
+int main() {
+    std::ignore = gr::registerBlock<gr::testing::NullSource, float>(gr::globalBlockRegistry()); // used by kReplacementGrc
+    std::ignore = gr::registerBlock<gr::testing::NullSink, float>(gr::globalBlockRegistry());
+    return boost::ut::cfg<boost::ut::override>.run();
+}
