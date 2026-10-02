@@ -595,9 +595,10 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
 
-    const float  left = ImGui::GetCursorPosX();
-    const float  top  = ImGui::GetCursorPosY();
-    const ImVec2 size = ImGui::GetContentRegionAvail();
+    const float  left          = ImGui::GetCursorPosX();
+    const float  top           = ImGui::GetCursorPosY();
+    const ImVec2 screenTopLeft = ImGui::GetCursorScreenPos(); // the edit pane is a window of its own, placed in screen coordinates
+    const ImVec2 size          = ImGui::GetContentRegionAvail();
 
     const bool  horizontalSplit = size.x > size.y;
     const float ratio           = mode == Mode::Interaction ? components::Splitter(_splitter, size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
@@ -654,10 +655,10 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     // edit pane
     if (horizontalSplit) {
         const float w = size.x * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {left + size.x - w + halfSplitterWidth, top}, {w - halfSplitterWidth, size.y}, true), propertyPairsByWindowID, windowRemoveList);
+        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x + size.x - w + halfSplitterWidth, screenTopLeft.y}, {w - halfSplitterWidth, size.y}, true), propertyPairsByWindowID, windowRemoveList);
     } else {
         const float h = size.y * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {left, top + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false), propertyPairsByWindowID, windowRemoveList);
+        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x, screenTopLeft.y + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false), propertyPairsByWindowID, windowRemoveList);
     }
 
     return legendClickResult;
@@ -718,7 +719,7 @@ DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view cha
 void DashboardPage::drawNewPlotModal() {
     using namespace opendigitizer::charts;
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    const ImVec2 center = ImGui::GetWindowPos() + ImGui::GetWindowSize() * 0.5f; // the window the page is drawn in, not the screen
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Appearing);
 

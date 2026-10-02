@@ -8,6 +8,7 @@
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
 
 #include <Dashboard.hpp>
+#include <DashboardPage.hpp>
 #include <DashboardView.hpp>
 
 #include "blocks/SineSource.hpp"
@@ -34,6 +35,7 @@ struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard>     dashboard;      // loads qa_layout.grc
     std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard; // never loads a graph
     std::unique_ptr<DigitizerUi::DashboardView> view;
+    std::unique_ptr<DigitizerUi::DashboardPage> page; // the App's page, drawn at the same offset
     Mode                                        mode      = Mode::View;
     LegendPosition                              legend    = LegendPosition::Bottom;
     bool                                        drawEmpty = false;
@@ -178,6 +180,39 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
             state.view.reset();
         };
+
+        ImGuiTest* pageTest = IM_REGISTER_TEST(engine(), "dashboardview", "App page away from the screen origin");
+
+        pageTest->GuiFunc = [](ImGuiTestContext*) {
+            ImGui::SetNextWindowPos(kHostPos);
+            ImGui::SetNextWindowSize(kHostSize);
+            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            auto&       state = *g_state;
+            if (!state.page) {
+                state.page = std::make_unique<DigitizerUi::DashboardPage>();
+                state.page->setDashboard(*state.dashboard);
+            }
+            state.page->draw(Mode::Interaction);
+        };
+
+        pageTest->TestFunc = [](ImGuiTestContext* ctx) {
+            "the edit pane opened from the legend lies inside the host"_test = [ctx] {
+                while (g_state->dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                    ctx->Yield();
+                }
+                ctx->Yield(5);
+                ctx->ItemClick("**/PlotSink1", ImGuiMouseButton_Right);
+                ctx->Yield(60); // the splitter animates the edit pane open
+
+                const ImGuiWindow* panel = ImGui::FindWindowByName("BlockControlsPanel");
+                expect(panel != nullptr && panel->Active) << fatal << "the edit pane is open";
+                const ImRect hostRect(kHostPos, kHostPos + kHostSize);
+                const ImRect panelRect(panel->Pos, panel->Pos + panel->Size);
+                expect(hostRect.Contains(panelRect)) << std::format("edit pane at ({}, {}) size ({}, {}) inside the host at ({}, {})", panelRect.Min.x, panelRect.Min.y, panelRect.GetWidth(), panelRect.GetHeight(), hostRect.Min.x, hostRect.Min.y);
+                captureScreenshot(*ctx, hostRect);
+            };
+            g_state->page.reset();
+        };
     }
 };
 
@@ -202,6 +237,7 @@ int main(int argc, char* argv[]) {
     state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();
+    state.page.reset();
     state.view.reset();
     g_state = nullptr;
     return result ? 0 : 1;
