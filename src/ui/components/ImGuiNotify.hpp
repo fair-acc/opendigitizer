@@ -20,6 +20,7 @@
 #include <chrono>     // For the notifications timed dissmiss
 #include <functional> // For storing the code, which executest on the button click in the notification
 #include <string>
+#include <string_view>
 #include <vector> // Vector for storing notifications list
 
 #include <format>
@@ -548,21 +549,25 @@ struct Notification {
     std::string               text;
     std::chrono::milliseconds dismissTime{5000};
 
-    inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
+    /// receives every notification instead of the toast list when set, e.g. by an application that embeds dashboards
+    inline static std::function<void(ImGuiToastType type, std::string_view text)> sink;
 
-    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
+    inline static void success(Notification&& notification) { post(ImGuiToastType::Success, notification.dismissTime, notification.text); }
+    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Success, dismissTime, text); }
+    inline static void warning(Notification&& notification) { post(ImGuiToastType::Warning, notification.dismissTime, notification.text); }
+    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Warning, dismissTime, text); }
+    inline static void error(Notification&& notification) { post(ImGuiToastType::Error, notification.dismissTime, notification.text); }
+    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { post(ImGuiToastType::Error, dismissTime, text); }
+    inline static void info(Notification&& notification) { post(ImGuiToastType::Info, notification.dismissTime, notification.text); }
+    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Info, dismissTime, text); }
 
-    inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
-
-    inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
-
-    inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
+    inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {
+        if (sink) {
+            sink(type, text);
+            return;
+        }
+        ImGui::InsertNotification({type, static_cast<int>(dismissTime.count()), "%s", text.c_str()});
+    }
 
     inline static void render() {
         // Notifications style setup

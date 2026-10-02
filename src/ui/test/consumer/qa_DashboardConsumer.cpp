@@ -3,6 +3,7 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
+#include "components/ImGuiNotify.hpp"
 
 #include <boost/ut.hpp>
 #include <implot3d.h>
@@ -99,6 +100,19 @@ int main() {
             expect(registry.contains(std::format("opendigitizer::charts::{}", chart))) << chart;
         }
         expect(std::ranges::any_of(registry.keys(), [](const auto& key) { return std::string_view(key).starts_with("opendigitizer::ImPlotSink"); })) << "ImPlotSink";
+    };
+
+    "a host receives dashboard notifications through its sink instead of the toast list"_test = [&] {
+        std::vector<std::string> received;
+        DigitizerUi::components::Notification::sink = [&received](ImGuiToastType, std::string_view text) { received.emplace_back(text); };
+        const auto toastsBefore                     = ImGui::notifications.size();
+
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
+        loadGrc(*dashboard, "blocks: [ this is not a flowgraph");
+
+        DigitizerUi::components::Notification::sink = nullptr;
+        expect(!received.empty()) << "the load error reached the sink";
+        expect(eq(ImGui::notifications.size(), toastsBefore)) << "no toast queued";
     };
 
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
