@@ -1244,7 +1244,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SurfacePlot", opendigitizer::charts::SurfacePlot)
-inline auto registerSurfacePlot                = gr::registerBlock<opendigitizer::charts::SurfacePlot>(gr::globalBlockRegistry());
 inline auto registerSurfacePlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SurfacePlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SURFACEPLOT_HPP

@@ -31,7 +31,7 @@
 #include "blocks/RemoteSource.hpp"
 #include "components/SignalSelector.hpp"
 
-#include "charts/Charts.hpp" // self-registers the chart blocks into gr::globalBlockRegistry()
+#include "charts/Charts.hpp"
 #include "charts/SinkRegistry.hpp"
 
 using namespace std::string_literals;

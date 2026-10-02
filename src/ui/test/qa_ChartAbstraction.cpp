@@ -1,3 +1,4 @@
+#include "Setup.hpp"
 #include "TestSinks.hpp"
 #include "blocks/ImPlotSink.hpp"
 
@@ -5,6 +6,7 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -212,7 +214,10 @@ int main() {
     };
 
     "registeredChartTypes queries block registry"_test = [] {
+        DigitizerUi::registerDashboardBlocks(gr::globalBlockRegistry()); // charts no longer register as a side effect of their headers
         auto types = registeredChartTypes();
+        expect(!types.empty()) << fatal;
+        expect(std::ranges::any_of(types, [](const std::string& type) { return type.ends_with("XYChart"); })) << "XYChart is registered";
 
         expect(std::is_sorted(types.begin(), types.end())) << "Types should be sorted";
 

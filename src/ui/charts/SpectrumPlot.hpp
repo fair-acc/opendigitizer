@@ -118,7 +118,6 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumPlot", opendigitizer::charts::SpectrumPlot)
-inline auto registerSpectrumPlot                = gr::registerBlock<opendigitizer::charts::SpectrumPlot>(gr::globalBlockRegistry());
 inline auto registerSpectrumPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMPLOT_HPP

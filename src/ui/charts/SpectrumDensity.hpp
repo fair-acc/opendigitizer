@@ -246,7 +246,6 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumDensity", opendigitizer::charts::SpectrumDensity)
-inline auto registerSpectrumDensity                = gr::registerBlock<opendigitizer::charts::SpectrumDensity>(gr::globalBlockRegistry());
 inline auto registerSpectrumDensityCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumDensity>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMDENSITY_HPP

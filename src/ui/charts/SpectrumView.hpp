@@ -332,7 +332,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumView", opendigitizer::charts::SpectrumView)
-inline auto registerSpectrumView                = gr::registerBlock<opendigitizer::charts::SpectrumView>(gr::globalBlockRegistry());
 inline auto registerSpectrumViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumView>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMVIEW_HPP
