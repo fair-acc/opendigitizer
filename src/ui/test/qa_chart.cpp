@@ -55,7 +55,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
-            g_state.reload();
+            g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_chart.grc");
             g_state.waitForScheduler(ctx);
             while (!g_state.hasBlocks()) {
                 ctx->Yield();
@@ -67,13 +67,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([](const auto& sink) { return sink.name() == "DipoleCurrentSink"; });
                 ut::expect(sinkPtr != nullptr);
 
-                // Wait for samples to accumulate using the SignalSink interface
-                const std::size_t maxSamples = 3000;
-                while (sinkPtr->size() < maxSamples) {
-                    ImGuiTestEngine_Yield(ctx->Engine);
-                }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
+                ut::expect(ut::eq(sinkPtr->size(), 3000UZ)) << "n_samples_max of ClockSource in qa_chart.grc";
 
-                g_state.stopScheduler();
                 captureScreenshot(*ctx);
             };
         };

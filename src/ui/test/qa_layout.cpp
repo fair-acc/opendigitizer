@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
@@ -63,6 +64,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->SetRef("Test Window");
 
                 vars.layoutType = DigitizerUi::DockingLayoutType::Row;
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state->dashboard);
                 captureScreenshot(*ctx);
 
                 vars.layoutType = DigitizerUi::DockingLayoutType::Column;
