@@ -1,0 +1,173 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: SineClock
+      chunk_size: 40
+      n_samples_max: 2000
+      sample_rate: 1000
+      start_time: 1767225600000000000 # 2026-01-01T00:00:00Z
+      tag_times: !!uint64
+        - 500000000
+        - 1000000000
+        - 1500000000
+      tag_values: !!str
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1"
+        - "CMD_DIAG_TRIGGER1"
+        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sineSource1
+      signal_type: Sin
+      frequency: 2
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sineSource2
+      signal_type: Sin
+      frequency: 5
+  - id: opendigitizer::Arithmetic<float32>
+    parameters:
+      name: sineSum
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: FFT
+      fft_size: 1024
+      window: Hann
+      signal_unit: V
+      output_in_db: false
+      output_in_deg: true
+      unwrap_phase: true
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sinesSink
+      signal_name: sine2Hz+5Hz
+      signal_quantity: sum voltage
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      color: 0x00C800
+      signal_name: sine2Hz
+      signal_quantity: long long sine voltage 1
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink2
+      color: 0xC800C8
+      signal_name: sine5Hz
+      signal_quantity: sine voltage 2
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: fftSink
+      dataset_index: 0
+      signal_name: 2 Hz + 5 Hz
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: amplitude
+      signal_unit: V
+  - id: gr::basic::ClockSource
+    parameters:
+      name: SpectrumClock
+      sample_rate: 25
+      chunk_size: 1
+      n_samples_max: 75
+  - id: opendigitizer::TestSpectrumGenerator<float32>
+    parameters:
+      name: SpectrumGenerator
+      spectrum_size: 4096
+      center_freq: 100e6
+      signal_bandwidth: 1e6
+      clock_rate: 25
+      seed: 42
+      show_schottky: true
+      show_interference_lines: true
+      show_sweep_line: true
+      log_interval: 0
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrumSink
+      dataset_index: 0
+      signal_name: spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+connections:
+  - [ SineClock, 0, sineSource1, 0 ]
+  - [ SineClock, 0, sineSource2, 0 ]
+  - [ sineSource1, 0, sineSum, 0 ]
+  - [ sineSource2, 0, sineSum, 1 ]
+  - [ sineSource1, 0, sineSink1, 0 ]
+  - [ sineSource2, 0, sineSink2, 0 ]
+  - [ sineSum, 0, sinesSink, 0 ]
+  - [ sineSum, 0, FFT, 0 ]
+  - [ FFT, 0, fftSink, 0 ]
+  - [ SpectrumClock, 0, SpectrumGenerator, 0 ]
+  - [ SpectrumGenerator, 0, spectrumSink, 0 ]
+dashboard:
+  layout: Free
+  sources:
+    - name: sinesSink
+      block: sinesSink
+    - name: sineSink1
+      block: sineSink1
+    - name: sineSink2
+      block: sineSink2
+    - name: fftSink
+      block: fftSink
+    - name: spectrumSink
+      block: spectrumSink
+  plots:
+    - name: Raw Signal
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: LinearReverse
+        - axis: Y
+          min: NaN
+          max: NaN
+      sources:
+        - sinesSink
+        - sineSink1
+        - sineSink2
+      rect: [0, 0, 1, 1]
+    - name: FFT Amplitude
+      parameters:
+        max_history_count: 1
+      axes:
+        - axis: X
+          min: 0
+          max: 10
+          scale: Linear
+          format: MetricInline
+        - axis: Y
+          min: 0
+          max: 1.2
+      sources:
+        - fftSink
+      rect: [1, 0, 1, 1]
+    - name: Spectrum View
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        show_max_hold: true
+        show_min_hold: true
+        show_average: true
+        decay_tau_frames: 120
+        n_history: 256
+        colormap: ImPlotColormap_Viridis
+        top_pane_ratio: 0.4
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          format: MetricInline
+        - axis: Y
+          min: NaN
+          max: NaN
+        - axis: Z
+          min: -85
+          max: -55
+      sources:
+        - spectrumSink
+      rect: [0, 1, 2, 1]

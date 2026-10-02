@@ -67,14 +67,23 @@ for i in ${PR_CAPTURES_DIR}/*.png ; do
 
     if [[ -f $reference_image ]] ; then
         if ! diff "$PR_CAPTURES_DIR"/"$image_name" "$reference_image" &> /dev/null ; then
-            echo "Found differences for $image_name"
             # ref -> now GIF plus diff PNG; OptimizeTransparency avoids 256-colour palette flicker
-            changed_pixels[$image_name]=$(magick -dispose Background -delay 80 -label ref "$reference_image" -label now "$PR_CAPTURES_DIR"/"$image_name" \
+            comparison=$(magick -dispose Background -delay 80 -label ref "$reference_image" -label now "$PR_CAPTURES_DIR"/"$image_name" \
                 -layers TrimBounds -coalesce -background white -alpha remove \
-                \( -clone 0,1 -metric AE -precision 16 -compare -format '%[fx:round(%[distortion]*w*h)]' -write info: \
-                    -write "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_diff.png +delete \) \
+                \( -clone 0,1 -fuzz 1% -metric AE -precision 16 -compare -format '%[fx:round(%[distortion]*w*h)] %[fx:round(1e4*%[distortion])]' -write info: \
+                    -write "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_diff.png +delete \) +fuzz \
                 -background '#202020' -gravity North -splice 0x26 -gravity NorthWest -fill white -pointsize 20 -annotate +6+2 '%l' \
-                -set dispose None -loop 0 -layers OptimizeTransparency "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_flicker.gif)
+                -set dispose None -loop 0 -layers OptimizeTransparency "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_flicker.gif) || exit 1
+            read -r pixel_count basis_points <<< "$comparison"
+            if ((pixel_count == 0)); then
+                echo "Only rounding noise in $image_name"
+                rm "$DIFF_DIR"/"${PR_NUMBER}"-"${image_name}"_{diff.png,flicker.gif}
+                continue
+            fi
+            echo "Found differences for $image_name"
+            changed_percent=$(printf '%d.%02d' $((basis_points / 100)) $((basis_points % 100)))
+            ((basis_points == 0)) && changed_percent='<0.01'
+            changed_pixels[$image_name]="$pixel_count px ($changed_percent%)"
             images_with_differences+=($image_name)
 
             # we'll be uploading it so we can link it from PR, copy to diff dir
@@ -148,7 +157,7 @@ if [[ ${#images_with_differences[@]} -ne 0 ]] ; then
     pr_text+="# PR produced different images:\n\n"
     for i in "${images_with_differences[@]}" ; do
         pr_text+="<details>\n"
-        pr_text+="<summary>${i%.png} · ${changed_pixels[$i]} px changed</summary>\n"
+        pr_text+="<summary>${i%.png} · ${changed_pixels[$i]} changed</summary>\n"
         pr_text+="\n![$i](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}_flicker.gif)\n"
         pr_text+="\n[ref.png](https://github.com/${REPO_NAME}/releases/download/${REFERENCE_RELEASE_NAME}/${i}) · [now.png](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}) · [diff.png](https://github.com/${REPO_NAME}/releases/download/${DIFFS_RELEASE_NAME}/${PR_NUMBER}-${i}_diff.png)\n"
         pr_text+="</details>\n"

@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestDashboardRunner.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
@@ -168,6 +169,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
                     ctx->Yield();
                 }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *state.dashboard);
                 const ImRect regionRect(kHostPos, kHostPos + kHostSize);
                 const auto   expectDockedInRegion = [&](std::string_view when) {
                     waitForStableCharts(ctx);
