@@ -10,7 +10,7 @@
 namespace DigitizerUi {
 
 namespace {
-constexpr inline auto kGridWidth = 16u;
+constexpr inline std::size_t kGridCells = 16UZ;
 } // namespace
 
 void alignForWidth(float width, float alignment) noexcept {
@@ -139,14 +139,13 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
 void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSize) {
     IMW::Group group;
 
-    if (mode == Mode::Layout) { // layout grid
-        const float    w             = paneSize.x / float(kGridWidth);
+    if (mode == Mode::Layout) { // layout guide: kGridCells x kGridCells cells spanning the pane
         const uint32_t gridLineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().gridLines);
-        const auto     pos           = ImGui::GetCursorScreenPos();
-        for (float x = pos.x; x < pos.x + paneSize.x; x += w) {
+        const ImVec2   pos           = ImGui::GetCursorScreenPos();
+        for (std::size_t i = 0UZ; i < kGridCells; ++i) {
+            const float x = pos.x + paneSize.x * static_cast<float>(i) / static_cast<float>(kGridCells);
+            const float y = pos.y + paneSize.y * static_cast<float>(i) / static_cast<float>(kGridCells);
             ImGui::GetWindowDrawList()->AddLine({x, pos.y}, {x, pos.y + paneSize.y}, gridLineColor);
-        }
-        for (float y = pos.y; y < pos.y + paneSize.y; y += w) { // TODO maybe should be h here?
             ImGui::GetWindowDrawList()->AddLine({pos.x, y}, {pos.x + paneSize.x, y}, gridLineColor);
         }
     }
