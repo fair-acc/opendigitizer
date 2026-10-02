@@ -1,4 +1,4 @@
-set(GIT_SHA_GNURADIO4 bc46a796f7cdc85283504cdc22c8f5f5ed18599f CACHE STRING "" FORCE) # main 2026-10-02, includes #845
+set(GIT_SHA_GNURADIO4 0121fc3f6cbe05d83ac2177e518d3d7094d64249 CACHE STRING "" FORCE) # temporary: branch schedulerRestart (main bc46a796 + restart fix), until its PR is merged
 
 set(GIT_SHA_OPENCMW_CPP 2487c6faa0b61ba9e56fdb432b41d3075f435c0a CACHE STRING "" FORCE) # 2026-09-25
 

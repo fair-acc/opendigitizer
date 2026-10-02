@@ -158,9 +158,6 @@ private:
             if (state != STOPPED && state != IDLE) {
                 return;
             }
-            // a stop reaches STOPPED before the workers of that run have exited; GR4's start() waits for them while it
-            // holds the lock they need to exit, so they are waited for here, before the restart
-            _scheduler.waitDone();
             const auto report = [](std::string_view what, const std::expected<void, gr::Error>& result) {
                 if (!result) {
                     DigitizerUi::components::Notification::error(std::format("{}: {}", what, result.error().message));
