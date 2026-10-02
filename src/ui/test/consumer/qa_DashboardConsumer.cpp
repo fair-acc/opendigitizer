@@ -12,12 +12,14 @@
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrFourierBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
+#include <gnuradio-4.0/YamlPmt.hpp>
 
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -113,6 +115,35 @@ int main() {
         DigitizerUi::components::Notification::sink = nullptr;
         expect(!received.empty()) << "the load error reached the sink";
         expect(eq(ImGui::notifications.size(), toastsBefore)) << "no toast queued";
+    };
+
+    "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("serialise"));
+        loadGrc(*dashboard, grc);
+        while (dashboard->graphModel.recursiveGatherPlotSinks().size() < 7UZ) { // the model fills from scheduler replies
+            dashboard->handleMessages();
+            std::this_thread::yield();
+        }
+
+        const auto field = [](const gr::property_map& map, std::string_view key) { return map.find_value(std::string(key), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}); };
+
+        const gr::property_map windowLayout{{"marker", std::string("live layout")}};
+        const auto [header, graph] = dashboard->serialise(DigitizerUi::DockingLayoutType::Grid, windowLayout);
+        const auto section         = field(graph, "dashboard").value_or(gr::property_map{});
+        expect(field(section, "layout").value_or(std::string{}) == "Grid");
+        expect(field(section, "windowLayout").value_or(gr::property_map{}) == windowLayout);
+
+        std::set<std::string> sourceNames; // the ImPlotSink blocks of DemoDashboard.grc, listed by hand
+        for (const auto& source : field(section, "sources").value_or(gr::Tensor<gr::pmt::Value>{})) {
+            sourceNames.insert(field(source.value_or(gr::property_map{}), "name").value_or(std::string{}));
+        }
+        expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink"});
+
+        auto reloaded = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("reloaded"));
+        loadGrc(*reloaded, gr::pmt::yaml::serialize(graph));
+        expect(reloaded->layoutType == DigitizerUi::DockingLayoutType::Grid) << "the saved layout is what a reload applies";
+        stopAndWait(*reloaded);
+        stopAndWait(*dashboard);
     };
 
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {

@@ -326,7 +326,6 @@ public:
                     loadedDashboard = dashboard.get();
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
-                    dashboardPage->setLayoutConfiguration(loadedDashboard->layoutType, loadedDashboard->windowLayout);
                     dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
                     dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                     flowgraphPage.reset();

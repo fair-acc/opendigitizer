@@ -369,11 +369,8 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
         if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
             optionalDashboard->setNewDescription(newDesc);
 
-            if (optionalDashboardPage) {
-                std::tie(optionalDashboard->layoutType, optionalDashboard->windowLayout) = optionalDashboardPage->saveLayoutConfiguration();
-            }
-
-            optionalDashboard->save();
+            const auto [liveLayoutType, liveWindowLayout] = optionalDashboardPage ? optionalDashboardPage->saveLayoutConfiguration() : std::pair{optionalDashboard->layoutType, optionalDashboard->windowLayout};
+            optionalDashboard->save(liveLayoutType, liveWindowLayout);
         }
     }
 }
@@ -1076,10 +1073,8 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
             IMW::Disabled inMemoryDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
             ImGui::SetCursorScreenPos(buttonStart);
             if (doIconTextButton("Save", kIconSave, buttonSize) && dashboardLoaded) {
-                if (optionalDashboardPage) {
-                    std::tie(optionalDashboard->layoutType, optionalDashboard->windowLayout) = optionalDashboardPage->saveLayoutConfiguration();
-                }
-                optionalDashboard->save();
+                const auto [liveLayoutType, liveWindowLayout] = optionalDashboardPage ? optionalDashboardPage->saveLayoutConfiguration() : std::pair{optionalDashboard->layoutType, optionalDashboard->windowLayout};
+                optionalDashboard->save(liveLayoutType, liveWindowLayout);
             }
         }
 
