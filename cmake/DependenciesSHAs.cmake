@@ -1,4 +1,4 @@
-set(GIT_SHA_GNURADIO4 6254a4e34b1c86dd0ed02d3dfbb351dae6e68945 CACHE STRING "" FORCE) # temporary: branch schedulerRestart (main 1f7e5e28 + audio and scheduler fixes), until its PR is merged
+set(GIT_SHA_GNURADIO4 6b5822b0ea582358a53885c771daa41bb3eab76e CACHE STRING "" FORCE) # temporary: branch schedulerRestart (rebased GR4 main + audio, scheduler and thread-pool fixes), until its PR is merged
 
 set(GIT_SHA_OPENCMW_CPP 2487c6faa0b61ba9e56fdb432b41d3075f435c0a CACHE STRING "" FORCE) # 2026-09-25
 
