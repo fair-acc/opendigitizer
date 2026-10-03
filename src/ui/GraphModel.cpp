@@ -1143,12 +1143,16 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
         return;
     }
 
-    auto* block = found.block;
+    auto* block       = found.block;
+    bool  keysChanged = false; // the settings' meta information depends on which settings exist, not on their values
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
+            keysChanged = keysChanged || !block->blockSettings.contains(key);
             block->blockSettings.insert_or_assign(key, value);
-            block->updateBlockSettingsMetaInformation();
         }
+    }
+    if (keysChanged) {
+        block->updateBlockSettingsMetaInformation();
     }
 }
 
