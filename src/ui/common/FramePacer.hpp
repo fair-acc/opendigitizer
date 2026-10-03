@@ -96,14 +96,16 @@ struct FramePacer {
 
     [[nodiscard]] int getWaitTimeoutMs() const noexcept {
         const auto sinceLast = clock::now() - _lastRender;
-        const auto waitUntil = (_pendingFrames.load(std::memory_order_acquire) > 0U ? _minPeriod : _maxPeriod) - sinceLast;
+        return waitTimeoutMs((_pendingFrames.load(std::memory_order_acquire) > 0U ? _minPeriod : _maxPeriod) - sinceLast, _maxPeriod);
+    }
 
-        if (waitUntil <= duration::zero()) {
+    /// 0 when a frame is due; otherwise at least 1 ms (a wait of 0 would spin) and at most `maxPeriod`
+    [[nodiscard]] static int waitTimeoutMs(std::chrono::nanoseconds remaining, std::chrono::nanoseconds maxPeriod) noexcept {
+        if (remaining <= std::chrono::nanoseconds::zero()) {
             return 0;
         }
-
-        const auto maxMs = std::chrono::duration_cast<std::chrono::milliseconds>(_maxPeriod).count();
-        return static_cast<int>(std::clamp(std::chrono::duration_cast<std::chrono::milliseconds>(waitUntil).count(), std::chrono::milliseconds::rep{1}, maxMs));
+        const auto maxMs = std::chrono::duration_cast<std::chrono::milliseconds>(maxPeriod).count();
+        return static_cast<int>(std::clamp(std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count(), std::chrono::milliseconds::rep{1}, maxMs));
     }
 
     void                                   setMaxPeriod(std::chrono::nanoseconds period) noexcept { _maxPeriod = period; }

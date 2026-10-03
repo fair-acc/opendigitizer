@@ -152,12 +152,13 @@ const suite<"FramePacer timeout calculation"> _3 = [] {
     };
 
     "clamps to at least 1ms"_test = [] {
-        DigitizerUi::FramePacer pacer{10ms, 5ms};
-        pacer.rendered();
-
-        std::this_thread::sleep_for(4ms);
-        const int timeout = pacer.getWaitTimeoutMs();
-        expect(ge(timeout, 1)) << "timeout should be at least 1ms";
+        using DigitizerUi::FramePacer;
+        using namespace std::chrono_literals;
+        expect(eq(FramePacer::waitTimeoutMs(500us, 10ms), 1)) << "a remaining wait below 1 ms waits 1 ms instead of spinning";
+        expect(eq(FramePacer::waitTimeoutMs(3700us, 10ms), 3));
+        expect(eq(FramePacer::waitTimeoutMs(0ns, 10ms), 0)) << "a due frame does not wait";
+        expect(eq(FramePacer::waitTimeoutMs(-2ms, 10ms), 0)) << "an overdue frame does not wait";
+        expect(eq(FramePacer::waitTimeoutMs(50ms, 10ms), 10)) << "never longer than the maximum period";
     };
 };
 
