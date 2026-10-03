@@ -109,7 +109,11 @@ struct ChartStyle {
     std::optional<float>          lineWidth;                 // px, for every series
     bool                          colourAxesBySignal = true; // with several axes, each axis takes its signals' colour
     std::optional<ImPlotLocation> legendLocation;
-    std::optional<float>          legendAlpha; // opacity of the legend panel
+    std::optional<float>          legendAlpha;         // opacity of the legend panel
+    ImFont*                       labelFont = nullptr; // not owned: ticks, axis titles, legend, tags and tooltips
+    std::optional<float>          labelFontSize;       // unscaled base size, as ImGui::PushFont takes it
+    std::optional<ImVec4>         axisColour;          // tick labels, axis titles, ticks, plot border; several y axes keep colourAxesBySignal
+    std::optional<ImVec4>         gridColour;          // gridAlpha, if set, replaces its alpha
 };
 
 struct LookAndFeel {

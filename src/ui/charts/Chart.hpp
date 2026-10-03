@@ -33,6 +33,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace opendigitizer::charts {
@@ -494,6 +495,16 @@ namespace detail {
 constexpr bool isCompatible(SignalKind signal, SignalKind chartSupport) { return (std::to_underlying(signal) & std::to_underlying(chartSupport)) != 0; }
 } // namespace detail
 
+// face and size of the charts' own smaller text (tags, tooltips, dense axis labels): the host's label font if set
+inline std::pair<ImFont*, float> chartTextFont(const std::array<ImFont*, 2>& defaultFaces) {
+    const auto& lnf   = DigitizerUi::LookAndFeel::instance();
+    const auto& style = lnf.chartStyle;
+    if (style.labelFont == nullptr && !style.labelFontSize) {
+        return {defaultFaces[lnf.prototypeMode], lnf.relativeFontSize(defaultFaces)};
+    }
+    return {style.labelFont, style.labelFontSize.value_or(0.f)};
+}
+
 namespace tags {
 
 /// Marker key for tags that appear out-of-order or have suspicious timestamps.
@@ -532,8 +543,9 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
-    const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-    DigitizerUi::IMW::FontWithSize titleFont(lnf.fontTiny[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontTiny));
+    const auto& lnf               = DigitizerUi::LookAndFeel::instance();
+    const auto [tagFace, tagSize] = chartTextFont(lnf.fontTiny);
+    DigitizerUi::IMW::FontWithSize titleFont(tagFace, tagSize);
 
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
@@ -737,8 +749,9 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     };
 
     {
-        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::FontWithSize font(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall));
+        const auto& lnf                       = DigitizerUi::LookAndFeel::instance();
+        const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall);
+        DigitizerUi::IMW::FontWithSize font(tooltipFace, tooltipSize);
         DigitizerUi::IMW::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
             drawAxisTooltip(plot, ImAxis_X1 + i);
@@ -1008,10 +1021,24 @@ class ScopedChartStyle {
         pushColour(colourId, colour);
     }
 
+    bool _pushedFont = false;
+
 public:
     explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style) {
+        if (style.labelFont != nullptr || style.labelFontSize) { // ImPlot measures and draws its text with the current font
+            ImGui::PushFont(style.labelFont, style.labelFontSize.value_or(0.f));
+            _pushedFont = true;
+        }
         if (style.plotBackground) {
             pushColour(ImPlotCol_PlotBg, *style.plotBackground);
+        }
+        if (style.gridColour) { // colours before the alpha fields, which read the current colour
+            pushColour(ImPlotCol_AxisGrid, *style.gridColour);
+        }
+        if (style.axisColour) {
+            pushColour(ImPlotCol_AxisText, *style.axisColour);
+            pushColour(ImPlotCol_AxisTick, *style.axisColour);
+            pushColour(ImPlotCol_PlotBorder, *style.axisColour);
         }
         if (style.gridAlpha) {
             pushAlpha(ImPlotCol_AxisGrid, *style.gridAlpha);
@@ -1031,6 +1058,9 @@ public:
     ~ScopedChartStyle() {
         ImPlot::PopStyleColor(_nColours);
         ImPlot::PopStyleVar(_nVars);
+        if (_pushedFont) {
+            ImGui::PopFont();
+        }
     }
     ScopedChartStyle(const ScopedChartStyle&)            = delete;
     ScopedChartStyle& operator=(const ScopedChartStyle&) = delete;

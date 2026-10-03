@@ -14,6 +14,7 @@ using namespace DigitizerUi; // TODO refactor namespaces in ImguiWrap.hpp
 #pragma GCC diagnostic pop
 
 #include <memory>
+#include <vector>
 
 class ImGuiApp;
 struct ImGuiTestEngine;
@@ -90,6 +91,14 @@ public:
     /// captures a screen rectangle in the current frame; unlike capturing a window, nothing is moved for the capture, so
     /// windows docked into a window away from the screen origin appear where they are
     static void captureScreenshot(ImGuiTestContext& ctx, const ImRect& screenRect);
+
+    struct CapturedPixels {
+        int                       width  = 0;
+        int                       height = 0;
+        std::vector<unsigned int> rgba; // RGBA8, row-major
+    };
+    /// the pixels of a screen rectangle in the current frame, nothing saved
+    [[nodiscard]] static CapturedPixels capturePixels(ImGuiTestContext& ctx, const ImRect& screenRect);
 
     // Prints the existing window ids, for debugging purposes
     static void printWindows();

@@ -74,8 +74,9 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             return gr::work::Status::OK;
         }
 
-        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::FontWithSize plotFont(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall)); // smaller font to prevent MetricInline label overlap
+        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall); // smaller font to prevent MetricInline label overlap
+        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
 
         if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;

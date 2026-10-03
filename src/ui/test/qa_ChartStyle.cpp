@@ -8,9 +8,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <map>
 #include <memory>
 #include <numbers>
+#include <optional>
 
 using namespace boost;
 using namespace boost::ut;
@@ -31,6 +33,9 @@ struct TestState {
     opendigitizer::charts::XYChart*                 drawn = nullptr;
     Mode                                            mode  = Mode::View;
     std::optional<ImVec4>                           hostBackground;
+    std::optional<DigitizerUi::ChartStyle>          fontProbeStyle; // the GUI function applies it and records the font
+    ImFont*                                         probedFont     = nullptr;
+    float                                           probedFontSize = 0.f;
 };
 
 std::shared_ptr<TestStreamingSink> makeSink(std::string name, std::uint32_t color, std::string quantity, std::string unit, double amplitude, double phase) {
@@ -86,25 +91,20 @@ bool isWhite(Rgb c) { return c.r > 200 && c.g > 200 && c.b > 200; }
 bool isGrey(Rgb c) { return std::abs(c.r - c.g) <= 2 && std::abs(c.g - c.b) <= 2; } // not the anti-aliased edges of a coloured line
 
 class Pixels {
-    ImGuiCaptureImageBuf _image;
+    DigitizerUi::test::ImGuiTestApp::CapturedPixels _image;
 
 public:
-    explicit Pixels(ImGuiTestContext* ctx) {
-        ctx->CaptureReset();
-        ctx->CaptureArgs->InCaptureRect    = ImRect(kChartPos, kChartPos + kChartSize);
-        ctx->CaptureArgs->InOutputImageBuf = std::addressof(_image);
-        ctx->CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_NoSave);
-    }
+    explicit Pixels(ImGuiTestContext* ctx) : _image(DigitizerUi::test::ImGuiTestApp::capturePixels(*ctx, ImRect(kChartPos, kChartPos + kChartSize))) {}
 
     [[nodiscard]] Rgb at(int x, int y) const {
-        const unsigned int pixel = _image.Data[y * _image.Width + x]; // RGBA8
+        const unsigned int pixel = _image.rgba[static_cast<std::size_t>(y * _image.width + x)]; // RGBA8
         return {static_cast<int>(pixel & 0xFFU), static_cast<int>((pixel >> 8U) & 0xFFU), static_cast<int>((pixel >> 16U) & 0xFFU)};
     }
 
     [[nodiscard]] std::size_t count(Region region, auto predicate) const {
         std::size_t n = 0UZ;
-        for (int y = static_cast<int>(region.y0 * static_cast<float>(_image.Height)); y < static_cast<int>(region.y1 * static_cast<float>(_image.Height)); ++y) {
-            for (int x = static_cast<int>(region.x0 * static_cast<float>(_image.Width)); x < static_cast<int>(region.x1 * static_cast<float>(_image.Width)); ++x) {
+        for (int y = static_cast<int>(region.y0 * static_cast<float>(_image.height)); y < static_cast<int>(region.y1 * static_cast<float>(_image.height)); ++y) {
+            for (int x = static_cast<int>(region.x0 * static_cast<float>(_image.width)); x < static_cast<int>(region.x1 * static_cast<float>(_image.width)); ++x) {
                 n += predicate(at(x, y)) ? 1UZ : 0UZ;
             }
         }
@@ -175,6 +175,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             IMW::Window window("Chart", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             if (g_state->hostBackground) {
                 ImGui::PopStyleColor();
+            }
+            if (g_state->fontProbeStyle) {
+                const opendigitizer::charts::ScopedChartStyle style(*g_state->fontProbeStyle);
+                g_state->probedFont     = ImGui::GetFont();
+                g_state->probedFontSize = ImGui::GetStyle().FontSizeBase;
+                return;
             }
             if (!g_state->drawn) {
                 return;
@@ -279,6 +285,61 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }));
                 expect(seeThrough->count(kLegendInside, isMagenta) > 100UZ);
                 expect(eq(opaque->count(kLegendInside, isMagenta), 0UZ));
+            };
+
+            "an axis colour draws the tick labels, axis label and ticks in that colour"_test = [&] {
+                const auto plain    = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.axisColour = kMagenta; }));
+                expect(eq(plain->count(kLeftAxis, isMagenta), 0UZ));
+                expect(coloured->count(kLeftAxis, isMagenta) > 200UZ) << std::format("{} magenta pixels left of the plot", coloured->count(kLeftAxis, isMagenta));
+            };
+
+            "a grid colour draws the grid lines in that colour, and the grid alpha still applies"_test = [&] {
+                const auto plain    = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                const auto coloured = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.gridColour = kMagenta; }));
+                const auto hidden   = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) {
+                    s.gridColour = kMagenta;
+                    s.gridAlpha  = 0.f;
+                }));
+                expect(eq(plain->count(kPlotInterior, isMagenta), 0UZ));
+                expect(coloured->count(kPlotInterior, isMagenta) > 200UZ) << std::format("{} magenta pixels in the plot", coloured->count(kPlotInterior, isMagenta));
+                expect(eq(hidden->count(kPlotInterior, isMagenta), 0UZ)) << "grid alpha 0 hides the coloured grid";
+            };
+
+            "a larger label size draws larger tick and axis labels"_test = [&] {
+                const float baseSize = ImGui::GetStyle().FontSizeBase;
+                const auto  atSize   = [&](float size) {
+                    return drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([size](DigitizerUi::ChartStyle& s) {
+                        s.axisColour    = kMagenta; // the labels are the magenta pixels
+                        s.labelFontSize = size;
+                    }));
+                };
+                const std::size_t normal = atSize(baseSize)->count(kWholeChart, isMagenta);
+                const std::size_t large  = atSize(2.f * baseSize)->count(kWholeChart, isMagenta);
+                expect(normal > 200UZ) << fatal;
+                expect(large > 2UZ * normal) << std::format("glyph area grows with the square of the size: {} magenta pixels at twice the size, {} at the base size", large, normal);
+            };
+
+            "the label face and size are current while a chart draws, and its own smaller text uses them"_test = [&] {
+                auto&         lnf  = DigitizerUi::LookAndFeel::mutableInstance();
+                ImFont* const face = lnf.fontTiny[0];
+                expect(face != nullptr && face != ImGui::GetFont()) << fatal << "a face other than the default";
+                state.fontProbeStyle = chartStyle([face](DigitizerUi::ChartStyle& s) {
+                    s.labelFont     = face;
+                    s.labelFontSize = 23.f;
+                });
+                ctx->Yield(2);
+                state.fontProbeStyle.reset();
+                expect(state.probedFont == face);
+                expect(eq(state.probedFontSize, 23.f));
+
+                const auto defaultText = opendigitizer::charts::chartTextFont(lnf.fontSmall);
+                expect(defaultText.first == lnf.fontSmall[lnf.prototypeMode] && defaultText.second == lnf.relativeFontSize(lnf.fontSmall)) << "unset: the small face at its relative size";
+                lnf.chartStyle.labelFont     = face;
+                lnf.chartStyle.labelFontSize = 23.f;
+                const auto hostText          = opendigitizer::charts::chartTextFont(lnf.fontSmall);
+                lnf.chartStyle               = {};
+                expect(hostText.first == face && hostText.second == 23.f) << "set: the host's face and size";
             };
         };
     }

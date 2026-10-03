@@ -252,6 +252,15 @@ void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, const ImRect& screen
     ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor);
 }
 
+ImGuiTestApp::CapturedPixels ImGuiTestApp::capturePixels(ImGuiTestContext& ctx, const ImRect& screenRect) {
+    ImGuiCaptureImageBuf image;
+    ctx.CaptureReset();
+    ctx.CaptureArgs->InCaptureRect    = screenRect;
+    ctx.CaptureArgs->InOutputImageBuf = std::addressof(image);
+    ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_NoSave);
+    return {.width = image.Width, .height = image.Height, .rgba = std::vector<unsigned int>(image.Data, image.Data + static_cast<std::size_t>(image.Width) * static_cast<std::size_t>(image.Height))};
+}
+
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     std::span args(argv + 1, static_cast<std::size_t>(argc - 1));
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(std::cbegin(args), std::cend(args), [arg](const char* v) { return arg == v; }); };
