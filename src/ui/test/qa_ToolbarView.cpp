@@ -42,8 +42,10 @@ constexpr ImVec2 kHostSize{800.f, 200.f};
 constexpr int    kMaxFrames = 600;
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    DigitizerUi::ToolbarView                view;
+    std::shared_ptr<opencmw::client::RestClient> restClient;
+    std::string                                  grc;
+    std::shared_ptr<DigitizerUi::Dashboard>      dashboard;
+    DigitizerUi::ToolbarView                     view;
 };
 
 TestState* g_state = nullptr;
@@ -126,6 +128,62 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(waitForSetting<bool>(ctx, "ClockSource1", "do_zero_order_hold", false)) << "unchecked again";
             };
 
+            "without scheduler_ui the toolbar has no scheduler controls"_test = [&] {
+                expect(!state.dashboard->schedulerUi) << "the .grc does not ask for them";
+                expect(!ctx->ItemExists("**/###schedulerPlay"));
+            };
+
+            "with scheduler_ui, play, pause and stop drive the scheduler and follow its state"_test = [&] {
+                using enum gr::lifecycle::State;
+                const auto enabled = [ctx](const char* ref) { return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) == 0; };
+                const auto reach   = [&](gr::lifecycle::State target) {
+                    for (int frame = 0; frame < kMaxFrames && state.dashboard->scheduler->state() != target; ++frame) {
+                        ctx->Yield();
+                    }
+                    ctx->Yield(2); // the buttons show the new state
+                    return state.dashboard->scheduler->state() == target;
+                };
+                state.dashboard->schedulerUi = true;
+                expect(reach(RUNNING)) << fatal;
+                expect(!enabled("**/###schedulerPlay") && enabled("**/###schedulerPause") && enabled("**/###schedulerStop")) << "running";
+
+                ctx->ItemClick("**/###schedulerPause");
+                expect(reach(PAUSED)) << fatal << "pause";
+                expect(enabled("**/###schedulerPlay") && !enabled("**/###schedulerPause") && enabled("**/###schedulerStop")) << "paused";
+
+                ctx->ItemClick("**/###schedulerPlay");
+                expect(reach(RUNNING)) << fatal << "play resumes";
+
+                ctx->ItemClick("**/###schedulerStop");
+                expect(reach(STOPPED)) << fatal << "stop";
+                expect(enabled("**/###schedulerPlay") && !enabled("**/###schedulerPause") && !enabled("**/###schedulerStop")) << "stopped";
+
+                ctx->ItemClick("**/###schedulerPlay");
+                expect(reach(RUNNING)) << fatal << "play starts again";
+                state.dashboard->schedulerUi = false;
+            };
+
+            "scheduler_ui is read from the dashboard section and saved only when set"_test = [&] {
+                const auto savedHas = [](const gr::property_map& graphYaml) {
+                    const auto section = graphYaml.find_value(std::string("dashboard"), std::pmr::get_default_resource()); // kept alive: get_if refers into it
+                    if (!section) {
+                        return false;
+                    }
+                    const auto dashboard = section->get_if<gr::property_map>();
+                    return dashboard && dashboard->contains("scheduler_ui");
+                };
+                expect(!savedHas(state.dashboard->serialise(state.dashboard->layoutType, state.dashboard->windowLayout).second)) << "a dashboard without it saves without it";
+                state.dashboard->schedulerUi = true;
+                expect(savedHas(state.dashboard->serialise(state.dashboard->layoutType, state.dashboard->windowLayout).second)) << "a dashboard with it saves it";
+                state.dashboard->schedulerUi = false;
+
+                std::string withControls = state.grc;
+                withControls.replace(withControls.find("  layout: Free"), std::string_view("  layout: Free").size(), "  layout: Free\n  scheduler_ui: true");
+                auto loaded = DigitizerUi::Dashboard::create(state.restClient, DigitizerUi::DashboardDescription::createEmpty("with controls"));
+                loaded->loadAndThen(withControls, [](gr::Graph&&) {}); // the graph is not run: only the dashboard section is checked
+                expect(loaded->schedulerUi) << "read from the .grc";
+            };
+
             "a toolbar block added to the running flowgraph appears at the end of the toolbar"_test = [&] {
                 gr::Message message;
                 message.cmd         = gr::message::Command::Set;
@@ -161,8 +219,10 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrTestingBlocks(registry);
     std::ignore = gr::registerBlock<ForeignToolbarBlock>(registry);
 
-    auto grcFile    = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
-    state.dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("toolbar"));
+    auto grcFile     = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
+    state.grc        = std::string(grcFile.begin(), grcFile.end());
+    state.restClient = restClient;
+    state.dashboard  = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("toolbar"));
     state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();

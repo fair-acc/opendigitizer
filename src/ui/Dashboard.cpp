@@ -497,6 +497,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
     };
 
+    schedulerUi                = dashboard.value_or<bool>("scheduler_ui", false);
     layoutType                 = magic_enum::enum_cast<DockingLayoutType>(dashboard.value_or<std::string>("layout", {}), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     const bool hasWindowLayout = dashboard.contains("windowLayout");
     if (hasWindowLayout) {
@@ -722,6 +723,9 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise(DockingLayout
     }
     dashboardYaml["sources"] = sources;
 
+    if (schedulerUi) { // written only when set, so dashboards without it stay unchanged
+        dashboardYaml["scheduler_ui"] = true;
+    }
     dashboardYaml["layout"]       = std::string(dockingLayoutName(liveLayoutType));
     dashboardYaml["windowLayout"] = liveWindowLayout;
 

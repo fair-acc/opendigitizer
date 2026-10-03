@@ -137,7 +137,8 @@ struct Dashboard {
     std::shared_ptr<const DashboardDescription>            description = nullptr;
     std::vector<UIWindow>                                  uiWindows;
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
-    DockingLayoutType                                      layoutType = DockingLayoutType::Grid;
+    DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
+    bool                                                   schedulerUi = false; // play/pause/stop controls shown (.grc dashboard.scheduler_ui)
     gr::property_map                                       windowLayout;
     gr::property_map                                       exportedProperties;
     std::atomic<bool>                                      isInitialised = false;

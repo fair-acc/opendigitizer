@@ -11,7 +11,8 @@
 
 namespace DigitizerUi {
 
-/// Draws, in a row, the 'Dear ImGui' toolbar blocks (UICategory::Toolbar) of the dashboard's flowgraph in graph order.
+/// Draws, in a row, play/pause/stop for the scheduler when the dashboard asks for them (`scheduler_ui`), then the
+/// 'Dear ImGui' toolbar blocks (UICategory::Toolbar) of the dashboard's flowgraph in graph order.
 /// The blocks are ordinary blocks of the flowgraph; the row is rebuilt when the flowgraph changes. Toolbar blocks of
 /// other toolkits are skipped with a warning.
 class ToolbarView {

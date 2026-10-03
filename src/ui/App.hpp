@@ -283,8 +283,8 @@ public:
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
 
-            const bool showsDashboard = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT;
-            if (showsDashboard && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
+            const bool showsGraph = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT || mainViewMode == ViewMode::FLOWGRAPH;
+            if (showsGraph && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
                 toolbarView.draw(*dashboard); // above the View-mode input blocker: toolbar blocks stay operable
             }
 
