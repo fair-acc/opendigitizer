@@ -49,9 +49,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowSize(ImVec2(800, 800));
 
             if (g_state->dashboard) {
+                g_state->dashboard->layoutType = vars.layoutType; // a new page applies the dashboard's layout
                 DigitizerUi::DashboardPage page;
                 page.setDashboard(*g_state->dashboard);
-                page.setLayoutConfiguration(vars.layoutType, {});
                 page.draw();
                 ut::expect(!g_state->dashboard->uiWindows.empty()) << ut::fatal;
             }

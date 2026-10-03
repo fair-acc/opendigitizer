@@ -50,11 +50,11 @@ void initialise(const InitialiseOptions& options) {
     if (ImPlot3D::GetCurrentContext() == nullptr) {
         ImPlot3D::CreateContext();
     }
-    if (options.loadFonts && LookAndFeel::instance().fontNormal[0] == nullptr) {
+    if (LookAndFeel::instance().fontNormal[0] == nullptr) {
         LookAndFeel::mutableInstance().loadFonts();
     }
     std::ignore = opendigitizer::ColourManager::instance();
-    registerDashboardBlocks(options.registry ? *options.registry : gr::globalBlockRegistry());
+    registerDashboardBlocks(gr::globalBlockRegistry());
     if (options.captureLog) {
         std::ignore                        = logHistory();
         components::Notification::observer = [](ImGuiToastType type, std::string_view text) {

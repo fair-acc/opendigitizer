@@ -89,7 +89,7 @@ void DockSpace::setLayoutType(DockingLayoutType type) {
 }
 
 void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable) {
-    const bool requestsExactFreeLayout = std::ranges::any_of(windows, [](const auto& w) { return w->freeLayoutPosition.has_value(); });
+    const bool requestsExactFreeLayout = !_exactFreeLayoutApplied && std::ranges::any_of(windows, [](const auto& w) { return w->freeLayoutPosition.has_value(); });
     {
         ImGui::SetNextWindowSize(paneSize);
 
@@ -370,7 +370,6 @@ bool DockSpace::layoutInExactFree(const Windows& windows, bool isEditable) {
         maxX = std::max(maxX, windowPtr->freeLayoutPosition->x + windowPtr->freeLayoutPosition->width);
         maxY = std::max(maxY, windowPtr->freeLayoutPosition->y + windowPtr->freeLayoutPosition->height);
         windowAreasByOriginalIndex.try_emplace(index - std::size_t{1}, *windowPtr->freeLayoutPosition);
-        windowPtr->freeLayoutPosition.reset();
     }
 
     std::vector<std::vector<int>> grid(maxX, std::vector<int>(maxY, -1));
@@ -463,6 +462,7 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
             if (!layoutInExactFree(windows, isEditable)) {
                 layoutInGrid(windows, isEditable); // fallback, will be saved as state of free layout
             }
+            _exactFreeLayoutApplied = true;
         } else {
             if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) { // nothing captured yet, e.g. a new view of a dashboard
                 layoutInGrid(windows, isEditable);

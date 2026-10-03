@@ -34,7 +34,6 @@ public:
     };
 
     struct Result {
-        ImVec2      chartPaneSize;
         std::string rightClickedSinkName; // a legend entry right-clicked in Interaction mode
         bool        backgroundClicked = false;
     };
@@ -47,13 +46,12 @@ public:
     Result draw(Dashboard& dashboard, Mode mode);
     Result draw(Dashboard& dashboard, Mode mode, const Options& options);
 
-    /// overrides the layout stored in the dashboard, which is applied otherwise when the dashboard is first drawn
-    void setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription);
-
     [[nodiscard]] DockSpace&       dockSpace() noexcept { return _dockSpace; }
     [[nodiscard]] const DockSpace& dockSpace() const noexcept { return _dockSpace; }
 
 private:
+    void setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription);
+
     struct PendingTransmutation {
         std::string chartId;
         std::string newChartType;

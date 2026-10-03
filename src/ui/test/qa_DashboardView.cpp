@@ -225,6 +225,25 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(withoutBackground > 0.5) << std::format("without them the host shows through: {:.3f} of the chart windows' area magenta", withoutBackground);
             };
 
+            "every new view of the dashboard lays out its charts by the .grc's free-layout cells"_test = [&] {
+                // qa_layout.grc, 4x4 cells: Plot1 3 wide, Plot2 1 wide (same row); Plot3 1 high, Plot4 2 high
+                const auto size = [](const char* name) {
+                    const ImGuiWindow* window = ImGui::FindWindowByName(name);
+                    return window ? window->Size : ImVec2{};
+                };
+                const auto expectCellRatios = [&](std::string_view view) {
+                    waitForStableCharts(ctx);
+                    const float widthRatio  = size("Plot1").x / std::max(1.f, size("Plot2").x);
+                    const float heightRatio = size("Plot4").y / std::max(1.f, size("Plot3").y);
+                    expect(widthRatio > 2.5f && widthRatio < 3.5f) << std::format("{}: Plot1 is {:.2f} times as wide as Plot2, the cells 3", view, widthRatio);
+                    expect(heightRatio > 1.7f && heightRatio < 2.3f) << std::format("{}: Plot4 is {:.2f} times as high as Plot3, the cells 2", view, heightRatio);
+                };
+                state.mode = Mode::View;
+                expectCellRatios("this view");
+                state.view = std::make_unique<DigitizerUi::DashboardView>();
+                expectCellRatios("a second view");
+            };
+
             "a legend on top moves the charts below it"_test = [&] {
                 state.mode   = Mode::View;
                 state.legend = LegendPosition::Bottom;

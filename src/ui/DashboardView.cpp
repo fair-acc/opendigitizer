@@ -91,6 +91,8 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
     }
     if (!_layoutApplied) {
         setLayout(dashboard.layoutType, dashboard.windowLayout.empty() ? std::nullopt : std::optional<gr::property_map>(dashboard.windowLayout));
+    } else if (dashboard.layoutType != _dockSpace.layoutType()) { // the dashboard's layout type is the one to follow
+        _dockSpace.setLayoutType(dashboard.layoutType);
     }
     opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
     processPendingRequests();
@@ -107,39 +109,40 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         ImGui::SameLine();
     };
 
+    ImVec2 chartPaneSize;
     switch (style.legend) {
     case LegendPosition::Bottom:
-        result.chartPaneSize = ImGui::GetContentRegionAvail() - ImVec2(0.f, _legendBox.y);
-        drawCharts(mode, options, result.chartPaneSize);
+        chartPaneSize = ImGui::GetContentRegionAvail() - ImVec2(0.f, _legendBox.y);
+        drawCharts(mode, options, chartPaneSize);
         ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
         alignBarStart();
-        drawBar(mode, result.chartPaneSize, options, result);
+        drawBar(mode, chartPaneSize, options, result);
         break;
     case LegendPosition::Top:
         alignBarStart();
         drawBar(mode, ImGui::GetContentRegionAvail(), options, result);
-        result.chartPaneSize = ImGui::GetContentRegionAvail();
-        drawCharts(mode, options, result.chartPaneSize);
+        chartPaneSize = ImGui::GetContentRegionAvail();
+        drawCharts(mode, options, chartPaneSize);
         break;
     case LegendPosition::Left:
     case LegendPosition::Right: {
         const ImVec2 avail   = ImGui::GetContentRegionAvail();
         const float  spacing = ImGui::GetStyle().ItemSpacing.x;
-        result.chartPaneSize = ImVec2(std::max(1.f, avail.x - _legendColumnWidth - spacing), avail.y);
+        chartPaneSize        = ImVec2(std::max(1.f, avail.x - _legendColumnWidth - spacing), avail.y);
         if (style.legend == LegendPosition::Left) {
             drawLegendColumn(mode, avail.y, options, result);
             ImGui::SameLine();
-            drawCharts(mode, options, result.chartPaneSize);
+            drawCharts(mode, options, chartPaneSize);
         } else {
-            drawCharts(mode, options, result.chartPaneSize);
+            drawCharts(mode, options, chartPaneSize);
             ImGui::SameLine();
             drawLegendColumn(mode, avail.y, options, result);
         }
         break;
     }
     case LegendPosition::None:
-        result.chartPaneSize = ImGui::GetContentRegionAvail();
-        drawCharts(mode, options, result.chartPaneSize);
+        chartPaneSize = ImGui::GetContentRegionAvail();
+        drawCharts(mode, options, chartPaneSize);
         break;
     }
     return result;

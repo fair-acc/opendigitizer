@@ -6,8 +6,9 @@
 
 #include <gnuradio-4.0/BlockModel.hpp>
 
-#include "Dashboard.hpp"
+#include "GraphModel.hpp"
 #include "PaneBlocks.hpp"
+#include "Scheduler.hpp"
 
 namespace DigitizerUi {
 
@@ -17,14 +18,9 @@ namespace DigitizerUi {
 /// `scheduler.handleMessages(graphModel)` each frame) and draws with those.
 /// The blocks are ordinary blocks of the flowgraph; the row is rebuilt when the flowgraph changes. Toolbar blocks of
 /// other toolkits are skipped with a warning.
-class ToolbarView {
-public:
+struct ToolbarView {
     void draw(Scheduler& scheduler, const UiGraphModel& graphModel, bool schedulerControls);
-    void draw(Dashboard& dashboard) { draw(dashboard.scheduler, dashboard.graphModel, dashboard.schedulerUi); }
 
-    [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks.blocks(); }
-
-private:
     PaneBlocks _blocks{gr::UICategory::Toolbar};
 };
 

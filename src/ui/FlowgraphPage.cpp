@@ -1397,8 +1397,6 @@ void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::Sc
     graphModel.sendMessage(std::move(message));
 }
 
-FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
-
 FlowgraphPage::~FlowgraphPage() = default;
 
 void FlowgraphPage::reset() { _editors.clear(); }

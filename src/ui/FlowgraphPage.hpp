@@ -293,10 +293,9 @@ private:
         Right,
     };
 
-    std::shared_ptr<opencmw::client::RestClient> _restClient;
-    Dashboard*                                   _dashboard             = nullptr;
-    UiGraphModel*                                _graphModel            = nullptr;
-    bool                                         _currentTabIsFlowGraph = false;
+    Dashboard*    _dashboard             = nullptr;
+    UiGraphModel* _graphModel            = nullptr;
+    bool          _currentTabIsFlowGraph = false;
 
     std::deque<FlowgraphEditor> _editors;
 
@@ -309,7 +308,6 @@ private:
 
 public:
     FlowgraphPage() = default;
-    explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~FlowgraphPage();
 
     void draw() noexcept;

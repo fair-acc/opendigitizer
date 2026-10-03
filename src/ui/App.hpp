@@ -56,7 +56,7 @@ public:
     Dashboard*                     loadedDashboard = nullptr;
     std::unique_ptr<DashboardPage> dashboardPage;
     ToolbarView                    toolbarView;
-    StatusBarView                  statusBarView{logHistory()};
+    StatusBarView                  statusBarView;
 
     FlowgraphPage     flowgraphPage;
     OpenDashboardPage openDashboardPage;
@@ -77,7 +77,7 @@ public:
     components::AppHeader header;
 
 public:
-    App() : flowgraphPage(restClient), openDashboardPage(restClient) {
+    App() : openDashboardPage(restClient) {
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
         if (!Digitizer::Settings::instance().editableMode) {
             // start in view mode without application-authoring controls, while retaining chart interaction
@@ -285,7 +285,7 @@ public:
 
             const bool showsGraph = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT || mainViewMode == ViewMode::FLOWGRAPH;
             if (showsGraph && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
-                toolbarView.draw(*dashboard); // above the View-mode input blocker: toolbar blocks stay operable
+                toolbarView.draw(dashboard->scheduler, dashboard->graphModel, dashboard->schedulerUi); // above the View-mode input blocker: toolbar blocks stay operable
             }
 
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
@@ -294,7 +294,8 @@ public:
                 IMW::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground); // leaves the status bar's height free
                 drawPage(lockedModeBlockerStart);
             }
-            statusBarView.draw(dashboard && dashboard->isInitialised ? dashboard.get() : nullptr);
+            const bool withGraph = dashboard && dashboard->isInitialised;
+            statusBarView.draw(withGraph ? &dashboard->scheduler : nullptr, withGraph ? &dashboard->graphModel : nullptr);
         }
 
         previousViewMode = mainViewMode;

@@ -124,15 +124,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             auto& state = *g_state;
             state.dashboard->handleMessages();
+            if (std::exchange(state.layoutChanged, false)) {
+                state.dashboard->layoutType = state.scenario.layout; // the page follows the dashboard's layout type
+            }
             if (!state.page && state.dashboard->isInitialised) { // as App::processAndRender does
                 state.page = std::make_unique<DigitizerUi::DashboardPage>();
                 state.page->setDashboard(*state.dashboard);
             }
             if (!state.page) {
                 return;
-            }
-            if (std::exchange(state.layoutChanged, false)) {
-                state.page->setLayoutConfiguration(state.scenario.layout, {});
             }
             state.page->draw(state.scenario.mode);
         };

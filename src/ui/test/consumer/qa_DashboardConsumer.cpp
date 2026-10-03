@@ -104,17 +104,17 @@ int main() {
         expect(std::ranges::any_of(registry.keys(), [](const auto& key) { return std::string_view(key).starts_with("opendigitizer::ImPlotSink"); })) << "ImPlotSink";
     };
 
-    "a host receives dashboard notifications through its sink instead of the toast list"_test = [&] {
-        std::vector<std::string> received;
-        DigitizerUi::components::Notification::sink = [&received](ImGuiToastType, std::string_view text) { received.emplace_back(text); };
-        const auto toastsBefore                     = ImGui::notifications.size();
+    "a dashboard's load error reaches the notification observer and the toast list"_test = [&] {
+        std::vector<std::string> observed;
+        DigitizerUi::components::Notification::observer = [&observed](ImGuiToastType, std::string_view text) { observed.emplace_back(text); };
+        const auto toastsBefore                         = ImGui::notifications.size();
 
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
         loadGrc(*dashboard, "blocks: [ this is not a flowgraph");
 
-        DigitizerUi::components::Notification::sink = nullptr;
-        expect(!received.empty()) << "the load error reached the sink";
-        expect(eq(ImGui::notifications.size(), toastsBefore)) << "no toast queued";
+        DigitizerUi::components::Notification::observer = nullptr;
+        expect(!observed.empty()) << "the load error reached the observer";
+        expect(ImGui::notifications.size() > toastsBefore) << "and a toast is queued";
     };
 
     "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {

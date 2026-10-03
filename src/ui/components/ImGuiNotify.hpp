@@ -549,9 +549,7 @@ struct Notification {
     std::string               text;
     std::chrono::milliseconds dismissTime{5000};
 
-    /// receives every notification instead of the toast list when set, e.g. by an application that embeds dashboards
-    inline static std::function<void(ImGuiToastType type, std::string_view text)> sink;
-    /// sees every notification in addition to the toast list or sink, e.g. a log history
+    /// sees every notification in addition to the toast list, e.g. a log history
     inline static std::function<void(ImGuiToastType type, std::string_view text)> observer;
 
     inline static void success(Notification&& notification) { post(ImGuiToastType::Success, notification.dismissTime, notification.text); }
@@ -566,10 +564,6 @@ struct Notification {
     inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {
         if (observer) {
             observer(type, text);
-        }
-        if (sink) {
-            sink(type, text);
-            return;
         }
         ImGui::InsertNotification({type, static_cast<int>(dismissTime.count()), "%s", text.c_str()});
     }

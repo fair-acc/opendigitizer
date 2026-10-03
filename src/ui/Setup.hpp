@@ -17,9 +17,7 @@ namespace DigitizerUi {
 /// DigitizerUi::initialise({.style = DigitizerUi::LookAndFeel::Style::Dark}); // or: OpenDigitizer's look
 /// @endcode
 struct InitialiseOptions {
-    gr::BlockRegistry*                registry   = nullptr; // nullptr: gr::globalBlockRegistry()
-    std::optional<LookAndFeel::Style> style      = {};      // empty: the host's ImGui/ImPlot style stays untouched
-    bool                              loadFonts  = true;
+    std::optional<LookAndFeel::Style> style      = {};   // empty: the host's ImGui/ImPlot style stays untouched
     bool                              captureLog = true; // GR4 log records and notifications are kept in logHistory() for the status bar
 };
 

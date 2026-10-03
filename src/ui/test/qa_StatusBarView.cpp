@@ -41,14 +41,14 @@ struct ForeignStatusBlock : gr::Block<ForeignStatusBlock, gr::Drawable<gr::UICat
 };
 
 struct TestStatusText : gr::Block<TestStatusText, gr::Drawable<gr::UICategory::StatusBar, "Dear ImGui">> {
-    using Description = gr::Doc<"test-only status-bar block that draws its name">;
+    using Description = gr::Doc<"test-only status-bar block that draws its name as a button">;
 
     GR_MAKE_REFLECTABLE(TestStatusText);
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
     gr::work::Status draw(const gr::property_map& = {}) noexcept {
-        ImGui::TextUnformatted(name.value.c_str());
+        ImGui::SmallButton(name.value.c_str()); // an item the test can find
         return gr::work::Status::OK;
     }
 };
@@ -60,7 +60,7 @@ constexpr int    kMaxFrames = 600;
 
 struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard> dashboard;
-    DigitizerUi::StatusBarView              view{DigitizerUi::logHistory()};
+    DigitizerUi::StatusBarView              view;
     bool                                    viewModeLocked = false; // the App's input blocker covers everything above the bar
 };
 
@@ -71,13 +71,6 @@ std::string barLabel(ImGuiTestContext* ctx) { return ctx->ItemInfo("**/###status
 
 bool contains(std::string_view text, std::string_view part) { return text.find(part) != std::string_view::npos; }
 
-std::vector<std::string> statusBlockNames() {
-    std::vector<std::string> names;
-    for (const auto& block : g_state->view.blocks()) {
-        names.emplace_back(block->name());
-    }
-    return names;
-}
 } // namespace
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
@@ -94,7 +87,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
                 state.dashboard->handleMessages();
                 ImGui::Dummy(ImVec2(0.f, ImGui::GetContentRegionAvail().y - DigitizerUi::StatusBarView::height()));
-                state.view.draw(state.dashboard->isInitialised ? state.dashboard.get() : nullptr);
+                const bool withGraph = state.dashboard->isInitialised;
+                state.view.draw(withGraph ? &state.dashboard->scheduler : nullptr, withGraph ? &state.dashboard->graphModel : nullptr);
             }
             if (state.viewModeLocked) {
                 std::ignore = DigitizerUi::components::drawViewModeBlocker(ImRect(kHostPos, kHostPos + kHostSize - ImVec2(0.f, DigitizerUi::StatusBarView::height())));
@@ -117,19 +111,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(contains(label, "W 1")) << label;
             };
 
-            "a notification shows in the bar, also when a host takes the notifications"_test = [&] {
+            "a notification shows in the bar and as a toast"_test = [&] {
                 DigitizerUi::logHistory().clear();
+                const auto toastsBefore = ImGui::notifications.size();
                 DigitizerUi::components::Notification::error("bad yaml");
                 ctx->Yield(2);
                 expect(contains(barLabel(ctx), "bad yaml") && contains(barLabel(ctx), "E 1")) << barLabel(ctx);
-
-                std::string sunk;
-                DigitizerUi::components::Notification::sink = [&sunk](ImGuiToastType, std::string_view text) { sunk = text; };
-                DigitizerUi::components::Notification::warning("disk full");
-                DigitizerUi::components::Notification::sink = nullptr;
-                ctx->Yield(2);
-                expect(sunk == "disk full") << "the host's sink still receives it";
-                expect(contains(barLabel(ctx), "disk full") && contains(barLabel(ctx), "W 1")) << barLabel(ctx);
+                expect(eq(ImGui::notifications.size(), toastsBefore + 1UZ)) << "a toast is queued too";
             };
 
             "in locked View mode the bar opens the log, and clear empties it"_test = [&] {
@@ -150,9 +138,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the flowgraph's ImGui status-bar blocks are drawn in graph order, those of other toolkits are not"_test = [&] {
-                expect(statusBlockNames() == std::vector<std::string>{"status_b_indicator", "status_a_text"}) << std::format("{}", statusBlockNames());
-                expect(eq(ForeignStatusBlock::drawCount, 0UZ));
-                expect(ctx->ItemExists("**/###schedulerState")) << "the indicator is drawn";
+                const ImGuiTestItemInfo indicator = ctx->ItemInfo("**/###schedulerState");
+                const ImGuiTestItemInfo text      = ctx->ItemInfo("**/status_a_text");
+                expect(indicator.ID != 0 && text.ID != 0) << fatal << "both ImGui blocks are drawn";
+                expect(indicator.RectFull.Max.x <= text.RectFull.Min.x) << std::format("graph order, not by name: the indicator ends at {}, the text starts at {}", indicator.RectFull.Max.x, text.RectFull.Min.x);
+                expect(eq(ForeignStatusBlock::drawCount, 0UZ)) << "the Qt block is never drawn";
             };
 
             "the indicator shows the scheduler's state"_test = [&] {

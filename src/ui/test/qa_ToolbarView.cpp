@@ -60,12 +60,6 @@ std::shared_ptr<gr::BlockModel> schedulerBlock(std::string_view name) {
     return nullptr;
 }
 
-std::vector<std::string> toolbarBlockNames() {
-    std::vector<std::string> names;
-    std::ranges::transform(g_state->view.blocks(), std::back_inserter(names), [](const auto& block) { return std::string(block->name()); });
-    return names;
-}
-
 template<typename T>
 bool waitForSetting(ImGuiTestContext* ctx, std::string_view blockName, const std::string& key, T expected) {
     for (int frame = 0; frame < kMaxFrames; ++frame) {
@@ -91,7 +85,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto&       state = *g_state;
             state.dashboard->handleMessages();
             if (state.dashboard->isInitialised) {
-                state.view.draw(*state.dashboard);
+                state.view.draw(state.dashboard->scheduler, state.dashboard->graphModel, state.dashboard->schedulerUi);
             }
         };
 
@@ -103,7 +97,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ctx->Yield(3);
 
             "the ImGui toolbar blocks are drawn in graph order, those of other toolkits are not"_test = [&] {
-                expect(toolbarBlockNames() == std::vector<std::string>{"toolbar_b_hold", "toolbar_a_amplify"}) << std::format("graph order, not by name or type: {}", toolbarBlockNames());
                 expect(eq(ForeignToolbarBlock::drawCount, 0UZ)) << "the Qt block is never drawn";
                 expect(schedulerBlock("toolbar_c_foreign") != nullptr) << "the Qt block is in the flowgraph";
 
@@ -194,12 +187,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 message.data        = gr::property_map{{"type", std::string("DigitizerUi::ToolbarButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}};
                 state.dashboard->graphModel.sendMessage(std::move(message));
 
-                for (int frame = 0; frame < kMaxFrames && state.view.blocks().size() < 3UZ; ++frame) {
+                for (int frame = 0; frame < kMaxFrames && !ctx->ItemExists("**/Extra"); ++frame) {
                     ctx->Yield();
                 }
-                expect(toolbarBlockNames() == std::vector<std::string>{"toolbar_b_hold", "toolbar_a_amplify", "toolbar_d_extra"}) << std::format("{}", toolbarBlockNames());
-                ctx->Yield();
-                expect(ctx->ItemInfo("**/Extra").ID != 0) << "the new button is drawn";
+                const ImGuiTestItemInfo extra   = ctx->ItemInfo("**/Extra");
+                const ImGuiTestItemInfo amplify = ctx->ItemInfo("**/Amplify");
+                expect(extra.ID != 0) << fatal << "the new button is drawn";
+                expect(amplify.RectFull.Max.x <= extra.RectFull.Min.x) << std::format("after the last button: Amplify ends at {}, Extra starts at {}", amplify.RectFull.Max.x, extra.RectFull.Min.x);
             };
         };
     }

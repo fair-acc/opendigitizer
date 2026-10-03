@@ -131,8 +131,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the toolbar draws the graph's toolbar block and the scheduler controls, which drive the scheduler"_test = [&] {
                 expect(reach(State::RUNNING)) << fatal;
-                expect(eq(state.toolbar.blocks().size(), 1UZ)) << fatal;
-                expect(std::string(state.toolbar.blocks().front()->name()) == "host_button");
                 expect(ctx->ItemExists("**/Amplify")) << "the toolbar block is drawn";
                 ctx->ItemClick("**/###schedulerPause");
                 expect(reach(State::PAUSED)) << "pause";
@@ -140,10 +138,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(reach(State::RUNNING)) << "play";
             };
 
-            "the status bar draws the graph's status-bar block"_test = [&] {
-                expect(eq(state.statusBar->blocks().size(), 1UZ));
-                expect(ctx->ItemInfo("**/###schedulerState").DebugLabel == std::string("RUNNING###schedulerState")) << ctx->ItemInfo("**/###schedulerState").DebugLabel;
-            };
+            "the status bar draws the graph's status-bar block"_test = [&] { expect(ctx->ItemInfo("**/###schedulerState").DebugLabel == std::string("RUNNING###schedulerState")) << ctx->ItemInfo("**/###schedulerState").DebugLabel; };
 
             "a settings change reaches the host's graph model and keeps the setting's meta information"_test = [&] {
                 const auto generator = [&] { return state.host->graphModel.recursiveFindBlockByName("SignalGenerator1").block; };
@@ -237,7 +232,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(gr::globalBlockRegistry());
 
     state.host      = std::make_unique<HostGraph>();
-    state.statusBar = std::make_unique<DigitizerUi::StatusBarView>(DigitizerUi::logHistory());
+    state.statusBar = std::make_unique<DigitizerUi::StatusBarView>();
     state.editor    = std::make_unique<DigitizerUi::FlowgraphPage>(); // no RestClient: a host without opencmw objects
     state.editor->setGraphModel(std::addressof(state.host->graphModel));
 

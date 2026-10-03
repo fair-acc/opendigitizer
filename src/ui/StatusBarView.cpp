@@ -1,4 +1,5 @@
 #include "StatusBarView.hpp"
+#include "LogHistory.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -65,8 +66,8 @@ void StatusBarView::draw(Scheduler* scheduler, const UiGraphModel* graphModel) {
 }
 
 void StatusBarView::drawLogLine() {
-    const auto          counts   = _history.counts();
-    const auto          latest   = _history.latestWarningOrWorse();
+    const auto          counts   = logHistory().counts();
+    const auto          latest   = logHistory().latestWarningOrWorse();
     const std::uint64_t errors   = counts[static_cast<std::size_t>(Level::fatal)] + counts[static_cast<std::size_t>(Level::failure)] + counts[static_cast<std::size_t>(Level::error)];
     const std::uint64_t warnings = counts[static_cast<std::size_t>(Level::warning)];
     const std::uint64_t others   = counts[static_cast<std::size_t>(Level::info)] + counts[static_cast<std::size_t>(Level::debug)] + counts[static_cast<std::size_t>(Level::trace)];
@@ -94,9 +95,9 @@ void StatusBarView::drawLogPopup() {
         return;
     }
     if (ImGui::Button("Clear")) {
-        _history.clear();
+        logHistory().clear();
     }
-    if (const std::uint64_t dropped = _history.dropped(); dropped > 0U) {
+    if (const std::uint64_t dropped = logHistory().dropped(); dropped > 0U) {
         ImGui::SameLine();
         ImGui::TextDisabled("(%llu records not kept: logged while the history was read)", static_cast<unsigned long long>(dropped));
     }
@@ -109,7 +110,7 @@ void StatusBarView::drawLogPopup() {
     ImGui::TableSetupColumn("message", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("source");
     ImGui::TableHeadersRow();
-    for (const gr::log::LogRecord& record : _history.snapshot()) {
+    for (const gr::log::LogRecord& record : logHistory().snapshot()) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(timeOfDay(record.timestampNanos).c_str());

@@ -8,7 +8,8 @@
 
 #include <gnuradio-4.0/BlockModel.hpp>
 
-#include "Dashboard.hpp"
+#include "GraphModel.hpp"
+#include "Scheduler.hpp"
 
 namespace DigitizerUi {
 
@@ -20,9 +21,6 @@ public:
     explicit PaneBlocks(gr::UICategory category) noexcept : _category(category) {}
 
     const std::vector<std::shared_ptr<gr::BlockModel>>& of(Scheduler& scheduler, const UiGraphModel& graphModel);
-    const std::vector<std::shared_ptr<gr::BlockModel>>& of(Dashboard& dashboard) { return of(dashboard.scheduler, dashboard.graphModel); }
-
-    [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks; }
 
 private:
     gr::UICategory                               _category;

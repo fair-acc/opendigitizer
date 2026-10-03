@@ -56,10 +56,11 @@ struct GridShape {
 class DockSpace {
     mutable gr::property_map _lastFreeLayout;
     std::vector<std::string> _lastWindowNames;
-    ImGuiID                  _lastDockspaceID = 0;
-    DockingLayoutType        _layoutType      = DockingLayoutType::Free;
-    bool                     _needsRelayout   = true;
-    bool                     _lastIsEditable  = false;
+    ImGuiID                  _lastDockspaceID        = 0;
+    DockingLayoutType        _layoutType             = DockingLayoutType::Free;
+    bool                     _needsRelayout          = true;
+    bool                     _lastIsEditable         = false;
+    bool                     _exactFreeLayoutApplied = false; // the windows' freeLayoutPosition, once; later relayouts restore the captured layout
 
 public:
     struct Window;
@@ -72,7 +73,6 @@ public:
     void setLayoutType(DockingLayoutType);
 
     /// Renders the specified windows in an area of size paneSize
-    /// May modify windows by setting Window::freeLayoutPosition to nullopt
     void render(const Windows& windows, ImVec2 paneSize, bool isEditable);
 
     // save and load the free layout (including any floating windows)
