@@ -198,7 +198,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
             }
             const std::string sinkKey = std::string(sink.uniqueName());
             const bool        newData = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());

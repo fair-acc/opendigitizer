@@ -261,7 +261,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             snap.lastRefresh = now;
         }
 
-        ImPlot::SetNextLineStyle(sinkColor(sink.color()));
+        ImPlot::SetNextLineStyle(sinkColor(sink.color()), seriesLineWidth(sink));
         ImPlot::PlotLine(plotLabel(sink).c_str(), snap.x.data(), snap.y.data(), static_cast<int>(snap.x.size()));
     }
 
@@ -290,7 +290,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             ImVec4 lineColor = baseColor;
             lineColor.w      = opacity;
-            ImPlot::SetNextLineStyle(lineColor);
+            ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(sink));
 
             std::string label = isNewest ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
 

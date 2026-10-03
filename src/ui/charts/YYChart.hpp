@@ -139,7 +139,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         setupFinish();
 
         ImVec4 lineColor = sinkColor(sinkPtr->color());
-        ImPlot::SetNextLineStyle(lineColor);
+        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkPtr));
 
         // clamp to n_history: show only the most recent samples
         std::size_t totalCount = sinkPtr->size();
@@ -239,7 +239,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         // Plot correlation line with Y signal's name as legend entry
         ImVec4 lineColor = sinkColor(sinkYPtr->color());
-        ImPlot::SetNextLineStyle(lineColor);
+        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
 
         struct CorrelationContext {
             const SignalSink* sink_x;
@@ -392,7 +392,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
             ImVec4 lineColor = sinkColor(sinkYPtr->color());
-            ImPlot::SetNextLineStyle(lineColor);
+            ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
 
             PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
             std::string yLabel = plotLabel(*sinkYPtr);

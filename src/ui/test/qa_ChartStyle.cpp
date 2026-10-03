@@ -222,6 +222,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(thick->count(kPlotInterior, isVoltageGreen) > 5UZ * nThin / 2UZ) << std::format("4 px line: {} green pixels, 1 px line: {}", thick->count(kPlotInterior, isVoltageGreen), nThin);
             };
 
+            "a series takes its sink's line width unless the host's style sets one"_test = [&] {
+                const auto thin = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                state.voltage->setLineWidth(4.f);
+                const auto thick         = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
+                const auto hostOverrides = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.lineWidth = 1.f; }));
+                state.voltage->setLineWidth(1.f);
+                const auto nThin = thin->count(kPlotInterior, isVoltageGreen);
+                expect(nThin > 500UZ) << fatal;
+                expect(thick->count(kPlotInterior, isVoltageGreen) > 5UZ * nThin / 2UZ) << std::format("sink width 4: {} green pixels, sink width 1: {}", thick->count(kPlotInterior, isVoltageGreen), nThin);
+                expect(hostOverrides->count(kPlotInterior, isVoltageGreen) < 6UZ * nThin / 5UZ) << std::format("host width 1 over sink width 4: {} green pixels, 1 px line: {}", hostOverrides->count(kPlotInterior, isVoltageGreen), nThin);
+            };
+
             "grid alpha 0 removes the grid lines, alpha 1 makes them stronger"_test = [&] {
                 const auto plain  = drawAndCapture(ctx, *state.singleAxis, Mode::View, {});
                 const auto hidden = drawAndCapture(ctx, *state.singleAxis, Mode::View, chartStyle([](DigitizerUi::ChartStyle& s) { s.gridAlpha = 0.f; }));

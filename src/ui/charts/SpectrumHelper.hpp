@@ -164,9 +164,9 @@ struct TracePlotContext {
     std::span<const float> yValues;
 };
 
-inline void plotTrace(const char* label, std::span<const float> xValues, std::span<const float> yValues, std::size_t count, const ImVec4& color) {
+inline void plotTrace(const char* label, std::span<const float> xValues, std::span<const float> yValues, std::size_t count, const ImVec4& color, float lineWidth = IMPLOT_AUTO) {
     TracePlotContext ctx{xValues, yValues};
-    ImPlot::SetNextLineStyle(color);
+    ImPlot::SetNextLineStyle(color, lineWidth);
     ImPlot::PlotLineG(
         label,
         [](int idx, void* userData) -> ImPlotPoint {

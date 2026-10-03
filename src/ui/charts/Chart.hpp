@@ -65,6 +65,9 @@ enum class AxisKind { X = 0, Y, Z };
 
 [[nodiscard]] inline ImVec4 sinkColor(std::uint32_t rgb) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb)); }
 
+// a line width set in the host's chart style overrides the sink's own line_width
+[[nodiscard]] inline float seriesLineWidth(const SignalSink& sink) { return DigitizerUi::LookAndFeel::instance().chartStyle.lineWidth.value_or(sink.lineWidth()); }
+
 [[nodiscard]] inline std::string plotLabel(const SignalSink& sink) { return std::format("{}###{}", sink.signalName().empty() ? sink.name() : sink.signalName(), sink.uniqueName()); }
 
 [[nodiscard]] inline std::string findSinkReference(const SignalSink& sink) {

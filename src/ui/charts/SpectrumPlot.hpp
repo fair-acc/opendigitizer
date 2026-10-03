@@ -104,7 +104,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
             }
             const std::string sinkKey = std::string(sink.uniqueName());
             auto&             traces  = _tracesPerSink[sinkKey];
