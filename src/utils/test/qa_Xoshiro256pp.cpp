@@ -121,4 +121,4 @@ const boost::ut::suite<"Xoshiro256pp"> tests = [] {
     };
 };
 
-int main() { /* not needed for ut */ }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }
