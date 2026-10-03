@@ -11,6 +11,8 @@
 
 namespace DigitizerUi {
 
+inline constexpr ImVec4 kAmber{1.f, .65f, 0.f, 1.f}; // warnings, a paused scheduler
+
 struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable<gr::UICategory::StatusBar, "Dear ImGui">> {
     using Description = gr::Doc<"status-bar label with the lifecycle state of its scheduler (a block's state follows its scheduler's)">;
 
@@ -25,7 +27,7 @@ struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable
             switch (state) {
             case RUNNING: return ImVec4(.2f, .75f, .2f, 1.f);
             case REQUESTED_PAUSE:
-            case PAUSED: return ImVec4(1.f, .65f, 0.f, 1.f);
+            case PAUSED: return kAmber;
             case ERROR: return LookAndFeel::instance().palette().errorColor;
             case IDLE:
             case INITIALISED:

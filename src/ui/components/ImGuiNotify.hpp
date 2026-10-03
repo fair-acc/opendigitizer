@@ -546,19 +546,12 @@ inline void RenderNotifications() {
 namespace DigitizerUi::components {
 
 struct Notification {
-    std::string               text;
-    std::chrono::milliseconds dismissTime{5000};
-
     /// sees every notification in addition to the toast list, e.g. a log history
     inline static std::function<void(ImGuiToastType type, std::string_view text)> observer;
 
-    inline static void success(Notification&& notification) { post(ImGuiToastType::Success, notification.dismissTime, notification.text); }
     inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Success, dismissTime, text); }
-    inline static void warning(Notification&& notification) { post(ImGuiToastType::Warning, notification.dismissTime, notification.text); }
     inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Warning, dismissTime, text); }
-    inline static void error(Notification&& notification) { post(ImGuiToastType::Error, notification.dismissTime, notification.text); }
     inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { post(ImGuiToastType::Error, dismissTime, text); }
-    inline static void info(Notification&& notification) { post(ImGuiToastType::Info, notification.dismissTime, notification.text); }
     inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Info, dismissTime, text); }
 
     inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {

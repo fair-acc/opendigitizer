@@ -9,6 +9,7 @@
 #include <ranges>
 
 #include <format>
+#include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
 #if defined(__EMSCRIPTEN__) && !defined(OD_WASM_STATIC_BLOCKLIBS)
@@ -232,7 +233,6 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::get(std::string_view
     }
 
     auto dashboardStorageInfo = std::make_shared<DashboardStorageInfo>(std::string(path), PrivateTag{});
-    std::print("Creating dashboard source for path {}\n", path);
     knownDashboardStorage().push_back(dashboardStorageInfo);
     return dashboardStorageInfo;
 }
@@ -337,14 +337,14 @@ void Dashboard::loadPlugins(std::function<void()> done) {
     for (const auto name : Digitizer::kPluginWasmNames) {
         names.emplace_back(name);
     }
-    std::println("[Plugins] loading {} side-modules sequentially", names.size());
+    gr::log::debug("loading {} plugin side-modules sequentially", names.size());
     pluginLoader->loadPluginsAsync(
         names,
         [done = std::move(done)](std::expected<void, gr::Error> result) {
             if (!result) {
-                std::println("[Plugins] FAILED: {}", result.error().message);
+                gr::log::error("loading a plugin side-module failed: {}", result.error().message);
             } else {
-                std::println("[Plugins] all side-modules finished");
+                gr::log::debug("all plugin side-modules loaded");
             }
             if (done) {
                 done();
@@ -438,7 +438,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
 #ifndef NDEBUG
-        std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e);
+        gr::log::error("loading the dashboard failed: {}", e);
 #endif
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
@@ -446,7 +446,7 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         }
     } catch (const std::exception& e) {
 #ifndef NDEBUG
-        std::println(stderr, "Dashboard::load(const std::string& grcData): error: {}", e.what());
+        gr::log::error("loading the dashboard failed: {}", e.what());
 #endif
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
@@ -506,19 +506,6 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
     }
 
-    auto sources = *readField.operator()<Tensor<pmt::Value>>(dashboard, "sources");
-
-    for (const auto& src : sources) {
-        if (!src.holds<property_map>()) {
-            throw gr::exception("source is not a property_map");
-        }
-        const property_map srcMap = *src.get_if<property_map>();
-
-        // the sinks are blocks of the flowgraph; charts resolve them by name when they draw
-        std::ignore = *readField.operator()<std::string>(srcMap, "block");
-        std::ignore = *readField.operator()<std::string>(srcMap, "name");
-    }
-
     const auto plots = *readField.operator()<Tensor<pmt::Value>>(dashboard, "plots");
 
     for (const auto& plotPmt : plots) {
@@ -535,7 +522,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
                                 " [\"dashboard\"][\"windowLayout\"] or per-plot [\"rect\"] field");
         }
         if (rect && hasWindowLayout) {
-            std::println(stderr, "WARNING: plot rect and dashboard windowLayout both specified, ignoring rect");
+            gr::log::warning("a plot rect and the dashboard windowLayout are both specified, the rect is ignored");
             rect = std::nullopt;
         }
         if (rect && rect->size() != 4) {
@@ -683,11 +670,11 @@ void Dashboard::save(DockingLayoutType liveLayoutType, const gr::property_map& l
     }
     layoutType                         = liveLayoutType; // the saved layout becomes the dashboard's description
     windowLayout                       = liveWindowLayout;
-    const auto [headerYaml, graphYaml] = serialise(liveLayoutType, liveWindowLayout);
+    const auto [headerYaml, graphYaml] = serialise();
     saveStore(headerYaml, graphYaml);
 }
 
-std::pair<gr::property_map, gr::property_map> Dashboard::serialise(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout) {
+std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
     using namespace gr;
 
     property_map headerYaml;
@@ -726,8 +713,8 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise(DockingLayout
     if (schedulerUi) { // written only when set, so dashboards without it stay unchanged
         dashboardYaml["scheduler_ui"] = true;
     }
-    dashboardYaml["layout"]       = std::string(dockingLayoutName(liveLayoutType));
-    dashboardYaml["windowLayout"] = liveWindowLayout;
+    dashboardYaml["layout"]       = std::string(dockingLayoutName(layoutType));
+    dashboardYaml["windowLayout"] = windowLayout;
 
     dashboardYaml["propertyControlWindows"] = [this] {
         gr::property_map out;
@@ -1004,7 +991,6 @@ void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
 }
 
 void Dashboard::loadUIWindowSources() {
-    std::println("[Dashboard::loadUIWindowSources] {} UIWindows, {} sinks in registry", uiWindows.size(), opendigitizer::charts::SinkRegistry::instance().sinkCount());
 
     for (auto& w : uiWindows) {
         if (!w.isChart() || !w.block) {

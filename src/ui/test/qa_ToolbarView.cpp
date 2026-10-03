@@ -167,9 +167,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto dashboard = section->get_if<gr::property_map>();
                     return dashboard && dashboard->contains("scheduler_ui");
                 };
-                expect(!savedHas(state.dashboard->serialise(state.dashboard->layoutType, state.dashboard->windowLayout).second)) << "a dashboard without it saves without it";
+                expect(!savedHas(state.dashboard->serialise().second)) << "a dashboard without it saves without it";
                 state.dashboard->schedulerUi = true;
-                expect(savedHas(state.dashboard->serialise(state.dashboard->layoutType, state.dashboard->windowLayout).second)) << "a dashboard with it saves it";
+                expect(savedHas(state.dashboard->serialise().second)) << "a dashboard with it saves it";
                 state.dashboard->schedulerUi = false;
 
                 std::string withControls = state.grc;

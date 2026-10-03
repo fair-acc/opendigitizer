@@ -35,10 +35,9 @@ private:
         virtual void             sendMessage(gr::Message message) = 0;
         virtual void             handleMessages(UiGraphModel& fg) = 0;
 
-        virtual std::expected<void, gr::Error> start()  = 0;
-        virtual std::expected<void, gr::Error> stop()   = 0;
-        virtual std::expected<void, gr::Error> pause()  = 0;
-        virtual std::expected<void, gr::Error> resume() = 0;
+        virtual std::expected<void, gr::Error> start() = 0;
+        virtual std::expected<void, gr::Error> stop()  = 0;
+        virtual std::expected<void, gr::Error> pause() = 0;
 
         virtual const gr::Graph& graph() const = 0;
 
@@ -229,7 +228,6 @@ private:
 
                             if (const auto* originalStateValue = it->second.get_if<int>()) {
                                 const auto originalState = static_cast<gr::lifecycle::State>(*originalStateValue);
-                                std::println("Setting Graph GRC finished in GR4, scheduler needs to resume to state {}", magic_enum::enum_name(originalState));
 
                                 requestStart(originalState);
 
@@ -260,7 +258,6 @@ private:
         }
 
         std::expected<void, gr::Error> start() final {
-            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             if (restartIfNotRunning()) {
                 return {};
             }
@@ -268,21 +265,11 @@ private:
             return {};
         }
         std::expected<void, gr::Error> stop() final {
-            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_STOP))}}, "UI");
             return {};
         }
         std::expected<void, gr::Error> pause() final {
-            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
             gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::REQUESTED_PAUSE))}}, "UI");
-            return {};
-        }
-        std::expected<void, gr::Error> resume() final {
-            std::print("Scheduler state is {}\n", magic_enum::enum_name(_scheduler.state()));
-            if (restartIfNotRunning()) {
-                return {};
-            }
-            gr::sendMessage<gr::message::Command::Set>(_toScheduler, _scheduler.unique_name, gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(gr::lifecycle::State::RUNNING))}}, "UI");
             return {};
         }
 
@@ -315,11 +302,6 @@ private:
     std::unique_ptr<SchedulerModel> _scheduler;
 
 public:
-    template<typename TScheduler>
-    void emplaceScheduler(gr::property_map initParams = {}) {
-        _scheduler = std::make_unique<SchedulerImpl<TScheduler>>(std::move(initParams));
-    }
-
     void emplaceGraph(gr::Graph&& graph) {
         using TScheduler = gr::scheduler::Simple<gr::scheduler::ExecutionPolicy::multiThreadedBlocking>; // GR4 owns the worker threads
         _scheduler       = std::make_unique<SchedulerImpl<TScheduler>>(std::move(graph), gr::property_map{});

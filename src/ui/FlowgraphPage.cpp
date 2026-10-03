@@ -1404,8 +1404,6 @@ void FlowgraphPage::reset() { _editors.clear(); }
 void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock) {
     assert(rootBlock && "An editor needs to have a root block defined");
     assert(!rootBlock->blockUniqueName.empty() && !rootBlock->blockCategory.empty() && "An editor needs to have a root block defined and initialized");
-    std::println("FlowgraphPage::pushEditor name {} rootBlock {} category {}", name, //
-        rootBlock->blockUniqueName, rootBlock->blockCategory);
 
     auto& editor = _editors.emplace_back(name, graphModel, rootBlock, _editors.size());
 

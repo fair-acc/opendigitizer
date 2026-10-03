@@ -1,9 +1,7 @@
 #ifndef DASHBOARDPAGE_H
 #define DASHBOARDPAGE_H
 
-#include <deque>
 #include <optional>
-#include <stack>
 #include <string>
 #include <unordered_map>
 
@@ -14,7 +12,6 @@
 #include "common/ImguiWrap.hpp"
 #include "components/Block.hpp"
 #include "components/Docking.hpp"
-#include "components/GlobalSignalLegend.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
 
@@ -67,12 +64,11 @@ private:
         std::string sinkForNewPlot;
     };
 
-    void drawNewPlotModal(); // modifies _showNewPlotModal if close is requested
+    void drawNewPlotModal();
     void drawBarLeading(LegendItemClickResult& clickResult) noexcept;
     void drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept;
     void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
     void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
-    void doViewModeOverlayArea() noexcept;
 
     struct ExportedPropertyPairsByWindowID;
 

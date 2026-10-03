@@ -314,10 +314,8 @@ public:
 
     /// edits the dashboard's flowgraph; adding remote signals needs the dashboard
     void setDashboard(Dashboard* dashboard) {
-        _dashboard  = dashboard;
-        _graphModel = dashboard ? std::addressof(dashboard->graphModel) : nullptr;
-        _remoteSignalSelector.reset();
-        reset();
+        setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
+        _dashboard = dashboard;
     }
     /// edits a flowgraph a host runs without a dashboard (a Scheduler wired to this UiGraphModel)
     void setGraphModel(UiGraphModel* graphModel) {

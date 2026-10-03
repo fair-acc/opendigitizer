@@ -238,6 +238,10 @@ std::string filterTagLabel(const components::SortFilterModelFilter& filter) {
         static_cast<const DashboardFilter&>(filter).filterData);
 }
 
+void saveWithLiveLayout(Dashboard& dashboard, const DashboardPage* page) { // the layout as drawn, if a page draws it
+    const auto [layoutType, windowLayout] = page ? page->saveLayoutConfiguration() : std::pair{dashboard.layoutType, dashboard.windowLayout};
+    dashboard.save(layoutType, windowLayout);
+}
 } // namespace
 
 components::SortFilterModelParams OpenDashboardPage::defaultFilterParams() {
@@ -369,8 +373,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
         if (optionalDashboard != nullptr && optionalDashboard->isInitialised) {
             optionalDashboard->setNewDescription(newDesc);
 
-            const auto [liveLayoutType, liveWindowLayout] = optionalDashboardPage ? optionalDashboardPage->saveLayoutConfiguration() : std::pair{optionalDashboard->layoutType, optionalDashboard->windowLayout};
-            optionalDashboard->save(liveLayoutType, liveWindowLayout);
+            saveWithLiveLayout(*optionalDashboard, optionalDashboardPage);
         }
     }
 }
@@ -1073,8 +1076,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
             IMW::Disabled inMemoryDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
             ImGui::SetCursorScreenPos(buttonStart);
             if (doIconTextButton("Save", kIconSave, buttonSize) && dashboardLoaded) {
-                const auto [liveLayoutType, liveWindowLayout] = optionalDashboardPage ? optionalDashboardPage->saveLayoutConfiguration() : std::pair{optionalDashboard->layoutType, optionalDashboard->windowLayout};
-                optionalDashboard->save(liveLayoutType, liveWindowLayout);
+                saveWithLiveLayout(*optionalDashboard, optionalDashboardPage);
             }
         }
 

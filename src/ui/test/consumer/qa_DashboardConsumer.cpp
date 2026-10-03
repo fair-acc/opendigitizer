@@ -128,7 +128,9 @@ int main() {
         const auto field = [](const gr::property_map& map, std::string_view key) { return map.find_value(std::string(key), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}); };
 
         const gr::property_map windowLayout{{"marker", std::string("live layout")}};
-        const auto [header, graph] = dashboard->serialise(DigitizerUi::DockingLayoutType::Grid, windowLayout);
+        dashboard->layoutType      = DigitizerUi::DockingLayoutType::Grid;
+        dashboard->windowLayout    = windowLayout;
+        const auto [header, graph] = dashboard->serialise();
         const auto section         = field(graph, "dashboard").value_or(gr::property_map{});
         expect(field(section, "layout").value_or(std::string{}) == "Grid");
         expect(field(section, "windowLayout").value_or(gr::property_map{}) == windowLayout);

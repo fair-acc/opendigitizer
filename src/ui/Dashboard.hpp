@@ -157,7 +157,7 @@ struct Dashboard {
     /// saves with the layout the view shows now; it becomes the dashboard's stored layout
     void save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
     /// header and graph YAML (flowgraph plus the dashboard section) with the given layout
-    [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
+    [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise();
     void                                                        saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
     void                                                        doLoad(const gr::property_map& dashboard);
 
@@ -179,11 +179,6 @@ struct Dashboard {
     void            loadUIWindowSources();
 
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
-
-    template<typename TScheduler, typename... Args>
-    void emplaceScheduler(Args&&... args) {
-        scheduler.emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
-    }
 
     template<typename... Args>
     void emplaceGraph(Args&&... args) {

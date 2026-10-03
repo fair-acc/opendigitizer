@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <format>
+#include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
@@ -85,7 +86,7 @@ DashboardPage::DashboardPage() {
 
         auto it = std::ranges::find_if(_addedSourceBlocksWaitingForSink, [&sink](const auto& kvp) { return kvp.second.signalData.signalName == sink.signalName(); });
         if (it == _addedSourceBlocksWaitingForSink.end()) {
-            std::print("[DashboardPage] Status: A sink added that is not connected to a remote source\n");
+            gr::log::warning("a sink was added that is not connected to a remote source");
             return;
         }
 

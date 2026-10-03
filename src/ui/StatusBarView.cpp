@@ -6,6 +6,7 @@
 #include <format>
 #include <string>
 
+#include "blocks/StatusBarBlock.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
@@ -15,14 +16,13 @@ namespace {
 using gr::log::Level;
 
 constexpr inline const char* kLogPopup = "##statusBarLog";
-constexpr inline ImVec4      kWarningColour{1.f, .65f, 0.f, 1.f};
 
 ImVec4 colourOf(Level level) {
     switch (level) {
     case Level::fatal:
     case Level::failure:
     case Level::error: return LookAndFeel::instance().palette().errorColor;
-    case Level::warning: return kWarningColour;
+    case Level::warning: return kAmber;
     case Level::info: return ImGui::GetStyleColorVec4(ImGuiCol_Text);
     case Level::debug:
     case Level::trace: return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);

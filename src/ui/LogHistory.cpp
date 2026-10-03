@@ -16,13 +16,7 @@ bool LogHistory::store(const gr::log::LogRecord& record) noexcept {
         _dropped.fetch_add(1UZ, std::memory_order_relaxed);
         return false;
     }
-    if (_size < kCapacity) {
-        _records[(_oldest + _size) % kCapacity] = record;
-        ++_size;
-    } else {
-        _records[_oldest] = record;
-        _oldest           = (_oldest + 1UZ) % kCapacity;
-    }
+    _records.push_back(record);
     ++_counts[static_cast<std::size_t>(record.level)];
     if (isWarningOrWorse(record.level)) {
         _latestWarningOrWorse = record;
@@ -45,13 +39,8 @@ void LogHistory::record(gr::log::Level level, std::string_view text) noexcept {
 }
 
 std::vector<gr::log::LogRecord> LogHistory::snapshot() const {
-    std::scoped_lock                lock(_mutex);
-    std::vector<gr::log::LogRecord> records;
-    records.reserve(_size);
-    for (std::size_t i = 0UZ; i < _size; ++i) {
-        records.push_back(_records[(_oldest + i) % kCapacity]);
-    }
-    return records;
+    std::scoped_lock lock(_mutex);
+    return {_records.begin(), _records.end()};
 }
 
 std::optional<gr::log::LogRecord> LogHistory::latestWarningOrWorse() const {
@@ -66,8 +55,7 @@ std::array<std::uint64_t, LogHistory::kLevels> LogHistory::counts() const {
 
 void LogHistory::clear() {
     std::scoped_lock lock(_mutex);
-    _oldest = 0UZ;
-    _size   = 0UZ;
+    _records.reset();
     _counts = {};
     _latestWarningOrWorse.reset();
     _dropped.store(0UZ, std::memory_order_relaxed);

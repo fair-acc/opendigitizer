@@ -175,8 +175,6 @@ void parseFloatingChartRectAreas(const ChartParsingContext& context) {
     }
 }
 
-DashboardPreview::Rect toPreviewRect(const LayoutRect& rect) { return {.x = rect.x, .y = rect.y, .w = rect.w, .h = rect.h}; }
-
 /// Applies rects to the dashboard preview if they are there, *and* we are in free layout. returns true if the rects were applied
 [[nodiscard]] bool assignChartRectAreasIfManuallySpecified(DashboardPreview& preview, DockingLayoutType layoutType, const std::vector<std::array<std::int64_t, 4>>& gridRects) {
     const std::size_t numCharts = preview.charts.size();
@@ -191,7 +189,7 @@ DashboardPreview::Rect toPreviewRect(const LayoutRect& rect) { return {.x = rect
     }
     const auto rects = freeLayoutRects(cells);
     for (std::size_t i = 0UZ; i < numCharts; ++i) {
-        preview.charts[i].rect = toPreviewRect(rects[i]);
+        preview.charts[i].rect = rects[i];
     }
     return true;
 }
@@ -199,7 +197,7 @@ DashboardPreview::Rect toPreviewRect(const LayoutRect& rect) { return {.x = rect
 void assignChartRectAreasFromAutoLayoutRules(DashboardPreview& preview, DockingLayoutType layoutType) {
     const auto rects = autoLayoutRects(layoutType, preview.charts.size());
     for (std::size_t i = 0UZ; i < rects.size(); ++i) {
-        preview.charts[i].rect = toPreviewRect(rects[i]);
+        preview.charts[i].rect = rects[i];
     }
 }
 

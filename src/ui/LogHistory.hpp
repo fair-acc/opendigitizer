@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include <gnuradio-4.0/HistoryBuffer.hpp>
 #include <gnuradio-4.0/Logger.hpp>
 
 namespace DigitizerUi {
@@ -41,14 +42,12 @@ public:
     void                                             clear();
 
 private:
-    gr::log::Backend&                         _next;
-    mutable std::mutex                        _mutex;
-    std::array<gr::log::LogRecord, kCapacity> _records{};
-    std::size_t                               _oldest = 0UZ;
-    std::size_t                               _size   = 0UZ;
-    std::array<std::uint64_t, kLevels>        _counts{};
-    std::optional<gr::log::LogRecord>         _latestWarningOrWorse;
-    std::atomic<std::uint64_t>                _dropped{0UZ};
+    gr::log::Backend&                                _next;
+    mutable std::mutex                               _mutex;
+    gr::HistoryBuffer<gr::log::LogRecord, kCapacity> _records; // push_back: [0] is the oldest
+    std::array<std::uint64_t, kLevels>               _counts{};
+    std::optional<gr::log::LogRecord>                _latestWarningOrWorse;
+    std::atomic<std::uint64_t>                       _dropped{0UZ};
 
     bool store(const gr::log::LogRecord& record) noexcept;
 };
