@@ -73,6 +73,14 @@ private:
             connectAndStart();
         }
 
+        void discardMessagesFromScheduler() noexcept {
+            auto&             reader    = _fromScheduler.streamReader();
+            const std::size_t available = reader.available();
+            if (available > 0UZ) {
+                std::ignore = reader.get(available).consume(available);
+            }
+        }
+
         void wakeProgressWaiters() noexcept {
             _scheduler.graph()._progress->incrementAndGet();
             _scheduler.graph()._progress->notify_all();
@@ -276,6 +284,11 @@ private:
             // ~SchedulerBase stops only a RUNNING scheduler before it waits for its workers, a paused one would never finish
             if (gr::lifecycle::isActive(_scheduler.state())) {
                 std::ignore = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+            }
+            // a worker blocks on a full message port, and nobody reads the UI's side any more: drain it until all have left
+            while (_scheduler.isProcessing()) {
+                discardMessagesFromScheduler();
+                std::this_thread::yield();
             }
             _scheduler.waitDone();                       // the workers write to the UI's message ports, which are destroyed before the scheduler
             wakeProgressWaiters();                       // a pacer parked on progress sees the shutdown
