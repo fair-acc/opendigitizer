@@ -259,4 +259,4 @@ const static boost::ut::suite<"PeriodicTimer"> periodicTimerTests = [] {
 
 } // namespace gr::profiling
 
-int main() { /* tests run via ut */ }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

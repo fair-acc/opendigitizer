@@ -117,4 +117,4 @@ const static boost::ut::suite<"fuzzy search scoring"> fuzzySearchTests = [] {
     };
 };
 
-int main() { return 0; }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

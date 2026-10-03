@@ -185,4 +185,4 @@ const static boost::ut::suite<"FAIR Device Name Mapping"> deviceMappingTests = [
     };
 };
 
-int main() { /* not needed for ut */ }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

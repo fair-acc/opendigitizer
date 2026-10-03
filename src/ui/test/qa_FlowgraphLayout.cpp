@@ -76,4 +76,4 @@ const boost::ut::suite<"FlowgraphLayout"> layoutTests = [] {
     };
 };
 
-int main() { return 0; }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

@@ -190,4 +190,4 @@ const boost::ut::suite<"TestSpectrumGenerator"> tests = [] {
     };
 };
 
-int main() { /* not needed for ut */ }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }
