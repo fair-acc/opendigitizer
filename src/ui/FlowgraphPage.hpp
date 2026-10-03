@@ -177,7 +177,8 @@ public:
         style.PinRounding  = 0;
         style.LinkStrength = 60.f;
 
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().palette().flowgraphBg;
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().flowgraph.canvasBackground ? LookAndFeel::instance().palette().flowgraphBg : ImVec4{};
+        style.Colors[ax::NodeEditor::StyleColor_Grid]       = LookAndFeel::instance().flowgraph.canvasGrid ? ax::NodeEditor::Style{}.Colors[ax::NodeEditor::StyleColor_Grid] : ImVec4{};
         style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
         style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = LookAndFeel::instance().palette().flowgraphNodeBorder;
     }

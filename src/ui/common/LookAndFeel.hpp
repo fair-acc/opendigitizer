@@ -116,6 +116,13 @@ struct ChartStyle {
     std::optional<ImVec4>         gridColour;          // gridAlpha, if set, replaces its alpha
 };
 
+/// Dashboard look a host may set process-wide (`LookAndFeel::mutableInstance().dashboardStyle`), for every DashboardView
+struct DashboardStyle {
+    enum class LegendPosition { Bottom, Top, Left, Right, None }; // None: no shared bar, charts may show their own legend
+    LegendPosition legend     = LegendPosition::Bottom;
+    bool           background = true; // false: chart windows, plots area and bar draw no background or border
+};
+
 struct LookAndFeel {
     enum class Style { Light, Dark };
 
@@ -130,6 +137,10 @@ struct LookAndFeel {
         float exportedTabOverlap  = 6.0f;
         float exportedTabPaddingH = 4.0f;
         float exportedTabPaddingV = 2.0f;
+
+        bool canvasBackground = true; // a host drawing the editor over its own background turns these off; background and
+        bool canvasGrid       = true; // grid take effect with FlowgraphPage::updateStyle()
+        bool canvasBorder     = true;
     };
 
 #ifdef __EMSCRIPTEN__
@@ -156,6 +167,7 @@ struct LookAndFeel {
     std::chrono::seconds      editPaneCloseDelay{15};
     Flowgraph                 flowgraph;
     ChartStyle                chartStyle;
+    DashboardStyle            dashboardStyle;
 
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;

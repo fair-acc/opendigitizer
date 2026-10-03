@@ -590,8 +590,17 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             block->storedXY     = UiGraphBlock::StoredXY{position.x, position.y};
         }
     };
-    IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
-    const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
+    const int                    nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2; // the editor draws its canvas border as its scope ends
+    Digitizer::utils::scope_exit showBorderAgain      = [nHiddenBorderColours] { ImGui::PopStyleColor(nHiddenBorderColours); };
+    IMW::NodeEditor::Editor      nodeEditor(_editorName.c_str(), size);
+    Digitizer::utils::scope_exit hideBorder = [nHiddenBorderColours] {
+        for (const ImGuiCol colour : {ImGuiCol_Border, ImGuiCol_BorderShadow}) {
+            if (nHiddenBorderColours > 0) {
+                ImGui::PushStyleColor(colour, ImVec4{});
+            }
+        }
+    };
+    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
     std::optional<BoundingBox> boundingBox;
     const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {

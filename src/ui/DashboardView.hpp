@@ -22,13 +22,11 @@ namespace DigitizerUi {
 /// @endcode
 class DashboardView {
 public:
-    using Mode = opendigitizer::charts::ChartMode;
-
-    enum class LegendPosition { Bottom, Top, Left, Right, None };
+    using Mode           = opendigitizer::charts::ChartMode;
+    using LegendPosition = DashboardStyle::LegendPosition;
 
     struct Options {
         ImVec2                                   size{0.f, 0.f}; // 0: the available region
-        LegendPosition                           legend = LegendPosition::Bottom;
         std::function<void()>                    barLeading;     // drawn before the legend
         std::function<void()>                    barCentre;      // drawn instead of the legend
         std::function<void()>                    barTrailing;    // drawn after the legend

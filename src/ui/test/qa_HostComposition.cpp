@@ -13,9 +13,12 @@
 #include <Scheduler.hpp>
 #include <StatusBarView.hpp>
 #include <ToolbarView.hpp>
+#include <common/LookAndFeel.hpp>
+#include <scope_exit.hpp>
 
 #include <chrono>
 #include <format>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,6 +76,16 @@ struct HostTestState {
     DigitizerUi::ToolbarView                    toolbar;
     std::unique_ptr<DigitizerUi::StatusBarView> statusBar;
     std::unique_ptr<DigitizerUi::FlowgraphPage> editor;
+    std::optional<ImVec4>                       hostBackground;
+    ImRect                                      editorRect;
+};
+
+bool isMagenta(unsigned int rgba) { return (rgba & 0xFFFFFFU) == 0xFF00FFU; } // exact: the node editor fades the grid with the zoom, a faint line still changes a pixel
+
+struct CanvasPixels {
+    std::size_t interiorMagenta = 0UZ; // inset from the edges, where nodes, buttons and grid lines may cover the background
+    std::size_t interiorArea    = 0UZ;
+    std::size_t edgeNotMagenta  = 0UZ; // the outermost pixel ring, where the canvas border lies
 };
 
 HostTestState* g_state = nullptr;
@@ -88,11 +101,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto& state = *g_state;
             ImGui::SetNextWindowPos(ImVec2(0.f, 0.f));
             ImGui::SetNextWindowSize(ImVec2(1200.f, 800.f));
-            IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            const int nHostColours = state.hostBackground ? 2 : 0;
+            if (state.hostBackground) {
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, *state.hostBackground);
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, *state.hostBackground);
+            }
+            Digitizer::utils::scope_exit popHostColours = [nHostColours] { ImGui::PopStyleColor(nHostColours); };
+            IMW::Window                  window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             state.host->scheduler.handleMessages(state.host->graphModel); // the host pumps the messages each frame
             state.toolbar.draw(state.host->scheduler, state.host->graphModel, true);
             {
                 IMW::Child editorArea("##editor", ImVec2(0.f, -DigitizerUi::StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar);
+                state.editorRect = ImRect(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize());
                 state.editor->draw();
             }
             state.statusBar->draw(&state.host->scheduler, &state.host->graphModel);
@@ -153,6 +173,54 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 expect(eq(state.editor->editorCount(), 1UZ)) << "an editor opens once the graph model knows the graph";
                 expect(static_cast<bool>(state.host->graphModel.recursiveFindBlockByName("host_indicator"))) << "and it holds the host's blocks";
+            };
+
+            "a host turns off the editor canvas's background, grid and border and sees its own background"_test = [&] {
+                struct Layers {
+                    bool background = true;
+                    bool grid       = true;
+                    bool border     = true;
+                };
+                state.hostBackground     = ImVec4(1.f, 0.f, 1.f, 1.f);
+                const auto captureCanvas = [&](Layers layers) {
+                    auto& flowgraph            = DigitizerUi::LookAndFeel::mutableInstance().flowgraph;
+                    flowgraph.canvasBackground = layers.background;
+                    flowgraph.canvasGrid       = layers.grid;
+                    flowgraph.canvasBorder     = layers.border;
+                    state.editor->updateStyle();
+                    ctx->Yield(3);
+                    const CapturedPixels image  = capturePixels(*ctx, state.editorRect);
+                    constexpr int        kInset = 40;
+                    CanvasPixels         pixels;
+                    for (int y = 0; y < image.height; ++y) {
+                        for (int x = 0; x < image.width; ++x) {
+                            const bool magenta = isMagenta(image.rgba[static_cast<std::size_t>(y * image.width + x)]);
+                            if (x == 0 || y == 0 || x == image.width - 1 || y == image.height - 1) {
+                                pixels.edgeNotMagenta += magenta ? 0UZ : 1UZ;
+                            } else if (x >= kInset && y >= kInset && x < image.width - kInset && y < image.height - kInset) {
+                                pixels.interiorMagenta += magenta ? 1UZ : 0UZ;
+                                ++pixels.interiorArea;
+                            }
+                        }
+                    }
+                    return pixels;
+                };
+                const CanvasPixels all        = captureCanvas(Layers{});
+                const CanvasPixels none       = captureCanvas(Layers{.background = false, .grid = false, .border = false});
+                const CanvasPixels gridOnly   = captureCanvas(Layers{.background = false, .grid = true, .border = false});
+                const CanvasPixels borderOnly = captureCanvas(Layers{.background = false, .grid = false, .border = true});
+                const Layers       defaults;
+                auto&              flowgraph = DigitizerUi::LookAndFeel::mutableInstance().flowgraph;
+                flowgraph.canvasBackground   = defaults.background;
+                flowgraph.canvasGrid         = defaults.grid;
+                flowgraph.canvasBorder       = defaults.border;
+                state.editor->updateStyle();
+                state.hostBackground.reset();
+
+                expect(eq(all.interiorMagenta, 0UZ)) << "the default canvas background hides the host's";
+                expect(none.interiorMagenta * 2UZ > none.interiorArea) << std::format("without the canvas layers most of the canvas shows the host: {} of {}", none.interiorMagenta, none.interiorArea);
+                expect(gridOnly.interiorMagenta + none.interiorArea / 50UZ < none.interiorMagenta) << std::format("grid lines cover the host's background: {} magenta pixels with the grid, {} without", gridOnly.interiorMagenta, none.interiorMagenta);
+                expect(borderOnly.edgeNotMagenta > none.edgeNotMagenta + 1000UZ) << std::format("the border lines the canvas edge: {} edge pixels not magenta with the border, {} without", borderOnly.edgeNotMagenta, none.edgeNotMagenta);
             };
         };
     }
