@@ -1,6 +1,7 @@
 #include "Setup.hpp"
 #include "TestSinks.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "charts/SpectrumHelper.hpp"
 
 #include <boost/ut.hpp>
 #include <gnuradio-4.0/Graph.hpp>
@@ -226,6 +227,20 @@ int main() {
             std::transform(lowerType.begin(), lowerType.end(), lowerType.begin(), [](unsigned char c) { return std::tolower(c); });
             expect(lowerType.find("chart") != std::string::npos) << "All returned types should contain 'chart'";
         }
+    };
+
+    "a density cell without hits is transparent, a cell with hits takes its colormap entry"_test = [] {
+        std::array<uint32_t, kColormapSize> lut{};
+        for (std::size_t i = 0UZ; i < lut.size(); ++i) {
+            lut[i] = 0xFF000000U | static_cast<uint32_t>(i + 1UZ); // opaque, index + 1 in the red channel
+        }
+        constexpr float kPeak = 510.f; // 1/255 of the peak: 2
+        expect(eq(densityColour(0.f, kPeak, lut), 0U)) << "empty";
+        expect(eq(densityColour(1.9f, kPeak, lut), 0U)) << "below 1/255 of the peak: the colormap's lowest entry";
+        expect(eq(densityColour(2.5f, kPeak, lut), lut[1])) << "just above 1/255 of the peak: the second entry";
+        expect(eq(densityColour(255.f, kPeak, lut), lut[127])) << "half the peak: 0.5 * 255 = 127.5, truncated";
+        expect(eq(densityColour(kPeak, kPeak, lut), lut[255])) << "the peak: the highest entry";
+        expect(eq(densityColour(2.f * kPeak, kPeak, lut), lut[255])) << "above the peak: clamped";
     };
 
     "Helper functions"_test = [] {
