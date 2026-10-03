@@ -218,6 +218,14 @@ const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
         }
     };
 
+    "the first start runs on the caller's thread, without waiting for a pool thread"_test = [] {
+        for (std::size_t i = 0; i < kRepetitions; ++i) {
+            DigitizerUi::Scheduler scheduler;
+            scheduler.emplaceGraph(makeRunningGraph());
+            expect(hasState(scheduler, State::RUNNING)) << "running when emplaceGraph() returns";
+        }
+    };
+
     "the scheduler runs its graph on GR4's pool, not on the thread that started it"_test = [] {
         DigitizerUi::Scheduler scheduler;
         expectReturns("emplacing a graph", [&] { scheduler.emplaceGraph(makeRunningGraph()); });

@@ -146,21 +146,36 @@ private:
             requestStart(gr::lifecycle::State::RUNNING);
         }
 
-        // Starting a pool-policy scheduler blocks until one of its workers runs, so it is a job on the IO pool and never
-        // runs on the UI thread (with WASM, spawning that worker may need the main thread). A stopped or idle scheduler
-        // has no running loop to read lifecycle messages, hence the direct state change. `toState` PAUSED restores a
-        // paused scheduler, e.g. after a .grc was set: the lifecycle has no INITIALISED -> PAUSED.
-        // One job per request: they run one after another (`_startControl`), and a job that finds the scheduler already
-        // started does nothing, so a request is never lost to one that is still finishing.
+        // A stopped or idle scheduler has no running loop to read lifecycle messages, hence the direct state change.
+        // `toState` PAUSED restores a paused scheduler, e.g. after a .grc was set: the lifecycle has no
+        // INITIALISED -> PAUSED. GR4's start() submits its workers without waiting for them, but first waits for the
+        // workers of the previous run: when none are left (always for the first start), the start runs here on the
+        // caller's thread, independent of any pool (on WASM a pool may first need the main thread to get a thread).
+        // Otherwise a job on the IO pool re-queues itself until that run has left, holding no thread while it waits.
+        // Jobs run one after another (`_startControl`), and a job that finds the scheduler already started does nothing.
         void requestStart(gr::lifecycle::State toState) {
-            ++_startsQueued;
+            if (_startsQueued == 0UZ && !_scheduler.isProcessing()) {
+                std::scoped_lock lock(_startControl->mutex);
+                startFromStoppedOrIdle(toState);
+            } else {
+                ++_startsQueued;
+                queueStartAfterPreviousRun(toState);
+            }
+            requestFramePacer();
+        }
+
+        void queueStartAfterPreviousRun(gr::lifecycle::State toState) {
             runUnlessOwnerGone(_startControl, [this, toState] {
+                if (_scheduler.isProcessing()) {
+                    std::this_thread::yield();
+                    queueStartAfterPreviousRun(toState); // again later, after other queued work
+                    return;
+                }
                 gr::thread_pool::thread::setThreadName("ui-sched-start");
                 startFromStoppedOrIdle(toState);
                 --_startsQueued;
                 wakeProgressWaiters(); // the pacer re-checks whether the scheduler is alive
             });
-            requestFramePacer();
         }
 
         void startFromStoppedOrIdle(gr::lifecycle::State toState) {
