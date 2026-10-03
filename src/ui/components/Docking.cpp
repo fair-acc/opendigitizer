@@ -103,8 +103,9 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         const bool    windowsChanged     = !std::ranges::is_permutation(_lastWindowNames, windows, {}, {}, windowName);
         const bool    dockspaceMissing   = ImGui::DockBuilderGetNode(currentDockspaceID) == nullptr;
 
-        if (!_needsRelayout && isFreeLayout() && windowsChanged) {
-            captureFreeLayout();
+        const bool dockspaceMoved = _lastDockspaceID != 0 && _lastDockspaceID != currentDockspaceID; // another ID stack
+        if (!_needsRelayout && isFreeLayout() && (windowsChanged || dockspaceMoved)) {
+            captureFreeLayout(); // from the previous dockspace, while its windows are still docked there
         }
 
         _lastDockspaceID = currentDockspaceID;
@@ -463,7 +464,9 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
                 layoutInGrid(windows, isEditable); // fallback, will be saved as state of free layout
             }
         } else {
-            restoreDockSpaceState(_lastFreeLayout, dockspaceID);
+            if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) { // nothing captured yet, e.g. a new view of a dashboard
+                layoutInGrid(windows, isEditable);
+            }
 
             dockAtBottomIfWanted(windows, dockspaceID, nodeFlags(isEditable));
         }

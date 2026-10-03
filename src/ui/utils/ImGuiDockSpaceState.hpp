@@ -13,7 +13,7 @@ gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWi
 
 /// Restore the state of a dockspace, should be called within ImGui::DockBuilderAddNode()
 /// and ImGui::DockBuilderFinish().
-void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept;
+[[nodiscard]] bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept; // true: windows were docked
 } // namespace DigitizerUi
 
 #endif

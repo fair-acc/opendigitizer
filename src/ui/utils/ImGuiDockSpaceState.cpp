@@ -149,15 +149,17 @@ gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWi
     };
 }
 
-void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept {
+bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept {
     auto dockSpaceIter = state.find("dockSpace");
     auto floatingIter  = state.find("floatingWindows");
     if (floatingIter == state.end() || dockSpaceIter == state.end()) {
-        return;
+        return false;
     }
 
-    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>()) {
+    bool docked = false;
+    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>(); dockMap && (dockMap->contains("hsplit") || dockMap->contains("vsplit"))) {
         applyLayoutVisitor(*dockMap, rootNodeID);
+        docked = true;
     }
 
     if (const auto floatingWindowsMap = floatingIter->second.get_if<gr::property_map>()) {
@@ -174,5 +176,6 @@ void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) no
             }
         }
     }
+    return docked;
 }
 } // namespace DigitizerUi

@@ -36,9 +36,11 @@ struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard; // never loads a graph
     std::unique_ptr<DigitizerUi::DashboardView> view;
     std::unique_ptr<DigitizerUi::DashboardPage> page; // the App's page, drawn at the same offset
-    Mode                                        mode      = Mode::View;
-    LegendPosition                              legend    = LegendPosition::Bottom;
-    bool                                        drawEmpty = false;
+    Mode                                        mode         = Mode::View;
+    LegendPosition                              legend       = LegendPosition::Bottom;
+    bool                                        drawEmpty    = false;
+    bool                                        documentHost = false; // gr4-present: an input-less full-screen window, a child per region
+    int                                         regionId     = 0;     // the host's PushID around the region
 };
 
 TestState* g_state = nullptr;
@@ -95,10 +97,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "dashboardview", "embedded dashboard");
 
         t->GuiFunc = [](ImGuiTestContext*) {
+            auto& state = *g_state;
+            if (state.documentHost && state.view) {
+                const ImGuiViewport* viewport = ImGui::GetMainViewport();
+                ImGui::SetNextWindowPos(viewport->Pos);
+                ImGui::SetNextWindowSize(viewport->Size);
+                IMW::Window document("##document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
+                ImGui::SetCursorScreenPos(kHostPos);
+                IMW::ChangeId                       regionScope(state.regionId);
+                IMW::Child                          region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
+                DigitizerUi::DashboardView::Options regionOptions; // as gr4-present draws a region: the available size, no legend
+                regionOptions.legend = LegendPosition::None;
+                std::ignore          = state.view->draw(*state.dashboard, state.mode, regionOptions);
+                return;
+            }
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
             IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            auto&       state = *g_state;
             if (!state.view) {
                 return;
             }
@@ -120,8 +135,40 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.drawEmpty = false;
             };
 
+            "a dashboard drawn in a child of an input-less full-screen window docks its charts inside the child, also under another ID stack"_test = [&] {
+                state.view         = std::make_unique<DigitizerUi::DashboardView>();
+                state.mode         = Mode::View;
+                state.documentHost = true;
+                while (state.dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                    ctx->Yield();
+                }
+                const ImRect regionRect(kHostPos, kHostPos + kHostSize);
+                const auto   expectDockedInRegion = [&](std::string_view when) {
+                    waitForStableCharts(ctx);
+                    for (const ImGuiWindow* window : chartWindows()) {
+                        expect(window != nullptr) << fatal;
+                        const ImRect rect(window->Pos, window->Pos + window->Size);
+                        expect(window->DockIsActive) << std::format("{}: '{}' is docked", when, window->Name);
+                        expect(regionRect.Contains(rect)) << std::format("{}: '{}' at ({}, {}) size ({}, {}) inside the region", when, window->Name, rect.Min.x, rect.Min.y, rect.GetWidth(), rect.GetHeight());
+                    }
+                };
+                expectDockedInRegion("first draw");
+                captureScreenshot(*ctx, regionRect);
+                const auto   firstChartRect = [] { return ImRect(chartWindows().front()->Pos, chartWindows().front()->Pos + chartWindows().front()->Size); };
+                const ImRect firstChart     = firstChartRect();
+                state.regionId              = 1; // the same view under another ID stack, hence another dockspace ID
+                expectDockedInRegion("under another ID");
+                // the layout moves as split ratios of node sizes, separators included: a pixel or two of rounding; the
+                // grid layout a lost arrangement falls back to differs by a hundred
+                constexpr float kRoundingPx     = 4.f;
+                const auto      near            = [](ImVec2 a, ImVec2 b) { return std::abs(a.x - b.x) <= kRoundingPx && std::abs(a.y - b.y) <= kRoundingPx; };
+                const ImRect    firstChartAfter = firstChartRect();
+                expect(near(firstChartAfter.Min, firstChart.Min) && near(firstChartAfter.Max, firstChart.Max)) << std::format("'{}' keeps its place: ({}, {}) size ({}, {}), was ({}, {}) size ({}, {})", chartWindows().front()->Name, firstChartAfter.Min.x, firstChartAfter.Min.y, firstChartAfter.GetWidth(), firstChartAfter.GetHeight(), firstChart.Min.x, firstChart.Min.y, firstChart.GetWidth(), firstChart.GetHeight());
+                state.documentHost = false;
+            };
+
             "every chart window of an embedded dashboard is docked inside the host rectangle"_test = [&] {
-                state.view = std::make_unique<DigitizerUi::DashboardView>();
+                state.view = std::make_unique<DigitizerUi::DashboardView>(); // a second view of the dashboard: no free layout of its own yet
                 // the legend lists the sinks once the graph model has received them from the scheduler
                 while (state.dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
                     ctx->Yield();
