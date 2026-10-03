@@ -77,7 +77,10 @@ public:
 
     // save and load the free layout (including any floating windows)
     const gr::property_map& saveFreeLayout() const;
-    void                    loadFreeLayout(const gr::property_map& layout) { _lastFreeLayout = layout; }
+    void                    loadFreeLayout(const gr::property_map& layout) { // a saved layout replaces the windows' .grc cells
+        _lastFreeLayout         = layout;
+        _exactFreeLayoutApplied = true;
+    }
 
 private:
     static ImGuiID dockspaceID();

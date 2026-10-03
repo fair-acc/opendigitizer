@@ -102,6 +102,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             }
             ctx->Yield(3);
 
+            "loading a valid dashboard logs no warning or error, except for the Qt block it cannot show"_test = [&] {
+                for (const gr::log::LogRecord& record : DigitizerUi::logHistory().snapshot()) {
+                    const std::string_view text(record.text, record.textLength);
+                    expect(record.level > gr::log::Level::warning || text.contains("ForeignStatusBlock")) << std::format("{}: {}", gr::meta::enumName(record.level).value_or("?"), text);
+                }
+            };
+
             "a warning logged from a worker thread shows in the bar with its count"_test = [&] {
                 DigitizerUi::logHistory().clear();
                 std::thread([] { gr::log::warning("pump overheated"); }).join();

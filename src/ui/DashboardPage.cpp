@@ -86,7 +86,7 @@ DashboardPage::DashboardPage() {
 
         auto it = std::ranges::find_if(_addedSourceBlocksWaitingForSink, [&sink](const auto& kvp) { return kvp.second.signalData.signalName == sink.signalName(); });
         if (it == _addedSourceBlocksWaitingForSink.end()) {
-            gr::log::warning("a sink was added that is not connected to a remote source");
+            gr::log::debug("a sink was added that is not connected to a remote source");
             return;
         }
 

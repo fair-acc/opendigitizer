@@ -437,17 +437,13 @@ void Dashboard::loadAndThen(std::string_view grcData, std::function<void(gr::Gra
         }
         isInitialised.store(true, std::memory_order_release);
     } catch (const gr::exception& e) {
-#ifndef NDEBUG
-        gr::log::error("loading the dashboard failed: {}", e);
-#endif
+        gr::log::debug("loading the dashboard failed: {}", e); // the notification below reaches the log as the error
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
             requestClose(this);
         }
     } catch (const std::exception& e) {
-#ifndef NDEBUG
-        gr::log::error("loading the dashboard failed: {}", e.what());
-#endif
+        gr::log::debug("loading the dashboard failed: {}", e.what()); // the notification below reaches the log as the error
         components::Notification::error(std::format("Error: {}", e.what()));
         if (requestClose) {
             requestClose(this);

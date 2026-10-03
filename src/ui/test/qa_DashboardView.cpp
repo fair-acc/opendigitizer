@@ -17,9 +17,11 @@
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -242,6 +244,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expectCellRatios("this view");
                 state.view = std::make_unique<DigitizerUi::DashboardView>();
                 expectCellRatios("a second view");
+            };
+
+            "a saved free layout wins over the .grc cells in a new view"_test = [&] {
+                // Plot1 on the left half, Plot2..Plot6 stacked on the right half: Plot1 and Plot2 equally wide (cells: 3:1)
+                const auto stacked = [](this const auto& self, std::span<const std::string> names) -> gr::pmt::Value {
+                    if (names.size() == 1UZ) {
+                        return names.front();
+                    }
+                    return gr::property_map{{"vsplit", gr::property_map{{"ratio", .5f}, {"first", names.front()}, {"second", self(names.subspan(1UZ))}}}};
+                };
+                const std::array<std::string, 5> right{"Plot2", "Plot3", "Plot4", "Plot5", "Plot6"};
+                const gr::property_map           saved{{"dockSpace", gr::property_map{{"hsplit", gr::property_map{{"ratio", .5f}, {"first", std::string("Plot1")}, {"second", stacked(right)}}}}}, {"floatingWindows", gr::property_map{}}};
+                state.dashboard->windowLayout = saved;
+                state.mode                    = Mode::View;
+                state.view                    = std::make_unique<DigitizerUi::DashboardView>();
+                waitForStableCharts(ctx);
+                const auto width = [](const char* name) {
+                    const ImGuiWindow* window = ImGui::FindWindowByName(name);
+                    return window ? window->Size.x : 0.f;
+                };
+                const float widthRatio        = width("Plot1") / std::max(1.f, width("Plot2"));
+                state.dashboard->windowLayout = {};
+                expect(widthRatio > .8f && widthRatio < 1.25f) << std::format("Plot1 is {:.2f} times as wide as Plot2: the saved layout's halves, not the cells' 3", widthRatio);
             };
 
             "a legend on top moves the charts below it"_test = [&] {
