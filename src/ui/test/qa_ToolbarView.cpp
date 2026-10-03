@@ -13,6 +13,7 @@
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <memory>
 
@@ -137,7 +138,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 using enum gr::lifecycle::State;
                 const auto enabled = [ctx](const char* ref) { return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) == 0; };
                 const auto reach   = [&](gr::lifecycle::State target) {
-                    for (int frame = 0; frame < kMaxFrames && state.dashboard->scheduler->state() != target; ++frame) {
+                    // bounded by time, not frames: test frames run much faster than a start dispatched to the IO pool
+                    for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.dashboard->scheduler->state() != target && std::chrono::steady_clock::now() < deadline;) {
                         ctx->Yield();
                     }
                     ctx->Yield(2); // the buttons show the new state

@@ -14,7 +14,7 @@ namespace DigitizerUi {
 
 /// Draws a one-line status bar: the latest GR4 warning or error and notification (see logHistory()) with the counts per
 /// level, a popup with the retained records, then the 'Dear ImGui' status-bar blocks (UICategory::StatusBar) of the
-/// dashboard's flowgraph in graph order.
+/// scheduler's flowgraph in graph order (a dashboard's, or one a host runs with a Scheduler and a UiGraphModel).
 /// @code
 /// DigitizerUi::StatusBarView statusBar{DigitizerUi::logHistory()};
 /// statusBar.draw(dashboard.get()); // nullptr: log only
@@ -23,7 +23,8 @@ class StatusBarView {
 public:
     explicit StatusBarView(LogHistory& history) noexcept : _history(history) {}
 
-    void draw(Dashboard* dashboard);
+    void draw(Scheduler* scheduler, const UiGraphModel* graphModel); // nullptr: log only
+    void draw(Dashboard* dashboard) { draw(dashboard ? &dashboard->scheduler : nullptr, dashboard ? &dashboard->graphModel : nullptr); }
 
     [[nodiscard]] static float height() noexcept;
 

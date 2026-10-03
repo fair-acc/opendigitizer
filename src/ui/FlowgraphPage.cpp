@@ -1471,9 +1471,9 @@ void FlowgraphPage::drawLocalNodeEditor() {
     if (!_editors.empty()) {
         _currentTabIsFlowGraph = true;
         drawNodeEditorTab();
-    } else if (!_dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
+    } else if (_graphModel && !_graphModel->rootBlock.blockUniqueName.empty()) {
         // We don't have an editor until the root graph is loaded
-        pushEditor("rootBlock node editor", _dashboard->graphModel, std::addressof(_dashboard->graphModel.rootBlock));
+        pushEditor("rootBlock node editor", *_graphModel, std::addressof(_graphModel->rootBlock));
     }
 }
 
@@ -1516,7 +1516,7 @@ void FlowgraphPage::drawLocalYamlTab() {
                 message.cmd         = gr::message::Command::Get;
                 message.endpoint    = gr::scheduler::property::kGraphGRC;
                 message.serviceName = owner->scheduler;
-                _dashboard->graphModel.sendMessage(std::move(message));
+                _graphModel->sendMessage(std::move(message));
             }
         }
     }
@@ -1527,16 +1527,19 @@ void FlowgraphPage::drawLocalYamlTab() {
             gr::Message message;
             message.cmd         = gr::message::Command::Set;
             message.endpoint    = gr::scheduler::property::kGraphGRC;
-            message.data        = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+            message.data        = gr::property_map{{"value", _graphModel->m_localFlowgraphGrc}};
             message.serviceName = owner->scheduler;
-            _dashboard->graphModel.sendMessage(std::move(message));
+            _graphModel->sendMessage(std::move(message));
         }
     }
 
-    ImGui::InputTextMultiline("##grc", &_dashboard->graphModel.m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
+    ImGui::InputTextMultiline("##grc", &_graphModel->m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
 }
 
 void FlowgraphPage::draw() noexcept {
+    if (_graphModel == nullptr) { // neither setDashboard() nor setGraphModel() yet
+        return;
+    }
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     if (!showEditorControls) {
         drawLocalNodeEditor();

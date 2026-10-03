@@ -11,13 +11,16 @@
 
 namespace DigitizerUi {
 
-/// Draws, in a row, play/pause/stop for the scheduler when the dashboard asks for them (`scheduler_ui`), then the
-/// 'Dear ImGui' toolbar blocks (UICategory::Toolbar) of the dashboard's flowgraph in graph order.
+/// Draws, in a row, play/pause/stop for the scheduler when asked for (a dashboard's `scheduler_ui`), then the
+/// 'Dear ImGui' toolbar blocks (UICategory::Toolbar) of the scheduler's flowgraph in graph order. Needs no dashboard: a
+/// host running a graph wires a Scheduler and a UiGraphModel (`graphModel.sendMessage_` to the scheduler,
+/// `scheduler.handleMessages(graphModel)` each frame) and draws with those.
 /// The blocks are ordinary blocks of the flowgraph; the row is rebuilt when the flowgraph changes. Toolbar blocks of
 /// other toolkits are skipped with a warning.
 class ToolbarView {
 public:
-    void draw(Dashboard& dashboard);
+    void draw(Scheduler& scheduler, const UiGraphModel& graphModel, bool schedulerControls);
+    void draw(Dashboard& dashboard) { draw(dashboard.scheduler, dashboard.graphModel, dashboard.schedulerUi); }
 
     [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks.blocks(); }
 

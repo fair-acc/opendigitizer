@@ -12,21 +12,22 @@
 
 namespace DigitizerUi {
 
-/// The 'Dear ImGui' blocks of one UICategory at the top level of a dashboard's flowgraph, in graph order, for the pane
-/// that draws them (toolbar, status bar). The list is rebuilt when the flowgraph changes; blocks of other toolkits are
-/// skipped with a warning.
+/// The 'Dear ImGui' blocks of one UICategory at the top level of a scheduler's flowgraph, in graph order, for the pane
+/// that draws them (toolbar, status bar). The list is rebuilt when the graph model reports a topology change; blocks of
+/// other toolkits are skipped with a warning.
 class PaneBlocks {
 public:
     explicit PaneBlocks(gr::UICategory category) noexcept : _category(category) {}
 
-    const std::vector<std::shared_ptr<gr::BlockModel>>& of(Dashboard& dashboard);
+    const std::vector<std::shared_ptr<gr::BlockModel>>& of(Scheduler& scheduler, const UiGraphModel& graphModel);
+    const std::vector<std::shared_ptr<gr::BlockModel>>& of(Dashboard& dashboard) { return of(dashboard.scheduler, dashboard.graphModel); }
 
     [[nodiscard]] const std::vector<std::shared_ptr<gr::BlockModel>>& blocks() const noexcept { return _blocks; }
 
 private:
     gr::UICategory                               _category;
-    const Dashboard*                             _dashboard = nullptr;
-    const void*                                  _scheduler = nullptr;
+    const UiGraphModel*                          _graphModel = nullptr;
+    const void*                                  _scheduler  = nullptr;
     std::optional<std::uint64_t>                 _topologyGeneration;
     std::vector<std::shared_ptr<gr::BlockModel>> _blocks;
 };

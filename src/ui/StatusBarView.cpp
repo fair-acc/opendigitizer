@@ -45,7 +45,7 @@ std::string timeOfDay(std::uint64_t timestampNanos) { // GR4 stamps records with
 
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
 
-void StatusBarView::draw(Dashboard* dashboard) {
+void StatusBarView::draw(Scheduler* scheduler, const UiGraphModel* graphModel) {
     IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2   pos       = ImGui::GetWindowPos();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
@@ -54,10 +54,10 @@ void StatusBarView::draw(Dashboard* dashboard) {
     drawLogLine();
     drawLogPopup();
 
-    if (dashboard == nullptr) {
+    if (scheduler == nullptr || graphModel == nullptr) {
         return;
     }
-    for (const auto& block : _blocks.of(*dashboard)) {
+    for (const auto& block : _blocks.of(*scheduler, *graphModel)) {
         ImGui::SameLine();
         IMW::ChangeStrId id(std::string(block->uniqueName()).c_str());
         std::ignore = block->draw();

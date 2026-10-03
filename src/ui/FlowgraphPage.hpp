@@ -294,6 +294,7 @@ private:
 
     std::shared_ptr<opencmw::client::RestClient> _restClient;
     Dashboard*                                   _dashboard             = nullptr;
+    UiGraphModel*                                _graphModel            = nullptr;
     bool                                         _currentTabIsFlowGraph = false;
 
     std::deque<FlowgraphEditor> _editors;
@@ -306,13 +307,23 @@ private:
     void drawLocalYamlTab();
 
 public:
+    FlowgraphPage() = default;
     explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~FlowgraphPage();
 
     void draw() noexcept;
 
+    /// edits the dashboard's flowgraph; adding remote signals needs the dashboard
     void setDashboard(Dashboard* dashboard) {
-        _dashboard = dashboard;
+        _dashboard  = dashboard;
+        _graphModel = dashboard ? std::addressof(dashboard->graphModel) : nullptr;
+        _remoteSignalSelector.reset();
+        reset();
+    }
+    /// edits a flowgraph a host runs without a dashboard (a Scheduler wired to this UiGraphModel)
+    void setGraphModel(UiGraphModel* graphModel) {
+        _dashboard  = nullptr;
+        _graphModel = graphModel;
         _remoteSignalSelector.reset();
         reset();
     }

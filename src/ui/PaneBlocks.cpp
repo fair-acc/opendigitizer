@@ -23,21 +23,21 @@ std::string toolkitOf(const gr::BlockModel& block) {
 }
 } // namespace
 
-const std::vector<std::shared_ptr<gr::BlockModel>>& PaneBlocks::of(Dashboard& dashboard) {
-    const void*         scheduler          = dashboard.scheduler ? static_cast<const void*>(dashboard.scheduler.operator->()) : nullptr;
-    const std::uint64_t topologyGeneration = dashboard.graphModel.topologyGeneration;
-    if (_dashboard == std::addressof(dashboard) && _scheduler == scheduler && _topologyGeneration == topologyGeneration) {
+const std::vector<std::shared_ptr<gr::BlockModel>>& PaneBlocks::of(Scheduler& scheduler, const UiGraphModel& graphModel) {
+    const void*         schedulerImpl      = scheduler ? static_cast<const void*>(scheduler.operator->()) : nullptr;
+    const std::uint64_t topologyGeneration = graphModel.topologyGeneration;
+    if (_graphModel == std::addressof(graphModel) && _scheduler == schedulerImpl && _topologyGeneration == topologyGeneration) {
         return _blocks;
     }
-    _dashboard          = std::addressof(dashboard);
-    _scheduler          = scheduler;
+    _graphModel         = std::addressof(graphModel);
+    _scheduler          = schedulerImpl;
     _topologyGeneration = topologyGeneration;
     _blocks.clear();
-    if (!scheduler) {
+    if (!schedulerImpl) {
         return _blocks;
     }
 
-    for (const auto& block : dashboard.scheduler->graph().blocks()) {
+    for (const auto& block : scheduler->graph().blocks()) {
         if (block->uiCategory() != _category) {
             continue;
         }

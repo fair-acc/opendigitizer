@@ -9,13 +9,13 @@ namespace {
 constexpr inline float kHeight      = 36.f;
 constexpr inline float kLeftPadding = 16.f;
 
-// play, pause and stop for the dashboard's scheduler, enabled by its state; a manual pause or stop holds until play
-void drawSchedulerControls(Dashboard& dashboard) {
+// play, pause and stop for the scheduler, enabled by its state; a manual pause or stop holds until play
+void drawSchedulerControls(Scheduler& scheduler) {
     using enum gr::lifecycle::State;
-    if (!dashboard.scheduler) {
+    if (!scheduler) {
         return;
     }
-    const gr::lifecycle::State state  = dashboard.scheduler->state();
+    const gr::lifecycle::State state  = scheduler->state();
     const auto                 button = [](const char* label, const char* tooltip, bool enabled) {
         IMW::Disabled disabled(!enabled);
         bool          pressed = false;
@@ -28,27 +28,27 @@ void drawSchedulerControls(Dashboard& dashboard) {
         return pressed;
     };
     if (button("\uf04b###schedulerPlay", "start or resume the flowgraph", state == STOPPED || state == IDLE || state == PAUSED)) {
-        std::ignore = dashboard.scheduler->start();
+        std::ignore = scheduler->start();
     }
     if (button("\uf04c###schedulerPause", "pause the flowgraph", state == RUNNING)) {
-        std::ignore = dashboard.scheduler->pause();
+        std::ignore = scheduler->pause();
     }
     if (button("\uf04d###schedulerStop", "stop the flowgraph", state == RUNNING || state == PAUSED)) {
-        std::ignore = dashboard.scheduler->stop();
+        std::ignore = scheduler->stop();
     }
 }
 } // namespace
 
-void ToolbarView::draw(Dashboard& dashboard) {
-    const auto& blocks = _blocks.of(dashboard);
-    if (blocks.empty() && !dashboard.schedulerUi) {
+void ToolbarView::draw(Scheduler& scheduler, const UiGraphModel& graphModel, bool schedulerControls) {
+    const auto& blocks = _blocks.of(scheduler, graphModel);
+    if (blocks.empty() && !schedulerControls) {
         return;
     }
 
     IMW::Child toolbar("##Toolbar", ImVec2(ImGui::GetContentRegionAvail().x, kHeight), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + kLeftPadding);
-    if (dashboard.schedulerUi) {
-        drawSchedulerControls(dashboard);
+    if (schedulerControls) {
+        drawSchedulerControls(scheduler);
     }
     for (const auto& block : blocks) {
         std::ignore = block->draw();
