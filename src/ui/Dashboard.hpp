@@ -152,7 +152,8 @@ struct Dashboard {
     std::shared_ptr<const DashboardDescription>            description = nullptr;
     std::vector<UIWindow>                                  uiWindows;
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
-    DockingLayoutType                                      layoutType = DockingLayoutType::Grid;
+    DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
+    bool                                                   schedulerUi = false; // play/pause/stop controls shown (.grc dashboard.scheduler_ui)
     gr::property_map                                       windowLayout;
     gr::property_map                                       exportedProperties;
     std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
@@ -173,7 +174,7 @@ struct Dashboard {
     /// saves with the layout the view shows now; it becomes the dashboard's stored layout
     void save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
     /// header and graph YAML (flowgraph plus the dashboard section) with the given layout
-    [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
+    [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise();
     void                                                        saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
     void                                                        doLoad(const gr::property_map& dashboard);
 
@@ -199,11 +200,6 @@ struct Dashboard {
     void unregisterRemoteService(std::string_view blockName);
     void removeUnusedRemoteServices();
     void saveRemoteServiceFlowgraph(Service* s);
-
-    template<typename TScheduler, typename... Args>
-    void emplaceScheduler(Args&&... args) {
-        scheduler.emplaceScheduler<TScheduler, Args...>(std::forward<Args>(args)...);
-    }
 
     template<typename... Args>
     void emplaceGraph(Args&&... args) {

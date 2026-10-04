@@ -35,9 +35,7 @@ int main() {
         constexpr float kThird = 1.f / 3.f;
         expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 1UZ), {{0.f, 0.f, 1.f, 1.f}}));
         expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 2UZ), {{0.f, 0.f, .5f, 1.f}, {.5f, 0.f, .5f, 1.f}}));
-        // 2 columns x 2 rows, the last window takes the rest of its row
         expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 3UZ), {{0.f, 0.f, .5f, .5f}, {.5f, 0.f, .5f, .5f}, {0.f, .5f, 1.f, .5f}}));
-        // 3 columns x 2 rows
         expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 5UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, 2.f * kThird, .5f}}));
         expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 6UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, kThird, .5f}, {2.f * kThird, .5f, kThird, .5f}}));
     };
@@ -51,7 +49,7 @@ int main() {
     };
 
     "layout rules: free cells are scaled by the largest extent"_test = [] {
-        const std::array<std::array<std::size_t, 4>, 3> cells{{{0UZ, 0UZ, 3UZ, 1UZ}, {3UZ, 0UZ, 1UZ, 1UZ}, {0UZ, 1UZ, 2UZ, 1UZ}}}; // 4 x 2 cells
+        const std::array<std::array<std::int64_t, 4>, 3> cells{{{0, 0, 3, 1}, {3, 0, 1, 1}, {0, 1, 2, 1}}};
         expect(sameRects(DigitizerUi::freeLayoutRects(cells), {{0.f, 0.f, .75f, .5f}, {.75f, 0.f, .25f, .5f}, {0.f, .5f, .5f, .5f}}));
     };
 

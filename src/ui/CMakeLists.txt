@@ -271,6 +271,7 @@ add_library(
   components/Splitter.cpp
   components/Splitter.hpp
   components/VirtualScrollTable.hpp
+  components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)
 target_link_libraries(
   opendigitizer-ui-components
@@ -358,18 +359,28 @@ add_library(
   DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
+  LogHistory.cpp
+  LogHistory.hpp
   MapUtils.hpp
+  PaneBlocks.cpp
+  PaneBlocks.hpp
   RemoteSignalSources.cpp
   RemoteSignalSources.hpp
   Scheduler.hpp
   Setup.cpp
   Setup.hpp
+  StatusBarView.cpp
+  StatusBarView.hpp
+  ToolbarView.cpp
+  ToolbarView.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp
+  blocks/StatusBarBlock.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ToolbarBlock.hpp
   blocks/meta.hpp
   components/Block.cpp
   components/Block.hpp
@@ -428,11 +439,9 @@ add_library(
   OAuthSession.hpp
   OpenDashboardPage.cpp
   OpenDashboardPage.hpp
-  blocks/ToolbarBlock.hpp
   common/ImGuiHelperSDL.hpp
   common/ImguiXKCD.hpp
   components/AppHeader.hpp
-  components/Toolbar.hpp
   utils/stb_impl.cpp) # STB is a library with linking issues -- impl instantiated only here
 target_link_libraries(
   ${target_name}lib

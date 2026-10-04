@@ -17,9 +17,11 @@
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -39,12 +41,15 @@ struct TestState {
     std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard; // never loads a graph
     std::unique_ptr<DigitizerUi::DashboardView> view;
     std::unique_ptr<DigitizerUi::DashboardPage> page; // the App's page, drawn at the same offset
-    Mode                                        mode         = Mode::View;
-    LegendPosition                              legend       = LegendPosition::Bottom;
-    bool                                        drawEmpty    = false;
-    bool                                        documentHost = false; // gr4-present: an input-less full-screen window, a child per region
-    int                                         regionId     = 0;     // the host's PushID around the region
-    bool                                        background   = true;
+    Mode                                        mode             = Mode::View;
+    LegendPosition                              legend           = LegendPosition::Bottom;
+    bool                                        drawEmpty        = false;
+    bool                                        documentHost     = false; // gr4-present: an input-less full-screen window, a child per region
+    int                                         regionId         = 0;     // the host's PushID around the region
+    bool                                        hideView         = false; // a host showing another slide does not draw the view
+    bool                                        background       = true;
+    bool                                        frameProbe       = false; // a docked window records ImPlot's frame colour as charts see it
+    float                                       probedFrameAlpha = -1.f;
     std::optional<ImVec4>                       hostBackground;
 };
 
@@ -103,6 +108,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         t->GuiFunc = [](ImGuiTestContext*) {
             auto& state = *g_state;
+            if (state.documentHost && state.view && state.hideView) {
+                return;
+            }
             if (state.documentHost && state.view) {
                 const ImGuiViewport* viewport = ImGui::GetMainViewport();
                 ImGui::SetNextWindowPos(viewport->Pos);
@@ -130,7 +138,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto& dashboardStyle      = DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle;
             dashboardStyle.legend     = state.legend;
             dashboardStyle.background = state.background;
-            std::ignore               = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode);
+            DigitizerUi::DashboardView::Options options;
+            if (state.frameProbe) {
+                options.addDockWindows = [](DigitizerUi::DockSpace::Windows& windows) {
+                    static const auto probe = std::make_shared<DigitizerUi::DockSpace::Window>("FrameProbe");
+                    probe->renderFunc       = [] { g_state->probedFrameAlpha = ImPlot::GetStyleColorVec4(ImPlotCol_FrameBg).w; };
+                    windows.push_back(probe);
+                };
+            }
+            std::ignore = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode, options);
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -175,6 +191,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto      near            = [](ImVec2 a, ImVec2 b) { return std::abs(a.x - b.x) <= kRoundingPx && std::abs(a.y - b.y) <= kRoundingPx; };
                 const ImRect    firstChartAfter = firstChartRect();
                 expect(near(firstChartAfter.Min, firstChart.Min) && near(firstChartAfter.Max, firstChart.Max)) << std::format("'{}' keeps its place: ({}, {}) size ({}, {}), was ({}, {}) size ({}, {})", chartWindows().front()->Name, firstChartAfter.Min.x, firstChartAfter.Min.y, firstChartAfter.GetWidth(), firstChartAfter.GetHeight(), firstChart.Min.x, firstChart.Min.y, firstChart.GetWidth(), firstChart.GetHeight());
+
+                for (const int region : {0, 1, 0}) { // back and forth, with frames between in which the view is not drawn
+                    state.hideView = true;
+                    ctx->Yield(10);
+                    state.hideView = false;
+                    state.regionId = region;
+                    expectDockedInRegion(std::format("back under ID {} after frames without the view", region));
+                    const ImRect firstChartBack = firstChartRect();
+                    expect(near(firstChartBack.Min, firstChart.Min) && near(firstChartBack.Max, firstChart.Max)) << std::format("ID {}: '{}' keeps its place: ({}, {}) size ({}, {}), was ({}, {}) size ({}, {})", region, chartWindows().front()->Name, firstChartBack.Min.x, firstChartBack.Min.y, firstChartBack.GetWidth(), firstChartBack.GetHeight(), firstChart.Min.x, firstChart.Min.y, firstChart.GetWidth(), firstChart.GetHeight());
+                }
                 state.documentHost = false;
             };
 
@@ -202,7 +228,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
             };
 
-            "without a background the host shows through the chart windows, the plots area and the bar"_test = [&] {
+            "without a background the host shows through the chart windows and frames, the plots area and the bar"_test = [&] {
                 const ImRect hostRect(kHostPos, kHostPos + kHostSize);
                 const auto   magentaShare = [&](bool background) {
                     state.background = background;
@@ -215,14 +241,76 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.mode                                                            = Mode::View;
                 state.hostBackground                                                  = ImVec4(1.f, 0.f, 1.f, 1.f);
                 DigitizerUi::LookAndFeel::mutableInstance().chartStyle.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f);
+                const ImVec4 frameBackground                                          = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f)); // a host's opaque frame
                 const double withBackground                                           = magentaShare(true);
                 const double withoutBackground                                        = magentaShare(false);
                 captureScreenshot(*ctx, hostRect);
                 DigitizerUi::LookAndFeel::mutableInstance().chartStyle = {};
+                ImPlot::GetStyle().Colors[ImPlotCol_FrameBg]           = frameBackground;
                 state.hostBackground.reset();
                 state.background = true;
                 expect(withBackground < 0.01) << std::format("with backgrounds the chart windows cover the host: {:.3f} of their area magenta", withBackground);
                 expect(withoutBackground > 0.5) << std::format("without them the host shows through: {:.3f} of the chart windows' area magenta", withoutBackground);
+            };
+
+            "every new view of the dashboard lays out its charts by the .grc's free-layout cells"_test = [&] {
+                // qa_layout.grc, 4x4 cells: Plot1 3 wide, Plot2 1 wide (same row); Plot3 1 high, Plot4 2 high
+                const auto size = [](const char* name) {
+                    const ImGuiWindow* window = ImGui::FindWindowByName(name);
+                    return window ? window->Size : ImVec2{};
+                };
+                const auto expectCellRatios = [&](std::string_view view) {
+                    waitForStableCharts(ctx);
+                    const float widthRatio  = size("Plot1").x / std::max(1.f, size("Plot2").x);
+                    const float heightRatio = size("Plot4").y / std::max(1.f, size("Plot3").y);
+                    expect(widthRatio > 2.5f && widthRatio < 3.5f) << std::format("{}: Plot1 is {:.2f} times as wide as Plot2, the cells 3", view, widthRatio);
+                    expect(heightRatio > 1.7f && heightRatio < 2.3f) << std::format("{}: Plot4 is {:.2f} times as high as Plot3, the cells 2", view, heightRatio);
+                };
+                state.mode = Mode::View;
+                expectCellRatios("this view");
+                state.view = std::make_unique<DigitizerUi::DashboardView>();
+                expectCellRatios("a second view");
+            };
+
+            "a saved free layout wins over the .grc cells in a new view"_test = [&] {
+                // Plot1 on the left half, Plot2..Plot6 stacked on the right half: Plot1 and Plot2 equally wide (cells: 3:1)
+                const auto stacked = [](this const auto& self, std::span<const std::string> names) -> gr::pmt::Value {
+                    if (names.size() == 1UZ) {
+                        return names.front();
+                    }
+                    return gr::property_map{{"vsplit", gr::property_map{{"ratio", .5f}, {"first", names.front()}, {"second", self(names.subspan(1UZ))}}}};
+                };
+                const std::array<std::string, 5> right{"Plot2", "Plot3", "Plot4", "Plot5", "Plot6"};
+                const gr::property_map           saved{{"dockSpace", gr::property_map{{"hsplit", gr::property_map{{"ratio", .5f}, {"first", std::string("Plot1")}, {"second", stacked(right)}}}}}, {"floatingWindows", gr::property_map{}}};
+                state.dashboard->windowLayout = saved;
+                state.mode                    = Mode::View;
+                state.view                    = std::make_unique<DigitizerUi::DashboardView>();
+                waitForStableCharts(ctx);
+                const auto width = [](const char* name) {
+                    const ImGuiWindow* window = ImGui::FindWindowByName(name);
+                    return window ? window->Size.x : 0.f;
+                };
+                const float widthRatio        = width("Plot1") / std::max(1.f, width("Plot2"));
+                state.dashboard->windowLayout = {};
+                expect(widthRatio > .8f && widthRatio < 1.25f) << std::format("Plot1 is {:.2f} times as wide as Plot2: the saved layout's halves, not the cells' 3", widthRatio);
+            };
+
+            "without a background the charts' frame is transparent while they draw, e.g. a SpectrumView's subplots"_test = [&] {
+                const ImVec4 hostFrame = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f)); // a host's opaque frame
+                state.frameProbe       = true;
+                const auto frameAlpha  = [&](bool background) {
+                    state.background       = background;
+                    state.probedFrameAlpha = -1.f;
+                    ctx->Yield(3);
+                    return state.probedFrameAlpha;
+                };
+                const float withBackground                   = frameAlpha(true);
+                const float withoutBackground                = frameAlpha(false);
+                state.frameProbe                             = false;
+                state.background                             = true;
+                ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = hostFrame;
+                expect(eq(withBackground, 1.f)) << "the host's frame colour";
+                expect(eq(withoutBackground, 0.f)) << "transparent";
             };
 
             "a legend on top moves the charts below it"_test = [&] {

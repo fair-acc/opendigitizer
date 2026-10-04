@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <format>
+#include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 #include <implot.h>
@@ -85,7 +86,7 @@ DashboardPage::DashboardPage() {
 
         auto it = std::ranges::find_if(_addedSourceBlocksWaitingForSink, [&sink](const auto& kvp) { return kvp.second.signalData.signalName == sink.signalName(); });
         if (it == _addedSourceBlocksWaitingForSink.end()) {
-            std::print("[DashboardPage] Status: A sink added that is not connected to a remote source\n");
+            gr::log::debug("a sink was added that is not connected to a remote source");
             return;
         }
 
@@ -369,19 +370,19 @@ void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
     using enum DigitizerUi::DockingLayoutType;
     IMW::Group layout;
     if (plotSquareIconButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize)) {
-        _view.dockSpace().setLayoutType(Row);
+        _dashboard->layoutType = Row;
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F7A4}", "change to the vertical layout", plotButtonSize)) {
-        _view.dockSpace().setLayoutType(Column);
+        _dashboard->layoutType = Column;
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F58D}", "change to the grid layout", plotButtonSize)) {
-        _view.dockSpace().setLayoutType(Grid);
+        _dashboard->layoutType = Grid;
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F248}", "change to the free layout", plotButtonSize)) {
-        _view.dockSpace().setLayoutType(Free);
+        _dashboard->layoutType = Free;
     }
     ImGui::SameLine();
 }
@@ -741,8 +742,6 @@ void DashboardPage::drawNewPlotModal() {
         }
     }
 }
-
-void DashboardPage::setLayoutConfiguration(DockingLayoutType type, std::optional<gr::property_map> freeLayoutDescription) { _view.setLayout(type, freeLayoutDescription); }
 
 std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const { return {_view.dockSpace().layoutType(), _view.dockSpace().saveFreeLayout()}; }
 

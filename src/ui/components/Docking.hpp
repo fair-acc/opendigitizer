@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -42,24 +43,21 @@ struct GridShape {
     std::size_t rows    = 1UZ;
 };
 
-/// cells of the automatic layouts: Row puts all windows in one row, Column in one column, Grid (and Free without
-/// stored rectangles) in ceil(sqrt(n)) columns and as many rows as needed
 [[nodiscard]] GridShape gridShape(DockingLayoutType type, std::size_t windowCount) noexcept;
 
-/// window rectangles of the automatic layouts in window order; the last window takes the rest of its row
 [[nodiscard]] std::vector<LayoutRect> autoLayoutRects(DockingLayoutType type, std::size_t windowCount);
 
-/// window rectangles of a free layout given as grid cells {x, y, width, height}, scaled by the largest extent
-[[nodiscard]] std::vector<LayoutRect> freeLayoutRects(std::span<const std::array<std::size_t, 4>> cells);
+[[nodiscard]] std::vector<LayoutRect> freeLayoutRects(std::span<const std::array<std::int64_t, 4>> cells); // negative extents count as 0
 
 /// Hosts a group of dock windows
 class DockSpace {
     mutable gr::property_map _lastFreeLayout;
     std::vector<std::string> _lastWindowNames;
-    ImGuiID                  _lastDockspaceID = 0;
-    DockingLayoutType        _layoutType      = DockingLayoutType::Free;
-    bool                     _needsRelayout   = true;
-    bool                     _lastIsEditable  = false;
+    ImGuiID                  _lastDockspaceID        = 0;
+    DockingLayoutType        _layoutType             = DockingLayoutType::Free;
+    bool                     _needsRelayout          = true;
+    bool                     _lastIsEditable         = false;
+    bool                     _exactFreeLayoutApplied = false;
 
 public:
     struct Window;
@@ -72,12 +70,14 @@ public:
     void setLayoutType(DockingLayoutType);
 
     /// Renders the specified windows in an area of size paneSize
-    /// May modify windows by setting Window::freeLayoutPosition to nullopt
     void render(const Windows& windows, ImVec2 paneSize, bool isEditable);
 
     // save and load the free layout (including any floating windows)
     const gr::property_map& saveFreeLayout() const;
-    void                    loadFreeLayout(const gr::property_map& layout) { _lastFreeLayout = layout; }
+    void                    loadFreeLayout(const gr::property_map& layout) {
+        _lastFreeLayout         = layout;
+        _exactFreeLayoutApplied = true;
+    }
 
 private:
     static ImGuiID dockspaceID();

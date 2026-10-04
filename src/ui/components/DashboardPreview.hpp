@@ -8,6 +8,8 @@
 
 #include <imgui.h>
 
+#include "Docking.hpp"
+
 namespace DigitizerUi {
 
 /**
@@ -16,12 +18,7 @@ namespace DigitizerUi {
  * charts are loaded.
  */
 struct DashboardPreview {
-    struct Rect {
-        float x = 0.f;
-        float y = 0.f;
-        float w = 0.f;
-        float h = 0.f;
-    };
+    using Rect = LayoutRect;
 
     // Chart2D accounts for both XYChart and YYChart
     enum class ChartType { SpectrumDensity, SpectrumPlot, SpectrumView, WaterfallPlot, SurfacePlot, Chart2D, Other };

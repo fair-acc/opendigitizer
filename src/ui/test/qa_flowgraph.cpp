@@ -38,8 +38,6 @@ using namespace boost::ut;
 struct TestState : public opendigitizer::test::TestDashboardRunner {
     DigitizerUi::FlowgraphPage flowgraphPage;
 
-    TestState() : flowgraphPage(restClient) {}
-
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
     void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
 

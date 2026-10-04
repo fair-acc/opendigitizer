@@ -157,6 +157,17 @@ connections:
   - [grcSource, 0, grcSink, 0]
 )";
 
+constexpr std::string_view kOtherGrc = R"(blocks:
+  - id: gr::testing::NullSource<float32>
+    parameters:
+      name: otherSource
+  - id: gr::testing::NullSink<float32>
+    parameters:
+      name: otherSink
+connections:
+  - [otherSource, 0, otherSink, 0]
+)";
+
 // the UI side of a scheduler as the App's frame loop drives it: messages are pumped into a graph model
 struct UiSide {
     DigitizerUi::Scheduler    scheduler;
@@ -294,6 +305,28 @@ const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
         expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::RUNNING); })) << fatal;
         ui.setGrc(kReplacementGrc);
         expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.scheduler, State::RUNNING); })) << "the UI model shows the new graph and the scheduler runs again";
+    };
+
+    "from sending a .grc until its reply the UI side keeps off the graph, also when it is set again and again"_test = [] {
+        UiSide ui;
+        expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::RUNNING); })) << fatal;
+        for (std::size_t i = 0; i < kRepetitions; ++i) { // the frame pacer runs between the exchanges
+            ui.setGrc(i % 2UZ == 0UZ ? kReplacementGrc : kOtherGrc);
+            expect(ui.scheduler->isExchangingGraph()) << "exchanging once the .grc is sent";
+            const bool done = ui.pumpUntil([&] { return !ui.scheduler->isExchangingGraph() && hasState(ui.scheduler, State::RUNNING); });
+            expect(done) << std::format("exchange {}: the reply ends the exchange and the scheduler runs again; exchanging {}, state {}", i, ui.scheduler->isExchangingGraph(), magic_enum::enum_name(ui.scheduler->state()));
+            if (!done) {
+                return;
+            }
+        }
+    };
+
+    "a .grc that does not load ends the exchange and leaves the scheduler running"_test = [] {
+        UiSide ui;
+        expect(ui.pumpUntil([&] { return hasState(ui.scheduler, State::RUNNING); })) << fatal;
+        ui.setGrc("blocks: [ this is not a flowgraph");
+        expect(ui.pumpUntil([&] { return !ui.scheduler->isExchangingGraph(); })) << "the error reply ends the exchange";
+        expect(hasState(ui.scheduler, State::RUNNING));
     };
 
     "setting a .grc on a paused scheduler leaves the new graph paused"_test = [] {

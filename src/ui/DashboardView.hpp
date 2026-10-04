@@ -13,13 +13,7 @@
 
 namespace DigitizerUi {
 
-/// Draws a dashboard: its charts, docked as the dashboard's layout describes, and the signal legend in a bar below
-/// them, inside a child window of the given size. Used by the App's DashboardPage and by applications that embed a
-/// dashboard; the App adds its own controls through the bar slots and extra dock windows.
-/// @code
-/// DigitizerUi::DashboardView view;            // one per drawn dashboard; receives the charts' context-menu requests
-/// view.draw(*dashboard, DigitizerUi::DashboardView::Mode::View);
-/// @endcode
+/// draws a dashboard's charts, docked as its layout describes, and the signal legend below them
 class DashboardView {
 public:
     using Mode           = opendigitizer::charts::ChartMode;
@@ -27,15 +21,14 @@ public:
 
     struct Options {
         ImVec2                                   size{0.f, 0.f}; // 0: the available region
-        std::function<void()>                    barLeading;     // drawn before the legend
-        std::function<void()>                    barCentre;      // drawn instead of the legend
-        std::function<void()>                    barTrailing;    // drawn after the legend
-        std::function<void(DockSpace::Windows&)> addDockWindows; // further windows docked with the charts
+        std::function<void()>                    barLeading;
+        std::function<void()>                    barCentre;
+        std::function<void()>                    barTrailing;
+        std::function<void(DockSpace::Windows&)> addDockWindows;
     };
 
     struct Result {
-        ImVec2      chartPaneSize;
-        std::string rightClickedSinkName; // a legend entry right-clicked in Interaction mode
+        std::string rightClickedSinkName;
         bool        backgroundClicked = false;
     };
 
@@ -47,13 +40,11 @@ public:
     Result draw(Dashboard& dashboard, Mode mode);
     Result draw(Dashboard& dashboard, Mode mode, const Options& options);
 
-    /// overrides the layout stored in the dashboard, which is applied otherwise when the dashboard is first drawn
-    void setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription);
-
-    [[nodiscard]] DockSpace&       dockSpace() noexcept { return _dockSpace; }
     [[nodiscard]] const DockSpace& dockSpace() const noexcept { return _dockSpace; }
 
 private:
+    void setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription);
+
     struct PendingTransmutation {
         std::string chartId;
         std::string newChartType;
@@ -61,20 +52,16 @@ private:
 
     DockSpace                           _dockSpace;
     GlobalSignalLegend                  _signalLegend;
-    ImVec2                              _legendBox{500, 40};        // size of the bar's centre part in the last frame
-    float                               _legendColumnWidth = 150.f; // widest legend entry in the last frame (left/right)
+    ImVec2                              _legendBox{500, 40};
+    float                               _legendColumnWidth = 150.f;
     Dashboard*                          _dashboard         = nullptr;
     bool                                _layoutApplied     = false;
     std::optional<PendingTransmutation> _pendingTransmutation;
     std::vector<std::string>            _pendingRemovals;
 
-    // transmutation and removal are deferred to the next frame: a chart must not be replaced while it draws
+    // deferred: a chart must not be replaced while it draws
     opendigitizer::charts::ChartRequests _chartRequests{
-        .transmute =
-            [this](std::string_view chartId, std::string_view newChartType) {
-                _pendingTransmutation = PendingTransmutation{std::string(chartId), std::string(newChartType)};
-                return true;
-            },
+        .transmute = [this](std::string_view chartId, std::string_view newChartType) { _pendingTransmutation = PendingTransmutation{std::string(chartId), std::string(newChartType)}; },
         .duplicate = [this](std::string_view chartId) { _dashboard->copyChart(chartId); },
         .remove    = [this](std::string_view chartId) { _pendingRemovals.emplace_back(chartId); },
     };
@@ -85,7 +72,6 @@ private:
     void drawLegendColumn(Mode mode, float height, const Options& options, Result& result);
 };
 
-/// moves the cursor so that an item of the given width is aligned within the remaining width (0: left, 1: right)
 void alignForWidth(float width, float alignment = 0.5f) noexcept;
 
 } // namespace DigitizerUi
