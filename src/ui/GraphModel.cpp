@@ -4,12 +4,15 @@
 
 #include "scope_exit.hpp"
 
+#include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/YamlPmt.hpp>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <set>
@@ -110,7 +113,7 @@ void UiGraphBlock::handleChildBlockEmplaced(const gr::property_map& blockData) {
 bool UiGraphBlock::handleChildBlockRemoved(const std::string& uniqueName) {
     auto [blockIt, found] = findBlockIteratorBy({SearchProperty::UniqueName}, uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block to be removed {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block to be removed {}", uniqueName);
         ownerGraph->requestFullUpdate();
         return false;
     }
@@ -128,7 +131,7 @@ void UiGraphBlock::handleChildEdgeEmplaced(const gr::property_map& data) {
         childEdges.emplace_back(std::move(*edge));
     } else {
         // Failed to read edge data
-        std::println("!requestFullUpdate reason: failed to read edge data {}", data);
+        gr::log::debug("requestFullUpdate reason: failed to read edge data {}", data);
         ownerGraph->requestFullUpdate();
     }
 }
@@ -502,8 +505,8 @@ std::optional<UiGraphEdge> UiGraphBlock::parseEdgeData(const gr::property_map& e
     edge.edgeDestinationPort = resolveChildPort(edge.edgeDestinationBlockUniqueName, gr::PortDirection::INPUT, edge.edgeDestinationPortDefinition);
 
     if (!edge.edgeSourcePort || !edge.edgeDestinationPort) {
-        std::println("Warning: Edge definition invalid! source {} ({} {}) destination {} ({} {})", //
-            !!edge.edgeSourcePort, edge.edgeSourceBlockUniqueName, edge.edgeSourcePortDefinition,  //
+        gr::log::warning("edge definition invalid: source {} ({} {}) destination {} ({} {})",     //
+            !!edge.edgeSourcePort, edge.edgeSourceBlockUniqueName, edge.edgeSourcePortDefinition, //
             !!edge.edgeDestinationPort, edge.edgeDestinationBlockUniqueName, edge.edgeDestinationPortDefinition);
         return {};
     }
@@ -904,7 +907,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     if (!message.data) {
-        std::println("Received an error: {}", message.data.error().message);
+        gr::log::error("received an error: {}", message.data.error().message);
         DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
         return false;
     }
@@ -971,7 +974,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
 
     if (!targetBlock) {
         components::Notification::error(std::format("Got a message for an unknown block {} {}", message.serviceName, message.endpoint));
-        std::println("!requestFullUpdate reason: Got a message for an unknown block {} {}", message.serviceName, message.endpoint);
+        gr::log::debug("requestFullUpdate reason: Got a message for an unknown block {} {}", message.serviceName, message.endpoint);
         requestFullUpdate();
         return false;
     }
@@ -1036,7 +1039,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         // Nothing to do for lifecycle state changes
         auto valueIt = data.find("state");
         if (valueIt != data.end() && valueIt->second.value_or(std::string()) == "RUNNING") {
-            std::println("Lifecycle state changed to: RUNNING, requesting update");
+            gr::log::debug("lifecycle state changed to RUNNING, requesting an update");
             requestFullUpdate();
             requestAvailableBlocksTypesUpdate();
         }
@@ -1055,7 +1058,7 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
 
     } else if (message.endpoint == scheduler::kGraphGRC) {
         if (auto valueIt = data.find("value"); valueIt != data.end()) {
-            std::println("Retrieved Graph GRC YAML");
+            gr::log::debug("retrieved the graph .grc");
             auto graphData = gr::pmt::yaml::deserialize(valueIt->second.value_or(std::string{}));
             if (!graphData) {
                 components::Notification::error(std::format("Could not parse flowgraph YAML: {}", graphData.error().message));
@@ -1081,6 +1084,9 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
         return false;
     }
 
+    if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
+        ++topologyGeneration;
+    }
     return true;
 }
 
@@ -1089,7 +1095,7 @@ void UiGraphModel::requestFullUpdate(std::source_location location) {
         return;
     }
 
-    std::println("!requestFullUpdate: sending message, invoked by {}:{}", location.file_name(), location.line());
+    gr::log::debug("requestFullUpdate: sending message, invoked by {}:{}", location.file_name(), location.line());
 
     requestedFullUpdate = true;
     gr::Message message;
@@ -1122,7 +1128,7 @@ void UiGraphModel::requestAvailableBlocksTypesUpdate() {
 void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const gr::property_map& blockData) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block to be updated {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block to be updated {}", uniqueName);
         requestFullUpdate();
         return;
     }
@@ -1133,17 +1139,21 @@ void UiGraphModel::handleBlockDataUpdated(const std::string& uniqueName, const g
 void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, const gr::property_map& data) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block to be changed settings {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block to be changed settings {}", uniqueName);
         requestFullUpdate();
         return;
     }
 
-    auto* block = found.block;
+    auto* block       = found.block;
+    bool  keysChanged = false; // the settings' meta information depends on which settings exist, not on their values
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
+            keysChanged = keysChanged || !block->blockSettings.contains(key);
             block->blockSettings.insert_or_assign(key, value);
-            block->updateBlockSettingsMetaInformation();
         }
+    }
+    if (keysChanged) {
+        block->updateBlockSettingsMetaInformation();
     }
 }
 
@@ -1152,7 +1162,7 @@ void UiGraphModel::handleBlockSettingsStaged(const std::string& uniqueName, cons
 void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const gr::property_map& data) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block's context change {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block's context change {}", uniqueName);
         requestFullUpdate();
         return;
     }
@@ -1169,7 +1179,7 @@ void UiGraphModel::handleBlockActiveContext(const std::string& uniqueName, const
 void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const gr::property_map& data) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block's known contexts change {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block's known contexts change {}", uniqueName);
         requestFullUpdate();
         return;
     }
@@ -1195,7 +1205,7 @@ void UiGraphModel::handleBlockAllContexts(const std::string& uniqueName, const g
 void UiGraphModel::handleBlockAddOrRemoveContext(const std::string& uniqueName, const gr::property_map& /* data */) {
     auto found = recursiveFindBlockByUniqueName(uniqueName);
     if (!found) {
-        std::println("!requestFullUpdate reason: requested an unknown block's add/remove context {}", uniqueName);
+        gr::log::debug("requestFullUpdate reason: requested an unknown block's add/remove context {}", uniqueName);
         requestFullUpdate();
         return;
     }

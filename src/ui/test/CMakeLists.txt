@@ -39,6 +39,10 @@ add_executable(qa_Scheduler qa_Scheduler.cpp)
 target_link_libraries(qa_Scheduler PRIVATE ut opendigitizer::dashboard opendigitizer-options)
 add_test(NAME qa_Scheduler COMMAND qa_Scheduler)
 
+add_executable(qa_LogHistory qa_LogHistory.cpp)
+target_link_libraries(qa_LogHistory PRIVATE ut opendigitizer::dashboard opendigitizer-options)
+add_test(NAME qa_LogHistory COMMAND qa_LogHistory)
+
 add_executable(qa_DashboardPreview qa_DashboardPreview.cpp)
 target_link_libraries(qa_DashboardPreview PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_DashboardPreview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -92,6 +96,8 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_grouping.grc
     examples/qa_layout.grc
     examples/qa_subgraph.grc
+    examples/qa_statusbar.grc
+    examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 
   # Code shared between all tests
@@ -138,6 +144,10 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_layout)
   add_imgui_test(qa_DashboardBaseline)
   add_imgui_test(qa_DashboardView)
+  add_imgui_test(qa_ToolbarView)
+  add_imgui_test(qa_StatusBarView)
+  add_imgui_test(qa_HostComposition)
+  add_imgui_test(qa_ChartStyle)
   add_imgui_test(qa_ZoomablePlot)
   add_imgui_test(qa_ColourManager)
   add_imgui_test(qa_flowgraph)

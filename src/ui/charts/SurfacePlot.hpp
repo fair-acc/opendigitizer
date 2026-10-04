@@ -781,14 +781,15 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         ImPlot3D::GetStyle().LabelPadding = anyInline ? ImVec2(14, 14) : ImVec2(10, 10);
 
         // reduce tick label font size for the 3D plot to avoid overlap with the mesh
-        const auto& lnf       = DigitizerUi::LookAndFeel::instance();
-        auto*       smallFont = lnf.fontSmall[lnf.prototypeMode];
-        if (smallFont) {
-            ImGui::PushFont(smallFont, lnf.relativeFontSize(lnf.fontSmall));
+        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        const bool pushedFont             = labelFace != nullptr || labelSize > 0.f;
+        if (pushedFont) {
+            ImGui::PushFont(labelFace, labelSize);
         }
 
         if (!ImPlot3D::BeginPlot(chart_name.value.c_str(), plotSize, flags3d)) {
-            if (smallFont) {
+            if (pushedFont) {
                 ImGui::PopFont();
             }
             return gr::work::Status::OK;
@@ -905,7 +906,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         _savedPlot = ImPlot3D::GImPlot3D->CurrentPlot;
 
         ImPlot3D::EndPlot();
-        if (smallFont) {
+        if (pushedFont) {
             ImGui::PopFont();
         }
         _needsRefit = false;

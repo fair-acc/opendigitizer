@@ -177,7 +177,8 @@ public:
         style.PinRounding  = 0;
         style.LinkStrength = 60.f;
 
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().palette().flowgraphBg;
+        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().flowgraph.canvasBackground ? LookAndFeel::instance().palette().flowgraphBg : ImVec4{};
+        style.Colors[ax::NodeEditor::StyleColor_Grid]       = LookAndFeel::instance().flowgraph.canvasGrid ? ax::NodeEditor::Style{}.Colors[ax::NodeEditor::StyleColor_Grid] : ImVec4{};
         style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
         style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = LookAndFeel::instance().palette().flowgraphNodeBorder;
     }
@@ -292,9 +293,9 @@ private:
         Right,
     };
 
-    std::shared_ptr<opencmw::client::RestClient> _restClient;
-    Dashboard*                                   _dashboard             = nullptr;
-    bool                                         _currentTabIsFlowGraph = false;
+    Dashboard*    _dashboard             = nullptr;
+    UiGraphModel* _graphModel            = nullptr;
+    bool          _currentTabIsFlowGraph = false;
 
     std::deque<FlowgraphEditor> _editors;
 
@@ -307,13 +308,20 @@ private:
     void drawRemoteYamlTab(Dashboard::Service& service);
 
 public:
-    explicit FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient);
+    FlowgraphPage() = default;
     ~FlowgraphPage();
 
     void draw() noexcept;
 
+    /// edits the dashboard's flowgraph; adding remote signals needs the dashboard
     void setDashboard(Dashboard* dashboard) {
+        setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
         _dashboard = dashboard;
+    }
+    /// edits a flowgraph a host runs without a dashboard (a Scheduler wired to this UiGraphModel)
+    void setGraphModel(UiGraphModel* graphModel) {
+        _dashboard  = nullptr;
+        _graphModel = graphModel;
         _remoteSignalSelector.reset();
         reset();
     }

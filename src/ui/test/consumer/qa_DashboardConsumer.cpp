@@ -3,6 +3,7 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
+#include "components/ImGuiNotify.hpp"
 
 #include <boost/ut.hpp>
 #include <implot3d.h>
@@ -11,12 +12,14 @@
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrFourierBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
+#include <gnuradio-4.0/YamlPmt.hpp>
 
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -101,6 +104,50 @@ int main() {
         expect(std::ranges::any_of(registry.keys(), [](const auto& key) { return std::string_view(key).starts_with("opendigitizer::ImPlotSink"); })) << "ImPlotSink";
     };
 
+    "a dashboard's load error reaches the notification observer and the toast list"_test = [&] {
+        std::vector<std::string> observed;
+        DigitizerUi::components::Notification::observer = [&observed](ImGuiToastType, std::string_view text) { observed.emplace_back(text); };
+        const auto toastsBefore                         = ImGui::notifications.size();
+
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
+        loadGrc(*dashboard, "blocks: [ this is not a flowgraph");
+
+        DigitizerUi::components::Notification::observer = nullptr;
+        expect(!observed.empty()) << "the load error reached the observer";
+        expect(ImGui::notifications.size() > toastsBefore) << "and a toast is queued";
+    };
+
+    "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("serialise"));
+        loadGrc(*dashboard, grc);
+        while (dashboard->graphModel.recursiveGatherPlotSinks().size() < 7UZ) { // the model fills from scheduler replies
+            dashboard->handleMessages();
+            std::this_thread::yield();
+        }
+
+        const auto field = [](const gr::property_map& map, std::string_view key) { return map.find_value(std::string(key), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}); };
+
+        const gr::property_map windowLayout{{"marker", std::string("live layout")}};
+        dashboard->layoutType      = DigitizerUi::DockingLayoutType::Grid;
+        dashboard->windowLayout    = windowLayout;
+        const auto [header, graph] = dashboard->serialise();
+        const auto section         = field(graph, "dashboard").value_or(gr::property_map{});
+        expect(field(section, "layout").value_or(std::string{}) == "Grid");
+        expect(field(section, "windowLayout").value_or(gr::property_map{}) == windowLayout);
+
+        std::set<std::string> sourceNames; // the ImPlotSink blocks of DemoDashboard.grc, listed by hand
+        for (const auto& source : field(section, "sources").value_or(gr::Tensor<gr::pmt::Value>{})) {
+            sourceNames.insert(field(source.value_or(gr::property_map{}), "name").value_or(std::string{}));
+        }
+        expect(sourceNames == std::set<std::string>{"sinesSink", "sineSink1", "sineSink2", "fftSink", "DipoleCurrentSink", "IntensitySink", "spectrumSink"});
+
+        auto reloaded = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("reloaded"));
+        loadGrc(*reloaded, gr::pmt::yaml::serialize(graph));
+        expect(reloaded->layoutType == DigitizerUi::DockingLayoutType::Grid) << "the saved layout is what a reload applies";
+        stopAndWait(*reloaded);
+        stopAndWait(*dashboard);
+    };
+
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
         loadGrc(*dashboard, grc);
@@ -110,6 +157,33 @@ int main() {
         expect(hostStyleKept()) << "creating a dashboard keeps the host's style";
 
         dashboard.reset(); // stops the scheduler, also while its start-up thread is still initialising
+    };
+
+    "a grid layout needs no per-plot rect"_test = [&] {
+        constexpr std::string_view kGridWithoutRects = R"(blocks:
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: gridSource
+      sample_rate: 1000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: gridSink
+connections:
+  - [ gridSource, 0, gridSink, 0 ]
+dashboard:
+  layout: Grid
+  plots:
+    - name: First
+      sources:
+        - gridSink
+    - name: Second
+      sources:
+        - gridSink
+)";
+        auto                       dashboard         = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("grid"));
+        loadGrc(*dashboard, std::string(kGridWithoutRects));
+        expect(dashboard->isInitialised.load()) << "loaded";
+        expect(eq(dashboard->uiWindows.size(), 2UZ)) << "both plots placed by the grid";
     };
 
     "a stopped scheduler runs again after start()"_test = [&] {

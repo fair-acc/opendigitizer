@@ -20,6 +20,7 @@
 #include <chrono>     // For the notifications timed dissmiss
 #include <functional> // For storing the code, which executest on the button click in the notification
 #include <string>
+#include <string_view>
 #include <vector> // Vector for storing notifications list
 
 #include <format>
@@ -29,7 +30,9 @@
 #include "imgui_internal.h"
 
 #include "../common/ImguiWrap.hpp"
+
 #include "../common/LookAndFeel.hpp"
+#include <gnuradio-4.0/Logger.hpp>
 
 #define ICON_FA_XMARK                "\xef\x80\x8d" // U+f00d
 #define ICON_FA_CIRCLE_CHECK         "\xef\x81\x98" // U+f058
@@ -545,24 +548,25 @@ inline void RenderNotifications() {
 namespace DigitizerUi::components {
 
 struct Notification {
-    std::string               text;
-    std::chrono::milliseconds dismissTime{5000};
+    /// sees every notification in addition to the toast list and the GR4 log
+    inline static std::function<void(ImGuiToastType type, std::string_view text)> observer;
 
-    inline static void success(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
+    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Success, dismissTime, text); }
+    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Warning, dismissTime, text); }
+    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { post(ImGuiToastType::Error, dismissTime, text); }
+    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Info, dismissTime, text); }
 
-    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Success, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
-
-    inline static void warning(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Warning, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
-
-    inline static void error(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { ImGui::InsertNotification({ImGuiToastType::Error, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
-
-    inline static void info(Notification&& notification) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(notification.dismissTime.count()), "%s", notification.text.c_str()}); }
-
-    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { ImGui::InsertNotification({ImGuiToastType::Info, static_cast<int>(dismissTime.count()), "%s", text.c_str()}); }
+    inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {
+        switch (type) { // a host's log sees every notification, also one that does not draw the toasts
+        case ImGuiToastType::Error: gr::log::error(std::string_view(text)); break;
+        case ImGuiToastType::Warning: gr::log::warning(std::string_view(text)); break;
+        default: gr::log::info(std::string_view(text)); break;
+        }
+        if (observer) {
+            observer(type, text);
+        }
+        ImGui::InsertNotification({type, static_cast<int>(dismissTime.count()), "%s", text.c_str()});
+    }
 
     inline static void render() {
         // Notifications style setup

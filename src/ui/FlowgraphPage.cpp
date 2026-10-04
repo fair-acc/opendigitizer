@@ -590,8 +590,17 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             block->storedXY     = UiGraphBlock::StoredXY{position.x, position.y};
         }
     };
-    IMW::NodeEditor::Editor nodeEditor(_editorName.c_str(), size);
-    const auto              padding = ax::NodeEditor::GetStyle().NodePadding;
+    const int                    nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2; // the editor draws its canvas border as its scope ends
+    Digitizer::utils::scope_exit showBorderAgain      = [nHiddenBorderColours] { ImGui::PopStyleColor(nHiddenBorderColours); };
+    IMW::NodeEditor::Editor      nodeEditor(_editorName.c_str(), size);
+    Digitizer::utils::scope_exit hideBorder = [nHiddenBorderColours] {
+        for (const ImGuiCol colour : {ImGuiCol_Border, ImGuiCol_BorderShadow}) {
+            if (nHiddenBorderColours > 0) {
+                ImGui::PushStyleColor(colour, ImVec4{});
+            }
+        }
+    };
+    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
     std::optional<BoundingBox> boundingBox;
     const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {
@@ -1388,8 +1397,6 @@ void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::Sc
     graphModel.sendMessage(std::move(message));
 }
 
-FlowgraphPage::FlowgraphPage(std::shared_ptr<opencmw::client::RestClient> restClient) : _restClient{std::move(restClient)} {}
-
 FlowgraphPage::~FlowgraphPage() = default;
 
 void FlowgraphPage::reset() { _editors.clear(); }
@@ -1397,8 +1404,6 @@ void FlowgraphPage::reset() { _editors.clear(); }
 void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock) {
     assert(rootBlock && "An editor needs to have a root block defined");
     assert(!rootBlock->blockUniqueName.empty() && !rootBlock->blockCategory.empty() && "An editor needs to have a root block defined and initialized");
-    std::println("FlowgraphPage::pushEditor name {} rootBlock {} category {}", name, //
-        rootBlock->blockUniqueName, rootBlock->blockCategory);
 
     auto& editor = _editors.emplace_back(name, graphModel, rootBlock, _editors.size());
 
@@ -1471,9 +1476,9 @@ void FlowgraphPage::drawLocalNodeEditor() {
     if (!_editors.empty()) {
         _currentTabIsFlowGraph = true;
         drawNodeEditorTab();
-    } else if (!_dashboard->graphModel.rootBlock.blockUniqueName.empty()) {
+    } else if (_graphModel && !_graphModel->rootBlock.blockUniqueName.empty()) {
         // We don't have an editor until the root graph is loaded
-        pushEditor("rootBlock node editor", _dashboard->graphModel, std::addressof(_dashboard->graphModel.rootBlock));
+        pushEditor("rootBlock node editor", *_graphModel, std::addressof(_graphModel->rootBlock));
     }
 }
 
@@ -1516,7 +1521,7 @@ void FlowgraphPage::drawLocalYamlTab() {
                 message.cmd         = gr::message::Command::Get;
                 message.endpoint    = gr::scheduler::property::kGraphGRC;
                 message.serviceName = owner->scheduler;
-                _dashboard->graphModel.sendMessage(std::move(message));
+                _graphModel->sendMessage(std::move(message));
             }
         }
     }
@@ -1527,13 +1532,13 @@ void FlowgraphPage::drawLocalYamlTab() {
             gr::Message message;
             message.cmd         = gr::message::Command::Set;
             message.endpoint    = gr::scheduler::property::kGraphGRC;
-            message.data        = gr::property_map{{"value", _dashboard->graphModel.m_localFlowgraphGrc}};
+            message.data        = gr::property_map{{"value", _graphModel->m_localFlowgraphGrc}};
             message.serviceName = owner->scheduler;
-            _dashboard->graphModel.sendMessage(std::move(message));
+            _graphModel->sendMessage(std::move(message));
         }
     }
 
-    ImGui::InputTextMultiline("##grc", &_dashboard->graphModel.m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
+    ImGui::InputTextMultiline("##grc", &_graphModel->m_localFlowgraphGrc, ImGui::GetContentRegionAvail());
 }
 
 void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
@@ -1561,6 +1566,9 @@ void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
 }
 
 void FlowgraphPage::draw() noexcept {
+    if (_graphModel == nullptr) { // neither setDashboard() nor setGraphModel() yet
+        return;
+    }
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
     if (!showEditorControls) {
         drawLocalNodeEditor();
@@ -1577,6 +1585,9 @@ void FlowgraphPage::draw() noexcept {
         drawLocalYamlTab();
     }
 
+    if (_dashboard == nullptr) { // a host's graph without a dashboard has no remote services
+        return;
+    }
     for (auto& service : _dashboard->services) {
         drawRemoteYamlTab(service);
     }

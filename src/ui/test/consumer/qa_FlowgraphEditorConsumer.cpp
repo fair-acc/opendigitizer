@@ -12,7 +12,7 @@ static_assert(
 
 const suite<"FlowgraphEditor consumer"> _consumer = [] {
     "an embedder hides the page's editor controls and requests a relayout before any editor exists"_test = [] {
-        DigitizerUi::FlowgraphPage page(nullptr);
+        DigitizerUi::FlowgraphPage page;
         expect(page.showEditorControls) << "shown by default";
         page.showEditorControls = false;
         page.requestRelayout();

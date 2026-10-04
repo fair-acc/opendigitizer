@@ -4,9 +4,13 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include "LogHistory.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/StatusBarBlock.hpp"
+#include "blocks/ToolbarBlock.hpp"
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
+#include "components/ImGuiNotify.hpp"
 
 namespace DigitizerUi {
 
@@ -20,6 +24,9 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<WaterfallPlot>(registry);
     std::ignore = gr::registerBlock<SurfacePlot>(registry);
     std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(registry);
+    std::ignore = gr::registerBlock<ToolbarButton>(registry);
+    std::ignore = gr::registerBlock<ToolbarCheckbox>(registry);
+    std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 
 void applyStyle(LookAndFeel::Style style) {
@@ -43,11 +50,14 @@ void initialise(const InitialiseOptions& options) {
     if (ImPlot3D::GetCurrentContext() == nullptr) {
         ImPlot3D::CreateContext();
     }
-    if (options.loadFonts && LookAndFeel::instance().fontNormal[0] == nullptr) {
+    if (LookAndFeel::instance().fontNormal[0] == nullptr) {
         LookAndFeel::mutableInstance().loadFonts();
     }
     std::ignore = opendigitizer::ColourManager::instance();
-    registerDashboardBlocks(options.registry ? *options.registry : gr::globalBlockRegistry());
+    registerDashboardBlocks(gr::globalBlockRegistry());
+    if (options.captureLog) {
+        std::ignore = logHistory(); // notifications reach it through the GR4 log
+    }
     if (options.style) {
         applyStyle(*options.style);
     }

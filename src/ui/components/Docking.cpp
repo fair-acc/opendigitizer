@@ -89,7 +89,7 @@ void DockSpace::setLayoutType(DockingLayoutType type) {
 }
 
 void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable) {
-    const bool requestsExactFreeLayout = std::ranges::any_of(windows, [](const auto& w) { return w->freeLayoutPosition.has_value(); });
+    const bool requestsExactFreeLayout = !_exactFreeLayoutApplied && std::ranges::any_of(windows, [](const auto& w) { return w->freeLayoutPosition.has_value(); });
     {
         ImGui::SetNextWindowSize(paneSize);
 
@@ -103,9 +103,9 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         const bool    windowsChanged     = !std::ranges::is_permutation(_lastWindowNames, windows, {}, {}, windowName);
         const bool    dockspaceMissing   = ImGui::DockBuilderGetNode(currentDockspaceID) == nullptr;
 
-        const bool dockspaceMoved = _lastDockspaceID != 0 && _lastDockspaceID != currentDockspaceID; // another ID stack
+        const bool dockspaceMoved = _lastDockspaceID != 0 && _lastDockspaceID != currentDockspaceID;
         if (!_needsRelayout && isFreeLayout() && (windowsChanged || dockspaceMoved)) {
-            captureFreeLayout(); // from the previous dockspace, while its windows are still docked there
+            captureFreeLayout();
         }
 
         _lastDockspaceID = currentDockspaceID;
@@ -115,7 +115,7 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
             std::ranges::transform(windows, std::back_inserter(_lastWindowNames), [](const auto& window) { return window->name; });
         }
 
-        setNeedsRelayout(_needsRelayout || windowsChanged || dockspaceMissing);
+        setNeedsRelayout(_needsRelayout || windowsChanged || dockspaceMissing || dockspaceMoved);
 
         if (_needsRelayout) {
             relayout(windows, isEditable, requestsExactFreeLayout);
@@ -286,9 +286,10 @@ std::vector<LayoutRect> DigitizerUi::autoLayoutRects(DockingLayoutType type, std
     return rects;
 }
 
-std::vector<LayoutRect> DigitizerUi::freeLayoutRects(std::span<const std::array<std::size_t, 4>> cells) {
-    std::size_t maxX = 1UZ;
-    std::size_t maxY = 1UZ;
+std::vector<LayoutRect> DigitizerUi::freeLayoutRects(std::span<const std::array<std::int64_t, 4>> rawCells) {
+    const auto   cells = rawCells | std::views::transform([](const auto& cell) { return std::array{std::max<std::int64_t>(0, cell[0]), std::max<std::int64_t>(0, cell[1]), std::max<std::int64_t>(0, cell[2]), std::max<std::int64_t>(0, cell[3])}; }) | std::ranges::to<std::vector>();
+    std::int64_t maxX  = 1;
+    std::int64_t maxY  = 1;
     for (const auto& [x, y, width, height] : cells) {
         maxX = std::max(maxX, x + width);
         maxY = std::max(maxY, y + height);
@@ -370,7 +371,6 @@ bool DockSpace::layoutInExactFree(const Windows& windows, bool isEditable) {
         maxX = std::max(maxX, windowPtr->freeLayoutPosition->x + windowPtr->freeLayoutPosition->width);
         maxY = std::max(maxY, windowPtr->freeLayoutPosition->y + windowPtr->freeLayoutPosition->height);
         windowAreasByOriginalIndex.try_emplace(index - std::size_t{1}, *windowPtr->freeLayoutPosition);
-        windowPtr->freeLayoutPosition.reset();
     }
 
     std::vector<std::vector<int>> grid(maxX, std::vector<int>(maxY, -1));
@@ -463,8 +463,9 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
             if (!layoutInExactFree(windows, isEditable)) {
                 layoutInGrid(windows, isEditable); // fallback, will be saved as state of free layout
             }
+            _exactFreeLayoutApplied = true;
         } else {
-            if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) { // nothing captured yet, e.g. a new view of a dashboard
+            if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) {
                 layoutInGrid(windows, isEditable);
             }
 
