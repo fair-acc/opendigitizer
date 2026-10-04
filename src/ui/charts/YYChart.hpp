@@ -62,7 +62,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
@@ -136,10 +136,10 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             AxisCategory yCat{.quantity = std::string(sinkPtr->signalQuantity()), .unit = std::string(sinkPtr->signalUnit()), .color = sinkPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
-        ImPlot::SetupFinish();
+        setupFinish();
 
         ImVec4 lineColor = sinkColor(sinkPtr->color());
-        ImPlot::SetNextLineStyle(lineColor);
+        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkPtr));
 
         // clamp to n_history: show only the most recent samples
         std::size_t totalCount = sinkPtr->size();
@@ -225,7 +225,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             AxisCategory yCat{.quantity = sinkYPtr->signalQuantity().empty() ? std::string(sinkYPtr->signalName()) : std::string(sinkYPtr->signalQuantity()), .unit = std::string(sinkYPtr->signalUnit()), .color = sinkYPtr->color()};
             axis::setupAxis(ImAxis_Y1, yCat, LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(ImAxis_Y1, size)), yMinLimit, yMaxLimit, 1UZ, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
-        ImPlot::SetupFinish();
+        setupFinish();
 
         // Plot X signal as dummy to create legend entry for D&D
         {
@@ -239,7 +239,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
         // Plot correlation line with Y signal's name as legend entry
         ImVec4 lineColor = sinkColor(sinkYPtr->color());
-        ImPlot::SetNextLineStyle(lineColor);
+        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
 
         struct CorrelationContext {
             const SignalSink* sink_x;
@@ -340,7 +340,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             axis::setupAxis(axisId, yCategories[i], LabelFormat::Auto, axisLabelWidthOrDefault(yDashCfg, defaultAxisLabelWidthFor(axisId, size)), yMinLimit, yMaxLimit, nYAxes, yScale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
         }
 
-        ImPlot::SetupFinish();
+        setupFinish();
 
         if (!overflowSinkIndices.empty()) {
             auto        limits  = ImPlot::GetPlotLimits();
@@ -392,7 +392,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
             ImVec4 lineColor = sinkColor(sinkYPtr->color());
-            ImPlot::SetNextLineStyle(lineColor);
+            ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
 
             PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
             std::string yLabel = plotLabel(*sinkYPtr);
@@ -417,7 +417,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 } // namespace opendigitizer::charts
 
 // Register YYChart with the GR4 block registry
-// GR_REGISTER_BLOCK is a marker macro for build tools; registration: DigitizerUi::registerDashboardBlocks()
 GR_REGISTER_BLOCK("opendigitizer::charts::YYChart", opendigitizer::charts::YYChart)
 inline auto registerYYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::YYChart>();
 

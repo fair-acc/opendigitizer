@@ -745,7 +745,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_pendingResizeTime == 0.0 && _surface.width() > 0) {
             if (_surface._historyDepth != static_cast<std::size_t>(n_history)) {
@@ -1244,7 +1244,6 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SurfacePlot", opendigitizer::charts::SurfacePlot)
-inline auto registerSurfacePlot                = gr::registerBlock<opendigitizer::charts::SurfacePlot>(gr::globalBlockRegistry());
 inline auto registerSurfacePlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SurfacePlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SURFACEPLOT_HPP

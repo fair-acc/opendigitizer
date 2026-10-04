@@ -33,6 +33,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace opendigitizer::charts {
@@ -64,6 +65,8 @@ enum class HistoryUnit : int {
 enum class AxisKind { X = 0, Y, Z };
 
 [[nodiscard]] inline ImVec4 sinkColor(std::uint32_t rgb) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb)); }
+
+[[nodiscard]] inline float seriesLineWidth(const SignalSink& sink) { return DigitizerUi::LookAndFeel::instance().chartStyle.lineWidth.value_or(sink.lineWidth()); }
 
 [[nodiscard]] inline std::string plotLabel(const SignalSink& sink) { return std::format("{}###{}", sink.signalName().empty() ? sink.name() : sink.signalName(), sink.uniqueName()); }
 
@@ -368,9 +371,13 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
         flags |= ImPlotAxisFlags_Opposite;
     }
 
-    bool pushedColor = false;
-    if ((nTotalAxes > 1) && !isX) {
-        const ImVec4 col = sinkColor(category->color);
+    bool                           pushedColor = false;
+    const DigitizerUi::ChartStyle& chartStyle  = DigitizerUi::LookAndFeel::instance().chartStyle;
+    if ((nTotalAxes > 1) && !isX && chartStyle.colourAxesBySignal) {
+        ImVec4 col = sinkColor(category->color);
+        if (chartStyle.axisAlpha) {
+            col.w = *chartStyle.axisAlpha;
+        }
         ImPlot::PushStyleColor(ImPlotCol_AxisText, col);
         ImPlot::PushStyleColor(ImPlotCol_AxisTick, col);
         pushedColor = true;
@@ -487,6 +494,15 @@ namespace detail {
 constexpr bool isCompatible(SignalKind signal, SignalKind chartSupport) { return (std::to_underlying(signal) & std::to_underlying(chartSupport)) != 0; }
 } // namespace detail
 
+inline std::pair<ImFont*, float> chartTextFont(const std::array<ImFont*, 2>& defaultFaces) {
+    const auto& lnf   = DigitizerUi::LookAndFeel::instance();
+    const auto& style = lnf.chartStyle;
+    if (style.labelFont == nullptr && !style.labelFontSize) {
+        return {defaultFaces[lnf.prototypeMode], lnf.relativeFontSize(defaultFaces)};
+    }
+    return {style.labelFont, style.labelFontSize.value_or(0.f)};
+}
+
 namespace tags {
 
 /// Marker key for tags that appear out-of-order or have suspicious timestamps.
@@ -525,8 +541,9 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
-    const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-    DigitizerUi::IMW::FontWithSize titleFont(lnf.fontTiny[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontTiny));
+    const auto& lnf               = DigitizerUi::LookAndFeel::instance();
+    const auto [tagFace, tagSize] = chartTextFont(lnf.fontTiny);
+    DigitizerUi::IMW::FontWithSize titleFont(tagFace, tagSize);
 
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
@@ -730,8 +747,9 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     };
 
     {
-        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::FontWithSize font(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall));
+        const auto& lnf                       = DigitizerUi::LookAndFeel::instance();
+        const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall);
+        DigitizerUi::IMW::FontWithSize font(tooltipFace, tooltipSize);
         DigitizerUi::IMW::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
             drawAxisTooltip(plot, ImAxis_X1 + i);
@@ -874,14 +892,12 @@ inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
 
 } // namespace dnd
 
-/// requests a chart makes about itself from its context menu; the receiver defers them, as the chart is being drawn
 struct ChartRequests {
-    std::function<bool(std::string_view chartId, std::string_view newChartType)> transmute;
+    std::function<void(std::string_view chartId, std::string_view newChartType)> transmute;
     std::function<void(std::string_view chartId)>                                duplicate;
     std::function<void(std::string_view chartId)>                                remove;
 };
 
-/// set by the dashboard view that draws the charts, cleared when it goes away; one dashboard is drawn at a time
 inline ChartRequests* g_chartRequests = nullptr;
 
 /// Font Awesome icon constants for context menus.
@@ -967,15 +983,12 @@ inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     }
 }
 
-/// how a chart is drawn: View shows data only, Interaction adds zoom, legend drag and drop and context menus, Layout
-/// draws the chart as a placeholder while the dashboard layout is edited
 enum class ChartMode : std::uint8_t { View, Interaction, Layout };
 
 inline constexpr std::string_view kChartModeKey = "chartMode";
 
 [[nodiscard]] inline gr::property_map chartDrawConfig(ChartMode mode) { return {{std::pmr::string(kChartModeKey), std::string(magic_enum::enum_name(mode))}}; }
 
-/// View when the key is absent; an unknown value is a programming error
 [[nodiscard]] inline ChartMode chartModeFrom(const gr::property_map& config) {
     const auto it = config.find(kChartModeKey);
     if (it == config.end()) {
@@ -986,12 +999,78 @@ inline constexpr std::string_view kChartModeKey = "chartMode";
     return mode.value_or(ChartMode::View);
 }
 
+class ScopedChartStyle {
+    int _nColours = 0;
+    int _nVars    = 0;
+
+    void pushColour(ImPlotCol colourId, ImVec4 colour) {
+        ImPlot::PushStyleColor(colourId, colour);
+        ++_nColours;
+    }
+    void pushAlpha(ImPlotCol colourId, float alpha) {
+        ImVec4 colour = ImPlot::GetStyleColorVec4(colourId);
+        colour.w      = alpha;
+        pushColour(colourId, colour);
+    }
+
+    bool _pushedFont = false;
+
+public:
+    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style) {
+        if (style.labelFont != nullptr || style.labelFontSize) { // ImPlot measures and draws its text with the current font
+            ImGui::PushFont(style.labelFont, style.labelFontSize.value_or(0.f));
+            _pushedFont = true;
+        }
+        if (style.plotBackground) {
+            pushColour(ImPlotCol_PlotBg, *style.plotBackground);
+        }
+        if (style.gridColour) { // colours before the alpha fields, which read the current colour
+            pushColour(ImPlotCol_AxisGrid, *style.gridColour);
+        }
+        if (style.axisColour) {
+            pushColour(ImPlotCol_AxisText, *style.axisColour);
+            pushColour(ImPlotCol_AxisTick, *style.axisColour);
+            pushColour(ImPlotCol_PlotBorder, *style.axisColour);
+        }
+        if (style.gridAlpha) {
+            pushAlpha(ImPlotCol_AxisGrid, *style.gridAlpha);
+        }
+        if (style.axisAlpha) {
+            pushAlpha(ImPlotCol_AxisText, *style.axisAlpha);
+            pushAlpha(ImPlotCol_AxisTick, *style.axisAlpha);
+        }
+        if (style.legendAlpha) {
+            pushAlpha(ImPlotCol_LegendBg, *style.legendAlpha);
+        }
+        if (style.lineWidth) {
+            ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, *style.lineWidth);
+            ++_nVars;
+        }
+    }
+    ~ScopedChartStyle() {
+        ImPlot::PopStyleColor(_nColours);
+        ImPlot::PopStyleVar(_nVars);
+        if (_pushedFont) {
+            ImGui::PopFont();
+        }
+    }
+    ScopedChartStyle(const ScopedChartStyle&)            = delete;
+    ScopedChartStyle& operator=(const ScopedChartStyle&) = delete;
+};
+
+inline void setupFinish() {
+    // ImPlot keeps the legend location across frames: an unset one is reset
+    ImPlot::SetupLegend(DigitizerUi::LookAndFeel::instance().chartStyle.legendLocation.value_or(ImPlotLocation_NorthWest));
+    ImPlot::SetupFinish();
+}
+
 struct DrawPrologue {
-    ImPlotFlags plotFlags;
-    ImVec2      plotSize;
-    bool        showLegend;
-    ChartMode   chartMode;
-    bool        showGrid;
+    ImPlotFlags      plotFlags;
+    ImVec2           plotSize;
+    bool             showLegend;
+    ChartMode        chartMode;
+    bool             showGrid;
+    ScopedChartStyle style;
 };
 
 namespace detail {
@@ -1940,7 +2019,7 @@ struct Chart {
             effectiveShowGrid = self.show_grid.value;
         }
 
-        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid};
+        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(DigitizerUi::LookAndFeel::instance().chartStyle)};
     }
 
     template<typename Self>
@@ -2104,7 +2183,7 @@ struct Chart {
             ImPlot::SetupAxis(ImAxis_Y1, "Y", ImPlotAxisFlags_None);
             ImPlot::SetupAxisLimits(ImAxis_X1, -1.0, 1.0, ImPlotCond_Once);
             ImPlot::SetupAxisLimits(ImAxis_Y1, -1.0, 1.0, ImPlotCond_Once);
-            ImPlot::SetupFinish();
+            setupFinish();
             auto limits = ImPlot::GetPlotLimits();
             ImPlot::PlotText(message, (limits.X.Min + limits.X.Max) / 2, (limits.Y.Min + limits.Y.Max) / 2);
             tooltip::showPlotMouseTooltip();

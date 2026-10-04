@@ -71,6 +71,15 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
     ImGui::PushID(this); // dock ids per view
     Digitizer::utils::scope_exit popId = [] { ImGui::PopID(); };
 
+    const DashboardStyle& style               = LookAndFeel::instance().dashboardStyle;
+    const int             nTransparentColours = style.background ? 0 : 4; // a host's own background shows through
+    if (!style.background) {
+        for (const ImGuiCol colour : {ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_Border, ImGuiCol_BorderShadow}) {
+            ImGui::PushStyleColor(colour, ImVec4{});
+        }
+    }
+    Digitizer::utils::scope_exit popTransparentColours = [nTransparentColours] { ImGui::PopStyleColor(nTransparentColours); };
+
     Result     result;
     IMW::Child plotsChild("##plots", options.size, false, ImGuiWindowFlags_NoScrollbar);
     if (!dashboard.isInitialised) {
@@ -98,7 +107,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         ImGui::SameLine();
     };
 
-    switch (options.legend) {
+    switch (style.legend) {
     case LegendPosition::Bottom:
         result.chartPaneSize = ImGui::GetContentRegionAvail() - ImVec2(0.f, _legendBox.y);
         drawCharts(mode, options, result.chartPaneSize);
@@ -117,7 +126,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
         const ImVec2 avail   = ImGui::GetContentRegionAvail();
         const float  spacing = ImGui::GetStyle().ItemSpacing.x;
         result.chartPaneSize = ImVec2(std::max(1.f, avail.x - _legendColumnWidth - spacing), avail.y);
-        if (options.legend == LegendPosition::Left) {
+        if (style.legend == LegendPosition::Left) {
             drawLegendColumn(mode, avail.y, options, result);
             ImGui::SameLine();
             drawCharts(mode, options, result.chartPaneSize);
