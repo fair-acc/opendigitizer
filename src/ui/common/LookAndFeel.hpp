@@ -4,8 +4,10 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 #include <imgui.h>
+#include <implot.h>
 
 enum class WindowMode { FULLSCREEN, MAXIMISED, MINIMISED, RESTORED };
 
@@ -98,6 +100,28 @@ struct Palette {
     ImVec4 contentSeparator; // subtle divider lines between page content areas
 };
 
+/// chart look a host may set process-wide; an unset field keeps ImPlot's current style
+struct ChartStyle {
+    std::optional<ImVec4>         plotBackground; // alpha 0: transparent
+    std::optional<float>          gridAlpha;
+    std::optional<float>          axisAlpha;
+    std::optional<float>          lineWidth; // px, for every series
+    bool                          colourAxesBySignal = true;
+    std::optional<ImPlotLocation> legendLocation;
+    std::optional<float>          legendAlpha;
+    ImFont*                       labelFont = nullptr; // not owned: ticks, axis titles, legend, tags and tooltips
+    std::optional<float>          labelFontSize;       // unscaled base size, as ImGui::PushFont takes it
+    std::optional<ImVec4>         axisColour;
+    std::optional<ImVec4>         gridColour;
+};
+
+/// dashboard look a host may set process-wide, for every DashboardView
+struct DashboardStyle {
+    enum class LegendPosition { Bottom, Top, Left, Right, None }; // None: no shared bar, charts may show their own legend
+    LegendPosition legend     = LegendPosition::Bottom;
+    bool           background = true; // false: chart windows and frames, plots area and bar draw no background or border
+};
+
 struct LookAndFeel {
     enum class Style { Light, Dark };
 
@@ -112,6 +136,10 @@ struct LookAndFeel {
         float exportedTabOverlap  = 6.0f;
         float exportedTabPaddingH = 4.0f;
         float exportedTabPaddingV = 2.0f;
+
+        bool canvasBackground = true;
+        bool canvasGrid       = true;
+        bool canvasBorder     = true;
     };
 
 #ifdef __EMSCRIPTEN__
@@ -137,11 +165,12 @@ struct LookAndFeel {
     ImFont*                   fontIconsSolidLarge;
     std::chrono::seconds      editPaneCloseDelay{15};
     Flowgraph                 flowgraph;
+    ChartStyle                chartStyle;
+    DashboardStyle            dashboardStyle;
 
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
 
-    /// size for `faces[prototypeMode]` that keeps its load-time ratio to `fontNormal` relative to the current font size; 0 (keep current size) without loaded fonts
     [[nodiscard]] float relativeFontSize(const std::array<ImFont*, 2>& faces) const noexcept {
         const ImFont* face   = faces[prototypeMode];
         const ImFont* normal = fontNormal[prototypeMode];

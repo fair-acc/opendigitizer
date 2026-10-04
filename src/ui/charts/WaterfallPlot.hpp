@@ -84,7 +84,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         // sync GPU preference with setting
         _waterfall.setPreferGpu(gpu_acceleration);
@@ -124,7 +124,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
             ImPlot::SetupAxisLimits(timeAxis, timeLo, timeHi, ImPlotCond_Always);
         }
 
-        ImPlot::SetupFinish();
+        setupFinish();
 
         // register legend entries for each sink (enables legend display and D&D)
         for (const auto& sink : _signalSinks) {

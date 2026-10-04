@@ -51,6 +51,16 @@ inline uint32_t colormapLookup(double value, double scaleMin, double scaleMax, s
     return lut[idx];
 }
 
+inline constexpr float kEmptyDensityFraction = 1.f / static_cast<float>(kColormapSize - 1UZ);
+static_assert(kColormapSize == 256UZ, "the colormap shader's empty-density threshold is 1/255");
+
+inline uint32_t densityColour(float density, float maxDensity, std::span<const uint32_t, kColormapSize> lut) {
+    if (density < maxDensity * kEmptyDensityFraction) {
+        return 0U;
+    }
+    return colormapLookup(static_cast<double>(density), 0.0, static_cast<double>(maxDensity), lut);
+}
+
 struct SpectrumFrame {
     std::span<const float> xValues;
     std::span<const float> yValues;
@@ -164,9 +174,9 @@ struct TracePlotContext {
     std::span<const float> yValues;
 };
 
-inline void plotTrace(const char* label, std::span<const float> xValues, std::span<const float> yValues, std::size_t count, const ImVec4& color) {
+inline void plotTrace(const char* label, std::span<const float> xValues, std::span<const float> yValues, std::size_t count, const ImVec4& color, float lineWidth = IMPLOT_AUTO) {
     TracePlotContext ctx{xValues, yValues};
-    ImPlot::SetNextLineStyle(color);
+    ImPlot::SetNextLineStyle(color, lineWidth);
     ImPlot::PlotLineG(
         label,
         [](int idx, void* userData) -> ImPlotPoint {
@@ -416,7 +426,7 @@ uniform float     u_maxDensity;   // CPU-tracked peak density (converges to tau)
 void main() {
     float density = texture(u_histogram, v_uv).r;
     float norm    = clamp(density / max(u_maxDensity, 1.0), 0.0, 1.0);
-    fragColor     = texture(u_colormapLut, vec2(norm, 0.5));
+    fragColor     = norm < 1.0 / 255.0 ? vec4(0.0) : texture(u_colormapLut, vec2(norm, 0.5)); // empty: as densityColour()
 }
 )glsl";
 
@@ -743,7 +753,7 @@ void main() {
         }
 
         const float maxDensity = std::max(*std::ranges::max_element(_cpuHistogram), 1.f);
-        std::ranges::transform(_cpuHistogram, _cpuPixels.begin(), [&](float density) { return colormapLookup(static_cast<double>(density), 0.0, static_cast<double>(maxDensity), _cpuColormapLut); });
+        std::ranges::transform(_cpuHistogram, _cpuPixels.begin(), [&](float density) { return densityColour(density, maxDensity, _cpuColormapLut); });
 
         glBindTexture(GL_TEXTURE_2D, _cpuTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());

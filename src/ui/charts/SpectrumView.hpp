@@ -110,7 +110,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         _waterfall.setPreferGpu(gpu_acceleration);
         if (_pendingResizeTime == 0.0 && _waterfall.width() > 0) {
@@ -137,8 +137,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             _sharedXCond = trackLimitsCond(true, xMinLim, xMaxLim);
         }
 
-        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::FontWithSize plotFont(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall)); // smaller font to prevent MetricInline label overlap
+        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
 
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
         auto               subplotId    = std::format("##combined_{}", chart_name.value);
@@ -168,7 +169,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupFrequencyAxis(paneSize, showGrid);
             setupMagnitudeAxis(paneSize, showGrid);
-            ImPlot::SetupFinish();
+            setupFinish();
 
             if (isDensity) {
                 drawDensitySignals();
@@ -198,7 +199,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
             }
             const std::string sinkKey = std::string(sink.uniqueName());
             const bool        newData = consumeNewData(_topPaneSampleCountPerSink[sinkKey], sink.totalSampleCount());
@@ -261,7 +262,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
                 ImPlot::SetupAxisLimits(ImAxis_Y1, yLo, yHi, ImPlotCond_Always);
             }
 
-            ImPlot::SetupFinish();
+            setupFinish();
 
             constexpr bool newestAtTop = true;
             if (renderInfo) {
@@ -332,7 +333,6 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumView", opendigitizer::charts::SpectrumView)
-inline auto registerSpectrumView                = gr::registerBlock<opendigitizer::charts::SpectrumView>(gr::globalBlockRegistry());
 inline auto registerSpectrumViewCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumView>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMVIEW_HPP

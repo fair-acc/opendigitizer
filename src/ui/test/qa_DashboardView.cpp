@@ -7,6 +7,7 @@
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
 
+#include "../common/LookAndFeel.hpp"
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 #include <DashboardView.hpp>
@@ -15,8 +16,10 @@
 
 #include <cmrc/cmrc.hpp>
 
+#include <algorithm>
 #include <format>
 #include <memory>
+#include <optional>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -41,6 +44,8 @@ struct TestState {
     bool                                        drawEmpty    = false;
     bool                                        documentHost = false; // gr4-present: an input-less full-screen window, a child per region
     int                                         regionId     = 0;     // the host's PushID around the region
+    bool                                        background   = true;
+    std::optional<ImVec4>                       hostBackground;
 };
 
 TestState* g_state = nullptr;
@@ -104,22 +109,28 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::SetNextWindowSize(viewport->Size);
                 IMW::Window document("##document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::SetCursorScreenPos(kHostPos);
-                IMW::ChangeId                       regionScope(state.regionId);
-                IMW::Child                          region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
-                DigitizerUi::DashboardView::Options regionOptions; // as gr4-present draws a region: the available size, no legend
-                regionOptions.legend = LegendPosition::None;
-                std::ignore          = state.view->draw(*state.dashboard, state.mode, regionOptions);
+                IMW::ChangeId regionScope(state.regionId);
+                IMW::Child    region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
+                DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle.legend = LegendPosition::None; // as gr4-present draws a region
+                std::ignore                                                       = state.view->draw(*state.dashboard, state.mode);
                 return;
             }
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(kHostSize);
+            if (state.hostBackground) {
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, *state.hostBackground);
+            }
             IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            if (state.hostBackground) {
+                ImGui::PopStyleColor(); // only the host's own window
+            }
             if (!state.view) {
                 return;
             }
-            DigitizerUi::DashboardView::Options options;
-            options.legend = state.legend;
-            std::ignore    = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode, options);
+            auto& dashboardStyle      = DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle;
+            dashboardStyle.legend     = state.legend;
+            dashboardStyle.background = state.background;
+            std::ignore               = state.view->draw(state.drawEmpty ? *state.emptyDashboard : *state.dashboard, state.mode);
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -189,6 +200,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     }
                 }
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
+            };
+
+            "without a background the host shows through the chart windows, the plots area and the bar"_test = [&] {
+                const ImRect hostRect(kHostPos, kHostPos + kHostSize);
+                const auto   magentaShare = [&](bool background) {
+                    state.background = background;
+                    waitForStableCharts(ctx);
+                    ctx->Yield(3);
+                    const CapturedPixels pixels  = capturePixels(*ctx, chartsBounds()); // the gaps between windows show the host either way
+                    const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) { return (c & 0xFFU) > 240U && ((c >> 8U) & 0xFFU) < 15U && ((c >> 16U) & 0xFFU) > 240U; });
+                    return static_cast<double>(magenta) / static_cast<double>(pixels.rgba.size());
+                };
+                state.mode                                                            = Mode::View;
+                state.hostBackground                                                  = ImVec4(1.f, 0.f, 1.f, 1.f);
+                DigitizerUi::LookAndFeel::mutableInstance().chartStyle.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f);
+                const double withBackground                                           = magentaShare(true);
+                const double withoutBackground                                        = magentaShare(false);
+                captureScreenshot(*ctx, hostRect);
+                DigitizerUi::LookAndFeel::mutableInstance().chartStyle = {};
+                state.hostBackground.reset();
+                state.background = true;
+                expect(withBackground < 0.01) << std::format("with backgrounds the chart windows cover the host: {:.3f} of their area magenta", withBackground);
+                expect(withoutBackground > 0.5) << std::format("without them the host shows through: {:.3f} of the chart windows' area magenta", withoutBackground);
             };
 
             "a legend on top moves the charts below it"_test = [&] {

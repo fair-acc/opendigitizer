@@ -85,7 +85,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
@@ -99,7 +99,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
 
         setupAxes(plotSize, showGrid);
-        ImPlot::SetupFinish();
+        setupFinish();
         drawSignals();
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
@@ -261,7 +261,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             snap.lastRefresh = now;
         }
 
-        ImPlot::SetNextLineStyle(sinkColor(sink.color()));
+        ImPlot::SetNextLineStyle(sinkColor(sink.color()), seriesLineWidth(sink));
         ImPlot::PlotLine(plotLabel(sink).c_str(), snap.x.data(), snap.y.data(), static_cast<int>(snap.x.size()));
     }
 
@@ -290,7 +290,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
             ImVec4 lineColor = baseColor;
             lineColor.w      = opacity;
-            ImPlot::SetNextLineStyle(lineColor);
+            ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(sink));
 
             std::string label = isNewest ? baseLabel : std::format("##{}_hist_{}", sink.uniqueName(), i);
 
@@ -321,7 +321,6 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 } // namespace opendigitizer::charts
 
 // register XYChart with the GR4 block registry
-// GR_REGISTER_BLOCK is a marker macro for build tools; registration: DigitizerUi::registerDashboardBlocks()
 GR_REGISTER_BLOCK("opendigitizer::charts::XYChart", opendigitizer::charts::XYChart)
 inline auto registerXYChartCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::XYChart>();
 

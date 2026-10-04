@@ -67,22 +67,23 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
     gr::work::Status draw(const gr::property_map& config = {}) {
-        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid] = prepareDrawPrologue(config);
+        [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
 
-        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::FontWithSize plotFont(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall)); // smaller font to prevent MetricInline label overlap
+        const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
 
         if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {
             return gr::work::Status::OK;
         }
 
         setupAxes(plotSize, showGrid);
-        ImPlot::SetupFinish();
+        setupFinish();
         drawSpectrumSignals();
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
@@ -104,7 +105,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     void drawSpectrumSignals() {
         forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) {
             if (sink.drawEnabled()) {
-                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()));
+                plotTrace(plotLabel(sink).c_str(), f.xValues, f.yValues, f.nBins, sinkColor(sink.color()), seriesLineWidth(sink));
             }
             const std::string sinkKey = std::string(sink.uniqueName());
             auto&             traces  = _tracesPerSink[sinkKey];
@@ -118,7 +119,6 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
 } // namespace opendigitizer::charts
 
 GR_REGISTER_BLOCK("opendigitizer::charts::SpectrumPlot", opendigitizer::charts::SpectrumPlot)
-inline auto registerSpectrumPlot                = gr::registerBlock<opendigitizer::charts::SpectrumPlot>(gr::globalBlockRegistry());
 inline auto registerSpectrumPlotCompatibilities = opendigitizer::charts::registerChartSignalCompatibility<opendigitizer::charts::SpectrumPlot>();
 
 #endif // OPENDIGITIZER_CHARTS_SPECTRUMPLOT_HPP

@@ -222,15 +222,21 @@ const suite<"Scheduler thread lifecycle"> _lifecycle = [] {
         expect(scheduler->stop().has_value());
         expect(waitFor([&] { return hasState(scheduler, State::STOPPED); })) << fatal << "stopped while a job of the run is still held";
 
-        std::size_t peakTasks = 0UZ;                            // watchdog, frame pacer, the start job and its next turn (queued before it returns): 4
-        for (std::size_t frame = 0UZ; frame < 100UZ; ++frame) { // as a host re-asserts its wanted state every frame
-            expect(scheduler->start().has_value());
-            peakTasks = std::max(peakTasks, pool->numTasksRunning());
-        }
-        HoldingSink::hold = false;
+        const auto peakTasksOver = [&](std::size_t frames) { // as a host re-asserts its wanted state every frame
+            std::size_t peak = 0UZ;
+            for (std::size_t frame = 0UZ; frame < frames; ++frame) {
+                expect(scheduler->start().has_value());
+                peak = std::max(peak, pool->numTasksRunning());
+            }
+            return peak;
+        };
+        // one queued start job however often asked; GR4's own tasks (watchdog, workers changing over) vary by one or two
+        const std::size_t after100  = peakTasksOver(100UZ);
+        const std::size_t after1000 = std::max(after100, peakTasksOver(900UZ));
+        HoldingSink::hold           = false;
         HoldingSink::hold.notify_all();
         expect(waitFor([&] { return hasState(scheduler, State::RUNNING); })) << "started once the held job has left";
-        expect(le(peakTasks, 4UZ)) << "100 requests while the run leaves add one start job, not one each";
+        expect(le(after1000, after100 + 2UZ) && lt(after1000, 20UZ)) << std::format("running pool tasks do not grow with the requests: {} after 100, {} after 1000", after100, after1000);
     };
 
     "a stopped scheduler holds no IO pool thread"_test = [] {

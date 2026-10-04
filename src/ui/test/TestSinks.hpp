@@ -18,6 +18,7 @@ class TestStreamingSink : public opendigitizer::SignalSink {
     std::string         _uniqueName;
     std::string         _signalName;
     std::uint32_t       _color      = 0xFFFFFF;
+    float               _lineWidth  = 1.0f;
     float               _sampleRate = 1000.0f;
     std::vector<double> _xValues;
     std::vector<float>  _yValues;
@@ -48,7 +49,7 @@ public:
     [[nodiscard]] std::uint32_t            color() const noexcept override { return _color; }
     [[nodiscard]] float                    sampleRate() const noexcept override { return _sampleRate; }
     [[nodiscard]] opendigitizer::LineStyle lineStyle() const noexcept override { return opendigitizer::LineStyle::Solid; }
-    [[nodiscard]] float                    lineWidth() const noexcept override { return 1.0f; }
+    [[nodiscard]] float                    lineWidth() const noexcept override { return _lineWidth; }
 
     [[nodiscard]] std::size_t size() const noexcept override { return _xValues.size(); }
     [[nodiscard]] double      xAt(std::size_t i) const override { return _xValues[i]; }
@@ -151,7 +152,7 @@ public:
 
     void setColor(std::uint32_t c) override { _color = c; }
     void setLineStyle(opendigitizer::LineStyle /*style*/) override {}
-    void setLineWidth(float /*width*/) override {}
+    void setLineWidth(float width) override { _lineWidth = width; }
     void setSignalName(std::string_view nm) override { _signalName = std::string(nm); }
 
     void setSampleRate(float rate) { _sampleRate = rate; }
