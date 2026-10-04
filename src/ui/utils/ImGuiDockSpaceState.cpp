@@ -27,11 +27,12 @@ gr::property_map saveLayoutVisitor(ImGuiDockNode* node, std::unordered_map<std::
 
     gr::property_map out;
 
+    // children share the size less the separator: a ratio of the node's size shrinks child 1 per save
     const auto splitRatio = !left && !right ? defaultSplitRatio : [node, left, right] {
         if (node->SplitAxis == ImGuiAxis_X) {
-            return (left ? left->Size.x : right->Size.x) / node->Size.x;
+            return left && right ? left->Size.x / (left->Size.x + right->Size.x) : (left ? left->Size.x : right->Size.x) / node->Size.x;
         } else {
-            return (right ? right->Size.y : left->Size.y) / node->Size.y;
+            return left && right ? right->Size.y / (left->Size.y + right->Size.y) : (right ? right->Size.y : left->Size.y) / node->Size.y;
         }
     }();
 
@@ -149,15 +150,17 @@ gr::property_map saveDockSpaceState(std::span<const std::string_view> relevantWi
     };
 }
 
-void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept {
+bool restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) noexcept {
     auto dockSpaceIter = state.find("dockSpace");
     auto floatingIter  = state.find("floatingWindows");
     if (floatingIter == state.end() || dockSpaceIter == state.end()) {
-        return;
+        return false;
     }
 
-    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>()) {
+    bool docked = false;
+    if (const auto dockMap = dockSpaceIter->second.get_if<gr::property_map>(); dockMap && (dockMap->contains("hsplit") || dockMap->contains("vsplit"))) {
         applyLayoutVisitor(*dockMap, rootNodeID);
+        docked = true;
     }
 
     if (const auto floatingWindowsMap = floatingIter->second.get_if<gr::property_map>()) {
@@ -174,5 +177,6 @@ void restoreDockSpaceState(const gr::property_map& state, ImGuiID rootNodeID) no
             }
         }
     }
+    return docked;
 }
 } // namespace DigitizerUi

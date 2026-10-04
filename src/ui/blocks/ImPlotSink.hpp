@@ -83,13 +83,13 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     ManagedColour _colour;
 
-    A<bool, "visible", gr::Doc<"Whether the signal is drawn in charts">, gr::Visible>                                 visible = true;
-    A<std::string, "name", gr::Doc<"Human-readable identifier for the signal">, gr::Visible>                          signal_name;
-    A<uint32_t, "colour", gr::Doc<"RGB colour for the plot">, gr::Visible>                                            color      = 0U;
-    A<LineStyle, "style", gr::Doc<"Line drawing style: 0=Solid, 1=Dashed, 2=Dotted, 3=DashDot, 4=None">, gr::Visible> line_style = LineStyle::Solid;
-    A<float, "width", gr::Doc<"Line width in pixels">, gr::Unit<"px">, gr::Limits<0.1f, 10.f>, gr::Visible>           line_width = 1.0f;
-    A<std::string, "quantity", gr::Doc<"Physical quantity represented by the signal">, gr::Visible>                   signal_quantity;
-    A<std::string, "unit", gr::Doc<"Unit of measurement for the signal values">, gr::Visible>                         signal_unit;
+    A<bool, "visible", gr::Doc<"Whether the signal is drawn in charts">>                                 visible = true;
+    A<std::string, "name", gr::Doc<"Human-readable identifier for the signal">, gr::Visible>             signal_name;
+    A<uint32_t, "colour", gr::Doc<"RGB colour for the plot">>                                            color      = 0U;
+    A<LineStyle, "style", gr::Doc<"Line drawing style: 0=Solid, 1=Dashed, 2=Dotted, 3=DashDot, 4=None">> line_style = LineStyle::Solid;
+    A<float, "width", gr::Doc<"Line width in pixels">, gr::Unit<"px">, gr::Limits<0.1f, 10.f>>           line_width = 1.0f;
+    A<std::string, "quantity", gr::Doc<"Physical quantity represented by the signal">, gr::Visible>      signal_quantity;
+    A<std::string, "unit", gr::Doc<"Unit of measurement for the signal values">, gr::Visible>            signal_unit;
 
     A<float, "min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min = std::numeric_limits<float>::lowest();
     A<float, "max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max = std::numeric_limits<float>::max();
@@ -746,7 +746,5 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 };
 
 } // namespace opendigitizer
-
-inline static auto registerImPlotSink = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(gr::globalBlockRegistry());
 
 #endif

@@ -137,8 +137,8 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             _sharedXCond = trackLimitsCond(true, xMinLim, xMaxLim);
         }
 
-        const auto&            lnf = DigitizerUi::LookAndFeel::instance();
-        DigitizerUi::IMW::Font plotFont(lnf.fontSmall[lnf.prototypeMode ? 1UZ : 0UZ]); // smaller font to prevent MetricInline label overlap
+        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
+        DigitizerUi::IMW::FontWithSize plotFont(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall)); // smaller font to prevent MetricInline label overlap
 
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
         auto               subplotId    = std::format("##combined_{}", chart_name.value);

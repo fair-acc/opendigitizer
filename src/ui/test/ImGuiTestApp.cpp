@@ -1,4 +1,3 @@
-#include "../Setup.hpp"
 #include "ImGuiTestApp.hpp"
 
 #include "App.hpp"
@@ -69,10 +68,7 @@ inline static bool ImGuiApp_NewFrame(ImGuiApp* /*app*/) {
     return imgui_helper::newFrame();
 }
 
-inline static void ImGuiApp_Render(ImGuiApp* app) {
-    imgui_helper::renderFrame();
-    SDL_GL_SetSwapInterval(app->Vsync ? 1 : 0);
-}
+inline static void ImGuiApp_Render(ImGuiApp*) {} // the run loop renders, so that captures happen before the swap
 
 inline static void ImGuiApp_ShutdownCloseWindow(ImGuiApp*) { imgui_helper::teardownSDL(); }
 inline static void ImGuiApp_ShutdownBackends(ImGuiApp*) { imgui_helper::teardownSDL(); }
@@ -219,10 +215,10 @@ bool ImGuiTestApp::runTests() {
         // Render and swap
         _app->Vsync = !ImGuiTestEngine_GetIO(_engine).IsRequestingMaxAppSpeed;
         ImGui::Render();
-        _app->Render(&(*_app));
-
-        // Post-swap handler is REQUIRED in order to support screen capture
-        ImGuiTestEngine_PostSwap(_engine);
+        // the engine's capture reads the back buffer: before the swap it holds this frame, after it its content is
+        // undefined (captures showed frames rendered more than ten frames earlier)
+        imgui_helper::renderFrame([this] { ImGuiTestEngine_PostSwap(_engine); });
+        SDL_GL_SetSwapInterval(_app->Vsync ? 1 : 0);
     }
 
     int count_tested  = 0;
@@ -235,19 +231,25 @@ bool ImGuiTestApp::runTests() {
 ImGuiTestEngine* ImGuiTestApp::engine() const { return _engine; }
 
 /** static */
-void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
+namespace {
+void resetCaptureWithNextFileName(ImGuiTestContext& ctx, const char* prefix) {
     ctx.CaptureReset();
+    static int suffixCounter = 0;
+    suffixCounter++;
+    ImFormatString(ctx.CaptureArgs->InOutputFile, IM_ARRAYSIZE(ctx.CaptureArgs->InOutputFile), OPENDIGITIZER_BUILD_DIRECTORY "/captures/%s_%04d%s", prefix, suffixCounter, ".png");
+}
+} // namespace
 
-    { // choose a nice name for the output file
-        auto*      args          = ctx.CaptureArgs;
-        static int suffixCounter = 0;
-        suffixCounter++;
-
-        ImFormatString(args->InOutputFile, IM_ARRAYSIZE(args->InOutputFile), OPENDIGITIZER_BUILD_DIRECTORY "/captures/%s_%04d%s", g_testApp->_options.screenshotPrefix, suffixCounter, ".png");
-    }
-
+void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref, int captureFlags) {
+    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
     ctx.CaptureAddWindow(ref);
     ctx.CaptureScreenshot(captureFlags);
+}
+
+void ImGuiTestApp::captureScreenshot(ImGuiTestContext& ctx, const ImRect& screenRect) {
+    resetCaptureWithNextFileName(ctx, g_testApp->_options.screenshotPrefix);
+    ctx.CaptureArgs->InCaptureRect = screenRect;
+    ctx.CaptureScreenshot(ImGuiCaptureFlags_Instant | ImGuiCaptureFlags_HideMouseCursor);
 }
 
 TestOptions TestOptions::fromArgs(int argc, char* argv[]) {

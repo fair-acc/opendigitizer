@@ -12,6 +12,7 @@
 #include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
+#include "components/Splitter.hpp"
 
 #include "GraphModel.hpp"
 
@@ -59,6 +60,7 @@ private:
     };
 
     components::BlockControlsPanelContext _editPaneContext;
+    components::SplitterState             _splitter;
     ImVec2                                _contextMenuPosition;
 
     float                                _timeSpentHoldingPin = 0.0;
@@ -220,8 +222,8 @@ public:
 
     static void sortNodes(UiGraphBlock* rootBlock);
 
-    // zooms out until the whole graph is visible, never above 1:1
-    static void fitIntoView(const UiGraphBlock& rootBlock);
+    // zooms out until the whole graph is visible above the reserved bottom band (the button bar), never above 1:1
+    static void fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels);
 
     void requestBlockDeletion(const std::string& blockName);
 

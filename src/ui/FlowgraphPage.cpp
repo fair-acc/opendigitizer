@@ -169,6 +169,11 @@ std::string valToString(const gr::pmt::Value& val) {
     return out;
 }
 
+namespace {
+constexpr float kButtonBarPadding = 16.0f; // the button bar overlays the bottom of the editor
+constexpr float kButtonBarHeight  = 37.0f;
+} // namespace
+
 FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
     Buttons result;
     if (!(buttons.openNewBlockDialog || buttons.openNewSubGraphDialog || buttons.openRemoteSignalSelector || buttons.rearrangeBlocks || buttons.exportAllUnusedPorts || buttons.closeWindow)) {
@@ -177,8 +182,8 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScree
 
     IMW::PushCursorPosition _;
 
-    static constexpr float padding = 16.0f;
-    static constexpr float height  = 37.0f;
+    constexpr float padding = kButtonBarPadding;
+    constexpr float height  = kButtonBarHeight;
 
     {
         ImGui::SetNextWindowPos({contentScreenTopLeft.x, contentScreenTopLeft.y + contentSize.y - height - padding});
@@ -698,7 +703,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         _fitRequested = true;
     } else if (_fitRequested) {
         _fitRequested = false;
-        fitIntoView(*rootBlock);
+        fitIntoView(*rootBlock, showEditorControls || closeRequestedCallback ? kButtonBarHeight + kButtonBarPadding : 0.f);
         _fitJustApplied = true;
     }
 
@@ -773,7 +778,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     const bool      horizontalSplit   = contentSize.x > contentSize.y;
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
+    const float     ratio             = components::Splitter(_splitter, contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
 
     const auto clicked = drawButtons(contentScreenTopLeft, contentSize,
         {
@@ -1138,7 +1143,7 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) {
     }
 }
 
-void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock) {
+void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels) {
     if (rootBlock.childBlocks.empty()) {
         return;
     }
@@ -1150,22 +1155,24 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock) {
     }
 
     // EditorContext::NavigateTo(rect, zoomIn = true) widens the rect on each side by half of this fraction of its larger
-    // dimension before fitting it (c_NavigationZoomMargin in imgui_node_editor.cpp)
+    // dimension before fitting it into the view (c_NavigationZoomMargin in imgui_node_editor.cpp)
     constexpr float kNavigationZoomMargin = 0.1f;
-    const auto      marginFor             = [](ImVec2 size) { return std::max(size.x, size.y) * kNavigationZoomMargin * 0.5f; };
 
-    auto*        editor   = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
-    const ImVec2 viewSize = ax::NodeEditor::GetScreenSize();
-    const float  margin   = marginFor(bounds.GetSize());
-    if (bounds.GetWidth() + 2.f * margin > viewSize.x || bounds.GetHeight() + 2.f * margin > viewSize.y) {
-        editor->NavigateTo(bounds, true);
-        return;
-    }
+    // zoom: never above 1:1, small enough for the graph plus that margin to fit above the reserved bottom band
+    const ImVec2 viewSize      = ax::NodeEditor::GetScreenSize();
+    const float  usableHeight  = std::max(1.f, viewSize.y - reservedBottomPixels);
+    const float  contentMargin = std::max(bounds.GetWidth(), bounds.GetHeight()) * kNavigationZoomMargin * 0.5f;
+    const float  zoom          = std::min({1.f, viewSize.x / (bounds.GetWidth() + 2.f * contentMargin), usableHeight / (bounds.GetHeight() + 2.f * contentMargin)});
 
-    // fits at 1:1: a view-sized rect, shrunk by exactly the margin NavigateTo adds back, so the zoom ends at 1
-    const float viewMargin = std::max(viewSize.x, viewSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
-    const auto  halfInner  = (viewSize - ImVec2(2.f * viewMargin, 2.f * viewMargin)) * 0.5f;
-    editor->NavigateTo(ImRect(bounds.GetCenter() - halfInner, bounds.GetCenter() + halfInner), true);
+    // the canvas rect to show: the whole view at that zoom, with the graph centred in the part above the band
+    const ImVec2 visibleSize = viewSize / zoom;
+    const float  visibleTop  = bounds.GetCenter().y - 0.5f * usableHeight / zoom;
+    const ImRect visible(ImVec2(bounds.GetCenter().x - 0.5f * visibleSize.x, visibleTop), ImVec2(bounds.GetCenter().x + 0.5f * visibleSize.x, visibleTop + visibleSize.y));
+
+    // NavigateTo adds its margin back: shrink by exactly that, so the shown rect is `visible`
+    const float viewMargin = std::max(visibleSize.x, visibleSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
+    auto*       editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
+    editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
 }
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {

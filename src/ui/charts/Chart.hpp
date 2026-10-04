@@ -525,7 +525,8 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
-    DigitizerUi::IMW::Font titleFont(DigitizerUi::LookAndFeel::instance().fontTiny[DigitizerUi::LookAndFeel::instance().prototypeMode]);
+    const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
+    DigitizerUi::IMW::FontWithSize titleFont(lnf.fontTiny[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontTiny));
 
     const float fontHeight  = ImGui::GetFontSize();
     const auto  plotLimits  = ImPlot::GetPlotLimits(IMPLOT_AUTO, IMPLOT_AUTO);
@@ -729,8 +730,9 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     };
 
     {
-        DigitizerUi::IMW::Font    font(DigitizerUi::LookAndFeel::instance().fontSmall[DigitizerUi::LookAndFeel::instance().prototypeMode ? 1UZ : 0UZ]);
-        DigitizerUi::IMW::ToolTip tip;
+        const auto&                    lnf = DigitizerUi::LookAndFeel::instance();
+        DigitizerUi::IMW::FontWithSize font(lnf.fontSmall[lnf.prototypeMode], lnf.relativeFontSize(lnf.fontSmall));
+        DigitizerUi::IMW::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
             drawAxisTooltip(plot, ImAxis_X1 + i);
         }
@@ -870,22 +872,17 @@ inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
     ImGui::TextUnformatted(signalName.data(), signalName.data() + signalName.size());
 }
 
-using AddSinkToChartCallback                   = std::function<void(std::string_view chartId, std::string_view sinkName)>;
-inline AddSinkToChartCallback g_addSinkToChart = nullptr;
-
 } // namespace dnd
 
-/// Callback for requesting chart type transmutation.
-using TransmuteChartCallback                              = std::function<bool(std::string_view chartId, std::string_view newChartType)>;
-inline TransmuteChartCallback g_requestChartTransmutation = nullptr;
+/// requests a chart makes about itself from its context menu; the receiver defers them, as the chart is being drawn
+struct ChartRequests {
+    std::function<bool(std::string_view chartId, std::string_view newChartType)> transmute;
+    std::function<void(std::string_view chartId)>                                duplicate;
+    std::function<void(std::string_view chartId)>                                remove;
+};
 
-/// Callback for requesting chart duplication.
-using DuplicateChartCallback                            = std::function<void(std::string_view chartId)>;
-inline DuplicateChartCallback g_requestChartDuplication = nullptr;
-
-/// Callback for requesting chart removal.
-using RemoveChartCallback                        = std::function<void(std::string_view chartId)>;
-inline RemoveChartCallback g_requestChartRemoval = nullptr;
+/// set by the dashboard view that draws the charts, cleared when it goes away; one dashboard is drawn at a time
+inline ChartRequests* g_chartRequests = nullptr;
 
 /// Font Awesome icon constants for context menus.
 namespace menu_icons {
@@ -956,25 +953,38 @@ inline bool beginMenuWithIcon(const char* icon, const char* label, bool enabled 
 
 inline void drawDuplicateChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kDuplicate, "Duplicate")) {
-        if (g_requestChartDuplication) {
-            g_requestChartDuplication(uniqueName);
+        if (g_chartRequests && g_chartRequests->duplicate) {
+            g_chartRequests->duplicate(uniqueName);
         }
     }
 }
 
 inline void drawRemoveChartMenuItem(std::string_view uniqueName) {
     if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
-        if (g_requestChartRemoval) {
-            g_requestChartRemoval(uniqueName);
+        if (g_chartRequests && g_chartRequests->remove) {
+            g_chartRequests->remove(uniqueName);
         }
     }
 }
 
-enum class ChartMode : std::uint8_t {
-    Interaction,
-    View,
-    Layout,
-};
+/// how a chart is drawn: View shows data only, Interaction adds zoom, legend drag and drop and context menus, Layout
+/// draws the chart as a placeholder while the dashboard layout is edited
+enum class ChartMode : std::uint8_t { View, Interaction, Layout };
+
+inline constexpr std::string_view kChartModeKey = "chartMode";
+
+[[nodiscard]] inline gr::property_map chartDrawConfig(ChartMode mode) { return {{std::pmr::string(kChartModeKey), std::string(magic_enum::enum_name(mode))}}; }
+
+/// View when the key is absent; an unknown value is a programming error
+[[nodiscard]] inline ChartMode chartModeFrom(const gr::property_map& config) {
+    const auto it = config.find(kChartModeKey);
+    if (it == config.end()) {
+        return ChartMode::View;
+    }
+    const auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}));
+    assert(mode.has_value() && "unknown chartMode");
+    return mode.value_or(ChartMode::View);
+}
 
 struct DrawPrologue {
     ImPlotFlags plotFlags;
@@ -1420,8 +1430,8 @@ struct Chart {
                 DigitizerUi::IMW::Disabled _(disabled);
                 bool                       isCurrent = type.ends_with(std::remove_cvref_t<Self>::kChartTypeName);
                 if (ImGui::MenuItem(type.c_str(), nullptr, isCurrent)) {
-                    if (!isCurrent && g_requestChartTransmutation) {
-                        g_requestChartTransmutation(self.unique_name, type);
+                    if (!isCurrent && g_chartRequests && g_chartRequests->transmute) {
+                        g_chartRequests->transmute(self.unique_name, type);
                     }
                 }
             }
@@ -1906,13 +1916,8 @@ struct Chart {
         self.syncSinksIfNeeded(self.data_sinks.value);
         self.refreshCapacityIfNeeded();
 
-        ChartMode chartMode = ChartMode::View;
-        if (const auto it = config.find("chartMode"); it != config.end()) {
-            if (auto mode = magic_enum::enum_cast<ChartMode>(it->second.value_or(std::string_view{}))) {
-                chartMode = *mode;
-            }
-        }
-        const bool layoutMode = chartMode == ChartMode::Layout;
+        const ChartMode chartMode  = chartModeFrom(config);
+        const bool      layoutMode = chartMode == ChartMode::Layout;
 
         bool effectiveShowLegend = false;
         if constexpr (requires { self.show_legend; }) {

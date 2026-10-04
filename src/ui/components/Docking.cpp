@@ -3,6 +3,7 @@
 #include "../ui/components/ImGuiNotify.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <ranges>
 
@@ -102,8 +103,9 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         const bool    windowsChanged     = !std::ranges::is_permutation(_lastWindowNames, windows, {}, {}, windowName);
         const bool    dockspaceMissing   = ImGui::DockBuilderGetNode(currentDockspaceID) == nullptr;
 
-        if (!_needsRelayout && isFreeLayout() && windowsChanged) {
-            captureFreeLayout();
+        const bool dockspaceMoved = _lastDockspaceID != 0 && _lastDockspaceID != currentDockspaceID; // another ID stack
+        if (!_needsRelayout && isFreeLayout() && (windowsChanged || dockspaceMoved)) {
+            captureFreeLayout(); // from the previous dockspace, while its windows are still docked there
         }
 
         _lastDockspaceID = currentDockspaceID;
@@ -126,7 +128,7 @@ void DockSpace::render(const Windows& windows, ImVec2 paneSize, bool isEditable)
         ImGui::DockSpace(currentDockspaceID, ImVec2(0.0f, 0.0f), dockspace_flags, nullptr);
     }
 
-    renderWindows(windows, isEditable);
+    renderWindows(windows, isEditable, paneSize);
 }
 
 const gr::property_map& DockSpace::saveFreeLayout() const {
@@ -143,10 +145,10 @@ void DockSpace::captureFreeLayout() const {
     _lastFreeLayout        = DigitizerUi::saveDockSpaceState(windowNames, _lastDockspaceID);
 }
 
-void DockSpace::renderWindows(const Windows& windows, bool isEditable) {
+void DockSpace::renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize) {
     for (const auto& window : windows) {
         constexpr float floatingWindowMinSizeFractionOfMainWindow = 1.f / 4.f;
-        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(ImGui::GetMainViewport()->WorkSize);
+        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(paneSize);
         const ImVec2    windowSizeMin                             = window->windowMinSizeOverride.value_or(ImVec2{
             std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfMainWindow),
             std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfMainWindow),
@@ -254,10 +256,61 @@ void DockSpace::layoutInBox(const Windows& windows, ImGuiDir direction, bool isE
     }
 }
 
+GridShape DigitizerUi::gridShape(DockingLayoutType type, std::size_t windowCount) noexcept {
+    if (windowCount == 0UZ) {
+        return {};
+    }
+    switch (type) {
+    case DockingLayoutType::Row: return {.columns = windowCount, .rows = 1UZ};
+    case DockingLayoutType::Column: return {.columns = 1UZ, .rows = windowCount};
+    case DockingLayoutType::Grid:
+    case DockingLayoutType::Free: break;
+    }
+    const auto columns = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(windowCount))));
+    return {.columns = columns, .rows = (windowCount + columns - 1UZ) / columns};
+}
+
+std::vector<LayoutRect> DigitizerUi::autoLayoutRects(DockingLayoutType type, std::size_t windowCount) {
+    const auto [columns, rows] = gridShape(type, windowCount);
+    std::vector<LayoutRect> rects;
+    rects.reserve(windowCount);
+    for (std::size_t i = 0UZ; i < windowCount; ++i) {
+        const float x = static_cast<float>(i % columns) / static_cast<float>(columns);
+        rects.push_back({
+            .x = x,
+            .y = static_cast<float>(i / columns) / static_cast<float>(rows),
+            .w = i + 1UZ == windowCount ? 1.f - x : 1.f / static_cast<float>(columns),
+            .h = 1.f / static_cast<float>(rows),
+        });
+    }
+    return rects;
+}
+
+std::vector<LayoutRect> DigitizerUi::freeLayoutRects(std::span<const std::array<std::size_t, 4>> cells) {
+    std::size_t maxX = 1UZ;
+    std::size_t maxY = 1UZ;
+    for (const auto& [x, y, width, height] : cells) {
+        maxX = std::max(maxX, x + width);
+        maxY = std::max(maxY, y + height);
+    }
+    std::vector<LayoutRect> rects;
+    rects.reserve(cells.size());
+    for (const auto& [x, y, width, height] : cells) {
+        rects.push_back({
+            .x = static_cast<float>(x) / static_cast<float>(maxX),
+            .y = static_cast<float>(y) / static_cast<float>(maxY),
+            .w = static_cast<float>(width) / static_cast<float>(maxX),
+            .h = static_cast<float>(height) / static_cast<float>(maxY),
+        });
+    }
+    return rects;
+}
+
 void DockSpace::layoutInGrid(const Windows& windows, bool isEditable) {
-    const size_t windowCount = windows.size();
-    const int    columns     = int(std::ceil(std::sqrt(windowCount)));
-    const int    rows        = int(std::ceil(double(windowCount) / static_cast<double>(columns)));
+    const size_t windowCount   = windows.size();
+    const auto [cols, rowsAll] = gridShape(DockingLayoutType::Grid, windowCount);
+    const int columns          = static_cast<int>(cols);
+    const int rows             = static_cast<int>(rowsAll);
 
     ImGuiID bottomId  = dockspaceID();
     size_t  windowIdx = 0;
@@ -411,7 +464,9 @@ void DockSpace::relayout(const Windows& windows, bool isEditable, bool exactFree
                 layoutInGrid(windows, isEditable); // fallback, will be saved as state of free layout
             }
         } else {
-            restoreDockSpaceState(_lastFreeLayout, dockspaceID);
+            if (!restoreDockSpaceState(_lastFreeLayout, dockspaceID)) { // nothing captured yet, e.g. a new view of a dashboard
+                layoutInGrid(windows, isEditable);
+            }
 
             dockAtBottomIfWanted(windows, dockspaceID, nodeFlags(isEditable));
         }
