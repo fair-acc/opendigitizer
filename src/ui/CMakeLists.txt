@@ -353,6 +353,8 @@ add_library(
   Dashboard.hpp
   DashboardPage.cpp
   DashboardPage.hpp
+  DashboardView.cpp
+  DashboardView.hpp
   DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp

@@ -515,18 +515,9 @@ void Dashboard::doLoad(const gr::property_map& dashboard) {
         }
         const property_map srcMap = *src.get_if<property_map>();
 
-        const auto block = *readField.operator()<std::string>(srcMap, "block");
-        const auto name  = *readField.operator()<std::string>(srcMap, "name");
-
-        auto sinkPtr = opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& s) { return s.name() == block; });
-        if (!sinkPtr) {
-            auto msg = std::format("Unable to find the plot source -- sink: '{}'", block);
-            components::Notification::warning(msg);
-            continue;
-        }
-
-        // Signal name is set via block properties during initialization
-        // SignalSink interface is read-only for name
+        // the sinks are blocks of the flowgraph; charts resolve them by name when they draw
+        std::ignore = *readField.operator()<std::string>(srcMap, "block");
+        std::ignore = *readField.operator()<std::string>(srcMap, "name");
     }
 
     const auto plots = *readField.operator()<Tensor<pmt::Value>>(dashboard, "plots");
@@ -687,12 +678,18 @@ void Dashboard::saveStore(const gr::property_map& headerYaml, const gr::property
     }
 }
 
-void Dashboard::save() {
-    using namespace gr;
-
+void Dashboard::save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout) {
     if (description->storageInfo->isInMemoryDashboardStorage() || !scheduler) {
         return;
     }
+    layoutType                         = liveLayoutType; // the saved layout becomes the dashboard's description
+    windowLayout                       = liveWindowLayout;
+    const auto [headerYaml, graphYaml] = serialise(liveLayoutType, liveWindowLayout);
+    saveStore(headerYaml, graphYaml);
+}
+
+std::pair<gr::property_map, gr::property_map> Dashboard::serialise(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout) {
+    using namespace gr;
 
     property_map headerYaml;
     headerYaml["favorite"] = description->isFavorite;
@@ -715,20 +712,20 @@ void Dashboard::save() {
     graphModel.saveBlockPositions(graphYaml);
     property_map dashboardYaml;
 
-    gr::Tensor<gr::pmt::Value> sources;
-    // Use SinkRegistry with SignalSink interface for serialization
-    opendigitizer::charts::SinkRegistry::instance().forEach([&](const opendigitizer::charts::SignalSink& sink) {
+    gr::Tensor<gr::pmt::Value> sources; // the plot sinks of this dashboard's flowgraph, in graph order
+    for (const UiGraphBlock* sink : graphModel.recursiveGatherPlotSinks()) {
         property_map map;
-        map["block"] = std::string(sink.name());
-        map["name"]  = std::string(sink.name());
-        map["color"] = sink.color();
-
+        map["block"] = sink->blockName;
+        map["name"]  = sink->blockName;
+        if (const auto color = sink->blockSettings.find_value("color", std::pmr::get_default_resource())) {
+            map["color"] = *color;
+        }
         sources.emplace_back(std::move(map));
-    });
+    }
     dashboardYaml["sources"] = sources;
 
-    dashboardYaml["layout"]       = std::string(dockingLayoutName(layoutType));
-    dashboardYaml["windowLayout"] = windowLayout;
+    dashboardYaml["layout"]       = std::string(dockingLayoutName(liveLayoutType));
+    dashboardYaml["windowLayout"] = liveWindowLayout;
 
     dashboardYaml["propertyControlWindows"] = [this] {
         gr::property_map out;
@@ -791,7 +788,7 @@ void Dashboard::save() {
     dashboardYaml["plots"] = plots;
 
     graphYaml["dashboard"] = std::move(dashboardYaml);
-    saveStore(headerYaml, graphYaml);
+    return {std::move(headerYaml), std::move(graphYaml)};
 }
 
 DigitizerUi::Dashboard::UIWindow& Dashboard::newUIBlock(std::string_view chartType, const gr::property_map& chartInitialParameters) {

@@ -91,7 +91,8 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/fg_dipole_intensity_ramp.grc
     examples/qa_grouping.grc
     examples/qa_layout.grc
-    examples/qa_subgraph.grc)
+    examples/qa_subgraph.grc
+    baselines/dashboard_layout.txt)
 
   # Code shared between all tests
   add_library(imgui_tests_common STATIC ImGuiTestApp.cpp)
@@ -128,12 +129,14 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_filtercomboboxes)
   add_imgui_test(qa_keypad)
   add_imgui_test(qa_chart)
+  add_imgui_test(qa_ChartFontSize)
   add_imgui_test(qa_chart_compatibility)
   add_imgui_test(qa_blockneighbourspreview)
   add_imgui_test(qa_chart_fgdipole)
   add_imgui_test(qa_docking)
   add_imgui_test(qa_FramePacer)
   add_imgui_test(qa_layout)
+  add_imgui_test(qa_DashboardBaseline)
   add_imgui_test(qa_ColourManager)
   add_imgui_test(qa_flowgraph)
   add_imgui_test(qa_GraphModel)

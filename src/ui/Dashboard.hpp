@@ -170,9 +170,12 @@ struct Dashboard {
     void load();
     void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
     void loadPlugins(std::function<void()> done);
-    void save();
-    void saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
-    void doLoad(const gr::property_map& dashboard);
+    /// saves with the layout the view shows now; it becomes the dashboard's stored layout
+    void save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
+    /// header and graph YAML (flowgraph plus the dashboard section) with the given layout
+    [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
+    void                                                        saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
+    void                                                        doLoad(const gr::property_map& dashboard);
 
     UIWindow& newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
     void      deleteChart(UIWindow* uiWindow);

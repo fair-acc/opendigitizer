@@ -24,8 +24,7 @@
 namespace DigitizerUi {
 
 namespace {
-constexpr inline auto kMaxPlots  = 16u;
-constexpr inline auto kGridWidth = 16u;
+constexpr inline auto kMaxPlots = 16u;
 } // namespace
 
 bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
@@ -43,14 +42,6 @@ bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSi
     }
 
     return ret;
-}
-
-static void alignForWidth(float width, float alignment = 0.5f) noexcept {
-    float avail = ImGui::GetContentRegionAvail().x;
-    float off   = (avail - width) * alignment;
-    if (off > 0.0f) {
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off);
-    }
 }
 
 struct PropertyInfo {
@@ -374,119 +365,25 @@ void DashboardPage::drawChangeLabelPopup() {
     }
 }
 
-ImVec2 DashboardPage::drawCharts(Mode mode, const ExportedPropertyPairsByWindowID& propertyPairsByWindowID, std::vector<std::size_t>& windowRemoveList) {
-    IMW::Group group;
-
-    ImVec2 paneSize = ImGui::GetContentRegionAvail();
-    paneSize.y -= _legendBox.y;
-
-    const float w = paneSize.x / float(kGridWidth);
-
-    // Draw layout grid in Layout mode
-    if (mode == Mode::Layout) {
-        const uint32_t gridLineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().gridLines);
-        auto           pos           = ImGui::GetCursorScreenPos();
-        float          x             = pos.x;
-        while (x < pos.x + paneSize.x) {
-            ImGui::GetWindowDrawList()->AddLine({x, pos.y}, {x, pos.y + paneSize.y}, gridLineColor);
-            x += w;
-        }
-        float y = pos.y;
-        while (y < pos.y + paneSize.y) {
-            ImGui::GetWindowDrawList()->AddLine({pos.x, y}, {pos.x + paneSize.x, y}, gridLineColor);
-            y += w; // TODO maybe should be h here?
-        }
-    }
-
-    DockSpace::Windows windows;
-
-    // Iterate uiGraph blocks filtered by ChartPane category
-    for (auto& blockPtr : _dashboard->uiGraph.blocks()) {
-        if (blockPtr->uiCategory() != gr::UICategory::Content) {
-            continue;
-        }
-
-        // Get or create UIWindow for this block (lazy creation)
-        auto& uiWindow = _dashboard->getOrCreateUIWindow(blockPtr);
-        if (!uiWindow.window) {
-            continue;
-        }
-
-        windows.push_back(uiWindow.window);
-        // Capture shared_ptr by value to ensure block stays alive during render
-        uiWindow.window->renderFunc = [block = blockPtr, mode] {
-            gr::property_map drawConfig;
-            drawConfig["chartMode"] = magic_enum::enum_name(mode);
-            std::ignore             = block->draw(drawConfig);
-        };
-
-        uiWindow.window->renderDockingContextMenuFunc = [block = blockPtr] {
-            opendigitizer::charts::drawDuplicateChartMenuItem(block->uniqueName());
-            opendigitizer::charts::drawRemoveChartMenuItem(block->uniqueName());
-        };
-    }
-
-    // out vars, not set until after .render() and window callbacks below
-    auto contextMenuAction = PropertyControlWindowContextMenuAction::None;
-
-    if (mode != Mode::View) {
-        this->addPropertyControlWindows({
-            .output              = windows,
-            .pairs               = propertyPairsByWindowID,
-            .onContextMenuAction = [&contextMenuAction](PropertyControlWindowContextMenuAction action) { contextMenuAction = action; },
-            .removeList          = windowRemoveList,
-        });
-    }
-
-    _dockSpace.render(windows, paneSize, mode == Mode::Layout);
-
-    // now that render() has called, contextMenuAction has been populated by callback
-    {
-        using enum PropertyControlWindowContextMenuAction;
-        switch (contextMenuAction) {
-        case None: break;
-        case OpenChangeLabelPopup: ImGui::OpenPopup(changeLabelPopupID); break;
-        case OpenDisconnectCurrentPropertiesPopup: ImGui::OpenPopup(currentPropertiesPopupID); break;
-        }
-    }
-
-    this->drawCurrentPropertiesPopup(propertyPairsByWindowID);
-    this->drawChangeLabelPopup();
-
-    return paneSize;
-}
-
 void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
     using enum DigitizerUi::DockingLayoutType;
     IMW::Group layout;
     if (plotSquareIconButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize)) {
-        _dockSpace.setLayoutType(Row);
+        _view.dockSpace().setLayoutType(Row);
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F7A4}", "change to the vertical layout", plotButtonSize)) {
-        _dockSpace.setLayoutType(Column);
+        _view.dockSpace().setLayoutType(Column);
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F58D}", "change to the grid layout", plotButtonSize)) {
-        _dockSpace.setLayoutType(Grid);
+        _view.dockSpace().setLayoutType(Grid);
     }
     ImGui::SameLine();
     if (plotSquareIconButton("\u{F248}", "change to the free layout", plotButtonSize)) {
-        _dockSpace.setLayoutType(Free);
+        _view.dockSpace().setLayoutType(Free);
     }
     ImGui::SameLine();
-}
-
-ImVec2 DashboardPage::drawLegendCenter(Mode mode, ImVec2 chartPaneSize) noexcept {
-    _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-    auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, chartPaneSize.x);
-    if (mode == Mode::Interaction && !rightClickedSinkName.empty()) {
-        if (auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(std::string(rightClickedSinkName))) {
-            _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
-            _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
-        }
-    }
-    return _signalLegend.legendSize();
 }
 
 void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept {
@@ -541,45 +438,32 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
     });
 }
 
-DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2 chartPaneSize) noexcept {
-    IMW::Group group;
-
-    LegendItemClickResult clickResult;
-
+void DashboardPage::drawBarLeading(LegendItemClickResult& clickResult) noexcept {
     const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
-
-    if (mode != Mode::View) {
-        namespace dnd = opendigitizer::charts::dnd;
-        if (plotSquareIconButton("\u{F201}", "create new chart", plotButtonSize)) {
-            clickResult.shouldOpenNewPlotModal = true;
-        }
-        const bool dropped = dnd::handleDropTarget(
-            [&clickResult](const dnd::Payload& payload) {
-                const auto sink = opendigitizer::charts::SinkRegistry::instance().getSink(payload.sink_unique_name);
-                if (!sink) {
-                    return false;
-                }
-                std::string sinkName = opendigitizer::charts::findSinkReference(*sink);
-                if (sinkName.empty()) {
-                    return false;
-                }
-                clickResult.sinkForNewPlot = std::move(sinkName);
-                return true;
-            },
-            dnd::kPayloadType);
-        clickResult.shouldOpenNewPlotModal = clickResult.shouldOpenNewPlotModal || dropped;
-        ImGui::SameLine();
+    namespace dnd              = opendigitizer::charts::dnd;
+    if (plotSquareIconButton("\u{F201}", "create new chart", plotButtonSize)) {
+        clickResult.shouldOpenNewPlotModal = true;
     }
+    const bool dropped = dnd::handleDropTarget(
+        [&clickResult](const dnd::Payload& payload) {
+            const auto sink = opendigitizer::charts::SinkRegistry::instance().getSink(payload.sink_unique_name);
+            if (!sink) {
+                return false;
+            }
+            std::string sinkName = opendigitizer::charts::findSinkReference(*sink);
+            if (sinkName.empty()) {
+                return false;
+            }
+            clickResult.sinkForNewPlot = std::move(sinkName);
+            return true;
+        },
+        dnd::kPayloadType);
+    clickResult.shouldOpenNewPlotModal = clickResult.shouldOpenNewPlotModal || dropped;
+    ImGui::SameLine();
+}
 
-    // Render Toolbar blocks (legend, layout buttons, etc.) - centre-aligned
-    alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
-    _legendBox.x = 0.f;
-    if (mode == Mode::Layout) {
-        this->drawToolbarLayoutButtons(plotButtonSize);
-        _legendBox = ImGui::GetItemRectSize();
-    } else {
-        _legendBox = this->drawLegendCenter(mode, chartPaneSize);
-    }
+void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept {
+    const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
 
     if (mode == Mode::Interaction && _dashboard) {
         ImGui::SameLine();
@@ -646,11 +530,6 @@ DashboardPage::LegendItemClickResult DashboardPage::drawLegend(Mode mode, ImVec2
         ImGui::SetCursorPosX(cursorBeforeButtons - estSize.x - spacing);
         ImGui::Text("%s", str.c_str());
     }
-    ImGui::Dummy(ImVec2(0.f, 0.f));
-
-    _legendBox.y = std::max(_legendBox.y, plotButtonSize);
-
-    return clickResult;
 }
 
 void applyExportPropertiesPageResult(const components::BlockControlsPanelResult& controlPanelAction, Dashboard& dashboard) {
@@ -716,39 +595,58 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
 
-    const float  left = ImGui::GetCursorPosX();
-    const float  top  = ImGui::GetCursorPosY();
-    const ImVec2 size = ImGui::GetContentRegionAvail();
+    const float  left          = ImGui::GetCursorPosX();
+    const float  top           = ImGui::GetCursorPosY();
+    const ImVec2 screenTopLeft = ImGui::GetCursorScreenPos(); // the edit pane is a window of its own, placed in screen coordinates
+    const ImVec2 size          = ImGui::GetContentRegionAvail();
 
     const bool  horizontalSplit = size.x > size.y;
-    const float ratio           = mode == Mode::Interaction ? components::Splitter(size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
+    const float ratio           = mode == Mode::Interaction ? components::Splitter(_splitter, size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
 
     LegendItemClickResult legendClickResult;
-    IMW::Child            plotsChild("##plots", horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth), false, ImGuiWindowFlags_NoScrollbar);
+    auto                  contextMenuAction = PropertyControlWindowContextMenuAction::None;
+    const float           plotButtonSize    = LookAndFeel::instance().mainWindowIconButtonSize();
 
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    DashboardView::Options options;
+    options.size = horizontalSplit ? ImVec2(size.x * (1.f - ratio) - halfSplitterWidth, size.y) : ImVec2(size.x, size.y * (1.f - ratio) - halfSplitterWidth);
+    if (mode != Mode::View) {
+        options.barLeading     = [&] { drawBarLeading(legendClickResult); };
+        options.addDockWindows = [&](DockSpace::Windows& windows) {
+            addPropertyControlWindows({
+                .output              = windows,
+                .pairs               = propertyPairsByWindowID,
+                .onContextMenuAction = [&contextMenuAction](PropertyControlWindowContextMenuAction action) { contextMenuAction = action; },
+                .removeList          = windowRemoveList,
+            });
+        };
+    }
+    if (mode == Mode::Layout) {
+        options.barCentre = [&] { drawToolbarLayoutButtons(plotButtonSize); };
+    }
+    options.barTrailing = [&] { drawBarTrailing(mode, legendClickResult); };
+
+    const auto viewResult = _view.draw(*_dashboard, mode, options);
+    if (viewResult.backgroundClicked) {
         _editPane.setSelectedBlock(nullptr, nullptr);
     }
+    if (!viewResult.rightClickedSinkName.empty()) {
+        if (auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(viewResult.rightClickedSinkName)) {
+            _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
+            _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
+        }
+    }
 
-    // chart
-    const auto paneSize = this->drawCharts(mode, propertyPairsByWindowID, windowRemoveList);
-    ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowHeight() - _legendBox.y));
-
-    // quickfix for an imgui bug?: the SetCursorPos above does not seem to
-    // be sufficient for getting our cursor to return there after
-    // SameLine(). The issue is visible iff we do manual cursor
-    // manipulation (as the global signal legend does for the first color
-    // rect). So to make sure the first item draws at the same position as
-    // the succeeding ones after SameLine(), just insert a dummy size and
-    // do SameLine here, so the imgui context is in the same state as later
-    ImGui::ItemSize(ImVec2{}, 0.f);
-    ImGui::SameLine();
-
-    // legend
-    legendClickResult = this->drawLegend(mode, paneSize);
+    // contextMenuAction was set while the dock windows rendered
+    switch (contextMenuAction) {
+    case PropertyControlWindowContextMenuAction::None: break;
+    case PropertyControlWindowContextMenuAction::OpenChangeLabelPopup: ImGui::OpenPopup(changeLabelPopupID); break;
+    case PropertyControlWindowContextMenuAction::OpenDisconnectCurrentPropertiesPopup: ImGui::OpenPopup(currentPropertiesPopupID); break;
+    }
+    drawCurrentPropertiesPopup(propertyPairsByWindowID);
+    drawChangeLabelPopup();
 
     if (!legendClickResult.sinkForNewPlot.empty()) {
         _sinkForNewPlot = legendClickResult.sinkForNewPlot;
@@ -757,19 +655,16 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     // edit pane
     if (horizontalSplit) {
         const float w = size.x * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {left + size.x - w + halfSplitterWidth, top}, {w - halfSplitterWidth, size.y}, true), propertyPairsByWindowID, windowRemoveList);
+        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x + size.x - w + halfSplitterWidth, screenTopLeft.y}, {w - halfSplitterWidth, size.y}, true), propertyPairsByWindowID, windowRemoveList);
     } else {
         const float h = size.y * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {left, top + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false), propertyPairsByWindowID, windowRemoveList);
+        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x, screenTopLeft.y + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false), propertyPairsByWindowID, windowRemoveList);
     }
 
     return legendClickResult;
 }
 
 void DashboardPage::draw(Mode mode) noexcept {
-    processPendingTransmutation();
-    processPendingRemovals();
-
     const auto               propertyPairsByWindowID = this->getExportedPropertyPairsByWindowID();
     std::vector<std::size_t> windowRemoveList; // queue removal of windows here, submitted at end of draw()
 
@@ -824,7 +719,7 @@ DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view cha
 void DashboardPage::drawNewPlotModal() {
     using namespace opendigitizer::charts;
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    const ImVec2 center = ImGui::GetWindowPos() + ImGui::GetWindowSize() * 0.5f; // the window the page is drawn in, not the screen
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Appearing);
 
@@ -847,13 +742,8 @@ void DashboardPage::drawNewPlotModal() {
     }
 }
 
-void DashboardPage::setLayoutConfiguration(DockingLayoutType type, std::optional<gr::property_map> freeLayoutDescription) {
-    _dockSpace.setLayoutType(type);
-    if (freeLayoutDescription) {
-        _dockSpace.loadFreeLayout(*freeLayoutDescription);
-    }
-}
+void DashboardPage::setLayoutConfiguration(DockingLayoutType type, std::optional<gr::property_map> freeLayoutDescription) { _view.setLayout(type, freeLayoutDescription); }
 
-std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const { return {_dockSpace.layoutType(), _dockSpace.saveFreeLayout()}; }
+std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const { return {_view.dockSpace().layoutType(), _view.dockSpace().saveFreeLayout()}; }
 
 } // namespace DigitizerUi

@@ -177,6 +177,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(sameWithinTolerance(expected[i], actual[i])) << std::format("expected '{}', got '{}'", expected[i], actual[i]);
                 }
             };
+
+            "a destroyed dashboard page leaves no chart request handler behind"_test = [] {
+                auto& state = *g_state;
+                expect(opendigitizer::charts::g_chartRequests != nullptr) << fatal << "the drawing page receives chart requests";
+                state.page.reset();
+                expect(opendigitizer::charts::g_chartRequests == nullptr) << "no handler pointing into a destroyed page";
+            };
         };
     }
 };

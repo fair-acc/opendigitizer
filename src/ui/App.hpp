@@ -12,13 +12,13 @@
 #include "common/LookAndFeel.hpp"
 
 #include "components/AppHeader.hpp"
-#include "components/Toolbar.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "Dashboard.hpp"
 #include "DashboardPage.hpp"
 #include "FlowgraphPage.hpp"
 #include "OpenDashboardPage.hpp"
+#include "Setup.hpp"
 
 #include "settings.hpp"
 #include "utils/EmscriptenHelper.hpp"
@@ -59,8 +59,6 @@ public:
     std::atomic<bool> isRunning        = true;
     ViewMode          mainViewMode     = ViewMode::INTERACTION;
     ViewMode          previousViewMode = ViewMode::INTERACTION;
-
-    std::vector<gr::BlockModel*> toolbarBlocks;
 
     // Since loading a dashboard blocks the main thread,
     // we want to have two steps, one which will prepare the
@@ -164,22 +162,8 @@ public:
         dashboard       = {};
     }
 
-    static void setImGuiStyle(LookAndFeel::Style style) {
-        switch (style) {
-        case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
-        case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
-        }
-        LookAndFeel::mutableInstance().style = style;
-
-        ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
-
-        // with the dark style the plot frame would have the same color as a button. make it have the
-        // same color as the window background instead.
-        ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-    }
-
     void setStyle(LookAndFeel::Style style) {
-        setImGuiStyle(style);
+        applyStyle(style);
         flowgraphPage.updateStyle();
     }
 
@@ -336,19 +320,12 @@ public:
                 dashboard->handleMessages();
             }
 
-            if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD) {
-                // Do not disable the open/save page when no dashboard is loaded — that is how the user loads the first one.
-                IMW::Disabled disabled(dashboard == nullptr && mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD);
-                components::Toolbar(toolbarBlocks);
-            }
-
             if (dashboard != nullptr) {
                 if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
                     // Are we in the process of changing the dashboard?
                     loadedDashboard = dashboard.get();
                     dashboardPage   = std::make_unique<DashboardPage>();
                     dashboardPage->setDashboard(*dashboard.get());
-                    dashboardPage->setLayoutConfiguration(loadedDashboard->layoutType, loadedDashboard->windowLayout);
                     dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
                     dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                     flowgraphPage.reset();

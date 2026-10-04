@@ -141,6 +141,13 @@ struct LookAndFeel {
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
 
+    /// size for `faces[prototypeMode]` that keeps its load-time ratio to `fontNormal` relative to the current font size; 0 (keep current size) without loaded fonts
+    [[nodiscard]] float relativeFontSize(const std::array<ImFont*, 2>& faces) const noexcept {
+        const ImFont* face   = faces[prototypeMode];
+        const ImFont* normal = fontNormal[prototypeMode];
+        return face && normal ? ImGui::GetStyle().FontSizeBase * face->LegacySize / normal->LegacySize : 0.f;
+    }
+
     Style      style      = Style::Light;
     WindowMode windowMode = WindowMode::RESTORED;
 

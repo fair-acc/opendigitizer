@@ -1,3 +1,4 @@
+#include "Setup.hpp"
 #include "TestSinks.hpp"
 #include "blocks/ImPlotSink.hpp"
 
@@ -5,6 +6,7 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -17,6 +19,14 @@ int main() {
     using namespace boost::ut;
     using namespace opendigitizer::charts;
     using namespace opendigitizer::test;
+
+    "every chart mode survives the draw config, an absent mode is View"_test = [] {
+        for (const ChartMode mode : {ChartMode::View, ChartMode::Interaction, ChartMode::Layout}) {
+            expect(chartModeFrom(chartDrawConfig(mode)) == mode) << magic_enum::enum_name(mode);
+        }
+        expect(chartModeFrom(gr::property_map{}) == ChartMode::View);
+        expect(chartModeFrom(gr::property_map{{"chartMode", std::string("Interaction")}}) == ChartMode::Interaction) << "the dashboard writes the enumerator name";
+    };
 
     "SpectrumPlot requests small default dataset capacity"_test = [] {
         opendigitizer::ImPlotSink<gr::DataSet<float>> sink({});
@@ -204,7 +214,10 @@ int main() {
     };
 
     "registeredChartTypes queries block registry"_test = [] {
+        DigitizerUi::registerDashboardBlocks(gr::globalBlockRegistry()); // charts no longer register as a side effect of their headers
         auto types = registeredChartTypes();
+        expect(!types.empty()) << fatal;
+        expect(std::ranges::any_of(types, [](const std::string& type) { return type.ends_with("XYChart"); })) << "XYChart is registered";
 
         expect(std::is_sorted(types.begin(), types.end())) << "Types should be sorted";
 

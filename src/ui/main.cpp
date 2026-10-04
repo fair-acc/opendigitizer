@@ -1,4 +1,3 @@
-#include "Setup.hpp"
 #include "common/ImGuiHelperSDL.hpp"
 
 #include "utils/EmscriptenHelper.hpp"
@@ -230,7 +229,7 @@ int main(int argc, char** argv) {
     }
 
     Digitizer::Settings::instance();
-    DigitizerUi::initialise(); // the App applies its style itself (App::setStyle)
+    DigitizerUi::initialise();
 
     // Register blocks. On WASM dynload, Gr* blocklibs arrive via SIDE_MODULE plugins.
     // On native / WASM-static they are linked in and registered here.

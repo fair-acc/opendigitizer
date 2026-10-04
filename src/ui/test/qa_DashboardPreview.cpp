@@ -1,12 +1,59 @@
 #include "components/DashboardPreview.hpp"
+#include "components/Docking.hpp"
 #include <boost/ut.hpp>
 
+#include <array>
 #include <cmath>
+#include <initializer_list>
+#include <vector>
+
+namespace {
+// rectangles as {x, y, w, h} fractions of the layout area, worked out by hand from the layout rules
+bool sameRects(const std::vector<DigitizerUi::LayoutRect>& actual, std::initializer_list<std::array<float, 4>> expected) {
+    if (actual.size() != expected.size()) {
+        return false;
+    }
+    constexpr float kTolerance = 1e-6f;
+    std::size_t     i          = 0UZ;
+    for (const auto& [x, y, w, h] : expected) {
+        const auto& rect = actual[i++];
+        if (std::abs(rect.x - x) > kTolerance || std::abs(rect.y - y) > kTolerance || std::abs(rect.w - w) > kTolerance || std::abs(rect.h - h) > kTolerance) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
 
 int main() {
     using namespace boost::ut;
     using DigitizerUi::DashboardPreview;
     using enum DashboardPreview::ChartType;
+
+    "layout rules: grid rectangles for 1, 2, 3, 5 and 6 windows"_test = [] {
+        using enum DigitizerUi::DockingLayoutType;
+        constexpr float kThird = 1.f / 3.f;
+        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 1UZ), {{0.f, 0.f, 1.f, 1.f}}));
+        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 2UZ), {{0.f, 0.f, .5f, 1.f}, {.5f, 0.f, .5f, 1.f}}));
+        // 2 columns x 2 rows, the last window takes the rest of its row
+        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 3UZ), {{0.f, 0.f, .5f, .5f}, {.5f, 0.f, .5f, .5f}, {0.f, .5f, 1.f, .5f}}));
+        // 3 columns x 2 rows
+        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 5UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, 2.f * kThird, .5f}}));
+        expect(sameRects(DigitizerUi::autoLayoutRects(Grid, 6UZ), {{0.f, 0.f, kThird, .5f}, {kThird, 0.f, kThird, .5f}, {2.f * kThird, 0.f, kThird, .5f}, {0.f, .5f, kThird, .5f}, {kThird, .5f, kThird, .5f}, {2.f * kThird, .5f, kThird, .5f}}));
+    };
+
+    "layout rules: row and column split evenly"_test = [] {
+        using enum DigitizerUi::DockingLayoutType;
+        constexpr float kThird = 1.f / 3.f;
+        expect(sameRects(DigitizerUi::autoLayoutRects(Row, 3UZ), {{0.f, 0.f, kThird, 1.f}, {kThird, 0.f, kThird, 1.f}, {2.f * kThird, 0.f, kThird, 1.f}}));
+        expect(sameRects(DigitizerUi::autoLayoutRects(Column, 3UZ), {{0.f, 0.f, 1.f, kThird}, {0.f, kThird, 1.f, kThird}, {0.f, 2.f * kThird, 1.f, kThird}}));
+        expect(DigitizerUi::autoLayoutRects(Grid, 0UZ).empty());
+    };
+
+    "layout rules: free cells are scaled by the largest extent"_test = [] {
+        const std::array<std::array<std::size_t, 4>, 3> cells{{{0UZ, 0UZ, 3UZ, 1UZ}, {3UZ, 0UZ, 1UZ, 1UZ}, {0UZ, 1UZ, 2UZ, 1UZ}}}; // 4 x 2 cells
+        expect(sameRects(DigitizerUi::freeLayoutRects(cells), {{0.f, 0.f, .75f, .5f}, {.75f, 0.f, .25f, .5f}, {0.f, .5f, .5f, .5f}}));
+    };
 
     const auto expectRect = [](const std::optional<DashboardPreview::Rect>& rect, float x, float y, float w, float h) {
         expect(rect.has_value());

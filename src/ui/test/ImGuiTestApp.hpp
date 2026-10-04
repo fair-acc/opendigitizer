@@ -87,6 +87,10 @@ public:
      */
     static void captureScreenshot(ImGuiTestContext& ctx, ImGuiTestRef ref = "/", int captureFlags = ImGuiCaptureFlags_HideMouseCursor | ImGuiCaptureFlags_IncludePopups | ImGuiCaptureFlags_IncludeOtherWindows);
 
+    /// captures a screen rectangle in the current frame; unlike capturing a window, nothing is moved for the capture, so
+    /// windows docked into a window away from the screen origin appear where they are
+    static void captureScreenshot(ImGuiTestContext& ctx, const ImRect& screenRect);
+
     // Prints the existing window ids, for debugging purposes
     static void printWindows();
 
