@@ -1,7 +1,11 @@
 #ifndef SCHEDULER_H
 #define SCHEDULER_H
 
+#include <atomic>
 #include <expected>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 #include <gnuradio-4.0/Scheduler.hpp>
 
@@ -43,10 +47,19 @@ private:
 
     template<typename TScheduler>
     struct SchedulerImpl final : SchedulerModel {
-        TScheduler       _scheduler;
-        std::thread      _thread;
-        std::atomic_bool _uiUpdateRunning{false};
-        std::atomic_bool _uiUpdateShutdown{false};
+        // shared with queued pacer jobs, so a job that starts after the destructor returns does not touch it
+        struct PacerControl {
+            std::mutex mutex;
+            bool       ownerGone = false;
+        };
+
+        TScheduler                    _scheduler;
+        std::thread                   _thread;
+        std::atomic_bool              _threadRunning{false}; // set when a scheduler thread is created, cleared as its last step
+        std::atomic_bool              _startPending{false};  // a start was requested and the thread has not yet left STOPPED/IDLE
+        std::atomic_bool              _pacerQueued{false};   // a pacer job is queued or running and re-checks before it exits
+        std::atomic_bool              _uiUpdateShutdown{false};
+        std::shared_ptr<PacerControl> _pacerControl = std::make_shared<PacerControl>();
 
         gr::MsgPortIn  _fromScheduler;
         gr::MsgPortOut _toScheduler;
@@ -60,6 +73,58 @@ private:
         SchedulerImpl(gr::Graph&& graph, gr::property_map initParams) : _scheduler(std::move(initParams)) {
             std::ignore = _scheduler.exchange(std::move(graph));
             connectAndStart();
+        }
+
+        void wakeProgressWaiters() noexcept {
+            _scheduler.graph()._progress->incrementAndGet();
+            _scheduler.graph()._progress->notify_all();
+        }
+
+        struct ThreadExit {
+            SchedulerImpl& self;
+            ~ThreadExit() {
+                self._threadRunning = false;
+                self.wakeProgressWaiters(); // the pacer waits on progress and must see the thread gone
+            }
+        };
+
+        [[nodiscard]] bool schedulerAlive() const { return _threadRunning || gr::lifecycle::isActive(_scheduler.state()); }
+
+        void requestFramePacer() {
+            if (_pacerQueued.exchange(true)) {
+                return;
+            }
+            gr::thread_pool::Manager::defaultIoPool()->execute([this, control = _pacerControl]() {
+                std::scoped_lock lock(control->mutex);
+                if (!control->ownerGone) {
+                    runFramePacer();
+                }
+            });
+        }
+
+        // returns once the scheduler is neither running nor starting, so a stopped graph holds no pool thread
+        void runFramePacer() {
+            gr::thread_pool::thread::setThreadName("ui-FramePacer");
+            std::size_t oldProgress = _scheduler.graph().progress().value();
+            do {
+                while (!_uiUpdateShutdown && schedulerAlive()) {
+                    if (_scheduler.state() == gr::lifecycle::State::PAUSED) {
+                        DigitizerUi::components::Notification::info("Scheduler is paused");
+                    }
+                    if (gr::lifecycle::isActive(_scheduler.state())) {
+                        std::size_t newProgress = _scheduler.graph().progress().value();
+                        if (oldProgress != newProgress) {
+                            DigitizerUi::globalFramePacer().requestFrame(); // updated data -> request UI frame update
+                        } else {
+                            _scheduler.graph().progress().wait(oldProgress);
+                        }
+                        oldProgress = newProgress;
+                    } else {
+                        std::this_thread::yield(); // start-up in progress
+                    }
+                }
+                _pacerQueued = false;
+            } while (!_uiUpdateShutdown && schedulerAlive() && !_pacerQueued.exchange(true)); // a start raced with the exit
         }
 
         void connectAndStart() {
@@ -83,42 +148,23 @@ private:
         /// - Scheduler is stopped, now should go back to its original state, PAUSED
         /// It's a bit awkward because lifecycle doesn't allow INITIALIZE->PAUSED
         void startThread(gr::lifecycle::State toState) {
+            // claimed before the state is read: a thread started in between has then left STOPPED/IDLE and is not joined
+            if (_startPending.exchange(true)) {
+                return; // the thread of an earlier start has not left STOPPED/IDLE yet, joining it would block until it is stopped
+            }
+
             const auto currentState = _scheduler.state();
 
             if (currentState == toState) {
+                _startPending = false;
                 return;
             }
 
             if (currentState != gr::lifecycle::State::STOPPED && currentState != gr::lifecycle::State::IDLE) {
                 std::println("Cannot start thread in state: {}", magic_enum::enum_name(currentState));
+                _startPending = false;
                 return;
             }
-
-            // start UI update thread
-            gr::thread_pool::Manager::defaultIoPool()->execute([this]() {
-                if (_uiUpdateRunning) {
-                    return;
-                }
-                gr::thread_pool::thread::setThreadName("ui-FramePacer");
-                _uiUpdateRunning        = true;
-                std::size_t oldProgress = _scheduler.graph().progress().value();
-                while (_uiUpdateRunning && !_uiUpdateShutdown) {
-                    if (_scheduler.state() == gr::lifecycle::State::PAUSED) {
-                        DigitizerUi::components::Notification::info("Scheduler is paused");
-                    }
-                    if (gr::lifecycle::isActive(_scheduler.state())) {
-                        std::size_t newProgress = _scheduler.graph().progress().value();
-                        if (oldProgress != newProgress) {
-                            DigitizerUi::globalFramePacer().requestFrame(); // updated data -> request UI frame update
-                        } else {
-                            _scheduler.graph().progress().wait(oldProgress);
-                        }
-                        oldProgress = newProgress;
-                    }
-                }
-                _uiUpdateRunning = false;
-                _uiUpdateRunning.notify_all();
-            });
 
             // The old thread is stopped, clean it
             if (_thread.joinable()) {
@@ -134,16 +180,20 @@ private:
             case gr::lifecycle::State::ERROR: //
                 // Can't happen in practice and we have no use for this.
                 std::println("OD Scheduler::startThread: Ignoring moving from {} to {}", magic_enum::enum_name(currentState), magic_enum::enum_name(toState));
+                _startPending = false;
                 break;
 
             case gr::lifecycle::State::RUNNING:
-                _thread = std::thread([this]() {
+                _threadRunning = true;
+                _thread        = std::thread([this]() {
+                    const ThreadExit threadExit{*this};
                     gr::thread_pool::thread::setThreadName("ui-sched#1");
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
                         if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::INITIALISED); !e) {
                             throw gr::exception("Failed to initialize flowgraph");
                         }
                     }
+                    _startPending = false;
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
                         throw gr::exception(std::format("Failed to start flowgraph processing. state={}", magic_enum::enum_name(_scheduler.state())));
                     }
@@ -154,7 +204,9 @@ private:
                 break;
             case gr::lifecycle::State::REQUESTED_PAUSE:
             case gr::lifecycle::State::PAUSED:
-                _thread = std::thread([this]() {
+                _threadRunning = true;
+                _thread        = std::thread([this]() {
+                    const ThreadExit threadExit{*this};
                     gr::thread_pool::thread::setThreadName("ui-sched#2");
                     // Lifecycle doesn't allow INITIALIZE->PAUSED
                     if (_scheduler.state() == gr::lifecycle::State::IDLE || _scheduler.state() == gr::lifecycle::State::STOPPED) {
@@ -162,6 +214,7 @@ private:
                             throw gr::exception("Failed to initialize flowgraph");
                         }
                     }
+                    _startPending = false;
 
                     if (auto e = _scheduler.changeStateTo(gr::lifecycle::State::RUNNING); !e) {
                         throw gr::exception("Failed to start flowgraph processing");
@@ -178,6 +231,8 @@ private:
                 });
                 break;
             }
+
+            requestFramePacer();
         }
 
         std::string_view uniqueName() const final { return _scheduler.unique_name; }
@@ -268,7 +323,6 @@ private:
 
         ~SchedulerImpl() noexcept final {
             _uiUpdateShutdown = true;
-            _uiUpdateShutdown.notify_all();
 
             // the start-up thread may still be on its way to RUNNING: stopping is only possible once it left IDLE or
             // INITIALISED, otherwise the stop below is skipped and join() waits for a scheduler that keeps running
@@ -282,15 +336,24 @@ private:
             // The message-based stop() requires the scheduler's main loop to process
             // it, which may be blocked on waitUntilChanged.  changeStateTo sets the
             // atomic state directly so the main loop exits on its next iteration check.
-            if (gr::lifecycle::isActive(_scheduler.state())) {
-                std::ignore = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+            // incrementAndGet() does not notify, and a wait that missed the stop is never woken by the thread
+            // itself, so request the stop and wake the waiters until the scheduler thread is gone.
+            while (_threadRunning) {
+                if (gr::lifecycle::isActive(_scheduler.state())) {
+                    std::ignore = _scheduler.changeStateTo(gr::lifecycle::State::REQUESTED_STOP);
+                }
+                wakeProgressWaiters();
+                std::this_thread::yield();
             }
-            _scheduler.graph()._progress->incrementAndGet(); // wake any blocked wait
 
             if (_thread.joinable()) {
                 _thread.join();
             }
-            _uiUpdateRunning.wait(true);
+
+            // a running pacer holds the lock until it has seen the shutdown; a queued one finds the owner gone
+            wakeProgressWaiters();
+            std::scoped_lock lock(_pacerControl->mutex);
+            _pacerControl->ownerGone = true;
         }
     };
 
