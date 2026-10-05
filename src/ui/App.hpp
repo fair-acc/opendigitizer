@@ -268,7 +268,7 @@ public:
             return false;
         }
         const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
-        return components::drawViewModeBlocker(ImRect({0.f, startHeight}, {viewportSize.x, viewportSize.y - StatusBarView::height()})); // the status bar stays usable
+        return components::drawViewModeBlocker(ImRect({0.f, startHeight}, {viewportSize.x, viewportSize.y - StatusBarView::height()}));
     }
 
     void processAndRender() {
@@ -278,15 +278,14 @@ public:
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
             header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
 
-            const bool showsGraph = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT || mainViewMode == ViewMode::FLOWGRAPH;
-            if (showsGraph && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
-                std::ignore = toolbarView.draw(dashboard->session, dashboard->schedulerUi); // above the View-mode input blocker: toolbar blocks stay operable
+            if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
+                toolbarView.draw(dashboard->session, dashboard->schedulerUi);
             }
 
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
 
             {
-                IMW::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground); // leaves the status bar's height free
+                IMW::Child pageArea("##pageArea", ImVec2(0.f, -StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
                 drawPage(lockedModeBlockerStart);
             }
             const bool withGraph = dashboard && dashboard->isInitialised;
@@ -314,11 +313,8 @@ public:
             mainViewMode    = ViewMode::VIEW;
         }
 
-        if (dashboard) {
-            dashboard->handleMessages();
-        }
-
         if (dashboard != nullptr) {
+            dashboard->handleMessages();
             if (loadedDashboard != dashboard.get() && dashboard->isInitialised) {
                 // Are we in the process of changing the dashboard?
                 loadedDashboard = dashboard.get();

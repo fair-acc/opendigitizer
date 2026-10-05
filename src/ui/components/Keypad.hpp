@@ -296,6 +296,30 @@ inline std::optional<float> evaluate(std::string_view stream) {
     }
 }
 
+[[nodiscard]] inline double computeIncrementNonZero(const std::string& value) {
+    if (value.empty()) {
+        return 1.0;
+    }
+
+    const size_t dot_pos = value.find('.');
+    if (dot_pos == std::string::npos) {
+        size_t first_non_zero = value.find_first_not_of('0');
+        if (first_non_zero == std::string::npos) {
+            return 1.0;
+        }
+        int digits = static_cast<int>(value.length() - first_non_zero);
+        return std::pow(10.0, digits - 1);
+    }
+
+    const size_t last_non_zero = value.find_last_not_of('0');
+    if (last_non_zero == std::string::npos || last_non_zero <= dot_pos) {
+        return 1.0;
+    }
+
+    int decimal_places = static_cast<int>(last_non_zero - dot_pos);
+    return std::pow(10.0, -decimal_places);
+}
+
 template<std::size_t BufferSize = 256>
 class InputKeypad {
     static inline constexpr const char* keypad_name = "KeypadX";
@@ -505,7 +529,7 @@ class InputKeypad {
             if (ImGui::Button(decrementButtonIcon)) {
                 auto it = keyPad._manualyEditedIncrements.find(key);
                 if (it == keyPad._manualyEditedIncrements.end()) {
-                    const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
+                    const double increment = computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
                     auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
                     it                     = op.first;
                 }
@@ -522,7 +546,7 @@ class InputKeypad {
             if (ImGui::Button(incrementButtonIcon)) {
                 auto it = keyPad._manualyEditedIncrements.find(key);
                 if (it == keyPad._manualyEditedIncrements.end()) {
-                    const double increment = InputKeypad::computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
+                    const double increment = computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
                     auto         op        = keyPad._manualyEditedIncrements.insert_or_assign(key, increment);
                     it                     = op.first;
                 }
@@ -708,35 +732,6 @@ private:
         }
 
         return static_cast<int>(last_non_zero - dot_pos);
-    }
-
-    /**
-     * @return the increment for the number of non zero digits after the decimal point
-     */
-    [[nodiscard]] static double computeIncrementNonZero(const std::string& value) {
-        if (value.empty()) {
-            return 1.0;
-        }
-
-        const size_t dot_pos = value.find('.');
-        if (dot_pos == std::string::npos) {
-            // Integer case: count significant digits before dot
-            size_t first_non_zero = value.find_first_not_of('0');
-            if (first_non_zero == std::string::npos) {
-                return 1.0; // "0", "00"
-            }
-            int digits = static_cast<int>(value.length() - first_non_zero);
-            return std::pow(10.0, digits - 1);
-        }
-
-        // Decimal case: check last non zero digit and if it's less or equal to dot
-        const size_t last_non_zero = value.find_last_not_of('0');
-        if (last_non_zero == std::string::npos || last_non_zero <= dot_pos) {
-            return 1.0;
-        }
-
-        int decimal_places = static_cast<int>(last_non_zero - dot_pos);
-        return std::pow(10.0, -decimal_places);
     }
 
     [[nodiscard]] ReturnState drawKeypadPopup(std::string& valueLabel) noexcept {

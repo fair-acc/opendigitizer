@@ -1,0 +1,101 @@
+blocks:
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sineSource1
+      signal_type: Sin
+      frequency: 2
+      amplitude: 1
+      sample_rate: 1000
+      chunk_size: 40
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sineSource2
+      signal_type: Sin
+      frequency: 5
+      amplitude: 1
+      sample_rate: 1000
+      chunk_size: 40
+  - id: opendigitizer::Arithmetic<float32>
+    parameters:
+      name: sineSum
+      operation: "+"
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      color: 0x00C800
+      signal_name: sine 1
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sumSink
+      signal_name: sine 1 + sine 2
+      signal_unit: V
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: frequency1
+      label: f1
+      unit: Hz
+      value_type: float32
+      value: 2
+      min: 0.1
+      max: 20
+      step: 0.5
+      style: sliderSpinner
+      target_map: "sineSource1:frequency"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: amplitude1
+      label: A1
+      unit: V
+      value_type: float32
+      value: 1
+      min: 0
+      max: 2
+      step: 0.1
+      style: sliderSpinner
+      target_map: "sineSource1:amplitude"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: frequency2
+      label: f2
+      unit: Hz
+      value_type: float32
+      value: 5
+      min: 0.1
+      max: 20
+      step: 0.5
+      style: sliderSpinner
+      target_map: "sineSource2:frequency"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: amplitude2
+      label: A2
+      unit: V
+      value_type: float32
+      value: 1
+      min: 0
+      max: 2
+      step: 0.1
+      style: sliderSpinner
+      target_map: "sineSource2:amplitude"
+connections:
+  - [ sineSource1, 0, sineSum, 0 ]
+  - [ sineSource2, 0, sineSum, 1 ]
+  - [ sineSource1, 0, sineSink1, 0 ]
+  - [ sineSum, 0, sumSink, 0 ]
+dashboard:
+  layout: Grid
+  scheduler_ui: true
+  sources:
+    - name: sineSink1
+      block: sineSink1
+    - name: sumSink
+      block: sumSink
+  plots:
+    - name: Sine and sum
+      type: XYChart
+      parameters:
+        show_legend: true
+      sources:
+        - sineSink1
+        - sumSink

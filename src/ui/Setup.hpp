@@ -9,24 +9,10 @@
 
 namespace DigitizerUi {
 
-/// One-time setup for drawing dashboards, by the OpenDigitizer App or by a host application that embeds them.
-/// Call once after the ImGui context exists and before the first Dashboard is created:
-/// @code
-/// ImGui::CreateContext();
-/// DigitizerUi::initialise();                                         // keeps the host's ImGui style
-/// DigitizerUi::initialise({.style = DigitizerUi::LookAndFeel::Style::Dark}); // or: OpenDigitizer's look
-/// @endcode
-struct InitialiseOptions {
-    std::optional<LookAndFeel::Style> style      = {};   // empty: the host's ImGui/ImPlot style stays untouched
-    bool                              captureLog = true; // GR4 log records and notifications are kept in logHistory() for the status bar
-};
+void initialise(std::optional<LookAndFeel::Style> style = {}); // once, after the ImGui context exists; no style: the host's
 
-void initialise(const InitialiseOptions& options = {});
-
-/// the chart types and the plot sink a dashboard needs, independent of which headers the caller includes
 void registerDashboardBlocks(gr::BlockRegistry& registry);
 
-/// OpenDigitizer's ImGui and ImPlot colours for the given style
 void applyStyle(LookAndFeel::Style style);
 
 } // namespace DigitizerUi

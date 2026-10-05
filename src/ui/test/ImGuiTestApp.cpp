@@ -171,7 +171,7 @@ void ImGuiTestApp::initImGui() {
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
 
-    initialise({.style = LookAndFeel::Style::Dark});
+    initialise(LookAndFeel::Style::Dark);
 
     registerTests();
 }
@@ -215,8 +215,7 @@ bool ImGuiTestApp::runTests() {
         // Render and swap
         _app->Vsync = !ImGuiTestEngine_GetIO(_engine).IsRequestingMaxAppSpeed;
         ImGui::Render();
-        // the engine's capture reads the back buffer: before the swap it holds this frame, after it its content is
-        // undefined (captures showed frames rendered more than ten frames earlier)
+        // the capture reads the back buffer: only before the swap does it hold this frame
         imgui_helper::renderFrame([this] { ImGuiTestEngine_PostSwap(_engine); });
         SDL_GL_SetSwapInterval(_app->Vsync ? 1 : 0);
     }

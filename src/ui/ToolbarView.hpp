@@ -1,27 +1,35 @@
 #ifndef OPENDIGITIZER_UI_TOOLBARVIEW_HPP
 #define OPENDIGITIZER_UI_TOOLBARVIEW_HPP
 
+#include <cstddef>
 #include <memory>
+#include <span>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <gnuradio-4.0/BlockModel.hpp>
 
 #include "GraphSession.hpp"
 #include "PaneBlocks.hpp"
+#include "blocks/ToolbarBlock.hpp"
 
 namespace DigitizerUi {
 
-/// Draws, in a row, play/pause/stop for the scheduler when asked for (a dashboard's `scheduler_ui`), then the
-/// 'Dear ImGui' toolbar blocks (UICategory::Toolbar) of the scheduler's flowgraph in graph order. Needs no dashboard: a
-/// host running a graph draws with its GraphSession (`session.handleMessages()` each frame).
-/// The blocks are ordinary blocks of the flowgraph; the row is rebuilt when the flowgraph changes. Toolbar blocks of
-/// other toolkits are skipped with a warning.
-enum class SchedulerRequest { none, play, pause, stop }; // pressed in the scheduler controls this frame
+struct ToolbarSlot {
+    std::size_t row       = 0UZ;
+    float       width     = 0.f;
+    bool        showLabel = true;
+};
+
+[[nodiscard]] std::vector<ToolbarSlot> planToolbar(std::span<const toolbar::ItemWidths> items, float rowWidth, float spacing, std::size_t maxRows = 2UZ);
 
 struct ToolbarView {
-    [[nodiscard]] SchedulerRequest draw(GraphSession& session, bool schedulerControls);
+    void draw(GraphSession& session, bool schedulerControls);
 
-    PaneBlocks _blocks{gr::UICategory::Toolbar};
+    PaneBlocks                             _blocks{gr::UICategory::Toolbar};
+    std::unordered_map<std::string, float> _fixedWidths;
+    std::size_t                            _rows = 1UZ;
 };
 
 } // namespace DigitizerUi

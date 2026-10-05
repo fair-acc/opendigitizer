@@ -29,6 +29,7 @@ public:
     [[nodiscard]] std::vector<gr::log::LogRecord>    snapshot() const; // oldest first
     [[nodiscard]] std::optional<gr::log::LogRecord>  latestWarningOrWorse() const;
     [[nodiscard]] std::array<std::uint64_t, kLevels> counts() const; // since the last clear()
+    [[nodiscard]] std::uint64_t                      latestInfoOrDebugNanos() const;
     [[nodiscard]] std::uint64_t                      dropped() const noexcept { return _dropped.load(std::memory_order_relaxed); }
     void                                             clear();
 
@@ -38,6 +39,7 @@ private:
     gr::HistoryBuffer<gr::log::LogRecord, kCapacity> _records;
     std::array<std::uint64_t, kLevels>               _counts{};
     std::optional<gr::log::LogRecord>                _latestWarningOrWorse;
+    std::uint64_t                                    _latestInfoOrDebugNanos = 0UZ;
     std::atomic<std::uint64_t>                       _dropped{0UZ};
 
     bool store(const gr::log::LogRecord& record) noexcept;

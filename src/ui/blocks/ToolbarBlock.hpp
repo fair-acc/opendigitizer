@@ -4,6 +4,7 @@
 #include <expected>
 
 #include <format>
+#include <optional>
 
 #include <gnuradio-4.0/Block.hpp>
 
@@ -124,7 +125,7 @@ public:
 } // namespace play_stop
 
 template<typename T>
-struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBlock<T>>, public gr::Block<PlayStopToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct PlayStopToolbarBlock : public play_stop::StateMachine<PlayStopToolbarBlock<T>>, public gr::Block<PlayStopToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using enum play_stop::State;
     gr::MsgPortOut ctrlOut;
 
@@ -186,7 +187,7 @@ private:
 };
 
 template<typename T>
-struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     gr::MsgPortIn ctrlIn;
     std::string   message = "<no message>";
 
@@ -215,7 +216,6 @@ struct LabelToolbarBlock : public gr::Block<LabelToolbarBlock<T>, gr::Drawable<g
 };
 
 namespace toolbar {
-// shows the icon glyph in the icon font when set, the label otherwise; ids are scoped by the block's unique name
 [[nodiscard]] inline bool drawItem(const std::string& uniqueName, const std::string& label, const std::string& icon, const std::string& tooltip, auto widget) {
     IMW::ChangeStrId id(uniqueName.c_str());
     bool             changed = false;
@@ -231,6 +231,28 @@ namespace toolbar {
     return changed;
 }
 
+struct ItemWidths {
+    float natural = 0.f;
+    float minimum = 0.f;
+    float label   = 0.f;
+};
+
+inline void publishWidths(const std::string& uniqueName, const ItemWidths& widths) {
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    storage->SetFloat(ImGui::GetID((uniqueName + "##toolbarNatural").c_str()), widths.natural);
+    storage->SetFloat(ImGui::GetID((uniqueName + "##toolbarMinimum").c_str()), widths.minimum);
+    storage->SetFloat(ImGui::GetID((uniqueName + "##toolbarLabel").c_str()), widths.label);
+}
+
+[[nodiscard]] inline std::optional<ItemWidths> publishedWidths(const std::string& uniqueName) {
+    const ImGuiStorage* storage = ImGui::GetStateStorage();
+    const float         natural = storage->GetFloat(ImGui::GetID((uniqueName + "##toolbarNatural").c_str()), -1.f);
+    if (natural < 0.f) {
+        return std::nullopt;
+    }
+    return ItemWidths{.natural = natural, .minimum = storage->GetFloat(ImGui::GetID((uniqueName + "##toolbarMinimum").c_str())), .label = storage->GetFloat(ImGui::GetID((uniqueName + "##toolbarLabel").c_str()))};
+}
+
 inline void sendSettings(gr::MsgPortOutBuiltin& port, const std::string& targetBlock, gr::property_map settings) {
     if (targetBlock.empty()) { // an empty service name would address every block
         return;
@@ -239,14 +261,14 @@ inline void sendSettings(gr::MsgPortOutBuiltin& port, const std::string& targetB
 }
 } // namespace toolbar
 
-struct ToolbarButton : gr::Block<ToolbarButton, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct ToolbarButton : gr::Block<ToolbarButton, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using Description = gr::Doc<"toolbar button that sends its payload as settings to the target block when pressed">;
 
     std::string      label = "button";
-    std::string      icon; // icon-font glyph, shown instead of the label
+    std::string      icon;
     std::string      tooltip;
-    std::string      target_block; // unique name or name of the receiving block
-    gr::property_map payload;      // settings applied to the target block, e.g. {amplitude: 2.0}
+    std::string      target_block;
+    gr::property_map payload; // settings applied to the target block, e.g. {amplitude: 2.0}
 
     GR_MAKE_REFLECTABLE(ToolbarButton, label, icon, tooltip, target_block, payload);
 
@@ -260,14 +282,14 @@ struct ToolbarButton : gr::Block<ToolbarButton, gr::Drawable<gr::UICategory::Too
     }
 };
 
-struct ToolbarCheckbox : gr::Block<ToolbarCheckbox, gr::Drawable<gr::UICategory::Toolbar, "Dear ImGui">> {
+struct ToolbarCheckbox : gr::Block<ToolbarCheckbox, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
     using Description = gr::Doc<"toolbar checkbox that sets a boolean setting of the target block to its checked state">;
 
     std::string label = "checkbox";
-    std::string icon; // icon-font glyph, shown instead of the label
+    std::string icon;
     std::string tooltip;
-    std::string target_block;   // unique name or name of the receiving block
-    std::string target_setting; // boolean setting of the target block
+    std::string target_block;
+    std::string target_setting;
     bool        checked = false;
 
     GR_MAKE_REFLECTABLE(ToolbarCheckbox, label, icon, tooltip, target_block, target_setting, checked);

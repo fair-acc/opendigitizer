@@ -14,8 +14,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <format>
 #include <memory>
+#include <vector>
 
 CMRC_DECLARE(ui_test_assets);
 
@@ -72,6 +74,48 @@ bool waitForSetting(ImGuiTestContext* ctx, std::string_view blockName, const std
 }
 } // namespace
 
+const boost::ut::suite<"planToolbar"> planTests = [] {
+    using DigitizerUi::planToolbar;
+    using DigitizerUi::ToolbarSlot;
+    constexpr DigitizerUi::toolbar::ItemWidths          kSlider{.natural = 200.f, .minimum = 100.f, .label = 30.f};
+    const std::vector<DigitizerUi::toolbar::ItemWidths> sliders(3UZ, kSlider);
+    const auto                                          slotIs = [](const ToolbarSlot& slot, std::size_t row, float width, bool label) { return slot.row == row && std::abs(slot.width - width) < 1e-3f && slot.showLabel == label; };
+
+    "a row wide enough keeps the natural widths"_test = [&] { // 3·200 + 2·10 = 620 ≤ 700
+        const auto slots = planToolbar(sliders, 700.f, 10.f);
+        expect(std::ranges::all_of(slots, [&](const ToolbarSlot& slot) { return slotIs(slot, 0UZ, 200.f, true); }));
+    };
+
+    "a narrower row shrinks the items evenly"_test = [&] { // free 500 - 20 - 300 = 180 of 300: 100 + 0.6·100
+        const auto slots = planToolbar(sliders, 500.f, 10.f);
+        expect(std::ranges::all_of(slots, [&](const ToolbarSlot& slot) { return slotIs(slot, 0UZ, 160.f, true); }));
+    };
+
+    "below the minimum row the items wrap, each row growing back"_test = [&] { // 100+10+100 = 210 ≤ 250 < 320
+        const auto slots = planToolbar(sliders, 250.f, 10.f);
+        expect(slotIs(slots[0], 0UZ, 120.f, true) && slotIs(slots[1], 0UZ, 120.f, true)) << "row 1: 40 free of 200";
+        expect(slotIs(slots[2], 1UZ, 200.f, true)) << "row 2: room for the natural width";
+    };
+
+    "when two rows do not hold them, the labels are dropped"_test = [&] { // without labels: minimum 70, natural 170
+        const auto slots = planToolbar(sliders, 150.f, 10.f);
+        expect(slotIs(slots[0], 0UZ, 70.f, false) && slotIs(slots[1], 0UZ, 70.f, false)) << "70+10+70 = 150";
+        expect(slotIs(slots[2], 1UZ, 150.f, false)) << "row 2: 80 free of 100";
+    };
+
+    "what two rows without labels cannot hold is clipped at the end of the second"_test = [&] {
+        const auto slots = planToolbar(sliders, 60.f, 10.f);
+        expect(slotIs(slots[0], 0UZ, 70.f, false) && slotIs(slots[1], 1UZ, 70.f, false) && slotIs(slots[2], 1UZ, 70.f, false));
+    };
+
+    "a fixed item keeps its width while the others shrink"_test = [&] { // free 500 - 30 - 340 = 130 of 300
+        std::vector<DigitizerUi::toolbar::ItemWidths> items{{.natural = 40.f, .minimum = 40.f, .label = 0.f}};
+        items.insert(items.end(), sliders.begin(), sliders.end());
+        const auto slots = planToolbar(items, 500.f, 10.f);
+        expect(slotIs(slots[0], 0UZ, 40.f, true) && slotIs(slots[1], 0UZ, 100.f + 130.f / 3.f, true));
+    };
+};
+
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
@@ -85,7 +129,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto&       state = *g_state;
             state.dashboard->handleMessages();
             if (state.dashboard->isInitialised) {
-                std::ignore = state.view.draw(state.dashboard->session, state.dashboard->schedulerUi);
+                state.view.draw(state.dashboard->session, state.dashboard->schedulerUi);
             }
         };
 
@@ -135,7 +179,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.dashboard->session.state() != target && std::chrono::steady_clock::now() < deadline;) {
                         ctx->Yield();
                     }
-                    ctx->Yield(2); // the buttons show the new state
+                    ctx->Yield(2);
                     return state.dashboard->session.state() == target;
                 };
                 state.dashboard->schedulerUi = true;
@@ -175,7 +219,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 std::string withControls = state.grc;
                 withControls.replace(withControls.find("  layout: Free"), std::string_view("  layout: Free").size(), "  layout: Free\n  scheduler_ui: true");
                 auto loaded = DigitizerUi::Dashboard::create(state.restClient, DigitizerUi::DashboardDescription::createEmpty("with controls"));
-                loaded->loadAndThen(withControls, [](gr::Graph&&) {}); // the graph is not run: only the dashboard section is checked
+                loaded->loadAndThen(withControls, [](gr::Graph&&) {});
                 expect(loaded->schedulerUi) << "read from the .grc";
             };
 
@@ -208,7 +252,7 @@ int main(int argc, char* argv[]) {
     TestApp app(options);
     auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
-    app.initImGui(); // also runs DigitizerUi::initialise()
+    app.initImGui();
 
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);

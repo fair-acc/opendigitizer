@@ -35,6 +35,10 @@ target_link_libraries(qa_TouchHandler PRIVATE ut opendigitizer-uilib opendigitiz
 target_include_directories(qa_TouchHandler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_TouchHandler COMMAND qa_TouchHandler)
 
+add_executable(qa_TargetMap qa_TargetMap.cpp)
+target_link_libraries(qa_TargetMap PRIVATE ut opendigitizer::dashboard opendigitizer-options)
+add_test(NAME qa_TargetMap COMMAND qa_TargetMap)
+
 add_executable(qa_GraphSession qa_GraphSession.cpp)
 target_link_libraries(qa_GraphSession PRIVATE ut opendigitizer::dashboard opendigitizer-options)
 add_test(NAME qa_GraphSession COMMAND qa_GraphSession)
@@ -97,6 +101,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_layout.grc
     examples/qa_subgraph.grc
     examples/qa_statusbar.grc
+    examples/qa_controls.grc
     examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 
@@ -145,6 +150,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_DashboardBaseline)
   add_imgui_test(qa_DashboardView)
   add_imgui_test(qa_ToolbarView)
+  add_imgui_test(qa_ImControlNumber)
   add_imgui_test(qa_StatusBarView)
   add_imgui_test(qa_HostComposition)
   add_imgui_test(qa_ChartStyle)

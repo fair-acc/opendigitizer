@@ -7,7 +7,7 @@
 namespace DigitizerUi {
 
 namespace {
-constexpr inline std::string_view kToolkit = "Dear ImGui";
+constexpr inline std::string_view kToolkit = "ImGui";
 
 std::string toolkitOf(const gr::BlockModel& block) {
     const gr::property_map& metaInformation = block.metaInformation();
