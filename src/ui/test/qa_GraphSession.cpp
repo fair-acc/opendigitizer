@@ -1,10 +1,14 @@
 #include "GraphSession.hpp"
+#include "MapUtils.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <format>
+#include <optional>
 #include <print>
+#include <string>
 #include <string_view>
 #include <thread>
 
@@ -54,8 +58,8 @@ constexpr std::size_t kRepetitions = 50UZ;
 
 [[nodiscard]] gr::Graph makeRunningGraph() {
     gr::Graph graph;
-    auto&     source = graph.emplaceBlock<gr::testing::NullSource<float>>();
-    auto&     sink   = graph.emplaceBlock<gr::testing::NullSink<float>>();
+    auto&     source = graph.emplaceBlock<gr::testing::NullSource<float>>({{"name", "runningSource"}});
+    auto&     sink   = graph.emplaceBlock<gr::testing::NullSink<float>>({{"name", "runningSink"}});
     expect(graph.connect<"out", "in">(source, sink).has_value()) << fatal;
     return graph;
 }
@@ -123,14 +127,44 @@ struct UiSide {
         session.sendMessage(std::move(message));
     }
 
-    [[nodiscard]] bool pumpUntil(auto predicate) {
-        return waitFor([&] {
-            session.handleMessages();
-            return predicate();
-        });
+    [[nodiscard]] bool pumpUntil(auto predicate, std::chrono::seconds limit = std::chrono::seconds(30)) {
+        return waitFor(
+            [&] {
+                session.handleMessages();
+                return predicate();
+            },
+            limit);
     }
 
     [[nodiscard]] bool showsReplacementGraph() { return static_cast<bool>(session.graphModel.recursiveFindBlockByName("grcSource")); }
+
+    void emplaceBlock(std::string_view blockType, std::string_view blockName) {
+        session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, //
+            gr::property_map{{"type", std::string(blockType)}, {"properties", gr::property_map{{"name", std::string(blockName)}}}});
+    }
+
+    void setSetting(std::string_view blockUniqueName, std::string_view key, gr::pmt::Value value) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.serviceName = std::string(blockUniqueName);
+        message.endpoint    = gr::block::property::kSetting;
+        message.data        = gr::property_map{{std::pmr::string(key), std::move(value)}};
+        session.sendMessage(std::move(message));
+    }
+
+    [[nodiscard]] std::optional<std::string> uniqueNameOf(std::string_view blockName) {
+        const auto found = session.graphModel.recursiveFindBlockByName(blockName);
+        return found ? std::optional<std::string>(found.block->blockUniqueName) : std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<bool> getDisconnectOnDoneForBlock(std::string_view blockName) {
+        const auto found = session.graphModel.recursiveFindBlockByName(blockName);
+        if (!found) {
+            return std::nullopt;
+        }
+        const auto value = getOptionalProperty<bool>(found.block->blockSettings, "disconnect_on_done");
+        return value ? std::optional<bool>(*value) : std::nullopt;
+    }
 };
 
 const suite<"GraphSession lifecycle"> _lifecycle = [] {
@@ -290,6 +324,25 @@ const suite<"GraphSession lifecycle"> _lifecycle = [] {
         expect(ui.pumpUntil([&] { return hasState(ui.session, State::PAUSED); })) << fatal;
         ui.setGrc(kReplacementGrc);
         expect(ui.pumpUntil([&] { return ui.showsReplacementGraph() && hasState(ui.session, State::PAUSED); })) << "the UI model shows the new graph and the scheduler is paused again";
+    };
+};
+
+const suite<"GraphSession settings subscription"> _subscription = [] {
+    "subscription to all blocks' settings includes blocks emplaced after the request was made"_test = [] {
+        constexpr std::string_view kLateSinkType = "gr::testing::NullSink<float32>";
+        constexpr std::string_view kLateSinkName = "lateSink";
+
+        UiSide ui;
+        expect(ui.pumpUntil([&] { return hasState(ui.session, State::RUNNING); })) << fatal;
+        expect(ui.pumpUntil([&] { return ui.uniqueNameOf("runningSink").has_value(); })) << fatal << "the model holds the initial graph";
+
+        ui.emplaceBlock(kLateSinkType, kLateSinkName);
+        expect(ui.pumpUntil([&] { return ui.uniqueNameOf(kLateSinkName).has_value(); })) << fatal << "block has been emplaced";
+        expect(ui.getDisconnectOnDoneForBlock(kLateSinkName) == std::optional<bool>(true)) << fatal << "block has the expected defaults";
+
+        ui.setSetting(*ui.uniqueNameOf(kLateSinkName), "disconnect_on_done", false);
+        expect(ui.pumpUntil([&] { return ui.getDisconnectOnDoneForBlock(kLateSinkName) == std::optional<bool>(false); }, std::chrono::seconds(5))) //
+            << "the UI graph has received and updated the value for disconnect_on_done";
     };
 };
 

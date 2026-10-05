@@ -1090,9 +1090,14 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
-        ++topologyGeneration;
+        handleTopologyUpdated();
     }
     return true;
+}
+
+void UiGraphModel::handleTopologyUpdated() {
+    ++topologyGeneration;
+    sendMessage(subscriptionMessageForAllBlocksSettings());
 }
 
 void UiGraphModel::requestFullUpdate(std::source_location location) {
