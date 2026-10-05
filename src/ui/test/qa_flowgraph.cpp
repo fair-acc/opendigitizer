@@ -53,14 +53,14 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
             message.cmd      = gr::message::Command::Get;
             message.endpoint = gr::scheduler::property::kSchedulerInspect;
             message.data     = {};
-            dashboard->graphModel.sendMessage(std::move(message));
+            dashboard->session.graphModel.sendMessage(std::move(message));
         } else {
             std::println("\tGraph does not need inspection / it seems populated already");
         }
 
-        waitUntil(ctx, "the scheduler inspection yields a root block", [this] { return !dashboard->graphModel.rootBlock.blockUniqueName.empty(); }, location);
+        waitUntil(ctx, "the scheduler inspection yields a root block", [this] { return !dashboard->session.graphModel.rootBlock.blockUniqueName.empty(); }, location);
         std::println("\tInspection succeeded, we got a root editor");
-        flowgraphPage.pushEditor("rootBlock node editor", dashboard->graphModel, std::addressof(dashboard->graphModel.rootBlock));
+        flowgraphPage.pushEditor("rootBlock node editor", dashboard->session.graphModel, std::addressof(dashboard->session.graphModel.rootBlock));
     }
 
     // for testing topology changing messages
@@ -100,7 +100,7 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
             }
             expect(!block->childBlocks.empty());
             std::println("Entering subgraph editor for {} (children: {})", block->blockUniqueName, block->childBlocks.size());
-            flowgraphPage.pushEditor(block->blockUniqueName, dashboard->graphModel, block.get());
+            flowgraphPage.pushEditor(block->blockUniqueName, dashboard->session.graphModel, block.get());
             return;
         }
         assert(false && "No subgraph block found in graph children");
@@ -146,8 +146,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     }
 
     static void dragPinToPin(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphPort* fromPort, const DigitizerUi::UiGraphPort* toPort) {
-        ctx->Yield(2);                   // for some reason ax::NodeEditor pin positions are not resolved until after the frame after first draw
-        waitForSettledView(ctx, editor); // the editor fits the graph into the view after its first draw
+        ctx->Yield(2); // ax::NodeEditor pin positions are not resolved until the frame after the first draw
+        waitForSettledView(ctx, editor);
 
         editor.makeCurrent();
         ctx->Yield();
@@ -275,7 +275,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         message.endpoint    = gr::scheduler::property::kEmplaceBlock;
         message.serviceName = owner->scheduler;
         message.data        = gr::property_map{{"type", std::move(blockType)}, {"_targetGraph", owner->graph}};
-        g_state.dashboard->graphModel.sendMessage(std::move(message));
+        g_state.dashboard->session.graphModel.sendMessage(std::move(message));
     }
 
     static constexpr std::array  kEditingButtons{"Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks"};
@@ -291,8 +291,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
     };
 
-    // independent SineSource -> DataSink pairs, which the layout stacks; scattered pairs carry stored, deliberately
-    // tangled positions (ui_constraints), so that loading neither arranges nor fits them
+    // scattered pairs carry deliberately tangled stored positions (ui_constraints): loading neither arranges nor fits
     static std::string sourceSinkPairsGraph(std::size_t nPairs, bool scattered = false) {
         const auto  position = [scattered](std::size_t seed) { return scattered ? std::format("      ui_constraints:\n        x: {}\n        y: {}\n", static_cast<int>((seed * 389UZ) % 1300UZ), static_cast<int>((seed * 233UZ) % 900UZ)) : std::string{}; };
         std::string blocks;
@@ -306,7 +305,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return std::format("blocks:\n{}connections:\n{}", blocks, connections);
     }
 
-    // every block ends above the band the button bar covers at the bottom of the editor
     static bool allNodesAboveButtonBar(DigitizerUi::FlowgraphEditor& editor, float barPixels) {
         const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         const float barTopCanvas = context->GetViewRect().Max.y - barPixels * context->GetViewRect().GetHeight() / context->GetRect().GetHeight();
@@ -333,7 +331,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return positions;
     }
 
-    // screen pixels per canvas unit
     static float viewZoom(DigitizerUi::FlowgraphEditor& editor) {
         const auto* context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         return context->GetRect().GetWidth() / context->GetViewRect().GetWidth();
@@ -344,8 +341,6 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         return context->GetViewRect().Contains(contentBounds(editor));
     }
 
-    // the first draw arranges and then fits the graph, animated; settled once nothing is pending and the visible canvas
-    // rect stops changing
     static void waitForSettledView(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
         const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         ImRect      previous     = context->GetViewRect();
@@ -360,8 +355,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         expect(stableFrames >= 5UZ) << fatal << "the editor view settles";
     }
 
-    // waitForScheduler() pushes a root editor and the page pushes its own once the root is known; the second would find the
-    // blocks already arranged by the first, so only the page's editor is kept
+    // the page's editor would find blocks already arranged by the root editor's: keep only the page's
     static DigitizerUi::FlowgraphEditor& loadGraph(ImGuiTestContext* ctx, std::size_t nPairs, bool scattered = false) {
         g_state.reloadFromYamlString(sourceSinkPairsGraph(nPairs, scattered));
         g_state.waitForScheduler(ctx);
@@ -715,7 +709,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     ctx->Yield();
                 }
 
-                auto& graphModel = g_state.dashboard->graphModel;
+                auto& graphModel = g_state.dashboard->session.graphModel;
                 auto& editor     = g_state.flowgraphPage.currentEditor();
 
                 DigitizerUi::UiGraphBlock* loner1 = graphModel.recursiveFindBlockByName("loner1").block;
@@ -797,7 +791,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     ctx->Yield();
                 }
 
-                auto& graphModel = g_state.dashboard->graphModel;
+                auto& graphModel = g_state.dashboard->session.graphModel;
                 graphModel.requestAvailableBlocksTypesUpdate();
                 expect(waitFor(ctx, [&graphModel] { return graphModel.knownBlockTypes.contains("opendigitizer::Arithmetic"); })) << fatal << "the block registry should have reached the UI before the selector is opened\n";
 
@@ -875,7 +869,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 ctx->SetRef("Test Window");
                 auto& editor = g_state.flowgraphPage.currentEditor();
-                waitForSettledView(ctx, editor); // the first draw fits the graph; a zoom-to-fill would push blocks added by grouping under the button bar
+                waitForSettledView(ctx, editor); // a zoom-to-fill would push blocks added by grouping under the button bar
 
                 DigitizerUi::UiGraphBlock* middleA = findRootChildByName("middleA");
                 DigitizerUi::UiGraphBlock* middleB = findRootChildByName("middleB");
@@ -899,7 +893,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     }))
                     << fatal << "both selected blocks should have moved into a new subgraph\n";
 
-                editor.requestRelayout(); // the new subgraph is placed below the fitted graph, outside the view
+                editor.requestRelayout();
                 waitForSettledView(ctx, editor);
 
                 DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
@@ -936,7 +930,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 g_state.enterSubgraphEditor();
                 expect(g_state.flowgraphPage.editorCount() > 1) << fatal;
 
-                auto& graphModel = g_state.dashboard->graphModel;
+                auto& graphModel = g_state.dashboard->session.graphModel;
                 graphModel.requestAvailableBlocksTypesUpdate();
                 expect(waitFor(ctx, [&graphModel] { return graphModel.knownSchedulerTypes.contains("gr::scheduler::Simple"); })) << fatal << "the scheduler registry should have reached the UI\n";
 
@@ -1006,7 +1000,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
                 auto& movedBlock = *g_state.blocks().front();
                 expect(movedBlock.storedXY.has_value()) << fatal << "an arranged block has a stored position";
-                movedBlock.storedXY = DigitizerUi::UiGraphBlock::StoredXY{movedBlock.storedXY->x + 150.f, movedBlock.storedXY->y + 90.f}; // as dragging it would
+                movedBlock.storedXY = DigitizerUi::UiGraphBlock::StoredXY{movedBlock.storedXY->x + 150.f, movedBlock.storedXY->y + 90.f};
                 ctx->Yield(2);
                 expect(nodePositions(editor) != arrangedByButton) << fatal << "moving a block changes the layout";
 

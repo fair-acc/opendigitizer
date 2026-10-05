@@ -359,6 +359,7 @@ add_library(
   DashboardsCollection.hpp
   GraphModel.cpp
   GraphModel.hpp
+  GraphSession.hpp
   LogHistory.cpp
   LogHistory.hpp
   MapUtils.hpp
@@ -366,7 +367,6 @@ add_library(
   PaneBlocks.hpp
   RemoteSignalSources.cpp
   RemoteSignalSources.hpp
-  Scheduler.hpp
   Setup.cpp
   Setup.hpp
   StatusBarView.cpp

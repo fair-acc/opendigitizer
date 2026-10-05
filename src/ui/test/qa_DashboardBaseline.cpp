@@ -32,9 +32,7 @@ CMRC_DECLARE(ui_test_assets);
 using namespace boost;
 using namespace boost::ut;
 
-// Regression baseline for the dashboard refactoring: the screen rectangles of every chart window, for each layout type
-// in View and Interaction mode, as the App's DashboardPage lays them out. The expected values were recorded from the
-// implementation before the refactoring (test/baselines/dashboard_layout.txt); OD_WRITE_BASELINE=<file> records them anew.
+// expected values recorded from the pre-refactoring implementation (test/baselines/dashboard_layout.txt)
 
 namespace {
 using Mode = DigitizerUi::DashboardPage::Mode;
@@ -65,13 +63,12 @@ TestState* g_state = nullptr;
 
 std::string scenarioName(const Scenario& scenario) { return std::format("{}/{}", magic_enum::enum_name(scenario.layout), magic_enum::enum_name(scenario.mode)); }
 
-// one line per chart window: "<scenario> <window name> <x> <y> <width> <height>", relative to the host window
 std::vector<std::string> chartRectangles(const Scenario& scenario) {
     const ImGuiWindow* host = ImGui::FindWindowByName("Test Window");
     expect(host != nullptr) << fatal;
     std::vector<std::string> lines;
     for (const auto& uiWindow : g_state->dashboard->uiWindows) {
-        if (!uiWindow.isChart()) {
+        if (!uiWindow.block) {
             continue;
         }
         const ImGuiWindow* window = ImGui::FindWindowByName(uiWindow.window->name.c_str());
@@ -125,9 +122,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto& state = *g_state;
             state.dashboard->handleMessages();
             if (std::exchange(state.layoutChanged, false)) {
-                state.dashboard->layoutType = state.scenario.layout; // the page follows the dashboard's layout type
+                state.dashboard->layoutType = state.scenario.layout;
             }
-            if (!state.page && state.dashboard->isInitialised) { // as App::processAndRender does
+            if (!state.page && state.dashboard->isInitialised) {
                 state.page = std::make_unique<DigitizerUi::DashboardPage>();
                 state.page->setDashboard(*state.dashboard);
             }
@@ -197,7 +194,7 @@ int main(int argc, char* argv[]) {
     TestApp app(options);
     auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
-    app.initImGui(); // Dashboard construction touches the ImGui style
+    app.initImGui();
 
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
@@ -205,7 +202,7 @@ int main(int argc, char* argv[]) {
 
     auto grcFile    = cmrc::ui_test_assets::get_filesystem().open("examples/qa_layout.grc");
     state.dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("empty"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
+    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();
     state.page.reset();

@@ -21,6 +21,8 @@ struct TestDashboardRunner;
 
 namespace DigitizerUi {
 
+[[nodiscard]] constexpr bool isChartTypeName(std::string_view typeName) { return typeName.starts_with("opendigitizer::charts::"); }
+
 class UiGraphModel;
 struct UiGraphBlock;
 
@@ -130,6 +132,8 @@ struct UiGraphBlock {
     void graphResolveEdgePortPointersAndRemoveIfInvalid();
 
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
+    [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
+    [[nodiscard]] bool           isUiControl() const;
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
 
@@ -268,7 +272,6 @@ public:
     // generation so the editor can know its node id pointers are invalid
     std::uint64_t blockDestructionCount = 0;
 
-    // incremented whenever blocks may have been added to, removed from or replaced in the scheduler's graph
     std::uint64_t topologyGeneration = 0;
 
     /**

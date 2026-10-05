@@ -548,22 +548,16 @@ inline void RenderNotifications() {
 namespace DigitizerUi::components {
 
 struct Notification {
-    /// sees every notification in addition to the toast list and the GR4 log
-    inline static std::function<void(ImGuiToastType type, std::string_view text)> observer;
-
     inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Success, dismissTime, text); }
     inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Warning, dismissTime, text); }
     inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { post(ImGuiToastType::Error, dismissTime, text); }
     inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Info, dismissTime, text); }
 
     inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {
-        switch (type) { // a host's log sees every notification, also one that does not draw the toasts
+        switch (type) {
         case ImGuiToastType::Error: gr::log::error(std::string_view(text)); break;
         case ImGuiToastType::Warning: gr::log::warning(std::string_view(text)); break;
         default: gr::log::info(std::string_view(text)); break;
-        }
-        if (observer) {
-            observer(type, text);
         }
         ImGui::InsertNotification({type, static_cast<int>(dismissTime.count()), "%s", text.c_str()});
     }

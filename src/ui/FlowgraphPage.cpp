@@ -7,6 +7,7 @@
 #include <crude_json.h>
 #include <cstdint>
 #include <format>
+#include <ranges>
 
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -32,6 +33,10 @@
 using namespace std::string_literals;
 
 namespace {
+[[nodiscard]] std::vector<DigitizerUi::UiGraphBlock*> nodeBlocks(const DigitizerUi::UiGraphBlock& root, bool withUiControls) {
+    return root.childBlocks | std::views::filter([withUiControls](const auto& child) { return !child->isChart() && (withUiControls || !child->isUiControl()); }) | std::views::transform([](const auto& child) { return child.get(); }) | std::ranges::to<std::vector>();
+}
+
 bool isPortConnected(const DigitizerUi::UiGraphPort& port, const std::vector<DigitizerUi::UiGraphEdge>& edges) {
     return std::ranges::any_of(edges, [&port](const auto& edge) { //
         return edge.edgeSourcePort == &port || edge.edgeDestinationPort == &port;
@@ -170,7 +175,7 @@ std::string valToString(const gr::pmt::Value& val) {
 }
 
 namespace {
-constexpr float kButtonBarPadding = 16.0f; // the button bar overlays the bottom of the editor
+constexpr float kButtonBarPadding = 16.0f;
 constexpr float kButtonBarHeight  = 37.0f;
 } // namespace
 
@@ -566,15 +571,15 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
     const auto* exportTarget = exportPortTargetBlock();
 
-    const auto& graphBlocks = rootBlock->childBlocks;
-    const auto& graphEdges  = rootBlock->childEdges;
+    const std::vector<UiGraphBlock*> graphBlocks = nodeBlocks(*rootBlock, showUiControlBlocks);
+    const auto&                      graphEdges  = rootBlock->childEdges;
 
     makeCurrent();
     dropReferencesToDeletedBlocks();
 
     for (const auto& block : graphBlocks) {
         if (block->storedXY) {
-            ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block.get()), {block->storedXY->x, block->storedXY->y});
+            ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), {block->storedXY->x, block->storedXY->y});
         } else if (_firstDraw) {
             _rearrangeRequested = true;
         }
@@ -586,11 +591,11 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     // NodeEditor applies dragging when its Editor scope ends.
     Digitizer::utils::scope_exit capturePositions = [&] {
         for (const auto& block : graphBlocks) {
-            const auto position = ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block.get()));
+            const auto position = ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block));
             block->storedXY     = UiGraphBlock::StoredXY{position.x, position.y};
         }
     };
-    const int                    nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2; // the editor draws its canvas border as its scope ends
+    const int                    nHiddenBorderColours = LookAndFeel::instance().flowgraph.canvasBorder ? 0 : 2;
     Digitizer::utils::scope_exit showBorderAgain      = [nHiddenBorderColours] { ImGui::PopStyleColor(nHiddenBorderColours); };
     IMW::NodeEditor::Editor      nodeEditor(_editorName.c_str(), size);
     Digitizer::utils::scope_exit hideBorder = [nHiddenBorderColours] {
@@ -624,11 +629,11 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
     // Draw every block before measuring and arranging.
     for (auto& block : graphBlocks) {
-        const auto blockId     = ax::NodeEditor::NodeId(block.get());
+        const auto blockId     = ax::NodeEditor::NodeId(block);
         auto       inputPorts  = displayedPorts(*block, block->inputPorts());
         auto       outputPorts = displayedPorts(*block, block->outputPorts());
 
-        const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block.get(), *_filterBlock);
+        const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block, *_filterBlock);
 
         // If filteredOut, set opacity to 25% until we exit the scope
         float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
@@ -691,14 +696,13 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         if (!block->storedXY) {
             const auto   bounds = boundingBox.value_or(defaultBoundingBox);
             const ImVec2 position{bounds.minX, bounds.maxY + 32.f};
-            const auto   blockId = ax::NodeEditor::NodeId(block.get());
+            const auto   blockId = ax::NodeEditor::NodeId(block);
             ax::NodeEditor::SetNodePosition(blockId, position);
             addRectangleToBoundingBox(position, ax::NodeEditor::GetNodeSize(blockId));
         }
     }
 
-    // the node editor restores the previous view when its canvas is resized, dropping a navigation made in the frame
-    // before; a fit followed by a resize is therefore repeated
+    // the node editor restores the previous view when resized: a fit followed by a resize is repeated
     const ImVec2 canvasSize    = ax::NodeEditor::GetScreenSize();
     const bool   canvasResized = canvasSize.x != _lastCanvasSize.x || canvasSize.y != _lastCanvasSize.y;
     _lastCanvasSize            = canvasSize;
@@ -1103,8 +1107,8 @@ void FlowgraphEditor::drawBlockContextMenu() {
     }
 }
 
-void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) {
-    const auto& blocks = rootBlock->childBlocks;
+void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) const {
+    const std::vector<UiGraphBlock*> blocks = nodeBlocks(*rootBlock, showUiControlBlocks);
 
     std::vector<flowgraph_layout::Size> nodeSizes;
     nodeSizes.reserve(blocks.size());
@@ -1148,37 +1152,34 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) {
     const auto positions = flowgraph_layout::compute(nodeSizes, layoutEdges);
 
     for (std::size_t i = 0UZ; i < blocks.size(); ++i) {
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(blocks[i].get()), ImVec2(positions[i].x, positions[i].y));
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(blocks[i]), ImVec2(positions[i].x, positions[i].y));
     }
 }
 
-void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels) {
-    if (rootBlock.childBlocks.empty()) {
+void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels) const {
+    const std::vector<UiGraphBlock*> blocks = nodeBlocks(rootBlock, showUiControlBlocks);
+    if (blocks.empty()) {
         return;
     }
     ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
-    for (const auto& block : rootBlock.childBlocks) {
-        const auto blockId  = ax::NodeEditor::NodeId(block.get());
+    for (UiGraphBlock* block : blocks) {
+        const auto blockId  = ax::NodeEditor::NodeId(block);
         const auto position = ax::NodeEditor::GetNodePosition(blockId);
         bounds.Add(ImRect(position, position + ax::NodeEditor::GetNodeSize(blockId)));
     }
 
-    // EditorContext::NavigateTo(rect, zoomIn = true) widens the rect on each side by half of this fraction of its larger
-    // dimension before fitting it into the view (c_NavigationZoomMargin in imgui_node_editor.cpp)
+    // NavigateTo widens the rect by half of this fraction of its larger dimension per side
     constexpr float kNavigationZoomMargin = 0.1f;
 
-    // zoom: never above 1:1, small enough for the graph plus that margin to fit above the reserved bottom band
     const ImVec2 viewSize      = ax::NodeEditor::GetScreenSize();
     const float  usableHeight  = std::max(1.f, viewSize.y - reservedBottomPixels);
     const float  contentMargin = std::max(bounds.GetWidth(), bounds.GetHeight()) * kNavigationZoomMargin * 0.5f;
     const float  zoom          = std::min({1.f, viewSize.x / (bounds.GetWidth() + 2.f * contentMargin), usableHeight / (bounds.GetHeight() + 2.f * contentMargin)});
 
-    // the canvas rect to show: the whole view at that zoom, with the graph centred in the part above the band
     const ImVec2 visibleSize = viewSize / zoom;
     const float  visibleTop  = bounds.GetCenter().y - 0.5f * usableHeight / zoom;
     const ImRect visible(ImVec2(bounds.GetCenter().x - 0.5f * visibleSize.x, visibleTop), ImVec2(bounds.GetCenter().x + 0.5f * visibleSize.x, visibleTop + visibleSize.y));
 
-    // NavigateTo adds its margin back: shrink by exactly that, so the shown rect is `visible`
     const float viewMargin = std::max(visibleSize.x, visibleSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
     auto*       editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
     editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
@@ -1410,6 +1411,7 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
     editor.updateStyle();
     editor.requestBlockControlsPanel = requestBlockControlsPanel;
     editor.showEditorControls        = showEditorControls;
+    editor.showUiControlBlocks       = showUiControlBlocks;
 
     editor.requestGraphEdit = [&](UiGraphBlock* block) { pushEditor(block->blockUniqueName, graphModel, block); };
 
@@ -1477,7 +1479,6 @@ void FlowgraphPage::drawLocalNodeEditor() {
         _currentTabIsFlowGraph = true;
         drawNodeEditorTab();
     } else if (_graphModel && !_graphModel->rootBlock.blockUniqueName.empty()) {
-        // We don't have an editor until the root graph is loaded
         pushEditor("rootBlock node editor", *_graphModel, std::addressof(_graphModel->rootBlock));
     }
 }
@@ -1566,7 +1567,7 @@ void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
 }
 
 void FlowgraphPage::draw() noexcept {
-    if (_graphModel == nullptr) { // neither setDashboard() nor setGraphModel() yet
+    if (_graphModel == nullptr) {
         return;
     }
     // TODO: tab-bar is optional and should be eventually eliminated to optimise viewing area for data
@@ -1585,7 +1586,7 @@ void FlowgraphPage::draw() noexcept {
         drawLocalYamlTab();
     }
 
-    if (_dashboard == nullptr) { // a host's graph without a dashboard has no remote services
+    if (_dashboard == nullptr) {
         return;
     }
     for (auto& service : _dashboard->services) {

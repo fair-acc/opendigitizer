@@ -35,9 +35,9 @@ target_link_libraries(qa_TouchHandler PRIVATE ut opendigitizer-uilib opendigitiz
 target_include_directories(qa_TouchHandler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_TouchHandler COMMAND qa_TouchHandler)
 
-add_executable(qa_Scheduler qa_Scheduler.cpp)
-target_link_libraries(qa_Scheduler PRIVATE ut opendigitizer::dashboard opendigitizer-options)
-add_test(NAME qa_Scheduler COMMAND qa_Scheduler)
+add_executable(qa_GraphSession qa_GraphSession.cpp)
+target_link_libraries(qa_GraphSession PRIVATE ut opendigitizer::dashboard opendigitizer-options)
+add_test(NAME qa_GraphSession COMMAND qa_GraphSession)
 
 add_executable(qa_LogHistory qa_LogHistory.cpp)
 target_link_libraries(qa_LogHistory PRIVATE ut opendigitizer::dashboard opendigitizer-options)

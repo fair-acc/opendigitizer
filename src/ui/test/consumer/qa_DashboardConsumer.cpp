@@ -1,4 +1,5 @@
 #include "Dashboard.hpp"
+#include "LogHistory.hpp"
 #include "Setup.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
@@ -18,10 +19,13 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
 #include <memory>
+#include <numeric>
 #include <set>
 #include <string>
 #include <thread>
+#include <vector>
 
 CMRC_DECLARE(sample_dashboards);
 
@@ -50,13 +54,13 @@ std::string demoDashboardGrc() {
 }
 
 void loadGrc(DigitizerUi::Dashboard& dashboard, const std::string& grc) {
-    dashboard.loadAndThen(grc, [&dashboard](gr::Graph&& graph) { dashboard.emplaceGraph(std::move(graph)); });
+    dashboard.loadAndThen(grc, [&dashboard](gr::Graph&& graph) { dashboard.session.emplaceGraph(std::move(graph)); });
 }
 
 // no deadline: a state that is never reached is caught by the ctest timeout
 template<typename Condition>
 void waitUntil(DigitizerUi::Dashboard& dashboard, Condition&& condition) {
-    while (!condition(dashboard.scheduler->state())) {
+    while (!condition(dashboard.session.state())) {
         dashboard.handleMessages();
         std::this_thread::yield();
     }
@@ -67,7 +71,7 @@ constexpr auto kIsStopped = [](State state) { return state == State::STOPPED; };
 
 void stopAndWait(DigitizerUi::Dashboard& dashboard) {
     waitUntil(dashboard, kIsActive);
-    expect(dashboard.scheduler.stopUnlessPending().has_value());
+    dashboard.session.stop();
     waitUntil(dashboard, kIsStopped);
 }
 
@@ -77,7 +81,7 @@ void stopAndWait(DigitizerUi::Dashboard& dashboard) {
 // when statically registered suites run at exit
 int main() {
     ImGui::CreateContext();
-    constexpr ImVec4 kHostWindowBg{0.25f, 0.5f, 0.75f, 1.f}; // a host theme OpenDigitizer must not overwrite
+    constexpr ImVec4 kHostWindowBg{0.25f, 0.5f, 0.75f, 1.f};
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = kHostWindowBg;
     const auto hostStyleKept                    = [&] {
         const ImVec4 c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
@@ -104,23 +108,25 @@ int main() {
         expect(std::ranges::any_of(registry.keys(), [](const auto& key) { return std::string_view(key).starts_with("opendigitizer::ImPlotSink"); })) << "ImPlotSink";
     };
 
-    "a dashboard's load error reaches the notification observer and the toast list"_test = [&] {
-        std::vector<std::string> observed;
-        DigitizerUi::components::Notification::observer = [&observed](ImGuiToastType, std::string_view text) { observed.emplace_back(text); };
-        const auto toastsBefore                         = ImGui::notifications.size();
+    "a dashboard's load error reaches the log history and the toast list"_test = [&] {
+        const auto recordCount = [] {
+            const auto counts = DigitizerUi::logHistory().counts();
+            return std::accumulate(counts.begin(), counts.end(), std::uint64_t{0});
+        };
+        const auto recordsBefore = recordCount();
+        const auto toastsBefore  = ImGui::notifications.size();
 
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("invalid"));
         loadGrc(*dashboard, "blocks: [ this is not a flowgraph");
 
-        DigitizerUi::components::Notification::observer = nullptr;
-        expect(!observed.empty()) << "the load error reached the observer";
+        expect(recordCount() > recordsBefore) << "the load error is in the log history";
         expect(ImGui::notifications.size() > toastsBefore) << "and a toast is queued";
     };
 
     "a saved dashboard lists its flowgraph's plot sinks and keeps the layout it is given"_test = [&] {
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("serialise"));
         loadGrc(*dashboard, grc);
-        while (dashboard->graphModel.recursiveGatherPlotSinks().size() < 7UZ) { // the model fills from scheduler replies
+        while (dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 7UZ) {
             dashboard->handleMessages();
             std::this_thread::yield();
         }
@@ -135,7 +141,7 @@ int main() {
         expect(field(section, "layout").value_or(std::string{}) == "Grid");
         expect(field(section, "windowLayout").value_or(gr::property_map{}) == windowLayout);
 
-        std::set<std::string> sourceNames; // the ImPlotSink blocks of DemoDashboard.grc, listed by hand
+        std::set<std::string> sourceNames;
         for (const auto& source : field(section, "sources").value_or(gr::Tensor<gr::pmt::Value>{})) {
             sourceNames.insert(field(source.value_or(gr::property_map{}), "name").value_or(std::string{}));
         }
@@ -148,11 +154,58 @@ int main() {
         stopAndWait(*dashboard);
     };
 
+    "the charts run in the scheduler's graph and are saved as plots, not as flowgraph blocks"_test = [&] {
+        const auto field      = [](const gr::property_map& map, std::string_view key) { return map.find_value(std::string(key), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}); };
+        const auto list       = [&field](const gr::property_map& map, std::string_view key) { return field(map, key).value_or(gr::Tensor<gr::pmt::Value>{}); };
+        const auto blockNames = [&](const gr::property_map& graph) {
+            std::set<std::string> names;
+            for (const auto& block : list(graph, "blocks")) {
+                names.insert(field(field(block.value_or(gr::property_map{}), "parameters").value_or(gr::property_map{}), "name").value_or(std::string{}));
+            }
+            return names;
+        };
+        const auto plots = [&](const gr::property_map& graph) {
+            std::map<std::string, std::vector<std::string>> byName;
+            for (const auto& plot : list(field(graph, "dashboard").value_or(gr::property_map{}), "plots")) {
+                const auto plotMap = plot.value_or(gr::property_map{});
+                auto&      sources = byName[field(plotMap, "name").value_or(std::string{})];
+                for (const auto& source : list(plotMap, "sources")) {
+                    sources.push_back(source.value_or(std::string{}));
+                }
+            }
+            return byName;
+        };
+        const gr::property_map input = gr::pmt::yaml::deserialize(grc).value();
+
+        auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("roundTrip"));
+        loadGrc(*dashboard, grc);
+        const std::size_t chartsInGraph = static_cast<std::size_t>(std::ranges::count_if(dashboard->session.graph().blocks(), [](const auto& block) { return DigitizerUi::isChartTypeName(block->typeName()); }));
+        expect(eq(chartsInGraph, plots(input).size())) << "one chart block per plot of the .grc, in the scheduler's graph";
+
+        const auto [header, saved] = dashboard->serialise();
+        expect(std::ranges::equal(blockNames(saved), blockNames(input))) << "the saved blocks are the .grc's blocks, without the charts";
+        expect(std::ranges::equal(plots(saved), plots(input))) << "the saved plots are the .grc's plots with their sources";
+
+        stopAndWait(*dashboard);
+        dashboard->session.start();
+        waitUntil(*dashboard, kIsActive);
+        const auto inputPlots = plots(input);
+        for (const auto& window : dashboard->uiWindows) {
+            expect(window.block != nullptr && std::ranges::contains(dashboard->session.graph().blocks(), window.block)) << std::format("'{}' is still bound to a block of the graph", window.window->name);
+            const auto plot = inputPlots.find(window.window->name);
+            expect(plot != inputPlots.end() && window.block && eq(grc_compat::getBlockSinkNames(window.block.get()).size(), plot->second.size())) << std::format("'{}' keeps its sinks", window.window->name);
+        }
+        const auto [headerAfterRestart, savedAfterRestart] = dashboard->serialise();
+        expect(std::ranges::equal(blockNames(savedAfterRestart), blockNames(input))) << "after a restart the saved blocks are still the .grc's";
+        expect(std::ranges::equal(plots(savedAfterRestart), inputPlots)) << "after a restart the saved plots are still the .grc's";
+        stopAndWait(*dashboard);
+    };
+
     "demo dashboard loads through opendigitizer::dashboard alone"_test = [&] {
         auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("consumer"));
         loadGrc(*dashboard, grc);
 
-        expect(static_cast<bool>(dashboard->scheduler)) << "scheduler created from the .grc";
+        expect(static_cast<bool>(dashboard->session)) << "scheduler created from the .grc";
         expect(!dashboard->uiWindows.empty()) << "chart windows created from the .grc layout";
         expect(hostStyleKept()) << "creating a dashboard keeps the host's style";
 
@@ -191,7 +244,7 @@ dashboard:
         loadGrc(*dashboard, grc);
         stopAndWait(*dashboard);
 
-        expect(dashboard->scheduler->start().has_value());
+        dashboard->session.start();
         waitUntil(*dashboard, kIsActive);
     };
 

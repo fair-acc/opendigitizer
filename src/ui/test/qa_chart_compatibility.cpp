@@ -155,7 +155,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(blockSinkCount(*plot2->block) == 2) << "Plot 2 should have two sinks initially";
                 expect(getChartBlockSignalKinds(*plot2->block) == opendigitizer::SignalKind::Streaming);
                 expect(g_state.dashboard->transmuteUIWindow(*plot2, "opendigitizer::charts::YYChart"));
-                ctx->Yield();
+                g_state.waitUntil(ctx, "the scheduler has replaced Plot 2's block", [] {
+                    const auto* window = findWindowByName("Plot 2");
+                    return window != nullptr && window->block != nullptr && window->block->typeName().find("YYChart") != std::string_view::npos;
+                });
 
                 auto* plot2After = findWindowByName("Plot 2");
                 expect(plot2After != nullptr && plot2After->block != nullptr) << "Plot 2 should still exist after changing type";

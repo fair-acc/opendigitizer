@@ -107,11 +107,8 @@ public:
                 bool wait = false;
                 if (dashboard->isInUse) {
                     wait = true;
-                } else if (dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
-                    if (auto stopped = dashboard->scheduler.stopUnlessPending(); !stopped) {
-                        components::Notification::error(std::format("Failed to stop current flowgraph, can not load the dashboard: {}", stopped.error().message));
-                        return;
-                    }
+                } else if (dashboard->session && dashboard->session.state() != gr::lifecycle::State::STOPPED) {
+                    dashboard->session.stop();
                     wait = true;
                 }
 
@@ -156,10 +153,8 @@ public:
     }
 
     void closeDashboard() {
-        if (dashboard && dashboard->scheduler && dashboard->scheduler->state() != gr::lifecycle::State::STOPPED) {
-            if (auto stopped = dashboard->scheduler.stopUnlessPending(); !stopped) {
-                components::Notification::error(std::format("Failed to stop flowgraph: {}", stopped.error().message));
-            }
+        if (dashboard && dashboard->session && dashboard->session.state() != gr::lifecycle::State::STOPPED) {
+            dashboard->session.stop();
         }
         dashboardPage.reset();
         flowgraphPage.setDashboard(nullptr);
@@ -285,7 +280,7 @@ public:
 
             const bool showsGraph = mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT || mainViewMode == ViewMode::FLOWGRAPH;
             if (showsGraph && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
-                std::ignore = toolbarView.draw(dashboard->scheduler, dashboard->graphModel, dashboard->schedulerUi); // above the View-mode input blocker: toolbar blocks stay operable
+                std::ignore = toolbarView.draw(dashboard->session, dashboard->schedulerUi); // above the View-mode input blocker: toolbar blocks stay operable
             }
 
             const float lockedModeBlockerStart = ImGui::GetCursorScreenPos().y;
@@ -295,7 +290,7 @@ public:
                 drawPage(lockedModeBlockerStart);
             }
             const bool withGraph = dashboard && dashboard->isInitialised;
-            statusBarView.draw(withGraph ? &dashboard->scheduler : nullptr, withGraph ? &dashboard->graphModel : nullptr);
+            statusBarView.draw(withGraph ? &dashboard->session : nullptr);
         }
 
         previousViewMode = mainViewMode;
@@ -351,8 +346,8 @@ public:
         } else if (mainViewMode == ViewMode::FLOWGRAPH) {
             if (dashboard != nullptr && dashboard->isInitialised) {
                 if (previousViewMode != ViewMode::FLOWGRAPH) {
-                    dashboard->graphModel.requestFullUpdate();
-                    dashboard->graphModel.requestAvailableBlocksTypesUpdate();
+                    dashboard->session.graphModel.requestFullUpdate();
+                    dashboard->session.graphModel.requestAvailableBlocksTypesUpdate();
                 }
 
                 flowgraphPage.draw();

@@ -2,7 +2,7 @@
 #define DASHBOARD_H
 
 #include "GraphModel.hpp"
-#include "Scheduler.hpp"
+#include "GraphSession.hpp"
 
 #include "charts/Chart.hpp"
 
@@ -27,6 +27,7 @@
 #endif
 #include <plf_colony.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -107,12 +108,7 @@ struct Dashboard {
         std::shared_ptr<gr::BlockModel>    block;
 
         UIWindow() = default;
-        explicit UIWindow(Dashboard& dashboard, std::shared_ptr<gr::BlockModel> blk, std::string_view name = "");
         explicit UIWindow(DeserializeTag, std::shared_ptr<gr::BlockModel> blk, std::string_view name = "");
-
-        [[nodiscard]] bool           hasBlock() const noexcept { return block != nullptr; }
-        [[nodiscard]] bool           isChart() const noexcept { return uiCategory() == gr::UICategory::Content; }
-        [[nodiscard]] gr::UICategory uiCategory() const noexcept { return block ? block->uiCategory() : gr::UICategory::None; }
     };
 
     struct PropertyControlWindow {
@@ -153,47 +149,46 @@ struct Dashboard {
     std::vector<UIWindow>                                  uiWindows;
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
     DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
-    bool                                                   schedulerUi = false; // play/pause/stop controls shown (.grc dashboard.scheduler_ui)
+    bool                                                   schedulerUi = false; // .grc dashboard.scheduler_ui
     gr::property_map                                       windowLayout;
     gr::property_map                                       exportedProperties;
     std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
     plf::colony<Service>                                   services;
     std::atomic<bool>                                      isInitialised = false;
-    Scheduler                                              scheduler;
-    gr::Graph                                              uiGraph{*pluginLoader};
-    UiGraphModel                                           graphModel;
+    GraphSession                                           session;
+    std::unordered_map<std::string, gr::property_map>      pendingCharts; // by chart_name, until in the graph
+    std::uint64_t                                          boundChartsTopology = 0;
 
     explicit Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc);
     ~Dashboard();
 
     static std::unique_ptr<Dashboard> create(std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc);
 
-    void load();
-    void loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
-    void loadPlugins(std::function<void()> done);
-    /// saves with the layout the view shows now; it becomes the dashboard's stored layout
-    void save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
-    /// header and graph YAML (flowgraph plus the dashboard section) with the given layout
+    void                                                        load();
+    void                                                        loadAndThen(std::string_view grcData, std::function<void(gr::Graph&&)> assignScheduler);
+    void                                                        loadPlugins(std::function<void()> done);
+    void                                                        save(DockingLayoutType liveLayoutType, const gr::property_map& liveWindowLayout);
     [[nodiscard]] std::pair<gr::property_map, gr::property_map> serialise();
     void                                                        saveStore(const gr::property_map& headerYaml, const gr::property_map& graphYaml);
-    void                                                        doLoad(const gr::property_map& dashboard);
+    void                                                        doLoad(const gr::property_map& dashboard, gr::Graph& graph);
 
-    UIWindow& newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
-    void      deleteChart(UIWindow* uiWindow);
-    UIWindow* copyChart(std::string_view sourceChartId);
-    bool      transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);
+    void newUIBlock(std::string_view chartType = "XYChart", const gr::property_map& chartInitialParameters = {});
+    void deleteChart(UIWindow* uiWindow);
+    void copyChart(std::string_view sourceChartId);
+    bool transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);
+    void bindChartWindows();
 
     std::pair<std::size_t, PropertyControlWindow&> newPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName, std::string_view label);
     void                                           applyExportedPropertiesToUiGraph();
     [[nodiscard]] constexpr bool                   hasPendingExportedPropertiesConfiguration() const noexcept { return !this->exportedProperties.empty(); }
     std::string                                    generateUniqueNameForPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName);
-    std::string                                    generateUniqueNameForUiWindow(gr::BlockModel& block, std::string_view desiredName);
     std::unordered_set<std::string_view>           getAllWindowNamesInUse() const;
 
-    gr::BlockModel* emplaceChartBlock(std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
-    void            removeSinkFromPlots(std::string_view sinkName);
-    void            addRemoteSignal(const SignalData& signalData);
-    void            loadUIWindowSources();
+    std::shared_ptr<gr::BlockModel> emplaceChartBlock(gr::Graph& graph, std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
+    [[nodiscard]] std::string       resolveChartTypeName(std::string_view chartTypeName) const;
+    void                            removeSinkFromPlots(std::string_view sinkName);
+    void                            addRemoteSignal(const SignalData& signalData);
+    void                            loadUIWindowSources();
 
     void setNewDescription(const std::shared_ptr<DashboardDescription>& desc);
     void registerRemoteService(std::string_view blockName, std::optional<opencmw::URI<>> uri);
@@ -201,16 +196,11 @@ struct Dashboard {
     void removeUnusedRemoteServices();
     void saveRemoteServiceFlowgraph(Service* s);
 
-    template<typename... Args>
-    void emplaceGraph(Args&&... args) {
-        scheduler.emplaceGraph(std::forward<Args>(args)...);
-    }
-
     void handleMessages() {
-        scheduler.handleMessages(graphModel);
+        session.handleMessages();
 
         if (hasPendingExportedPropertiesConfiguration()) [[unlikely]] {
-            const auto* schedulerInfo = std::get_if<UiGraphBlock::SchedulerBlockInfo>(&graphModel.rootBlock.blockCategoryInfo);
+            const auto* schedulerInfo = std::get_if<UiGraphBlock::SchedulerBlockInfo>(&session.graphModel.rootBlock.blockCategoryInfo);
             if (schedulerInfo && schedulerInfo->childrenLoaded) {
                 applyExportedPropertiesToUiGraph();
             }
@@ -237,18 +227,6 @@ struct Dashboard {
         }
         return nullptr;
     }
-
-    UIWindow& getOrCreateUIWindow(const std::shared_ptr<gr::BlockModel>& block) {
-        if (auto* existing = findUIWindow(block)) {
-            return *existing;
-        }
-        uiWindows.emplace_back(*this, block);
-        return uiWindows.back();
-    }
-
-    void removeUIWindow(const std::shared_ptr<gr::BlockModel>& block) {
-        std::erase_if(uiWindows, [&block](const UIWindow& w) { return w.block == block; });
-    }
 };
 } // namespace DigitizerUi
 
@@ -273,13 +251,15 @@ inline std::vector<std::string> getBlockSinkNames(const gr::BlockModel* block) {
     return {};
 }
 
+[[nodiscard]] inline gr::Tensor<gr::pmt::Value> sinkNamesTensor(const std::vector<std::string>& names) {
+    gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {names.size()});
+    std::ranges::copy(names, sinks.begin());
+    return sinks;
+}
+
 inline void setBlockSinkNames(gr::BlockModel* block, const std::vector<std::string>& names) {
     if (block) {
-        gr::Tensor<gr::pmt::Value> sinks(gr::extents_from, {names.size()});
-        for (std::size_t i = 0; i < names.size(); ++i) {
-            sinks[i] = names[i];
-        }
-        std::ignore = block->settings().set(gr::property_map{{std::pmr::string("data_sinks"), sinks}});
+        std::ignore = block->settings().set(gr::property_map{{std::pmr::string("data_sinks"), sinkNamesTensor(names)}});
         std::ignore = block->settings().activateContext();
         std::ignore = block->settings().applyStagedParameters();
     }

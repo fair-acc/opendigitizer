@@ -52,7 +52,7 @@ struct TestState {
 TestState* g_state = nullptr;
 
 std::shared_ptr<gr::BlockModel> schedulerBlock(std::string_view name) {
-    for (const auto& block : g_state->dashboard->scheduler->graph().blocks()) {
+    for (const auto& block : g_state->dashboard->session.graph().blocks()) {
         if (block->name() == name) {
             return block;
         }
@@ -85,13 +85,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             auto&       state = *g_state;
             state.dashboard->handleMessages();
             if (state.dashboard->isInitialised) {
-                std::ignore = state.view.draw(state.dashboard->scheduler, state.dashboard->graphModel, state.dashboard->schedulerUi);
+                std::ignore = state.view.draw(state.dashboard->session, state.dashboard->schedulerUi);
             }
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             auto& state = *g_state;
-            for (int frame = 0; frame < kMaxFrames && !(state.dashboard->isInitialised && state.dashboard->graphModel.topologyGeneration > 0UZ); ++frame) {
+            for (int frame = 0; frame < kMaxFrames && !(state.dashboard->isInitialised && state.dashboard->session.graphModel.topologyGeneration > 0UZ); ++frame) {
                 ctx->Yield();
             }
             ctx->Yield(3);
@@ -132,11 +132,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto enabled = [ctx](const char* ref) { return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) == 0; };
                 const auto reach   = [&](gr::lifecycle::State target) {
                     // bounded by time, not frames: test frames run much faster than a start dispatched to the IO pool
-                    for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.dashboard->scheduler->state() != target && std::chrono::steady_clock::now() < deadline;) {
+                    for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.dashboard->session.state() != target && std::chrono::steady_clock::now() < deadline;) {
                         ctx->Yield();
                     }
                     ctx->Yield(2); // the buttons show the new state
-                    return state.dashboard->scheduler->state() == target;
+                    return state.dashboard->session.state() == target;
                 };
                 state.dashboard->schedulerUi = true;
                 expect(reach(RUNNING)) << fatal;
@@ -183,9 +183,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 gr::Message message;
                 message.cmd         = gr::message::Command::Set;
                 message.endpoint    = gr::scheduler::property::kEmplaceBlock;
-                message.serviceName = state.dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
+                message.serviceName = state.dashboard->session.graphModel.rootBlock.ownerSchedulerUniqueName();
                 message.data        = gr::property_map{{"type", std::string("DigitizerUi::ToolbarButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}};
-                state.dashboard->graphModel.sendMessage(std::move(message));
+                state.dashboard->session.graphModel.sendMessage(std::move(message));
 
                 for (int frame = 0; frame < kMaxFrames && !ctx->ItemExists("**/Extra"); ++frame) {
                     ctx->Yield();
@@ -219,7 +219,7 @@ int main(int argc, char* argv[]) {
     state.grc        = std::string(grcFile.begin(), grcFile.end());
     state.restClient = restClient;
     state.dashboard  = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("toolbar"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
+    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();
     state.view        = {};
