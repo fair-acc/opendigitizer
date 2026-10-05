@@ -33,11 +33,8 @@ void DashboardView::processPendingRequests() {
     if (_pendingTransmutation) {
         const auto request    = std::move(*_pendingTransmutation);
         _pendingTransmutation = std::nullopt;
-        for (auto& uiWindow : _dashboard->uiWindows) {
-            if (uiWindow.block && uiWindow.block->uniqueName() == request.chartId) {
-                _dashboard->transmuteUIWindow(uiWindow, request.newChartType);
-                break;
-            }
+        if (auto* uiWindow = _dashboard->findUIWindowByName(request.chartId)) {
+            std::ignore = _dashboard->transmuteUIWindow(*uiWindow, request.newChartType);
         }
     }
 
@@ -60,24 +57,24 @@ void DashboardView::setLayout(DockingLayoutType type, const std::optional<gr::pr
 }
 
 DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const Options& options) {
-    if (_dashboard != std::addressof(dashboard)) { // requests and layout of another dashboard no longer apply
+    if (_dashboard != std::addressof(dashboard)) {
         _pendingTransmutation.reset();
         _pendingRemovals.clear();
-        _layoutApplied = _layoutApplied && _dashboard == nullptr; // a layout set before the first draw stays
+        _layoutApplied = _layoutApplied && _dashboard == nullptr;
         _dashboard     = std::addressof(dashboard);
     }
-    dashboard.handleMessages(); // the dashboard knows its charts and sinks only once the scheduler has replied
+    dashboard.handleMessages();
 
-    ImGui::PushID(this); // dock ids per view
+    ImGui::PushID(this);
     Digitizer::utils::scope_exit popId = [] { ImGui::PopID(); };
 
     const DashboardStyle& style               = LookAndFeel::instance().dashboardStyle;
-    const int             nTransparentColours = style.background ? 0 : 4; // a host's own background shows through
+    const int             nTransparentColours = style.background ? 0 : 4;
     if (!style.background) {
         for (const ImGuiCol colour : {ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_Border, ImGuiCol_BorderShadow}) {
             ImGui::PushStyleColor(colour, ImVec4{});
         }
-        ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4{}); // the charts' frame around the plot area and axes
+        ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4{});
     }
     Digitizer::utils::scope_exit popTransparentColours = [nTransparentColours] {
         ImGui::PopStyleColor(nTransparentColours);
@@ -97,7 +94,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
     }
     if (!_layoutApplied) {
         setLayout(dashboard.layoutType, dashboard.windowLayout.empty() ? std::nullopt : std::optional<gr::property_map>(dashboard.windowLayout));
-    } else if (dashboard.layoutType != _dockSpace.layoutType()) { // the dashboard's layout type is the one to follow
+    } else if (dashboard.layoutType != _dockSpace.layoutType()) {
         _dockSpace.setLayoutType(dashboard.layoutType);
     }
     opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
@@ -105,11 +102,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
 
     result.backgroundClicked = ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
 
-    // quickfix for an imgui bug?: a SetCursorPos alone does not seem to be sufficient for getting our cursor to
-    // return there after SameLine(). The issue is visible iff we do manual cursor manipulation (as the global signal
-    // legend does for the first colour rect). So to make sure the first item draws at the same position as the
-    // succeeding ones after SameLine(), insert a dummy size and SameLine, so the imgui context is in the same state as
-    // later
+    // SetCursorPos alone does not restore the cursor after SameLine(): insert a dummy item first
     const auto alignBarStart = [] {
         ImGui::ItemSize(ImVec2{}, 0.f);
         ImGui::SameLine();
@@ -157,7 +150,7 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
 void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSize) {
     IMW::Group group;
 
-    if (mode == Mode::Layout) { // layout guide: kGridCells x kGridCells cells spanning the pane
+    if (mode == Mode::Layout) {
         const uint32_t gridLineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().gridLines);
         const ImVec2   pos           = ImGui::GetCursorScreenPos();
         for (std::size_t i = 0UZ; i < kGridCells; ++i) {
@@ -168,15 +161,13 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
         }
     }
 
+    _dashboard->bindChartWindows();
     DockSpace::Windows windows;
-    for (auto& blockPtr : _dashboard->uiGraph.blocks()) {
-        if (blockPtr->uiCategory() != gr::UICategory::Content) {
+    for (auto& uiWindow : _dashboard->uiWindows) {
+        if (!uiWindow.window || !uiWindow.block) {
             continue;
         }
-        auto& uiWindow = _dashboard->getOrCreateUIWindow(blockPtr); // created lazily
-        if (!uiWindow.window) {
-            continue;
-        }
+        const std::shared_ptr<gr::BlockModel>& blockPtr = uiWindow.block;
         windows.push_back(uiWindow.window);
         // the block is captured by value so that it stays alive while it draws
         uiWindow.window->renderFunc                   = [block = blockPtr, mode] { std::ignore = block->draw(opendigitizer::charts::chartDrawConfig(mode)); };
@@ -192,7 +183,6 @@ void DashboardView::drawCharts(Mode mode, const Options& options, ImVec2 paneSiz
     _dockSpace.render(windows, paneSize, mode == Mode::Layout);
 }
 
-// one legend entry per line, in a column as wide as the widest entry of the last frame
 void DashboardView::drawLegendColumn(Mode mode, float height, const Options& options, Result& result) {
     IMW::Child column("##legendColumn", ImVec2(_legendColumnWidth, height), false, ImGuiWindowFlags_NoScrollbar);
     if (options.barLeading) {
@@ -200,7 +190,7 @@ void DashboardView::drawLegendColumn(Mode mode, float height, const Options& opt
         ImGui::NewLine();
     }
     _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, 1.f); // narrower than any entry: one per line
+    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, 1.f);
     if (mode == Mode::Interaction) {
         result.rightClickedSinkName = std::string(rightClickedSinkName);
     }
@@ -217,13 +207,13 @@ void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& opti
         options.barLeading();
     }
 
-    alignForWidth(std::max(10.f, _legendBox.x), 0.5f); // centred, using the width of the last frame
+    alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
     if (options.barCentre) {
         options.barCentre();
         _legendBox = ImGui::GetItemRectSize();
     } else {
         _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-        const auto rightClickedSinkName = _signalLegend.draw(_dashboard->graphModel, chartPaneSize.x);
+        const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, chartPaneSize.x);
         if (mode == Mode::Interaction) {
             result.rightClickedSinkName = std::string(rightClickedSinkName);
         }

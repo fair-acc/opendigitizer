@@ -9,8 +9,8 @@
 
 #include <FlowgraphPage.hpp>
 #include <GraphModel.hpp>
+#include <GraphSession.hpp>
 #include <LogHistory.hpp>
-#include <Scheduler.hpp>
 #include <StatusBarView.hpp>
 #include <ToolbarView.hpp>
 #include <common/LookAndFeel.hpp>
@@ -58,16 +58,14 @@ connections:
   - [SignalGenerator1, 0, HostSink, 0]
 )";
 
-// what a host runs instead of a Dashboard: a scheduler and the graph model that mirrors it, wired together
+// what a host runs instead of a Dashboard: a GraphSession on its own graph
 struct HostGraph {
-    DigitizerUi::Scheduler    scheduler;
-    DigitizerUi::UiGraphModel graphModel;
+    DigitizerUi::GraphSession session;
 
     HostGraph() {
-        graphModel.sendMessage_ = [this](gr::Message message, std::source_location location) { scheduler.sendMessage(std::move(message), location); };
-        auto graph              = gr::loadGrc(gr::globalPluginLoader(), kHostGrc);
+        auto graph = gr::loadGrc(gr::globalPluginLoader(), kHostGrc);
         expect(graph.has_value()) << fatal << "the host's .grc loads";
-        scheduler.emplaceGraph(std::move(**graph));
+        session.emplaceGraph(std::move(**graph));
     }
 };
 
@@ -109,8 +107,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             }
             Digitizer::utils::scope_exit popHostColours = [nHostColours] { ImGui::PopStyleColor(nHostColours); };
             IMW::Window                  window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            state.host->scheduler.handleMessages(state.host->graphModel); // the host pumps the messages each frame
-            if (const auto request = state.toolbar.draw(state.host->scheduler, state.host->graphModel, true); request != DigitizerUi::SchedulerRequest::none) {
+            state.host->session.handleMessages(); // the host pumps the messages each frame
+            if (const auto request = state.toolbar.draw(state.host->session, true); request != DigitizerUi::SchedulerRequest::none) {
                 state.lastRequest = request;
             }
             {
@@ -118,18 +116,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.editorRect = ImRect(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize());
                 state.editor->draw();
             }
-            state.statusBar->draw(&state.host->scheduler, &state.host->graphModel);
+            state.statusBar->draw(&state.host->session);
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             auto&      state = *g_state;
             const auto reach = [&](State target) {
                 // bounded by time, not frames: test frames run much faster than a start dispatched to the IO pool
-                for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.host->scheduler->state() != target && std::chrono::steady_clock::now() < deadline;) {
+                for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10); state.host->session.state() != target && std::chrono::steady_clock::now() < deadline;) {
                     ctx->Yield();
                 }
                 ctx->Yield(2);
-                return state.host->scheduler->state() == target;
+                return state.host->session.state() == target;
             };
 
             "the toolbar draws the graph's toolbar block and the scheduler controls, which drive the scheduler"_test = [&] {
@@ -158,7 +156,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a settings change reaches the host's graph model and keeps the setting's meta information"_test = [&] {
-                const auto generator = [&] { return state.host->graphModel.recursiveFindBlockByName("SignalGenerator1").block; };
+                const auto generator = [&] { return state.host->session.graphModel.recursiveFindBlockByName("SignalGenerator1").block; };
                 const auto amplitude = [&] {
                     auto* block = generator();
                     if (block == nullptr) {
@@ -184,7 +182,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     ctx->Yield();
                 }
                 expect(eq(state.editor->editorCount(), 1UZ)) << "an editor opens once the graph model knows the graph";
-                expect(static_cast<bool>(state.host->graphModel.recursiveFindBlockByName("host_indicator"))) << "and it holds the host's blocks";
+                expect(static_cast<bool>(state.host->session.graphModel.recursiveFindBlockByName("host_indicator"))) << "and it holds the host's blocks";
             };
 
             "a host turns off the editor canvas's background, grid and border and sees its own background"_test = [&] {
@@ -251,7 +249,7 @@ int main(int argc, char* argv[]) {
     state.host      = std::make_unique<HostGraph>();
     state.statusBar = std::make_unique<DigitizerUi::StatusBarView>();
     state.editor    = std::make_unique<DigitizerUi::FlowgraphPage>(); // no RestClient: a host without opencmw objects
-    state.editor->setGraphModel(std::addressof(state.host->graphModel));
+    state.editor->setGraphModel(std::addressof(state.host->session.graphModel));
 
     const bool result = app.runTests();
     state.editor.reset();

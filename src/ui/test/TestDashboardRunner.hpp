@@ -51,22 +51,22 @@ struct TestDashboardRunner {
         // start of test anyways, so just put this here
         clearMessages();
 
-        if (!dashboard || !dashboard->scheduler || dashboard->scheduler->state() == gr::lifecycle::State::STOPPED) {
+        if (!dashboard || !dashboard->session || dashboard->session.state() == gr::lifecycle::State::STOPPED) {
             reload(previousReloadFilesystem, previousReloadGRCPath.c_str());
         }
 
-        waitUntil(ctx, "the scheduler is active and its root graph is known", [this] { return gr::lifecycle::isActive(dashboard->scheduler->state()) && !dashboard->graphModel.rootBlock.blockUniqueName.empty(); }, location);
+        waitUntil(ctx, "the scheduler is active and its root graph is known", [this] { return gr::lifecycle::isActive(dashboard->session.state()) && !dashboard->session.graphModel.rootBlock.blockUniqueName.empty(); }, location);
         waitForAllSubgraphs(ctx, location);
     }
 
     void waitForAllSubgraphs(ImGuiTestContext* ctx, std::source_location location) {
-        assert(!dashboard->graphModel.rootBlock.blockUniqueName.empty() && "root scheduler must be loaded before waitForAllSubgraphs()");
+        assert(!dashboard->session.graphModel.rootBlock.blockUniqueName.empty() && "root scheduler must be loaded before waitForAllSubgraphs()");
 
         // every subgraph scheduler must report at least one child
         std::vector<UiGraphBlock*> schedulers;
         const auto                 gatherNotReadySchedulers = [this, &schedulers] {
             schedulers.clear();
-            dashboard->graphModel.recursiveForEachBlock([&schedulers](const UiGraphModel::FindBlockResult& findResult) {
+            dashboard->session.graphModel.recursiveForEachBlock([&schedulers](const UiGraphModel::FindBlockResult& findResult) {
                 if (findResult.block && findResult.block->isScheduler() && findResult.block->childBlocks.empty()) {
                     schedulers.push_back(findResult.block);
                 }
@@ -91,10 +91,10 @@ struct TestDashboardRunner {
         dashboard = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
 
         dashboard->loadAndThen(yamlContents, [this](gr::Graph&& grGraph) { //
-            dashboard->emplaceGraph(std::move(grGraph));
+            dashboard->session.emplaceGraph(std::move(grGraph));
         });
 
-        assert(dashboard->scheduler);
+        assert(dashboard->session);
 
         onDashboardLoaded();
 
@@ -102,7 +102,7 @@ struct TestDashboardRunner {
         // subscription will stick around until the dashboard is destroyed,
         // that's okay because we only have one dashboard at a time.
         clearMessages();
-        std::ignore = this->dashboard->graphModel.subscribeToResponses( //
+        std::ignore = this->dashboard->session.graphModel.subscribeToResponses( //
             [this](const gr::Message& reply) { collectedMessages.push_back(reply); });
     }
 
@@ -122,16 +122,16 @@ struct TestDashboardRunner {
 
     const auto& blocks() const {
         assert(dashboard);
-        auto& rootChildren = dashboard->graphModel.rootBlock.childBlocks;
+        auto& rootChildren = dashboard->session.graphModel.rootBlock.childBlocks;
         assert(rootChildren.size() == 1);
         return rootChildren[0]->childBlocks;
     }
 
-    bool hasBlocks() const { return dashboard && !dashboard->graphModel.rootBlock.childBlocks.empty() && !blocks().empty(); }
+    bool hasBlocks() const { return dashboard && !dashboard->session.graphModel.rootBlock.childBlocks.empty() && !blocks().empty(); }
 
     void stopScheduler() {
-        if (dashboard && dashboard->scheduler) {
-            std::ignore = dashboard->scheduler->stop();
+        if (dashboard && dashboard->session) {
+            dashboard->session.stop();
         }
     }
 

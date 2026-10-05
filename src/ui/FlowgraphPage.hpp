@@ -185,11 +185,10 @@ public:
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
 
-    /// re-arranges the blocks on the next draw, as the "Rearrange blocks" button does, then fits the graph into the view
     void requestRelayout() { _rearrangeRequested = true; }
 
-    /// false hides the editing buttons ("Add block...", "Add sub graph...", "Add remote signal...", "Rearrange blocks", "Export all unused ports"); "Close" stays
-    bool showEditorControls = true;
+    bool showEditorControls  = true;
+    bool showUiControlBlocks = true;
 
     void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
@@ -221,10 +220,9 @@ public:
 
     Buttons drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio);
 
-    static void sortNodes(UiGraphBlock* rootBlock);
+    void sortNodes(UiGraphBlock* rootBlock) const;
 
-    // zooms out until the whole graph is visible above the reserved bottom band (the button bar), never above 1:1
-    static void fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels);
+    void fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels) const;
 
     void requestBlockDeletion(const std::string& blockName);
 
@@ -313,12 +311,10 @@ public:
 
     void draw() noexcept;
 
-    /// edits the dashboard's flowgraph; adding remote signals needs the dashboard
     void setDashboard(Dashboard* dashboard) {
-        setGraphModel(dashboard ? std::addressof(dashboard->graphModel) : nullptr);
+        setGraphModel(dashboard ? std::addressof(dashboard->session.graphModel) : nullptr);
         _dashboard = dashboard;
     }
-    /// edits a flowgraph a host runs without a dashboard (a Scheduler wired to this UiGraphModel)
     void setGraphModel(UiGraphModel* graphModel) {
         _dashboard  = nullptr;
         _graphModel = graphModel;
@@ -333,8 +329,8 @@ public:
 
     void updateStyle(); // reads from LookAndFeel::instance().style
 
-    /// copied to every editor pushed afterwards; false also drops the tab bar and shows the local node editor only
-    bool showEditorControls = true;
+    bool showEditorControls  = true;
+    bool showUiControlBlocks = true;
 
     void requestRelayout() {
         if (!_editors.empty()) {

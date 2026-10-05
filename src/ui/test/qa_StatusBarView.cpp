@@ -88,7 +88,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.dashboard->handleMessages();
                 ImGui::Dummy(ImVec2(0.f, ImGui::GetContentRegionAvail().y - DigitizerUi::StatusBarView::height()));
                 const bool withGraph = state.dashboard->isInitialised;
-                state.view.draw(withGraph ? &state.dashboard->scheduler : nullptr, withGraph ? &state.dashboard->graphModel : nullptr);
+                state.view.draw(withGraph ? &state.dashboard->session : nullptr);
             }
             if (state.viewModeLocked) {
                 std::ignore = DigitizerUi::components::drawViewModeBlocker(ImRect(kHostPos, kHostPos + kHostSize - ImVec2(0.f, DigitizerUi::StatusBarView::height())));
@@ -97,7 +97,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
             auto& state = *g_state;
-            for (int frame = 0; frame < kMaxFrames && !(state.dashboard->isInitialised && state.dashboard->graphModel.topologyGeneration > 0UZ); ++frame) {
+            for (int frame = 0; frame < kMaxFrames && !(state.dashboard->isInitialised && state.dashboard->session.graphModel.topologyGeneration > 0UZ); ++frame) {
                 ctx->Yield();
             }
             ctx->Yield(3);
@@ -153,14 +153,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the indicator shows the scheduler's state"_test = [&] {
-                for (int frame = 0; frame < kMaxFrames && state.dashboard->scheduler->state() != gr::lifecycle::State::RUNNING; ++frame) {
+                for (int frame = 0; frame < kMaxFrames && state.dashboard->session.state() != gr::lifecycle::State::RUNNING; ++frame) {
                     ctx->Yield();
                 }
                 ctx->Yield(2);
                 expect(ctx->ItemInfo("**/###schedulerState").DebugLabel == std::string("RUNNING###schedulerState")) << ctx->ItemInfo("**/###schedulerState").DebugLabel;
 
-                expect(state.dashboard->scheduler->stop().has_value());
-                for (int frame = 0; frame < kMaxFrames && state.dashboard->scheduler->state() != gr::lifecycle::State::STOPPED; ++frame) {
+                state.dashboard->session.stop();
+                for (int frame = 0; frame < kMaxFrames && state.dashboard->session.state() != gr::lifecycle::State::STOPPED; ++frame) {
                     ctx->Yield();
                 }
                 std::string label;
@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
 
     auto grcFile    = cmrc::ui_test_assets::get_filesystem().open("examples/qa_statusbar.grc");
     state.dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("status bar"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
+    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();
     state.dashboard.reset();

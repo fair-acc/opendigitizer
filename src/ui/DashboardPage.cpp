@@ -24,10 +24,6 @@
 
 namespace DigitizerUi {
 
-namespace {
-constexpr inline auto kMaxPlots = 16u;
-} // namespace
-
 bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
@@ -94,24 +90,16 @@ DashboardPage::DashboardPage() {
         auto sourceInWaiting = it->second;
         _addedSourceBlocksWaitingForSink.erase(it);
 
-        gr::Message message;
-        message.cmd         = gr::message::Command::Set;
-        message.endpoint    = gr::scheduler::property::kEmplaceEdge;
-        message.serviceName = _dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
-        message.data        = gr::property_map{                                                                          //
-            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName},     //
-            {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                                //
-            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::string(sink.uniqueName())}, //
-            {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                            //
-            {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                 //
-            {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                         //
-            {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}};
-        _dashboard->graphModel.sendMessage(std::move(message));
+        _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceEdge, gr::property_map{                                                                                         //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_BLOCK), sourceInWaiting.sourceBlockName},     //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_SOURCE_PORT), "out"},                                //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_BLOCK), std::string(sink.uniqueName())}, //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_DESTINATION_PORT), "in"},                            //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_MIN_BUFFER_SIZE), gr::Size_t(4096)},                 //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_WEIGHT), 1},                                         //
+                                                                                       {std::pmr::string(gr::serialization_fields::EDGE_NAME), "edge"}});
 
-        auto& uiWindow = _dashboard->newUIBlock();
-        auto  names    = grc_compat::getBlockSinkNames(uiWindow.block.get());
-        names.emplace_back(sink.name());
-        grc_compat::setBlockSinkNames(uiWindow.block.get(), names);
+        _dashboard->newUIBlock("XYChart", {{"data_sinks", gr::Tensor<gr::pmt::Value>{std::string(sink.name())}}});
     });
 }
 
@@ -144,7 +132,7 @@ DashboardPage::PropertyControlWindowContextMenuAction DashboardPage::drawPropert
     // highlight drop target always even if there is no hovering from cursor, if the payload is compatible
     using ControlTypeAndBlock            = std::pair<UiGraphBlock::SettingsControlType, UiGraphBlock&>;
     const auto getControlTypeForProperty = [this](const components::ExportedPropertyPair& pair) -> std::optional<ControlTypeAndBlock> {
-        if (auto propertyInfo = getPropertyInfo(this->_dashboard->graphModel, pair.blockName, pair.propertyName)) {
+        if (auto propertyInfo = getPropertyInfo(this->_dashboard->session.graphModel, pair.blockName, pair.propertyName)) {
             const auto& [currentValue, meta, block] = *propertyInfo;
             return ControlTypeAndBlock{meta.controlType(pair.propertyName, currentValue), block};
         }
@@ -204,7 +192,7 @@ void DashboardPage::propertyControlWindowEditProperties(const PropertyControlWin
 
     const auto& [blockName, propertyName] = params.properties.front();
 
-    const auto optionalPropertyInfo = getPropertyInfo(this->_dashboard->graphModel, blockName, propertyName);
+    const auto optionalPropertyInfo = getPropertyInfo(this->_dashboard->session.graphModel, blockName, propertyName);
     assert(optionalPropertyInfo && "property info should always be valid because its parameters were taken from the current graph");
 
     const auto& [currentValue, meta, block] = *optionalPropertyInfo;
@@ -220,7 +208,7 @@ void DashboardPage::propertyControlWindowEditProperties(const PropertyControlWin
 
 DashboardPage::ExportedPropertyPairsByWindowID DashboardPage::getExportedPropertyPairsByWindowID() const noexcept {
     ExportedPropertyPairsByWindowID propertyPairsByWindowID;
-    for (auto [blockName, exportedPropertiesPtr] : _dashboard->graphModel.recursiveGatherExportedProperties()) {
+    for (auto [blockName, exportedPropertiesPtr] : _dashboard->session.graphModel.recursiveGatherExportedProperties()) {
         for (auto& [propertyName, exportedPropertyInfo] : *exportedPropertiesPtr) {
             if (exportedPropertyInfo.windowId) {
                 if (!_dashboard->propertyControlWindows.contains(*exportedPropertyInfo.windowId)) {
@@ -246,7 +234,7 @@ void DashboardPage::addPropertyControlWindows(const AddPropertyControlWindowsPar
 
         auto propertyPairsForThisWindow = params.pairs.getForWindow(id);
 
-        const IMW::WidgetSize editorWidgetSize     = getEditorWidgetSize(_dashboard->graphModel, controlWindow, propertyPairsForThisWindow);
+        const IMW::WidgetSize editorWidgetSize     = getEditorWidgetSize(_dashboard->session.graphModel, controlWindow, propertyPairsForThisWindow);
         const auto            windowTitleBarHeight = ImGui::GetFrameHeight();
         const auto&           style                = ImGui::GetStyle();
         const ImVec2          fittedSize{
@@ -312,7 +300,7 @@ void DashboardPage::drawCurrentPropertiesPopup(const ExportedPropertyPairsByWind
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
 
-            const auto propertyInfo = getPropertyInfo(_dashboard->graphModel, blockName, propertyName);
+            const auto propertyInfo = getPropertyInfo(_dashboard->session.graphModel, blockName, propertyName);
             if (!propertyInfo) {
                 assert(false && "Attempt to edit nonexistent property or block");
                 continue;
@@ -421,7 +409,7 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
 
         const std::string baseName = std::format("{}_sink", remoteSource.uniqueName());
         std::string       sinkName = baseName;
-        for (std::size_t suffix = 2UZ; _dashboard->graphModel.recursiveFindBlockByName(sinkName) || opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& sink) { return sink.name() == sinkName || sink.signalName() == sinkName; }); ++suffix) {
+        for (std::size_t suffix = 2UZ; _dashboard->session.graphModel.recursiveFindBlockByName(sinkName) || opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& sink) { return sink.name() == sinkName || sink.signalName() == sinkName; }); ++suffix) {
             sinkName = std::format("{}_{}", baseName, suffix);
         }
         gr::property_map sinkProperties{{"name", std::move(sinkName)}, {"signal_name", selectedRemoteSignal.signalName}};
@@ -429,13 +417,7 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
             sinkProperties.emplace("signal_unit", selectedRemoteSignal.unit);
         }
 
-        gr::Message message;
-        message.cmd      = gr::message::Command::Set;
-        message.endpoint = gr::scheduler::property::kEmplaceBlock;
-        // The root block needs to be a scheduler
-        message.serviceName = _dashboard->graphModel.rootBlock.ownerSchedulerUniqueName();
-        message.data        = gr::property_map{{"type", sinkBlockType + sinkBlockParams}, {"properties", std::move(sinkProperties)}};
-        _dashboard->graphModel.sendMessage(std::move(message));
+        _dashboard->session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", sinkBlockType + sinkBlockParams}, {"properties", std::move(sinkProperties)}});
     });
 }
 
@@ -472,7 +454,7 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
             // 'plus' button in the global legend, adds a new signal to the dashboard
             try {
                 if (!_remoteSignalSelector) {
-                    _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->graphModel);
+                    _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->session.graphModel);
                 }
                 _remoteSignalSelector->open();
             } catch (const std::exception& error) {
@@ -538,13 +520,13 @@ void applyExportPropertiesPageResult(const components::BlockControlsPanelResult&
     const auto& property = controlPanelAction.allExportedPropertiesPageResult.targetProperty;
     switch (controlPanelAction.allExportedPropertiesPageResult.action) {
     case Action::Unexport: {
-        if (const auto propertyInfo = getPropertyInfo(dashboard.graphModel, property.blockName, property.propertyName)) {
+        if (const auto propertyInfo = getPropertyInfo(dashboard.session.graphModel, property.blockName, property.propertyName)) {
             propertyInfo->block.exportedProperties.erase(property.propertyName);
         }
         break;
     }
     case Action::AddWindow: {
-        if (const auto propertyInfo = getPropertyInfo(dashboard.graphModel, property.blockName, property.propertyName)) {
+        if (const auto propertyInfo = getPropertyInfo(dashboard.session.graphModel, property.blockName, property.propertyName)) {
             auto exportedPropertyIterator = propertyInfo->block.exportedProperties.find(property.propertyName);
             if (exportedPropertyIterator == std::end(propertyInfo->block.exportedProperties)) {
                 assert(false && "Results from getPropertyInfo() did not describe an exported property");
@@ -598,7 +580,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
 
     const float  left          = ImGui::GetCursorPosX();
     const float  top           = ImGui::GetCursorPosY();
-    const ImVec2 screenTopLeft = ImGui::GetCursorScreenPos(); // the edit pane is a window of its own, placed in screen coordinates
+    const ImVec2 screenTopLeft = ImGui::GetCursorScreenPos();
     const ImVec2 size          = ImGui::GetContentRegionAvail();
 
     const bool  horizontalSplit = size.x > size.y;
@@ -634,13 +616,12 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
         _editPane.setSelectedBlock(nullptr, nullptr);
     }
     if (!viewResult.rightClickedSinkName.empty()) {
-        if (auto found = _dashboard->graphModel.recursiveFindBlockByUniqueName(viewResult.rightClickedSinkName)) {
-            _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->graphModel));
+        if (auto found = _dashboard->session.graphModel.recursiveFindBlockByUniqueName(viewResult.rightClickedSinkName)) {
+            _editPane.setSelectedBlock(found.block, std::addressof(_dashboard->session.graphModel));
             _editPane.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
         }
     }
 
-    // contextMenuAction was set while the dock windows rendered
     switch (contextMenuAction) {
     case PropertyControlWindowContextMenuAction::None: break;
     case PropertyControlWindowContextMenuAction::OpenChangeLabelPopup: ImGui::OpenPopup(changeLabelPopupID); break;
@@ -690,7 +671,7 @@ void DashboardPage::draw(Mode mode) noexcept {
 
     // submit window remove list
     if (!windowRemoveList.empty()) {
-        auto allExportedProperties = _dashboard->graphModel.recursiveGatherExportedProperties();
+        auto allExportedProperties = _dashboard->session.graphModel.recursiveGatherExportedProperties();
         for (std::size_t id : windowRemoveList) {
             // unbind properties
             for (auto& [_, exportedPropertiesPtr] : allExportedProperties) {
@@ -706,21 +687,18 @@ void DashboardPage::draw(Mode mode) noexcept {
     }
 }
 
-DigitizerUi::Dashboard::UIWindow* DashboardPage::newUIBlock(std::string_view chartType, std::string_view initialSignal) {
-    if (_dashboard->uiWindows.size() < kMaxPlots) {
-        gr::property_map chartInitialParameters;
-        if (!initialSignal.empty()) {
-            chartInitialParameters["data_sinks"] = gr::Tensor<gr::pmt::Value>{initialSignal};
-        }
-        return std::addressof(_dashboard->newUIBlock(chartType, chartInitialParameters));
+void DashboardPage::newUIBlock(std::string_view chartType, std::string_view initialSignal) {
+    gr::property_map chartInitialParameters;
+    if (!initialSignal.empty()) {
+        chartInitialParameters["data_sinks"] = gr::Tensor<gr::pmt::Value>{initialSignal};
     }
-    return nullptr;
+    _dashboard->newUIBlock(chartType, chartInitialParameters);
 }
 
 void DashboardPage::drawNewPlotModal() {
     using namespace opendigitizer::charts;
 
-    const ImVec2 center = ImGui::GetWindowPos() + ImGui::GetWindowSize() * 0.5f; // the window the page is drawn in, not the screen
+    const ImVec2 center = ImGui::GetWindowPos() + ImGui::GetWindowSize() * 0.5f;
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Appearing);
 

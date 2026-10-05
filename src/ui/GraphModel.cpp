@@ -897,6 +897,12 @@ void UiGraphModel::saveBlockPositions(gr::property_map& graphData) {
     graphData["blocks"] = std::move(blocks);
 }
 
+bool UiGraphBlock::isUiControl() const {
+    const auto drawable = blockMetaInformation.find_value(std::string("Drawable"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
+    const auto info     = drawable.get_if<gr::property_map>();
+    return info && info->find_value(std::string("Category"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(std::string()) == "Toolbar";
+}
+
 bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph     = gr::graph::property;
     namespace scheduler = gr::scheduler::property;
@@ -907,7 +913,6 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     if (!message.data) {
-        gr::log::error("received an error: {}", message.data.error().message);
         DigitizerUi::components::Notification::error(std::format("Received an error: {}\n", message.data.error().message));
         return false;
     }
@@ -1145,7 +1150,7 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
     }
 
     auto* block       = found.block;
-    bool  keysChanged = false; // the settings' meta information depends on which settings exist, not on their values
+    bool  keysChanged = false;
     for (const auto& [key, value] : data) {
         if (std::string_view(key) != gr::serialization_fields::BLOCK_UNIQUE_NAME) {
             keysChanged = keysChanged || !block->blockSettings.contains(key);

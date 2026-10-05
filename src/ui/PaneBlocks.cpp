@@ -23,21 +23,19 @@ std::string toolkitOf(const gr::BlockModel& block) {
 }
 } // namespace
 
-const std::vector<std::shared_ptr<gr::BlockModel>>& PaneBlocks::of(Scheduler& scheduler, const UiGraphModel& graphModel) {
-    const void*         schedulerImpl      = scheduler ? static_cast<const void*>(scheduler.operator->()) : nullptr;
-    const std::uint64_t topologyGeneration = graphModel.topologyGeneration;
-    if ((_graphModel == std::addressof(graphModel) && _scheduler == schedulerImpl && _topologyGeneration == topologyGeneration) || (schedulerImpl && scheduler->isExchangingGraph())) {
-        return _blocks; // while a .grc is set the graph may be swapped: read it after the reply
+const std::vector<std::shared_ptr<gr::BlockModel>>& PaneBlocks::of(const GraphSession& session) {
+    const std::uint64_t topologyGeneration = session.graphModel.topologyGeneration;
+    if ((_session == std::addressof(session) && _topologyGeneration == topologyGeneration) || session.isExchangingGraph()) {
+        return _blocks; // the graph may be swapped while a .grc is set
     }
-    _graphModel         = std::addressof(graphModel);
-    _scheduler          = schedulerImpl;
+    _session            = std::addressof(session);
     _topologyGeneration = topologyGeneration;
     _blocks.clear();
-    if (!schedulerImpl) {
+    if (!session) {
         return _blocks;
     }
 
-    for (const auto& block : scheduler->graph().blocks()) {
+    for (const auto& block : session.graph().blocks()) {
         if (block->uiCategory() != _category) {
             continue;
         }

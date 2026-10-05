@@ -34,7 +34,7 @@ std::string_view nameOf(Level level) { return gr::meta::enumName(level).value_or
 
 std::string_view textOf(const gr::log::LogRecord& record) { return {record.text, record.textLength}; }
 
-std::string timeOfDay(std::uint64_t timestampNanos) { // GR4 stamps records with system_clock; shown in local time
+std::string timeOfDay(std::uint64_t timestampNanos) {
     const auto        timePoint = std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(timestampNanos)));
     const std::time_t seconds   = std::chrono::system_clock::to_time_t(timePoint);
     std::tm           local{};
@@ -46,7 +46,7 @@ std::string timeOfDay(std::uint64_t timestampNanos) { // GR4 stamps records with
 
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
 
-void StatusBarView::draw(Scheduler* scheduler, const UiGraphModel* graphModel) {
+void StatusBarView::draw(GraphSession* session) {
     IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2   pos       = ImGui::GetWindowPos();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
@@ -55,10 +55,10 @@ void StatusBarView::draw(Scheduler* scheduler, const UiGraphModel* graphModel) {
     drawLogLine();
     drawLogPopup();
 
-    if (scheduler == nullptr || graphModel == nullptr) {
+    if (session == nullptr) {
         return;
     }
-    for (const auto& block : _blocks.of(*scheduler, *graphModel)) {
+    for (const auto& block : _blocks.of(*session)) {
         ImGui::SameLine();
         IMW::ChangeStrId id(std::string(block->uniqueName()).c_str());
         std::ignore = block->draw();
@@ -72,7 +72,6 @@ void StatusBarView::drawLogLine() {
     const std::uint64_t warnings = counts[static_cast<std::size_t>(Level::warning)];
     const std::uint64_t others   = counts[static_cast<std::size_t>(Level::info)] + counts[static_cast<std::size_t>(Level::debug)] + counts[static_cast<std::size_t>(Level::trace)];
 
-    // the label carries what the line shows, the id after '###' stays the same
     const std::string label = std::format("E {}  W {}  I {}  {}###statusLine", errors, warnings, others, latest ? textOf(*latest) : std::string_view{});
     {
         IMW::StyleColor colour(ImGuiCol_Text, latest ? colourOf(latest->level) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
@@ -86,7 +85,6 @@ void StatusBarView::drawLogLine() {
 }
 
 void StatusBarView::drawLogPopup() {
-    // opens upwards: the status bar sits at the bottom
     const ImVec2 barTopLeft = ImGui::GetWindowPos();
     ImGui::SetNextWindowPos(barTopLeft, ImGuiCond_Appearing, ImVec2(0.f, 1.f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(400.f, 0.f), ImVec2(ImGui::GetMainViewport()->Size.x, ImGui::GetMainViewport()->Size.y * .6f));

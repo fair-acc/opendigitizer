@@ -129,7 +129,7 @@ public:
 
     std::pair<DockingLayoutType, gr::property_map> saveLayoutConfiguration() const;
 
-    /* no optional of ref yet */ DigitizerUi::Dashboard::UIWindow* newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
+    void newUIBlock(std::string_view chartType = "XYChart", std::string_view initialSignal = {});
 
     void setDashboard(Dashboard& dashboard) {
         _remoteSignalSelector.reset();

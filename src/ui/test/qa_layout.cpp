@@ -49,7 +49,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetWindowSize(ImVec2(800, 800));
 
             if (g_state->dashboard) {
-                g_state->dashboard->layoutType = vars.layoutType; // a new page applies the dashboard's layout
+                g_state->dashboard->layoutType = vars.layoutType;
                 DigitizerUi::DashboardPage page;
                 page.setDashboard(*g_state->dashboard);
                 page.draw();
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
     auto dashBoardDescription = DigitizerUi::DashboardDescription::createEmpty("empty");
     g_state->dashboard        = DigitizerUi::Dashboard::create(restClient, dashBoardDescription);
     g_state->dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { //
-        g_state->dashboard->emplaceGraph(std::move(graph));
+        g_state->dashboard->session.emplaceGraph(std::move(graph));
     });
 
     auto result = app.runTests();

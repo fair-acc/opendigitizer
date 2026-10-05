@@ -32,23 +32,22 @@ namespace {
 using Mode           = DigitizerUi::DashboardView::Mode;
 using LegendPosition = DigitizerUi::DashboardView::LegendPosition;
 
-// an embedding host draws the dashboard away from the screen origin
 constexpr ImVec2 kHostPos{200.f, 150.f};
 constexpr ImVec2 kHostSize{800.f, 600.f};
 
 struct TestState {
-    std::shared_ptr<DigitizerUi::Dashboard>     dashboard;      // loads qa_layout.grc
-    std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard; // never loads a graph
+    std::shared_ptr<DigitizerUi::Dashboard>     dashboard;
+    std::shared_ptr<DigitizerUi::Dashboard>     emptyDashboard;
     std::unique_ptr<DigitizerUi::DashboardView> view;
-    std::unique_ptr<DigitizerUi::DashboardPage> page; // the App's page, drawn at the same offset
+    std::unique_ptr<DigitizerUi::DashboardPage> page;
     Mode                                        mode             = Mode::View;
     LegendPosition                              legend           = LegendPosition::Bottom;
     bool                                        drawEmpty        = false;
-    bool                                        documentHost     = false; // gr4-present: an input-less full-screen window, a child per region
-    int                                         regionId         = 0;     // the host's PushID around the region
-    bool                                        hideView         = false; // a host showing another slide does not draw the view
+    bool                                        documentHost     = false;
+    int                                         regionId         = 0;
+    bool                                        hideView         = false;
     bool                                        background       = true;
-    bool                                        frameProbe       = false; // a docked window records ImPlot's frame colour as charts see it
+    bool                                        frameProbe       = false;
     float                                       probedFrameAlpha = -1.f;
     std::optional<ImVec4>                       hostBackground;
 };
@@ -60,7 +59,7 @@ const ImGuiWindow* hostWindow() { return ImGui::FindWindowByName("Host"); }
 std::vector<const ImGuiWindow*> chartWindows() {
     std::vector<const ImGuiWindow*> windows;
     for (const auto& uiWindow : g_state->dashboard->uiWindows) {
-        if (uiWindow.isChart()) {
+        if (uiWindow.block) {
             windows.push_back(ImGui::FindWindowByName(uiWindow.window->name.c_str()));
         }
     }
@@ -119,7 +118,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::SetCursorScreenPos(kHostPos);
                 IMW::ChangeId regionScope(state.regionId);
                 IMW::Child    region("##region", kHostSize, ImGuiChildFlags_None, ImGuiWindowFlags_None);
-                DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle.legend = LegendPosition::None; // as gr4-present draws a region
+                DigitizerUi::LookAndFeel::mutableInstance().dashboardStyle.legend = LegendPosition::None;
                 std::ignore                                                       = state.view->draw(*state.dashboard, state.mode);
                 return;
             }
@@ -130,7 +129,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             }
             IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
             if (state.hostBackground) {
-                ImGui::PopStyleColor(); // only the host's own window
+                ImGui::PopStyleColor();
             }
             if (!state.view) {
                 return;
@@ -166,7 +165,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.view         = std::make_unique<DigitizerUi::DashboardView>();
                 state.mode         = Mode::View;
                 state.documentHost = true;
-                while (state.dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
                     ctx->Yield();
                 }
                 const ImRect regionRect(kHostPos, kHostPos + kHostSize);
@@ -183,16 +182,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 captureScreenshot(*ctx, regionRect);
                 const auto   firstChartRect = [] { return ImRect(chartWindows().front()->Pos, chartWindows().front()->Pos + chartWindows().front()->Size); };
                 const ImRect firstChart     = firstChartRect();
-                state.regionId              = 1; // the same view under another ID stack, hence another dockspace ID
+                state.regionId              = 1;
                 expectDockedInRegion("under another ID");
-                // the layout moves as split ratios of node sizes, separators included: a pixel or two of rounding; the
-                // grid layout a lost arrangement falls back to differs by a hundred
+                // split ratios of node sizes round by a pixel or two; the fallback grid layout differs by a hundred
                 constexpr float kRoundingPx     = 4.f;
                 const auto      near            = [](ImVec2 a, ImVec2 b) { return std::abs(a.x - b.x) <= kRoundingPx && std::abs(a.y - b.y) <= kRoundingPx; };
                 const ImRect    firstChartAfter = firstChartRect();
                 expect(near(firstChartAfter.Min, firstChart.Min) && near(firstChartAfter.Max, firstChart.Max)) << std::format("'{}' keeps its place: ({}, {}) size ({}, {}), was ({}, {}) size ({}, {})", chartWindows().front()->Name, firstChartAfter.Min.x, firstChartAfter.Min.y, firstChartAfter.GetWidth(), firstChartAfter.GetHeight(), firstChart.Min.x, firstChart.Min.y, firstChart.GetWidth(), firstChart.GetHeight());
 
-                for (const int region : {0, 1, 0}) { // back and forth, with frames between in which the view is not drawn
+                for (const int region : {0, 1, 0}) {
                     state.hideView = true;
                     ctx->Yield(10);
                     state.hideView = false;
@@ -205,9 +203,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "every chart window of an embedded dashboard is docked inside the host rectangle"_test = [&] {
-                state.view = std::make_unique<DigitizerUi::DashboardView>(); // a second view of the dashboard: no free layout of its own yet
-                // the legend lists the sinks once the graph model has received them from the scheduler
-                while (state.dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                state.view = std::make_unique<DigitizerUi::DashboardView>();
+                while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
                     ctx->Yield();
                 }
                 for (const Mode mode : {Mode::View, Mode::Interaction}) {
@@ -234,14 +231,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     state.background = background;
                     waitForStableCharts(ctx);
                     ctx->Yield(3);
-                    const CapturedPixels pixels  = capturePixels(*ctx, chartsBounds()); // the gaps between windows show the host either way
+                    const CapturedPixels pixels  = capturePixels(*ctx, chartsBounds());
                     const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) { return (c & 0xFFU) > 240U && ((c >> 8U) & 0xFFU) < 15U && ((c >> 16U) & 0xFFU) > 240U; });
                     return static_cast<double>(magenta) / static_cast<double>(pixels.rgba.size());
                 };
                 state.mode                                                            = Mode::View;
                 state.hostBackground                                                  = ImVec4(1.f, 0.f, 1.f, 1.f);
                 DigitizerUi::LookAndFeel::mutableInstance().chartStyle.plotBackground = ImVec4(0.f, 0.f, 0.f, 0.f);
-                const ImVec4 frameBackground                                          = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f)); // a host's opaque frame
+                const ImVec4 frameBackground                                          = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f));
                 const double withBackground                                           = magentaShare(true);
                 const double withoutBackground                                        = magentaShare(false);
                 captureScreenshot(*ctx, hostRect);
@@ -296,7 +293,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "without a background the charts' frame is transparent while they draw, e.g. a SpectrumView's subplots"_test = [&] {
-                const ImVec4 hostFrame = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f)); // a host's opaque frame
+                const ImVec4 hostFrame = std::exchange(ImPlot::GetStyle().Colors[ImPlotCol_FrameBg], ImVec4(.3f, .3f, .4f, 1.f));
                 state.frameProbe       = true;
                 const auto frameAlpha  = [&](bool background) {
                     state.background       = background;
@@ -366,12 +363,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
         pageTest->TestFunc = [](ImGuiTestContext* ctx) {
             "the edit pane opened from the legend lies inside the host"_test = [ctx] {
-                while (g_state->dashboard->graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                while (g_state->dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
                     ctx->Yield();
                 }
                 ctx->Yield(5);
                 ctx->ItemClick("**/PlotSink1", ImGuiMouseButton_Right);
-                ctx->Yield(60); // the splitter animates the edit pane open
+                ctx->Yield(60);
 
                 const ImGuiWindow* panel = ImGui::FindWindowByName("BlockControlsPanel");
                 expect(panel != nullptr && panel->Active) << fatal << "the edit pane is open";
@@ -394,7 +391,7 @@ int main(int argc, char* argv[]) {
     TestApp app(options);
     auto    restClient = std::make_shared<opencmw::client::RestClient>();
 
-    app.initImGui(); // also runs DigitizerUi::initialise()
+    app.initImGui();
 
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
@@ -403,7 +400,7 @@ int main(int argc, char* argv[]) {
     auto grcFile         = cmrc::ui_test_assets::get_filesystem().open("examples/qa_layout.grc");
     state.dashboard      = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("embedded"));
     state.emptyDashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("never loaded"));
-    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->emplaceGraph(std::move(graph)); });
+    state.dashboard->loadAndThen(std::string(grcFile.begin(), grcFile.end()), [&](gr::Graph&& graph) { state.dashboard->session.emplaceGraph(std::move(graph)); });
 
     const bool result = app.runTests();
     state.page.reset();
