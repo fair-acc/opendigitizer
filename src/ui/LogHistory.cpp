@@ -1,5 +1,6 @@
 #include "LogHistory.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <memory>
@@ -20,6 +21,8 @@ bool LogHistory::store(const gr::log::LogRecord& record) noexcept {
     ++_counts[static_cast<std::size_t>(record.level)];
     if (isWarningOrWorse(record.level)) {
         _latestWarningOrWorse = record;
+    } else if (record.level >= gr::log::Level::info) {
+        _latestInfoOrDebugNanos = std::max(_latestInfoOrDebugNanos, record.timestampNanos);
     }
     return true;
 }
@@ -40,6 +43,11 @@ std::optional<gr::log::LogRecord> LogHistory::latestWarningOrWorse() const {
     return _latestWarningOrWorse;
 }
 
+std::uint64_t LogHistory::latestInfoOrDebugNanos() const {
+    std::scoped_lock lock(_mutex);
+    return _latestInfoOrDebugNanos;
+}
+
 std::array<std::uint64_t, LogHistory::kLevels> LogHistory::counts() const {
     std::scoped_lock lock(_mutex);
     return _counts;
@@ -50,6 +58,7 @@ void LogHistory::clear() {
     _records.reset();
     _counts = {};
     _latestWarningOrWorse.reset();
+    _latestInfoOrDebugNanos = 0UZ;
     _dropped.store(0UZ, std::memory_order_relaxed);
 }
 

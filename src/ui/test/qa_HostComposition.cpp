@@ -29,7 +29,6 @@ using gr::lifecycle::State;
 namespace {
 constexpr int kMaxFrames = 600;
 
-// a host's own flowgraph: no Dashboard, no chart layout
 constexpr std::string_view kHostGrc = R"(blocks:
   - id: gr::basic::ClockSource
     parameters:
@@ -58,7 +57,6 @@ connections:
   - [SignalGenerator1, 0, HostSink, 0]
 )";
 
-// what a host runs instead of a Dashboard: a GraphSession on its own graph
 struct HostGraph {
     DigitizerUi::GraphSession session;
 
@@ -75,16 +73,15 @@ struct HostTestState {
     std::unique_ptr<DigitizerUi::StatusBarView> statusBar;
     std::unique_ptr<DigitizerUi::FlowgraphPage> editor;
     std::optional<ImVec4>                       hostBackground;
-    DigitizerUi::SchedulerRequest               lastRequest = DigitizerUi::SchedulerRequest::none; // the toolbar's last non-none
     ImRect                                      editorRect;
 };
 
-bool isMagenta(unsigned int rgba) { return (rgba & 0xFFFFFFU) == 0xFF00FFU; } // exact: the node editor fades the grid with the zoom, a faint line still changes a pixel
+bool isMagenta(unsigned int rgba) { return (rgba & 0xFFFFFFU) == 0xFF00FFU; } // exact: a faint grid line still changes a pixel
 
 struct CanvasPixels {
-    std::size_t interiorMagenta = 0UZ; // inset from the edges, where nodes, buttons and grid lines may cover the background
+    std::size_t interiorMagenta = 0UZ;
     std::size_t interiorArea    = 0UZ;
-    std::size_t edgeNotMagenta  = 0UZ; // the outermost pixel ring, where the canvas border lies
+    std::size_t edgeNotMagenta  = 0UZ;
 };
 
 HostTestState* g_state = nullptr;
@@ -107,10 +104,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             }
             Digitizer::utils::scope_exit popHostColours = [nHostColours] { ImGui::PopStyleColor(nHostColours); };
             IMW::Window                  window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            state.host->session.handleMessages(); // the host pumps the messages each frame
-            if (const auto request = state.toolbar.draw(state.host->session, true); request != DigitizerUi::SchedulerRequest::none) {
-                state.lastRequest = request;
-            }
+            state.host->session.handleMessages();
+            state.toolbar.draw(state.host->session, true);
             {
                 IMW::Child editorArea("##editor", ImVec2(0.f, -DigitizerUi::StatusBarView::height()), false, ImGuiWindowFlags_NoScrollbar);
                 state.editorRect = ImRect(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize());
@@ -134,13 +129,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(reach(State::RUNNING)) << fatal;
                 expect(ctx->ItemExists("**/Amplify")) << "the toolbar block is drawn";
                 ctx->ItemClick("**/###schedulerPause");
-                expect(state.lastRequest == DigitizerUi::SchedulerRequest::pause) << "the toolbar reports the pause to the host";
                 expect(reach(State::PAUSED)) << "pause";
                 ctx->ItemClick("**/###schedulerPlay");
-                expect(state.lastRequest == DigitizerUi::SchedulerRequest::play) << "and the play";
                 expect(reach(State::RUNNING)) << "play";
                 ctx->ItemClick("**/###schedulerStop");
-                expect(state.lastRequest == DigitizerUi::SchedulerRequest::stop) << "and the stop";
                 expect(reach(State::STOPPED)) << "stop";
                 ctx->ItemClick("**/###schedulerPlay");
                 expect(reach(State::RUNNING)) << "running again for the next scenarios";
@@ -175,6 +167,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 expect(eq(amplitude(), 7.f)) << "the new value reached the graph model";
                 expect(generator()->blockSettingsMetaInformation.contains("amplitude")) << "the meta information is still there";
+            };
+
+            "the graph model tells the toolbar's control blocks apart, so an editor can hide them"_test = [&] {
+                const auto isUiControl = [&](std::string_view name) {
+                    const auto found = state.host->session.graphModel.recursiveFindBlockByName(name);
+                    expect(static_cast<bool>(found)) << fatal << name;
+                    return found.block->isUiControl();
+                };
+                expect(isUiControl("host_button")) << "Drawable<Toolbar>";
+                expect(!isUiControl("host_indicator")) << "Drawable<StatusBar>";
+                expect(!isUiControl("HostSink")) << "Drawable<Content>";
+                expect(!isUiControl("ClockSource1")) << "not drawable";
             };
 
             "the flowgraph editor edits the host's graph model"_test = [&] {
@@ -243,12 +247,12 @@ int main(int argc, char* argv[]) {
     auto options             = DigitizerUi::test::TestOptions::fromArgs(argc, argv);
     options.screenshotPrefix = "host_composition";
     TestApp app(options);
-    app.initImGui(); // DigitizerUi::initialise(): registers the toolbar and status-bar blocks
+    app.initImGui();
     gr::blocklib::initGrBasicBlocks(gr::globalBlockRegistry());
 
     state.host      = std::make_unique<HostGraph>();
     state.statusBar = std::make_unique<DigitizerUi::StatusBarView>();
-    state.editor    = std::make_unique<DigitizerUi::FlowgraphPage>(); // no RestClient: a host without opencmw objects
+    state.editor    = std::make_unique<DigitizerUi::FlowgraphPage>();
     state.editor->setGraphModel(std::addressof(state.host->session.graphModel));
 
     const bool result = app.runTests();

@@ -275,6 +275,7 @@ int main(int argc, char** argv) {
 #endif
 
     app.init(argc, argv);
+    app.statusBarView.versionDetails = std::format("{}\ngrc: ?", kOpendigitizerVersion);
 
 #ifdef __EMSCRIPTEN__
     // Configure pacer for Emscripten

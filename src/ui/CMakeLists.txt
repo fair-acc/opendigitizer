@@ -117,7 +117,8 @@ cmrc_add_resource_library(
   assets/sampleDashboards/ExtendedDemoDashboard.grc
   assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc
-  assets/sampleDashboards/PulsedPowerDemo.grc)
+  assets/sampleDashboards/PulsedPowerDemo.grc
+  assets/sampleDashboards/UIControlledSines.grc)
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
@@ -380,6 +381,8 @@ add_library(
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ImControlNumber.hpp
+  blocks/TargetMap.hpp
   blocks/ToolbarBlock.hpp
   blocks/meta.hpp
   components/Block.cpp

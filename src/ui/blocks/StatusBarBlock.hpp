@@ -11,9 +11,10 @@
 
 namespace DigitizerUi {
 
-inline constexpr ImVec4 kAmber{1.f, .65f, 0.f, 1.f}; // warnings, a paused scheduler
+inline constexpr ImVec4 kAmber{1.f, .65f, 0.f, 1.f};
+inline constexpr ImVec4 kGreen{.2f, .75f, .2f, 1.f};
 
-struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable<gr::UICategory::StatusBar, "Dear ImGui">> {
+struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable<gr::UICategory::StatusBar, "ImGui">> {
     using Description = gr::Doc<"status-bar label with the lifecycle state of its scheduler (a block's state follows its scheduler's)">;
 
     GR_MAKE_REFLECTABLE(SchedulerStateIndicator);
@@ -25,7 +26,7 @@ struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable
         const gr::lifecycle::State state  = this->state();
         const ImVec4               colour = [state] {
             switch (state) {
-            case RUNNING: return ImVec4(.2f, .75f, .2f, 1.f);
+            case RUNNING: return kGreen;
             case REQUESTED_PAUSE:
             case PAUSED: return kAmber;
             case ERROR: return LookAndFeel::instance().palette().errorColor;
@@ -36,7 +37,7 @@ struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable
             }
             return ImGui::GetStyleColorVec4(ImGuiCol_Text);
         }();
-        // a selectable rather than plain text, so that the shown state is an item hosts and tests can find
+        // a selectable, not text: hosts and tests can find the shown state
         const std::string label = std::format("{}###schedulerState", gr::meta::enumName(state).value_or("?"));
         IMW::StyleColor   textColour(ImGuiCol_Text, colour);
         std::ignore = ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(label.c_str(), nullptr, true).x, 0.f));

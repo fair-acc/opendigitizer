@@ -5,6 +5,7 @@
 #include <implot3d.h>
 
 #include "LogHistory.hpp"
+#include "blocks/ImControlNumber.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/StatusBarBlock.hpp"
 #include "blocks/ToolbarBlock.hpp"
@@ -26,6 +27,7 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(registry);
     std::ignore = gr::registerBlock<ToolbarButton>(registry);
     std::ignore = gr::registerBlock<ToolbarCheckbox>(registry);
+    std::ignore = gr::registerBlock<ImControlNumber>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 
@@ -38,11 +40,11 @@ void applyStyle(LookAndFeel::Style style) {
 
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
 
-    // with the dark style the plot frame would have the same colour as a button; give it the window background instead
+    // dark style: the plot frame would match a button
     ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
 }
 
-void initialise(const InitialiseOptions& options) {
+void initialise(std::optional<LookAndFeel::Style> style) {
     assert(ImGui::GetCurrentContext() != nullptr && "initialise() needs the host's ImGui context");
     if (ImPlot::GetCurrentContext() == nullptr) {
         ImPlot::CreateContext();
@@ -55,11 +57,9 @@ void initialise(const InitialiseOptions& options) {
     }
     std::ignore = opendigitizer::ColourManager::instance();
     registerDashboardBlocks(gr::globalBlockRegistry());
-    if (options.captureLog) {
-        std::ignore = logHistory(); // notifications reach it through the GR4 log
-    }
-    if (options.style) {
-        applyStyle(*options.style);
+    std::ignore = logHistory();
+    if (style) {
+        applyStyle(*style);
     }
 }
 
