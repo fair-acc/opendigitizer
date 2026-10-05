@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -272,28 +273,35 @@ struct StreamingPollerEntry {
     std::optional<float>                                    _sampleRateForLastRefTimestamp;
     std::uint64_t                                           _sampleCountFromLastRefTimestamp = 0;
     std::string                                             _lastTriggerNameFromTag;
+    std::set<std::string, std::less<>>                      _keysFromTags;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
 
     void populateFromSignalEntry(const SignalEntry& entry) {
-        signal_name     = entry.name;
-        signal_unit     = entry.unit;
-        signal_quantity = entry.quantity;
-        sample_rate     = entry.sample_rate;
-        signal_min      = entry.signal_min;
-        signal_max      = entry.signal_max;
+        const auto unlessFromTags = [this]<typename T>(std::string_view key, std::optional<T>& target, const std::optional<T>& value) {
+            if (!_keysFromTags.contains(key)) {
+                target = value;
+            }
+        };
+        unlessFromTags(tag::SIGNAL_NAME, signal_name, std::optional(entry.name));
+        unlessFromTags(tag::SIGNAL_UNIT, signal_unit, std::optional(entry.unit));
+        unlessFromTags(tag::SIGNAL_QUANTITY, signal_quantity, std::optional(entry.quantity));
+        unlessFromTags(tag::SAMPLE_RATE, sample_rate, entry.sample_rate);
+        unlessFromTags(tag::SIGNAL_MIN, signal_min, entry.signal_min);
+        unlessFromTags(tag::SIGNAL_MAX, signal_max, entry.signal_max);
     }
 
     std::vector<std::string> populateFromTags(std::span<const gr::Tag>& tags) {
         std::vector<std::string> errors;
 
-        auto update = [&errors]<typename T>(const gr::property_map& map, std::string_view key, std::optional<T>& target) {
+        auto update = [this, &errors]<typename T>(const gr::property_map& map, std::string_view key, std::optional<T>& target) {
             if (!map.contains(key)) {
                 return;
             }
             const auto value = detail::get<T>(map, key);
             if (value) {
                 target = *value;
+                _keysFromTags.emplace(key);
             } else {
                 errors.push_back(value.error());
             }
