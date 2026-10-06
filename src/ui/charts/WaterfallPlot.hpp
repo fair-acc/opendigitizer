@@ -222,11 +222,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         std::optional<RenderInfo> result;
         const auto                logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
 
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) -> bool {
-            if (!consumeNewData(_lastPushedSampleCount, sink.totalSampleCount())) {
-                return false;
-            }
-
+        auto pushSpectrum = [&](const SpectrumFrame& f) {
             const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
             if (_lastInitWidth != width) {
                 _waterfall.init(width, static_cast<std::size_t>(n_history), gpu_acceleration);
@@ -246,6 +242,9 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
                 _lastRenderInfo = RenderInfo{.freqMin = static_cast<double>(f.xValues.front()), .freqMax = static_cast<double>(f.xValues.back())};
             }
             result = _lastRenderInfo;
+        };
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& newest) {
+            forEachNewSpectrum(newest, consumeNewData(_lastPushedSampleCount, sink.totalSampleCount()), pushSpectrum);
             return false;
         });
         return result;

@@ -547,10 +547,10 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                                 tag.timestamp += timestampShift;
                             }
                         }
+                        _xUtcOffset            = tagEventTime;
+                        _sample_count          = 0UZ;
+                        _xUtcOffsetInitialised = true;
                     }
-                    _xUtcOffset            = tagEventTime;
-                    _sample_count          = 0UZ;
-                    _xUtcOffsetInitialised = true;
                 } else {
                     tagOK = false; // mark fishy tag
                 }
