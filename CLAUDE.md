@@ -201,7 +201,20 @@ const boost::ut::suite<"BlockName"> tests = [] {
 Every public type needs a `qa_` file; every `processOne`/`processBulk` path, tag propagation and
 `settingsChanged` behaviour must be covered, plus edge cases (empty, single sample, maximum buffer,
 type boundaries). Test names are scenario sentences. No `sleep` or timing-dependent tests — use
-deterministic scheduling or event signalling.
+deterministic scheduling or event signalling. This includes "belt-and-suspenders" waits and sleeps.
+If you think the test should pass without the sleep, then the sleep should not be there at all. An
+example would be `ctx->Yield(10);` in a UI test. This is unacceptable. In this case, one of these
+is applicable, in order of likelihood:
+a) the test should pass without the sleep/wait, remove it, and investigate any breakage
+b) the condition of completion is verifiable but the time it takes to complete is nondeterministic
+   or not part of any API contract, in which case you should use a function which waits for a
+   condition to become true or an event to arrive. ctest handles failing a timed-out test.
+c) (rarest) This is correct, iff the task cannot easily be verified as completed and the amount of
+   computation is deterministic. the only known example of this is the node editor which may take
+   2 frames to resolve the positions of nodes. This is a code smell for the implementation anyways,
+   which is why the only time this makes sense to do is when dealing with third-party code. Our code
+   should provide (at least for testing purposes) a way of indicating that a UI animation or
+   calculation is completed.
 
 Ground truth comes from an independent reference — a specification, an analytic result or a second
 implementation — never from the code under test. A test that mirrors the implementation passes by
@@ -210,6 +223,11 @@ make a test pass: a failing test is right until proven otherwise.
 
 Numerical correctness is not visual plausibility. Delay, scaling and normalisation, window and phase
 conventions, and edge cases each need a functional numeric test that a human can read and check.
+
+When writing UI tests, try to use `TestDashboardRunner.hpp` when implementing the global test state.
+Factor out common test utilities into this header to reduce duplication between tests. For short
+(<=15 line) dashboards, you may define them inline with strings, but generally prefer creating
+`qa_foo.grc` files in `src/ui/test/examples/` and using the `TestDashboardRunner::reload()` function.
 
 ## 9 · Building
 
