@@ -1,0 +1,56 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator1
+      frequency: 1
+      amplitude: 5
+      sample_rate: 4096
+      signal_type: Sin
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator2
+      frequency: 2
+      amplitude: 3
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: plotSink1
+      visible: true
+      signal_name: first
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: plotSink2
+      visible: false
+      signal_name: second
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: controlToggle
+      label: Visible
+      value: true
+      target_map: "plotSink1:visible"
+  - id: DigitizerUi::ImControlTrigger
+    parameters:
+      name: controlTrigger
+      label: Show
+      target_map: "plotSink2:visible"
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlText
+      label: Name
+      value: first
+      target_map: "plotSink1,plotSink2:signal_name"
+connections:
+  - [clockSource1, 0, signalGenerator1, 0]
+  - [signalGenerator1, 0, plotSink1, 0]
+  - [clockSource1, 0, signalGenerator2, 0]
+  - [signalGenerator2, 0, plotSink2, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []

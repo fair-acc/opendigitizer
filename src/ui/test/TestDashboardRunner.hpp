@@ -44,15 +44,15 @@ struct TestDashboardRunner {
     // blocks until `condition` holds, processing scheduler replies and UI frames. There is deliberately no deadline:
     // the outcome must not depend on machine load, and a condition that never holds is caught by the ctest timeout.
     template<typename Condition>
-    void waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
-        if (condition()) {
-            return;
-        }
+    bool waitUntil(ImGuiTestContext* ctx, std::string_view what, Condition&& condition, std::source_location location = std::source_location::current()) {
+        bool result = condition();
         std::println("\twaiting until {} ({}:{})", what, location.file_name(), location.line());
-        while (!condition()) {
+        while (!result) {
             dashboard->handleMessages();
             ctx->Yield();
+            result = condition();
         }
+        return result;
     }
 
     virtual void waitForScheduler(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {

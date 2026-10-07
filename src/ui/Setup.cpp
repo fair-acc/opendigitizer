@@ -6,6 +6,9 @@
 
 #include "LogHistory.hpp"
 #include "blocks/ImControlNumber.hpp"
+#include "blocks/ImControlText.hpp"
+#include "blocks/ImControlToggle.hpp"
+#include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/StatusBarBlock.hpp"
 #include "blocks/ToolbarBlock.hpp"
@@ -28,6 +31,9 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<ToolbarButton>(registry);
     std::ignore = gr::registerBlock<ToolbarCheckbox>(registry);
     std::ignore = gr::registerBlock<ImControlNumber>(registry);
+    std::ignore = gr::registerBlock<ImControlToggle>(registry);
+    std::ignore = gr::registerBlock<ImControlTrigger>(registry);
+    std::ignore = gr::registerBlock<ImControlText>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 
