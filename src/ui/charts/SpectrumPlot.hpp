@@ -109,8 +109,8 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
             }
             const std::string sinkKey = std::string(sink.uniqueName());
             auto&             traces  = _tracesPerSink[sinkKey];
-            const bool        newData = consumeNewData(_lastSampleCountPerSink[sinkKey], sink.totalSampleCount());
-            drawTraceOverlays(traces, newData, f.xValues, f.yValues, f.nBins, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
+            const std::size_t nNew    = consumeNewData(_lastSampleCountPerSink[sinkKey], sink.totalSampleCount());
+            drawTraceOverlays(traces, f, nNew, static_cast<double>(decay_tau_frames), sinkColor(trace_color), show_max_hold, show_min_hold, show_average);
             return true;
         });
     }

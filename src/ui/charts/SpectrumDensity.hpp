@@ -216,23 +216,21 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
                 effYMax     = std::min(limits.Y.Max, effYMax);
             }
 
-            const bool newData = consumeNewData(_lastSampleCount, sink.totalSampleCount());
+            const std::size_t nNew = consumeNewData(_lastSampleCount, sink.totalSampleCount());
             if (logRange) {
-                if (newData) {
+                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) {
                     _logRow.resize(kLogSpectrumColumns);
-                    buildLogBinnedRow(f.xValues, f.yValues, f.nBins, logRange->min, logRange->max, _logRow);
+                    buildLogBinnedRow(s.xValues, s.yValues, s.nBins, logRange->min, logRange->max, _logRow);
                     _density.update(_logRow, kLogSpectrumColumns, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-                }
+                });
                 _density.plot(logRange->min, logRange->max, effYMin, effYMax);
             } else {
-                if (newData) {
-                    _density.update(f.yValues, f.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration);
-                }
+                forEachNewSpectrum(f, nNew, [&](const SpectrumFrame& s) { _density.update(s.yValues, s.nBins, ampBins, static_cast<double>(histogram_decay_tau_frames), effYMin, effYMax, colormap.value, gpu_acceleration); });
                 _density.plot(f.xValues, effYMin, effYMax);
             }
 
             ImVec4 traceBase = sinkColor(trace_color);
-            drawTraceOverlays(_traces, newData, f.xValues, f.yValues, f.nBins, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
+            drawTraceOverlays(_traces, f, nNew, static_cast<double>(trace_decay_tau_frames), traceBase, show_max_hold, show_min_hold, show_average);
 
             if (show_current_overlay.value && sink.drawEnabled()) {
                 plotTrace("##current", f.xValues, f.yValues, f.nBins, ImVec4(traceBase.x, traceBase.y, traceBase.z, 1.0f));

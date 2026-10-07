@@ -5,6 +5,9 @@
 
 #include <boost/ut.hpp>
 #include <gnuradio-4.0/Graph.hpp>
+#include <gnuradio-4.0/Scheduler.hpp>
+#include <gnuradio-4.0/fourier/fft.hpp>
+#include <gnuradio-4.0/testing/TagMonitors.hpp>
 #include <imgui_internal.h>
 
 #include <algorithm>
@@ -87,6 +90,29 @@ int main() {
         expect(eq(sink.abscissaUnit(), std::string_view{"Hz"}));
         expect(eq(sink.signalQuantity(), std::string_view{"Amplitude"}));
         expect(eq(sink.signalUnit(), std::string_view{"V"}));
+    };
+
+    "trigger tags do not reset the DataSet count"_test = [] {
+        constexpr gr::Size_t kFftSize = 64U;
+        constexpr gr::Size_t kSpectra = 10U;
+
+        gr::Graph graph;
+        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
+        for (gr::Size_t i = 0U; i < kSpectra; ++i) {
+            gr::property_map trigger;
+            gr::tag::put(trigger, gr::tag::TRIGGER_NAME, std::string("CMD_DIAG_TRIGGER1"));
+            gr::tag::put(trigger, gr::tag::TRIGGER_TIME, std::uint64_t{1'000'000'000U} * (i + 1U));
+            source._tags.push_back({i * kFftSize, std::move(trigger)});
+        }
+        auto& fft  = graph.emplaceBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});
+        auto& sink = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>();
+        expect(graph.connect<"out", "in">(source, fft).has_value());
+        expect(graph.connect<"out", "in">(fft, sink).has_value());
+
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+        expect(eq(sink.totalSampleCount(), std::size_t{kSpectra}));
     };
 
     "DataSet drag keeps signal"_test = [] {
@@ -241,6 +267,28 @@ int main() {
         expect(eq(densityColour(255.f, kPeak, lut), lut[127])) << "half the peak: 0.5 * 255 = 127.5, truncated";
         expect(eq(densityColour(kPeak, kPeak, lut), lut[255])) << "the peak: the highest entry";
         expect(eq(densityColour(2.f * kPeak, kPeak, lut), lut[255])) << "above the peak: clamped";
+    };
+
+    "hold and average include every new spectrum"_test = [] {
+        const std::array<std::array<float, 2UZ>, 3UZ> magnitudes{{{1.f, 6.f}, {5.f, 2.f}, {3.f, 4.f}}};
+        std::vector<gr::DataSet<float>>               history(magnitudes.size());
+        for (std::size_t i = 0UZ; i < history.size(); ++i) {
+            history[i].axis_names    = {"frequency"};
+            history[i].axis_values   = {{100.f, 200.f}};
+            history[i].signal_names  = {"magnitude"};
+            history[i].signal_values = {magnitudes[i][0], magnitudes[i][1]};
+        }
+        SpectrumFrame newest = toSpectrumFrame(history.back()).value();
+        newest.history       = history;
+
+        TraceAccumulator all;
+        forEachNewSpectrum(newest, 3UZ, [&](const SpectrumFrame& f) { all.update(f.yValues, f.nBins, 0.0, true); });
+        expect(std::ranges::equal(all.maxHold(), std::array{5.f, 6.f}));
+        expect(std::ranges::equal(all.average(), std::array{3.f, 4.f}));
+
+        TraceAccumulator lastTwo;
+        forEachNewSpectrum(newest, 2UZ, [&](const SpectrumFrame& f) { lastTwo.update(f.yValues, f.nBins, 0.0, true); });
+        expect(std::ranges::equal(lastTwo.maxHold(), std::array{5.f, 4.f})) << "only the two newest";
     };
 
     "Helper functions"_test = [] {
