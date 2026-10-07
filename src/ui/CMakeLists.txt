@@ -381,7 +381,11 @@ add_library(
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ImControl.hpp
   blocks/ImControlNumber.hpp
+  blocks/ImControlText.hpp
+  blocks/ImControlToggle.hpp
+  blocks/ImControlTrigger.hpp
   blocks/TargetMap.hpp
   blocks/ToolbarBlock.hpp
   blocks/meta.hpp

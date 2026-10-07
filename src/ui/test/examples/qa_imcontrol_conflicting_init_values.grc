@@ -1,0 +1,63 @@
+blocks:
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase1DefaultTrueBlock
+      visible: true
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase1DefaultFalseBlock
+      visible: false
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase2DefaultTrueBlock
+      visible: true
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase2DefaultFalseBlock
+      visible: false
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase3DefaultTrueBlock
+      visible: true
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: testCase3DefaultFalseBlock
+      visible: false
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: testCase1ToggleTrueToTrue
+      label: Visible
+      value: true
+      target_map: "testCase1DefaultTrueBlock:visible"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: testCase1ToggleFalseToFalse
+      label: Visible
+      value: false
+      target_map: "testCase1DefaultFalseBlock:visible"
+  - id: DigitizerUi::ImControlTrigger
+    parameters:
+      name: testCase2TriggerTrueToTrue
+      label: Show
+      target_map: "testCase2DefaultTrueBlock:visible"
+  - id: DigitizerUi::ImControlTrigger
+    parameters:
+      name: testCase2TriggerFalseToTrue
+      label: Show
+      target_map: "testCase2DefaultFalseBlock:visible"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: testCase3ToggleTrueToFalse
+      label: Visible
+      value: false
+      target_map: "testCase3DefaultTrueBlock:visible"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: testCase3ToggleFalseToTrue
+      label: Visible
+      value: true
+      target_map: "testCase3DefaultFalseBlock:visible"
+dashboard:
+  layout: Free
+  sources: []
+  plots: []
