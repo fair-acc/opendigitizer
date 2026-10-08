@@ -83,6 +83,39 @@ auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& p
     return result;
 }
 
+[[nodiscard]] const UiGraphBlock* rootGraphBlock(const UiGraphModel& model) {
+    const UiGraphBlock* root = &model.rootBlock;
+    if (root->isScheduler() && !root->childBlocks.empty()) {
+        root = root->childBlocks.front().get();
+    }
+    return root;
+}
+
+/// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
+[[nodiscard]] std::map<std::string, std::vector<const UiGraphBlock*>, std::less<>> uiControlledProperties(const UiGraphModel& model, const UiGraphBlock& targetBlock) {
+    std::map<std::string, std::vector<const UiGraphBlock*>, std::less<>> result;
+    for (const auto& uiControlBlock : rootGraphBlock(model)->childBlocks) {
+        if (!uiControlBlock->isUiControl()) {
+            continue;
+        }
+        const auto entries = parseTargetMap(uiControlBlock->blockSettings.value_or<std::string>("target_map", std::string{}));
+        if (!entries) {
+            continue;
+        }
+        for (const TargetEntry& entry : *entries) {
+            const bool targetNamed = entry.allBlocks || std::ranges::contains(entry.blocks, targetBlock.blockName);
+            if (!targetNamed || !targetBlock.blockSettings.contains(entry.property)) {
+                continue;
+            }
+            auto& controllingBlocks = result[entry.property];
+            if (!std::ranges::contains(controllingBlocks, std::to_address(uiControlBlock))) {
+                controllingBlocks.push_back(uiControlBlock.get());
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 /// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block
@@ -131,29 +164,36 @@ void drawUiControlDragDropLabel(const char* label, float availableWidth, ImVec2 
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F));
 }
 
-void drawUiControlConnectionMarker(std::string_view outsideLabel, std::string_view insideLabel, ImVec2 blockStartCursorPosition) {
-    const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
-    const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
-
-    const auto blockLeft     = blockTopLeft.x;
-    const auto currentCursor = ImGui::GetCursorScreenPos().y;
+/// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
+/// from that to whatever text is inside the block at the current cursor position.
+/// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
+/// Returns the height of the label.
+float drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color) {
+    const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
+    const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
 
     const float notchLengthInwards  = 5.F * LookAndFeel::dpiScale();
     const float notchLengthOutwards = 5.F * LookAndFeel::dpiScale();
 
     assert(notchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
-    auto*                fgDrawList = ImGui::GetWindowDrawList();
-    const auto           color      = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
-    auto*                font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
-    IMW::Font            changeFont(font);
-    IMW::StyleNamedColor changeFontColor(ImGuiCol_Text, color);
-    const auto           textSize = ImGui::CalcTextSize(outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    auto*      fgDrawList = ImGui::GetWindowDrawList();
+    auto*      font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    const auto textSize   = font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     // outerPadding is whatever inner padding is, plus some extra since imgui seems to underestimate text size
     const auto outerPadding = blockStartCursorPosition.x - (blockLeft + notchLengthInwards) + ImGui::GetStyle().ItemInnerSpacing.x;
-    const auto centerY      = currentCursor + (textSize.y / 2.F);
+    const auto centerY      = ImGui::GetCursorScreenPos().y + ((rowHeight > 0.F ? rowHeight : textSize.y) / 2.F);
 
     fgDrawList->AddLine(ImVec2{blockLeft - notchLengthOutwards, centerY}, ImVec2{blockLeft + notchLengthInwards, centerY}, color);
-    fgDrawList->AddText(font, font->LegacySize, ImVec2{blockLeft - outerPadding - textSize.x, currentCursor}, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    fgDrawList->AddText(font, font->LegacySize, ImVec2{blockLeft - outerPadding - textSize.x, centerY - (textSize.y / 2.F)}, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    return textSize.y;
+}
+
+void drawUiControlConnectionMarker(std::string_view outsideLabel, std::string_view insideLabel, ImVec2 blockStartCursorPosition) {
+    const auto           color = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+    auto*                font  = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    IMW::Font            changeFont(font);
+    IMW::StyleNamedColor changeFontColor(ImGuiCol_Text, color);
+    drawUiControlConnectionNotch(outsideLabel, blockStartCursorPosition, ImGui::GetTextLineHeight(), color);
     ImGui::TextUnformatted(insideLabel.data(), insideLabel.data() + insideLabel.size());
 }
 
@@ -461,17 +501,41 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     // Draw block properties
     {
         IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+
+        const auto controlledProperties = uiControlledProperties(*_graphModel, block);
+        const auto notchColor           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+
         for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
             if (propertyKey == "description" || propertyKey.contains("::")) {
                 continue;
             }
 
+            const auto  controllersIt = controlledProperties.find(propertyKey);
+            const auto* controllers   = controllersIt != controlledProperties.end() ? &controllersIt->second : nullptr;
+            assert(!controllers->empty());
+
             const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
-            if (!currentPropertyMetaInformation.isVisible) {
+            if (!currentPropertyMetaInformation.isVisible && !controllers) {
+                // we want to display the property if it is visible *or* if there is relevant information (like what UI component is controlling it)
                 continue;
             }
-            std::string value = valToString(propertyValue);
-            ImGui::Text("%s: %s", currentPropertyMetaInformation.description.c_str(), value.c_str());
+
+            // draw the first controlling ui component
+            if (controllers) {
+                drawUiControlConnectionNotch(controllers->front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+            }
+
+            const std::string value       = valToString(propertyValue);
+            const std::string displayName = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;
+            ImGui::Text("%s: %s", displayName.c_str(), value.c_str());
+
+            if (controllers) {
+                // draw more notches if there are other ui controls also controlling this property
+                for (const UiGraphBlock* control : *controllers | std::views::drop(1)) {
+                    const float labelHeight = drawUiControlConnectionNotch(control->blockName, blockScreenPosition, 0.F, notchColor);
+                    ImGui::Dummy(ImVec2{0.F, labelHeight});
+                }
+            }
         }
 
         ImGui::Spacing();
