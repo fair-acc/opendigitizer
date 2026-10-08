@@ -87,6 +87,9 @@ struct Palette {
     ImVec4 flowgraphNodeBorder;
     ImVec4 flowgraphSubgraphBorder;
     ImVec4 flowgraphSubgraphBorderText;
+    ImVec4 flowgraphUiControlFill;
+    ImVec4 flowgraphUiControlHighlight;
+    ImVec4 flowgraphUiControlConnectionIndicator;
 
     ImVec4 flowgraphBoundingBoxExteriorSelection;
     ImVec4 flowgraphBoundingBoxExteriorSelectionOutline;
@@ -183,11 +186,21 @@ struct LookAndFeel {
     static LookAndFeel&       mutableInstance();
     static const LookAndFeel& instance();
 
-    static std::uint8_t  getColorAlphaU8(ImVec4 Palette::*color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
-    static std::uint32_t getColorU32(ImVec4 Palette::*color) { return float4ToRGBA(instance().palette().*color); }
-    static std::uint32_t getColorU32Opaque(ImVec4 Palette::*color) {
+    static std::uint8_t  getColorAlphaU8(ImVec4 Palette::* color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
+    static std::uint32_t getColorU32(ImVec4 Palette::* color) { return float4ToRGBA(instance().palette().*color); }
+    static std::uint32_t getColorU32ImGui(ImVec4 Palette::* color) {
+        const auto vec4 = instance().palette().*color;
+        const auto rgba = float4ToRGBA(vec4);
+        return rgbToImGuiABGR(rgba >> 8, static_cast<std::uint8_t>(vec4.w * 0xFF));
+    }
+    static std::uint32_t getColorU32Opaque(ImVec4 Palette::* color) {
         const auto vec4 = instance().palette().*color;
         return float4ToRGBA({vec4.x, vec4.y, vec4.z, 1.f}) >> 8;
+    }
+
+    [[nodiscard]] static float dpiScale() {
+        auto& lookandfeel = instance();
+        return lookandfeel.verticalDPI / lookandfeel.defaultDPI;
     }
 
     void loadFonts();

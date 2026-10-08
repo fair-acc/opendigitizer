@@ -26,6 +26,8 @@
 #include "components/Splitter.hpp"
 #include "components/YesNoPopup.hpp"
 
+#include "blocks/TargetMap.hpp"
+
 #include "utils/TransparentStringHash.hpp"
 
 #include "scope_exit.hpp"
@@ -82,6 +84,78 @@ auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& p
 }
 
 } // namespace
+
+/// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block
+void drawUiControlDragDropLabel(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
+    const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
+    const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
+    const ImVec2 handleSize{availableWidth - (nodePadding.x * 2.F), ImGui::GetFrameHeight()};
+    const auto   handleID = ImGui::GetID(label);
+
+    using namespace std::string_view_literals;
+    static constexpr auto dragDropIcon = "\u{f58d}"sv;
+
+    // horizontally center drag drop handle. recalculate offset from left, so it is easier to adjust width without messing up the drawing
+    const ImVec2 min = ImVec2{blockTopLeft.x, ImGui::GetCursorScreenPos().y} + ImVec2{(availableWidth - handleSize.x) / 2.f, ImGui::GetStyle().FramePadding.y};
+    const ImVec2 max = min + handleSize;
+
+    // change color based on interaction
+    const auto   baseFillColor = LookAndFeel::getColorU32Opaque(&Palette::flowgraphUiControlFill);
+    std::uint8_t alpha         = LookAndFeel::getColorAlphaU8(&Palette::flowgraphUiControlFill);
+
+    bool       hovered{};
+    bool       held{};
+    const bool pressed = ImGui::ButtonBehavior(ImRect(min, max), handleID, &hovered, &held, ImGuiButtonFlags_None);
+    if (hovered) {
+        alpha = std::min<std::uint8_t>(alpha * 0x2, 0xFF);
+        if (pressed || held) {
+            alpha = 0xFF;
+        }
+    }
+    const auto fillColor = rgbToImGuiABGR(baseFillColor, alpha);
+
+    // calculate positioning for icon to center it in the button
+    const float  fontSize = 12.f * LookAndFeel::dpiScale();
+    ImFont*      font     = LookAndFeel::instance().fontIconsSolidLarge;
+    const ImVec2 iconSize = [font, fontSize] {
+        IMW::FontWithSize fontChange(font, fontSize);
+        return ImGui::CalcTextSize(dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
+    }();
+    const ImVec2 iconOffset = ((max - min) / 2.F) - iconSize / 2.F;
+
+    auto* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(min, max, fillColor);
+    drawList->AddRect(min, max, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlHighlight), 0, ImDrawFlags_None, 3.F * LookAndFeel::dpiScale());
+    drawList->AddText(font, fontSize, min + iconOffset, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlHighlight), dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
+
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F));
+}
+
+void drawUiControlConnectionMarker(std::string_view outsideLabel, std::string_view insideLabel, ImVec2 blockStartCursorPosition) {
+    const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
+    const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
+
+    const auto blockLeft     = blockTopLeft.x;
+    const auto currentCursor = ImGui::GetCursorScreenPos().y;
+
+    const float notchLengthInwards  = 5.F * LookAndFeel::dpiScale();
+    const float notchLengthOutwards = 5.F * LookAndFeel::dpiScale();
+
+    assert(notchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
+    auto*                fgDrawList = ImGui::GetWindowDrawList();
+    const auto           color      = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+    auto*                font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    IMW::Font            changeFont(font);
+    IMW::StyleNamedColor changeFontColor(ImGuiCol_Text, color);
+    const auto           textSize = ImGui::CalcTextSize(outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    // outerPadding is whatever inner padding is, plus some extra since imgui seems to underestimate text size
+    const auto outerPadding = blockStartCursorPosition.x - (blockLeft + notchLengthInwards) + ImGui::GetStyle().ItemInnerSpacing.x;
+    const auto centerY      = currentCursor + (textSize.y / 2.F);
+
+    fgDrawList->AddLine(ImVec2{blockLeft - notchLengthOutwards, centerY}, ImVec2{blockLeft + notchLengthInwards, centerY}, color);
+    fgDrawList->AddText(font, font->LegacySize, ImVec2{blockLeft - outerPadding - textSize.x, currentCursor}, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    ImGui::TextUnformatted(insideLabel.data(), insideLabel.data() + insideLabel.size());
+}
 
 void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
@@ -293,11 +367,11 @@ void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block) {
     const auto      spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
     const auto      topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
 
-    const auto  schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
-    const auto  textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
-    const auto* currentWindow     = ImGui::GetCurrentWindow();
-    currentWindow->DrawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32);
-    currentWindow->DrawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
+    const auto schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
+    const auto textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
+    auto*      drawList          = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32);
+    drawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
 }
 
 void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox) {
@@ -415,6 +489,28 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
                 _filterBlock = std::addressof(block);
             }
         }
+    }
+
+    if (block.isUiControl()) {
+        auto targetMap = block.blockSettings.value_or<std::string>("target_map", std::string{});
+        if (auto targetEntries = parseTargetMap(targetMap); targetEntries) {
+            ImGui::Spacing();
+            for (const TargetEntry& entry : *targetEntries) {
+                for (std::string_view blockName : entry.blocks) {
+                    if (auto findResult = _graphModel->recursiveFindBlockByName(blockName)) {
+                        // draw handle for this controlled block regardless of whether it is in this graph
+                        drawUiControlConnectionMarker(entry.property, blockName, blockScreenPosition);
+                    }
+                }
+
+                if (entry.allBlocks) {
+                    drawUiControlConnectionMarker(entry.property, "*", blockScreenPosition);
+                }
+            }
+            ImGui::Spacing();
+        }
+
+        drawUiControlDragDropLabel(std::format("{}.uiDragHandle", block.blockUniqueName).c_str(), blockSize.x, blockScreenPosition);
     }
 
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
