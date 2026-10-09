@@ -83,39 +83,6 @@ auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& p
     return result;
 }
 
-[[nodiscard]] const UiGraphBlock* rootGraphBlock(const UiGraphModel& model) {
-    const UiGraphBlock* root = &model.rootBlock;
-    if (root->isScheduler() && !root->childBlocks.empty()) {
-        root = root->childBlocks.front().get();
-    }
-    return root;
-}
-
-/// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
-[[nodiscard]] std::map<std::string, std::vector<const UiGraphBlock*>, std::less<>> uiControlledProperties(const UiGraphModel& model, const UiGraphBlock& targetBlock) {
-    std::map<std::string, std::vector<const UiGraphBlock*>, std::less<>> result;
-    for (const auto& uiControlBlock : rootGraphBlock(model)->childBlocks) {
-        if (!uiControlBlock->isUiControl()) {
-            continue;
-        }
-        const auto entries = parseTargetMap(uiControlBlock->blockSettings.value_or<std::string>("target_map", std::string{}));
-        if (!entries) {
-            continue;
-        }
-        for (const TargetEntry& entry : *entries) {
-            const bool targetNamed = entry.allBlocks || std::ranges::contains(entry.blocks, targetBlock.blockName);
-            if (!targetNamed || !targetBlock.blockSettings.contains(entry.property)) {
-                continue;
-            }
-            auto& controllingBlocks = result[entry.property];
-            if (!std::ranges::contains(controllingBlocks, std::to_address(uiControlBlock))) {
-                controllingBlocks.push_back(uiControlBlock.get());
-            }
-        }
-    }
-    return result;
-}
-
 } // namespace
 
 /// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block
@@ -499,7 +466,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
-    const auto controlledProperties = uiControlledProperties(*_graphModel, block);
+    const auto controlledProperties = _graphModel->uiControlledProperties(block);
 
     // Draw block properties
     {

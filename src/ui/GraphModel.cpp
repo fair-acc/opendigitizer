@@ -19,6 +19,8 @@
 
 #include "MapUtils.hpp"
 
+#include "blocks/TargetMap.hpp"
+
 using namespace std::string_literals;
 
 UiGraphBlock::~UiGraphBlock() {
@@ -745,6 +747,38 @@ UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByName(std::string
         return VisitorResult::Recurse;
     });
     return out;
+}
+
+UiGraphBlock* UiGraphModel::rootGraphBlock() {
+    UiGraphBlock* root = &rootBlock;
+    if (root->isScheduler() && !root->childBlocks.empty()) {
+        root = root->childBlocks.front().get();
+    }
+    return root;
+}
+
+UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const UiGraphBlock& targetBlock) {
+    ControlledPropertyMap result;
+    for (const auto& uiControlBlock : rootGraphBlock()->childBlocks) {
+        if (!uiControlBlock->isUiControl()) {
+            continue;
+        }
+        const auto entries = parseTargetMap(uiControlBlock->blockSettings.value_or<std::string>("target_map", std::string{}));
+        if (!entries) {
+            continue;
+        }
+        for (const TargetEntry& entry : *entries) {
+            const bool targetNamed = entry.allBlocks || std::ranges::contains(entry.blocks, targetBlock.blockName);
+            if (!targetNamed || !targetBlock.blockSettings.contains(entry.property)) {
+                continue;
+            }
+            auto& controllingBlocks = result[entry.property];
+            if (!std::ranges::contains(controllingBlocks, std::to_address(uiControlBlock))) {
+                controllingBlocks.push_back(uiControlBlock.get());
+            }
+        }
+    }
+    return result;
 }
 
 UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {
