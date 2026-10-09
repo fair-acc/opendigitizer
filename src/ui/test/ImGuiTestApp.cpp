@@ -186,7 +186,7 @@ bool ImGuiTestApp::runTests() {
     if (!_options.useInteractiveMode) {
         // In non-interactive mode we queue the tests immediately, while in interactive mode
         // the user will click the "run" button
-        ImGuiTestEngine_QueueTests(engine(), ImGuiTestGroup_Tests);
+        ImGuiTestEngine_QueueTests(engine(), ImGuiTestGroup_Tests, _options.testFilter.empty() ? nullptr : _options.testFilter.c_str());
     }
 
     while (!aborted) {
@@ -265,12 +265,18 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(std::cbegin(args), std::cend(args), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
-        std::println(stdout, "Usage: {} [--keep-gui][--interactive]", argv[0]);
+        std::println(stdout, "Usage: {} [--keep-gui][--interactive][--filter <test name pattern>]", argv[0]);
     }
 
     TestOptions options;
     options.keepGui            = hasArgument("--keep-gui");
     options.useInteractiveMode = hasArgument("--interactive");
+
+    for (auto it = std::cbegin(args); it != std::cend(args); ++it) {
+        if (std::string_view(*it) == "--filter" && std::next(it) != std::cend(args)) {
+            options.testFilter = *std::next(it);
+        }
+    }
 
     return options;
 }
