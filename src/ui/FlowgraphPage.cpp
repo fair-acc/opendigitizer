@@ -132,20 +132,21 @@ void drawUiControlDragDropLabel(const char* label, float availableWidth, ImVec2 
     const ImVec2 min = ImVec2{blockTopLeft.x, ImGui::GetCursorScreenPos().y} + ImVec2{(availableWidth - handleSize.x) / 2.f, ImGui::GetStyle().FramePadding.y};
     const ImVec2 max = min + handleSize;
 
-    // change color based on interaction
-    const auto   baseFillColor = LookAndFeel::getColorU32Opaque(&Palette::flowgraphUiControlFill);
-    std::uint8_t alpha         = LookAndFeel::getColorAlphaU8(&Palette::flowgraphUiControlFill);
+    // change color based on interaction. ImGui::GetColorU32 applies the global style alpha, so the
+    // handle is greyed out along with the rest of a node that is filtered out
+    ImVec4 fill = LookAndFeel::instance().palette().flowgraphUiControlFill;
 
     bool       hovered{};
     bool       held{};
     const bool pressed = ImGui::ButtonBehavior(ImRect(min, max), handleID, &hovered, &held, ImGuiButtonFlags_None);
     if (hovered) {
-        alpha = std::min<std::uint8_t>(alpha * 0x2, 0xFF);
+        fill.w = std::min(fill.w * 2.F, 1.F);
         if (pressed || held) {
-            alpha = 0xFF;
+            fill.w = 1.F;
         }
     }
-    const auto fillColor = rgbToImGuiABGR(baseFillColor, alpha);
+    const auto fillColor      = ImGui::GetColorU32(fill);
+    const auto highlightColor = ImGui::GetColorU32(LookAndFeel::instance().palette().flowgraphUiControlHighlight);
 
     // calculate positioning for icon to center it in the button
     const float  fontSize = 12.f * LookAndFeel::dpiScale();
@@ -158,8 +159,8 @@ void drawUiControlDragDropLabel(const char* label, float availableWidth, ImVec2 
 
     auto* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(min, max, fillColor);
-    drawList->AddRect(min, max, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlHighlight), 0, ImDrawFlags_None, 3.F * LookAndFeel::dpiScale());
-    drawList->AddText(font, fontSize, min + iconOffset, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlHighlight), dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
+    drawList->AddRect(min, max, highlightColor, 0, ImDrawFlags_None, 3.F * LookAndFeel::dpiScale());
+    drawList->AddText(font, fontSize, min + iconOffset, highlightColor, dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
 
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F));
 }
