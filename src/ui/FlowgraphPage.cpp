@@ -498,47 +498,65 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
+    const auto controlledProperties = uiControlledProperties(*_graphModel, block);
+
     // Draw block properties
     {
         IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
-
-        const auto controlledProperties = uiControlledProperties(*_graphModel, block);
-        const auto notchColor           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
-
         for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
             if (propertyKey == "description" || propertyKey.contains("::")) {
                 continue;
             }
-
-            const auto  controllersIt = controlledProperties.find(propertyKey);
-            const auto* controllers   = controllersIt != controlledProperties.end() ? &controllersIt->second : nullptr;
-            assert(!controllers->empty());
+            if (controlledProperties.contains(propertyKey)) {
+                continue; // drawn below the space used by the ports
+            }
 
             const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
-            if (!currentPropertyMetaInformation.isVisible && !controllers) {
-                // we want to display the property if it is visible *or* if there is relevant information (like what UI component is controlling it)
+            if (!currentPropertyMetaInformation.isVisible) {
                 continue;
             }
+            std::string value = valToString(propertyValue);
+            ImGui::Text("%s: %s", currentPropertyMetaInformation.description.c_str(), value.c_str());
+        }
+    }
 
-            // draw the first controlling ui component
-            if (controllers) {
-                drawUiControlConnectionNotch(controllers->front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+    ImGui::Spacing();
+
+    // ports are distributed only over the node height above this point, so the UI-controlled
+    // property rows and their notches never collide with the pins
+    const float pinAreaBottomScreenY = ImGui::GetCursorScreenPos().y;
+
+    if (!controlledProperties.empty()) {
+        IMW::Font  font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+        const auto notchColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+
+        // iterate blockSettings rather than controlledProperties to keep the same ordering as the regular properties
+        for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+            const auto controllersIt = controlledProperties.find(propertyKey);
+            if (controllersIt == controlledProperties.end()) {
+                continue;
             }
+            const auto& controllers = controllersIt->second;
+            assert(!controllers.empty());
 
-            const std::string value       = valToString(propertyValue);
-            const std::string displayName = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;
+            // draw the first controlling ui component aligned with the property row itself
+            drawUiControlConnectionNotch(controllers.front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+
+            const auto&       currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
+            const std::string value                          = valToString(propertyValue);
+            const std::string displayName                    = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;
             ImGui::Text("%s: %s", displayName.c_str(), value.c_str());
 
-            if (controllers) {
-                // draw more notches if there are other ui controls also controlling this property
-                for (const UiGraphBlock* control : *controllers | std::views::drop(1)) {
-                    const float labelHeight = drawUiControlConnectionNotch(control->blockName, blockScreenPosition, 0.F, notchColor);
-                    ImGui::Dummy(ImVec2{0.F, labelHeight});
-                }
+            // draw more notches if there are other ui controls also controlling this property
+            for (const UiGraphBlock* control : controllers | std::views::drop(1)) {
+                const float labelHeight = drawUiControlConnectionNotch(control->blockName, blockScreenPosition, 0.F, notchColor);
+                ImGui::Dummy(ImVec2{0.F, labelHeight});
             }
         }
+    }
 
-        ImGui::Spacing();
+    {
+        IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
 
         const bool isFilter = _filterBlock == std::addressof(block);
 
@@ -579,9 +597,12 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
+    const float nodeTopScreenY = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
+    const float pinAreaHeight  = pinAreaBottomScreenY - nodeTopScreenY;
+
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
-    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
+    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - pinHorizontalPadding;
         }
@@ -591,7 +612,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
         for (std::size_t i = 0; i < ports.size(); ++i) {
             auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
-            auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, blockSize.y, isInput);
+            auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, pinAreaHeight, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
             addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
         }
@@ -607,7 +628,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     ImGui::SetCursorScreenPos({position.x, blockBottomY});
 
     ImGui::Dummy(ImVec2(0.f, 0.f));
-    return NodeDrawResult{position, blockBottomY};
+    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight};
 }
 
 void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId) {
@@ -827,7 +848,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
                 for (std::size_t i = 0; i < ports.size(); ++i) {
                     auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
-                    auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockSize.y, isInput);
+                    auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockPosition.pinAreaHeight, isInput);
 
                     if (!portExportedDisplayName) {
                         if (drawPin(drawList, info.topLeft, info.size, ports[i]->portType)) {
