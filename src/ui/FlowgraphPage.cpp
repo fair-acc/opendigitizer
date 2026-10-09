@@ -543,18 +543,14 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
     if (block.isUiControl()) {
         auto targetMap = block.blockSettings.value_or<std::string>("target_map", std::string{});
-        if (auto targetEntries = parseTargetMap(targetMap); targetEntries) {
+        if (auto targets = TargetMap::fromString(targetMap); targets) {
             ImGui::Spacing();
-            for (const TargetEntry& entry : *targetEntries) {
-                for (std::string_view blockName : entry.blocks) {
-                    if (auto findResult = _graphModel->recursiveFindBlockByName(blockName)) {
-                        // draw handle for this controlled block regardless of whether it is in this graph
-                        drawUiControlConnectionMarker(entry.property, blockName, blockScreenPosition);
-                    }
-                }
-
-                if (entry.allBlocks) {
-                    drawUiControlConnectionMarker(entry.property, "*", blockScreenPosition);
+            for (const TargetEntry& entry : targets->entries()) {
+                if (entry.isGlob()) {
+                    drawUiControlConnectionMarker(entry.propertyName, "*", blockScreenPosition);
+                } else if (_graphModel->recursiveFindBlockByName(entry.blockTarget)) {
+                    // draw handle for this controlled block regardless of whether it is in this graph
+                    drawUiControlConnectionMarker(entry.propertyName, entry.blockTarget, blockScreenPosition);
                 }
             }
             ImGui::Spacing();

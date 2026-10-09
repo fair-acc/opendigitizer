@@ -763,18 +763,14 @@ UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const U
         if (!uiControlBlock->isUiControl()) {
             continue;
         }
-        const auto entries = parseTargetMap(uiControlBlock->blockSettings.value_or<std::string>("target_map", std::string{}));
-        if (!entries) {
+        const auto targets = TargetMap::fromString(uiControlBlock->blockSettings.value_or<std::string>("target_map", std::string{}));
+        if (!targets) {
             continue;
         }
-        for (const TargetEntry& entry : *entries) {
-            const bool targetNamed = entry.allBlocks || std::ranges::contains(entry.blocks, targetBlock.blockName);
-            if (!targetNamed || !targetBlock.blockSettings.contains(entry.property)) {
-                continue;
-            }
-            auto& controllingBlocks = result[entry.property];
-            if (!std::ranges::contains(controllingBlocks, std::to_address(uiControlBlock))) {
-                controllingBlocks.push_back(uiControlBlock.get());
+        // iterate the settings so as to retain ordering of properties
+        for (const auto& [propertyKey, _] : targetBlock.blockSettings) {
+            if (targets->relationshipToTarget(targetBlock.blockName, propertyKey) != TargetRelationship::NotTargeting) {
+                result[std::string(propertyKey)].push_back(uiControlBlock.get());
             }
         }
     }

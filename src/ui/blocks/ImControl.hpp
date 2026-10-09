@@ -11,9 +11,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 namespace DigitizerUi {
 
@@ -47,12 +45,20 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
 
     GR_MAKE_REFLECTABLE(ImControl, target_map, label);
 
-private:
-    std::vector<TargetEntry> _targets;
-    std::string              _parsedTargetMap;
-
-public:
     explicit ImControl(gr::property_map initParameters = {}) : DrawableBlock(std::move(initParameters)) {}
+
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
+        if (!newSettings.contains("target_map")) {
+            return;
+        }
+        const auto targets = TargetMap::fromString(target_map);
+        if (!targets) {
+            gr::log::warning("{}: invalid target_map '{}': {}", this->unique_name, target_map, targets.error());
+        } else if (std::ranges::any_of(targets->entries(), &TargetEntry::isGlob)) {
+            // TODO: GR4 support
+            gr::log::warning("{}: target_map '{}' tries to use glob-selector '*' but that is not implemented yet", this->unique_name, target_map);
+        }
+    }
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 
@@ -97,29 +103,15 @@ public:
     /// Indiscriminately send a settings update message to every block identified by the target_map.
     /// It is their job to refuse messages with an incorrect / not matching type
     void sendToTargets(const auto& payload) {
-        if (_parsedTargetMap != target_map) {
-            parseTargets();
+        const auto targets = TargetMap::fromString(target_map);
+        if (!targets) {
+            return; // this is reported during settingsChanged()
         }
-        for (const TargetEntry& target : _targets) {
-            for (const std::string& block : target.blocks) {
-                toolbar::sendSettings(this->msgOut, block, gr::property_map{{std::pmr::string(target.property), payload}});
+        for (const TargetEntry& target : targets->entries()) {
+            if (target.isGlob()) {
+                continue; // TODO: GR4 support
             }
-        }
-    }
-
-private:
-    void parseTargets() {
-        _parsedTargetMap = target_map;
-        auto parsed      = parseTargetMap(target_map);
-        if (!parsed) {
-            gr::log::warning("{}: invalid target_map '{}': {}", this->unique_name, target_map, parsed.error());
-            _targets.clear();
-            return;
-        }
-        _targets = std::move(*parsed);
-        if (std::ranges::any_of(_targets, &TargetEntry::allBlocks)) {
-            // TODO: GR4 support
-            gr::log::warning("{}: target_map '{}' tries to use glob-selector '*' but that is not implemented yet", this->unique_name, target_map);
+            toolbar::sendSettings(this->msgOut, target.blockTarget, gr::property_map{{std::pmr::string(target.propertyName), payload}});
         }
     }
 };
