@@ -56,6 +56,7 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphUiControlFill                = rgba(0x200e68, 0x33),
         .flowgraphUiControlHighlight           = rgba(0x200e68),
         .flowgraphUiControlConnectionIndicator = rgba(0x555555),
+        .flowgraphUiControlPendingConnection   = rgba(0x1E90FF),
 
         .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
         .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
@@ -87,6 +88,7 @@ const Palette& LookAndFeel::palette() const noexcept {
         .flowgraphUiControlFill                = rgba(0x200e68, 0x33),
         .flowgraphUiControlHighlight           = rgba(0x200e68),
         .flowgraphUiControlConnectionIndicator = rgba(0x555555),
+        .flowgraphUiControlPendingConnection   = rgba(0x1E90FF),
 
         .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
         .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),

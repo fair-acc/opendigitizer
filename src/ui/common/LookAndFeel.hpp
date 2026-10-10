@@ -90,6 +90,7 @@ struct Palette {
     ImVec4 flowgraphUiControlFill;
     ImVec4 flowgraphUiControlHighlight;
     ImVec4 flowgraphUiControlConnectionIndicator;
+    ImVec4 flowgraphUiControlPendingConnection;
 
     ImVec4 flowgraphBoundingBoxExteriorSelection;
     ImVec4 flowgraphBoundingBoxExteriorSelectionOutline;

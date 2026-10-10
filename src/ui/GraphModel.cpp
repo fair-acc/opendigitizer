@@ -5,6 +5,7 @@
 #include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Logger.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/YamlPmt.hpp>
 
@@ -777,6 +778,20 @@ UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const U
     return result;
 }
 
+std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBlock& control) {
+    const gr::pmt::Value               controlValue = control.uiControlValue();
+    std::set<std::string, std::less<>> properties;
+    forEachBlockRecursive(rootBlock, [&](UiGraphBlock& candidate) {
+        if (&candidate == &control) {
+            return;
+        }
+        for (auto&& property : candidate.connectableProperties(controlValue)) {
+            properties.insert(std::move(property));
+        }
+    });
+    return properties | std::ranges::to<std::vector>();
+}
+
 UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {
     ExportedPropertiesView output;
     recursiveForEachBlock([&output](const FindBlockResult& element) {
@@ -925,6 +940,27 @@ void UiGraphModel::saveBlockPositions(gr::property_map& graphData) {
         blockValue = std::move(block);
     }
     graphData["blocks"] = std::move(blocks);
+}
+
+gr::pmt::Value UiGraphBlock::uiControlValue() const { return blockSettings.find_value(std::string_view("value"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}); }
+
+bool UiGraphBlock::isConnectableProperty(std::string_view property, const gr::pmt::Value& controlValue) const {
+    if (isChart() || property == "description" || property.contains("::")) {
+        return false;
+    }
+    const gr::pmt::Value value = blockSettings.find_value(property, std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
+    // NOTE: strict type checking here, so a float32 is not considered compatible with a float64, etc.
+    return value.has_value() && value.value_type() == controlValue.value_type() && value.container_type() == controlValue.container_type();
+}
+
+std::vector<std::string> UiGraphBlock::connectableProperties(const gr::pmt::Value& controlValue) const {
+    std::vector<std::string> properties;
+    for (const auto& [propertyKey, _] : blockSettings) {
+        if (isConnectableProperty(propertyKey, controlValue)) {
+            properties.emplace_back(propertyKey);
+        }
+    }
+    return properties;
 }
 
 bool UiGraphBlock::isUiControl() const {

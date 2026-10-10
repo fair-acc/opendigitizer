@@ -9,10 +9,13 @@
 #include "Dashboard.hpp"
 
 #include "components/Block.hpp"
+#include "components/BlockDragConnectInteraction.hpp"
 #include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
+#include "components/UiControlMultiSelectPopup.hpp"
+#include "components/UiControlPropertyLinkPopup.hpp"
 
 #include "GraphModel.hpp"
 
@@ -65,6 +68,15 @@ private:
 
     float                                _timeSpentHoldingPin = 0.0;
     std::optional<ExportPortMessageData> _draggingPinExportRequest;
+
+    // variables for tracking the state of UI control block drag-to-connect actions
+    std::optional<components::BlockDragConnectInteraction> _blockDragConnect;
+    std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
+    std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
+
+    void                drawUiControlPopups();
+    void                handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks);
+    const UiGraphBlock* pendingConnectionControlFor(const UiGraphBlock& block);
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
@@ -198,7 +210,7 @@ public:
         ImVec2 topLeft;
         float  bottomY;
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
-        float  pinAreaHeight = 0.F;
+        float pinAreaHeight = 0.F;
     };
     NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
 

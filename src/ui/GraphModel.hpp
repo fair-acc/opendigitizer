@@ -13,6 +13,8 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+#include "blocks/TargetMap.hpp"
+
 struct TestApp;
 
 namespace opendigitizer::test {
@@ -137,6 +139,11 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
 
+    /// try to get "value" from the block settings, which is used by UI controls to deduce the types of properties the control can connect to
+    [[nodiscard]] gr::pmt::Value           uiControlValue() const;
+    [[nodiscard]] bool                     isConnectableProperty(std::string_view property, const gr::pmt::Value& controlValue) const;
+    [[nodiscard]] std::vector<std::string> connectableProperties(const gr::pmt::Value& controlValue) const;
+
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
     std::vector<std::unique_ptr<UiGraphBlock>> childBlocks;
@@ -246,6 +253,13 @@ public:
     bool isConnected() const;
 };
 
+inline void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
+    for (const auto& child : root.childBlocks) {
+        fn(*child);
+        forEachBlockRecursive(*child, fn);
+    }
+}
+
 [[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
     gr::Message message;
     message.cmd             = gr::message::Command::Subscribe;
@@ -322,6 +336,9 @@ public:
     using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
     /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
     [[nodiscard]] ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock);
+
+    /// Return a list of the names of all properties in all blocks which have a type compatible with the "value" setting in this control block
+    [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
 
     struct ExportedPropertyMatchResult {
         UiGraphBlock* block;
