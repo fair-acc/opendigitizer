@@ -792,6 +792,19 @@ std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBl
     return properties | std::ranges::to<std::vector>();
 }
 
+void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
+    UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
+    if (!control) {
+        return;
+    }
+    auto targets = TargetMap::fromString(control->blockSettings.value_or<std::string>("target_map", std::string{}));
+    if (!targets) {
+        return;
+    }
+    targets->removeTarget(TargetEntry{.blockTarget = std::string(blockSelector), .propertyName = property});
+    control->setSetting("target_map", targets->toString());
+}
+
 UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {
     ExportedPropertiesView output;
     recursiveForEachBlock([&output](const FindBlockResult& element) {

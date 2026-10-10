@@ -4,10 +4,10 @@
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "ExportedPropertiesList.hpp"
+#include "JumpToControlPopup.hpp"
+#include "ModifyUiConnectionsPopup.hpp"
 
 #include <gnuradio-4.0/Value.hpp>
-
-#include <imgui.h> // ImVec2
 
 #include <chrono>
 #include <functional>
@@ -38,6 +38,11 @@ struct BlockControlsPanelContext {
     std::chrono::time_point<std::chrono::system_clock> closeTime;
     std::function<void(UiGraphBlock* block)>           blockClickedCallback;
 
+    std::optional<ModifyUiConnectionsPopup> modifyConnectionsDialog;
+    std::optional<JumpToControlPopup>       jumpToControlPopup;
+
+    std::function<void(const std::string& blockUniqueName)> focusBlockRequest;
+
     void resetTime();
 };
 
@@ -61,7 +66,7 @@ struct BlockControlsPanelResult {
 
 /// Returns the action taken on the exported property page, if one occurred
 BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& context, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout);
-BlockPropertyEditResult  BlockSettingsControls(UiGraphBlock* block, const ImVec2& size = {0.f, 0.f});
+BlockPropertyEditResult  BlockSettingsControls(BlockControlsPanelContext& context, UiGraphBlock* block, const ImVec2& size = {0.f, 0.f});
 
 /// Make imgui widgets to edit a block property value
 /// Supports types in block properties: string bool integer float enum color

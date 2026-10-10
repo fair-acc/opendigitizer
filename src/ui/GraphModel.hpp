@@ -340,6 +340,8 @@ public:
     /// Return a list of the names of all properties in all blocks which have a type compatible with the "value" setting in this control block
     [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
 
+    void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
+
     struct ExportedPropertyMatchResult {
         UiGraphBlock* block;
         std::string   propertyName;
