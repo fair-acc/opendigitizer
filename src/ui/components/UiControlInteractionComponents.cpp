@@ -201,7 +201,7 @@ void UiControlPropertyLinkPopup::applySelection(UiGraphModel& model) {
 bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
     const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
-    const ImVec2 handleSize{availableWidth - (nodePadding.x * 2.F), ImGui::GetFrameHeight()};
+    const ImVec2 handleSize{std::max(availableWidth - (nodePadding.x * 2.F), ImGui::GetFrameHeight()), ImGui::GetFrameHeight()};
 
     using namespace std::string_view_literals;
     static constexpr auto dragDropIcon = "\u{f58d}"sv;

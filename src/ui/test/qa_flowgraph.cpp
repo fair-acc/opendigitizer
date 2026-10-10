@@ -1,6 +1,9 @@
 #include "FlowgraphPage.hpp"
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
+#include "TestingBlockInspectionUtils.hpp"
+
+#include <ToolbarView.hpp>
 
 #include <imgui_node_editor_internal.h>
 
@@ -23,6 +26,10 @@
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
+#include "blocks/ImControlNumber.hpp"
+#include "blocks/ImControlText.hpp"
+#include "blocks/ImControlToggle.hpp"
+#include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/SineSource.hpp"
 #include "blocks/TestSpectrumGenerator.hpp" // although the symbol is unused by this file, we need this for static block registration
@@ -38,6 +45,7 @@ using namespace boost::ut;
 
 struct TestState : public opendigitizer::test::TestDashboardRunner {
     DigitizerUi::FlowgraphPage flowgraphPage;
+    DigitizerUi::ToolbarView   toolbar; // need to draw the toolbar since ui control blocks only do things when drawn
 
     void onDashboardLoaded() override { flowgraphPage.setDashboard(dashboard.get()); }
     void onDashboardAboutToBeUnloaded() override { flowgraphPage.setDashboard(nullptr); }
@@ -129,7 +137,10 @@ constexpr const char* simpleGraph = "connections: []\n"
 
 TestState g_state;
 
-struct TestApp : public DigitizerUi::test::ImGuiTestApp {
+using namespace opendigitizer::test;
+TESTING_BLOCK_INSPECTION_UTILS_MAKE_ALL_GLOBAL_STATE_AWARE_OVERLOADS(g_state.dashboard->session)
+
+struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more methods than authorized)
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
     [[nodiscard]] static bool waitForRepliesOnEndpoint(ImGuiTestContext* ctx, std::string_view endpoint, std::size_t count = 1UZ) {
@@ -366,6 +377,148 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             g_state.flowgraphPage.popEditor();
         }
         return g_state.flowgraphPage.currentEditor();
+    }
+
+    static DigitizerUi::FlowgraphEditor& loadUiControlGraph(ImGuiTestContext* ctx, const char* grc) {
+        g_state.flowgraphPage.showEditorControls = false; // make sure mouse can click everything within the view rect
+        g_state.reload(cmrc::ui_test_assets::get_filesystem(), grc, "uicontrol");
+        g_state.waitForScheduler(ctx);
+        g_state.waitUntil(ctx, "the graph has blocks", [] { return g_state.hasBlocks(); });
+        ctx->SetRef("Test Window");
+        auto& editor = g_state.flowgraphPage.currentEditor();
+        ctx->Yield(2);
+        waitForSettledView(ctx, editor);
+        editor.makeCurrent();
+        ax::NodeEditor::NavigateToContent(0.0f);
+        ctx->Yield(2);
+        return editor;
+    }
+
+    static ImVec2 centerUiControlDragHandleInView(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control) {
+        const ImGuiTestItemInfo info = ctx->ItemInfo(std::format("**/{}.uiDragHandle", control->blockName).c_str());
+        expect(info.ID != 0u) << fatal << "no drag handle item found for " << control->blockName;
+        editor.makeCurrent();
+        return ax::NodeEditor::CanvasToScreen(info.RectFull.GetCenter());
+    }
+
+    /// Items drawn inside of the node editor report their rectangle in canvas coordinates
+    static ImRect canvasItemRect(ImGuiTestContext* ctx, const char* itemRef) {
+        const ImGuiTestItemInfo info = ctx->ItemInfo(itemRef);
+        expect(info.ID != 0u) << fatal << "no item found for " << itemRef;
+        return info.RectFull;
+    }
+
+    static void moveMouseToCanvasItem(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* itemRef) {
+        const ImRect rect = canvasItemRect(ctx, itemRef);
+        editor.makeCurrent();
+        ctx->MouseMoveToPos(ax::NodeEditor::CanvasToScreen(rect.GetCenter()));
+        ctx->Yield();
+    }
+
+    static void clickCanvasItem(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* itemRef) {
+        moveMouseToCanvasItem(ctx, editor, itemRef);
+        ctx->MouseClick(ImGuiMouseButton_Left);
+        ctx->Yield();
+    }
+
+    static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control, ImVec2 dropScreenPos) {
+        ctx->MouseTeleportToPos(centerUiControlDragHandleInView(ctx, editor, control));
+        ctx->Yield();
+        ctx->MouseDown(ImGuiMouseButton_Left);
+        ctx->Yield();
+        expect(editor._blockDragConnect.has_value()) << fatal << "pressing the handle starts a drag";
+        ctx->MouseLiftDragThreshold(ImGuiMouseButton_Left);
+        ctx->Yield();
+        ctx->MouseMoveToPos(dropScreenPos);
+        ctx->Yield();
+        ctx->MouseUp(ImGuiMouseButton_Left);
+        ctx->Yield(2); // one frame to handle the drop, one to open the popup
+    }
+
+    static ImVec2 findEmptySpotInFlowgraph(DigitizerUi::FlowgraphEditor& editor) {
+        editor.makeCurrent();
+        const auto*  context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        const ImRect view    = context->GetRect();
+        for (const float fractionX : {0.9f, 0.1f, 0.5f}) {
+            for (const float fractionY : {0.5f, 0.1f, 0.9f}) {
+                const ImVec2 screenPos{view.Min.x + view.GetWidth() * fractionX, view.Min.y + view.GetHeight() * fractionY};
+                const ImVec2 canvasPos = ax::NodeEditor::ScreenToCanvas(screenPos);
+                const bool   onNode    = std::ranges::any_of(g_state.blocks(), [&](const auto& block) {
+                    const auto   nodeId   = ax::NodeEditor::NodeId(block.get());
+                    const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
+                    return ImRect(position, position + ax::NodeEditor::GetNodeSize(nodeId)).Contains(canvasPos);
+                });
+                if (!onNode) {
+                    return screenPos;
+                }
+            }
+        }
+        expect(false) << fatal << "flowgraph view is completely full of blocks?";
+        return {};
+    }
+
+    static ImGuiID getFrontmostPopupID(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {
+        ctx->Yield();
+        const ImGuiID popupId = frontmostPopupId();
+        expect(popupId != 0u) << fatal << std::format("a popup should be open (requested at line {})", location.line());
+        return popupId;
+    }
+
+    static std::string getTargetMapForBlock(const char* controlName) { return setting(controlName, "target_map").value_or(std::string{}); }
+
+    static void finishUiControlTest() {
+        g_state.flowgraphPage.showEditorControls = true;
+        g_state.stopScheduler();
+    }
+
+    static void sendSetSettingMessage(const std::string& blockName, gr::property_map data) {
+        gr::Message message;
+        message.cmd         = gr::message::Command::Set;
+        message.serviceName = blockName;
+        message.endpoint    = gr::block::property::kSetting;
+        message.data        = std::move(data);
+        g_state.dashboard->session.sendMessage(std::move(message));
+    }
+
+    /// expect()s a condition for about a second, hopefully to catch any late-arriving messages or similar
+    static void expectConditionToStayTrue(ImGuiTestContext* ctx, const std::function<bool()>& condition, const char* what) {
+        for (int frame = 0; frame < 60; ++frame) {
+            expect(condition()) << what << fatal;
+            ctx->Yield();
+        }
+    }
+
+    static void setBlockPanelAlwaysOpen(DigitizerUi::FlowgraphEditor& editor) { editor._editPaneContext.closeTime = std::chrono::system_clock::now() + std::chrono::hours(1); }
+
+    static void openBlockPanel(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, DigitizerUi::UiGraphBlock* block) {
+        const auto owners = editor.ownersForRoot();
+        expect(owners.has_value()) << fatal;
+        editor._editPaneContext.targetGraph = owners->graph;
+        editor._editPaneContext.setSelectedBlock(block, std::addressof(g_state.dashboard->session.graphModel));
+        setBlockPanelAlwaysOpen(editor);
+        g_state.waitUntil(ctx, "the block panel has finished opening", [&editor] { return editor._splitter.anim_state == DigitizerUi::components::SplitterState::State::Shown; });
+    }
+
+    /// clicks one of the buttons which the block panel draws in place of the editor of a UI-controlled property, for example "**/Unlink##unlink_signal_name"
+    static void clickLockedPropertyButton(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* buttonRef) {
+        setBlockPanelAlwaysOpen(editor);
+        ctx->SetRef("//BlockControlsPanel");
+        ctx->ItemClick(buttonRef);
+        ctx->Yield();
+        ctx->SetRef("Test Window");
+    }
+
+    static void expectBlockCenteredAtDefaultZoom(DigitizerUi::FlowgraphEditor& editor, const char* blockName, std::source_location location = std::source_location::current()) {
+        const DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+        expect(block != nullptr) << fatal;
+        expect(approx(viewZoom(editor), 1.f, 1e-3f)) << std::format("jumping shows {} at 1:1 zoom (line {})", blockName, location.line());
+        editor.makeCurrent();
+        const auto*  context                       = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        const auto   nodeId                        = ax::NodeEditor::NodeId(block);
+        const ImVec2 blockCenter                   = ax::NodeEditor::GetNodePosition(nodeId) + ax::NodeEditor::GetNodeSize(nodeId) * 0.5f;
+        const ImVec2 offsetOfCameraFromBlockCenter = blockCenter - context->GetViewRect().GetCenter();
+        expect(std::abs(offsetOfCameraFromBlockCenter.x) < 2.f && std::abs(offsetOfCameraFromBlockCenter.y) < 2.f) //
+            << std::format("{} centered in the view, offset ({}, {}) (line {})", blockName, offsetOfCameraFromBlockCenter.x, offsetOfCameraFromBlockCenter.y, location.line());
     }
 
     void registerTests() override { // NOSONAR (cognitive complexity)
@@ -1059,6 +1212,357 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
         }
 
+        // ui controls have a unique gui func because we also need to draw the toolbar
+        constexpr auto uiControlGuiFunc = [](ImGuiTestContext*) {
+            IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::SetWindowPos({0, 0});
+            ImGui::SetWindowSize(ImVec2(1024, 800));
+            if (g_state.dashboard) {
+                if (g_state.dashboard->isInitialised) {
+                    g_state.toolbar.draw(g_state.dashboard->session, false);
+                }
+                g_state.flowgraphPage.draw();
+                g_state.dashboard->handleMessages();
+            }
+        };
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control drag and drop lists only properties with a matching type");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
+
+                struct FilterCase {
+                    const char*              control;
+                    std::vector<const char*> offered;
+                    std::vector<const char*> notOffered;
+                };
+                const std::vector<FilterCase> cases{
+                    {"controlToggle", {"visible", "plot_tags"}, {"signal_name", "sample_rate"}},
+                    {"controlTrigger", {"visible", "plot_tags"}, {"signal_name", "sample_rate"}},
+                    {"controlText", {"signal_name", "signal_unit"}, {"visible", "sample_rate"}},
+                    {"controlNumber", {"sample_rate", "signal_min"}, {"visible", "signal_name"}},
+                };
+                for (const FilterCase& filterCase : cases) {
+                    DigitizerUi::UiGraphBlock* control = findRootChildByName(filterCase.control);
+                    DigitizerUi::UiGraphBlock* sink    = findRootChildByName("sink1");
+                    expect(control != nullptr && sink != nullptr) << fatal;
+
+                    dragUiControlDragHandleToPosition(ctx, editor, control, nodeCentreOnScreen(editor, sink));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    for (const char* property : filterCase.offered) {
+                        expect(ctx->ItemExists(std::format("**/{}", property).c_str())) << filterCase.control << " offers " << property;
+                    }
+                    for (const char* property : filterCase.notOffered) {
+                        expect(!ctx->ItemExists(std::format("**/{}", property).c_str())) << filterCase.control << " must not offer " << property;
+                    }
+                    ctx->SetRef("Test Window");
+                    ctx->KeyPress(ImGuiKey_Escape);
+                    ctx->Yield(2);
+                    expect(frontmostPopupId() == 0u) << "escape closes the property selector";
+                }
+
+                "if there are no compatible properties then the popup is empty"_test = [&] {
+                    DigitizerUi::UiGraphBlock* toggle = findRootChildByName("controlToggle");
+                    DigitizerUi::UiGraphBlock* text2  = findRootChildByName("controlText2");
+                    expect(toggle != nullptr && text2 != nullptr) << fatal;
+                    dragUiControlDragHandleToPosition(ctx, editor, toggle, nodeCentreOnScreen(editor, text2));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    expect(!ctx->ItemExists("**/value")) << "the properties shown are not the ones expected (none of them)";
+                    captureScreenshot(*ctx);
+                    ctx->ItemClick("**/Done");
+                    ctx->Yield();
+                    ctx->SetRef("Test Window");
+                    expect(frontmostPopupId() == 0u) << "Done closes the property selector";
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control drag and drop connects when the user closes the popup");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
+
+                "the connection is made when Done is pressed and not during the interaction"_test = [&] {
+                    g_state.waitUntil(ctx, "sink1 starts invisible", [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); });
+
+                    dragUiControlDragHandleToPosition(ctx, editor, findRootChildByName("controlToggle"), nodeCentreOnScreen(editor, findRootChildByName("sink1")));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    ctx->ItemClick("**/visible");
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlToggle").empty() && blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); }, "unchecking something in the popup doesn't do anything");
+
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "Done connects the property", [] { return getTargetMapForBlock("controlToggle") == "sink1:visible"; });
+                    expectConditionToStayTrue(ctx, [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); }, "closing the popup makes a connection but connecting does not send an initial value, the user must interact with the control first");
+                };
+
+                "a property can be set by something other than its ui controls, and the ui controls will not notice or try to change that"_test = [&] {
+                    sendSetSettingMessage("sink1", gr::property_map{{"visible", true}});
+                    g_state.waitUntil(ctx, "settings were applied", [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", true); });
+                    expectConditionToStayTrue(ctx, [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", true); }, "connection doesn't try to adjust mismatched properties");
+                };
+
+                "escape cancels the user's changes in the popup"_test = [&] {
+                    expect(blockHasStringKeyValuePair("sink1", "signal_name", "first")) << fatal;
+                    dragUiControlDragHandleToPosition(ctx, editor, findRootChildByName("controlText"), nodeCentreOnScreen(editor, findRootChildByName("sink1")));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    ctx->ItemClick("**/signal_name");
+                    ctx->SetRef("Test Window");
+                    ctx->KeyPress(ImGuiKey_Escape);
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlText").empty() && blockHasStringKeyValuePair("sink1", "signal_name", "first"); }, "operation is cancelled after the user presses escape");
+                };
+
+                "you can try to use a UI control to control another UI control"_test = [&] {
+                    dragUiControlDragHandleToPosition(ctx, editor, findRootChildByName("controlText2"), nodeCentreOnScreen(editor, findRootChildByName("controlText")));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    ctx->ItemClick("**/value");
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "connection has completed", [] { return getTargetMapForBlock("controlText2") == "controlText:value"; });
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "add glob entries with the Multi-Select dialog");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
+
+                "when opening multi-select with a number control, the popup only shows properties which are numbers (are compatible)"_test = [&] {
+                    dragUiControlDragHandleToPosition(ctx, editor, findRootChildByName("controlNumber"), findEmptySpotInFlowgraph(editor));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    expect(ctx->ItemExists("**/sample_rate"));
+                    expect(!ctx->ItemExists("**/visible"));
+                    expect(!ctx->ItemExists("**/signal_name"));
+                    ctx->SetRef("Test Window");
+                    ctx->KeyPress(ImGuiKey_Escape);
+                    ctx->Yield(2);
+                };
+
+                "when opening multi-select for a boolean control, only compatible properties appear, and the connections about to be made are previewed"_test = [&] {
+                    g_state.waitUntil(ctx, "sink1 starts invisible", [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); });
+
+                    dragUiControlDragHandleToPosition(ctx, editor, findRootChildByName("controlToggle"), findEmptySpotInFlowgraph(editor));
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    expect(ctx->ItemExists("**/visible"));
+                    expect(ctx->ItemExists("**/plot_tags"));
+                    expect(!ctx->ItemExists("**/signal_name"));
+                    expect(!ctx->ItemExists("**/sample_rate"));
+
+                    // hovering an option should show a preview of what would be selected
+                    ctx->MouseMove("**/visible");
+                    ctx->Yield(2);
+                    captureScreenshot(*ctx, "//Test Window");
+
+                    ctx->ItemClick("**/visible");
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "the '*' selector lands in the control's target_map", [] { return getTargetMapForBlock("controlToggle") == "*:visible"; });
+                    expectConditionToStayTrue(ctx, [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); }, "connecting does not set the value on the matching blocks");
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI-controlled properties in the block properties panel are marked as locked");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                openBlockPanel(ctx, editor, findRootChildByName("sinkA"));
+                ctx->SetRef("//BlockControlsPanel");
+
+                "a locked property shows the Unlink and Jump to control buttons in place of its editor"_test = [&] {
+                    expect(blockHasStringKeyValuePair("sinkA", "signal_name", "alpha")) << fatal;
+                    expect(!ctx->ItemExists("**/##parameter_signal_name")) << "a locked property has no editor";
+                    expect(ctx->ItemExists("**/Unlink##unlink_signal_name"));
+                    expect(ctx->ItemExists("**/Jump to control##jumpToControl_signal_name"));
+                    captureScreenshot(*ctx);
+                };
+
+                "the buttons of a locked property are on one line"_test = [&] {
+                    const ImRect unlink = ctx->ItemInfo("**/Unlink##unlink_signal_name").RectFull;
+                    const ImRect jump   = ctx->ItemInfo("**/Jump to control##jumpToControl_signal_name").RectFull;
+                    expect(eq(unlink.Min.y, jump.Min.y));
+                    expect(unlink.Max.x <= jump.Min.x) << "the buttons do not overlap";
+                };
+
+                "an unlocked property keeps its editor and has no Unlink or Jump to control button"_test = [&] {
+                    expect(ctx->ItemExists("**/##parameter_signal_unit"));
+                    expect(!ctx->ItemExists("**/Unlink##unlink_signal_unit"));
+                    expect(!ctx->ItemExists("**/Jump to control##jumpToControl_signal_unit"));
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Unlink opens a dialog to remove or edit UI control connections");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                "a single direct connection is removed without a dialog"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    openBlockPanel(ctx, editor, findRootChildByName("sinkA"));
+                    clickLockedPropertyButton(ctx, editor, "**/Unlink##unlink_signal_quantity");
+                    ctx->Yield(2);
+                    expect(frontmostPopupId() == 0u) << "no dialog should appear for a single direct connection";
+                    g_state.waitUntil(ctx, "the entry has been removed from the control's target_map", [] { return getTargetMapForBlock("controlA").empty(); });
+                    finishUiControlTest();
+                };
+
+                "if there is a glob type connection, then the unlink dialog should open"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    openBlockPanel(ctx, editor, findRootChildByName("sinkA"));
+                    clickLockedPropertyButton(ctx, editor, "**/Unlink##unlink_signal_name");
+                    ctx->SetRef("Modify Connections");
+                    expect(ctx->ItemExists("**/##connected0")) << fatal << "the glob connection is shown in the dialog";
+
+                    ctx->ItemClick("**/##connected0");
+                    ctx->Yield(2);
+                    captureScreenshot(*ctx);
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlB") == "*:signal_name"; }, "unchecking doesn't change the target_map, you have to press Done");
+                    ctx->ItemClick("**/Cancel");
+                    ctx->Yield(2);
+                    ctx->SetRef("Test Window");
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlB") == "*:signal_name"; }, "if you press cancel, nothing is changed");
+
+                    clickLockedPropertyButton(ctx, editor, "**/Unlink##unlink_signal_name");
+                    ctx->SetRef("Modify Connections");
+                    ctx->ItemClick("**/##connected0");
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "pressing Done applies the changes", [] { return getTargetMapForBlock("controlB").empty(); });
+                    finishUiControlTest();
+                };
+
+                "multiple direct connections open the dialog as well"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    openBlockPanel(ctx, editor, findRootChildByName("sinkB"));
+                    clickLockedPropertyButton(ctx, editor, "**/Unlink##unlink_signal_quantity");
+                    ctx->SetRef("Modify Connections");
+                    expect(ctx->ItemExists("**/##connected0") && ctx->ItemExists("**/##connected1")) << fatal << "both connections are listed";
+
+                    ctx->ItemClick("**/##connected0");
+                    ctx->ItemClick("**/##connected1");
+                    ctx->ItemClick("**/##connected1");
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlC") == "sinkB:signal_quantity" && getTargetMapForBlock("controlD") == "sinkB:signal_quantity"; }, "checking/unchecking should not apply changes");
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "the one deselected connection was removed", [] { return getTargetMapForBlock("controlC").empty() != getTargetMapForBlock("controlD").empty(); });
+                    expect((getTargetMapForBlock("controlC") == "sinkB:signal_quantity") != (getTargetMapForBlock("controlD") == "sinkB:signal_quantity")) << "the connection that was still selected is still present";
+                    finishUiControlTest();
+                };
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "jump to control functionality");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                "if there is only one ui control, it gets focused without a dialog"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    openBlockPanel(ctx, editor, findRootChildByName("sinkA"));
+                    clickLockedPropertyButton(ctx, editor, "**/Jump to control##jumpToControl_signal_name");
+                    ctx->Yield(2);
+                    expect(frontmostPopupId() == 0u) << "a single controller needs no chooser";
+                    waitForSettledView(ctx, editor);
+                    expectBlockCenteredAtDefaultZoom(editor, "controlB");
+                    finishUiControlTest();
+                };
+
+                "if there are multiple UI control blocks controlling a property, a dialog opens asking which one to jump to"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    openBlockPanel(ctx, editor, findRootChildByName("sinkB"));
+                    clickLockedPropertyButton(ctx, editor, "**/Jump to control##jumpToControl_signal_quantity");
+                    const ImGuiID popupId = getFrontmostPopupID(ctx);
+                    ctx->SetRef(popupId);
+                    expect(ctx->ItemExists("**/controlC") && ctx->ItemExists("**/controlD")) << fatal << "both controllers are in the popup";
+
+                    ctx->ItemClick("**/controlC");
+                    waitForSettledView(ctx, editor);
+                    expectBlockCenteredAtDefaultZoom(editor, "controlC");
+                    expect(frontmostPopupId() != 0u) << "if you select a controller to jump to, it does not close the popup";
+
+                    ctx->ItemClick("**/controlD");
+                    waitForSettledView(ctx, editor);
+                    expectBlockCenteredAtDefaultZoom(editor, "controlD");
+
+                    ctx->ItemClick("**/Done");
+                    ctx->Yield(2);
+                    ctx->SetRef("Test Window");
+                    expect(frontmostPopupId() == 0u) << "Done closes the popup";
+                    finishUiControlTest();
+                };
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks list their targets and each target has a remove button");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+
+                static constexpr const char* specificTargetRemoveButton = "**/controlA.target.sinkA:signal_quantity/\u{f2ed}";
+                static constexpr const char* globTargetRemoveButton     = "**/controlB.target.*:signal_name/\u{f2ed}";
+
+                "the target list is drawn within the bounds of the control block"_test = [&] {
+                    const ImRect button = canvasItemRect(ctx, specificTargetRemoveButton);
+                    editor.makeCurrent();
+                    const auto   nodeId       = ax::NodeEditor::NodeId(findRootChildByName("controlA"));
+                    const ImVec2 nodePosition = ax::NodeEditor::GetNodePosition(nodeId);
+                    expect(ImRect(nodePosition, nodePosition + ax::NodeEditor::GetNodeSize(nodeId)).Contains(button));
+                };
+
+                "hovering a target does not move its remove button"_test = [&] {
+                    const ImRect before = canvasItemRect(ctx, specificTargetRemoveButton);
+                    moveMouseToCanvasItem(ctx, editor, specificTargetRemoveButton);
+                    captureScreenshot(*ctx);
+                    const ImRect after = canvasItemRect(ctx, specificTargetRemoveButton);
+                    expect(eq(before.Min.x, after.Min.x) && eq(before.Min.y, after.Min.y) && eq(before.Max.x, after.Max.x) && eq(before.Max.y, after.Max.y));
+                };
+
+                "pressing the remove button of a target removes that entry from the target_map"_test = [&] {
+                    clickCanvasItem(ctx, editor, specificTargetRemoveButton);
+                    g_state.waitUntil(ctx, "the entry naming a block has been removed", [] { return getTargetMapForBlock("controlA").empty(); });
+                    clickCanvasItem(ctx, editor, globTargetRemoveButton);
+                    g_state.waitUntil(ctx, "the glob entry has been removed", [] { return getTargetMapForBlock("controlB").empty(); });
+                    expect(getTargetMapForBlock("controlC") == "sinkB:signal_quantity" && getTargetMapForBlock("controlD") == "sinkB:signal_quantity") << "other control blocks keep their targets";
+                };
+
+                finishUiControlTest();
+            };
+        }
+
         {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "One graph with and without editor controls, as loaded and after a relayout");
             t->SetVarsDataType<TestState>();
@@ -1106,6 +1610,10 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::Arithmetic, float, double>(registry);
     gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
+    gr::registerBlock<DigitizerUi::ImControlNumber>(registry);
+    gr::registerBlock<DigitizerUi::ImControlToggle>(registry);
+    gr::registerBlock<DigitizerUi::ImControlTrigger>(registry);
+    gr::registerBlock<DigitizerUi::ImControlText>(registry);
     // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 
@@ -1163,6 +1671,9 @@ int main(int argc, char* argv[]) {
 
     // init early, as Dashboard invokes ImGui style stuff
     app.initImGui();
+
+    // let the flowgraph editors draw the block properties panel, as the application does
+    g_state.flowgraphPage.requestBlockControlsPanel = [](DigitizerUi::components::BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& size, bool verticalLayout) { DigitizerUi::components::BlockControlsPanel(panelContext, pos, size, verticalLayout); };
 
     auto loader = DigitizerUi::test::ImGuiTestApp::createPluginLoader();
 
