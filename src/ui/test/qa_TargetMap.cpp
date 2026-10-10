@@ -73,6 +73,41 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
         expect(both->relationshipToTarget("BlockB", "gain") == TargetRelationship::TargetingViaGlob);
     };
 
+    "toString() <-> fromString() rountrip restores the original value"_test = [] {
+        for (const std::string_view text : {"BlockA:sample_rate;BlockB:gain", "BlockA,BlockC:sample_rate", "*:sample_rate", "A:b;*:c"}) {
+            const auto targets = TargetMap::fromString(text);
+            expect(targets.has_value()) << fatal << text;
+            expect(targets->toString() == text) << text;
+        }
+        expect(TargetMap::fromString("BlockA:gain;BlockB:gain")->toString() == "BlockA,BlockB:gain");
+        expect(TargetMap::fromString("")->toString().empty());
+    };
+
+    "addTarget groups by property and deduplicates"_test = [] {
+        auto targets = TargetMap::fromString("BlockA:gain").value();
+        targets.addTarget({"BlockB", "gain"});
+        expect(targets.toString() == "BlockA,BlockB:gain");
+        targets.addTarget({"BlockB", "gain"});
+        expect(targets.toString() == "BlockA,BlockB:gain");
+        targets.addTarget({"BlockA", "offset"});
+        expect(targets.toString() == "BlockA,BlockB:gain;BlockA:offset");
+        targets.addTarget({"*", "gain"});
+        expect(targets.toString() == "BlockA,BlockB:gain;BlockA:offset;*:gain");
+    };
+
+    "removeTarget with a specific connection will remove the specific one and not a glob"_test = [] {
+        auto targets = TargetMap::fromString("BlockA,BlockB:gain;*:gain;BlockA:offset").value();
+        targets.removeTarget({"BlockA", "gain"});
+        expect(targets.toString() == "BlockB:gain;*:gain;BlockA:offset");
+        targets.removeTarget({"*", "gain"});
+        expect(targets.toString() == "BlockB:gain;BlockA:offset");
+        targets.removeTarget({"BlockC", "gain"});
+        expect(targets.toString() == "BlockB:gain;BlockA:offset");
+        targets.removeTarget({"BlockB", "gain"});
+        targets.removeTarget({"BlockA", "offset"});
+        expect(targets.entries().empty());
+    };
+
     "parsing a target_map should do deduplication"_test = [&] {
         expect(entriesString("BlockA:gain;BlockA:gain") == "BlockA/gain");
         expect(entriesString("BlockA,BlockA:gain") == "BlockA/gain");
