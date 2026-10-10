@@ -546,7 +546,7 @@ static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelCont
 }
 
 /// Returns a value if the row was successfully drawn
-static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, int rowIndex, bool uiControlled) {
+static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, bool uiControlled) {
     if (!value.is_string() && !value.is_floating_point() && !value.is_integral()) {
         return {}; // unsupported type
     }
@@ -571,7 +571,7 @@ static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelC
 
     ImGui::TableSetColumnIndex(1);
     char label[64];
-    auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", rowIndex);
+    auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", key);
     *labelResult.out = '\0';
 
     ImGui::BeginGroup();
@@ -607,7 +607,6 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 
-            int rowIndex = 0;
             for (const auto& [key, value] : block->blockSettings) {
                 std::string keyStr(key);
                 auto        metaIt   = block->blockSettingsMetaInformation.find(keyStr);
@@ -615,11 +614,8 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
                 if (isMarked != visibleOnly) {
                     continue;
                 }
-                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, rowIndex, controlledProperties.contains(keyStr))) {
-                    rowIndex += 1;
-                    if (*rowResult) {
-                        result = std::move(*rowResult);
-                    }
+                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, controlledProperties.contains(keyStr)); rowResult && *rowResult) {
+                    result = std::move(*rowResult);
                 }
             }
         }

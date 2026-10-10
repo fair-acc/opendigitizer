@@ -435,7 +435,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     if (block.isUiControl()) {
         components::drawUiControlTargetList(*_graphModel, block);
 
-        if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockUniqueName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
+        if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
             _blockDragConnect.emplace(block.blockUniqueName, ImGui::GetMousePos());
         }
     }
