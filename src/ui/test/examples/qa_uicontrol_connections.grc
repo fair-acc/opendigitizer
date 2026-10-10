@@ -1,0 +1,63 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator1
+      frequency: 1
+      sample_rate: 4096
+      signal_type: Sin
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator2
+      frequency: 2
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sinkA
+      visible: true
+      signal_name: alpha
+      signal_quantity: voltage
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sinkB
+      visible: true
+      signal_name: beta
+      signal_quantity: current
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlA
+      label: A
+      value: alpha
+      target_map: "sinkA:signal_quantity"
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlB
+      label: B
+      value: glob
+      target_map: "*:signal_name"
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlC
+      label: C
+      value: gamma
+      target_map: "sinkB:signal_quantity"
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlD
+      label: D
+      value: delta
+      target_map: "sinkB:signal_quantity"
+connections:
+  - [clockSource1, 0, signalGenerator1, 0]
+  - [signalGenerator1, 0, sinkA, 0]
+  - [clockSource1, 0, signalGenerator2, 0]
+  - [signalGenerator2, 0, sinkB, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []

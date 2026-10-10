@@ -1,0 +1,49 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator1
+      frequency: 1
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sink1
+      visible: false
+      signal_name: first
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: controlNumber
+      label: Num
+      value: 42
+      value_type: float32
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: controlToggle
+      label: Tog
+      value: true
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlText
+      label: Txt
+      value: hello
+  - id: DigitizerUi::ImControlText
+    parameters:
+      name: controlText2
+      label: Txt2
+      value: world
+  - id: DigitizerUi::ImControlTrigger
+    parameters:
+      name: controlTrigger
+      label: Trig
+connections:
+  - [clockSource1, 0, signalGenerator1, 0]
+  - [signalGenerator1, 0, sink1, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []
