@@ -149,7 +149,9 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         return gr::work::Status::OK;
     }
 
-    void reset() { _waterfall.clear(); }
+    void reset() { requestRenderReset(); }
+
+    void resetRenderState() { _waterfall.clear(); }
 
     [[nodiscard]] static std::pair<double, double> transformedYBounds(double tOldest, double tNewest, AxisScale scale) {
         double duration = tNewest - tOldest;
