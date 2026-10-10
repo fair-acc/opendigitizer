@@ -119,7 +119,7 @@ struct ChartStyle {
 struct DashboardStyle {
     enum class LegendPosition { Bottom, Top, Left, Right, None }; // None: no shared bar, charts may show their own legend
     LegendPosition legend     = LegendPosition::Bottom;
-    bool           background = true; // false: chart windows and frames, plots area and bar draw no background or border
+    bool           background = true; // false: chart windows and frames, plots area, bar and toolbar draw no background or border
 };
 
 struct LookAndFeel {
