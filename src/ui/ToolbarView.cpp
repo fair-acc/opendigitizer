@@ -134,6 +134,9 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
         }
     }
 
+    if (!LookAndFeel::instance().dashboardStyle.background) {
+        return; // the page behind it shows through, so it draws no edge of its own
+    }
     const ImVec2   pos       = ImGui::GetWindowPos();
     const ImVec2   size      = ImGui::GetWindowSize();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);

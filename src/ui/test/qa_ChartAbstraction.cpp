@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -45,6 +46,53 @@ int main() {
         chart.max_history_count = 16U;
         chart.addSignalSink(adapter);
         expect(eq(sink.bufferCapacity(), 16UZ));
+    };
+
+    // Ground truth, arithmetic: two seconds are 96000 samples at 48 kHz and 192000 at 96 kHz, and the sink is asked to
+    // hold that many.
+    "XYChart holds a history stated in seconds at the rate its signal arrives at"_test = [] {
+        for (const auto& [rate, samples] : {std::pair{48000.0f, 96'000UZ}, std::pair{96000.0f, 192'000UZ}}) {
+            opendigitizer::ImPlotSink<float> sink({});
+            sink.sample_rate = rate; // as the stream's tags set it
+            auto    adapter  = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+            XYChart chart;
+            chart.history_seconds = 2.0f;
+            chart.addSignalSink(adapter);
+            chart.followHistorySeconds();
+            expect(eq(static_cast<std::size_t>(chart.n_history.value), samples)) << "at " << rate << " Hz";
+            expect(eq(sink.bufferCapacity(), samples)) << "the sink holds it";
+        }
+    };
+
+    // Ground truth by hand: 1000 points at x = index, all zero but 5 at x 150 and -3 at x 160, reduced to 10 columns of
+    // 100. The second column keeps (150, 5) then (160, -3), in that order; every column gives two points.
+    "a trace longer than its plot is wide keeps each pixel column's extremes, in order"_test = [] {
+        std::vector<double> x(1000UZ);
+        std::vector<double> y(1000UZ, 0.0);
+        std::iota(x.begin(), x.end(), 0.0);
+        y[150UZ] = 5.0;
+        y[160UZ] = -3.0;
+        axis::reduceToColumns(x, y, 10UZ);
+        expect(fatal(eq(x.size(), 20UZ))) << "two points a column";
+        expect(eq(x[2UZ], 150.0) && eq(y[2UZ], 5.0)) << "the second column's maximum first, where it came";
+        expect(eq(x[3UZ], 160.0) && eq(y[3UZ], -3.0)) << "then its minimum";
+        expect(eq(std::ranges::max(y), 5.0) && eq(std::ranges::min(y), -3.0)) << "the envelope of every point";
+
+        std::vector<double> shortX{0.0, 1.0, 2.0};
+        std::vector<double> shortY{1.0, -1.0, 1.0};
+        axis::reduceToColumns(shortX, shortY, 10UZ);
+        expect(eq(shortX.size(), 3UZ)) << "a trace no longer than two points a column is left as it is";
+    };
+
+    "XYChart keeps n_history when no history in seconds is stated"_test = [] {
+        opendigitizer::ImPlotSink<float> sink({});
+        sink.sample_rate = 48000.0f;
+        auto    adapter  = std::make_shared<opendigitizer::SinkAdapter<decltype(sink)>>(sink);
+        XYChart chart;
+        chart.n_history = 5000U;
+        chart.addSignalSink(adapter);
+        chart.followHistorySeconds();
+        expect(eq(chart.n_history.value, gr::Size_t{5000U}));
     };
 
     "DataSet keeps custom axis labels"_test = [] {
@@ -448,6 +496,37 @@ int main() {
         expect(!y2->plotTags);
         expect(!parseAxisConfig(constraints, AxisKind::X, 1UZ));
         expect(!parseAxisConfig(constraints, AxisKind::Y, 2UZ));
+    };
+
+    "Axis parsing reads the SymLog linear threshold"_test = [] {
+        gr::Tensor<gr::pmt::Value> axes(gr::extents_from, {2UZ});
+        axes[0] = gr::property_map{{"axis", "Y"}, {"scale", "SymLog"}, {"linear_threshold", 0.001f}};
+        axes[1] = gr::property_map{{"axis", "X"}, {"scale", "SymLog"}};
+        const gr::property_map constraints{{"axes", std::move(axes)}};
+        const auto             y = parseAxisConfig(constraints, AxisKind::Y);
+        const auto             x = parseAxisConfig(constraints, AxisKind::X);
+        expect(fatal(y && x));
+        expect(eq(y->linearThreshold, 0.001f));
+        expect(std::isnan(x->linearThreshold)) << "absent: ImPlot's own SymLog";
+    };
+
+    // Ground truth, analytic: f(v) = sign(v) log10(1 + |v|/c). At c = 1 mFS, f(±c) = ±log10 2, f(1) = log10 1001, and
+    // the decades from c to 1 are 1 m, 10 m, 100 m and 1 on each side of zero.
+    "SymLog with a linear threshold: log10(1 + |v|/c), odd, inverted exactly, ticked by decade"_test = [] {
+        double c = 1e-3;
+        expect(approx(axis::symLogForward(0.0, &c), 0.0, 1e-15));
+        expect(approx(axis::symLogForward(c, &c), std::log10(2.0), 1e-12));
+        expect(approx(axis::symLogForward(-c, &c), -std::log10(2.0), 1e-12));
+        expect(approx(axis::symLogForward(1.0, &c), std::log10(1001.0), 1e-12));
+        for (const double v : {-0.9, -2e-3, -1e-4, 0.0, 5e-4, 0.25, 1.0}) {
+            expect(approx(axis::symLogInverse(axis::symLogForward(v, &c), &c), v, 1e-12)) << v;
+        }
+        const std::vector<double> ticks = axis::symLogDecadeTicks(c, 1.0);
+        const std::vector<double> decades{-1.0, -0.1, -0.01, -0.001, 0.0, 0.001, 0.01, 0.1, 1.0};
+        expect(fatal(eq(ticks.size(), decades.size())));
+        for (std::size_t i = 0UZ; i < ticks.size(); ++i) {
+            expect(approx(ticks[i], decades[i], 1e-12)) << i;
+        }
     };
 
     // --- Axis-grouping edge-case tests ---

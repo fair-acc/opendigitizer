@@ -24,13 +24,16 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -88,9 +91,10 @@ struct AxisConfig {
     float                    min  = std::numeric_limits<float>::quiet_NaN();
     float                    max  = std::numeric_limits<float>::quiet_NaN();
     std::optional<AxisScale> scale;
-    LabelFormat              format   = LabelFormat::Auto;
-    float                    width    = std::numeric_limits<float>::quiet_NaN();
-    bool                     plotTags = true;
+    LabelFormat              format          = LabelFormat::Auto;
+    float                    width           = std::numeric_limits<float>::quiet_NaN();
+    float                    linearThreshold = std::numeric_limits<float>::quiet_NaN(); // SymLog: half-width of the linear band around zero, in axis units
+    bool                     plotTags        = true;
 };
 
 [[nodiscard]] inline std::optional<AxisKind> axisKindOf(std::string_view name) noexcept {
@@ -174,6 +178,11 @@ struct LogFreqRange {
         if (auto it = axisMap->find("width"); it != axisMap->end()) {
             if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
                 cfg.width = *v;
+            }
+        }
+        if (auto it = axisMap->find("linear_threshold"); it != axisMap->end()) {
+            if (auto v = gr::pmt::convert_safely<float>(it->second); v) {
+                cfg.linearThreshold = *v;
             }
         }
         cfg.plotTags = axisMap->value_or<bool>("plot_tags", true);
@@ -345,7 +354,54 @@ inline std::string truncateLabel(std::string_view original, float availableWidth
     return std::format("...{}", original.substr(original.size() - fitCharCount));
 }
 
-inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always) {
+// The bi-symmetric logarithm sign(v) log10(1 + |v|/c): linear within about ±c, logarithmic beyond, for data spanning
+// decades on both sides of zero. ImPlot's own SymLog fixes c at about 1. After J. B. W. Webber, "A bi-symmetric log
+// transformation for wide-range data," Meas. Sci. Technol., vol. 24, no. 2, p. 027001, 2013.
+[[nodiscard]] inline double symLogForward(double value, void* linearThreshold) noexcept {
+    const double c = *static_cast<const double*>(linearThreshold);
+    return std::copysign(std::log10(1.0 + std::abs(value) / c), value);
+}
+
+[[nodiscard]] inline double symLogInverse(double value, void* linearThreshold) noexcept {
+    const double c = *static_cast<const double*>(linearThreshold);
+    return std::copysign(c * (std::pow(10.0, std::abs(value)) - 1.0), value);
+}
+
+// A trace of more points than its plot has pixel columns, reduced to each column's smallest and largest value in the
+// order they came, as an oscilloscope's peak detect does: the envelope drawn is that of every point, at two points a
+// column, which keeps a trace of hundreds of thousands of samples interactive. A shorter trace is left as it is.
+inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std::size_t columns) {
+    if (columns == 0UZ || x.size() != y.size() || x.size() <= 2UZ * columns) {
+        return;
+    }
+    const std::size_t perColumn = (x.size() + columns - 1UZ) / columns; // at least three, so writing two a column never overtakes reading
+    std::size_t       kept      = 0UZ;
+    for (std::size_t from = 0UZ; from < x.size(); from += perColumn) {
+        const auto column              = std::span(y).subspan(from, std::min(perColumn, y.size() - from));
+        const auto [smallest, largest] = std::ranges::minmax_element(column);
+        const std::size_t first        = from + static_cast<std::size_t>(std::min(smallest, largest) - column.begin());
+        const std::size_t second       = from + static_cast<std::size_t>(std::max(smallest, largest) - column.begin());
+        for (const std::size_t index : {first, second}) {
+            x[kept] = x[index];
+            y[kept] = y[index];
+            ++kept;
+        }
+    }
+    x.resize(kept);
+    y.resize(kept);
+}
+
+// 0 and ±c, ±10c, ±100c ... up to `maxMagnitude`: ImPlot's locator for a custom scale places linear ticks
+[[nodiscard]] inline std::vector<double> symLogDecadeTicks(double linearThreshold, double maxMagnitude) {
+    std::vector<double> ticks{0.0};
+    for (double decade = linearThreshold; decade <= maxMagnitude * (1.0 + 1e-9); decade *= 10.0) {
+        ticks.insert(ticks.begin(), -decade);
+        ticks.push_back(decade);
+    }
+    return ticks;
+}
+
+inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category, LabelFormat format, float axisWidth, double minLimit, double maxLimit, std::size_t nTotalAxes, AxisScale scaleOverride, std::array<std::string, 6UZ>& unitStringStorage, bool showGrid = true, bool foreground = false, ImPlotCond limitsCond = ImPlotCond_Always, const double* symLogLinearThreshold = nullptr) {
     if (!category.has_value()) {
         return;
     }
@@ -422,7 +478,33 @@ inline void setupAxis(ImAxis axisId, const std::optional<AxisCategory>& category
 
     switch (scale) {
     case AxisScale::Log10: ImPlot::SetupAxisScale(axisId, ImPlotScale_Log10); break;
-    case AxisScale::SymLog: ImPlot::SetupAxisScale(axisId, ImPlotScale_SymLog); break;
+    case AxisScale::SymLog: {
+        if (symLogLinearThreshold == nullptr || !std::isfinite(*symLogLinearThreshold) || *symLogLinearThreshold <= 0.0) {
+            ImPlot::SetupAxisScale(axisId, ImPlotScale_SymLog);
+            break;
+        }
+        ImPlot::SetupAxisScale(axisId, symLogForward, symLogInverse, const_cast<double*>(symLogLinearThreshold));
+        constexpr double kDecadesWhenAutoScaled = 12.0;
+        const double     maxMagnitude           = finiteMin && finiteMax ? std::max(std::abs(minLimit), std::abs(maxLimit)) : *symLogLinearThreshold * std::pow(10.0, kDecadesWhenAutoScaled);
+        const auto       ticks                  = symLogDecadeTicks(*symLogLinearThreshold, maxMagnitude);
+        // labelled here with the axis' own formatter: without labels ImPlot hands a formatter that has no data its
+        // default "%g" instead, which the formatters above would print as a unit
+        const ImPlotAxis&        plotAxis = ImPlot::GetCurrentPlot()->Axes[axisId];
+        std::vector<std::string> labels;
+        labels.reserve(ticks.size());
+        for (const double tick : ticks) {
+            std::array<char, 32UZ> tickText{};
+            if (plotAxis.Formatter != nullptr) {
+                plotAxis.Formatter(tick, tickText.data(), static_cast<int>(tickText.size()), plotAxis.FormatterData);
+            } else {
+                std::snprintf(tickText.data(), tickText.size(), "%g", tick);
+            }
+            labels.emplace_back(tickText.data());
+        }
+        std::vector<const char*> labelPointers;
+        std::ranges::transform(labels, std::back_inserter(labelPointers), &std::string::c_str);
+        ImPlot::SetupAxisTicks(axisId, ticks.data(), static_cast<int>(ticks.size()), labelPointers.data());
+    } break;
     case AxisScale::Time:
         ImPlot::GetStyle().UseISO8601     = true;
         ImPlot::GetStyle().Use24HourClock = true;

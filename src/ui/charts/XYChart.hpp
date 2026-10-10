@@ -54,21 +54,24 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<std::array<double, 3UZ>, "Y-axis min">                                                                                                                                       y_min                   = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<std::array<double, 3UZ>, "Y-axis max">                                                                                                                                       y_max                   = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     A<gr::Size_t, "history depth", gr::Unit<"samples">, gr::Limits<4U, 2'000'000U>>                                                                                                n_history               = kDefaultHistorySize;
+    A<float, "history seconds", gr::Unit<"s">, gr::Doc<"history depth in seconds at the first signal's sample rate, which then sets n_history; 0: n_history as given">>            history_seconds         = 0.0f;
     A<float, "update rate", gr::Unit<"Hz">, gr::Limits<0.f, 240.f>, gr::Doc<"streaming-trace redraw cadence; decouples the display from the mouse/redraw rate (0 = every frame)">> update_rate             = 25.0f;
 
     static constexpr SignalKind supportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, update_rate);
+    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
     std::array<std::optional<AxisCategory>, 3UZ> _yCategories{};
     std::array<std::vector<std::string>, 3UZ>    _xAxisGroups{};
     std::array<std::vector<std::string>, 3UZ>    _yAxisGroups{};
     mutable std::array<std::string, 6UZ>         _unitStringStorage{};
+    mutable std::array<double, 6UZ>              _symLogLinearThresholds{}; // per ImAxis: the SymLog transform reads it while the plot draws
 
     struct StreamSnapshot {
         std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
         std::vector<double> y;
+        std::size_t         sourceCount = 0UZ; // the samples the window was built from, before reduceToColumns
         double              lastRefresh = 0.0;
     };
     std::unordered_map<std::string, StreamSnapshot> _streamSnapshots;
@@ -91,6 +94,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
             return gr::work::Status::OK;
         }
+        followHistorySeconds();
 
         buildAxisCategoriesWithFallback();
 
@@ -106,6 +110,21 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         DigitizerUi::TouchHandler<>::EndZoomablePlot();
 
         return gr::work::Status::OK;
+    }
+
+    // a history stated in seconds holds that long at whatever rate the device delivers, not at the rate it was written for
+    void followHistorySeconds() {
+        const float rate = _signalSinks.empty() ? 0.0f : _signalSinks.front()->sampleRate();
+        if (history_seconds.value <= 0.0f || rate <= 0.0f) {
+            return;
+        }
+        const auto samples = static_cast<gr::Size_t>(std::clamp(std::ceil(static_cast<double>(history_seconds.value) * static_cast<double>(rate)), 4.0, 2'000'000.0));
+        if (samples != n_history.value) {
+            n_history = samples;
+            for (const auto& sink : _signalSinks) { // asked again, now for the new depth
+                addSignalSink(sink);
+            }
+        }
     }
 
     void buildAxisCategoriesWithFallback() {
@@ -147,8 +166,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 _xCategories[i]->scale = scale;
             }
 
-            auto xCond = trackLimitsCond(true, minLimit, maxLimit, i);
-            axis::setupAxis(axisId, _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond);
+            auto xCond                                                = trackLimitsCond(true, minLimit, maxLimit, i);
+            _symLogLinearThresholds[static_cast<std::size_t>(axisId)] = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
+            axis::setupAxis(axisId, _xCategories[i], format, width, minLimit, maxLimit, nAxesX, scale, _unitStringStorage, showGrid, /*foreground=*/false, xCond, &_symLogLinearThresholds[static_cast<std::size_t>(axisId)]);
         }
 
         for (std::size_t i = 0; i < _yCategories.size(); ++i) {
@@ -172,8 +192,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 _yCategories[i]->scale = scale;
             }
 
-            auto yCond = trackLimitsCond(false, minLimit, maxLimit, i);
-            axis::setupAxis(axisId, _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond);
+            auto yCond                                                = trackLimitsCond(false, minLimit, maxLimit, i);
+            _symLogLinearThresholds[static_cast<std::size_t>(axisId)] = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
+            axis::setupAxis(axisId, _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond, &_symLogLinearThresholds[static_cast<std::size_t>(axisId)]);
         }
     }
 
@@ -243,7 +264,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         StreamSnapshot& snap            = _streamSnapshots[std::string(sink.uniqueName())];
         const double    now             = ImGui::GetTime();
         const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
-        if (snap.x.size() != dataCount || (now - snap.lastRefresh) >= refreshInterval) {
+        if (snap.sourceCount != dataCount || (now - snap.lastRefresh) >= refreshInterval) {
             const double xMin = sink.xAt(offset);
             const double xMax = sink.xAt(offset + dataCount - 1);
             snap.x.resize(dataCount);
@@ -258,6 +279,8 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 snap.x[i] = xVal;
                 snap.y[i] = static_cast<double>(sink.yAt(offset + i));
             }
+            axis::reduceToColumns(snap.x, snap.y, static_cast<std::size_t>(std::max(ImPlot::GetPlotSize().x, 0.0f)));
+            snap.sourceCount = dataCount;
             snap.lastRefresh = now;
         }
 
