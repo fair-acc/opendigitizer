@@ -777,5 +777,20 @@ int main() {
         expectEntry.template operator()<WaterfallPlot>();
     };
 
+    "a lifecycle reset() on a scheduler thread leaves render state to the render thread's next draw"_test = [] {
+        SpectrumPlot plot;
+        plot._tracesPerSink["sink"]._frameCount = 7UZ;
+
+        std::thread([&plot] { plot.reset(); }).join();
+        expect(eq(plot._tracesPerSink.size(), 1UZ)) << "reset() must not touch draw state off the render thread";
+
+        plot.applyPendingRenderReset();
+        expect(plot._tracesPerSink.empty());
+
+        plot._tracesPerSink["sink"]._frameCount = 7UZ;
+        plot.applyPendingRenderReset();
+        expect(eq(plot._tracesPerSink.size(), 1UZ)) << "one reset() clears once";
+    };
+
     return 0;
 }

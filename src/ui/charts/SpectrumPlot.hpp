@@ -92,7 +92,9 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         return gr::work::Status::OK;
     }
 
-    void reset() {
+    void reset() { requestRenderReset(); }
+
+    void resetRenderState() {
         _tracesPerSink.clear();
         _lastSampleCountPerSink.clear();
     }

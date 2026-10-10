@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -1303,10 +1304,11 @@ struct Chart {
         return _signalSinks | std::views::filter([](const auto& s) { return s && s->drawEnabled(); });
     }
     double                  _lastCapacityRefreshTime = 0.0;
-    double                  _pendingResizeTime       = 0.0;                  // 0 = no pending resize
-    HistoryUnit             _historyDisplayUnit      = HistoryUnit::seconds; // UI-only, not persisted
-    std::optional<ImAxis>   _hoveredAxisForMenu;                             // specific axis ID for right-click popup
-    std::array<int, 3UZ>    _fitOnceX            = {};                       // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
+    double                  _pendingResizeTime       = 0.0;             // 0 = no pending resize
+    std::atomic<bool>       _renderResetPending{false};                 // GR4 runs reset() on a scheduler thread; GL and draw state belong to the render thread
+    HistoryUnit             _historyDisplayUnit = HistoryUnit::seconds; // UI-only, not persisted
+    std::optional<ImAxis>   _hoveredAxisForMenu;                        // specific axis ID for right-click popup
+    std::array<int, 3UZ>    _fitOnceX            = {};                  // per-axis: 0=idle, 2=auto-fit pending, 1=capture next frame
     std::array<int, 3UZ>    _fitOnceY            = {};
     std::array<double, 3UZ> _prevXMin            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     std::array<double, 3UZ> _prevXMax            = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
@@ -2068,8 +2070,20 @@ struct Chart {
         }
     }
 
+    void requestRenderReset() noexcept { _renderResetPending.store(true, std::memory_order_release); }
+
+    template<typename Self>
+    void applyPendingRenderReset(this Self& self) {
+        if (self._renderResetPending.exchange(false, std::memory_order_acquire)) {
+            self.resetRenderState();
+        }
+    }
+
     template<typename Self>
     DrawPrologue prepareDrawPrologue(this Self& self, const gr::property_map& config) {
+        if constexpr (requires { self.resetRenderState(); }) {
+            self.applyPendingRenderReset();
+        }
         if (self.settings().changed()) {
             std::ignore = self.settings().applyStagedParameters();
         }

@@ -127,7 +127,9 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
         return gr::work::Status::OK;
     }
 
-    void reset() {
+    void reset() { requestRenderReset(); }
+
+    void resetRenderState() {
         _density.reset();
         _traces.reset();
         _lastSampleCount = std::numeric_limits<std::size_t>::max();

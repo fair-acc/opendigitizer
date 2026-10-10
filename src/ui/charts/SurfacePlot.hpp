@@ -932,7 +932,9 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         return gr::work::Status::OK;
     }
 
-    void reset() {
+    void reset() { requestRenderReset(); }
+
+    void resetRenderState() {
         _surface.clear();
         _gpuRenderer.destroy();
         _needsRefit = true;

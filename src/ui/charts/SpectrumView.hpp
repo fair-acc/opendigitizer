@@ -101,7 +101,9 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) { handleSettingsChanged(newSettings); }
 
-    void reset() {
+    void reset() { requestRenderReset(); }
+
+    void resetRenderState() {
         _tracesPerSink.clear();
         _topPaneSampleCountPerSink.clear();
         _lastWaterfallSampleCount = std::numeric_limits<std::size_t>::max();
