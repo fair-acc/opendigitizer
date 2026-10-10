@@ -58,7 +58,7 @@ inline std::expected<T, std::string> get(const gr::property_map& m, std::string_
     }
 }
 
-inline auto findTrigger(const std::vector<std::pair<std::ptrdiff_t, gr::property_map>>& tags) {
+inline auto findTrigger(std::span<const std::pair<std::ptrdiff_t, gr::property_map>> tags) {
     struct {
         std::string   name;
         std::uint64_t time = 0ULL;
@@ -842,7 +842,7 @@ private:
             std::vector<float> errors(nSignals * nSamples, 0.f);
             reply.channelErrors = opencmw::MultiArray<float, 2>(std::move(errors), std::array<uint32_t, 2>{static_cast<uint32_t>(nSignals), static_cast<uint32_t>(nSamples)});
 
-            reply.channelTimeSinceRefTrigger = dataSet.axis_values[0];
+            reply.channelTimeSinceRefTrigger = std::vector<float>(dataSet.axis_values[0].begin(), dataSet.axis_values[0].end());
 
             // copy event_timing information, TODO: now we copy all data only from timing_events[0]
             if (!dataSet.timing_events.empty()) {

@@ -130,8 +130,8 @@ int main() {
 
         for (int i = 0; i < 5; ++i) {
             gr::DataSet<float> ds;
-            ds.timestamp     = static_cast<int64_t>(i) * 1000000000;
-            ds.signal_names  = {"sig" + std::to_string(i)};
+            ds.timestamp = static_cast<int64_t>(i) * 1000000000;
+            ds.signal_names.emplace_back("sig" + std::to_string(i));
             ds.signal_values = {static_cast<float>(i)};
             sink->pushDataSet(ds);
         }
@@ -139,7 +139,7 @@ int main() {
         expect(eq(sink->dataSetCount(), 3UZ));
 
         const auto& raw = sink->rawDataSets();
-        expect(eq(raw.front().signal_names[0], std::string("sig2")));
+        expect(eq(std::string_view(raw.front().signal_names[0]), std::string_view("sig2")));
     };
 
     "SinkRegistry registration"_test = [] {

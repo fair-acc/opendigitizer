@@ -667,9 +667,9 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
 
             // signal meta info
             if (nSignals == acq.channelNames.size() && nSignals == acq.channelQuantities.size() && nSignals == acq.channelUnits.size()) {
-                ds.signal_names      = acq.channelNames;
-                ds.signal_units      = acq.channelUnits;
-                ds.signal_quantities = acq.channelQuantities;
+                ds.signal_names.assign(acq.channelNames.begin(), acq.channelNames.end());
+                ds.signal_units.assign(acq.channelUnits.begin(), acq.channelUnits.end());
+                ds.signal_quantities.assign(acq.channelQuantities.begin(), acq.channelQuantities.end());
             } else {
                 this->emitErrorMessage("subscriptionCallback(..)",                                                                                                          //
                     gr::Error(std::format("Inconsistent data from '{}': channelNames size ({}) or channelQuantities size ({}) or channelUnits size ({}) !=  nSignals ({})", //
