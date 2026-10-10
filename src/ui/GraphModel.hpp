@@ -141,12 +141,18 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
 
+    /// Returns the value of the compatible_type_map block setting
+    [[nodiscard]] std::string                           uiControlCompatibleTypeMap() const;
     [[nodiscard]] std::expected<TargetMap, std::string> uiControlTargetMap() const {
         if (!usesTargetMap()) {
             return std::unexpected("Attempt to get target map for a block which does not implement it");
         }
         return TargetMap::fromString(blockSettings.value_or<std::string>("target_map", std::string{}));
     }
+    /// Get the name of the type of a block property with some additional info, namely if the meta information specifies enumValues then this returns "enum" instead of "string"
+    [[nodiscard]] std::string              propertyTypeName(std::string_view property) const;
+    [[nodiscard]] bool                     isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const;
+    [[nodiscard]] std::vector<std::string> connectableProperties(std::string_view compatibleTypeMap) const;
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
@@ -257,6 +263,13 @@ public:
     bool isConnected() const;
 };
 
+inline void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
+    for (const auto& child : root.childBlocks) {
+        fn(*child);
+        forEachBlockRecursive(*child, fn);
+    }
+}
+
 [[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
     gr::Message message;
     message.cmd             = gr::message::Command::Subscribe;
@@ -333,6 +346,9 @@ public:
     using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
     /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
     [[nodiscard]] ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock);
+
+    /// Return a list of the names of all properties in all blocks which have a type listed in the "compatible_type_map" setting of this control block
+    [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
 
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 

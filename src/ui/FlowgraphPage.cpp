@@ -84,34 +84,40 @@ auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& p
     return result;
 }
 
+void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
+    for (const auto& child : root.childBlocks) {
+        fn(*child);
+        forEachBlockRecursive(*child, fn);
+    }
+}
+
 } // namespace
 
-/// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block
-void drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
+/// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block.
+/// Returns true while a drag is happening and false otherwise
+bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
     const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
     const ImVec2 handleSize{availableWidth - (nodePadding.x * 2.F), ImGui::GetFrameHeight()};
-    const auto   handleID = ImGui::GetID(label);
 
     using namespace std::string_view_literals;
     static constexpr auto dragDropIcon = "\u{f58d}"sv;
 
     // horizontally center drag drop handle. recalculate offset from left, so it is easier to adjust width without messing up the drawing
-    const ImVec2 min = ImVec2{blockTopLeft.x, ImGui::GetCursorScreenPos().y} + ImVec2{(availableWidth - handleSize.x) / 2.f, ImGui::GetStyle().FramePadding.y};
-    const ImVec2 max = min + handleSize;
+    const ImVec2 cursorBefore = ImGui::GetCursorPos();
+    const ImVec2 min          = ImVec2{blockTopLeft.x, ImGui::GetCursorScreenPos().y} + ImVec2{(availableWidth - handleSize.x) / 2.f, ImGui::GetStyle().FramePadding.y};
+    const ImVec2 max          = min + handleSize;
+
+    ImGui::SetCursorScreenPos(min);
+    ImGui::InvisibleButton(label, handleSize);
+    const bool held    = ImGui::IsItemActive();
+    const bool hovered = ImGui::IsItemHovered();
 
     // change color based on interaction. ImGui::GetColorU32 applies the global style alpha, so the
     // handle is greyed out along with the rest of a node that is filtered out
     ImVec4 fill = LookAndFeel::instance().palette().flowgraphUiControlFill;
-
-    bool       hovered{};
-    bool       held{};
-    const bool pressed = ImGui::ButtonBehavior(ImRect(min, max), handleID, &hovered, &held, ImGuiButtonFlags_None);
-    if (hovered) {
-        fill.w = std::min(fill.w * 2.F, 1.F);
-        if (pressed || held) {
-            fill.w = 1.F;
-        }
+    if (hovered || held) {
+        fill.w = held ? 1.F : std::min(fill.w * 2.F, 1.F);
     }
     const auto fillColor      = ImGui::GetColorU32(fill);
     const auto highlightColor = ImGui::GetColorU32(LookAndFeel::instance().palette().flowgraphUiControlHighlight);
@@ -130,7 +136,8 @@ void drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
     drawList->AddRect(min, max, highlightColor, 0, ImDrawFlags_None, 3.F);
     drawList->AddText(font, fontSize, min + iconOffset, highlightColor, dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
 
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F));
+    ImGui::SetCursorPos({cursorBefore.x, cursorBefore.y + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F)});
+    return held;
 }
 
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
@@ -512,21 +519,29 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     // pins get laid out in the space up until this point. after this is reserved space for property connection indicators
     const float pinAreaBottomScreenY = ImGui::GetCursorScreenPos().y;
 
-    if (!controlledProperties.empty()) {
+    const UiGraphBlock* pendingControl = pendingConnectionControlFor(block);
+
+    if (!controlledProperties.empty() || pendingControl) {
         IMW::Font  font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
-        const auto notchColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+        const auto notchColor   = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+        const auto pendingColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection);
 
         // iterate blockSettings rather than controlledProperties to keep the same ordering as the regular properties
         for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
             const auto controllersIt = controlledProperties.find(propertyKey);
-            if (controllersIt == controlledProperties.end()) {
+            const bool pendingHere   = pendingControl && propertyKey == *_uiControlMultiSelectPopup->hoveredProperty();
+            if (controllersIt == controlledProperties.end() && !pendingHere) {
                 continue;
             }
-            const auto& controllers = controllersIt->second;
-            assert(!controllers.empty());
+            const std::span<UiGraphBlock* const> controllers = controllersIt != controlledProperties.end() ? std::span<UiGraphBlock* const>(controllersIt->second) : std::span<UiGraphBlock* const>{};
 
             // draw the first controlling ui component aligned with the property row itself
-            drawUiControlConnectionNotch(controllers.front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+            if (!controllers.empty()) {
+                drawUiControlConnectionNotch(controllers.front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+            } else {
+                // also works if the user is hovering a selection, in which case we show a preview of what properties they are about to select
+                drawUiControlConnectionNotch(pendingControl->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), pendingColor);
+            }
 
             const auto&       currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
             const std::string value                          = valToString(propertyValue);
@@ -536,6 +551,10 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
             // draw more notches if there are other ui controls also controlling this property
             for (const UiGraphBlock* control : controllers | std::views::drop(1)) {
                 const float labelHeight = drawUiControlConnectionNotch(control->blockName, blockScreenPosition, 0.F, notchColor);
+                ImGui::Dummy(ImVec2{0.F, labelHeight});
+            }
+            if (pendingHere && !controllers.empty()) {
+                const float labelHeight = drawUiControlConnectionNotch(pendingControl->blockName, blockScreenPosition, 0.F, pendingColor);
                 ImGui::Dummy(ImVec2{0.F, labelHeight});
             }
         }
@@ -562,8 +581,8 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     if (block.isUiControl()) {
         drawUiControlTargetList(*_graphModel, block);
 
-        if (block.usesTargetMap()) {
-            drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockUniqueName).c_str(), blockSize.x, blockScreenPosition);
+        if (block.usesTargetMap() && drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockUniqueName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
+            _blockDragConnect.emplace(block.blockUniqueName, ImGui::GetMousePos());
         }
     }
 
@@ -601,6 +620,49 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
     ImGui::Dummy(ImVec2(0.f, 0.f));
     return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight};
+}
+
+const UiGraphBlock* FlowgraphEditor::pendingConnectionControlFor(const UiGraphBlock& block) {
+    if (!_uiControlMultiSelectPopup) {
+        return nullptr;
+    }
+    const std::optional<std::string_view> hoveredProperty = _uiControlMultiSelectPopup->hoveredProperty();
+    if (!hoveredProperty) {
+        return nullptr;
+    }
+    const UiGraphBlock* control = _graphModel->recursiveFindBlockByUniqueName(_uiControlMultiSelectPopup->controlUniqueName()).block;
+    if (!control || control == &block) {
+        return nullptr;
+    }
+    return block.isConnectableProperty(*hoveredProperty, control->uiControlCompatibleTypeMap()) ? control : nullptr;
+}
+
+std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) {
+    if (!_blockDragConnect) {
+        return std::nullopt;
+    }
+    auto overlay = _blockDragConnect->createOverlayDescription(drawnBlocks, isCompatibleDropTarget);
+    if (!_blockDragConnect->update(drawnBlocks)) {
+        return overlay;
+    }
+    if (!_blockDragConnect->cancelled()) {
+        if (_blockDragConnect->releasedOnUniqueName().empty()) {
+            _uiControlMultiSelectPopup.emplace(std::string(_blockDragConnect->sourceUniqueName()), *_graphModel);
+        } else {
+            _uiControlPropertyLinkPopup.emplace(std::move(*_blockDragConnect), *_graphModel);
+        }
+    }
+    _blockDragConnect.reset();
+    return overlay;
+}
+
+void FlowgraphEditor::drawUiControlPopups() {
+    if (_uiControlPropertyLinkPopup && _uiControlPropertyLinkPopup->draw(*_graphModel) != components::SelectionPopupState::InProgress) {
+        _uiControlPropertyLinkPopup.reset();
+    }
+    if (_uiControlMultiSelectPopup && _uiControlMultiSelectPopup->draw(*_graphModel) != components::SelectionPopupState::InProgress) {
+        _uiControlMultiSelectPopup.reset();
+    }
 }
 
 void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId) {
@@ -716,16 +778,21 @@ void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
     }
 }
 
-void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
+std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filterBlock*/) {
     auto* rootBlock = this->rootBlock();
     if (!rootBlock) {
-        return;
+        return std::nullopt;
     }
 
     const auto* exportTarget = exportPortTargetBlock();
 
     const std::vector<UiGraphBlock*> graphBlocks = nodeBlocks(*rootBlock, showUiControlBlocks);
     const auto&                      graphEdges  = rootBlock->childEdges;
+
+    const UiGraphBlock* dragSourceControl          = _blockDragConnect ? _graphModel->recursiveFindBlockByUniqueName(_blockDragConnect->sourceUniqueName()).block : nullptr;
+    const auto          isCompatibleWithDragSource = [dragSourceControl](const UiGraphBlock& candidate) { //
+        return dragSourceControl && dragSourceControl != &candidate && !candidate.connectableProperties(dragSourceControl->uiControlCompatibleTypeMap()).empty();
+    };
 
     makeCurrent();
     dropReferencesToDeletedBlocks();
@@ -843,6 +910,12 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
             drawPorts(inputPorts, leftPos, true);
             drawPorts(outputPorts, leftPos + blockSize.x, false);
         }
+
+        // show rectangular highlights for blocks that would be selected by a multi-select, or *could* be selected by a drag select
+        if (pendingConnectionControlFor(*block) || isCompatibleWithDragSource(*block)) {
+            const auto nodePosition = ax::NodeEditor::GetNodePosition(blockId);
+            ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), 0, ImDrawFlags_None, 2.F);
+        }
     }
 
     for (auto& block : graphBlocks) {
@@ -886,6 +959,8 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
         }
     }
 
+    auto dragConnectOverlay = this->handleUiControlDragConnect(graphBlocks, isCompatibleWithDragSource);
+
     // fade out the bounding box effect. though handlePinDrag() may call drawBoundingBoxExterior() and stop this from happening
     this->_wasHoveringBoundingBoxExteriorThisFrame = false;
 
@@ -909,6 +984,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
     } else if (this->_timeSpentHoveringBoundingBoxExterior > 0) {
         this->_timeSpentHoveringBoundingBoxExterior -= ImGui::GetIO().DeltaTime;
     }
+    return dragConnectOverlay;
 }
 
 void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor) {
@@ -937,7 +1013,9 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         // If this is not the enabled (top level editor) just draw the
         // flowgraph and no UI controls
         IMW::Disabled enableOnlyCurrent(!isCurrentEditor);
-        drawGraph(contentSize);
+        if (const auto dragConnectOverlay = drawGraph(contentSize)) {
+            dragConnectOverlay->draw();
+        }
         return;
     }
 
@@ -1066,8 +1144,13 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         }
     }
 
+    // we draw this before we draw the graph, because this may want to request that some nodes be highlighted when the user is hovering certain options
+    drawUiControlPopups();
+
     auto originalFilterBlock = _filterBlock;
-    drawGraph(contentSize);
+    if (const auto dragConnectOverlay = drawGraph(contentSize)) {
+        dragConnectOverlay->draw();
+    }
 
     // don't open properties pane if just clicking on the radio button
     const bool filterRadioPressed = originalFilterBlock != _filterBlock;

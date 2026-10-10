@@ -13,6 +13,7 @@
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
+#include "components/UiControlInteractionComponents.hpp"
 
 #include "GraphModel.hpp"
 
@@ -65,6 +66,17 @@ private:
 
     float                                _timeSpentHoldingPin = 0.0;
     std::optional<ExportPortMessageData> _draggingPinExportRequest;
+
+    // variables for tracking the state of UI control block drag-to-connect actions
+    std::optional<components::BlockDragConnectInteraction> _blockDragConnect;
+    std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
+    std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
+
+    void                drawUiControlPopups();
+    const UiGraphBlock* pendingConnectionControlFor(const UiGraphBlock& block);
+
+    /// Check how the user is interacting with UI blocks, if they are dragging a connection, and what valid blocks are available as targets for it. Returns a description of what to draw
+    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget);
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
@@ -192,7 +204,8 @@ public:
 
     void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
-    void drawGraph(const ImVec2& size);
+    /// Returns a description of what to draw after / above the graph
+    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> drawGraph(const ImVec2& size);
 
     struct NodeDrawResult {
         ImVec2 topLeft;

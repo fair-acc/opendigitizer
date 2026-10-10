@@ -7,6 +7,7 @@
 #include <boost/ut.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
 #include <gnuradio-4.0/Profiler.hpp>
@@ -84,7 +85,9 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
         // draw it here since we can't make FlowgraphPage a friend of the GuiFunc lambda
         if (hasBlocks() && flowgraphPage.editorCount() > 0) {
             auto& editor = flowgraphPage.currentEditor();
-            editor.drawGraph(ImGui::GetContentRegionAvail());
+            if (auto graphOverlay = editor.drawGraph(ImGui::GetContentRegionAvail())) {
+                graphOverlay->draw();
+            }
         }
     }
 
