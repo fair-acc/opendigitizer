@@ -5,8 +5,10 @@
 #include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Logger.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/YamlPmt.hpp>
+#include <gnuradio-4.0/formatter/ValueFormatter.hpp>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -774,6 +776,20 @@ UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const U
     return result;
 }
 
+std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBlock& control) {
+    const std::string                  compatibleTypeMap = control.uiControlCompatibleTypeMap();
+    std::set<std::string, std::less<>> properties;
+    forEachBlockRecursive(rootBlock, [&](UiGraphBlock& candidate) {
+        if (&candidate == &control) {
+            return;
+        }
+        for (auto&& property : candidate.connectableProperties(compatibleTypeMap)) {
+            properties.insert(std::move(property));
+        }
+    });
+    return properties | std::ranges::to<std::vector>();
+}
+
 void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
     UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
     if (!control) {
@@ -935,6 +951,38 @@ void UiGraphModel::saveBlockPositions(gr::property_map& graphData) {
         blockValue = std::move(block);
     }
     graphData["blocks"] = std::move(blocks);
+}
+
+std::string UiGraphBlock::uiControlCompatibleTypeMap() const { return blockSettings.value_or<std::string>("compatible_type_map", std::string{}); }
+
+std::string UiGraphBlock::propertyTypeName(std::string_view property) const {
+    const gr::pmt::Value value = blockSettings.find_value(property, std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
+    if (!value.has_value() || value.is_tensor() || value.is_map()) {
+        return {};
+    }
+    const auto meta = blockSettingsMetaInformation.find(std::string(property));
+    if (meta != blockSettingsMetaInformation.end() && !meta->second.enumValues.empty()) {
+        return "enum";
+    }
+    return gr::pmt::detail::type_name(value);
+}
+
+bool UiGraphBlock::isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const {
+    if (isChart() || property == "description" || property.contains("::")) {
+        return false;
+    }
+    const std::string typeName = propertyTypeName(property);
+    return !typeName.empty() && isCompatibleType(compatibleTypeMap, typeName);
+}
+
+std::vector<std::string> UiGraphBlock::connectableProperties(std::string_view compatibleTypeMap) const {
+    std::vector<std::string> properties;
+    for (const auto& [propertyKey, _] : blockSettings) {
+        if (isConnectableProperty(propertyKey, compatibleTypeMap)) {
+            properties.emplace_back(propertyKey);
+        }
+    }
+    return properties;
 }
 
 bool UiGraphBlock::isUiControl() const {

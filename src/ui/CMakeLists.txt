@@ -430,6 +430,8 @@ add_library(
   FlowgraphPage.cpp
   FlowgraphPage.hpp
   common/ImguiNodeEditorWrap.hpp
+  components/UiControlInteractionComponents.cpp
+  components/UiControlInteractionComponents.hpp
   components/NewBlockSelector.cpp
   components/NewBlockSelector.hpp
   components/NewBlockSelectorFuzzySearch.cpp
