@@ -63,7 +63,7 @@ inline std::expected<flowgraph::Flowgraph, std::string> getFlowgraphFromMessage(
 
 } // namespace opendigitizer::flowgraph
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc2y-extensions" // refl-cpp uses __COUNTER__ issue
 #endif
@@ -72,7 +72,7 @@ ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::FilterContext, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::Flowgraph, serialisedFlowgraph, serialisedUiLayout)
 ENABLE_REFLECTION_FOR(opendigitizer::flowgraph::SerialisedFlowgraphMessage, data);
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
@@ -243,7 +243,7 @@ struct FreqDomainContext {
 
 } // namespace opendigitizer::acq
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc2y-extensions" // refl-cpp uses __COUNTER__ issue
 #endif
@@ -256,7 +256,7 @@ ENABLE_REFLECTION_FOR(opendigitizer::acq::AcquisitionSpectra, selectedFilter, ac
 ENABLE_REFLECTION_FOR(opendigitizer::acq::TimeDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, preSamples, postSamples, maximumWindowSize, snapshotDelay, contentType)
 ENABLE_REFLECTION_FOR(opendigitizer::acq::FreqDomainContext, channelNameFilter, acquisitionModeFilter, triggerNameFilter, maxClientUpdateFrequencyFilter, contentType)
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
