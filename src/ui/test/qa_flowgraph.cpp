@@ -422,6 +422,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
     }
 
     static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control, ImVec2 dropScreenPos) {
+        // avoid the edit panel covering things which might happen depending on previous UI state, maybe there was just a drag going on and releasing caused a block to be selected
+        editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
+        ctx->Yield();
         ctx->MouseTeleportToPos(centerUiControlDragHandleInView(ctx, editor, control));
         ctx->Yield();
         ctx->MouseDown(ImGuiMouseButton_Left);
@@ -465,6 +468,20 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
     }
 
     static std::string getTargetMapForBlock(const char* controlName) { return setting(controlName, "target_map").value_or(std::string{}); }
+
+    /// Drags the selection from top left corner to bottom right. Probably only call after NavigateToContent, when the top left and bottom right are empty space and therefore clickable for selection
+    static void selectAllVisibleNodes(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+        const auto*  context = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
+        const ImRect view    = context->GetRect();
+        const ImVec2 inset{4.f, 4.f};
+        ctx->MouseTeleportToPos(view.Min + inset);
+        ctx->Yield();
+        ctx->MouseDown(ImGuiMouseButton_Left);
+        ctx->MouseLiftDragThreshold(ImGuiMouseButton_Left);
+        ctx->MouseMoveToPos(view.Max - inset);
+        ctx->MouseUp(ImGuiMouseButton_Left);
+        ctx->Yield();
+    }
 
     static void finishUiControlTest() {
         g_state.flowgraphPage.showEditorControls = true;
@@ -1581,6 +1598,58 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     clickCanvasItem(ctx, editor, "**/sinkA.filterButton");
                     expect(editor._filterBlock == nullptr);
                 };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks stay in the root graph when a selection which contains them is grouped");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
+
+                constexpr std::array regularBlockNames{"clockSource1", "signalGenerator1", "sink1"};
+                constexpr std::array controlBlockNames{"controlNumber", "controlToggle", "controlText", "controlText2", "controlTrigger"};
+                const auto           uniqueNamesOf = [](const auto& blockNames) {
+                    std::vector<std::string> uniqueNames;
+                    for (const char* blockName : blockNames) {
+                        const DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+                        expect(block != nullptr) << fatal << blockName << " is in the root graph before grouping";
+                        uniqueNames.push_back(block->blockUniqueName);
+                    }
+                    return uniqueNames;
+                };
+                const std::vector<std::string> regularUniqueNames = uniqueNamesOf(regularBlockNames);
+                const std::vector<std::string> controlUniqueNames = uniqueNamesOf(controlBlockNames);
+
+                selectAllVisibleNodes(ctx, editor);
+                auto selectedUniqueNames = editor.selectedBlockUniqueNames();
+                auto allUniqueNames      = regularUniqueNames;
+                allUniqueNames.insert(allUniqueNames.end(), controlUniqueNames.cbegin(), controlUniqueNames.cend());
+                std::ranges::sort(selectedUniqueNames);
+                std::ranges::sort(allUniqueNames);
+                expect(selectedUniqueNames == allUniqueNames) << fatal << "selection should include the UI control blocks";
+
+                clickInBlockContextMenu(ctx, editor, findRootChildByName("signalGenerator1"), "Group blocks");
+                expect(waitForRepliesOnEndpoint(ctx, gr::scheduler::property::kBlocksGrouped)) << fatal << "the scheduler reports that grouping was successful";
+
+                g_state.waitUntil(ctx, "non-ui blocks have been grouped normally", [&regularUniqueNames] {
+                    DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                    return subgraph && std::ranges::all_of(regularUniqueNames, [subgraph](const std::string& uniqueName) { //
+                        return subgraph->findBlockByUniqueName(uniqueName) != nullptr && findRootChildByUniqueName(uniqueName) == nullptr;
+                    });
+                });
+
+                DigitizerUi::UiGraphBlock* subgraph = findSubgraphInCurrentRoot();
+                for (const std::string& uniqueName : controlUniqueNames) {
+                    const DigitizerUi::UiGraphBlock* control = findRootChildByUniqueName(uniqueName);
+                    expect(control != nullptr) << fatal << uniqueName << " is a ui control which is a child of the root graph";
+                    expect(subgraph->findBlockByUniqueName(uniqueName) == nullptr) << uniqueName << " is a ui control which is not present in the subgraph created by grouping";
+                }
+                expect(eq(g_state.currentRootBlock().childBlocks.size(), controlBlockNames.size() + 1UZ)) << "the root graph holds the UI control blocks and the new subgraph";
 
                 finishUiControlTest();
             };

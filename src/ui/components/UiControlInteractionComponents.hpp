@@ -192,6 +192,22 @@ bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
 /// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
 void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control);
 
+/// Width of the area to the left of the block which is reserved for UI control connection labels
+/// Must be called while the editor is active
+[[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block);
+
+/// Spacing between the UI control block region and the rest of the graph, and between the blocks within it
+constexpr float kUiControlRegionGap = 16.0f;
+
+/// Sets UI control blocks' positions based on the number of UI blocks and the region occupied by non-UI blocks.
+/// This creates a wrapped row at the top of the graph view which is separate from the regular block nodes
+/// Each block is given extra room on its left for UI control connection source labels
+/// Must be called while the editor is active
+[[nodiscard]] std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(UiGraphModel& graphModel, std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds);
+
+/// Must be called while the editor is active, outside of a node
+void drawUiControlRegionBackgroundRect(const ImRect& region);
+
 struct PropertyConnectionIndicator {
     std::string propertyName;
     std::string blockName;
