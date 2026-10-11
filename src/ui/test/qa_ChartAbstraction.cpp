@@ -527,6 +527,8 @@ int main() {
         for (std::size_t i = 0UZ; i < ticks.size(); ++i) {
             expect(approx(ticks[i], decades[i], 1e-12)) << i;
         }
+        expect(axis::symLogDecadeTicks(c, 0.5 * c) == std::vector<double>{0.0}) << "range inside the linear band";
+        expect(axis::symLogDecadeTicks(c, 0.0) == std::vector<double>{0.0}) << "empty range";
     };
 
     // --- Axis-grouping edge-case tests ---

@@ -66,7 +66,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     std::array<std::vector<std::string>, 3UZ>    _xAxisGroups{};
     std::array<std::vector<std::string>, 3UZ>    _yAxisGroups{};
     mutable std::array<std::string, 6UZ>         _unitStringStorage{};
-    mutable std::array<double, 6UZ>              _symLogLinearThresholds{}; // per ImAxis: the SymLog transform reads it while the plot draws
+    std::array<double, 6UZ>                      _symLogLinearThresholds{}; // per ImAxis: the SymLog transform reads it while the plot draws
 
     struct StreamSnapshot {
         std::vector<double> x; // window X, pre-transformed for the active axis scale (double: absolute timestamps lose precision as float)
