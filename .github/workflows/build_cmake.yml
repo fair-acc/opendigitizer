@@ -124,6 +124,7 @@ jobs:
           XDG_RUNTIME_DIR: /tmp/runtime-dir
           SDL_VIDEODRIVER: x11
           SDL_AUDIODRIVER: dummy
+          OPENDIGITIZER_RUN_TESTS_ON_SCREEN: 1
         run: |
           mkdir -p /tmp/runtime-dir
           Xvfb :99 -screen 0 1600x1200x24 &
@@ -139,6 +140,7 @@ jobs:
           XDG_RUNTIME_DIR: /tmp/runtime-dir
           SDL_VIDEODRIVER: x11
           SDL_AUDIODRIVER: dummy
+          OPENDIGITIZER_RUN_TESTS_ON_SCREEN: 1
         run: |
           mkdir -p /tmp/runtime-dir
           Xvfb :99 -screen 0 1600x1200x24 &

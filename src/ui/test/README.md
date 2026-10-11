@@ -1,5 +1,6 @@
 # General
 
+- By default the tests will be run offscreen. Pass `OPENDIGITIZER_RUN_TESTS_ON_SCREEN` to see them. The same effect happens when specifying one of `--keep-gui` or `--interactive`.
 - Pass `--keep-gui` to your test. It will maintain the window open for you, which helps with visual inspection
 - Pass `--interactive`. It will open a dialog where you can run tests manually.
 
