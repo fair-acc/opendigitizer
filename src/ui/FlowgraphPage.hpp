@@ -72,6 +72,9 @@ private:
     std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
     std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
 
+    std::optional<std::string> _focusBlockRequest;
+    void                       focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block) const;
+
     void drawUiControlPopups();
 
     /// Check how the user is interacting with UI blocks, if they are dragging a connection, and what valid blocks are available as targets for it. Returns a description of what to draw
@@ -165,6 +168,7 @@ public:
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _exportPortTargetBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
         _editPaneContext.showNeighboursPreview = true;
+        _editPaneContext.focusBlockRequest     = [this](const std::string& uniqueName) { requestFocusOnBlock(uniqueName); };
 
         if (rootBlock->blockCategory == "ScheduledBlockGroup") {
             if (!rootBlock->childBlocks.empty()) {
@@ -197,6 +201,8 @@ public:
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
 
     void requestRelayout() { _rearrangeRequested = true; }
+
+    void requestFocusOnBlock(std::string uniqueName) { _focusBlockRequest = std::move(uniqueName); }
 
     bool showEditorControls  = true;
     bool showUiControlBlocks = true;

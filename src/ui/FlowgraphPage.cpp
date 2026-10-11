@@ -82,13 +82,6 @@ auto displayedPorts(const UiGraphBlock& block, const std::vector<UiGraphPort>& p
     return result;
 }
 
-void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
-    for (const auto& child : root.childBlocks) {
-        fn(*child);
-        forEachBlockRecursive(*child, fn);
-    }
-}
-
 // Returns true if the given UI control block would connect to the given block-property pair
 bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_view hoveredProperty, const UiGraphBlock& block) { //
     return &control != &block && block.isConnectableProperty(hoveredProperty, control.uiControlCompatibleTypeMap());
@@ -801,6 +794,18 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         _fitJustApplied = true;
     }
 
+    if (_focusBlockRequest) {
+        if (auto* focusBlock = _graphModel->recursiveFindBlockByUniqueName(*_focusBlockRequest).block) {
+            const auto focusNodeSize = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(focusBlock));
+            if (focusNodeSize.x > 0.f && focusNodeSize.y > 0.f) {
+                focusOnBlockWithDefaultZoomLevel(*focusBlock);
+            } else {
+                assert(focusNodeSize.x <= 0.f && focusNodeSize.y <= 0.f && "expected UI control blocks to be drawn in every editor or subgraph, so Jump to Control action can always work");
+            }
+        }
+        _focusBlockRequest.reset();
+    }
+
     const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
     for (auto& edge : graphEdges) {
         const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
@@ -1273,6 +1278,23 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedB
 
     const float viewMargin = std::max(visibleSize.x, visibleSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
     auto*       editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
+    editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
+}
+
+void FlowgraphEditor::focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block) const {
+    const auto   blockId  = ax::NodeEditor::NodeId(std::addressof(block));
+    const ImVec2 position = ax::NodeEditor::GetNodePosition(blockId);
+    const ImVec2 size     = ax::NodeEditor::GetNodeSize(blockId);
+
+    // NavigateTo will add a margin around the navigated-to region. The margin is equal to its larger side times this fraction.
+    // We use this value to compensate for that so we actually see the target block at a zoom level of 1.0
+    constexpr float kNavigationZoomMargin = 0.1f;
+
+    const ImVec2 viewSize = ax::NodeEditor::GetScreenSize();
+    const ImVec2 centre   = position + size * 0.5f;
+    const ImRect visible(centre - viewSize * 0.5f, centre + viewSize * 0.5f);
+    const float  viewMargin = std::max(viewSize.x, viewSize.y) * kNavigationZoomMargin / (2.f * (1.f + kNavigationZoomMargin));
+    auto*        editor     = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ax::NodeEditor::GetCurrentEditor());
     editor->NavigateTo(ImRect(visible.Min + ImVec2(viewMargin, viewMargin), visible.Max - ImVec2(viewMargin, viewMargin)), true);
 }
 
