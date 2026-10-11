@@ -304,6 +304,15 @@ public:
         return std::visit(gr::meta::overloaded{graphCase, schedulerCase, elseCase}, _rootBlock->blockCategoryInfo);
     }
 
+    /// returns the scheduler and graph which contain the block
+    /// might not be the ownersForRoot(), for example for UI control blocks, which are always present in the UI but are always owned by the root graph
+    static std::optional<SchedulerGraphPair> ownersFor(const UiGraphBlock& block) {
+        if (!block.parentBlock) {
+            return {};
+        }
+        return SchedulerGraphPair{block.parentBlock->ownerSchedulerUniqueName(), block.parentBlock->blockUniqueName};
+    }
+
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
     std::function<void(UiGraphBlock*)> requestGraphEdit;

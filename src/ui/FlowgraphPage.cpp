@@ -28,15 +28,18 @@
 #include "components/Splitter.hpp"
 #include "components/YesNoPopup.hpp"
 
-#include "utils/TransparentStringHash.hpp"
-
 #include "scope_exit.hpp"
 
 using namespace std::string_literals;
 
 namespace {
-[[nodiscard]] std::vector<DigitizerUi::UiGraphBlock*> nodeBlocks(const DigitizerUi::UiGraphBlock& root, bool withUiControls) {
-    return root.childBlocks | std::views::filter([withUiControls](const auto& child) { return !child->isChart() && (withUiControls || !child->isUiControl()); }) | std::views::transform([](const auto& child) { return child.get(); }) | std::ranges::to<std::vector>();
+[[nodiscard]] std::vector<DigitizerUi::UiGraphBlock*> nodeBlocks(const DigitizerUi::UiGraphBlock& root) {
+    return root.childBlocks | std::views::filter([](const auto& child) { return !child->isChart() && !child->isUiControl(); }) | std::views::transform([](const auto& child) { return child.get(); }) | std::ranges::to<std::vector>();
+}
+
+// UI control blocks only exist in the root graph
+[[nodiscard]] std::vector<DigitizerUi::UiGraphBlock*> uiControlBlocks(DigitizerUi::UiGraphModel& graphModel) {
+    return graphModel.rootGraphBlock()->childBlocks | std::views::filter([](const auto& child) { return child->isUiControl(); }) | std::views::transform([](const auto& child) { return child.get(); }) | std::ranges::to<std::vector>();
 }
 
 bool isPortConnected(const DigitizerUi::UiGraphPort& port, const std::vector<DigitizerUi::UiGraphEdge>& edges) {
@@ -620,8 +623,9 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
     const auto* exportTarget = exportPortTargetBlock();
 
-    const std::vector<UiGraphBlock*> graphBlocks = nodeBlocks(*rootBlock, showUiControlBlocks);
-    const auto&                      graphEdges  = rootBlock->childEdges;
+    const std::vector<UiGraphBlock*> graphBlocks   = nodeBlocks(*rootBlock);
+    const std::vector<UiGraphBlock*> controlBlocks = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
+    const auto&                      graphEdges    = rootBlock->childEdges;
 
     const std::optional<std::string_view> multiSelectHoveredProperty = _uiControlMultiSelectPopup ? _uiControlMultiSelectPopup->hoveredProperty() : std::nullopt;
     const UiGraphBlock*                   multiSelectControl         = multiSelectHoveredProperty ? _graphModel->recursiveFindBlockByUniqueName(_uiControlMultiSelectPopup->controlUniqueName()).block : nullptr;
@@ -677,14 +681,19 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         }
     };
 
+    // the UI connection labels need to be added to the bounding box of the block so that auto-layout takes them into account
+    const auto addBlockToBoundingBox = [this, &addRectangleToBoundingBox](const UiGraphBlock& block, ImVec2 blockPosition) {
+        const ImVec2 labelsSize{components::uiControlConnectionLabelsWidth(*_graphModel, block), 0.F};
+        addRectangleToBoundingBox(blockPosition - labelsSize, ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(&block)) + labelsSize);
+    };
+
     // to save result of expensive recursion
     std::vector<ax::NodeEditor::NodeId> filteredOutNodes;
 
     // over-reserved, but minimizes allocations
     filteredOutNodes.reserve(_filterBlock ? graphBlocks.size() : 0);
 
-    // Draw every block before measuring and arranging.
-    for (auto& block : graphBlocks) {
+    const auto drawBlock = [&](UiGraphBlock* block) {
         const auto blockId     = ax::NodeEditor::NodeId(block);
         auto       inputPorts  = displayedPorts(*block, block->inputPorts());
         auto       outputPorts = displayedPorts(*block, block->outputPorts());
@@ -714,11 +723,6 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             ax::NodeEditor::Suspend();
             ImGui::SetTooltip("Filter");
             ax::NodeEditor::Resume();
-        }
-
-        // Update bounding box
-        if (block->storedXY) {
-            addRectangleToBoundingBox(ax::NodeEditor::GetNodePosition(blockId), blockSize);
         }
 
         // The input/output pins are drawn after ending the node because otherwise
@@ -766,17 +770,31 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             const auto nodePosition = ax::NodeEditor::GetNodePosition(blockId);
             ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), 0, ImDrawFlags_None, 2.F);
         }
+    };
+
+    // draw blocks before arranging Ui control block region, whose size depends on the space taken up by non-ui-control blocks
+    for (auto& block : graphBlocks) {
+        drawBlock(block);
+        if (block->storedXY) {
+            addBlockToBoundingBox(*block, ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block)));
+        }
     }
 
     for (auto& block : graphBlocks) {
         if (!block->storedXY) {
             const auto   bounds = boundingBox.value_or(defaultBoundingBox);
-            const ImVec2 position{bounds.minX, bounds.maxY + 32.f};
-            const auto   blockId = ax::NodeEditor::NodeId(block);
-            ax::NodeEditor::SetNodePosition(blockId, position);
-            addRectangleToBoundingBox(position, ax::NodeEditor::GetNodeSize(blockId));
+            const ImVec2 position{bounds.minX + components::uiControlConnectionLabelsWidth(*_graphModel, *block), bounds.maxY + 32.f};
+            ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), position);
+            addBlockToBoundingBox(*block, position);
         }
     }
+
+    const auto graphBounds           = boundingBox.value_or(defaultBoundingBox);
+    const auto uiControlRegionBounds = components::calculateAndArrangeUiControlBlocksDesignatedRegion(*_graphModel, controlBlocks, ImRect(ImVec2{graphBounds.minX, graphBounds.minY}, ImVec2{graphBounds.maxX, graphBounds.maxY}));
+    if (uiControlRegionBounds) {
+        components::drawUiControlRegionBackgroundRect(*uiControlRegionBounds);
+    }
+    std::ranges::for_each(controlBlocks, drawBlock);
 
     // the node editor restores the previous view when resized: a fit followed by a resize is repeated
     const ImVec2 canvasSize    = ax::NodeEditor::GetScreenSize();
@@ -821,15 +839,20 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         }
     }
 
-    auto dragConnectOverlay = this->handleUiControlDragConnect(graphBlocks, isCompatibleWithDragSource);
+    std::vector<UiGraphBlock*> drawnBlocks = graphBlocks;
+    drawnBlocks.insert(drawnBlocks.end(), controlBlocks.cbegin(), controlBlocks.cend());
+    auto dragConnectOverlay = this->handleUiControlDragConnect(drawnBlocks, isCompatibleWithDragSource);
 
     // fade out the bounding box effect. though handlePinDrag() may call drawBoundingBoxExterior() and stop this from happening
     this->_wasHoveringBoundingBoxExteriorThisFrame = false;
 
     this->handlePinDrag(
-        [&boundingBox]() {
+        [&boundingBox, &uiControlRegionBounds]() {
             constexpr static std::size_t marginPixels = 10;
             auto                         out          = boundingBox.value_or(defaultBoundingBox);
+            if (uiControlRegionBounds) {
+                out.addRectangle(uiControlRegionBounds->Min, uiControlRegionBounds->GetSize());
+            }
             out.minX -= marginPixels;
             out.minY -= marginPixels;
             out.maxX += marginPixels;
@@ -1026,7 +1049,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
         if (!block) {
             _editPaneContext.setSelectedBlock(nullptr, nullptr);
-        } else if (auto ownerNames = ownersForRoot()) {
+        } else if (auto ownerNames = ownersFor(*block)) {
             _editPaneContext.targetGraph = ownerNames->graph;
             _editPaneContext.setSelectedBlock(block, _graphModel);
             _editPaneContext.closeTime = std::chrono::system_clock::now() + LookAndFeel::instance().editPaneCloseDelay;
@@ -1182,7 +1205,7 @@ void FlowgraphEditor::drawBlockContextMenu() {
         if (IMW::Menu blockTypesMenu("Change type to...", /*enabled*/ true); blockTypesMenu) {
             for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                 if (availableParametrization != typeParams.parametrization && ImGui::MenuItem(availableParametrization.c_str())) {
-                    if (auto owner = ownersForRoot()) {
+                    if (auto owner = ownersFor(*_selectedBlock)) {
                         gr::Message message;
                         message.cmd         = gr::message::Command::Set;
                         message.endpoint    = gr::scheduler::property::kReplaceBlock;
@@ -1206,7 +1229,7 @@ void FlowgraphEditor::drawBlockContextMenu() {
 }
 
 void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) const {
-    const std::vector<UiGraphBlock*> blocks = nodeBlocks(*rootBlock, showUiControlBlocks);
+    const std::vector<UiGraphBlock*> blocks = nodeBlocks(*rootBlock);
 
     std::vector<flowgraph_layout::Size> nodeSizes;
     nodeSizes.reserve(blocks.size());
@@ -1219,7 +1242,7 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) const {
         auto&      block     = *blocks[i];
         const auto blockId   = ax::NodeEditor::NodeId(&block);
         const auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
-        nodeSizes.push_back({.width = std::max(blockSize.x, 80.f), .height = std::max(blockSize.y, 40.f)});
+        nodeSizes.push_back({.width = components::uiControlConnectionLabelsWidth(*_graphModel, block) + std::max(blockSize.x, 80.f), .height = std::max(blockSize.y, 40.f)});
         const auto addPortLocations = [&](const auto& ports) {
             const auto orderedPorts = displayedPorts(block, ports);
             for (std::size_t port = 0UZ; port < orderedPorts.size(); ++port) {
@@ -1250,21 +1273,24 @@ void FlowgraphEditor::sortNodes(UiGraphBlock* rootBlock) const {
     const auto positions = flowgraph_layout::compute(nodeSizes, layoutEdges);
 
     for (std::size_t i = 0UZ; i < blocks.size(); ++i) {
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(blocks[i]), ImVec2(positions[i].x, positions[i].y));
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(blocks[i]), ImVec2(positions[i].x + components::uiControlConnectionLabelsWidth(*_graphModel, *blocks[i]), positions[i].y));
     }
 }
 
 void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedBottomPixels) const {
-    const std::vector<UiGraphBlock*> blocks = nodeBlocks(rootBlock, showUiControlBlocks);
-    if (blocks.empty()) {
+    const std::vector<UiGraphBlock*> blocks        = nodeBlocks(rootBlock);
+    const std::vector<UiGraphBlock*> controlBlocks = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
+    if (blocks.empty() && controlBlocks.empty()) {
         return;
     }
-    ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
-    for (UiGraphBlock* block : blocks) {
+    ImRect     bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
+    const auto addNode = [this, &bounds](const UiGraphBlock* block, float margin) {
         const auto blockId  = ax::NodeEditor::NodeId(block);
         const auto position = ax::NodeEditor::GetNodePosition(blockId);
-        bounds.Add(ImRect(position, position + ax::NodeEditor::GetNodeSize(blockId)));
-    }
+        bounds.Add(ImRect(position - ImVec2{margin + components::uiControlConnectionLabelsWidth(*_graphModel, *block), margin}, position + ax::NodeEditor::GetNodeSize(blockId) + ImVec2{margin, margin}));
+    };
+    std::ranges::for_each(blocks, [&addNode](const UiGraphBlock* block) { addNode(block, 0.f); });
+    std::ranges::for_each(controlBlocks, [&addNode](const UiGraphBlock* block) { addNode(block, components::kUiControlRegionGap); });
 
     // NavigateTo widens the rect by half of this fraction of its larger dimension per side
     constexpr float kNavigationZoomMargin = 0.1f;
@@ -1302,7 +1328,8 @@ void FlowgraphEditor::focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block
 
 void FlowgraphEditor::requestBlockDeletion(const std::string& blockName) {
     // Send message to delete block
-    if (auto owner = ownersForRoot()) {
+    const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(blockName).block;
+    if (auto owner = block ? ownersFor(*block) : std::nullopt) {
         gr::Message message;
         message.endpoint    = gr::scheduler::property::kRemoveBlock;
         message.serviceName = owner->scheduler;
@@ -1333,7 +1360,8 @@ void FlowgraphEditor::requestBlocksGrouping(std::string graphType, const std::ve
 }
 
 void FlowgraphEditor::requestBlocksUngrouping(const std::string& uniqueName) {
-    if (auto owner = ownersForRoot()) {
+    const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(uniqueName).block;
+    if (auto owner = block ? ownersFor(*block) : std::nullopt) {
         gr::Message message;
         message.cmd         = gr::message::Command::Set;
         message.endpoint    = gr::scheduler::property::kUngroupBlocks;
@@ -1387,6 +1415,11 @@ std::vector<std::string> FlowgraphEditor::selectedBlockUniqueNames() {
 }
 
 void FlowgraphEditor::drawGroupingMenuItems(std::vector<std::string> uniqueNames) {
+    // ui control blocks are special and can only exist in the root graph
+    std::erase_if(uniqueNames, [this](const std::string& uniqueName) {
+        const UiGraphBlock* block = _graphModel->recursiveFindBlockByUniqueName(uniqueName).block;
+        return block && block->isUiControl();
+    });
     const bool haveSelection = !uniqueNames.empty();
     const bool singular      = uniqueNames.size() == 1;
     if (ImGui::MenuItem(singular ? "Group block" : "Group blocks", nullptr, false, haveSelection)) {

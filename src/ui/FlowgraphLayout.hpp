@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace DigitizerUi::flowgraph_layout {
@@ -34,5 +35,14 @@ struct Options {
 };
 
 [[nodiscard]] std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vector<Edge>& edges, const Options& options = {});
+
+struct WrappedRows {
+    std::vector<Position> offsets;       // each block's top left point as an offset from the overall region's top left
+    Size                  containerSize; // total size of the area all the blocks fit into
+};
+
+/// Places some elements into a container, from left to right, spaced by a gap, wrapping to the next line when exceeding preferredWidth.
+/// Items will not wrap and instead grow the container *if* minimumContainerWidth is smaller than the gaps plus the size of the first minimumNodesOnFirstRow nodes
+[[nodiscard]] WrappedRows computeFixedBlockWrappingWithGap(std::span<const Size> nodeSizes, float minimumContainerWidth, float gap, std::size_t minimumNodesOnFirstRow);
 
 } // namespace DigitizerUi::flowgraph_layout

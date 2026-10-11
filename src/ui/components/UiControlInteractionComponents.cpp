@@ -2,9 +2,11 @@
 
 #include <cassert>
 #include <cfloat>
+#include <cstdint>
 #include <format>
 #include <ranges>
 
+#include "../FlowgraphLayout.hpp"
 #include "../blocks/TargetMap.hpp"
 #include "HoverRevealedTrashButton.hpp"
 #include "MapUtils.hpp"
@@ -12,6 +14,22 @@
 #include <imgui_node_editor.h>
 
 namespace {
+
+constexpr float kUiControlNotchLengthInwards  = 5.F;
+constexpr float kUiControlNotchLengthOutwards = 5.F;
+
+[[nodiscard]] static ImVec2 uiControlConnectionLabelSize(std::string_view label) {
+    using namespace DigitizerUi;
+    auto* font = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    return font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, label.data(), label.data() + label.size());
+}
+
+/// Distance between the left edge of a block and the right edge of the connection source block label
+/// Must be called while the editor is active
+[[nodiscard]] static float uiControlConnectionLabelGap() {
+    // the part of the node padding not covered by the notch, plus some extra since imgui seems to underestimate text size
+    return ax::NodeEditor::GetStyle().NodePadding.x - kUiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
+}
 
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
 /// from that to whatever text is inside the block at the current cursor position.
@@ -23,19 +41,16 @@ float drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockSt
     const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
 
-    const float notchLengthInwards  = 5.F;
-    const float notchLengthOutwards = 5.F;
-
-    assert(notchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
+    assert(kUiControlNotchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
     auto*      fgDrawList = ImGui::GetWindowDrawList();
     auto*      font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
-    const auto textSize   = font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
-    // outerPadding is whatever inner padding is, plus some extra since imgui seems to underestimate text size
-    const auto outerPadding = blockStartCursorPosition.x - (blockLeft + notchLengthInwards) + ImGui::GetStyle().ItemInnerSpacing.x;
-    const auto centerY      = ImGui::GetCursorScreenPos().y + ((rowHeight > 0.F ? rowHeight : textSize.y) / 2.F);
+    const auto textSize   = uiControlConnectionLabelSize(outsideLabel);
+    const auto centerY    = ImGui::GetCursorScreenPos().y + ((rowHeight > 0.F ? rowHeight : textSize.y) / 2.F);
 
-    fgDrawList->AddLine(ImVec2{blockLeft - notchLengthOutwards, centerY}, ImVec2{blockLeft + notchLengthInwards, centerY}, color);
-    fgDrawList->AddText(font, font->LegacySize, ImVec2{blockLeft - outerPadding - textSize.x, centerY - (textSize.y / 2.F)}, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    const ImVec2 labelPosition{blockLeft - uiControlConnectionLabelGap() - textSize.x, centerY - (textSize.y / 2.F)};
+
+    fgDrawList->AddLine(ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY}, color);
+    fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     return textSize.y;
 }
 
@@ -198,6 +213,20 @@ void UiControlPropertyLinkPopup::applySelection(UiGraphModel& model) {
     control->setSetting("target_map", targets->toString());
 }
 
+[[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block) {
+    const auto controlledProperties = graphModel.uiControlledProperties(block);
+    if (controlledProperties.empty()) {
+        return 0.F;
+    }
+    float widestLabel = 0.F;
+    for (const auto& controls : controlledProperties | std::views::values) {
+        for (const UiGraphBlock* control : controls) {
+            widestLabel = std::max(widestLabel, uiControlConnectionLabelSize(control->blockName).x);
+        }
+    }
+    return uiControlConnectionLabelGap() + widestLabel;
+}
+
 bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
     const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
@@ -268,6 +297,42 @@ void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& contr
         }
     }
     ImGui::Spacing();
+}
+
+constexpr std::size_t kUiControlRegionMinimumNodesOnFirstRow = 3UZ;
+
+std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(UiGraphModel& graphModel, std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds) {
+    if (controlBlocks.empty()) {
+        return std::nullopt;
+    }
+    const auto nodeSizes = controlBlocks | std::views::transform([&graphModel](const UiGraphBlock* block) {
+        const ImVec2 size = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(block));
+        return flowgraph_layout::Size{.width = uiControlConnectionLabelsWidth(graphModel, *block) + size.x, .height = size.y};
+    }) | std::ranges::to<std::vector>();
+    const auto rows      = flowgraph_layout::computeFixedBlockWrappingWithGap(nodeSizes, graphBounds.GetWidth(), kUiControlRegionGap, kUiControlRegionMinimumNodesOnFirstRow);
+
+    // imgui node editor floors node positions internally
+    const ImVec2 topLeft = ImFloor(ImVec2{graphBounds.Min.x, graphBounds.Min.y - kUiControlRegionGap - rows.containerSize.height});
+    for (std::size_t i = 0UZ; i < controlBlocks.size(); ++i) {
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(controlBlocks[i]), ImFloor(topLeft + ImVec2{rows.offsets[i].x + uiControlConnectionLabelsWidth(graphModel, *controlBlocks[i]), rows.offsets[i].y}));
+    }
+    return ImRect(topLeft, topLeft + ImVec2{rows.containerSize.width, rows.containerSize.height});
+}
+
+// imgui node editor composites this draw channel index between the grid and
+// the blocks of the node editor. see c_BackgroundChannel_SelectionRect
+constexpr int kNodeEditorBackgroundDrawChannel = 5;
+
+void drawUiControlRegionBackgroundRect(const ImRect& region) {
+    constexpr std::uint8_t fillAlpha = 0x33;
+    const std::uint32_t    opaque    = LookAndFeel::getColorU32Opaque(&Palette::flowgraphUiControlPendingConnection);
+    auto* const            drawList  = ImGui::GetWindowDrawList();
+
+    const int blockDrawChannel = drawList->_Splitter._Current;
+    drawList->ChannelsSetCurrent(kNodeEditorBackgroundDrawChannel);
+    drawList->AddRectFilled(region.Min, region.Max, rgbToImGuiABGR(opaque, fillAlpha));
+    drawList->AddRect(region.Min, region.Max, rgbToImGuiABGR(opaque), 0, ImDrawFlags_None, 2.F);
+    drawList->ChannelsSetCurrent(blockDrawChannel);
 }
 
 void drawIncomingPropertyConnectionIndicators(                       //
