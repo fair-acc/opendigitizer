@@ -22,7 +22,7 @@
 
 #include <cmrc/cmrc.hpp>
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include "utils/emscripten_compat.hpp"
 #endif
 #include <plf_colony.h>

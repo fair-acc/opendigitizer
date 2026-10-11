@@ -144,7 +144,7 @@ auto fetch(std::shared_ptr<opencmw::client::RestClient> client, const std::share
         return;
 #endif
     } else {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
         auto          path = std::filesystem::path(storageInfo->path) / name;
         std::ifstream stream(path, std::ios::in);
         if (stream.is_open()) {
@@ -612,7 +612,7 @@ void Dashboard::saveStore(const gr::property_map& headerYaml, const gr::property
         fcommand.callback = [](const opencmw::mdp::Message&) {};
         restClient->request(fcommand);
     } else {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
         auto path = std::filesystem::path(description->storageInfo->path);
 
         std::ofstream stream(path / description->filename, std::ios::out | std::ios::trunc | std::ios::binary);

@@ -73,7 +73,7 @@ struct DashboardsCollection {
             }
 #endif
         } else {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
             namespace fs = std::filesystem;
             const fs::path rootPath{path};
             if (!fs::is_directory(rootPath)) {
