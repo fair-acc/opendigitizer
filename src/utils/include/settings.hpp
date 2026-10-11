@@ -13,7 +13,7 @@
 
 #include <gnuradio-4.0/meta/formatter.hpp>
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
@@ -59,7 +59,7 @@ struct Settings {
     std::string           basePath;
     bool                  checkCertificates{true};
     bool                  darkMode{false};
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     bool editableMode{false};
 #else
     bool editableMode{true}; // running natively
@@ -101,7 +101,7 @@ private:
         wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
         defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
         remoteDashboards  = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);   // Directory the dashboard worker loads the dashboards from
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
         auto        finalURLChar = static_cast<char*>(EM_ASM_PTR({
             var finalURL         = window.location.href;
             var lengthBytes      = lengthBytesUTF8(finalURL) + 1;

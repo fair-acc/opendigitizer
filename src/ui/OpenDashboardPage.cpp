@@ -1248,7 +1248,7 @@ void OpenDashboardPage::drawAddSourcePopup() {
         }
         ImGui::InputText("##sourcePath", &path);
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
         // on emscripten we cannot use local sources
         const bool okEnabled = path.starts_with("https://") || path.starts_with("http://");
 #else

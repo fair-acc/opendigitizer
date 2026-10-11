@@ -87,7 +87,7 @@ public:
     }
 
     void openNewWindow() {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
         std::string script = std::format("window.open('{}').focus()", executable);
         emscripten_run_script(script.c_str());
 #else

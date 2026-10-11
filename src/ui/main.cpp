@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
     gr::globalSchedulerRegistry().insert<gr::scheduler::DepthFirst<gr::scheduler::ExecutionPolicy::multiThreaded>>();
 
     static App app;
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     app.executable = "index.html";
 #else
     app.executable = argv[0];
