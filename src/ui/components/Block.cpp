@@ -9,13 +9,200 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "../GraphModel.hpp"
+#include "../blocks/TargetMap.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/Dialog.hpp"
 #include "Keypad.hpp"
 
 using namespace std::string_literals;
 
+namespace {
+std::size_t countOtherBlocksWithProperty(DigitizerUi::UiGraphModel& model, const DigitizerUi::UiGraphBlock& block, const std::string& property) {
+    std::size_t count = 0UZ;
+    forEachBlockRecursive(model.rootBlock, [&](DigitizerUi::UiGraphBlock& candidate) {
+        if (std::addressof(candidate) != std::addressof(block) && candidate.blockSettings.contains(property)) {
+            ++count;
+        }
+    });
+    return count;
+}
+
+/// find all UI control blocks and return a list of connections they may have to the given block's property
+std::vector<DigitizerUi::components::UiControlConnection> uiControlConnectionsFor(DigitizerUi::UiGraphBlock& block, const std::string& property) {
+    using namespace DigitizerUi;
+    using namespace DigitizerUi::components;
+
+    std::vector<UiControlConnection> connections;
+    if (!block.ownerGraph) {
+        return connections;
+    }
+    const auto propertyNamesToListOfUiControlConnections  = block.ownerGraph->uiControlledProperties(block);
+    const auto uiControlConnectionsForOurPropertyIterator = propertyNamesToListOfUiControlConnections.find(property);
+    if (uiControlConnectionsForOurPropertyIterator == propertyNamesToListOfUiControlConnections.end()) {
+        return connections;
+    }
+    for (DigitizerUi::UiGraphBlock* control : uiControlConnectionsForOurPropertyIterator->second) {
+        const auto targets = control->uiControlTargetMap();
+        if (!targets) {
+            continue;
+        }
+        for (const TargetEntry& entry : targets->entries()) {
+            switch (entry.relationshipToTarget(block.blockName, property)) {
+            case TargetRelationship::TargetingSpecifically:
+                connections.push_back({
+                    .controlUniqueName = control->blockUniqueName,
+                    .controlName       = control->blockName,
+                    .allBlocks         = false,
+                    .keep              = true,
+                });
+                break;
+            case TargetRelationship::TargetingViaGlob:
+                connections.push_back({
+                    .controlUniqueName = control->blockUniqueName,
+                    .controlName       = control->blockName,
+                    .allBlocks         = true,
+                    .keep              = true,
+                });
+                break;
+            case TargetRelationship::NotTargeting: break;
+            }
+        }
+    }
+    return connections;
+}
+
+} // namespace
+
 namespace DigitizerUi::components {
+
+bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
+    UiGraphBlock* block = graphModel ? graphModel->recursiveFindBlockByUniqueName(this->blockUniqueName).block : nullptr;
+    if (!block) {
+        return false;
+    }
+
+    constexpr const char* dialogName = "Modify Connections";
+    if (!std::exchange(this->opened, true)) {
+        ImGui::OpenPopup(dialogName);
+    }
+
+    enum class Action { none, apply, cancel };
+    Action action = Action::none;
+
+    if (auto popup = IMW::ModalPopup(dialogName, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            action = Action::cancel;
+            ImGui::CloseCurrentPopup();
+        }
+        {
+            const std::string globWarning = std::format("Disconnecting this connection will also disconnect {} other controls", countOtherBlocksWithProperty(*graphModel, *block, this->property));
+
+            // reserve room for the warning under every glob connection, so the popup keeps its size when a warning appears
+            const ImGuiStyle& style              = ImGui::GetStyle();
+            const auto        nGlobConnections   = static_cast<float>(std::ranges::count(this->connections, true, &UiControlConnection::allBlocks));
+            const float       listContentsHeight = (static_cast<float>(this->connections.size()) * ImGui::GetFrameHeightWithSpacing()) + (nGlobConnections * ImGui::GetTextLineHeightWithSpacing());
+            const float       maximumListHeight  = ImGui::GetMainViewport()->Size.y * 0.5F;
+            const ImVec2      listSize{
+                std::max(380.F, ImGui::CalcTextSize(globWarning.c_str()).x + (style.WindowPadding.x * 2.F) + style.ScrollbarSize),
+                std::clamp(listContentsHeight + (style.WindowPadding.y * 2.F), 160.F, std::max(160.F, maximumListHeight)),
+            };
+
+            IMW::Child list("##connections", listSize, true, 0);
+            int        index = 0;
+            for (auto& connection : this->connections) {
+                ImGui::Checkbox(std::format("##connected{}", index++).c_str(), &connection.keep);
+                ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
+                ImGui::TextUnformatted(connection.controlName.c_str());
+                ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
+                {
+                    IMW::Font icon(LookAndFeel::instance().fontIconsSolid);
+                    ImGui::TextUnformatted("\u{f061}"); // arrow pointing from the control to its selector
+                }
+                ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
+                ImGui::Text("\"%s:%s\"", connection.allBlocks ? "*" : block->blockName.c_str(), this->property.c_str());
+                if (!connection.keep && connection.allBlocks) {
+                    ImGui::TextDisabled("%s", globWarning.c_str());
+                }
+            }
+        }
+        const float halfWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.F;
+        if (ImGui::Button("Done", ImVec2(halfWidth, 0.F))) {
+            action = Action::apply;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(halfWidth, 0.F))) {
+            action = Action::cancel;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    if (action == Action::apply && graphModel) {
+        for (const auto& connection : this->connections) {
+            if (!connection.keep) {
+                graphModel->removeUiControlConnection(connection.controlUniqueName, connection.allBlocks ? std::string_view("*") : std::string_view(block->blockName), this->property);
+            }
+        }
+    }
+    if (action != Action::none || (this->opened && !ImGui::IsPopupOpen(dialogName))) {
+        return false;
+    }
+    return true;
+}
+
+bool JumpToControlPopup::draw(UiGraphModel* graphModel, std::function<void(const std::string&)> focusBlockCallback) {
+    UiGraphBlock* block = graphModel ? graphModel->recursiveFindBlockByUniqueName(this->blockUniqueName).block : nullptr;
+    if (!block) {
+        return false;
+    }
+
+    constexpr const char* popupName = "Jump to Control";
+    if (!std::exchange(this->opened, true)) {
+        ImGui::OpenPopup(popupName);
+    }
+
+    if (auto popup = IMW::Popup(popupName, 0)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextUnformatted(popupName);
+        ImGui::Separator();
+        {
+            IMW::Child list("##controls", ImVec2(240.F, 140.F), true, 0);
+            const auto controlled    = graphModel->uiControlledProperties(*block);
+            const auto controllersIt = controlled.find(this->property);
+            if (controllersIt != controlled.end()) {
+                for (UiGraphBlock* control : controllersIt->second) {
+                    // using a button instead of a selectable will prevent the selection from closing the popup
+                    if (ImGui::Button(control->blockName.c_str(), ImVec2{0.f, ImGui::GetFrameHeightWithSpacing()}) && focusBlockCallback) {
+                        focusBlockCallback(control->blockUniqueName);
+                    }
+                }
+            }
+        }
+        const float doneWidth = 100.F;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
+        if (ImGui::Button("Done", ImVec2(doneWidth, 0.F))) {
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    if (this->opened && !ImGui::IsPopupOpen(popupName)) {
+        return false;
+    }
+    return true;
+}
+
+std::optional<ModifyUiConnectionsPopup> unlinkUiControlledProperty(UiGraphBlock& block, const std::string& property) {
+    auto connections = uiControlConnectionsFor(block, property);
+    if (connections.size() == 1UZ && !connections.front().allBlocks) {
+        block.ownerGraph->removeUiControlConnection(connections.front().controlUniqueName, block.blockName, property);
+        return std::nullopt;
+    }
+    if (connections.empty()) {
+        return std::nullopt;
+    }
+    return ModifyUiConnectionsPopup{.blockUniqueName = block.blockUniqueName, .property = property, .connections = std::move(connections)};
+}
 
 constexpr const char* addContextPopupId    = "Add Context";
 constexpr const char* removeContextPopupId = "Remove Context";
@@ -149,7 +336,7 @@ static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext&
             BlockNeighboursPreview(panelContext, ImGui::GetContentRegionAvail());
         }
 
-        propertyEditResult = BlockSettingsControls(block);
+        propertyEditResult = BlockSettingsControls(panelContext, block);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
             panelContext.resetTime();
@@ -178,8 +365,8 @@ BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelCont
 
     size = ImGui::GetContentRegionAvail();
 
-    // don't close the panel while the mouse is hovering it or edits are made.
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible()) {
+    // don't close the panel while the mouse is hovering it, edits are made, or one of its dialogs is open
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) || InputKeypad<>::isVisible() || panelContext.modifyConnectionsDialog || panelContext.jumpToControlPopup) {
         panelContext.resetTime();
     }
 
@@ -201,6 +388,13 @@ BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelCont
         using Flags                            = ExportedPropertyList::Flags;
         const auto params                      = ExportedPropertyList::Params{.flags = Flags::DragDropHandle | Flags::ContextMenuButton};
         result.allExportedPropertiesPageResult = panelContext.propertyList.draw(*panelContext.graphModel, params);
+    }
+
+    if (panelContext.modifyConnectionsDialog && !panelContext.modifyConnectionsDialog->draw(panelContext.graphModel)) {
+        panelContext.modifyConnectionsDialog.reset();
+    }
+    if (panelContext.jumpToControlPopup && !panelContext.jumpToControlPopup->draw(panelContext.graphModel, panelContext.focusBlockRequest)) {
+        panelContext.jumpToControlPopup.reset();
     }
     return result;
 }
@@ -316,60 +510,37 @@ IMW::WidgetSize calcEditorSize(const char* label, const std::string& propertyNam
     return {};
 }
 
-/// Function drawSettingRow() became too complex, so this had to be created to
-/// split it in two. These are UI measurements which are shared between drawing
-/// the edit widget on the left and the export and (+/-) button on the right.
-struct BlockSettingRowExportButtonsParams {
-    bool                                                 shouldWrapButtons{};
-    bool                                                 isExported{};
-    ImVec2                                               cursorStart{};
-    float                                                regionAvailable{};
-    float                                                exportButtonWidth{};
-    float                                                assignButtonWidth{};
-    float                                                spacing{};
-    const std::string&                                   exportButtonLabel;
-    const std::string&                                   assignButtonLabel;
-    const std::string&                                   propertyKey;
-    UiGraphBlock&                                        block;
-    decltype(UiGraphBlock::exportedProperties)::iterator exportedPropertyIter{};
-};
-
-static BlockPropertyEditResult drawExportButtons(const BlockSettingRowExportButtonsParams& params) {
-    if (!params.shouldWrapButtons) {
-        ImGui::SameLine(0.f, 0.f);
+/// Drawn in place of the editor of a property which is controlled by a UI control block
+static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelContext, UiGraphBlock& block, const std::string& key) {
+    const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+    {
+        IMW::Font iconFont(LookAndFeel::instance().fontIconsSolid);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("\u{f023}"); // lock
     }
-    ImGui::SetCursorPosX(params.cursorStart.x + params.regionAvailable - params.exportButtonWidth);
-    if (ImGui::Button(params.exportButtonLabel.c_str())) {
-        if (params.isExported) {
-            params.block.exportedProperties.erase(params.exportedPropertyIter);
-        } else {
-            params.block.exportedProperties.try_emplace(params.propertyKey);
+    ImGui::SameLine(0.f, spacing);
+    if (ImGui::Button(std::format("Unlink##unlink_{}", key).c_str())) {
+        panelContext.modifyConnectionsDialog = unlinkUiControlledProperty(block, key);
+    }
+    ImGui::SameLine(0.f, spacing);
+    if (ImGui::Button(std::format("Jump to control##jumpToControl_{}", key).c_str())) {
+        const auto                         connections = uiControlConnectionsFor(block, key);
+        std::set<std::string, std::less<>> uniqueControls;
+        for (const auto& connection : connections) {
+            uniqueControls.insert(connection.controlUniqueName);
+        }
+        if (uniqueControls.size() == 1UZ) {
+            if (panelContext.focusBlockRequest) {
+                panelContext.focusBlockRequest(*uniqueControls.begin());
+            }
+        } else if (!uniqueControls.empty()) {
+            panelContext.jumpToControlPopup = JumpToControlPopup{.blockUniqueName = block.blockUniqueName, .property = key};
         }
     }
-    ImGui::SameLine(0.f, 0.f);
-    ImGui::SetCursorPosX(params.cursorStart.x + params.regionAvailable - (params.exportButtonWidth + params.assignButtonWidth + params.spacing));
-    if (ImGui::Button(params.assignButtonLabel.c_str())) {
-        // re-search in case user can press un-export and (+) at the same time and invalidated the iterator already
-        const auto newExportedIter = params.block.exportedProperties.find(params.propertyKey);
-        if (newExportedIter != std::end(params.block.exportedProperties) && newExportedIter->second.windowId.has_value()) {
-            return BlockPropertyEditResult{
-                .type     = BlockPropertyEditResult::Type::RemoveFromExistingWindow,
-                .block    = std::addressof(params.block),
-                .property = params.propertyKey,
-            };
-        } else {
-            return BlockPropertyEditResult{
-                .type     = BlockPropertyEditResult::Type::AddNewWindow,
-                .block    = std::addressof(params.block),
-                .property = params.propertyKey,
-            };
-        }
-    }
-    return BlockPropertyEditResult{};
 }
 
 /// Returns a value if the row was successfully drawn
-static std::optional<BlockPropertyEditResult> drawSettingRow(const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, int rowIndex) {
+static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, int rowIndex, bool uiControlled) {
     if (!value.is_string() && !value.is_floating_point() && !value.is_integral()) {
         return {}; // unsupported type
     }
@@ -397,37 +568,16 @@ static std::optional<BlockPropertyEditResult> drawSettingRow(const std::string& 
     auto labelResult = std::format_to_n(label, sizeof(label) - 1, "##parameter_{}", rowIndex);
     *labelResult.out = '\0';
 
-    auto        exportedPropertyIter = block.exportedProperties.find(key);
-    const bool  isExported           = exportedPropertyIter != block.exportedProperties.end();
-    const char* visibleExportText    = isExported ? "Un-Export" : "Export";
-    const auto  exportButtonLabel    = std::format("{}##{}", visibleExportText, key);
-
-    const bool  isAssigned              = isExported && exportedPropertyIter->second.windowId.has_value();
-    const char* visibleAssignButtonText = isAssigned ? "-" : "+";
-    const auto  assignButtonLabel       = std::format("{}##assignButton{}", visibleAssignButtonText, key);
-
-    BlockSettingRowExportButtonsParams params{
-        .isExported           = isExported,
-        .cursorStart          = ImGui::GetCursorPos(),
-        .regionAvailable      = ImGui::GetContentRegionAvail().x,
-        .exportButtonWidth    = IMW::CalcButtonSize(visibleExportText).x,
-        .assignButtonWidth    = IMW::CalcButtonSize(visibleAssignButtonText).x,
-        .spacing              = ImGui::GetStyle().ItemSpacing.x,
-        .exportButtonLabel    = exportButtonLabel,
-        .assignButtonLabel    = assignButtonLabel,
-        .propertyKey          = key,
-        .block                = block,
-        .exportedPropertyIter = exportedPropertyIter,
-    };
-
-    const auto  editorMinWidth      = calcEditorSize(label, key, value, metaInfo).min.x;
-    const float regionBeforeButtons = params.regionAvailable - params.exportButtonWidth - params.assignButtonWidth - (params.spacing * 2.f);
-    params.shouldWrapButtons        = regionBeforeButtons < editorMinWidth,
-
-    ImGui::SetNextItemWidth(std::max(1.f, params.shouldWrapButtons ? params.regionAvailable : regionBeforeButtons));
-    if (auto newValue = editBlockProperty(label, key, value, metaInfo); newValue.has_value()) {
-        block.setSetting(key, std::move(newValue));
+    ImGui::BeginGroup();
+    if (uiControlled) {
+        drawUiControlledPropertyActions(panelContext, block, key);
+    } else {
+        ImGui::SetNextItemWidth(std::max(1.f, ImGui::GetContentRegionAvail().x));
+        if (auto newValue = editBlockProperty(label, key, value, metaInfo); newValue.has_value()) {
+            block.setSetting(key, std::move(newValue));
+        }
     }
+    ImGui::EndGroup();
 
     if (ImGui::IsItemHovered()) {
         if (metaInfo.minValue && metaInfo.maxValue) {
@@ -437,13 +587,14 @@ static std::optional<BlockPropertyEditResult> drawSettingRow(const std::string& 
         }
     }
 
-    return drawExportButtons(params);
+    return BlockPropertyEditResult{};
 }
 
-BlockPropertyEditResult BlockSettingsControls(UiGraphBlock* block, const ImVec2& /*size*/) {
+BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock* block, const ImVec2& /*size*/) {
     InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
     BlockPropertyEditResult result{};
-    const auto              drawSettingsTable = [&](bool visibleOnly) {
+    const auto              controlledProperties = block->ownerGraph ? block->ownerGraph->uiControlledProperties(*block) : UiGraphModel::ControlledPropertyMap{};
+    const auto              drawSettingsTable    = [&](bool visibleOnly) {
         IMW::StyleColor rowBg(ImGuiCol_TableRowBgAlt, LookAndFeel::instance().palette().rowBgAlt);
 
         if (auto table = IMW::Table(visibleOnly ? "settings_visible" : "settings_more", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg, ImVec2(0, 0), 0.0f)) {
@@ -458,7 +609,7 @@ BlockPropertyEditResult BlockSettingsControls(UiGraphBlock* block, const ImVec2&
                 if (isMarked != visibleOnly) {
                     continue;
                 }
-                if (auto rowResult = drawSettingRow(keyStr, *block, value, rowIndex)) {
+                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, rowIndex, controlledProperties.contains(keyStr))) {
                     rowIndex += 1;
                     if (*rowResult) {
                         result = std::move(*rowResult);
