@@ -422,13 +422,13 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     std::vector<components::PropertyConnectionIndicator> connectionIndicators;
     for (const auto& [property, controls] : controlledProperties) {
         for (const UiGraphBlock* control : controls) {
-            connectionIndicators.push_back({.propertyName = property, .blockName = control->blockName, .color = notchColor});
+            connectionIndicators.push_back({.propertyName = property, .blockName = control->blockName, .blockUniqueName = control->blockUniqueName, .color = notchColor});
         }
     }
     if (connectionPreview) {
         connectionIndicators.push_back(std::move(*connectionPreview));
     }
-    drawIncomingPropertyConnectionIndicators(block, blockScreenPosition, connectionIndicators);
+    drawIncomingPropertyConnectionIndicators(block, blockScreenPosition, connectionIndicators, [this](const components::PropertyConnectionIndicator& indicator) { this->requestFocusOnBlock(indicator.blockUniqueName); });
 
     if (block.isUiControl()) {
         components::drawUiControlTargetList(*_graphModel, block);
@@ -710,9 +710,11 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
         const bool pendingMultiSelect = multiSelectControl && isPendingMultiSelectConnection(*multiSelectControl, *multiSelectHoveredProperty, *block);
         const auto connectionPreview  = pendingMultiSelect ? std::optional(components::PropertyConnectionIndicator{
-                                                                 .propertyName = std::string(*multiSelectHoveredProperty),
-                                                                 .blockName    = multiSelectControl->blockName,
-                                                                 .color        = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
+                                                                 .propertyName    = std::string(*multiSelectHoveredProperty),
+                                                                 .blockName       = multiSelectControl->blockName,
+                                                                 .blockUniqueName = multiSelectControl->blockUniqueName,
+                                                                 .color           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
+                                                                 .isInteractive   = false,
                                                             })
                                                            : std::nullopt;
         const auto blockPosition      = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview);
