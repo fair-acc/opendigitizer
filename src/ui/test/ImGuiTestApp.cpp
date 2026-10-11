@@ -16,6 +16,7 @@
 #include <gnuradio-4.0/PluginLoader.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <span>
@@ -40,7 +41,7 @@ inline static ImGuiTestApp* g_testApp = nullptr;
 
 inline static bool ImGuiApp_CreateWindow(ImGuiApp* /*app*/, const char* windowTitle, ImVec2 windowSize) {
     std::string glslVersion;
-    if (!imgui_helper::initSDL(glslVersion, windowTitle, windowSize)) {
+    if (!imgui_helper::initSDL(glslVersion, windowTitle, windowSize, SDL_WINDOW_HIDDEN)) {
         std::println(stderr, "[Main] SDL3 initialisation failed.");
         return false;
     }
@@ -143,6 +144,9 @@ void ImGuiTestApp::initImGui() {
     _app->SrgbFramebuffer = false;
     _app->ClearColor      = ImVec4(0.120f, 0.120f, 0.120f, 1.000f);
     _app->InitCreateWindow(&(*_app), "Test", ImVec2(1600, 1000));
+    if (_options.useInteractiveMode || _options.keepGui || std::getenv("OPENDIGITIZER_RUN_TESTS_ON_SCREEN") != nullptr) {
+        SDL_ShowWindow(imgui_helper::g_Window);
+    }
     _app->InitBackends(&(*_app));
 
     // Setup test engine
@@ -158,6 +162,8 @@ void ImGuiTestApp::initImGui() {
     test_io.ConfigLogToTTY            = true;
     test_io.ConfigWatchdogWarning     = 60.0f;  // 1 minutes until a we get a warning that a test is taking too long
     test_io.ConfigWatchdogKillTest    = 180.0f; // 3 minutes until a test gets killed
+
+    test_io.MouseSpeed *= 2.0f; // pixels per second, only used when speedMode is not ImGuiTestRunSpeed_Fast
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -265,7 +271,7 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(std::cbegin(args), std::cend(args), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
-        std::println(stdout, "Usage: {} [--keep-gui][--interactive][--filter <test name pattern>]", argv[0]);
+        std::println(stdout, "Usage: {} [--keep-gui][--interactive][--filter <test name pattern>]\nThe window is hidden unless one of these flags is passed or OPENDIGITIZER_RUN_TESTS_ON_SCREEN is set.", argv[0]);
     }
 
     TestOptions options;

@@ -31,7 +31,7 @@ inline static SDL_Window*   g_Window               = nullptr;
 inline static SDL_GLContext g_GLContext            = nullptr;
 inline static bool          g_ImGuiSDL3Initialised = false;
 
-inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, int major, int minor, std::string& glslVersionOut) {
+inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, int major, int minor, std::string& glslVersionOut, SDL_WindowFlags extraWindowFlags = 0) {
     std::println("[Main] Requesting OpenGL context {}.{}", major, minor);
 
 #ifdef __EMSCRIPTEN__
@@ -71,7 +71,7 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, in
         SDL_DestroyWindow(g_Window);
         g_Window = nullptr;
     }
-    g_Window = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), windowFlags);
+    g_Window = SDL_CreateWindow(windowTitle.data(), static_cast<int>(windowSize.x), static_cast<int>(windowSize.y), windowFlags | extraWindowFlags);
     if (!g_Window) {
         std::println(stderr, "[Main] SDL_CreateWindow failed: '{}'", SDL_GetError());
         return false;
@@ -92,13 +92,13 @@ inline bool requestGLContext(std::string_view windowTitle, ImVec2 windowSize, in
     return true;
 }
 
-inline bool initSDL(std::string& glslVersion, std::string_view windowTitle = "OpenDigitizer UI", ImVec2 windowSize = {1280.f, 720.f}) {
+inline bool initSDL(std::string& glslVersion, std::string_view windowTitle = "OpenDigitizer UI", ImVec2 windowSize = {1280.f, 720.f}, SDL_WindowFlags extraWindowFlags = 0) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::println("[Main] SDL_Init failed: '{}'", SDL_GetError());
         return false;
     }
 
-    if (!requestGLContext(windowTitle, windowSize, 3, 3, glslVersion) && !requestGLContext(windowTitle, windowSize, 2, 0, glslVersion)) {
+    if (!requestGLContext(windowTitle, windowSize, 3, 3, glslVersion, extraWindowFlags) && !requestGLContext(windowTitle, windowSize, 2, 0, glslVersion, extraWindowFlags)) {
         std::println("[Main] Could not create any GL context!");
         SDL_Quit();
         return false;

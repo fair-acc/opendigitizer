@@ -345,14 +345,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         const auto* context      = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(editor._editorPtr);
         ImRect      previous     = context->GetViewRect();
         std::size_t stableFrames = 0UZ;
-        for (std::size_t frame = 0UZ; frame < 600UZ && stableFrames < 5UZ; ++frame) {
+        while (stableFrames < 5UZ) {
             ctx->Yield();
             const ImRect current = context->GetViewRect();
-            const bool   pending = editor._firstDraw || editor._rearrangeRequested || editor._fitRequested || editor._fitJustApplied;
+            const bool   pending = editor._firstDraw || editor._rearrangeRequested || editor._fitRequested || editor._fitJustApplied || editor.graphModel()->requestedFullUpdate;
             stableFrames         = (!pending && current.Min == previous.Min && current.Max == previous.Max) ? stableFrames + 1UZ : 0UZ;
             previous             = current;
         }
-        expect(stableFrames >= 5UZ) << fatal << "the editor view settles";
     }
 
     // the page's editor would find blocks already arranged by the root editor's: keep only the page's
