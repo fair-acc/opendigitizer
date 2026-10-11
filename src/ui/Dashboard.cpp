@@ -42,14 +42,14 @@ struct FlowgraphMessage {
     std::string layout;
 };
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc2y-extensions" // refl-cpp uses __COUNTER__ issue
 #endif
 
 ENABLE_REFLECTION_FOR(FlowgraphMessage, flowgraph, layout)
 
-#if defined(__EMSCRIPTEN__) && defined(__clang__)
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
