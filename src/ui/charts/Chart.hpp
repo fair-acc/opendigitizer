@@ -395,7 +395,9 @@ inline void reduceToColumns(std::vector<double>& x, std::vector<double>& y, std:
 // 0 and ±c, ±10c, ±100c ... up to `maxMagnitude`: ImPlot's locator for a custom scale places linear ticks
 [[nodiscard]] inline std::vector<double> symLogDecadeTicks(double linearThreshold, double maxMagnitude) {
     std::vector<double> ticks{0.0};
-    for (double decade = linearThreshold; decade <= maxMagnitude * (1.0 + 1e-9); decade *= 10.0) {
+    const double        decadesAboveThreshold = std::log10(maxMagnitude / linearThreshold) + 1e-9;
+    for (int exponent = 0; exponent <= decadesAboveThreshold; ++exponent) {
+        const double decade = linearThreshold * std::pow(10.0, exponent);
         ticks.insert(ticks.begin(), -decade);
         ticks.push_back(decade);
     }
@@ -2070,11 +2072,11 @@ struct Chart {
         }
     }
 
-    void requestRenderReset() noexcept { _renderResetPending.store(true, std::memory_order_release); }
+    void requestRenderReset() noexcept { _renderResetPending.store(true); }
 
     template<typename Self>
     void applyPendingRenderReset(this Self& self) {
-        if (self._renderResetPending.exchange(false, std::memory_order_acquire)) {
+        if (self._renderResetPending.exchange(false)) {
             self.resetRenderState();
         }
     }
