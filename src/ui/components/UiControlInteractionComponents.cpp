@@ -10,6 +10,7 @@
 #include "../blocks/TargetMap.hpp"
 #include "HoverRevealedTrashButton.hpp"
 #include "MapUtils.hpp"
+#include "OverlayButton.hpp"
 
 #include <imgui_node_editor.h>
 
@@ -34,9 +35,10 @@ constexpr float kUiControlNotchLengthOutwards = 5.F;
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
 /// from that to whatever text is inside the block at the current cursor position.
 /// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
-/// Returns the height of the label.
-float drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color) {
+/// Pass @param interactionId to make the label clickable
+DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
     using namespace DigitizerUi;
+    using namespace DigitizerUi::components;
 
     const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
@@ -49,9 +51,19 @@ float drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockSt
 
     const ImVec2 labelPosition{blockLeft - uiControlConnectionLabelGap() - textSize.x, centerY - (textSize.y / 2.F)};
 
+    UiControlConnectionNotchResult result{.labelHeight = textSize.y};
+    if (interactionId) {
+        const auto label    = components::overlayButtonBehavior(std::format("{}.label", interactionId).c_str(), ImRect{labelPosition, labelPosition + textSize});
+        result.labelClicked = label.clicked;
+        if (label.hovered) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            fgDrawList->AddLine(labelPosition + ImVec2{0.F, textSize.y}, labelPosition + textSize, color);
+        }
+    }
+
     fgDrawList->AddLine(ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY}, color);
     fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
-    return textSize.y;
+    return result;
 }
 
 /// Must be called while the node editor is active so that coordinates (including mouse coordinates) are in canvas space
@@ -335,10 +347,11 @@ void drawUiControlRegionBackgroundRect(const ImRect& region) {
     drawList->ChannelsSetCurrent(blockDrawChannel);
 }
 
-void drawIncomingPropertyConnectionIndicators(                       //
-    UiGraphBlock&                                block,               //
-    ImVec2                                       blockScreenPosition, //
-    std::span<const PropertyConnectionIndicator> indicators           //
+void drawIncomingPropertyConnectionIndicators(                                                      //
+    UiGraphBlock&                                                              block,               //
+    ImVec2                                                                     blockScreenPosition, //
+    std::span<const components::PropertyConnectionIndicator>                   indicators,          //
+    const std::function<void(const components::PropertyConnectionIndicator&)>& onLabelClicked       //
 ) {
     if (indicators.empty()) {
         return;
@@ -352,8 +365,13 @@ void drawIncomingPropertyConnectionIndicators(                       //
             continue;
         }
 
-        const auto drawLeftHandSideNotchAndBlockName = [&](const components::PropertyConnectionIndicator& indicator, float rowHeight) { //
-            return drawUiControlConnectionNotch(indicator.blockName, blockScreenPosition, rowHeight, indicator.color);
+        const auto drawLeftHandSideNotchAndBlockName = [&](const components::PropertyConnectionIndicator& indicator, float rowHeight) {
+            const std::string interactionId = std::format("{}.{}.{}", block.blockName, propertyKey, indicator.blockName);
+            const auto        notch         = drawUiControlConnectionNotch(indicator.blockName, blockScreenPosition, rowHeight, indicator.color, indicator.isInteractive ? interactionId.c_str() : nullptr);
+            if (notch.labelClicked) {
+                onLabelClicked(indicator);
+            }
+            return notch.labelHeight;
         };
 
         drawLeftHandSideNotchAndBlockName(*indicatorsForProperty.begin(), ImGui::GetTextLineHeight());

@@ -1542,6 +1542,32 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks connections list");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                "the label of the only control block of a property"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    clickCanvasItem(ctx, editor, "**/sinkA.signal_quantity.controlA.label");
+                    waitForSettledView(ctx, editor);
+                    expectBlockCenteredAtDefaultZoom(editor, "controlA");
+                    finishUiControlTest();
+                };
+
+                "when several control blocks control the same property, induvidual labels still work for jumping to control"_test = [ctx] {
+                    for (const char* controlName : {"controlC", "controlD"}) {
+                        auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                        clickCanvasItem(ctx, editor, std::format("**/sinkB.signal_quantity.{}.label", controlName).c_str());
+                        waitForSettledView(ctx, editor);
+                        expectBlockCenteredAtDefaultZoom(editor, controlName);
+                        finishUiControlTest();
+                    }
+                };
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks list their targets and each target has a remove button");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = uiControlGuiFunc;

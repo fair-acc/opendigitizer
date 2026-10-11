@@ -188,6 +188,11 @@ private:
 /// Returns true while a drag is happening and false otherwise
 bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition);
 
+struct UiControlConnectionNotchResult {
+    float labelHeight  = 0.F;
+    bool  labelClicked = false;
+};
+
 /// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
 void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control);
 
@@ -211,15 +216,20 @@ struct PropertyConnectionIndicator {
     std::string propertyName;
     std::string blockName;
 
-    std::uint32_t color = 0;
+    // TODO: remove this when block names are guaranteed unique, just used for ImGui ID
+    std::string blockUniqueName;
+
+    std::uint32_t color         = 0;
+    bool          isInteractive = true;
 };
 
 /// Draw block name and notch and property name, extending over the LHS of the block.
 /// "{indicator.blockName} - {indicator.propertyName}"
-void drawIncomingPropertyConnectionIndicators(                       //
-    UiGraphBlock&                                block,               //
-    ImVec2                                       blockScreenPosition, //
-    std::span<const PropertyConnectionIndicator> indicators           //
+void drawIncomingPropertyConnectionIndicators(                                          //
+    UiGraphBlock&                                                  block,               //
+    ImVec2                                                         blockScreenPosition, //
+    std::span<const PropertyConnectionIndicator>                   indicators,          //
+    const std::function<void(const PropertyConnectionIndicator&)>& onLabelClicked       //
 );
 
 } // namespace DigitizerUi::components
