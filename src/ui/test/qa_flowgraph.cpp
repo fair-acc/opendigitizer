@@ -1564,6 +1564,29 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Filter toggle button of a block");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto&                            editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                const DigitizerUi::UiGraphBlock* sink   = findRootChildByName("sinkA");
+                expect(sink != nullptr) << fatal;
+
+                "clicking the button toggles the filter"_test = [&] {
+                    expect(editor._filterBlock == nullptr) << fatal << "no filter is set after loading";
+                    clickCanvasItem(ctx, editor, "**/sinkA.filterButton");
+                    expect(editor._filterBlock == sink);
+                    captureScreenshot(*ctx);
+                    clickCanvasItem(ctx, editor, "**/sinkA.filterButton");
+                    expect(editor._filterBlock == nullptr);
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "One graph with and without editor controls, as loaded and after a relayout");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = fitGuiFunc;
