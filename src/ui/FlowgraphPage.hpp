@@ -1,21 +1,18 @@
 #pragma once
 
-#include <functional>
-#include <vector>
-
-#include "common/ImguiNodeEditorWrap.hpp"
-#include "common/LookAndFeel.hpp"
-
 #include "Dashboard.hpp"
+#include "GraphModel.hpp"
 
 #include "components/Block.hpp"
-#include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
 #include "components/UiControlInteractionComponents.hpp"
 
-#include "GraphModel.hpp"
+#include <imgui_node_editor.h>
+
+#include <functional>
+#include <vector>
 
 struct TestState;
 struct TestApp;
@@ -317,6 +314,8 @@ public:
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
     std::function<void(UiGraphBlock*)> requestGraphEdit;
+
+    std::function<void(const UiGraphBlock&, float)> drawUiControlWidget;
 };
 
 class FlowgraphPage {
@@ -336,6 +335,7 @@ private:
     std::unique_ptr<SignalSelector> _remoteSignalSelector;
     NewBlockSelector                _newBlockSelector;
 
+    void drawUiControlWidget(const UiGraphBlock& control, float maxWidth);
     void drawNodeEditorTab();
     void drawLocalNodeEditor();
     void drawLocalYamlTab();

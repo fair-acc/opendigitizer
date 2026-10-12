@@ -27,7 +27,10 @@ struct ImControlChoice : ImControl<ImControlChoice> {
         loadValueIfConnectionChanged(value, parsedConfig);
         drawLabelled(layout, [&](float width) {
             const std::string id = "##" + label;
-            IMW::Disabled     nothingToChoose(parsedConfig.aggregateControlledPropertyHints.choices.empty());
+            // we have to disable the dropdown while inside the flowgraph editor because imgui node editor can't handle combo boxes being drawn in nodes.
+            // to fix this we would need to set up a two-pass draw, one in node editor space and one normally. See <https://github.com/thedmd/imgui-node-editor/issues/48>
+            const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
+            IMW::Disabled nothingToChooseOrCannotOpen(parsedConfig.aggregateControlledPropertyHints.choices.empty() || insideNodeEditor);
             ImGui::SetNextItemWidth(width);
             if (auto combo = IMW::Combo(id.c_str(), value.c_str(), 0)) {
                 for (const std::string& choice : parsedConfig.aggregateControlledPropertyHints.choices) {
