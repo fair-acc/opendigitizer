@@ -21,8 +21,9 @@ struct ImControlToggle : ImControl<ImControlToggle> {
     explicit ImControlToggle(gr::property_map initParameters = {}) : ImControl<ImControlToggle>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
+        const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const float         checkboxSize = ImGui::GetFrameHeight();
-        const SizeAndLayout layout       = prepareDraw(config, checkboxSize, checkboxSize, labelWidth());
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, checkboxSize, checkboxSize, labelWidth());
         drawLabelled(layout, [this](float) {
             const std::string id = "##" + label;
             if (ImGui::Checkbox(id.c_str(), &value)) {

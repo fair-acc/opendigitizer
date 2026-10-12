@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_BLOCKS_IMCONTROL_HPP
 
 #include "../common/ImguiWrap.hpp"
+#include "DrawableBlockConfig.hpp"
 #include "TargetMap.hpp"
 #include "ToolbarBlock.hpp"
 
@@ -65,10 +66,10 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
     /// stack, and returns how to lay things out given config (the toolbar layout constraints) and the other
     /// arguments (this widget's layout constraints)
     /// @param labelPart is 0 for a widget such as a button, something that does not have a separate label component
-    [[nodiscard]] SizeAndLayout prepareDraw(const gr::property_map& config, float naturalWidget, float minimumWidget, float labelPart) {
+    [[nodiscard]] SizeAndLayout prepareDraw(const DrawableBlockConfig& config, float naturalWidget, float minimumWidget, float labelPart) {
         this->applyChangedSettings(); // no work() applies them
-        const float maxWidth  = config.value_or<float>("max_width", std::numeric_limits<float>::max());
-        const bool  showLabel = config.value_or<bool>("show_label", true);
+        const float maxWidth  = config.maxWidth.value_or(std::numeric_limits<float>::max());
+        const bool  showLabel = config.showLabel.value_or(true);
         toolbar::publishWidths(this->unique_name, {.natural = naturalWidget + labelPart, .minimum = minimumWidget + labelPart, .label = labelPart});
         return {.width = std::clamp(maxWidth - (showLabel ? labelPart : 0.f), minimumWidget, naturalWidget), .showLabel = showLabel};
     }
@@ -97,8 +98,7 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
         });
     }
 
-    /// Indiscriminately send a settings update message to every block identified by the target_map.
-    /// It is their job to refuse messages with an incorrect / not matching type
+    /// Send a settings update message to every block identified by the target_map
     void sendToTargets(const auto& payload) {
         const auto targets = TargetMap::fromString(target_map);
         if (!targets) {

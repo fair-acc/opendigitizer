@@ -17,7 +17,9 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <ranges>
 #include <set>
+#include <span>
 
 #include "MapUtils.hpp"
 
@@ -776,6 +778,21 @@ UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const U
     return result;
 }
 
+static BlockPropertyHints aggregatePropertyHints(std::span<const UiGraphModel::BlockPointerPropertyNamePair> controlled) {
+    if (controlled.empty()) {
+        return {};
+    }
+    const BlockPropertyHints          firstHints = controlled.front().block->propertyHints(controlled.front().property);
+    std::optional<BlockPropertyHints> aggregate  = firstHints;
+    for (const auto& [block, property] : controlled | std::views::drop(1)) {
+        aggregate = aggregate->intersection(block->propertyHints(property));
+        if (!aggregate) {
+            return {.choices = firstHints.choices};
+        }
+    }
+    return *aggregate;
+}
+
 std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBlock& control) {
     const std::string                  compatibleTypeMap = control.uiControlCompatibleTypeMap();
     std::set<std::string, std::less<>> properties;
@@ -788,6 +805,37 @@ std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBl
         }
     });
     return properties | std::ranges::to<std::vector>();
+}
+
+std::vector<UiGraphModel::BlockPointerPropertyNamePair> UiGraphModel::resolveControlledProperties(const UiGraphBlock& control, const TargetMap& targetMap) {
+    std::vector<BlockPointerPropertyNamePair> result;
+    for (const TargetEntry& entry : targetMap.entries()) {
+        recursiveForEachBlock([&control, &entry, &result](const FindBlockResult& element) {
+            const bool identified = element.block != &control && entry.relationshipToTarget(element.block->blockName, entry.propertyName) != TargetRelationship::NotTargeting && !element.block->propertyTypeName(entry.propertyName).empty();
+            if (identified) {
+                result.push_back({.block = element.block, .property = entry.propertyName});
+            }
+            return VisitorResult::Recurse;
+        });
+    }
+    return result;
+}
+
+void UiGraphModel::aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control) {
+    const auto controlled                   = resolveControlledProperties(control).value_or(std::vector<BlockPointerPropertyNamePair>{});
+    config.firstControlledProperty          = firstControlledPropertyConfig(controlled);
+    config.aggregateControlledPropertyHints = aggregatePropertyHints(controlled);
+}
+
+DrawableBlockConfig::ControlledProperty UiGraphModel::firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled) {
+    if (controlled.empty()) {
+        return {};
+    }
+    const auto& [target, property] = controlled.front();
+    return {
+        .value = target->blockSettings.find_value(std::string_view(property)).value_or(gr::pmt::Value{}),
+        .hints = target->propertyHints(property),
+    };
 }
 
 void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
@@ -983,6 +1031,14 @@ std::vector<std::string> UiGraphBlock::connectableProperties(std::string_view co
         }
     }
     return properties;
+}
+
+BlockPropertyHints UiGraphBlock::propertyHints(std::string_view property) const {
+    const auto meta = blockSettingsMetaInformation.find(std::string(property));
+    if (meta == blockSettingsMetaInformation.end()) {
+        return {};
+    }
+    return {.min = meta->second.minValue, .max = meta->second.maxValue, .choices = meta->second.enumValues};
 }
 
 bool UiGraphBlock::isUiControl() const {
