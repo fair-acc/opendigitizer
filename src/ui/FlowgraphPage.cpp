@@ -428,7 +428,16 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     if (connectionPreview) {
         connectionIndicators.push_back(std::move(*connectionPreview));
     }
-    drawIncomingPropertyConnectionIndicators(block, blockScreenPosition, connectionIndicators, [this](const components::PropertyConnectionIndicator& indicator) { this->requestFocusOnBlock(indicator.blockUniqueName); });
+
+    std::optional<std::string> propertyToUnlink; // defer unlinking until drawing is done, since drawing observes block settings
+    drawIncomingPropertyConnectionIndicators(
+        block, blockScreenPosition, connectionIndicators,                                                                           //
+        [this](const components::PropertyConnectionIndicator& indicator) { this->requestFocusOnBlock(indicator.blockUniqueName); }, //
+        [&propertyToUnlink](const components::PropertyConnectionIndicator& indicator) { propertyToUnlink = indicator.propertyName; });
+
+    if (propertyToUnlink) {
+        _modifyUiConnectionsPopup = components::unlinkUiControlledProperty(block, *propertyToUnlink);
+    }
 
     if (block.isUiControl()) {
         components::drawUiControlTargetList(*_graphModel, block);
@@ -499,6 +508,9 @@ void FlowgraphEditor::drawUiControlPopups() {
     }
     if (_uiControlMultiSelectPopup && _uiControlMultiSelectPopup->draw(*_graphModel) != components::SelectionPopupState::InProgress) {
         _uiControlMultiSelectPopup.reset();
+    }
+    if (_modifyUiConnectionsPopup && !_modifyUiConnectionsPopup->draw(_graphModel)) {
+        _modifyUiConnectionsPopup.reset();
     }
 }
 

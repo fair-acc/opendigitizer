@@ -71,6 +71,7 @@ private:
     std::optional<components::BlockDragConnectInteraction> _blockDragConnect;
     std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
     std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
+    std::optional<components::ModifyUiConnectionsPopup>    _modifyUiConnectionsPopup;
 
     std::optional<std::string> _focusBlockRequest;
     void                       focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block) const;
