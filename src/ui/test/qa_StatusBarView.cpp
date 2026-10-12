@@ -19,7 +19,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -81,6 +83,17 @@ std::uint64_t nowNanos() { return static_cast<std::uint64_t>(std::chrono::durati
 std::uint64_t countOf(gr::log::Level level) { return DigitizerUi::logHistory().counts()[static_cast<std::size_t>(level)]; }
 
 bool contains(std::string_view text, std::string_view part) { return text.find(part) != std::string_view::npos; }
+
+std::string readFile(const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::in | std::ios::binary);
+    if (!stream) {
+        return {};
+    }
+
+    std::ostringstream ss;
+    ss << stream.rdbuf();
+    return ss.str();
+}
 
 } // namespace
 
@@ -152,6 +165,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(ctx->ItemExists("**/##errorDot") && ctx->ItemExists("**/##warningDot") && ctx->ItemExists("**/##infoDot"));
             };
 
+            "a multi-line log message stays on one status-bar line"_test = [&] {
+                DigitizerUi::logHistory().clear();
+                gr::log::warning("first line\nsecond line");
+                ctx->Yield(2);
+                const ImGuiTestItemInfo line = ctx->ItemInfo("**/###statusLine");
+                expect(!contains(line.DebugLabel, "\n")) << line.DebugLabel;
+                expect(contains(line.DebugLabel, "first line second line")) << line.DebugLabel;
+                const float lineHeight = line.RectFull.Max.y - line.RectFull.Min.y;
+                expect(lineHeight <= ImGui::GetFrameHeight() + 1.f) << std::format("status line height {}, frame height {}", lineHeight, ImGui::GetFrameHeight());
+            };
+
             "a notification shows in the bar and as a toast"_test = [&] {
                 DigitizerUi::logHistory().clear();
                 const auto toastsBefore = ImGui::notifications.size();
@@ -169,11 +193,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->Yield(2);
                 ctx->ItemClick("**/###statusLine", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
                 ctx->Yield(2);
-                expect(ctx->ItemExists("**/Clear")) << fatal << "the log popup is open";
-                const ImGuiWindow* logWindow = ctx->ItemInfo("**/Clear").Window;
+                expect(ctx->ItemExists("**/clearLogs")) << fatal << "the log popup is open";
+                const ImGuiWindow* logWindow = ctx->ItemInfo("**/clearLogs").Window;
                 const ImGuiWindow* barWindow = ctx->ItemInfo("**/###statusLine").Window;
                 expect(std::abs(logWindow->Size.x - barWindow->Size.x) < 1.f && std::abs(logWindow->Pos.x - barWindow->Pos.x) < 1.f) << std::format("the log spans the bar: {} px at {}, bar {} px at {}", logWindow->Size.x, logWindow->Pos.x, barWindow->Size.x, barWindow->Pos.x);
-                ctx->ItemClick("**/Clear", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->ItemClick("**/clearLogs", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
                 ctx->Yield(2);
                 expect(DigitizerUi::logHistory().snapshot().empty()) << "history cleared";
                 expect(eq(countOf(gr::log::Level::error) + countOf(gr::log::Level::warning), 0UZ));
@@ -208,10 +232,75 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_C);
                 const std::string shortcut = ImGui::GetClipboardText();
                 expect(!contains(shortcut, "alpha") && contains(shortcut, "beta") && !contains(shortcut, "gamma")) << "Ctrl+C: " << shortcut;
+                ctx->ItemInputValue("**/##logTextFilter", "beta");
+                ctx->Yield(2);
+                ctx->ItemClick("**/###copyLog", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                const std::string filtered = ImGui::GetClipboardText();
+                expect(!contains(filtered, "alpha") && contains(filtered, "beta") && !contains(filtered, "gamma")) << "Filter: " << filtered;
+                ctx->ItemInputValue("**/##logTextFilter", "");
+                ctx->Yield(2);
                 ctx->PopupCloseAll();
                 platform.Platform_GetClipboardTextFn = desktopGetter;
                 platform.Platform_SetClipboardTextFn = desktopSetter;
                 state.viewModeLocked                 = false;
+            };
+
+            "save to file keeps the payload after a failed start, then overwrite confirmation replaces the file"_test = [&] {
+                state.viewModeLocked                      = true;
+                const std::filesystem::path savePath      = std::filesystem::temp_directory_path() / "qa_statusbar_view_log.txt";
+                const std::filesystem::path blockedParent = std::filesystem::temp_directory_path() / "qa_statusbar_view_blocked_parent";
+                const std::filesystem::path invalidPath   = blockedParent / "log.txt";
+                std::filesystem::remove(savePath);
+                std::error_code cleanupError;
+                std::filesystem::permissions(blockedParent, std::filesystem::perms::owner_all, cleanupError);
+                cleanupError.clear();
+                std::filesystem::remove_all(blockedParent, cleanupError);
+                std::filesystem::create_directory(blockedParent);
+                std::filesystem::permissions(blockedParent, std::filesystem::perms::none);
+
+                DigitizerUi::logHistory().clear();
+                gr::log::warning("alpha");
+                gr::log::warning("beta");
+                gr::log::warning("gamma");
+                ctx->Yield(2);
+                ctx->ItemClick("**/###statusLine", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->Yield(2);
+                ctx->ItemInputValue("**/##logTextFilter", "");
+                ctx->Yield(2);
+                expect(ctx->ItemExists("**/###saveLogToFile")) << fatal << "the save button is shown";
+                ctx->ItemClick("**/###saveLogToFile", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->Yield(2);
+                expect(ctx->ItemExists("**/##saveLogPath")) << fatal << "the save popup is open";
+                ctx->ItemInputValue("**/##saveLogPath", invalidPath.string().c_str());
+                ctx->Yield(2);
+                expect(ctx->ItemExists("**/##saveLogPath")) << fatal << "the save popup stays open after a failed start";
+                ctx->ItemInputValue("**/##saveLogPath", savePath.string().c_str());
+                ctx->Yield(2);
+                for (int frame = 0; frame < kMaxFrames && !std::filesystem::exists(savePath); ++frame) {
+                    ctx->Yield();
+                }
+                const std::string savedAll = readFile(savePath);
+                expect(contains(savedAll, "alpha") && contains(savedAll, "beta") && contains(savedAll, "gamma") && contains(savedAll, "warning")) << savedAll;
+
+                ctx->ItemClick("**/###record1", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->Yield(2);
+                ctx->ItemClick("**/###saveLogToFile", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->Yield(2);
+                ctx->ItemInputValue("**/##saveLogPath", savePath.string().c_str());
+                ctx->Yield(2);
+                expect(ctx->ItemExists("**/###saveLogOverwrite")) << fatal << "overwrite confirmation is shown";
+                ctx->ItemClick("**/###saveLogOverwrite", ImGuiMouseButton_Left, ImGuiTestOpFlags_NoFocusWindow);
+                ctx->Yield(2);
+                const std::string savedSelection = readFile(savePath);
+                expect(!contains(savedSelection, "alpha") && contains(savedSelection, "beta") && !contains(savedSelection, "gamma")) << savedSelection;
+
+                std::filesystem::remove(savePath);
+                cleanupError.clear();
+                std::filesystem::permissions(blockedParent, std::filesystem::perms::owner_all, cleanupError);
+                cleanupError.clear();
+                std::filesystem::remove_all(blockedParent, cleanupError);
+                ctx->PopupCloseAll();
+                state.viewModeLocked = false;
             };
 
             "the flowgraph's ImGui status-bar blocks are drawn in graph order, those of other toolkits are not"_test = [&] {
