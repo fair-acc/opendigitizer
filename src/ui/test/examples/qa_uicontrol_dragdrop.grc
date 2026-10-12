@@ -20,7 +20,6 @@ blocks:
       name: controlNumber
       label: Num
       value: 42
-      compatible_type_map: float32
   - id: DigitizerUi::ImControlToggle
     parameters:
       name: controlToggle
