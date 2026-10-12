@@ -35,7 +35,7 @@ constexpr float kUiControlNotchLengthOutwards = 5.F;
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
 /// from that to whatever text is inside the block at the current cursor position.
 /// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
-/// Pass @param interactionId to make the label clickable
+/// Pass @param interactionId to make connection interactable for the Unlink and Jump to Control actions
 DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color, const char* interactionId) {
     using namespace DigitizerUi;
     using namespace DigitizerUi::components;
@@ -61,7 +61,28 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
         }
     }
 
-    fgDrawList->AddLine(ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY}, color);
+    components::OverlayButtonState notch;
+    if (interactionId) {
+        const ImRect notchRect{ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY - (textSize.y / 2.F)}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY + (textSize.y / 2.F)}};
+        notch               = components::overlayButtonBehavior(std::format("{}.unlink", interactionId).c_str(), notchRect);
+        result.notchClicked = notch.clicked;
+    }
+
+    if (notch.hovered || notch.held) {
+        using namespace std::string_view_literals;
+        static constexpr auto unlinkIcon = "\u{f00d}"sv;
+
+        ImFont*      iconFont = LookAndFeel::instance().fontIconsSolid;
+        const float  iconFontSize{textSize.y};
+        const ImVec2 iconSize = [iconFont, iconFontSize] {
+            IMW::FontWithSize fontChange(iconFont, iconFontSize);
+            return ImGui::CalcTextSize(unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
+        }();
+        const auto iconColor = LookAndFeel::getColorU32ImGui(notch.held ? &Palette::flowgraphUiControlUnlinkPressed : &Palette::flowgraphUiControlUnlink);
+        fgDrawList->AddText(iconFont, iconFontSize, ImVec2{blockLeft, centerY} - (iconSize / 2.F), iconColor, unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
+    } else {
+        fgDrawList->AddLine(ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY}, color);
+    }
     fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     return result;
 }
@@ -351,7 +372,8 @@ void drawIncomingPropertyConnectionIndicators(                                  
     UiGraphBlock&                                                              block,               //
     ImVec2                                                                     blockScreenPosition, //
     std::span<const components::PropertyConnectionIndicator>                   indicators,          //
-    const std::function<void(const components::PropertyConnectionIndicator&)>& onLabelClicked       //
+    const std::function<void(const components::PropertyConnectionIndicator&)>& onLabelClicked,      //
+    const std::function<void(const components::PropertyConnectionIndicator&)>& onNotchClicked       //
 ) {
     if (indicators.empty()) {
         return;
@@ -370,6 +392,9 @@ void drawIncomingPropertyConnectionIndicators(                                  
             const auto        notch         = drawUiControlConnectionNotch(indicator.blockName, blockScreenPosition, rowHeight, indicator.color, indicator.isInteractive ? interactionId.c_str() : nullptr);
             if (notch.labelClicked) {
                 onLabelClicked(indicator);
+            }
+            if (notch.notchClicked) {
+                onNotchClicked(indicator);
             }
             return notch.labelHeight;
         };

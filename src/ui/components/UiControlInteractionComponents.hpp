@@ -191,6 +191,7 @@ bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
 struct UiControlConnectionNotchResult {
     float labelHeight  = 0.F;
     bool  labelClicked = false;
+    bool  notchClicked = false;
 };
 
 /// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
@@ -229,9 +230,9 @@ void drawIncomingPropertyConnectionIndicators(                                  
     UiGraphBlock&                                                  block,               //
     ImVec2                                                         blockScreenPosition, //
     std::span<const PropertyConnectionIndicator>                   indicators,          //
-    const std::function<void(const PropertyConnectionIndicator&)>& onLabelClicked       //
+    const std::function<void(const PropertyConnectionIndicator&)>& onLabelClicked,      //
+    const std::function<void(const PropertyConnectionIndicator&)>& onNotchClicked       //
 );
-
 } // namespace DigitizerUi::components
 
 #endif

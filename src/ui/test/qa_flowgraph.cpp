@@ -1568,6 +1568,52 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Using connection indicator to unlink UI control");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                "a single direct connection is removed immediately"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    moveMouseToCanvasItem(ctx, editor, "**/sinkA.signal_quantity.controlA.unlink");
+                    ctx->MouseDown(ImGuiMouseButton_Left);
+                    ctx->Yield();
+                    captureScreenshot(*ctx);
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlA") == "sinkA:signal_quantity"; }, "button should be act on release not act on press");
+                    ctx->MouseUp(ImGuiMouseButton_Left);
+                    ctx->Yield(2);
+                    expect(frontmostPopupId() == 0u) << "no dialog should happen";
+                    g_state.waitUntil(ctx, "entry has been removed from target_map", [] { return getTargetMapForBlock("controlA").empty(); });
+                    finishUiControlTest();
+                };
+
+                "if there's a glob connection, then we open the ModifyConnections popup and let the user handle it explicitly"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    expect(editor._editPaneContext.selectedBlock() == nullptr) << fatal << "the block panel is closed";
+                    clickCanvasItem(ctx, editor, "**/sinkA.signal_name.controlB.unlink");
+                    ctx->SetRef("Modify Connections");
+                    expect(ctx->ItemExists("**/##connected0")) << fatal << "the glob connection is shown in the dialog";
+                    ctx->ItemClick("**/##connected0");
+                    ctx->ItemClick("**/Done");
+                    ctx->SetRef("Test Window");
+                    g_state.waitUntil(ctx, "pressing Done applies the changes", [] { return getTargetMapForBlock("controlB").empty(); });
+                    finishUiControlTest();
+                };
+
+                "if there's multiple non-glob connections, it also open the Modify Connections dialog"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                    clickCanvasItem(ctx, editor, "**/sinkB.signal_quantity.controlD.unlink");
+                    ctx->SetRef("Modify Connections");
+                    expect(ctx->ItemExists("**/##connected0") && ctx->ItemExists("**/##connected1")) << fatal << "both connections are listed";
+                    ctx->ItemClick("**/Cancel");
+                    ctx->SetRef("Test Window");
+                    expectConditionToStayTrue(ctx, [] { return getTargetMapForBlock("controlC") == "sinkB:signal_quantity" && getTargetMapForBlock("controlD") == "sinkB:signal_quantity"; }, "Cancel should cancel the operation");
+                    finishUiControlTest();
+                };
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks list their targets and each target has a remove button");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = uiControlGuiFunc;
