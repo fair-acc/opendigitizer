@@ -24,6 +24,7 @@
 #include "common/LookAndFeel.hpp"
 
 #include "components/DataTypeStyle.hpp"
+#include "components/OverlayButton.hpp"
 #include "components/Splitter.hpp"
 #include "components/YesNoPopup.hpp"
 
@@ -373,6 +374,18 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
+    // draw a filter button icon at the top right of the node area
+    const float filterButtonSideLength = ImGui::GetTextLineHeight();
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2{filterButtonSideLength, filterButtonSideLength});
+    const ImVec4 nodePadding             = ax::NodeEditor::GetStyle().NodePadding;
+    const float  nodeContentRightScreenX = std::max(ImGui::GetItemRectMax().x, blockScreenPosition.x - nodePadding.x + blockSize.x - nodePadding.z);
+    const bool   isFilter                = _filterBlock == std::addressof(block);
+    const auto   filterButton            = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), ImVec2{nodeContentRightScreenX, blockScreenPosition.y}, filterButtonSideLength, isFilter);
+    if (filterButton.clicked) {
+        _filterBlock = isFilter ? nullptr : std::addressof(block);
+    }
+
     const auto controlledProperties = _graphModel->uiControlledProperties(block);
 
     // Draw block properties
@@ -413,24 +426,6 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         connectionIndicators.push_back(std::move(*connectionPreview));
     }
     drawIncomingPropertyConnectionIndicators(block, blockScreenPosition, connectionIndicators);
-
-    {
-        IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
-
-        const bool isFilter = _filterBlock == std::addressof(block);
-
-        // Make radio-button a bit smaller since we also made the properties smaller, looks huge otherwise
-        IMW::StyleVar    styleVar(ImGuiStyleVar_FramePadding, GImGui->Style.FramePadding - ImVec2{0, 3});
-        IMW::ChangeStrId changeId(block.blockUniqueName.c_str());
-
-        if (ImGui::RadioButton("Filter", isFilter)) {
-            if (isFilter) {
-                _filterBlock = nullptr;
-            } else {
-                _filterBlock = std::addressof(block);
-            }
-        }
-    }
 
     if (block.isUiControl()) {
         components::drawUiControlTargetList(*_graphModel, block);
@@ -473,7 +468,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     ImGui::SetCursorScreenPos({position.x, blockBottomY});
 
     ImGui::Dummy(ImVec2(0.f, 0.f));
-    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight};
+    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
 }
 
 std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) {
@@ -713,6 +708,13 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
                                                            : std::nullopt;
         const auto blockPosition      = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview);
         const auto blockSize          = ax::NodeEditor::GetNodeSize(blockId);
+
+        if (blockPosition.filterButtonHovered) {
+            // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
+            ax::NodeEditor::Suspend();
+            ImGui::SetTooltip("Filter");
+            ax::NodeEditor::Resume();
+        }
 
         // Update bounding box
         if (block->storedXY) {
@@ -1012,13 +1014,13 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         dragConnectOverlay->draw();
     }
 
-    // don't open properties pane if just clicking on the radio button
-    const bool filterRadioPressed = originalFilterBlock != _filterBlock;
+    // don't open properties pane if just clicking on the filter button
+    const bool filterButtonPressed = originalFilterBlock != _filterBlock;
 
     const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
-    if (!filterRadioPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+    if (!filterButtonPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
         auto block = n.AsPointer<UiGraphBlock>();
 
