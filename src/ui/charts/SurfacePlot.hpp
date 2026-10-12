@@ -1217,11 +1217,8 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
     void fetchAndPushData() {
         const auto logRange = logFreqRange(parseAxisConfig(this->ui_constraints.value, AxisKind::X));
-        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& f) -> bool {
-            if (!consumeNewData(_lastPushedSampleCount, sink.totalSampleCount())) {
-                return false;
-            }
 
+        auto pushSpectrum = [&](const SpectrumFrame& f) {
             const std::size_t width = logRange ? kLogSpectrumColumns : f.nBins;
             if (_lastSpectrumSize != width || _logModeActive != logRange.has_value()) {
                 _surface.init(width, static_cast<std::size_t>(n_history));
@@ -1239,6 +1236,9 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             } else {
                 _surface.pushRow(f.xValues, f.yValues, f.nBins, timestampFromNanos(f.timestamp));
             }
+        };
+        forEachValidSpectrum(_signalSinks, [&](const auto& sink, const SpectrumFrame& newest) {
+            forEachNewSpectrum(newest, consumeNewData(_lastPushedSampleCount, sink.totalSampleCount()), pushSpectrum);
             return false;
         });
     }

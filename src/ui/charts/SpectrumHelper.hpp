@@ -8,10 +8,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
+
+#include <gnuradio-4.0/DataSet.hpp>
 
 #include "../utils/ShaderHelper.hpp"
 #include <implot.h>
@@ -62,11 +65,25 @@ inline uint32_t densityColour(float density, float maxDensity, std::span<const u
 }
 
 struct SpectrumFrame {
-    std::span<const float> xValues;
-    std::span<const float> yValues;
-    std::size_t            nBins;
-    int64_t                timestamp;
+    std::span<const float>              xValues;
+    std::span<const float>              yValues;
+    std::size_t                         nBins;
+    int64_t                             timestamp;
+    std::span<const gr::DataSet<float>> history;
 };
+
+[[nodiscard]] inline std::optional<SpectrumFrame> toSpectrumFrame(const gr::DataSet<float>& ds) {
+    if (ds.axis_values.empty() || ds.axis_values[0].empty()) {
+        return std::nullopt;
+    }
+    auto xV = ds.axisValues(0);
+    auto yV = ds.signalValues(0);
+    auto n  = std::min(xV.size(), yV.size());
+    if (n == 0) {
+        return std::nullopt;
+    }
+    return SpectrumFrame{xV, yV, n, ds.timestamp, {}};
+}
 
 template<typename Sinks, typename Fn>
 void forEachValidSpectrum(const Sinks& sinks, Fn&& fn) {
@@ -79,18 +96,22 @@ void forEachValidSpectrum(const Sinks& sinks, Fn&& fn) {
         if (allDataSets.empty()) {
             continue;
         }
-        const auto& ds = allDataSets.back();
-        if (ds.axis_values.empty() || ds.axis_values[0].empty()) {
+        auto frame = toSpectrumFrame(allDataSets.back());
+        if (!frame) {
             continue;
         }
-        auto xV = ds.axisValues(0);
-        auto yV = ds.signalValues(0);
-        auto n  = std::min(xV.size(), yV.size());
-        if (n == 0) {
-            continue;
-        }
-        if (!fn(*sink, SpectrumFrame{xV, yV, n, ds.timestamp})) {
+        frame->history = allDataSets;
+        if (!fn(*sink, *frame)) {
             return;
+        }
+    }
+}
+
+template<typename Fn>
+void forEachNewSpectrum(const SpectrumFrame& newest, std::size_t count, Fn&& fn) {
+    for (const auto& ds : newest.history.last(std::min(count, newest.history.size()))) {
+        if (auto frame = toSpectrumFrame(ds)) {
+            fn(*frame);
         }
     }
 }
@@ -186,15 +207,12 @@ inline void plotTrace(const char* label, std::span<const float> xValues, std::sp
         &ctx, static_cast<int>(count));
 }
 
-/// True (and updates `lastCount`) when `currentCount` advanced, i.e. a new spectrum arrived. Gates per-frame
-/// accumulation (hold/decay, waterfall/surface rows) to the data rate, not the UI redraw rate. The DataSet
-/// timestamp can't serve this because gr::blocks::fft::FFT hardcodes it to 0.
-[[nodiscard]] inline bool consumeNewData(std::size_t& lastCount, std::size_t currentCount) noexcept {
-    if (lastCount == currentCount) {
-        return false;
-    }
-    lastCount = currentCount;
-    return true;
+/// Gates per-frame accumulation (hold/decay, waterfall/surface rows) to the data rate, not the UI redraw rate.
+/// The DataSet timestamp can't serve this because gr::blocks::fft::FFT hardcodes it to 0.
+[[nodiscard]] inline std::size_t consumeNewData(std::size_t& lastCount, std::size_t currentCount) noexcept {
+    const std::size_t nNew = currentCount >= lastCount ? currentCount - lastCount : currentCount;
+    lastCount              = currentCount;
+    return nNew;
 }
 
 /// fixed number of log-spaced display columns for a log-frequency spectrum (waterfall/density/surface).
@@ -239,24 +257,22 @@ inline void buildLogBinnedRow(std::span<const float> freqs, std::span<const floa
     }
 }
 
-inline void drawTraceOverlays(TraceAccumulator& traces, bool newData, std::span<const float> xValues, std::span<const float> yValues, std::size_t nBins, double decayTau, const ImVec4& baseColor, bool showMaxHold, bool showMinHold, bool showAverage) {
+inline void drawTraceOverlays(TraceAccumulator& traces, const SpectrumFrame& newest, std::size_t nNew, double decayTau, const ImVec4& baseColor, bool showMaxHold, bool showMinHold, bool showAverage) {
     const bool anyEnabled = showMaxHold || showMinHold || showAverage;
-    if (newData) {
-        traces.update(yValues, nBins, decayTau, anyEnabled);
-    }
+    forEachNewSpectrum(newest, nNew, [&](const SpectrumFrame& f) { traces.update(f.yValues, f.nBins, decayTau, anyEnabled); });
 
     if (traces.empty()) {
         return;
     }
 
     if (showMaxHold) {
-        plotTrace("##maxHold", xValues, traces.maxHold(), nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.9f));
+        plotTrace("##maxHold", newest.xValues, traces.maxHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.9f));
     }
     if (showMinHold) {
-        plotTrace("##minHold", xValues, traces.minHold(), nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.5f));
+        plotTrace("##minHold", newest.xValues, traces.minHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.5f));
     }
     if (showAverage) {
-        plotTrace("##average", xValues, traces.average(), nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.7f));
+        plotTrace("##average", newest.xValues, traces.average(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.7f));
     }
 }
 
@@ -315,6 +331,7 @@ struct DensityHistogram {
     GLuint                              _cpuTexture        = 0;
     ImPlotColormap                      _cpuActiveColormap = -1;
     std::array<uint32_t, kColormapSize> _cpuColormapLut{};
+    bool                                _cpuNeedsRecolour = false;
 
     DensityHistogram() = default;
 
@@ -364,6 +381,7 @@ struct DensityHistogram {
         swap(_cpuTexture, o._cpuTexture);
         swap(_cpuActiveColormap, o._cpuActiveColormap);
         swap(_cpuColormapLut, o._cpuColormapLut);
+        swap(_cpuNeedsRecolour, o._cpuNeedsRecolour);
     }
 
     DensityHistogram(const DensityHistogram&)            = delete;
@@ -751,12 +769,16 @@ void main() {
             _cpuActiveColormap = colormap;
             _cpuColormapLut    = buildColormapLut(colormap);
         }
+        _cpuNeedsRecolour = true;
+    }
 
+    void cpuRecolour() {
         const float maxDensity = std::max(*std::ranges::max_element(_cpuHistogram), 1.f);
         std::ranges::transform(_cpuHistogram, _cpuPixels.begin(), [&](float density) { return densityColour(density, maxDensity, _cpuColormapLut); });
 
         glBindTexture(GL_TEXTURE_2D, _cpuTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(_specBins), static_cast<GLsizei>(_ampBins), GL_RGBA, GL_UNSIGNED_BYTE, _cpuPixels.data());
+        _cpuNeedsRecolour = false;
     }
 
     void resize(std::size_t specBins, std::size_t ampBins) {
@@ -796,6 +818,9 @@ void main() {
         GLuint tex = _gpuAvailable ? _colormapTexture : _cpuTexture;
         if (!tex) {
             return;
+        }
+        if (!_gpuAvailable && _cpuNeedsRecolour) {
+            cpuRecolour();
         }
         auto toTextureId = []<typename TexId = ImTextureID>(GLuint id) -> TexId {
             if constexpr (std::is_pointer_v<TexId>) {
