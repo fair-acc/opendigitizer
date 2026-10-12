@@ -35,7 +35,6 @@ blocks:
       name: uiFrequency1
       label: f1
       unit: Hz
-      compatible_type_map: float32
       value: 2
       min: 0.1
       max: 20
@@ -47,7 +46,6 @@ blocks:
       name: uiAmplitude1
       label: A1
       unit: V
-      compatible_type_map: float32
       value: 1
       min: 0
       max: 2
@@ -59,7 +57,6 @@ blocks:
       name: uiFrequency2
       label: f2
       unit: Hz
-      compatible_type_map: float32
       value: 5
       min: 0.1
       max: 20
@@ -71,7 +68,6 @@ blocks:
       name: uiAmplitude2
       label: A2
       unit: V
-      compatible_type_map: float32
       value: 1
       min: 0
       max: 2

@@ -23,7 +23,9 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
+#include <string>
 #include <vector>
 
 CMRC_DECLARE(ui_test_assets);
@@ -44,12 +46,21 @@ struct TestState : opendigitizer::test::TestDashboardRunner {
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> ratio;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> byte;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> fraction;
-    float                                                            hostWidth = kHostSize.x;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> coarseControl;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> rateControl;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> toggleMinAndMaxControl;
+    bool                                                             isMinMaxEnabledForToggleMinMaxControl = false;
+    float                                                            hostWidth                             = kHostSize.x;
 };
 
 TestState g_state;
 
 TESTING_BLOCK_INSPECTION_UTILS_MAKE_ALL_GLOBAL_STATE_AWARE_OVERLOADS(g_state.dashboard->session)
+
+template<typename T>
+gr::property_map configWithMinMaxHints(T value, std::optional<double> min = std::nullopt, std::optional<double> max = std::nullopt) {
+    return DigitizerUi::DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.min = min, .max = max}}, .aggregateControlledPropertyHints = {.min = min, .max = max}}.toMap().value_or(gr::property_map{});
+}
 
 template<typename T>
 bool sentExactly(const std::vector<gr::Message>& messages, std::string_view target, const std::string& key, T expected) {
@@ -81,12 +92,18 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             ImGui::SetNextWindowPos(kStandalonePos);
             ImGui::SetNextWindowSize(kHostSize);
             IMW::Window standalone("Standalone", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-            std::ignore = g_state.steps->block.draw();
+            std::ignore = g_state.steps->block.draw(configWithMinMaxHints<std::int16_t>(0, -10., 10.));
             ImGui::SameLine();
-            std::ignore = g_state.ratio->block.draw();
+            std::ignore = g_state.ratio->block.draw(configWithMinMaxHints<double>(0.));
             ImGui::SameLine();
-            std::ignore = g_state.byte->block.draw();
-            std::ignore = g_state.fraction->block.draw();
+            std::ignore = g_state.byte->block.draw(configWithMinMaxHints<std::uint8_t>(0, -5., 1000.));
+            std::ignore = g_state.fraction->block.draw(configWithMinMaxHints<double>(0., 0., 1.));
+            ImGui::SameLine();
+            std::ignore = g_state.coarseControl->block.draw(configWithMinMaxHints<float>(0.f, 0., 10.));
+            ImGui::SameLine();
+            std::ignore = g_state.rateControl->block.draw(configWithMinMaxHints<double>(0.));
+            ImGui::SameLine();
+            std::ignore = g_state.toggleMinAndMaxControl->block.draw(g_state.isMinMaxEnabledForToggleMinMaxControl ? configWithMinMaxHints<double>(0., 0., 10.) : configWithMinMaxHints<double>(0.));
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -101,7 +118,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(g_state.steps->takeSent().empty() && g_state.ratio->takeSent().empty()) << "the standalone controls sent nothing";
             };
 
-            "each style is drawn in the toolbar"_test = [&] {
+            "each control is drawn in the toolbar"_test = [&] {
                 for (const char* item : {"**/##Amplitude", "**/##Frequency", "**/##Level", "**/##Gain", "**/##Gain/+"}) {
                     expect(ctx->ItemExists(item)) << item;
                 }
@@ -130,35 +147,33 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "without a step the spinner steps by the last significant digit, as the editors do"_test = [&] {
-                g_state.waitUntil(ctx, "slider syncs to 80 due to receiving a message from one of its targets on the previous test", [] { return blockHasBasicTypeKeyValuePair<double>("control_d_sliderSpinner", "value", 80.0); });
-                ctx->ItemClick("**/##Gain/+");
-                expect(g_state.waitUntil(ctx, "slider spinbox buttons increment the value by 1.0", [] { return blockHasBasicTypeKeyValuePair<double>("control_d_sliderSpinner", "value", 81.0); })) << "80.0000 -> step 1";
+                const auto rateIs = [](double expected) { return std::abs(g_state.rateControl->block.value - expected) < 1e-9; };
+                ctx->ItemInputValue("**/##Rate", "80");
+                expect(g_state.waitUntil(ctx, "the float64 spin box has the expected value", [&] { return rateIs(80.); })) << fatal;
+                ctx->ItemClick("**/##Rate/+");
+                expect(g_state.waitUntil(ctx, "the spin box button increments the value by 1.0", [&] { return rateIs(81.); })) << "80.0000 -> step 1";
             };
 
-            "the step follows the last significant digit of the last typed value"_test = [&] {
+            "the step amount of a spin box is equal to the last significant digit of the last typed value"_test = [&] {
+                const auto rateIs = [](double expected) { return std::abs(g_state.rateControl->block.value - expected) < 1e-9; };
                 for (const auto& [typed, afterPlus] : std::array{std::pair{"50.1", 50.2}, std::pair{"50", 51.}, std::pair{"50.01", 50.02}}) {
-                    ctx->ItemInputValue("**/##Gain", typed);
-                    ctx->ItemClick("**/##Gain/+");
-                    expect(g_state.waitUntil(ctx, "slider control's internal value increments to expected value", [afterPlus] { return blockApproximatelyHasDoubleKeyValuePair("control_d_sliderSpinner", "value", afterPlus); })) << std::format("typed {}, then '+'", typed);
+                    ctx->ItemInputValue("**/##Rate", typed);
+                    ctx->ItemClick("**/##Rate/+");
+                    expect(g_state.waitUntil(ctx, "the control's value increments to the expected value", [&, afterPlus] { return rateIs(afterPlus); })) << std::format("typed {}, then '+'", typed);
                 }
-                ctx->ItemClick("**/##Gain/+");
-                ctx->ItemClick("**/##Gain/-");
-                ctx->ItemClick("**/##Gain/-");
-                expect(g_state.waitUntil(ctx, "slider control's internal values to update after pressing gain +/-", [] { return blockApproximatelyHasDoubleKeyValuePair("control_d_sliderSpinner", "value", 50.01); })) << "the step buttons keep the step of 0.01";
+                ctx->ItemClick("**/##Rate/+");
+                ctx->ItemClick("**/##Rate/-");
+                ctx->ItemClick("**/##Rate/-");
+                expect(g_state.waitUntil(ctx, "the control's value to update after pressing +/-", [&] { return rateIs(50.01); })) << "the step buttons still use 0.01";
             };
 
             "dragging the slider moves the value in steps of the last typed value's significant digit"_test = [&] {
-                ctx->ItemInputValue("**/##Level", "4");
-                expect(g_state.waitUntil(ctx, "signal generator's frequency to be set", [] { return blockHasBasicTypeKeyValuePair<float>("SignalGenerator2", "frequency", 4.f); })) << fatal;
-                ctx->ItemDragWithDelta("**/##Level", ImVec2(37.f, 0.f));
-                float dragged = 4.f;
-                expect(g_state.waitUntil(ctx, "signal generator's value to change from the initial, after the mouse dragged the controlling slider a bit",
-                    [&dragged] {
-                        dragged = setting("SignalGenerator2", "frequency").value_or<float>(4.f);
-                        return dragged != 4.f;
-                    }))
-                    << fatal << "the drag moved the frequency";
-                expect(eq(dragged, std::round(dragged))) << std::format("dragged to {}: whole Hz", dragged);
+                ctx->ItemInputValue("**/##Coarse", "4");
+                expect(g_state.waitUntil(ctx, "the 0..10 float32 slider has the expected value", [] { return g_state.coarseControl->block.value == 4.; })) << fatal;
+                ctx->ItemDragWithDelta("**/##Coarse", ImVec2(37.f, 0.f));
+                expect(g_state.waitUntil(ctx, "the drag moved the value", [] { return g_state.coarseControl->block.value != 4.; })) << fatal;
+                const double dragged = g_state.coarseControl->block.value;
+                expect(eq(dragged, std::round(dragged))) << std::format("dragged to {}: whole numbers", dragged);
             };
 
             "the toolbar fits its host: natural row, shrunk row, two rows, then without labels"_test = [&] {
@@ -244,8 +259,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator1", "amplitude", 2.5f)) << "the old target is not";
             };
 
-            "the value sent by a control matches the single value in `compatible_type_map`"_test = [&] {
-                expect(g_state.steps->block.compatible_type_map == "int16" && g_state.ratio->block.compatible_type_map == "float64") << fatal << "the standalone controls took their settings";
+            "the value sent by a control has the type of its first controlled property"_test = [&] {
                 ctx->ItemInputValue("**/##Steps", 7);
                 const auto steps = g_state.steps->takeSent();
                 expect(sentExactly<std::int16_t>(steps, "TargetA", "received", 7) && sentExactly<std::int16_t>(steps, "TargetB", "received", 7)) << "an int16 7 to TargetA and TargetB";
@@ -272,6 +286,45 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(!sent.empty() && sentExactly<std::uint8_t>(std::vector<gr::Message>(sent.end() - 1, sent.end()), "TargetA", "byte", std::numeric_limits<std::uint8_t>::max())) << "dragged to the right end: uint8's 255";
             };
 
+            "number input is clamped to the target property's min and max"_test = [&] {
+                std::ignore = g_state.steps->takeSent();
+                ctx->ItemInputValue("**/##Steps", 500);
+                const auto above = g_state.steps->takeSent();
+                expect(!above.empty() && sentExactly<std::int16_t>(std::vector<gr::Message>{above.back()}, "TargetB", "received", 10)) << "clamped to max";
+                ctx->ItemInputValue("**/##Steps", -500);
+                const auto below = g_state.steps->takeSent();
+                expect(!below.empty() && sentExactly<std::int16_t>(std::vector<gr::Message>{below.back()}, "TargetB", "received", -10)) << "clamped to min";
+            };
+
+            "the min and max is decided as an intersection of the property's min and max, and the min and max settings of the control block"_test = [&] {
+                // standalone_limited has min -1 and max 1
+                // the target property should have 0 to 10
+                const auto lastSent = [&](const char* typed) {
+                    std::ignore = g_state.toggleMinAndMaxControl->takeSent();
+                    ctx->ItemInputValue("**/##Limited", typed);
+                    const auto sent = g_state.toggleMinAndMaxControl->takeSent();
+                    expect(!sent.empty()) << fatal << std::format("typing {} sends a value", typed);
+                    return std::vector<gr::Message>(sent.end() - 1, sent.end());
+                };
+                expect(!g_state.isMinMaxEnabledForToggleMinMaxControl) << fatal;
+                expect(sentExactly<double>(lastSent("5"), "TargetA", "limited", 1.)) << "clamping seems to respect the control block's max";
+                expect(sentExactly<double>(lastSent("-5"), "TargetA", "limited", -1.)) << "clamping seems to respect the control block's min";
+
+                // now try with the property's min and max values being sent
+                g_state.isMinMaxEnabledForToggleMinMaxControl = true;
+                expect(sentExactly<double>(lastSent("0.5"), "TargetA", "limited", 0.5));
+                expect(sentExactly<double>(lastSent("50"), "TargetA", "limited", 1.)) << "when the property's min and max are sent, the block's max is still respected";
+                expect(sentExactly<double>(lastSent("-5"), "TargetA", "limited", 0.)) << "when both property and block min/max settings are in use, the property's min value is respected";
+                g_state.isMinMaxEnabledForToggleMinMaxControl = false;
+            };
+
+            "a number control has no limits by default"_test = [&] {
+                expect(eq(g_state.ratio->block.min, std::numeric_limits<double>::lowest()) && eq(g_state.ratio->block.max, std::numeric_limits<double>::max())) << "float64 lowest and max";
+                std::ignore = g_state.ratio->takeSent();
+                ctx->ItemInputValue("**/##Ratio", "-1000000000");
+                expect(sentExactly<double>(g_state.ratio->takeSent(), "TargetA", "ratio", -1e9)) << "not clamped";
+            };
+
             "a slider starting at 0 steps by a tenth of its range at most"_test = [&] {
                 ctx->ItemDragWithDelta("**/##Fraction", ImVec2(40.f, 0.f));
                 const double dragged = g_state.fraction->block.value;
@@ -292,10 +345,14 @@ int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
-    g_state.steps    = std::make_unique<StandaloneControl<DigitizerUi::ImControlNumber>>(gr::property_map{{"name", "standalone_steps"}, {"label", "Steps"}, {"compatible_type_map", "int16"}, {"style", "slider"}, {"min", -10.}, {"max", 10.}, {"target_map", "TargetA,TargetB:received"}});
-    g_state.ratio    = std::make_unique<StandaloneControl<DigitizerUi::ImControlNumber>>(gr::property_map{{"name", "standalone_ratio"}, {"label", "Ratio"}, {"compatible_type_map", "float64"}, {"style", "field"}, {"target_map", "TargetA:ratio"}});
-    g_state.fraction = std::make_unique<StandaloneControl<DigitizerUi::ImControlNumber>>(gr::property_map{{"name", "standalone_fraction"}, {"label", "Fraction"}, {"compatible_type_map", "float64"}, {"style", "slider"}, {"value", 0.}, {"min", 0.}, {"max", 1.}, {"target_map", "TargetA:fraction"}});
-    g_state.byte     = std::make_unique<StandaloneControl<DigitizerUi::ImControlNumber>>(gr::property_map{{"name", "standalone_byte"}, {"label", "Byte"}, {"compatible_type_map", "uint8"}, {"style", "slider"}, {"value", -5.}, {"min", -5.}, {"max", 1000.}, {"target_map", "TargetA:byte"}});
+    using Standalone               = StandaloneControl<DigitizerUi::ImControlNumber>;
+    g_state.steps                  = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_steps"}, {"label", "Steps"}, {"style", "slider"}, {"target_map", "TargetA,TargetB:received"}});
+    g_state.ratio                  = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_ratio"}, {"label", "Ratio"}, {"style", "field"}, {"target_map", "TargetA:ratio"}});
+    g_state.fraction               = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_fraction"}, {"label", "Fraction"}, {"style", "slider"}, {"value", 0.}, {"target_map", "TargetA:fraction"}});
+    g_state.byte                   = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_byte"}, {"label", "Byte"}, {"style", "slider"}, {"value", -5.}, {"target_map", "TargetA:byte"}});
+    g_state.coarseControl          = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_coarse"}, {"label", "Coarse"}, {"style", "slider"}, {"value", 2.}, {"target_map", "TargetA:coarse"}});
+    g_state.rateControl            = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_rate"}, {"label", "Rate"}, {"style", "spinBox"}, {"value", 50.}, {"target_map", "TargetA:rate"}});
+    g_state.toggleMinAndMaxControl = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_limited"}, {"label", "Limited"}, {"style", "field"}, {"min", -1.}, {"max", 1.}, {"target_map", "TargetA:limited"}});
 
     auto grcFile      = cmrc::ui_test_assets::get_filesystem().open("examples/qa_controls.grc");
     g_state.dashboard = DigitizerUi::Dashboard::create(nullptr, DigitizerUi::DashboardDescription::createEmpty("controls"));
