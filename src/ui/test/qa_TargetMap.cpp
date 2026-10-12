@@ -1,3 +1,4 @@
+#include "blocks/DrawableBlockConfig.hpp"
 #include "blocks/TargetMap.hpp"
 
 #include <format>
@@ -141,6 +142,26 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
             expect(isCompatibleType("  ", typeName)) << typeName;
             expect(isCompatibleType("*", typeName)) << typeName;
             expect(isCompatibleType("bool;*", typeName)) << typeName;
+        }
+    };
+
+    "DrawableBlockConfig toMap and fromMap are each others' inverse"_test = [] {
+        using DigitizerUi::DrawableBlockConfig;
+        using ControlledProperty = DrawableBlockConfig::ControlledProperty;
+        const std::vector<DrawableBlockConfig> configs{
+            DrawableBlockConfig{},
+            DrawableBlockConfig{.maxWidth = 30.f, .showLabel = false},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = true}},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = 30.f, .hints = {.min = 10., .max = 100.}}, .maxWidth = 120.f},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = std::int32_t{3}, .hints = {.min = -5.}}},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = std::string("Cos"), .hints = {.choices = {"Sin", "Cos", "Square"}}}, .showLabel = true},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = 2.5, .targetBlockName = "sineSink1"}},
+            DrawableBlockConfig{.aggregateControlledPropertyHints = {.max = 50.}},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = 30.f, .hints = {.min = 10., .max = 100.}}, .aggregateControlledPropertyHints = {.min = 10., .max = 50.}},
+            DrawableBlockConfig{.firstControlledProperty = ControlledProperty{.value = std::string("Cos"), .hints = {.choices = {"Sin", "Cos", "Square"}}}, .aggregateControlledPropertyHints = {.choices = {"Sin", "Cos"}}},
+        };
+        for (const auto& config : configs) {
+            expect(DrawableBlockConfig::fromMap(config.toMap().value_or(gr::property_map{})) == config);
         }
     };
 };

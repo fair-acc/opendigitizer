@@ -23,7 +23,8 @@ struct ImControlText : ImControl<ImControlText> {
     explicit ImControlText(gr::property_map initParameters = {}) : ImControl<ImControlText>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const SizeAndLayout layout = prepareDraw(config, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
+        const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
         drawLabelled(layout, [this](float width) {
             const std::string id = "##" + label;
             ImGui::SetNextItemWidth(width);

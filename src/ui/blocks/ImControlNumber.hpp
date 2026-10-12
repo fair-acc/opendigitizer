@@ -88,8 +88,9 @@ public:
     explicit ImControlNumber(gr::property_map initParameters = {}) : ImControl<ImControlNumber>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
+        const auto parsedConfig       = DrawableBlockConfig::fromMap(config);
         const auto [natural, minimum] = naturalAndMinimumWidgetWidth();
-        const SizeAndLayout layout    = prepareDraw(config, natural, minimum, labelWidth());
+        const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
         const std::string   type      = numberTypeName();
         const bool          known     = control::withNumberType(type, [&]<typename T>() { drawNumber<T>(layout); });
         if (!known) {

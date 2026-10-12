@@ -387,6 +387,7 @@ add_library(
   blocks/ImControlToggle.hpp
   blocks/ImControlTrigger.hpp
   blocks/TargetMap.hpp
+  blocks/DrawableBlockConfig.hpp
   blocks/ToolbarBlock.hpp
   blocks/meta.hpp
   components/Block.cpp

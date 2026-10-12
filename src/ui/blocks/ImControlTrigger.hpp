@@ -20,8 +20,9 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
     explicit ImControlTrigger(gr::property_map initParameters = {}) : ImControl<ImControlTrigger>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const float         button = ImGui::CalcTextSize(label.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
-        const SizeAndLayout layout = prepareDraw(config, button, button, 0.f);
+        const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
+        const float         button       = ImGui::CalcTextSize(label.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, button, button, 0.f);
         drawInIdScope([&] {
             if (ImGui::Button(label.c_str(), ImVec2(layout.width, 0.f))) {
                 sendToTargets(true);

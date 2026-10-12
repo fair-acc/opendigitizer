@@ -126,7 +126,11 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
         if (keys[i] == kSchedulerControlsKey) {
             drawSchedulerControls(session);
         } else {
-            std::ignore = blocks[i - (schedulerControls ? 1UZ : 0UZ)]->draw(gr::property_map{{"max_width", slots[i].width}, {"show_label", slots[i].showLabel}});
+            DrawableBlockConfig config{.maxWidth = slots[i].width, .showLabel = slots[i].showLabel};
+            if (const UiGraphBlock* uiBlock = session.graphModel.recursiveFindBlockByUniqueName(keys[i]).block) {
+                session.graphModel.aggregateAndApplyControlledProperties(config, *uiBlock);
+            }
+            std::ignore = blocks[i - (schedulerControls ? 1UZ : 0UZ)]->draw(config.toMap().value_or(gr::property_map{}));
         }
         ImGui::EndGroup();
         if (!toolbar::publishedWidths(keys[i])) {

@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 
@@ -14,6 +15,7 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+#include "blocks/DrawableBlockConfig.hpp"
 #include "blocks/TargetMap.hpp"
 
 struct TestApp;
@@ -153,6 +155,7 @@ struct UiGraphBlock {
     [[nodiscard]] std::string              propertyTypeName(std::string_view property) const;
     [[nodiscard]] bool                     isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const;
     [[nodiscard]] std::vector<std::string> connectableProperties(std::string_view compatibleTypeMap) const;
+    [[nodiscard]] BlockPropertyHints       propertyHints(std::string_view property) const;
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
@@ -349,6 +352,24 @@ public:
     /// Return a list of the names of all properties in all blocks which have a type listed in the "compatible_type_map" setting of this control block
     [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
 
+    struct BlockPointerPropertyNamePair {
+        const UiGraphBlock* block = nullptr;
+        std::string         property;
+    };
+
+    /// Returns every block property the target map refers to. Excludes properties from the @param control
+    [[nodiscard]] std::vector<BlockPointerPropertyNamePair> resolveControlledProperties(const UiGraphBlock& control, const TargetMap& targets);
+
+    /// Parse the TargetMap of the control, and then search the graph for matching properties.
+    /// Returns a std::expected if parsing the TargetMap fails
+    [[nodiscard]] auto resolveControlledProperties(const UiGraphBlock& control) {
+        return control.uiControlTargetMap().transform([this, &control](const TargetMap& targets) { return resolveControlledProperties(control, targets); });
+    }
+
+    /// Modifies a DrawableBlockConfig to take into account all the properties it controls. this means filling out both first_controlled_property and combining
+    /// all the hints and typeinfo to find the acceptable min/max range and choices for the property
+    void aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control);
+
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 
     struct ExportedPropertyMatchResult {
@@ -395,6 +416,9 @@ private:
     }
 
     void unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
+
+    // used by tests
+    [[nodiscard]] static DrawableBlockConfig::ControlledProperty firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled);
 };
 
 } // namespace DigitizerUi
