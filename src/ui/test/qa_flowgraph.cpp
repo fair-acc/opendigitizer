@@ -1407,6 +1407,39 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "A UI control is operated from its block in the flowgraph");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = pageGuiFunc; // without the toolbar, so the block in the flowgraph is the only place where the control is drawn
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
+                g_state.waitUntil(ctx, "sink1 is not visible to start out", [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", false); });
+
+                sendSetSettingMessage("controlTrigger", gr::property_map{{"target_map", std::string("sink1:visible")}});
+                g_state.waitUntil(ctx, "controlTrigger -> sink1", [] {
+                    const DigitizerUi::UiGraphBlock* trigger = findRootChildByName("controlTrigger");
+                    return getTargetMapForBlock("controlTrigger") == "sink1:visible" && trigger != nullptr && trigger->blockSettings.value_or<std::string>("target_map", std::string{}) == "sink1:visible";
+                });
+                ctx->Yield(2); // block gets resized, imgui node editor needs time to figure it out
+
+                "the button for the trigger is in the block itself"_test = [&] {
+                    const ImRect button = canvasItemRect(ctx, "**/Trig");
+                    editor.makeCurrent();
+                    const auto   nodeId       = ax::NodeEditor::NodeId(findRootChildByName("controlTrigger"));
+                    const ImVec2 nodePosition = ax::NodeEditor::GetNodePosition(nodeId);
+                    expect(ImRect(nodePosition, nodePosition + ax::NodeEditor::GetNodeSize(nodeId)).Contains(button));
+                };
+
+                "pressing the button sets the targeted property"_test = [&] {
+                    clickCanvasItem(ctx, editor, "**/Trig");
+                    g_state.waitUntil(ctx, "sink1 is visible", [] { return blockHasBasicTypeKeyValuePair<bool>("sink1", "visible", true); });
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI-controlled properties in the block properties panel are marked as locked");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = uiControlGuiFunc;

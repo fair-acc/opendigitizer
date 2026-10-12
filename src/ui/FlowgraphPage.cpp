@@ -14,6 +14,8 @@
 
 #include "GraphModel.hpp"
 #include "MapUtils.hpp"
+#include "PaneBlocks.hpp"
+#include "common/ImguiNodeEditorWrap.hpp"
 #include "common/ImguiWrap.hpp"
 
 #include <imgui.h>
@@ -440,6 +442,9 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     }
 
     if (block.isUiControl()) {
+        if (drawUiControlWidget) {
+            drawUiControlWidget(block, blockSize.x);
+        }
         components::drawUiControlTargetList(*_graphModel, block);
 
         if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
@@ -1577,6 +1582,8 @@ void FlowgraphPage::pushEditor(std::string name, UiGraphModel& graphModel, UiGra
 
     editor.requestGraphEdit = [&](UiGraphBlock* block) { pushEditor(block->blockUniqueName, graphModel, block); };
 
+    editor.drawUiControlWidget = [this](const UiGraphBlock& control, float maxWidth) { drawUiControlWidget(control, maxWidth); };
+
     // This lambda is owned by editor, so it is safe to take it by reference
     editor.openNewBlockSelectorCallback = [this, &editor](UiGraphModel* /*_graphModel*/) {
         if (auto owner = editor.ownersForRoot()) {
@@ -1642,6 +1649,20 @@ void FlowgraphPage::drawLocalNodeEditor() {
         drawNodeEditorTab();
     } else if (_graphModel && !_graphModel->rootBlock.blockUniqueName.empty()) {
         pushEditor("rootBlock node editor", *_graphModel, std::addressof(_graphModel->rootBlock));
+    }
+}
+
+void FlowgraphPage::drawUiControlWidget(const UiGraphBlock& control, float maxWidth) {
+    if (!_dashboard) {
+        return;
+    }
+    if (const auto block = findDrawableBlock(_dashboard->session, gr::UICategory::Toolbar, control.blockUniqueName)) {
+        IMW::Group widget; // sort of sandbox whatever the block is doing, avoiding different behavior if ending with SameLine() for example
+        auto       fullConfig = DrawableBlockConfig{.maxWidth = maxWidth, .drawingContext = DrawableBlockConfig::DrawingContext::FlowgraphView};
+        if (control.ownerGraph) {
+            control.ownerGraph->aggregateAndApplyControlledProperties(fullConfig, control);
+        }
+        std::ignore = block->draw(fullConfig.toMap().value_or(gr::property_map{}));
     }
 }
 
