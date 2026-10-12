@@ -4,10 +4,12 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gnuradio-4.0/BlockModel.hpp>
+#include <gnuradio-4.0/algorithm/fileio/FileIo.hpp>
 
 #include <imgui.h>
 
@@ -31,10 +33,26 @@ private:
     float                      _blocksWidth = 0.f; // last frame's
     ImGuiSelectionBasicStorage _selectedRecords;
 
+    std::optional<gr::log::Level> _levelFilter;
+    std::string                   _messageFilter;
+
+    struct SaveData {
+        std::string                                  pendingText;
+        std::string                                  path;
+        std::string                                  writerPath;
+        std::optional<gr::algorithm::fileio::Writer> writer;
+    };
+
+    std::optional<SaveData> _saving;
+
     void drawLogLine(float width);
     void drawLogPopup();
+    void drawSavePopup();
+    void openSavePopup(std::string text);
+    void pollSaveResult();
 
-    [[nodiscard]] std::string selectedOrAllAsText(const std::vector<gr::log::LogRecord>& records) const;
+    [[nodiscard]] bool        startSavePendingTextToFile();
+    [[nodiscard]] std::string selectedOrAllAsText(const std::vector<gr::log::LogRecord>& records, bool selectedOnly) const;
 };
 
 } // namespace DigitizerUi
