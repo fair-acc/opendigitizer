@@ -346,9 +346,8 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
 
     auto* const drawlist = ImGui::GetWindowDrawList();
 
-    // consider "visible region" to be the whole window, expanding above the opendigitizer title bar and outside margins
-    const auto visibleRegionMin = ax::NodeEditor::ScreenToCanvas(ImGui::GetWindowPos());
-    const auto visibleRegionMax = ax::NodeEditor::ScreenToCanvas(ImGui::GetWindowPos() + ImGui::GetWindowSize());
+    const auto visibleRegionMin = drawlist->GetClipRectMin();
+    const auto visibleRegionMax = drawlist->GetClipRectMax();
 
     // draw some rectangles to demarcate the area to drag to do port exporting
     const auto& bb = canvasSpacingBoundingBox;
