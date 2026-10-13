@@ -197,6 +197,8 @@ public:
     struct NodeDrawResult {
         ImVec2 topLeft;
         float  bottomY;
+        // to prevent pins from overlapping with other content, only place them on some top portion of the node
+        float  pinAreaHeight = 0.F;
     };
     NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
 
