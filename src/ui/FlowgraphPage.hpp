@@ -72,8 +72,7 @@ private:
     std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
     std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
 
-    void                drawUiControlPopups();
-    const UiGraphBlock* pendingConnectionControlFor(const UiGraphBlock& block);
+    void drawUiControlPopups();
 
     /// Check how the user is interacting with UI blocks, if they are dragging a connection, and what valid blocks are available as targets for it. Returns a description of what to draw
     [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget);
@@ -213,7 +212,12 @@ public:
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
         float  pinAreaHeight = 0.F;
     };
-    NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
+    NodeDrawResult drawNode(                                                         //
+        UiGraphBlock&                                          block,                //
+        std::span<const UiGraphPort* const>                    inputPorts,           //
+        std::span<const UiGraphPort* const>                    outputPorts,          //
+        float                                                  pinHorizontalPadding, //
+        std::optional<components::PropertyConnectionIndicator> connectionPreview);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 
