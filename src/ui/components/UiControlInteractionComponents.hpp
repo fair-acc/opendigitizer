@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -183,6 +184,29 @@ private:
 
     void applySelection(UiGraphModel& model);
 };
+
+/// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block.
+/// Returns true while a drag is happening and false otherwise
+bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition);
+
+/// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
+void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control);
+
+struct PropertyConnectionIndicator {
+    std::string propertyName;
+    std::string blockName;
+
+    std::uint32_t color = 0;
+};
+
+/// Draw block name and notch and property name, extending over the LHS of the block.
+/// "{indicator.blockName} - {indicator.propertyName}"
+void drawIncomingPropertyConnectionIndicators(                       //
+    UiGraphBlock&                                block,               //
+    ImVec2                                       blockScreenPosition, //
+    std::span<const PropertyConnectionIndicator> indicators           //
+);
+
 } // namespace DigitizerUi::components
 
 #endif
