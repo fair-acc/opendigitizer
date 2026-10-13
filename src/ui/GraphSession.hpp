@@ -156,7 +156,7 @@ class GraphSession {
             }
             const std::string schedulerName(block().uniqueName());
             gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, schedulerName, gr::block::property::kLifeCycleState, {}, "UI");
-            gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
+            writeMessage(subscriptionMessageForAllBlocksSettings());
             gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
             requestStart(gr::lifecycle::State::RUNNING);
         }
@@ -291,7 +291,7 @@ public:
     void emplaceGraph(gr::Graph&& graph) {
         _run.reset();
         _run = std::make_unique<Run>(std::move(graph));
-        ++graphModel.topologyGeneration;
+        graphModel.handleTopologyUpdated();
     }
 
     [[nodiscard]] explicit             operator bool() const noexcept { return static_cast<bool>(_run); }
