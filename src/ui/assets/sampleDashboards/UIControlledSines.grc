@@ -41,6 +41,12 @@ blocks:
       step: 0.5
       style: sliderSpinner
       target_map: "sineSource1:frequency"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: uiFrequency1Style
+      label: Control style
+      value: sliderSpinner
+      target_map: "uiFrequency1:style"
   - id: DigitizerUi::ImControlNumber
     parameters:
       name: uiAmplitude1
@@ -74,6 +80,12 @@ blocks:
       step: 0.1
       style: sliderSpinner
       target_map: "sineSource2:amplitude"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: uiWaveType
+      label: wave
+      value: Sin
+      target_map: "sineSource1,sineSource2:signal_type"
 connections:
   - [ sineSource1, 0, sineSum, 0 ]
   - [ sineSource2, 0, sineSum, 1 ]
