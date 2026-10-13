@@ -246,6 +246,15 @@ public:
     bool isConnected() const;
 };
 
+[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
+    gr::Message message;
+    message.cmd             = gr::message::Command::Subscribe;
+    message.serviceName     = "";
+    message.clientRequestID = "UI";
+    message.endpoint        = gr::block::property::kSetting;
+    return message;
+}
+
 class UiGraphModel {
 public:
     friend struct ::TestApp;
@@ -279,6 +288,7 @@ public:
      */
     bool processMessage(const gr::Message& message);
 
+    void handleTopologyUpdated();
     void requestFullUpdate(std::source_location location = std::source_location::current());
     void requestAvailableBlocksTypesUpdate();
     void saveBlockPositions(gr::property_map& graphData);
