@@ -133,6 +133,30 @@ void drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F));
 }
 
+/// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
+/// from that to whatever text is inside the block at the current cursor position.
+/// This does not move the cursor. Pass 0 to @param rowHeight to use the height of the drawn text instead.
+/// Returns the height of the label.
+float drawUiControlConnectionNotch(std::string_view outsideLabel, ImVec2 blockStartCursorPosition, float rowHeight, ImU32 color) {
+    const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
+    const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
+
+    const float notchLengthInwards  = 5.F;
+    const float notchLengthOutwards = 5.F;
+
+    assert(notchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
+    auto*      fgDrawList = ImGui::GetWindowDrawList();
+    auto*      font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    const auto textSize   = font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    // outerPadding is whatever inner padding is, plus some extra since imgui seems to underestimate text size
+    const auto outerPadding = blockStartCursorPosition.x - (blockLeft + notchLengthInwards) + ImGui::GetStyle().ItemInnerSpacing.x;
+    const auto centerY      = ImGui::GetCursorScreenPos().y + ((rowHeight > 0.F ? rowHeight : textSize.y) / 2.F);
+
+    fgDrawList->AddLine(ImVec2{blockLeft - notchLengthOutwards, centerY}, ImVec2{blockLeft + notchLengthInwards, centerY}, color);
+    fgDrawList->AddText(font, font->LegacySize, ImVec2{blockLeft - outerPadding - textSize.x, centerY - (textSize.y / 2.F)}, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    return textSize.y;
+}
+
 /// Draws the target_map entries of @param control as a list of "block:property" rows. Hovering a row reveals a button which removes that entry.
 void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control) {
     const auto targets = control.uiControlTargetMap();
@@ -461,12 +485,17 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
+    const auto controlledProperties = _graphModel->uiControlledProperties(block);
+
     // Draw block properties
     {
         IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
         for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
             if (propertyKey == "description" || propertyKey.contains("::")) {
                 continue;
+            }
+            if (controlledProperties.contains(propertyKey)) {
+                continue; // drawn below the space used by the ports
             }
 
             const auto& currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
@@ -476,8 +505,44 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
             std::string value = valToString(propertyValue);
             ImGui::Text("%s: %s", currentPropertyMetaInformation.description.c_str(), value.c_str());
         }
+    }
 
-        ImGui::Spacing();
+    ImGui::Spacing();
+
+    // pins get laid out in the space up until this point. after this is reserved space for property connection indicators
+    const float pinAreaBottomScreenY = ImGui::GetCursorScreenPos().y;
+
+    if (!controlledProperties.empty()) {
+        IMW::Font  font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+        const auto notchColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlConnectionIndicator);
+
+        // iterate blockSettings rather than controlledProperties to keep the same ordering as the regular properties
+        for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
+            const auto controllersIt = controlledProperties.find(propertyKey);
+            if (controllersIt == controlledProperties.end()) {
+                continue;
+            }
+            const auto& controllers = controllersIt->second;
+            assert(!controllers.empty());
+
+            // draw the first controlling ui component aligned with the property row itself
+            drawUiControlConnectionNotch(controllers.front()->blockName, blockScreenPosition, ImGui::GetTextLineHeight(), notchColor);
+
+            const auto&       currentPropertyMetaInformation = block.blockSettingsMetaInformation[std::string(propertyKey)];
+            const std::string value                          = valToString(propertyValue);
+            const std::string displayName                    = currentPropertyMetaInformation.description.empty() ? std::string(propertyKey) : currentPropertyMetaInformation.description;
+            ImGui::Text("%s: %s", displayName.c_str(), value.c_str());
+
+            // draw more notches if there are other ui controls also controlling this property
+            for (const UiGraphBlock* control : controllers | std::views::drop(1)) {
+                const float labelHeight = drawUiControlConnectionNotch(control->blockName, blockScreenPosition, 0.F, notchColor);
+                ImGui::Dummy(ImVec2{0.F, labelHeight});
+            }
+        }
+    }
+
+    {
+        IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
 
         const bool isFilter = _filterBlock == std::addressof(block);
 
@@ -504,9 +569,12 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
     blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
+    const float nodeTopScreenY = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
+    const float pinAreaHeight  = pinAreaBottomScreenY - nodeTopScreenY;
+
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
-    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize](auto& ports, auto position, auto pinType) {
+    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - pinHorizontalPadding;
         }
@@ -516,7 +584,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
 
         for (std::size_t i = 0; i < ports.size(); ++i) {
             auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
-            auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, blockSize.y, isInput);
+            auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, pinAreaHeight, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
             addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
         }
@@ -532,7 +600,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode( //
     ImGui::SetCursorScreenPos({position.x, blockBottomY});
 
     ImGui::Dummy(ImVec2(0.f, 0.f));
-    return NodeDrawResult{position, blockBottomY};
+    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight};
 }
 
 void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startPinId, ax::NodeEditor::PinId endPinId) {
@@ -752,7 +820,7 @@ void FlowgraphEditor::drawGraph(const ImVec2& size /*, const UiGraphBlock*& filt
 
                 for (std::size_t i = 0; i < ports.size(); ++i) {
                     auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
-                    auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockSize.y, isInput);
+                    auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockPosition.pinAreaHeight, isInput);
 
                     if (!portExportedDisplayName) {
                         if (drawPin(drawList, info.topLeft, info.size, ports[i]->portType)) {

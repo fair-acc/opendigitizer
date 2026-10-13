@@ -746,6 +746,34 @@ UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByName(std::string
     return out;
 }
 
+UiGraphBlock* UiGraphModel::rootGraphBlock() {
+    UiGraphBlock* root = &rootBlock;
+    if (root->isScheduler() && !root->childBlocks.empty()) {
+        root = root->childBlocks.front().get();
+    }
+    return root;
+}
+
+UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const UiGraphBlock& targetBlock) {
+    ControlledPropertyMap result;
+    for (const auto& uiControlBlock : rootGraphBlock()->childBlocks) {
+        if (!uiControlBlock->isUiControl()) {
+            continue;
+        }
+        const auto targets = uiControlBlock->uiControlTargetMap();
+        if (!targets) {
+            continue;
+        }
+        // iterate the settings so as to retain ordering of properties
+        for (const auto& [propertyKey, _] : targetBlock.blockSettings) {
+            if (targets->relationshipToTarget(targetBlock.blockName, propertyKey) != TargetRelationship::NotTargeting) {
+                result[std::string(propertyKey)].push_back(uiControlBlock.get());
+            }
+        }
+    }
+    return result;
+}
+
 void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
     UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
     if (!control) {

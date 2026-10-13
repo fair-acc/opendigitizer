@@ -327,6 +327,12 @@ public:
     FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
     FindBlockResult recursiveFindBlockByName(std::string_view name);
 
+    [[nodiscard]] UiGraphBlock* rootGraphBlock();
+
+    using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
+    /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
+    [[nodiscard]] ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock);
+
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 
     struct ExportedPropertyMatchResult {
