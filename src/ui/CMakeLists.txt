@@ -382,10 +382,12 @@ add_library(
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
   blocks/ImControl.hpp
+  blocks/ImControlChoice.hpp
   blocks/ImControlNumber.hpp
   blocks/ImControlText.hpp
   blocks/ImControlToggle.hpp
   blocks/ImControlTrigger.hpp
+  blocks/ImPropertyReadout.hpp
   blocks/TargetMap.hpp
   blocks/DrawableBlockConfig.hpp
   blocks/ToolbarBlock.hpp

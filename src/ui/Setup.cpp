@@ -5,11 +5,13 @@
 #include <implot3d.h>
 
 #include "LogHistory.hpp"
+#include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlNumber.hpp"
 #include "blocks/ImControlText.hpp"
 #include "blocks/ImControlToggle.hpp"
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/ImPropertyReadout.hpp"
 #include "blocks/StatusBarBlock.hpp"
 #include "blocks/ToolbarBlock.hpp"
 #include "charts/Charts.hpp"
@@ -34,6 +36,8 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<ImControlToggle>(registry);
     std::ignore = gr::registerBlock<ImControlTrigger>(registry);
     std::ignore = gr::registerBlock<ImControlText>(registry);
+    std::ignore = gr::registerBlock<ImControlChoice>(registry);
+    std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 

@@ -1049,6 +1049,8 @@ bool UiGraphBlock::isUiControl() const {
     return info && info->find_value(std::string("Category"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(std::string()) == "Toolbar";
 }
 
+bool UiGraphBlock::isViewOnlyUiControl() const { return blockMetaInformation.find_value(std::string("viewonly_ui_control"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(false); }
+
 bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph     = gr::graph::property;
     namespace scheduler = gr::scheduler::property;

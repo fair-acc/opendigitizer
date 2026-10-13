@@ -26,11 +26,13 @@
 
 // TODO: blocks are locally included/registered for this test -> should become a global feature
 #include "blocks/Arithmetic.hpp"
+#include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlNumber.hpp"
 #include "blocks/ImControlText.hpp"
 #include "blocks/ImControlToggle.hpp"
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/ImPropertyReadout.hpp"
 #include "blocks/SineSource.hpp"
 #include "blocks/TestSpectrumGenerator.hpp" // although the symbol is unused by this file, we need this for static block registration
 
@@ -1259,8 +1261,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const std::vector<FilterCase> cases{
                     {"controlToggle", {"visible", "plot_tags"}, {"signal_name", "sample_rate"}},
                     {"controlTrigger", {"visible", "plot_tags"}, {"signal_name", "sample_rate"}},
-                    {"controlText", {"signal_name", "signal_unit"}, {"visible", "sample_rate"}},
+                    {"controlText", {"signal_name", "signal_unit"}, {"visible", "sample_rate", "line_style"}},
                     {"controlNumber", {"sample_rate", "signal_min"}, {"visible", "signal_name"}},
+                    {"controlChoice", {"line_style"}, {"visible", "signal_name", "sample_rate"}},
+                    {"readout", {"visible", "signal_name", "sample_rate", "line_style"}, {}},
                 };
                 for (const FilterCase& filterCase : cases) {
                     DigitizerUi::UiGraphBlock* control = findRootChildByName(filterCase.control);
@@ -1431,6 +1435,37 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(ctx->ItemExists("**/##parameter_signal_unit"));
                     expect(!ctx->ItemExists("**/Unlink##unlink_signal_unit"));
                     expect(!ctx->ItemExists("**/Jump to control##jumpToControl_signal_unit"));
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "ImPropertyReadout shouldn't cause a property to become locked in the properties edit panel");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto&                      editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_readout.grc");
+                DigitizerUi::UiGraphBlock* sink   = findRootChildByName("sinkA");
+                expect(sink != nullptr) << fatal << "sinkA not found";
+                openBlockPanel(ctx, editor, sink);
+                ctx->SetRef("//BlockControlsPanel");
+
+                "block is connected to signal_quantity"_test = [&] { //
+                    expect(sink->ownerGraph->uiControlledProperties(*sink).contains("signal_quantity")) << fatal;
+                };
+
+                "target property still has its editor and not the UI for a locked property"_test = [&] {
+                    expect(ctx->ItemExists("**/##parameter_signal_quantity"));
+                    expect(!ctx->ItemExists("**/Unlink##unlink_signal_quantity"));
+                    expect(!ctx->ItemExists("**/Jump to control##jumpToControl_signal_quantity"));
+                };
+
+                "locking does still work for non-viewonly controls"_test = [&] {
+                    expect(!ctx->ItemExists("**/##parameter_signal_name"));
+                    expect(ctx->ItemExists("**/Unlink##unlink_signal_name"));
                 };
 
                 finishUiControlTest();
@@ -1684,7 +1719,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_dragdrop.grc");
 
                 constexpr std::array regularBlockNames{"clockSource1", "signalGenerator1", "sink1"};
-                constexpr std::array controlBlockNames{"controlNumber", "controlToggle", "controlText", "controlText2", "controlTrigger"};
+                constexpr std::array controlBlockNames{"controlNumber", "controlToggle", "controlText", "controlText2", "controlTrigger", "controlChoice", "readout"};
                 const auto           uniqueNamesOf = [](const auto& blockNames) {
                     std::vector<std::string> uniqueNames;
                     for (const char* blockName : blockNames) {
@@ -1778,6 +1813,8 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<DigitizerUi::ImControlToggle>(registry);
     gr::registerBlock<DigitizerUi::ImControlTrigger>(registry);
     gr::registerBlock<DigitizerUi::ImControlText>(registry);
+    gr::registerBlock<DigitizerUi::ImControlChoice>(registry);
+    gr::registerBlock<DigitizerUi::ImPropertyReadout>(registry);
     // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 

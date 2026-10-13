@@ -108,6 +108,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_imcontrol_initial_value.grc
     examples/qa_uicontrol_dragdrop.grc
     examples/qa_uicontrol_connections.grc
+    examples/qa_uicontrol_readout.grc
     examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 
