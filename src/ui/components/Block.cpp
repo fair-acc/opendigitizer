@@ -594,7 +594,12 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
     InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
     BlockPropertyEditResult result{};
     const auto              controlledProperties = block->ownerGraph ? block->ownerGraph->uiControlledProperties(*block) : UiGraphModel::ControlledPropertyMap{};
-    const auto              drawSettingsTable    = [&](bool visibleOnly) {
+    // don't allow editing properties which are being edited by a UI control block
+    const auto isPropertyLocked = [&controlledProperties](const std::string& key) {
+        const auto controls = controlledProperties.find(key);
+        return controls != controlledProperties.end() && std::ranges::any_of(controls->second, [](const UiGraphBlock* control) { return !control->isViewOnlyUiControl(); });
+    };
+    const auto drawSettingsTable = [&](bool visibleOnly) {
         IMW::StyleColor rowBg(ImGuiCol_TableRowBgAlt, LookAndFeel::instance().palette().rowBgAlt);
 
         if (auto table = IMW::Table(visibleOnly ? "settings_visible" : "settings_more", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg, ImVec2(0, 0), 0.0f)) {
@@ -608,7 +613,7 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
                 if (isMarked != visibleOnly) {
                     continue;
                 }
-                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, controlledProperties.contains(keyStr)); rowResult && *rowResult) {
+                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, isPropertyLocked(keyStr)); rowResult && *rowResult) {
                     result = std::move(*rowResult);
                 }
             }

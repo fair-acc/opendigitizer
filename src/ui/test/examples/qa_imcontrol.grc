@@ -45,6 +45,16 @@ blocks:
       label: Name
       value: first
       target_map: "plotSink1,plotSink2:signal_name"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: controlChoice
+      label: Shape
+      target_map: "signalGenerator1:signal_type"
+  - id: DigitizerUi::ImPropertyReadout
+    parameters:
+      name: readout
+      label: Live
+      target_map: "signalGenerator2:frequency"
 connections:
   - [clockSource1, 0, signalGenerator1, 0]
   - [signalGenerator1, 0, plotSink1, 0]

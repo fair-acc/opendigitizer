@@ -39,6 +39,14 @@ blocks:
     parameters:
       name: controlTrigger
       label: Trig
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: controlChoice
+      label: Cho
+  - id: DigitizerUi::ImPropertyReadout
+    parameters:
+      name: readout
+      label: Read
 connections:
   - [clockSource1, 0, signalGenerator1, 0]
   - [signalGenerator1, 0, sink1, 0]

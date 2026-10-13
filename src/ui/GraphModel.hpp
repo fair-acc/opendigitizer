@@ -139,6 +139,7 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
     [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
     [[nodiscard]] bool           isUiControl() const;
+    [[nodiscard]] bool           isViewOnlyUiControl() const;
     [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled

@@ -11,9 +11,11 @@
 
 #include <Dashboard.hpp>
 #include <ToolbarView.hpp>
+#include <blocks/ImControlChoice.hpp>
 #include <blocks/ImControlText.hpp>
 #include <blocks/ImControlToggle.hpp>
 #include <blocks/ImControlTrigger.hpp>
+#include <blocks/ImPropertyReadout.hpp>
 
 #include <cmrc/cmrc.hpp>
 
@@ -21,6 +23,7 @@
 #include <cmath>
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,11 +39,14 @@ constexpr ImVec2 kUiControlWindowPos{40.f, 240.f};
 constexpr ImVec2 kWindowSize{900.f, 120.f};
 
 struct TestState : TestDashboardRunner {
-    DigitizerUi::ToolbarView                                          view;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlToggle>>  toggle;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlTrigger>> trigger;
-    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlText>>    text;
-    bool                                                              showLabels = true;
+    DigitizerUi::ToolbarView                                           view;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlToggle>>   toggle;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlTrigger>>  trigger;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlText>>     text;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlChoice>>   choice;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImPropertyReadout>> readout;
+    bool                                                               showLabels                        = true;
+    bool                                                               includeControlledPropertyInConfig = true;
 };
 
 TestState g_state;
@@ -66,6 +72,16 @@ std::size_t countMatchingSettingsMessages(const std::vector<gr::Message>& messag
 template<typename T>
 bool containsMatchingMessage(const std::vector<gr::Message>& messages, std::string_view target, const std::string& key, const T& expected) {
     return countMatchingSettingsMessages<T>(messages, target, key, expected) > 0UZ;
+}
+
+DrawableBlockConfig controlledParsedConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.choices = choices}}, .aggregateControlledPropertyHints = {.choices = choices}}; }
+gr::property_map    controlledConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return controlledParsedConfig(std::move(value), std::move(choices)).toMap().value_or(gr::property_map{}); }
+
+/// ImGui::BeginCombo does not report its label to the test engine, so "**/##Label" does not find the dropdown of an ImControlChoice
+ImGuiID choiceComboId(ImGuiTestContext* ctx, const char* windowRef, std::string_view controlUniqueName, const char* comboLabel) {
+    const ImGuiWindow* window = ctx->WindowInfo(windowRef).Window;
+    expect(window != nullptr) << fatal << windowRef;
+    return ImHashStr(comboLabel, 0UZ, ImHashStr(controlUniqueName.data(), controlUniqueName.size(), window->ID));
 }
 
 void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) {
@@ -114,6 +130,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     std::ignore = g_state.trigger->block.draw(makeConfig(false));
                     ImGui::SameLine();
                     std::ignore = g_state.text->block.draw(makeConfig(std::string("start")));
+                    ImGui::SameLine();
+                    std::ignore = g_state.choice->block.draw(g_state.includeControlledPropertyInConfig ? controlledConfig("Sin", {"Sin", "Cos", "Square"}) : gr::property_map{});
+                    ImGui::SameLine();
+                    std::ignore = g_state.readout->block.draw(controlledConfig(std::int32_t{42}));
                 }
             }
         };
@@ -186,7 +206,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 g_state.waitUntil(ctx, "flowgraph appears to be initialized and running", [] { return blockHasStringKeyValuePair("plotSink1", "signal_name", "first"); });
 
                 "some controls are drawn, at least"_test = [&] {
-                    for (const char* item : {"**/##Visible", "**/Show", "**/##Name"}) {
+                    for (const char* item : {"**/##Visible", "**/Show", "**/##Name", "**/##Live"}) {
                         expect(ctx->ItemExists(item)) << item;
                     }
                     captureScreenshot(*ctx, ImRect(kDashboardWindowPos, kDashboardWindowPos + kWindowSize));
@@ -214,6 +234,41 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     g_state.waitUntil(ctx, "text input should inherit the initial value from its first target", [] { return blockHasStringKeyValuePair("controlText", "value", "first"); });
                     ctx->ItemInputValue("**/##Name", "foo bar"); // ui control block with name "controlText" has label "Name"
                     g_state.waitUntil(ctx, "text input got propagated to all target blocks", [] { return blockHasStringKeyValuePair("plotSink1", "signal_name", "foo bar") && blockHasStringKeyValuePair("plotSink2", "signal_name", "foo bar"); });
+                };
+
+                "controls in the toolbar receive the current value and enum choices of the first targeted property"_test = [&] {
+                    DrawableBlockConfig::ControlledProperty controlled;
+                    expect(g_state.waitUntil(ctx, "the UI knows and sends the choice values for signal_type", [&] {
+                        controlled = getFirstControlledProperty("controlChoice");
+                        return controlled.has_value();
+                    })) << fatal;
+                    expect(controlled.value == "Sin");
+                    const auto& choices = controlled.hints.choices;
+                    expect(std::ranges::contains(choices, std::string("Sin")) && std::ranges::contains(choices, std::string("Cos")) && std::ranges::contains(choices, std::string("Square"))) << std::format("{} choices", choices.size());
+                    expect(!controlled.hints.min && !controlled.hints.max) << "shouldnt specify min and max for enum";
+                };
+
+                "picking a choice sets the enum on the target and stores it in the control block"_test = [&] {
+                    expect(blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Sin")) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
+                    expect(control != nullptr) << fatal;
+                    ctx->ItemClick(choiceComboId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Shape"));
+                    ctx->ItemClick("//$FOCUSED/Cos");
+                    expect(g_state.waitUntil(ctx, "both the target and the control block contain the newly set value", [] { return blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Cos") && blockHasStringKeyValuePair("controlChoice", "value", "Cos"); }));
+                };
+
+                "the graph model should ignore invalid selectors when parsing target_map"_test = [&] {
+                    expect(g_state.waitUntil(ctx, "initially controlChoice has a target", [] { return getFirstControlledProperty("controlChoice").has_value(); }));
+                    sendSetTargetMapMessage("controlChoice", "noSuchBlock:signal_type");
+                    expect(g_state.waitUntil(ctx, "after getting an invalid target_map, the control no longer has target + metadata, at least according to the UI side", [] { return !getFirstControlledProperty("controlChoice").has_value(); }));
+                    sendSetTargetMapMessage("controlChoice", "noSuchBlock:signal_type;signalGenerator2:frequency");
+                    DrawableBlockConfig::ControlledProperty secondTargetControlledProperty;
+                    expect(g_state.waitUntil(ctx, "we should recognize the second item but not the first", [&secondTargetControlledProperty] {
+                        secondTargetControlledProperty = getFirstControlledProperty("controlChoice");
+                        return secondTargetControlledProperty.has_value();
+                    })) << fatal;
+                    const auto frequency = secondTargetControlledProperty.value;
+                    expect(frequency.get_if<float>() != nullptr && *frequency.get_if<float>() == 2.f) << "signalGenerator2 expects to have a frequency of, according to .grc";
                 };
 
                 "changing the target of a control"_test = [&] {
@@ -272,6 +327,38 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(containsMatchingMessage<std::string>(g_state.text->takeSent(), "TargetA", "caption", std::string("ramp"))) << "Enter sends the text";
                 };
 
+                "ImControlChoice has all its options and sends the expected settings message"_test = [&] {
+                    std::ignore = g_state.choice->takeSent();
+                    expect(g_state.choice->block.value == "Sin") << fatal << "choice is initialized with the value of the target (this is passed to controlledConfig())";
+                    ctx->ItemClick(choiceComboId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform"));
+                    for (const char* expectedComboEntry : {"Sin", "Cos", "Square"}) {
+                        expect(ctx->ItemExists(std::format("//$FOCUSED/{}", expectedComboEntry).c_str())) << expectedComboEntry;
+                    }
+                    ctx->ItemClick("//$FOCUSED/Square");
+                    const auto sent = g_state.choice->takeSent();
+                    expect(eq(countMatchingSettingsMessages<std::string>(sent, "TargetA", "shape", std::string("Square")), 1UZ)) << std::format("{} messages", sent.size());
+                    expect(g_state.choice->block.value == std::string("Square"));
+                };
+
+                "if an ImControlChoice does not have options then it is just disabled"_test = [&] {
+                    const auto                   disabled  = [&] { return (ctx->ItemInfo(choiceComboId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform")).ItemFlags & ImGuiItemFlags_Disabled) != 0; };
+                    Digitizer::utils::scope_exit tellAgain = [] { g_state.includeControlledPropertyInConfig = true; };
+                    expect(!disabled()) << fatal << "enabled while draw() is told the choices";
+                    g_state.includeControlledPropertyInConfig = false; // pretend it is not connected to anything
+                    expect(g_state.waitUntil(ctx, "the dropdown is disabled when disconnected from any target property", disabled));
+                };
+
+                "ImControlReadout shows expected text"_test = [&] {
+                    using DigitizerUi::ImPropertyReadout;
+                    expect(ctx->ItemExists("**/##Reading"));
+                    using namespace std::string_literals;
+                    expect(eq(ImPropertyReadout::readoutText(controlledParsedConfig(std::int32_t{42})), "42"s));
+                    expect(eq(ImPropertyReadout::readoutText(controlledParsedConfig(std::string("Sin"))), "Sin"s)) << "strings and enums without quotes";
+                    expect(eq(ImPropertyReadout::readoutText(controlledParsedConfig(true)), "true"s));
+                    expect(eq(ImPropertyReadout::readoutText(controlledParsedConfig({})), std::string{})) << "readout should be empty when there is no value connected";
+                    expect(eq(ImPropertyReadout::readoutText(DrawableBlockConfig{.showLabel = true}), std::string{})) << "showLabel controls the label, not the value";
+                };
+
                 "ImControl derivative widgets responsively render with or without labels depending on available space"_test = [&] {
                     const float                  labelWidth      = ImGui::CalcTextSize("Enabled").x + ImGui::GetStyle().ItemInnerSpacing.x;
                     const float                  labelledWidth   = ctx->ItemInfo("**/##Enabled").RectFull.Min.x;
@@ -300,6 +387,9 @@ int main(int argc, char* argv[]) {
     g_state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
     g_state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
     g_state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});
+
+    g_state.choice  = std::make_unique<StandaloneControl<DigitizerUi::ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
+    g_state.readout = std::make_unique<StandaloneControl<DigitizerUi::ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
 
     const bool result = app.runTests();
     g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown
