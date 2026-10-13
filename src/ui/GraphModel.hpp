@@ -2,6 +2,7 @@
 #define GRAPHMODEL_H
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <map>
 #include <memory>
@@ -12,6 +13,8 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
+
+#include "blocks/TargetMap.hpp"
 
 struct TestApp;
 
@@ -134,8 +137,16 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
     [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
     [[nodiscard]] bool           isUiControl() const;
+    [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
+
+    [[nodiscard]] std::expected<TargetMap, std::string> uiControlTargetMap() const {
+        if (!usesTargetMap()) {
+            return std::unexpected("Attempt to get target map for a block which does not implement it");
+        }
+        return TargetMap::fromString(blockSettings.value_or<std::string>("target_map", std::string{}));
+    }
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
@@ -315,6 +326,8 @@ public:
     };
     FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
     FindBlockResult recursiveFindBlockByName(std::string_view name);
+
+    void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 
     struct ExportedPropertyMatchResult {
         UiGraphBlock* block;

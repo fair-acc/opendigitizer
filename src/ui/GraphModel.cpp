@@ -19,6 +19,8 @@
 
 #include "MapUtils.hpp"
 
+#include "blocks/TargetMap.hpp"
+
 using namespace std::string_literals;
 
 UiGraphBlock::~UiGraphBlock() {
@@ -742,6 +744,19 @@ UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByName(std::string
         return VisitorResult::Recurse;
     });
     return out;
+}
+
+void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
+    UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
+    if (!control) {
+        return;
+    }
+    auto targets = control->uiControlTargetMap();
+    if (!targets) {
+        return;
+    }
+    targets->removeTarget(TargetEntry{.blockTarget = std::string(blockSelector), .propertyName = property});
+    control->setSetting("target_map", targets->toString());
 }
 
 UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {

@@ -87,6 +87,9 @@ struct Palette {
     ImVec4 flowgraphNodeBorder;
     ImVec4 flowgraphSubgraphBorder;
     ImVec4 flowgraphSubgraphBorderText;
+    ImVec4 flowgraphUiControlFill;
+    ImVec4 flowgraphUiControlHighlight;
+    ImVec4 flowgraphUiControlConnectionIndicator;
 
     ImVec4 flowgraphBoundingBoxExteriorSelection;
     ImVec4 flowgraphBoundingBoxExteriorSelectionOutline;
