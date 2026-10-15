@@ -30,6 +30,11 @@ target_link_libraries(qa_FuzzySearch PRIVATE ut opendigitizer-uilib opendigitize
 target_include_directories(qa_FuzzySearch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME qa_FuzzySearch COMMAND qa_FuzzySearch)
 
+add_executable(qa_BrowserHistory qa_BrowserHistory.cpp)
+target_link_libraries(qa_BrowserHistory PRIVATE ut opendigitizer-uilib opendigitizer-options)
+target_include_directories(qa_BrowserHistory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME qa_BrowserHistory COMMAND qa_BrowserHistory)
+
 add_executable(qa_TouchHandler qa_TouchHandler.cpp)
 target_link_libraries(qa_TouchHandler PRIVATE ut opendigitizer-uilib opendigitizer-options)
 target_include_directories(qa_TouchHandler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
