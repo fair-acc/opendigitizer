@@ -26,6 +26,7 @@
 #include "ToolbarView.hpp"
 
 #include "settings.hpp"
+#include "utils/BrowserHistory.hpp"
 #include "utils/EmscriptenHelper.hpp"
 
 #include <IoSerialiserYaS.hpp>
@@ -78,6 +79,9 @@ public:
     std::optional<std::string>                  deferredDashboardUrl;
 
     components::AppHeader header;
+
+    BrowserHistory history;
+    bool           locationPublished = false;
 
 public:
     App() : openDashboardPage(restClient) {
@@ -134,13 +138,70 @@ public:
 
         flowgraphPage.setDashboard(dashboard.get());
 
-#ifdef __EMSCRIPTEN__
-        if (desc && desc->storageInfo && !desc->storageInfo->isInMemoryDashboardStorage()) {
-            setBrowserDashboardFragment(desc->name);
-        } else {
-            setBrowserDashboardFragment({});
+        publishDashboardLocation(desc);
+    }
+
+    /// only dashboards a recipient can resolve get a link: the ones served next to the UI and the built-in samples
+    [[nodiscard]] static bool isLinkableStorage(const DashboardStorageInfo& storage) { return !storage.isInMemoryDashboardStorage() && (storage.path == kBuiltinSamplesSource || storage.path == serviceDashboardsPath()); }
+
+    [[nodiscard]] static std::string serviceDashboardsPath() { return Digitizer::Settings::instance().serviceUrl().path("/dashboards").build().str(); }
+
+    [[nodiscard]] static std::optional<std::string> builtinSampleUrl([[maybe_unused]] std::string_view name) {
+#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
+        if (cmrc::sample_dashboards::get_filesystem().is_file(std::format("assets/sampleDashboards/{}.grc", name))) {
+            return std::format("{}/{}", kBuiltinSamplesSource, name);
         }
 #endif
+        return std::nullopt;
+    }
+
+    [[nodiscard]] static std::string resolveServiceDashboardPath(std::string_view dashboardName) {
+        const Digitizer::Settings& settings = Digitizer::Settings::instance();
+        // TODO: add subscription to remote dashboard worker if needed
+        std::string dashboardPath{dashboardName};
+        if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
+            std::string basePath = settings.basePath.empty() ? "" : settings.basePath;          // needed in case the dashboard page is loaded via a redirect
+            if (!basePath.empty() && !basePath.ends_with("/")) {
+                basePath += "/";
+            }
+            for (const std::string& bindAddress : settings.bindAddresses) {
+                if (bindAddress.starts_with("https://") || bindAddress.starts_with("http://")) {
+                    const auto bindUri = opencmw::URI<>(std::string(bindAddress));
+                    dashboardPath      = std::format("{}://{}:{}/{}dashboards/{}", bindUri.scheme().value(), settings.hostname, bindUri.port().value(), basePath, dashboardPath);
+                    break;
+                }
+            }
+        }
+        return dashboardPath;
+    }
+
+    /// reflect the loaded dashboard in the browser URL: the first load replaces the initial entry, later loads add one
+    void publishDashboardLocation(const std::shared_ptr<const DashboardDescription>& desc) {
+        const bool linkable = desc && desc->storageInfo && isLinkableStorage(*desc->storageInfo);
+        // keeps flags such as darkMode, drops the dashboard when it cannot be linked
+        const Digitizer::AppLocation location = linkable ? Digitizer::AppLocation::forDashboard(desc->name, history.current().query) : Digitizer::AppLocation{.segments = {}, .query = history.current().query};
+        if (locationPublished && linkable) {
+            history.push(location);
+        } else {
+            history.replace(location);
+        }
+        locationPublished = true;
+    }
+
+    /// apply a location the browser navigated to (hand-edited URL, back, forward) without reloading the page
+    void applyBrowserLocation(const Digitizer::AppLocation& location) {
+        if (const auto darkMode = location.flag("darkMode")) {
+            setStyle(*darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
+        }
+        if (const auto editable = location.flag("editable"); editable && *editable != Digitizer::Settings::instance().editableMode) {
+            Digitizer::Settings::instance().editableMode = *editable;
+            mainViewMode                                 = *editable ? ViewMode::INTERACTION : ViewMode::VIEW;
+            previousViewMode                             = mainViewMode;
+        }
+        if (const auto name = location.dashboardName(); name && (!dashboard || dashboard->description->name != *name)) {
+            deferredDashboardUrl          = builtinSampleUrl(*name).value_or(resolveServiceDashboardPath(*name));
+            prepareForANewDashboardToLoad = true;
+        }
     }
 
     void loadDashboard(std::string_view url) {
@@ -179,6 +240,9 @@ public:
     void init(int argc, char** argv) {
         Digitizer::Settings& settings = Digitizer::Settings::instance();
 
+        history.onBrowserChange = [] { globalFramePacer().requestFrame(); };
+        history.install();
+
         // Init openDashboardPage
         openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
         openDashboardPage.requestLoadDashboard  = [&](const auto& desc) {
@@ -189,7 +253,13 @@ public:
                 dashboardToLoad               = desc;
             }
         };
-        openDashboardPage.addDashboard(settings.serviceUrl().path("/dashboards").build().str());
+        openDashboardPage.shareLinkFor = [this](std::string_view name, const DashboardStorageInfo& storage) -> std::optional<std::string> {
+            if (name.empty() || !isLinkableStorage(storage)) {
+                return std::nullopt;
+            }
+            return history.linkTo(Digitizer::AppLocation::forDashboard(name));
+        };
+        openDashboardPage.addDashboard(serviceDashboardsPath());
 #ifndef OD_DISABLE_DEMO_FLOWGRAPHS
         openDashboardPage.addDashboard(kBuiltinSamplesSource);
 #endif
@@ -218,36 +288,8 @@ public:
         header.requestApplicationStop = [this] { isRunning = false; };
         header.loadAssets();
 
-        auto resolveDefaultDashboardPath = [&settings]() -> std::string {
-            // TODO: add subscription to remote dashboard worker if needed
-            std::string dashboardPath = settings.defaultDashboard;
-            if (!dashboardPath.starts_with("http://") and !dashboardPath.starts_with("https://")) { // if the default dashboard does not contain a host, use the default
-                std::string basePath = settings.basePath.empty() ? "" : settings.basePath;          // needed in case the dashboard page is loaded via a redirect
-                if (!basePath.empty() && !basePath.ends_with("/")) {
-                    basePath += "/";
-                }
-                for (const std::string& bindAddress : settings.bindAddresses) {
-                    if (bindAddress.starts_with("https://") || bindAddress.starts_with("http://")) {
-                        const auto bindUri = opencmw::URI<>(std::string(bindAddress));
-                        dashboardPath      = std::format("{}://{}:{}/{}dashboards/{}", bindUri.scheme().value(), settings.hostname, bindUri.port().value(), basePath, dashboardPath);
-                        break;
-                    }
-                }
-            }
-            return dashboardPath;
-        };
-
 #ifdef __EMSCRIPTEN__
-        auto builtinSampleUrl = []([[maybe_unused]] std::string_view name) -> std::optional<std::string> {
-#ifndef OD_DISABLE_DEMO_FLOWGRAPHS
-            if (cmrc::sample_dashboards::get_filesystem().is_file(std::format("assets/sampleDashboards/{}.grc", name))) {
-                return std::format("{}/{}", kBuiltinSamplesSource, name);
-            }
-#endif
-            return std::nullopt;
-        };
-
-        // Defer argv / #dashboard= loads until after the first ImGui frame so SIDE_MODULE
+        // Defer argv / #/dashboard/<name> loads until after the first ImGui frame so SIDE_MODULE
         // dlopen (~60MB) does not race the first paint. Skip stock RemoteStream auto-load
         // against the static file server (404 → noisy fetch); open the built-in demo instead.
         if (argc > 1) {
@@ -258,7 +300,7 @@ public:
                 prepareForANewDashboardToLoad = true;
             }
         } else if (settings.dashboardFromUrlFragment && !settings.defaultDashboard.empty()) {
-            deferredDashboardUrl          = builtinSampleUrl(settings.defaultDashboard).value_or(resolveDefaultDashboardPath());
+            deferredDashboardUrl          = builtinSampleUrl(settings.defaultDashboard).value_or(resolveServiceDashboardPath(settings.defaultDashboard));
             prepareForANewDashboardToLoad = true;
             std::print("Loading dashboard from '{}' (deferred)\n", *deferredDashboardUrl);
         } else if (auto demoUrl = builtinSampleUrl("DemoDashboard")) {
@@ -276,7 +318,7 @@ public:
                 loadDashboard(url);
             }
         } else if (!settings.defaultDashboard.empty()) {
-            loadDashboard(resolveDefaultDashboardPath());
+            loadDashboard(resolveServiceDashboardPath(settings.defaultDashboard));
         }
         if (auto firstDashboard = openDashboardPage.get(0); dashboard == nullptr && firstDashboard != nullptr) { // load first dashboard if there is a dashboard available
             loadDashboard(firstDashboard);
@@ -317,6 +359,10 @@ public:
     }
 
     void drawPage(float lockedModeBlockerStart) {
+        if (const auto browserChange = history.takeBrowserChange()) {
+            applyBrowserLocation(*browserChange);
+        }
+
         if (prepareForANewDashboardToLoad) {
             prepareForANewDashboardToLoad = false;
             return;

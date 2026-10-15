@@ -56,35 +56,6 @@ inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEv
 }
 #endif
 
-/// Update or clear `#dashboard=` in the browser URL without reloading (WASM only).
-inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashboardName) {
-#ifdef __EMSCRIPTEN__
-    const std::string name{dashboardName};
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
-    // clang-format off
-    // MAIN_THREAD: window/history are only valid on the browser main thread (pthreads build).
-    // Use "" (not '') in JS — the C preprocessor rejects empty character literals.
-    MAIN_THREAD_EM_ASM(
-        {
-            const name = UTF8ToString($0);
-            const hash = (window.location.hash || "").replace(/^#/, "");
-            const params = hash.length
-                ? hash.split("&").filter(function (p) { return p.length && p.indexOf("dashboard=") !== 0; })
-                : [];
-            if (name.length) {
-                params.unshift("dashboard=" + name);
-            }
-            const fragment = params.join("&");
-            const url = window.location.pathname + window.location.search + (fragment ? "#" + fragment : "");
-            history.replaceState(null, "", url);
-        },
-        name.c_str());
-    // clang-format on
-#pragma clang diagnostic pop
-#endif
-}
-
 // clang-format off
 inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
 #ifdef __EMSCRIPTEN__
