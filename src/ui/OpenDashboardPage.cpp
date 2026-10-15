@@ -10,6 +10,7 @@
 #include "OAuthSession.hpp"
 #include "components/Dialog.hpp"
 #include "components/HoverRevealedTrashButton.hpp"
+#include "components/ImGuiNotify.hpp"
 #include "components/NewBlockSelectorFuzzySearch.hpp"
 #include "components/StyledStandardWidgets.hpp"
 #include "components/VirtualScrollTable.hpp"
@@ -392,6 +393,21 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
     }
 
     drawAddSourcePopup();
+
+    if (shareLinkFor) {
+        const std::optional<std::string> link = shareLinkFor(name, *storageInfo);
+        {
+            IMW::Disabled disabled(!link);
+            if (ImGui::Button("Copy link") && link) {
+                ImGui::SetClipboardText(link->c_str());
+                components::Notification::info("Link copied to clipboard");
+            }
+        }
+        if (!link) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Only dashboards on the service or built-in samples can be shared by link.");
+        }
+    }
 
     bool okEnabled = !name.empty() && !storageInfo->isInMemoryDashboardStorage();
     if (components::DialogButtons(okEnabled) == components::DialogButton::Ok && desc != nullptr) {
