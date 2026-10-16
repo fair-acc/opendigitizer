@@ -372,6 +372,12 @@ public:
     /// all the hints and typeinfo to find the acceptable min/max range and choices for the property
     void aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control);
 
+    /// Returns true if the given control with the given controlled properties (return value from resolveControlledProperties()) makes sense to control the given property
+    [[nodiscard]] static bool isCompatibleWithControlledProperties(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const BlockPointerPropertyNamePair& property);
+
+    /// Whether any property of @param candidate passes isCompatibleWithControlledProperties
+    [[nodiscard]] static bool doesBlockHaveACompatibleProperty(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const UiGraphBlock& candidate);
+
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 
     struct ExportedPropertyMatchResult {

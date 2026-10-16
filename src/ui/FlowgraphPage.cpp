@@ -644,11 +644,13 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     const std::vector<UiGraphBlock*> controlBlocks = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
     const auto&                      graphEdges    = rootBlock->childEdges;
 
-    const std::optional<std::string_view> multiSelectHoveredProperty = _uiControlMultiSelectPopup ? _uiControlMultiSelectPopup->hoveredProperty() : std::nullopt;
-    const UiGraphBlock*                   multiSelectControl         = multiSelectHoveredProperty ? _graphModel->recursiveFindBlockByUniqueName(_uiControlMultiSelectPopup->controlUniqueName()).block : nullptr;
-    const UiGraphBlock*                   dragSourceControl          = _blockDragConnect ? _graphModel->recursiveFindBlockByUniqueName(_blockDragConnect->sourceUniqueName()).block : nullptr;
-    const auto                            isCompatibleWithDragSource = [dragSourceControl](const UiGraphBlock& candidate) { //
-        return dragSourceControl && dragSourceControl != &candidate && !candidate.connectableProperties(dragSourceControl->uiControlCompatibleTypeMap()).empty();
+    const std::optional<std::string_view> multiSelectHoveredProperty       = _uiControlMultiSelectPopup ? _uiControlMultiSelectPopup->hoveredProperty() : std::nullopt;
+    const UiGraphBlock*                   multiSelectControl               = multiSelectHoveredProperty ? _graphModel->recursiveFindBlockByUniqueName(_uiControlMultiSelectPopup->controlUniqueName()).block : nullptr;
+    const UiGraphBlock*                   dragSourceControl                = _blockDragConnect ? _graphModel->recursiveFindBlockByUniqueName(_blockDragConnect->sourceUniqueName()).block : nullptr;
+    const auto                            propertiesControlledByDragSource = dragSourceControl ? _graphModel->resolveControlledProperties(*dragSourceControl) : std::unexpected("no UI control is being dragged from");
+    const auto                            isCompatibleWithDragSource       = [&propertiesControlledByDragSource, dragSourceControl](const UiGraphBlock& candidate) { //
+        assert(bool(dragSourceControl) == bool(propertiesControlledByDragSource));
+        return propertiesControlledByDragSource && UiGraphModel::doesBlockHaveACompatibleProperty(*dragSourceControl, *propertiesControlledByDragSource, candidate);
     };
 
     makeCurrent();

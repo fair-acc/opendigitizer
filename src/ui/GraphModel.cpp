@@ -840,6 +840,22 @@ DrawableBlockConfig::ControlledProperty UiGraphModel::firstControlledPropertyCon
     };
 }
 
+bool UiGraphModel::isCompatibleWithControlledProperties(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const BlockPointerPropertyNamePair& property) {
+    assert(property.block);
+    if (!property.block || property.block == &control || !property.block->isConnectableProperty(property.property, control.uiControlCompatibleTypeMap())) {
+        return false;
+    }
+    if (controlled.empty()) {
+        return true;
+    }
+    const auto& [firstBlock, firstProperty] = controlled.front();
+    return property.block->propertyTypeName(property.property) == firstBlock->propertyTypeName(firstProperty) && aggregatePropertyHints(controlled).intersection(property.block->propertyHints(property.property)).has_value();
+}
+
+bool UiGraphModel::doesBlockHaveACompatibleProperty(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const UiGraphBlock& candidate) {
+    return std::ranges::any_of(candidate.connectableProperties(control.uiControlCompatibleTypeMap()), [&](const std::string& property) { return isCompatibleWithControlledProperties(control, controlled, {&candidate, property}); });
+}
+
 void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
     UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
     if (!control) {

@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_UICONTROLINTERACTIONCOMPONENTS_HPP
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -59,6 +60,11 @@ public:
     [[nodiscard]] std::span<const T> items() const { return _items; }
 
     [[nodiscard]] ScrollableListSelectionPopupResult draw() {
+        return draw([](std::size_t) { return true; });
+    }
+
+    /// @param isItemEnabled is called with the index of each item before drawing it, disabled items cannot be interacted with
+    [[nodiscard]] ScrollableListSelectionPopupResult draw(std::predicate<std::size_t> auto isItemEnabled) {
         if (!std::exchange(_opened, true)) {
             ImGui::OpenPopup(_name.c_str());
         }
@@ -75,6 +81,7 @@ public:
             {
                 IMW::Child list("##items", ImVec2(280.F, 180.F), true, 0);
                 for (std::size_t index = 0UZ; index < _items.size(); ++index) {
+                    IMW::Disabled incompatible(!isItemEnabled(index));
                     if (_items[index].draw()) {
                         _enabledItems.push_back(index);
                     }
@@ -168,6 +175,8 @@ private:
 };
 
 /// Connects properties of the block a drag ended on to the UI control it started from.
+/// Only properties compatible with the control's existing connections are listed, and checking one disables
+/// the listed properties which are incompatible with it.
 class UiControlPropertyLinkPopup {
     BlockDragConnectInteraction                    _interaction;
     ScrollableListSelectionPopup<CheckboxListItem> _popup;
@@ -180,6 +189,9 @@ public:
 
 private:
     static std::vector<CheckboxListItem> connectableProperties(const BlockDragConnectInteraction& interaction, UiGraphModel& model);
+
+    /// @param targets with the entries for @param target replaced by the properties currently checked in the popup
+    [[nodiscard]] TargetMap withSelectionApplied(TargetMap targets, const UiGraphBlock& target) const;
 
     void applySelection(UiGraphModel& model);
 };
