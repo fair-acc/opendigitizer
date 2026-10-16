@@ -81,6 +81,13 @@ void sendSetTargetMapMessage(const std::string& control, const std::string& targ
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     using DigitizerUi::test::ImGuiTestApp::ImGuiTestApp;
 
+    static DrawableBlockConfig::ControlledProperty getFirstControlledProperty(std::string_view controlName) {
+        auto&                            model   = g_state.dashboard->session.graphModel;
+        const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName(controlName).block;
+        expect(control != nullptr) << fatal << controlName;
+        return DigitizerUi::UiGraphModel::firstControlledPropertyConfig(model.resolveControlledProperties(*control).value_or(std::vector<DigitizerUi::UiGraphModel::BlockPointerPropertyNamePair>{}));
+    }
+
     void registerTests() override {
         static constexpr auto commonGuiFunc = [](ImGuiTestContext*) {
             ImGui::SetNextWindowPos(kDashboardWindowPos);
@@ -99,13 +106,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ImGui::SetNextWindowPos(kUiControlWindowPos);
                 ImGui::SetNextWindowSize(kWindowSize);
                 {
-                    IMW::Window            uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-                    const gr::property_map config{{"show_label", g_state.showLabels}};
-                    std::ignore = g_state.toggle->block.draw(config);
+                    IMW::Window uiControlPanel("uiControlPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                    // makeConfig() here needs a targetValue to be provided just to tell the control that it is connected to something. controls which do not receive a value are drawn disabled.
+                    const auto makeConfig = [](gr::pmt::Value targetValue) { return DrawableBlockConfig{.firstControlledProperty = {.value = std::move(targetValue)}, .showLabel = g_state.showLabels}.toMap().value_or(gr::property_map{}); };
+                    std::ignore           = g_state.toggle->block.draw(makeConfig(false));
                     ImGui::SameLine();
-                    std::ignore = g_state.trigger->block.draw(config);
+                    std::ignore = g_state.trigger->block.draw(makeConfig(false));
                     ImGui::SameLine();
-                    std::ignore = g_state.text->block.draw(config);
+                    std::ignore = g_state.text->block.draw(makeConfig(std::string("start")));
                 }
             }
         };
@@ -137,6 +145,32 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(blockHasBasicTypeKeyValuePair<bool>("testCase1ToggleFalseToFalse", "value", false)) << "control value matches attached block's value";
                     expect(blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleTrueToFalse", "value", true)) << "control value matches attached block's value";
                     expect(blockHasBasicTypeKeyValuePair<bool>("testCase3ToggleFalseToTrue", "value", false)) << "control value matches attached block's value";
+                };
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrol", "regression test for loading initial value of controls");
+
+            t->GuiFunc = commonGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_initial_value.grc", "initial_value");
+                g_state.waitForScheduler(ctx);
+                g_state.waitUntil(ctx, "graph loads as expected", [] { return blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1"); });
+                expect(blockHasStringKeyValuePair("controlText", "value", "")) << fatal << "the text control starts out empty";
+
+                sendSetTargetMapMessage("controlText", "sineSink1:signal_name");
+                g_state.waitUntil(ctx, "the UI returns the correct target for the controlText block", [] { return getFirstControlledProperty("controlText").has_value(); });
+                g_state.waitUntil(ctx, "the text control takes the value of its target", [] { return blockHasStringKeyValuePair("controlText", "value", "sine 1"); });
+                expect(blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "connecting does not modify the target";
+
+                "changing a connection from one property to another with identical hints still causes the control block to reload the value"_test = [&] {
+                    sendSetTargetMapMessage("controlText", "sineSink2:signal_name"); // same property, same target block type, but going to a difference block instance
+                    g_state.waitUntil(ctx, "UI received update to controlText target_map", [] { return getFirstControlledProperty("controlText").value.value_or(std::string{}) == "sine 2"; });
+                    g_state.waitUntil(ctx, "the value has been loaded upon connection", [] { return blockHasStringKeyValuePair("controlText", "value", "sine 2"); });
+                    expect(blockHasStringKeyValuePair("sineSink1", "signal_name", "sine 1")) << "moving the connection does not modify the old target";
+                    expect(blockHasStringKeyValuePair("sineSink2", "signal_name", "sine 2")) << "moving the connection does not modify the new target";
                 };
             };
         }

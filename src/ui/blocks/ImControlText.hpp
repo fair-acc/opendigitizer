@@ -25,6 +25,7 @@ struct ImControlText : ImControl<ImControlText> {
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
+        loadValueIfConnectionChanged(value, parsedConfig);
         drawLabelled(layout, [this](float width) {
             const std::string id = "##" + label;
             ImGui::SetNextItemWidth(width);

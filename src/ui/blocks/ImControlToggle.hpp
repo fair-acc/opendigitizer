@@ -24,6 +24,7 @@ struct ImControlToggle : ImControl<ImControlToggle> {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const float         checkboxSize = ImGui::GetFrameHeight();
         const SizeAndLayout layout       = prepareDraw(parsedConfig, checkboxSize, checkboxSize, labelWidth());
+        loadValueIfConnectionChanged(value, parsedConfig);
         drawLabelled(layout, [this](float) {
             const std::string id = "##" + label;
             if (ImGui::Checkbox(id.c_str(), &value)) {

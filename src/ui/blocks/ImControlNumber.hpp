@@ -95,8 +95,9 @@ public:
         const auto   drawnStyle       = getBestStyle(style, lowerLimit, upperLimit);
         const auto [natural, minimum] = naturalAndMinimumWidgetWidth(drawnStyle);
         const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
-        const std::string   type      = numberTypeName(parsedConfig.firstControlledProperty);
-        const bool          known     = control::withNumberType(type, [&]<typename T>() { drawNumber<T>(layout, drawnStyle, lowerLimit, upperLimit); });
+        loadValueIfConnectionChanged(value, parsedConfig);
+        const std::string type  = numberTypeName(parsedConfig.firstControlledProperty);
+        const bool        known = control::withNumberType(type, [&]<typename T>() { drawNumber<T>(layout, drawnStyle, lowerLimit, upperLimit); });
         if (!known) {
             ImGui::TextUnformatted(std::format("{}: unknown number type '{}'", label, type).c_str());
         }

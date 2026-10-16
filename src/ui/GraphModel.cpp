@@ -833,8 +833,10 @@ DrawableBlockConfig::ControlledProperty UiGraphModel::firstControlledPropertyCon
     }
     const auto& [target, property] = controlled.front();
     return {
-        .value = target->blockSettings.find_value(std::string_view(property)).value_or(gr::pmt::Value{}),
-        .hints = target->propertyHints(property),
+        .value              = target->blockSettings.find_value(std::string_view(property)).value_or(gr::pmt::Value{}),
+        .hints              = target->propertyHints(property),
+        .targetBlockName    = target->blockName,
+        .targetPropertyName = property,
     };
 }
 
