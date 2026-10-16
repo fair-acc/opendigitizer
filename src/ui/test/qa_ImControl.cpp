@@ -1,6 +1,7 @@
 #include "ImGuiTestApp.hpp"
 #include "StandaloneUiControl.hpp"
 #include "TestDashboardRunner.hpp"
+#include "TestPropertySetterButton.hpp"
 #include "TestingBlockInspectionUtils.hpp"
 
 #include <boost/ut.hpp>

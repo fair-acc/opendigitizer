@@ -183,7 +183,7 @@ private:
             }
             ImGui::PopItemFlag();
         };
-        drawLabelled(layout, [&](float width) {
+        drawWithLabelAndTooltip(layout, [&](float width) {
             switch (drawnStyle) {
             case NumberStyle::field: field(width); break;
             case NumberStyle::spinBox:

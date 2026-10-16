@@ -45,8 +45,10 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
 
     std::string target_map; // of the form "BlockA,BlockB:property;BlockC:property;*:other_property"
     std::string label = "value";
+    std::string icon;
+    std::string tooltip;
 
-    GR_MAKE_REFLECTABLE(ImControl, target_map, label);
+    GR_MAKE_REFLECTABLE(ImControl, target_map, label, icon, tooltip);
 
 private:
     // used to track whether the property we are connected to has changed, to invalidate cache
@@ -130,29 +132,52 @@ public:
         }
     }
 
-    void drawInIdScope(auto drawContent) {
-        const std::string scopeName(this->unique_name);
-        IMW::ChangeStrId  scope(scopeName.c_str());
-        drawContent();
-    }
+    struct LabelAndFont {
+        ImControl*               _self;
+        std::optional<IMW::Font> _font;
+
+        [[nodiscard]] bool shouldUseIcon() const { return !_self->icon.empty(); }
+        explicit LabelAndFont(ImControl& self) : _self(std::addressof(self)) {
+            if (shouldUseIcon()) {
+                _font.emplace(LookAndFeel::instance().fontIconsSolid);
+            }
+        }
+        [[nodiscard]] const std::string& selectedLabel() { return shouldUseIcon() ? _self->icon : _self->label; }
+    };
 
     /// Draw something with a label before it and support shrinking it into a tooltip if the label wouldn't fit
-    void drawLabelled(const SizeAndLayout& layout, auto drawWidget) {
-        drawInIdScope([this, &layout, &drawWidget] {
-            if (layout.showLabel) {
+    void drawWithLabelAndTooltip(const SizeAndLayout& layout, auto drawWidget) {
+        IMW::ChangeStrId scope(this->unique_name.value().c_str());
+
+        const auto setTooltip = [this] {
+            (void)this;
+            // TODO: fix tooltips not drawing correctly in the flowgraph. this is
+            // the same issue as ImControlChoice being disabled when drawn in the
+            // flowgraph.
+            // if (!tooltip.empty()) {
+            //     IMW::Font font(LookAndFeel::instance().fontIconsSolid);
+            //     ImGui::SetItemTooltip("%s", tooltip.c_str());
+            // } else if (!label.empty() && !layout.showLabel) {
+            //     ImGui::SetItemTooltip("%s", label.c_str());
+            // }
+        };
+
+        {
+            LabelAndFont labelAndFont(*this);
+            if (layout.showLabel && !labelAndFont.selectedLabel().empty()) {
                 ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted(label.c_str());
+                ImGui::TextUnformatted(labelAndFont.selectedLabel().c_str());
                 ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             }
-            {
-                IMW::Group    widgets;
-                IMW::Disabled disconnected(!layout.hasAnyConnection);
-                drawWidget(layout.width);
-            }
-            if (!layout.showLabel) {
-                ImGui::SetItemTooltip("%s", label.c_str());
-            }
-        });
+        }
+        setTooltip();
+
+        {
+            IMW::Group    widgets;
+            IMW::Disabled disconnected(!layout.hasAnyConnection);
+            drawWidget(layout.width);
+        }
+        setTooltip();
     }
 
     /// Send a settings update message to every block identified by the target_map

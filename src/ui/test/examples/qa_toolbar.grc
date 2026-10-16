@@ -16,17 +16,16 @@ blocks:
     parameters:
       name: PlotSink1
       color: 0xFF0000
-  - id: DigitizerUi::ToolbarCheckbox
+  - id: DigitizerUi::ImControlToggle
     parameters:
       name: toolbar_b_hold
       label: Hold
       tooltip: hold the last clock tag
-      target_block: ClockSource1
-      target_setting: do_zero_order_hold
+      target_map: ClockSource1:do_zero_order_hold
   - id: ForeignToolbarBlock
     parameters:
       name: toolbar_c_foreign
-  - id: DigitizerUi::ToolbarButton
+  - id: opendigitizer::test::TestPropertySetterButton
     parameters:
       name: toolbar_a_amplify
       label: Amplify

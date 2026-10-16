@@ -25,7 +25,7 @@ struct ImControlChoice : ImControl<ImControlChoice> {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
-        drawLabelled(layout, [&](float width) {
+        drawWithLabelAndTooltip(layout, [&](float width) {
             const std::string id = "##" + label;
             // we have to disable the dropdown while inside the flowgraph editor because imgui node editor can't handle combo boxes being drawn in nodes.
             // to fix this we would need to set up a two-pass draw, one in node editor space and one normally. See <https://github.com/thedmd/imgui-node-editor/issues/48>
