@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestPropertySetterButton.hpp"
 
 #include <boost/ut.hpp>
 
@@ -39,7 +40,7 @@ constexpr std::string_view kHostGrc = R"(blocks:
     parameters:
       name: SignalGenerator1
       sample_rate: 4096
-  - id: DigitizerUi::ToolbarButton
+  - id: opendigitizer::test::TestPropertySetterButton
     parameters:
       name: host_button
       label: Amplify
@@ -248,7 +249,9 @@ int main(int argc, char* argv[]) {
     options.screenshotPrefix = "host_composition";
     TestApp app(options);
     app.initImGui();
-    gr::blocklib::initGrBasicBlocks(gr::globalBlockRegistry());
+    auto& registry = gr::globalBlockRegistry();
+    gr::blocklib::initGrBasicBlocks(registry);
+    std::ignore = gr::registerBlock<opendigitizer::test::TestPropertySetterButton>(registry);
 
     state.host      = std::make_unique<HostGraph>();
     state.statusBar = std::make_unique<DigitizerUi::StatusBarView>();

@@ -20,12 +20,17 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
     explicit ImControlTrigger(gr::property_map initParameters = {}) : ImControl<ImControlTrigger>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const float         button       = ImGui::CalcTextSize(label.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, button, button, 0.f);
-        drawInIdScope([&] {
-            IMW::Disabled disconnected(!layout.hasAnyConnection);
-            if (ImGui::Button(label.c_str(), ImVec2(layout.width, 0.f))) {
+        auto parsedConfig = DrawableBlockConfig::fromMap(config);
+
+        parsedConfig.showLabel = false; // this is a button, which already shows the label itself
+
+        const float         button = ImGui::CalcTextSize(label.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
+        const SizeAndLayout layout = prepareDraw(parsedConfig, button, button, 0.f);
+        const ImVec2        buttonSize(layout.width, 0.f);
+
+        drawWithLabelAndTooltip(layout, [this, buttonSize](float) {
+            LabelAndFont labelAndFont(*this);
+            if (ImGui::Button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
                 sendToTargets(true);
             }
         });
