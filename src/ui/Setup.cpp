@@ -6,6 +6,7 @@
 
 #include "LogHistory.hpp"
 #include "blocks/ImControlChoice.hpp"
+#include "blocks/ImControlColor.hpp"
 #include "blocks/ImControlNumber.hpp"
 #include "blocks/ImControlText.hpp"
 #include "blocks/ImControlToggle.hpp"
@@ -34,6 +35,7 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<ImControlTrigger>(registry);
     std::ignore = gr::registerBlock<ImControlText>(registry);
     std::ignore = gr::registerBlock<ImControlChoice>(registry);
+    std::ignore = gr::registerBlock<ImControlColor>(registry);
     std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }

@@ -106,6 +106,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_imcontrol.grc
     examples/qa_imcontrol_conflicting_init_values.grc
     examples/qa_imcontrol_initial_value.grc
+    examples/qa_imcontrol_color.grc
     examples/qa_uicontrol_dragdrop.grc
     examples/qa_uicontrol_connections.grc
     examples/qa_uicontrol_readout.grc

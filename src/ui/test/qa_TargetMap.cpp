@@ -145,6 +145,26 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
         }
     };
 
+    "passing a map that only constrains based on units to isCompatibleType()"_test = [] {
+        using DigitizerUi::isCompatibleType;
+        expect(isCompatibleType("unit:Color;unit:RGB", "uint32", "Color"));
+        expect(isCompatibleType("unit:Color;unit:RGB", "float32", "RGB"));
+        expect(!isCompatibleType("unit:Color;unit:RGB", "uint32", "Hz"));
+        expect(!isCompatibleType("unit:Color;unit:RGB", "uint32", "")) << "a property without a unit";
+        expect(!isCompatibleType("unit:Color", "uint32", "color")) << "units are case sensitive";
+        expect(isCompatibleType(" unit: Color ;", "uint32", "Color")) << "whitespace and empty entries are ignored";
+    };
+
+    "passing a map with both types and units to isCompatibleType()"_test = [] {
+        using DigitizerUi::isCompatibleType;
+        expect(isCompatibleType("unit:Color;unit:RGB;uint32", "uint32", "RGB"));
+        expect(!isCompatibleType("unit:Color;unit:RGB;uint32", "float32", "Color")) << "unit but not type";
+        expect(!isCompatibleType("unit:Color;unit:RGB;uint32", "uint32", "Hz")) << "type but not unit";
+        expect(!isCompatibleType("unit:Color;unit:RGB;uint32", "uint32", "")) << "type but no unit";
+        expect(isCompatibleType("float32;float64", "float64", "Hz")) << "if not unit is in the map then it works on all units";
+        expect(isCompatibleType("*;unit:Hz", "bool", "Hz")) << "type glob selector and a unit works on any type";
+    };
+
     "DrawableBlockConfig toMap and fromMap are each others' inverse"_test = [] {
         using DigitizerUi::DrawableBlockConfig;
         using ControlledProperty = DrawableBlockConfig::ControlledProperty;

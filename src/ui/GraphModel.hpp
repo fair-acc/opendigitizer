@@ -213,7 +213,7 @@ public:
         std::optional<double>    maxValue;
         std::vector<std::string> enumValues;
 
-        SettingsControlType controlType(std::string_view propertyName, const gr::pmt::Value& value) const;
+        SettingsControlType controlType(const gr::pmt::Value& value) const;
     };
 
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;

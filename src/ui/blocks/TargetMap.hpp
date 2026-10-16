@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_BLOCKS_TARGETMAP_HPP
 
 #include <algorithm>
+#include <array>
 #include <expected>
 #include <format>
 #include <ranges>
@@ -135,15 +136,31 @@ public:
     void removeTarget(const TargetEntry& maybeContained) { std::erase(_entries, maybeContained); }
 };
 
-/// Parse a string representing a list of types, of the form "float64;float32;int32" and return whether typeName is one of the items
-[[nodiscard]] inline bool isCompatibleType(std::string_view compatibleTypeMap, std::string_view typeName) {
-    if (Digitizer::trimWhitespace(compatibleTypeMap).empty()) {
-        return true;
+/// If these units are used on a std::uint32_t, the editor will display as a color picker
+inline constexpr std::array<std::string_view, 2> kColorUnits{"Color", "RGB"};
+
+[[nodiscard]] inline bool isColorUnit(std::string_view unit) { return std::ranges::contains(kColorUnits, unit); }
+
+/// Parse a string representing a list of types and units, of the form "float64;float32;unit:Hz;unit:kHz", and return
+/// whether typeName is one of the listed types and unit is one of the listed units. If either types or units are
+/// missing, it is interpreted as allowing any type or unit, respectively.
+[[nodiscard]] inline bool isCompatibleType(std::string_view compatibleTypeMap, std::string_view typeName, std::string_view unit = {}) {
+    constexpr std::string_view kUnitPrefix = "unit:";
+
+    std::vector<std::string> types;
+    std::vector<std::string> units;
+    for (const auto entryRange : compatibleTypeMap | std::views::split(';')) {
+        std::string entry = Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
+        if (entry.starts_with(kUnitPrefix)) {
+            units.push_back(Digitizer::trimWhitespace(std::string_view(entry).substr(kUnitPrefix.size())));
+        } else if (!entry.empty()) {
+            types.push_back(std::move(entry));
+        }
     }
-    return std::ranges::any_of(compatibleTypeMap | std::views::split(';'), [typeName](const auto entryRange) {
-        const std::string entry = Digitizer::trimWhitespace(std::string_view(entryRange.begin(), entryRange.end()));
-        return entry == "*" || entry == typeName;
-    });
+
+    const bool typeMatches = types.empty() || std::ranges::any_of(types, [typeName](const std::string& type) { return type == "*" || type == typeName; });
+    const bool unitMatches = units.empty() || std::ranges::contains(units, unit);
+    return typeMatches && unitMatches;
 }
 
 } // namespace DigitizerUi

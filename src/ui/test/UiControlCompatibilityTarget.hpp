@@ -22,8 +22,13 @@ struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
     Shape                                                             shape                               = Shape::Sin;
     Shape                                                             other_shape                         = Shape::Cos;
     Color                                                             color                               = Color::red;
+    gr::Annotated<std::uint32_t, "color unit", gr::Unit<"Color">>     color_unit_number                   = 0xFF0000U;
+    gr::Annotated<std::uint32_t, "rgb unit", gr::Unit<"RGB">>         rgb_unit_number                     = 0x00FF00U;
+    gr::Annotated<std::uint32_t, "frequency", gr::Unit<"Hz">>         hz_unit_number                      = 0U;
+    std::uint32_t                                                     no_unit_number                      = 0U;
+    gr::Annotated<float, "float color", gr::Unit<"Color">>            color_unit_float                    = 0.f;
 
-    GR_MAKE_REFLECTABLE(UiControlCompatibilityTarget, low_range, high_range, overlapping_both_high_and_low_range, float64_number, int32_number, shape, other_shape, color);
+    GR_MAKE_REFLECTABLE(UiControlCompatibilityTarget, low_range, high_range, overlapping_both_high_and_low_range, float64_number, int32_number, shape, other_shape, color, color_unit_number, rgb_unit_number, hz_unit_number, no_unit_number, color_unit_float);
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
 };

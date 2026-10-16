@@ -384,6 +384,7 @@ add_library(
   blocks/TestSpectrumGenerator.hpp
   blocks/ImControl.hpp
   blocks/ImControlChoice.hpp
+  blocks/ImControlColor.hpp
   blocks/ImControlNumber.hpp
   blocks/ImControlText.hpp
   blocks/ImControlToggle.hpp

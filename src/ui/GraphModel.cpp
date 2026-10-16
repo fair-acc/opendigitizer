@@ -1007,7 +1007,9 @@ bool UiGraphBlock::isConnectableProperty(std::string_view property, std::string_
         return false;
     }
     const std::string typeName = propertyTypeName(property);
-    return !typeName.empty() && isCompatibleType(compatibleTypeMap, typeName);
+    const auto        meta     = blockSettingsMetaInformation.find(std::string(property));
+    const std::string unit     = meta != blockSettingsMetaInformation.end() ? meta->second.unit : std::string{};
+    return !typeName.empty() && isCompatibleType(compatibleTypeMap, typeName, unit);
 }
 
 std::vector<std::string> UiGraphBlock::connectableProperties(std::string_view compatibleTypeMap) const {
@@ -1421,23 +1423,15 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
     return false;
 }
 
-constexpr bool isColourField(const UiGraphBlock::SettingsMetaInformation& meta, std::string_view pattern) {
-    auto containsColo = [](std::string_view s) {
-        constexpr std::string_view target = "colo";
-        return !std::ranges::search(s, target, [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); }).empty();
-    };
-    return containsColo(meta.description) || containsColo(pattern);
-};
-
-UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::controlType(std::string_view propertyName, const gr::pmt::Value& value) const {
+UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::controlType(const gr::pmt::Value& value) const {
     SettingsControlType out{};
     gr::pmt::ValueVisitor([&](auto& currentValue) {
         using T = std::remove_cvref_t<decltype(currentValue)>;
         if constexpr (std::is_same_v<T, bool>) {
             out = SettingsControlType::Checkbox;
         } else if constexpr (std::integral<T>) {
-            if constexpr (std::unsigned_integral<T> && sizeof(T) >= 4) {
-                if (isColourField(*this, propertyName)) {
+            if constexpr (std::same_as<T, std::uint32_t>) {
+                if (isColorUnit(unit)) {
                     out = SettingsControlType::Color;
                     return;
                 }
