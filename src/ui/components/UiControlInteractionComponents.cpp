@@ -202,7 +202,24 @@ void UiControlMultiSelectPopup::applySelection(UiGraphModel& model) {
 }
 
 SelectionPopupState UiControlPropertyLinkPopup::draw(UiGraphModel& model) {
-    const ScrollableListSelectionPopupResult result = _popup.draw();
+    const UiGraphBlock* control = model.recursiveFindBlockByUniqueName(_interaction.sourceUniqueName()).block;
+    const UiGraphBlock* target  = model.recursiveFindBlockByUniqueName(_interaction.releasedOnUniqueName()).block;
+    // the checked items are the same for every item, so the properties controlled with them applied are resolved once
+    const auto controlledWithSelection = [&]() -> std::optional<std::vector<UiGraphModel::BlockPointerPropertyNamePair>> {
+        if (!control || !target) {
+            return std::nullopt;
+        }
+        const auto targets = control->uiControlTargetMap();
+        if (!targets) {
+            return std::nullopt;
+        }
+        return model.resolveControlledProperties(*control, withSelectionApplied(*targets, *target));
+    }();
+    const auto isItemEnabled = [&](std::size_t index) {
+        const CheckboxListItem& item = _popup.items()[index];
+        return item.selected || (controlledWithSelection && UiGraphModel::isCompatibleWithControlledProperties(*control, *controlledWithSelection, {target, item.name}));
+    };
+    const ScrollableListSelectionPopupResult result = _popup.draw(isItemEnabled);
     if (result.currentState == SelectionPopupState::Confirmed) {
         applySelection(model);
     }
@@ -215,11 +232,17 @@ std::vector<CheckboxListItem> UiControlPropertyLinkPopup::connectableProperties(
     if (!control || !target) {
         return {};
     }
-    const auto                    targets = control->uiControlTargetMap();
+    const auto targets = control->uiControlTargetMap();
+    if (!targets) {
+        return {};
+    }
+    const auto                    controlled = model.resolveControlledProperties(*control, *targets);
     std::vector<CheckboxListItem> items;
     for (auto&& property : target->connectableProperties(control->uiControlCompatibleTypeMap())) {
-        const bool connected = targets && targets->relationshipToTarget(target->blockName, property) == TargetRelationship::TargetingSpecifically;
-        items.push_back(CheckboxListItem{.name = std::move(property), .selected = connected});
+        const bool connected = targets->relationshipToTarget(target->blockName, property) == TargetRelationship::TargetingSpecifically;
+        if (connected || UiGraphModel::isCompatibleWithControlledProperties(*control, controlled, {target, property})) {
+            items.push_back(CheckboxListItem{.name = std::move(property), .selected = connected});
+        }
     }
     return items;
 }
@@ -230,20 +253,23 @@ void UiControlPropertyLinkPopup::applySelection(UiGraphModel& model) {
     if (!control || !target) {
         return;
     }
-    auto targets = control->uiControlTargetMap();
+    const auto targets = control->uiControlTargetMap();
     if (!targets) {
         return;
     }
+    control->setSetting("target_map", withSelectionApplied(*targets, *target).toString());
+}
 
+TargetMap UiControlPropertyLinkPopup::withSelectionApplied(TargetMap targets, const UiGraphBlock& target) const {
     for (const CheckboxListItem& property : _popup.items()) {
-        const TargetEntry entry{.blockTarget = target->blockName, .propertyName = property.name};
+        const TargetEntry entry{.blockTarget = target.blockName, .propertyName = property.name};
         if (property.selected) {
-            targets->addTarget(entry);
+            targets.addTarget(entry);
         } else {
-            targets->removeTarget(entry);
+            targets.removeTarget(entry);
         }
     }
-    control->setSetting("target_map", targets->toString());
+    return targets;
 }
 
 [[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block) {

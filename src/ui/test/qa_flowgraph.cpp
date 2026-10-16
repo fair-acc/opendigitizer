@@ -2,6 +2,7 @@
 #include "ImGuiTestApp.hpp"
 #include "TestDashboardRunner.hpp"
 #include "TestingBlockInspectionUtils.hpp"
+#include "UiControlCompatibilityTarget.hpp"
 
 #include <ToolbarView.hpp>
 
@@ -525,6 +526,50 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->ItemClick(buttonRef);
         ctx->Yield();
         ctx->SetRef("Test Window");
+    }
+
+    static void dragAndDropControlToTargetAndUsePopupAsRef(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, std::string_view controlName, std::string_view targetName) {
+        const DigitizerUi::UiGraphBlock* control = findRootChildByName(controlName);
+        const DigitizerUi::UiGraphBlock* target  = findRootChildByName(targetName);
+        expect(control != nullptr) << fatal << controlName << " not found";
+        expect(target != nullptr) << fatal << targetName << " not found";
+        dragUiControlDragHandleToPosition(ctx, editor, control, nodeCentreOnScreen(editor, target));
+        ctx->SetRef(getFrontmostPopupID(ctx));
+    }
+
+    static bool isPropertyCheckboxEnabled(ImGuiTestContext* ctx, std::string_view property) {
+        const ImGuiTestItemInfo info = ctx->ItemInfo(std::format("**/{}", property).c_str());
+        expect(info.ID != 0u) << fatal << property << " is offered in the popup";
+        return (info.ItemFlags & ImGuiItemFlags_Disabled) == 0;
+    }
+
+    static bool doesItemWithPropertyNameExist(ImGuiTestContext* ctx, std::string_view property) { return ctx->ItemExists(std::format("**/{}", property).c_str()); }
+
+    static void closePopupWithDone(ImGuiTestContext* ctx) {
+        ctx->ItemClick("**/Done");
+        ctx->SetRef("Test Window");
+        ctx->Yield();
+    }
+
+    static void closePopupWithEscape(ImGuiTestContext* ctx) {
+        ctx->SetRef("Test Window");
+        ctx->KeyPress(ImGuiKey_Escape);
+        ctx->Yield(2);
+    }
+
+    static bool targetMapHasExactly(const char* controlName, const std::vector<DigitizerUi::TargetEntry>& expected) {
+        const auto targets = DigitizerUi::TargetMap::fromString(getTargetMapForBlock(controlName));
+        return targets && targets->entries().size() == expected.size() && std::ranges::all_of(expected, [&targets](const DigitizerUi::TargetEntry& entry) { return targets->contains(entry); });
+    }
+
+    static void dragAndDropConnectToTargetAndProperty(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const char* controlName, const char* targetName, const char* property) {
+        dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, controlName, targetName);
+        ctx->ItemClick(std::format("**/{}", property).c_str());
+        closePopupWithDone(ctx);
+        g_state.waitUntil(ctx, std::format("{} is connected to {}:{}", controlName, targetName, property), [controlName, targetName, property] {
+            const auto targets = DigitizerUi::TargetMap::fromString(getTargetMapForBlock(controlName));
+            return targets && targets->contains({targetName, property});
+        });
     }
 
     static void expectBlockCenteredAtDefaultZoom(DigitizerUi::FlowgraphEditor& editor, const char* blockName, std::source_location location = std::source_location::current()) {
@@ -1407,6 +1452,128 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI controls can only be connected to compatible properties");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                "a number control can only select properties of one number type in the selection popup"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "signalGenerator1");
+                    expect(isPropertyCheckboxEnabled(ctx, "input_chunk_size")) << "uint32 property is enabled initially";
+                    expect(isPropertyCheckboxEnabled(ctx, "frequency")) << "float32 property is enabled initially";
+
+                    ctx->ItemClick("**/input_chunk_size");
+                    expect(!isPropertyCheckboxEnabled(ctx, "frequency")) << "selecting the uint32 property disables the float32 property";
+
+                    ctx->ItemClick("**/frequency");
+                    closePopupWithDone(ctx);
+                    g_state.waitUntil(ctx, "the UI recognizes that the control is connected", [] { return !getTargetMapForBlock("controlNumber").empty(); });
+                    expect(targetMapHasExactly("controlNumber", {{"signalGenerator1", "input_chunk_size"}})) << "only the first selected property is connected, target_map: " << getTargetMapForBlock("controlNumber");
+                };
+
+                "a number control can't connect to a number with a disjoint range from another existing property connection"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropConnectToTargetAndProperty(ctx, editor, "controlNumber", "targetA", "low_range");
+
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "targetB");
+                    expect(doesItemWithPropertyNameExist(ctx, "low_range")) << "property is shown if it has the same range";
+                    expect(doesItemWithPropertyNameExist(ctx, "overlapping_both_high_and_low_range")) << "property is shown if it has an overlapping range";
+                    expect(!doesItemWithPropertyNameExist(ctx, "high_range")) << "property is not shown if its range does not overlap at all";
+                    closePopupWithEscape(ctx);
+                };
+
+                "a number control can't connect to a number with a disjoint range from another existing property connection, even if one of the items it is connected to does overlap"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropConnectToTargetAndProperty(ctx, editor, "controlNumber", "targetA", "overlapping_both_high_and_low_range");
+                    dragAndDropConnectToTargetAndProperty(ctx, editor, "controlNumber", "targetA", "low_range");
+
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "targetB");
+                    expect(!doesItemWithPropertyNameExist(ctx, "high_range")) << "cant connect to property even if it overlaps with the first property, as the valid range for this control has shrunk";
+                    closePopupWithEscape(ctx);
+                };
+
+                "a number control can only select properties with intersecting ranges"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "targetA");
+                    for (const char* property : {"low_range", "high_range", "overlapping_both_high_and_low_range"}) {
+                        expect(isPropertyCheckboxEnabled(ctx, property)) << property << " is enabled initially";
+                    }
+
+                    ctx->ItemClick("**/low_range");
+                    expect(!isPropertyCheckboxEnabled(ctx, "high_range")) << "selecting [0, 1] disables [10, 20]";
+                    expect(isPropertyCheckboxEnabled(ctx, "overlapping_both_high_and_low_range")) << "selecting [0, 1] doesn't affect [0.5, 15]";
+
+                    ctx->ItemClick("**/high_range");
+                    ctx->ItemClick("**/overlapping_both_high_and_low_range");
+                    closePopupWithDone(ctx);
+                    g_state.waitUntil(ctx, "the UI is aware that the control has been connected", [] { return !getTargetMapForBlock("controlNumber").empty(); });
+                    expect(targetMapHasExactly("controlNumber", {{"targetA", "low_range"}, {"targetA", "overlapping_both_high_and_low_range"}})) << "the disjoint property is not connected, target_map: " << getTargetMapForBlock("controlNumber");
+                };
+
+                "selecting a property for a number control disables properties of other number types in the same popup"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "targetA");
+                    for (const char* property : {"low_range", "float64_number", "int32_number"}) {
+                        expect(isPropertyCheckboxEnabled(ctx, property)) << property << " is enabled before anything is selected";
+                    }
+
+                    ctx->ItemClick("**/low_range");
+                    expect(!isPropertyCheckboxEnabled(ctx, "float64_number")) << "selecting a float32 property disables the float64 property";
+                    expect(!isPropertyCheckboxEnabled(ctx, "int32_number")) << "selecting a float32 property disables the int32 property";
+                    expect(isPropertyCheckboxEnabled(ctx, "overlapping_both_high_and_low_range")) << "selecting a float32 property keeps another float32 property enabled";
+
+                    ctx->ItemClick("**/float64_number");
+                    closePopupWithDone(ctx);
+                    g_state.waitUntil(ctx, "the UI is aware that the control has been connected", [] { return !getTargetMapForBlock("controlNumber").empty(); });
+                    expect(targetMapHasExactly("controlNumber", {{"targetA", "low_range"}})) << "the float64 property is not connected, target_nap: " << getTargetMapForBlock("controlNumber");
+                };
+
+                "when opening a new popup for a number control, options with different number types are not shown"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropConnectToTargetAndProperty(ctx, editor, "controlNumber", "targetA", "low_range");
+
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "targetB");
+                    expect(doesItemWithPropertyNameExist(ctx, "low_range")) << "float32 is valid";
+                    expect(!doesItemWithPropertyNameExist(ctx, "float64_number")) << "no float64";
+                    expect(!doesItemWithPropertyNameExist(ctx, "int32_number")) << "no int32";
+                    closePopupWithEscape(ctx);
+                };
+
+                "selecting an enum for a choice control disables enums with other variants"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlChoice", "targetA");
+                    for (const char* property : {"shape", "other_shape", "color"}) {
+                        expect(isPropertyCheckboxEnabled(ctx, property)) << property << " is enabled initially";
+                    }
+
+                    ctx->ItemClick("**/shape");
+                    expect(isPropertyCheckboxEnabled(ctx, "other_shape")) << "selecting a Shape enum keeps the other Shape enum enabled";
+                    expect(!isPropertyCheckboxEnabled(ctx, "color")) << "selecting a Shape enum disables a selection of Color enum";
+
+                    ctx->ItemClick("**/color");
+                    ctx->ItemClick("**/other_shape");
+                    closePopupWithDone(ctx);
+                    g_state.waitUntil(ctx, "the UI is aware that the control has been connected", [] { return !getTargetMapForBlock("controlChoice").empty(); });
+                    expect(targetMapHasExactly("controlChoice", {{"targetA", "shape"}, {"targetA", "other_shape"}})) << "both Shapes and not the Color are connected, target_map " << getTargetMapForBlock("controlChoice");
+                };
+
+                "a choice control which is already connected does not get incompatible enum types when making additional connections"_test = [ctx] {
+                    auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
+                    dragAndDropConnectToTargetAndProperty(ctx, editor, "controlChoice", "targetA", "shape");
+
+                    dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlChoice", "targetB");
+                    expect(doesItemWithPropertyNameExist(ctx, "shape")) << "the same enum type is valid";
+                    expect(doesItemWithPropertyNameExist(ctx, "other_shape")) << "the same enum type is valid";
+                    expect(!doesItemWithPropertyNameExist(ctx, "color")) << "different enum type is disabled";
+                    closePopupWithEscape(ctx);
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "A UI control is operated from its block in the flowgraph");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = pageGuiFunc; // without the toolbar, so the block in the flowgraph is the only place where the control is drawn
@@ -1848,6 +2015,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<DigitizerUi::ImControlText>(registry);
     gr::registerBlock<DigitizerUi::ImControlChoice>(registry);
     gr::registerBlock<DigitizerUi::ImPropertyReadout>(registry);
+    gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
     // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 
