@@ -1231,9 +1231,10 @@ void FlowgraphEditor::drawBlockContextMenu() {
                         message.cmd         = gr::message::Command::Set;
                         message.endpoint    = gr::scheduler::property::kReplaceBlock;
                         message.serviceName = owner->scheduler;
-                        message.data        = gr::property_map{                                         //
-                            {"uniqueName", _selectedBlock->blockUniqueName},                     //
-                            {"type", std::move(typeParams.baseType) + availableParametrization}, //
+                        message.data        = gr::property_map{                                           //
+                            {"uniqueName", _selectedBlock->blockUniqueName},                       //
+                            {"type", std::move(typeParams.baseType) + availableParametrization},   //
+                            {"properties", gr::property_map{{"name", _selectedBlock->blockName}}}, //
                             {"_targetGraph", owner->graph}};
 
                         _graphModel->sendMessage(std::move(message));
@@ -1563,7 +1564,7 @@ void sendEmplaceBlockMessage(UiGraphModel& graphModel, const FlowgraphEditor::Sc
     message.cmd         = gr::message::Command::Set;
     message.endpoint    = gr::scheduler::property::kEmplaceBlock;
     message.serviceName = owner.scheduler;
-    message.data        = gr::property_map{{"type", std::move(type)}, {"_targetGraph", owner.graph}};
+    message.data        = gr::property_map{{"type", type}, {"properties", gr::property_map{{"name", graphModel.nameRegistry.ensureNameIsUnique(type)}}}, {"_targetGraph", owner.graph}};
     graphModel.sendMessage(std::move(message));
 }
 

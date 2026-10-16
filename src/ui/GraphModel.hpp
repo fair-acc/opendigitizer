@@ -15,6 +15,7 @@
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
 
+#include "UniqueNameRegistry.hpp"
 #include "blocks/DrawableBlockConfig.hpp"
 #include "blocks/TargetMap.hpp"
 
@@ -122,6 +123,7 @@ struct UiGraphBlock {
     void setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
     void setBlockData(const gr::property_map& data);
     void setBasicBlockData(const gr::property_map& blockData);
+    void setBlockName(std::string newBlockName);
     /// Rebuilds _inputPorts and _outputPorts. Graphs and schedulers take them from the
     /// exported ports of their children, every other block from its own port list.
     /// Returns true if they were derived from exported ports, i.e. if a change in ports
@@ -297,6 +299,8 @@ public:
 
     UiGraphBlock rootBlock;
 
+    UniqueNameRegistry nameRegistry;
+
     std::string m_localFlowgraphGrc;
     bool        requestedFullUpdate = false;
 
@@ -318,6 +322,7 @@ public:
     bool processMessage(const gr::Message& message);
 
     void handleTopologyUpdated();
+    void rebuildNameRegistry();
     void requestFullUpdate(std::source_location location = std::source_location::current());
     void requestAvailableBlocksTypesUpdate();
     void saveBlockPositions(gr::property_map& graphData);
