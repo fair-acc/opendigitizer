@@ -1,0 +1,29 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator1
+      frequency: 1
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sink1
+  - id: opendigitizer::test::UiControlCompatibilityTarget
+    parameters:
+      name: target
+  - id: DigitizerUi::ImControlColor
+    parameters:
+      name: controlColor
+      label: Col
+connections:
+  - [clockSource1, 0, signalGenerator1, 0]
+  - [signalGenerator1, 0, sink1, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []

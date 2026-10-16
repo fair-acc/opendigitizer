@@ -3,6 +3,7 @@
 #include "TestDashboardRunner.hpp"
 #include "TestPropertySetterButton.hpp"
 #include "TestingBlockInspectionUtils.hpp"
+#include "UiControlCompatibilityTarget.hpp"
 
 #include <boost/ut.hpp>
 
@@ -13,6 +14,7 @@
 #include <Dashboard.hpp>
 #include <ToolbarView.hpp>
 #include <blocks/ImControlChoice.hpp>
+#include <blocks/ImControlColor.hpp>
 #include <blocks/ImControlText.hpp>
 #include <blocks/ImControlToggle.hpp>
 #include <blocks/ImControlTrigger.hpp>
@@ -25,6 +27,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -291,6 +294,41 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         }
 
         {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrol_color", "ImControlColor can only connect to uint32 properties which have a color unit");
+
+            t->GuiFunc = commonGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_imcontrol_color.grc", "color");
+                g_state.waitForScheduler(ctx);
+
+                auto&                            model   = g_state.dashboard->session.graphModel;
+                const DigitizerUi::UiGraphBlock* control = model.recursiveFindBlockByName("controlColor").block;
+                const DigitizerUi::UiGraphBlock* target  = model.recursiveFindBlockByName("target").block;
+                const DigitizerUi::UiGraphBlock* sink    = model.recursiveFindBlockByName("sink1").block;
+                expect(control != nullptr && target != nullptr && sink != nullptr) << fatal;
+                g_state.waitUntil(ctx, "model has the correct units", [&] { return !control->uiControlCompatibleTypeMap().empty() && target->blockSettingsMetaInformation.contains("no_unit_number") && sink->blockSettingsMetaInformation.contains("color"); });
+
+                "colors are uint32_t with either Color or RGB units"_test = [&] {
+                    std::vector<std::string> connectable = target->connectableProperties(control->uiControlCompatibleTypeMap());
+                    std::ranges::sort(connectable);
+                    const std::vector<std::string> expected{"color_unit_number", "rgb_unit_number"};
+                    expect(connectable == expected) << std::format("connectable properties: {}", connectable | std::views::join_with(std::string_view(", ")) | std::ranges::to<std::string>());
+                };
+
+                "properties which don't qualify as colors are not available as connection options"_test = [&] {
+                    const std::string compatibleTypeMap = control->uiControlCompatibleTypeMap();
+                    expect(!target->isConnectableProperty("no_unit_number", compatibleTypeMap)) << "uint32 without a unit";
+                    expect(!target->isConnectableProperty("hz_unit_number", compatibleTypeMap)) << "uint32 with a unit which is not a color unit";
+                    expect(!target->isConnectableProperty("color_unit_float", compatibleTypeMap)) << "color unit on a float32";
+                    expect(!target->isConnectableProperty("color", compatibleTypeMap)) << "enum named color";
+                };
+
+                "connect to color property of ImPlotSink"_test = [&] { expect(sink->isConnectableProperty("color", control->uiControlCompatibleTypeMap())); };
+            };
+        }
+
+        {
             ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrol_standalone", "test ImControl blocks which are outside of a flowgraph, verify that the messages they send look sane");
 
             t->GuiFunc = commonGuiFunc;
@@ -385,6 +423,7 @@ int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
+    gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
     g_state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
     g_state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
     g_state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});

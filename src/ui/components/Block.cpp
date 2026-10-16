@@ -395,7 +395,7 @@ constexpr ImGuiColorEditFlags colorFieldEditorFlags = ImGuiColorEditFlags_NoInpu
 gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyName, const gr::pmt::Value& currentPropertyValue, const UiGraphBlock::SettingsMetaInformation& meta) {
     gr::pmt::Value out;
     using Type = UiGraphBlock::SettingsControlType;
-    switch (meta.controlType(propertyName, currentPropertyValue)) {
+    switch (meta.controlType(currentPropertyValue)) {
     case Type::Color: {
         gr::pmt::ValueVisitor([label, &out]<typename T>(const T& value) {
             if constexpr (std::unsigned_integral<T> && sizeof(T) >= 4) {

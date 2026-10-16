@@ -35,11 +35,11 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     A<bool, "show grid", gr::Visible>                      show_grid   = true;
 
     // trace toggles and accumulation
-    A<bool, "show max hold", gr::Visible>                                                                       show_max_hold    = true;
-    A<bool, "show min hold", gr::Visible>                                                                       show_min_hold    = true;
-    A<bool, "show average", gr::Visible>                                                                        show_average     = false;
-    A<std::uint32_t, "trace color", gr::Visible, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">>       trace_color      = 0x8855BBU;
-    A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">> decay_tau_frames = 100U;
+    A<bool, "show max hold", gr::Visible>                                                                                    show_max_hold    = true;
+    A<bool, "show min hold", gr::Visible>                                                                                    show_min_hold    = true;
+    A<bool, "show average", gr::Visible>                                                                                     show_average     = false;
+    A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">> trace_color      = 0x8855BBU;
+    A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">>              decay_tau_frames = 100U;
 
     // axis limits
     A<bool, "X auto-scale"> x_auto_scale = true;
