@@ -537,6 +537,9 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
             axesConfig = *axes;
         }
 
+        const std::string requestedBlockName = chartParameters.value_or<std::string>("name", resolveChartTypeName(chartTypeName));
+        chartParameters["name"]              = session.graphModel.nameRegistry.ensureNameIsUnique(requestedBlockName);
+
         auto blockPtr = emplaceChartBlock(graph, chartTypeName, name, chartParameters);
         if (!blockPtr) {
             components::Notification::warning(std::format("Failed to create chart block of type '{}'", chartTypeName));
@@ -777,8 +780,12 @@ void Dashboard::newUIBlock(std::string_view chartType, const gr::property_map& c
 
     gr::property_map properties = chartInitialParameters;
     properties["chart_name"]    = chartName;
+
+    const std::string chartTypeName = resolveChartTypeName(chartType.empty() ? "XYChart" : chartType);
+    properties["name"]              = session.graphModel.nameRegistry.ensureNameIsUnique(chartTypeName);
+
     pendingCharts.try_emplace(chartName);
-    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", resolveChartTypeName(chartType.empty() ? "XYChart" : chartType)}, {"properties", std::move(properties)}});
+    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", chartTypeName}, {"properties", std::move(properties)}});
 }
 
 void Dashboard::deleteChart(UIWindow* win) {
@@ -801,7 +808,7 @@ void Dashboard::copyChart(std::string_view sourceChartId) {
         newName = std::format("{}_{}", baseName, suffix);
     }
 
-    gr::property_map properties{{"chart_name", newName}};
+    gr::property_map properties{{"chart_name", newName}, {"name", session.graphModel.nameRegistry.ensureNameIsUnique(sourceBlock.name())}};
     if (const auto sinkNames = grc_compat::getBlockSinkNames(&sourceBlock); !sinkNames.empty()) {
         properties["data_sinks"] = grc_compat::sinkNamesTensor(sinkNames);
     }
@@ -820,7 +827,7 @@ bool Dashboard::transmuteUIWindow(UIWindow& win, std::string_view newChartType) 
         return true;
     }
     const std::string windowName = win.window ? win.window->name : std::string(win.block->uniqueName());
-    gr::property_map  properties{{"chart_name", windowName}};
+    gr::property_map  properties{{"chart_name", windowName}, {"name", std::string(win.block->name())}};
     if (const auto sinkNames = grc_compat::getBlockSinkNames(win.block.get()); !sinkNames.empty()) {
         properties["data_sinks"] = grc_compat::sinkNamesTensor(sinkNames);
     }
@@ -963,8 +970,9 @@ void Dashboard::addRemoteSignal(const SignalData& signalData) {
         return "<float32>"s;
     }();
 
-    gr::property_map properties{{"remote_uri", uriStr}, {"signal_name", signalData.signalName}, {"signal_unit", signalData.unit}};
-    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", std::move(blockType) + std::move(blockParams)}, {"properties", std::move(properties)}});
+    const std::string fullBlockType = std::move(blockType) + std::move(blockParams);
+    gr::property_map  properties{{"remote_uri", uriStr}, {"signal_name", signalData.signalName}, {"signal_unit", signalData.unit}, {"name", session.graphModel.nameRegistry.ensureNameIsUnique(fullBlockType)}};
+    session.sendToScheduler(gr::scheduler::property::kEmplaceBlock, {{"type", fullBlockType}, {"properties", std::move(properties)}});
 }
 
 void Dashboard::Service::reload() {

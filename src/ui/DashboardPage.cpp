@@ -406,11 +406,12 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
             : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float32>") ? "<gr::DataSet<float32>>"s //
             : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float64>") ? "<gr::DataSet<float64>>"s //
                                                                                                                       : /* otherwise error */ ""s;
-
-        const std::string baseName = std::format("{}_sink", remoteSource.uniqueName());
-        std::string       sinkName = baseName;
-        for (std::size_t suffix = 2UZ; _dashboard->session.graphModel.recursiveFindBlockByName(sinkName) || opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& sink) { return sink.name() == sinkName || sink.signalName() == sinkName; }); ++suffix) {
-            sinkName = std::format("{}_{}", baseName, suffix);
+        // need to avoid name collisions with both sink name and signal name because data_sinks searches for both
+        const auto          isSignalNameOfASink = [](std::string_view name) { return opendigitizer::charts::SinkRegistry::instance().findSink([name](const auto& sink) { return sink.signalName() == name; }) != nullptr; };
+        UniqueNameRegistry& nameRegistry        = _dashboard->session.graphModel.nameRegistry;
+        std::string         sinkName            = nameRegistry.ensureNameIsUnique(std::format("{}_sink", remoteSource.uniqueName()));
+        while (isSignalNameOfASink(sinkName)) {
+            sinkName = nameRegistry.ensureNameIsUnique(sinkName);
         }
         gr::property_map sinkProperties{{"name", std::move(sinkName)}, {"signal_name", selectedRemoteSignal.signalName}};
         if (!selectedRemoteSignal.unit.empty()) {

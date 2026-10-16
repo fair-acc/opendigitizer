@@ -322,6 +322,7 @@ static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext&
                         message.endpoint = gr::scheduler::property::kReplaceBlock;
                         message.data     = gr::property_map{{"uniqueName", block->blockUniqueName},  //
                                 {"type", std::move(typeParams.baseType) + availableParametrization}, //
+                                {"properties", gr::property_map{{"name", block->blockName}}},        //
                                 {"_targetGraph", panelContext.targetGraph}};
                         block->ownerGraph->sendMessage(std::move(message));
                     }
@@ -420,7 +421,8 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     case Type::TextInput: {
         assert(meta.enumValues.empty());
         std::string current = currentPropertyValue.value_or(std::string{});
-        if (ImGui::InputText(label, &current)) {
+        ImGui::InputText(label, &current);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
             out = current;
         }
         break;

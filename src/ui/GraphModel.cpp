@@ -273,6 +273,10 @@ void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& upd
     }
 
     const auto setSettingImpl = [](UiGraphBlock& block, std::string_view keyToUpdateImpl, gr::pmt::Value&& updatedValueImpl) {
+        if (keyToUpdateImpl == "name" && updatedValueImpl.is_string() && updatedValueImpl.value_or(std::string_view{}) != block.blockName) {
+            updatedValueImpl = block.ownerGraph->nameRegistry.ensureNameIsUnique(updatedValueImpl.value_or(std::string_view{}));
+        }
+
         gr::Message message;
         message.serviceName = block.blockUniqueName;
         message.endpoint    = gr::block::property::kSetting;
@@ -324,15 +328,24 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
     }
 }
 
+void UiGraphBlock::setBlockName(std::string newBlockName) {
+    blockName = std::move(newBlockName);
+    if (ownerGraph) {
+        ownerGraph->nameRegistry.markBlockNameUsed(blockName);
+    }
+}
+
 void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     if (blockUniqueName.empty()) {
         updateFieldFrom(blockUniqueName, blockData, blockUniqueName, gr::serialization_fields::BLOCK_UNIQUE_NAME);
     }
 
-    updateFieldFrom(blockName, blockData, blockName, "name"s);
-    if (blockName.empty()) {
-        updateFieldFrom(blockName, blockData, {}, "parameters"s, "name"s);
+    std::string newBlockName;
+    updateFieldFrom(newBlockName, blockData, blockName, "name"s);
+    if (newBlockName.empty()) {
+        updateFieldFrom(newBlockName, blockData, {}, "parameters"s, "name"s);
     }
+    setBlockName(std::move(newBlockName));
 
     std::optional<gr::property_map> parameters;
     const auto                      tryGetParameters = [&parameters](const gr::property_map& map) {
@@ -1256,7 +1269,16 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
         handleTopologyUpdated();
     }
+    if (std::ranges::contains(std::array<std::string_view, 3UZ>{scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected}, message.endpoint)) {
+        rebuildNameRegistry();
+    }
     return true;
+}
+
+void UiGraphModel::rebuildNameRegistry() {
+    nameRegistry.usedNames.clear();
+    nameRegistry.markBlockNameUsed(rootBlock.blockName);
+    forEachBlockRecursive(rootBlock, [this](const UiGraphBlock& block) { nameRegistry.markBlockNameUsed(block.blockName); });
 }
 
 void UiGraphModel::handleTopologyUpdated() {
@@ -1325,6 +1347,9 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
             keysChanged = keysChanged || !block->blockSettings.contains(key);
             block->blockSettings.insert_or_assign(key, value);
         }
+    }
+    if (const auto name = data.find("name"); name != data.end() && name->second.is_string()) {
+        block->setBlockName(name->second.value_or(std::string()));
     }
     if (keysChanged) {
         block->updateBlockSettingsMetaInformation();

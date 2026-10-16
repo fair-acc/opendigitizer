@@ -374,6 +374,7 @@ add_library(
   StatusBarView.hpp
   ToolbarView.cpp
   ToolbarView.hpp
+  UniqueNameRegistry.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp
