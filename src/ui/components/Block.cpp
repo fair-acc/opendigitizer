@@ -267,14 +267,14 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
         gr::pmt::ValueVisitor([&out, &meta, label]<typename T>(const T& num) {
             if constexpr (std::floating_point<T>) {
                 auto temp = static_cast<double>(num);
-                if (ImGui::SliderScalar(label, ImGuiDataType_Double, &temp, &*meta.minValue, &*meta.maxValue, "%d", {})) {
+                if (ImGui::SliderScalar(label, ImGuiDataType_Double, &temp, &*meta.minValue, &*meta.maxValue, "%g", {})) {
                     out = static_cast<T>(temp);
                 }
             } else if constexpr (std::integral<T>) {
                 auto       temp     = static_cast<std::int64_t>(num);
                 const auto minValue = static_cast<std::int64_t>(*meta.minValue);
                 const auto maxValue = static_cast<std::int64_t>(*meta.maxValue);
-                if (ImGui::SliderScalar(label, ImGuiDataType_S64, &temp, &minValue, &maxValue, "%d", {})) {
+                if (ImGui::SliderScalar(label, ImGuiDataType_S64, &temp, &minValue, &maxValue, "%lld", {})) {
                     out = static_cast<T>(temp);
                 }
             }

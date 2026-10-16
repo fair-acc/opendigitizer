@@ -688,21 +688,18 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
         }
 
         const auto extractDouble = [&](std::string_view attr) -> std::optional<double> {
+            std::optional<double> result;
             if (const auto v = findMeta(settingKey, attr)) {
-                if (const auto* d = v->get_if<double>()) {
-                    return *d;
-                }
-                if (const auto* f = v->get_if<float>()) {
-                    return static_cast<double>(*f);
-                }
-                if (const auto* i = v->get_if<int32_t>()) {
-                    return static_cast<double>(*i);
-                }
+                gr::pmt::ValueVisitor([&result]<typename T>(const T& number) {
+                    if constexpr (std::is_arithmetic_v<T> && !std::same_as<T, bool>) {
+                        result = static_cast<double>(number);
+                    }
+                }).visit(*v);
             }
-            return std::nullopt;
+            return result;
         };
-        std::optional<double> minVal = extractDouble("min_value");
-        std::optional<double> maxVal = extractDouble("max_value");
+        std::optional<double> minVal = extractDouble("min");
+        std::optional<double> maxVal = extractDouble("max");
 
         std::vector<std::string> enumValues;
         if (const auto v = findMeta(settingKey, "enum_values")) {
