@@ -118,6 +118,12 @@ struct DrawableBlockConfig {
                 if (const auto hints = controlledProperty->get_if<gr::property_map>("hints"sv)) {
                     result.hints = BlockPropertyHints::fromMap(*hints);
                 }
+                if (const auto targetBlockName = controlledProperty->get_if<std::string_view>("target_block_name"sv)) {
+                    result.targetBlockName = *targetBlockName;
+                }
+                if (const auto targetPropertyName = controlledProperty->get_if<std::string_view>("target_property_name"sv)) {
+                    result.targetPropertyName = *targetPropertyName;
+                }
             }
             return result;
         }
@@ -134,6 +140,12 @@ struct DrawableBlockConfig {
             if (auto hintsMap = hints.toMap()) {
                 map->emplace("hints"sv, std::move(*hintsMap));
             }
+            if (!targetBlockName.empty()) {
+                map->emplace("target_block_name"sv, targetBlockName);
+            }
+            if (!targetPropertyName.empty()) {
+                map->emplace("target_property_name"sv, targetPropertyName);
+            }
             return map;
         }
 
@@ -144,6 +156,9 @@ struct DrawableBlockConfig {
 
         gr::pmt::Value     value = {};
         BlockPropertyHints hints = {};
+        // sometimes empty for testing purposes
+        std::string targetBlockName    = {};
+        std::string targetPropertyName = {};
     };
 
     [[nodiscard]] static constexpr DrawableBlockConfig fromMap(const gr::property_map& configMap) {

@@ -40,6 +40,9 @@ constexpr ImVec2 kHostSize{900.f, 120.f};
 constexpr ImVec2 kStandalonePos{40.f, 240.f};
 constexpr int    kMaxFrames = 600;
 
+constexpr std::uint64_t kValueBeforeExceedingDoublePrecision   = 1ULL << std::numeric_limits<double>::digits;
+constexpr std::uint64_t kUint64ValueThatExceedsDoublePrecision = kValueBeforeExceedingDoublePrecision + 1ULL;
+
 struct TestState : opendigitizer::test::TestDashboardRunner {
     DigitizerUi::ToolbarView                                         view;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> steps;
@@ -49,6 +52,7 @@ struct TestState : opendigitizer::test::TestDashboardRunner {
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> coarseControl;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> rateControl;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> toggleMinAndMaxControl;
+    std::unique_ptr<StandaloneControl<DigitizerUi::ImControlNumber>> doubleConversionTestControl;
     bool                                                             isMinMaxEnabledForToggleMinMaxControl = false;
     float                                                            hostWidth                             = kHostSize.x;
 };
@@ -81,7 +85,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
     void registerTests() override {
         ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrolnumber", "number controls in the toolbar");
 
-        t->GuiFunc = [](ImGuiTestContext*) {
+        t->GuiFunc = [](ImGuiTestContext*) { // NOSONAR test lambda length
             ImGui::SetNextWindowPos(kHostPos);
             ImGui::SetNextWindowSize(ImVec2(g_state.hostWidth, kHostSize.y));
             IMW::Window window("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
@@ -104,6 +108,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             std::ignore = g_state.rateControl->block.draw(configWithMinMaxHints<double>(0.));
             ImGui::SameLine();
             std::ignore = g_state.toggleMinAndMaxControl->block.draw(g_state.isMinMaxEnabledForToggleMinMaxControl ? configWithMinMaxHints<double>(0., 0., 10.) : configWithMinMaxHints<double>(0.));
+            std::ignore = g_state.doubleConversionTestControl->block.draw(configWithMinMaxHints<std::uint64_t>(kUint64ValueThatExceedsDoublePrecision));
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
@@ -325,6 +330,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(sentExactly<double>(g_state.ratio->takeSent(), "TargetA", "ratio", -1e9)) << "not clamped";
             };
 
+            "if a number control is set to a number that exceeds double precision (the internal representation in ImControlNumber) it static casts to a double"_test = [&] {
+                expect(eq(g_state.doubleConversionTestControl->block.value, static_cast<double>(kValueBeforeExceedingDoublePrecision))) << "value doesn't exceed double precision at start of test";
+                std::ignore = g_state.doubleConversionTestControl->takeSent();
+                ctx->ItemClick("**/##DoubleConversion/+");
+                const auto sent = g_state.doubleConversionTestControl->takeSent();
+                expect(!sent.empty() && sentExactly<std::uint64_t>(std::vector<gr::Message>{sent.back()}, "TargetA", "test_property", kValueBeforeExceedingDoublePrecision)) << "control displays the value but also sends the value that is within double precision";
+            };
+
             "a slider starting at 0 steps by a tenth of its range at most"_test = [&] {
                 ctx->ItemDragWithDelta("**/##Fraction", ImVec2(40.f, 0.f));
                 const double dragged = g_state.fraction->block.value;
@@ -345,14 +358,15 @@ int main(int argc, char* argv[]) {
     auto& registry = gr::globalBlockRegistry();
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
-    using Standalone               = StandaloneControl<DigitizerUi::ImControlNumber>;
-    g_state.steps                  = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_steps"}, {"label", "Steps"}, {"style", "slider"}, {"target_map", "TargetA,TargetB:received"}});
-    g_state.ratio                  = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_ratio"}, {"label", "Ratio"}, {"style", "field"}, {"target_map", "TargetA:ratio"}});
-    g_state.fraction               = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_fraction"}, {"label", "Fraction"}, {"style", "slider"}, {"value", 0.}, {"target_map", "TargetA:fraction"}});
-    g_state.byte                   = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_byte"}, {"label", "Byte"}, {"style", "slider"}, {"value", -5.}, {"target_map", "TargetA:byte"}});
-    g_state.coarseControl          = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_coarse"}, {"label", "Coarse"}, {"style", "slider"}, {"value", 2.}, {"target_map", "TargetA:coarse"}});
-    g_state.rateControl            = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_rate"}, {"label", "Rate"}, {"style", "spinBox"}, {"value", 50.}, {"target_map", "TargetA:rate"}});
-    g_state.toggleMinAndMaxControl = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_limited"}, {"label", "Limited"}, {"style", "field"}, {"min", -1.}, {"max", 1.}, {"target_map", "TargetA:limited"}});
+    using Standalone                    = StandaloneControl<DigitizerUi::ImControlNumber>;
+    g_state.steps                       = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_steps"}, {"label", "Steps"}, {"style", "slider"}, {"target_map", "TargetA,TargetB:received"}});
+    g_state.ratio                       = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_ratio"}, {"label", "Ratio"}, {"style", "field"}, {"target_map", "TargetA:ratio"}});
+    g_state.fraction                    = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_fraction"}, {"label", "Fraction"}, {"style", "slider"}, {"value", 0.}, {"target_map", "TargetA:fraction"}});
+    g_state.byte                        = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_byte"}, {"label", "Byte"}, {"style", "slider"}, {"value", -5.}, {"target_map", "TargetA:byte"}});
+    g_state.coarseControl               = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_coarse"}, {"label", "Coarse"}, {"style", "slider"}, {"value", 2.}, {"target_map", "TargetA:coarse"}});
+    g_state.rateControl                 = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_rate"}, {"label", "Rate"}, {"style", "spinBox"}, {"value", 50.}, {"target_map", "TargetA:rate"}});
+    g_state.toggleMinAndMaxControl      = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_limited"}, {"label", "Limited"}, {"style", "field"}, {"min", -1.}, {"max", 1.}, {"target_map", "TargetA:limited"}});
+    g_state.doubleConversionTestControl = std::make_unique<Standalone>(gr::property_map{{"name", "standalone_double_conversion"}, {"label", "DoubleConversion"}, {"style", "spinBox"}, {"step", 1.}, {"target_map", "TargetA:test_property"}});
 
     auto grcFile      = cmrc::ui_test_assets::get_filesystem().open("examples/qa_controls.grc");
     g_state.dashboard = DigitizerUi::Dashboard::create(nullptr, DigitizerUi::DashboardDescription::createEmpty("controls"));

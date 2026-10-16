@@ -24,6 +24,7 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
         const float         button       = ImGui::CalcTextSize(label.c_str()).x + 2.f * ImGui::GetStyle().FramePadding.x;
         const SizeAndLayout layout       = prepareDraw(parsedConfig, button, button, 0.f);
         drawInIdScope([&] {
+            IMW::Disabled disconnected(!layout.hasAnyConnection);
             if (ImGui::Button(label.c_str(), ImVec2(layout.width, 0.f))) {
                 sendToTargets(true);
             }

@@ -8,9 +8,13 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/Logger.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
+#include <gnuradio-4.0/formatter/ValueFormatter.hpp>
 
 #include <algorithm>
+#include <concepts>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -34,8 +38,9 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
     // toolbar) and how its internal components should be laid out within that
     // area
     struct SizeAndLayout {
-        float width     = 0.f;
-        bool  showLabel = true;
+        float width            = 0.f;
+        bool  showLabel        = true;
+        bool  hasAnyConnection = true;
     };
 
     std::string target_map; // of the form "BlockA,BlockB:property;BlockC:property;*:other_property"
@@ -43,6 +48,11 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
 
     GR_MAKE_REFLECTABLE(ImControl, target_map, label);
 
+private:
+    // used to track whether the property we are connected to has changed, to invalidate cache
+    std::string _lastDrawnTarget;
+
+public:
     explicit ImControl(gr::property_map initParameters = {}) : DrawableBlock(std::move(initParameters)) {}
 
     void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& newSettings) {
@@ -71,7 +81,53 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
         const float maxWidth  = config.maxWidth.value_or(std::numeric_limits<float>::max());
         const bool  showLabel = config.showLabel.value_or(true);
         toolbar::publishWidths(this->unique_name, {.natural = naturalWidget + labelPart, .minimum = minimumWidget + labelPart, .label = labelPart});
-        return {.width = std::clamp(maxWidth - (showLabel ? labelPart : 0.f), minimumWidget, naturalWidget), .showLabel = showLabel};
+        return {.width = std::clamp(maxWidth - (showLabel ? labelPart : 0.f), minimumWidget, naturalWidget), .showLabel = showLabel, .hasAnyConnection = config.firstControlledProperty.has_value()};
+    }
+
+    /// Update a cache @param value with the controlled property's value if the
+    /// @param config indicates that we are connected to something different
+    /// Doing this causes control blocks to load the value from their target
+    /// when initially connected, and unload it when disconnected.
+    template<typename TValue>
+    void loadValueIfConnectionChanged(TValue& value, const DrawableBlockConfig& config) {
+        const DrawableBlockConfig::ControlledProperty& controlledProperty = config.firstControlledProperty;
+        auto                                           currentDrawnTarget = std::format("{}:{}", controlledProperty.targetBlockName, controlledProperty.targetPropertyName);
+        if (currentDrawnTarget == _lastDrawnTarget) {
+            return;
+        }
+        _lastDrawnTarget = std::move(currentDrawnTarget);
+
+        if (!controlledProperty) {
+            value = TValue{};
+        } else if (const auto converted = tryConvertValue<TValue>(controlledProperty.value)) {
+            value = *converted;
+        } else {
+            return;
+        }
+        std::ignore = this->settings().setStaged({{"value", value}});
+    }
+
+    template<typename TValue>
+    [[nodiscard]] static std::optional<TValue> tryConvertValue(const gr::pmt::Value& controlledValue) {
+        if constexpr (std::same_as<TValue, std::string>) { // deal with string vs. string view not converting with convert_safely
+            return controlledValue.is_string() ? std::optional<TValue>(controlledValue.value_or(std::string{})) : std::nullopt;
+        } else {
+            const auto converted = gr::pmt::convert_safely<TValue>(controlledValue);
+            if (converted) {
+                return *converted;
+            }
+
+            // use static_cast to convert something that fails regular conversion for being out of range. this will clamp it into the range of TValue
+            std::optional<TValue> roundedInteger;
+            if constexpr (std::floating_point<TValue>) {
+                gr::pmt::ValueVisitor([&roundedInteger]<typename TFrom>(const TFrom& from) {
+                    if constexpr (std::integral<TFrom> && !std::same_as<TFrom, bool>) {
+                        roundedInteger = static_cast<TValue>(from);
+                    }
+                }).visit(controlledValue);
+            }
+            return roundedInteger;
+        }
     }
 
     void drawInIdScope(auto drawContent) {
@@ -89,7 +145,8 @@ struct ImControl : gr::Block<TDerived, gr::Drawable<gr::UICategory::Toolbar, "Im
                 ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
             }
             {
-                IMW::Group widgets;
+                IMW::Group    widgets;
+                IMW::Disabled disconnected(!layout.hasAnyConnection);
                 drawWidget(layout.width);
             }
             if (!layout.showLabel) {
