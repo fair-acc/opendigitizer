@@ -1,5 +1,6 @@
 #include "PaneBlocks.hpp"
 
+#include <algorithm>
 #include <string>
 
 #include <gnuradio-4.0/Logger.hpp>
@@ -46,6 +47,15 @@ const std::vector<std::shared_ptr<gr::BlockModel>>& PaneBlocks::of(const GraphSe
         _blocks.push_back(block);
     }
     return _blocks;
+}
+
+std::shared_ptr<gr::BlockModel> findDrawableBlock(const GraphSession& session, gr::UICategory category, std::string_view uniqueName) {
+    if (!session || session.isExchangingGraph()) {
+        return nullptr;
+    }
+    const auto blocks = session.graph().blocks();
+    const auto found  = std::ranges::find_if(blocks, [&](const auto& block) { return block->uniqueName() == uniqueName && block->uiCategory() == category && toolkitOf(*block) == kToolkit; });
+    return found == blocks.end() ? nullptr : *found;
 }
 
 } // namespace DigitizerUi

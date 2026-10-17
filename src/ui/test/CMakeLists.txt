@@ -103,6 +103,14 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_subgraph.grc
     examples/qa_statusbar.grc
     examples/qa_controls.grc
+    examples/qa_imcontrol.grc
+    examples/qa_imcontrol_conflicting_init_values.grc
+    examples/qa_imcontrol_initial_value.grc
+    examples/qa_imcontrol_color.grc
+    examples/qa_uicontrol_dragdrop.grc
+    examples/qa_uicontrol_connections.grc
+    examples/qa_uicontrol_readout.grc
+    examples/qa_uicontrol_compatibility.grc
     examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 
@@ -151,6 +159,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_DashboardBaseline)
   add_imgui_test(qa_DashboardView)
   add_imgui_test(qa_ToolbarView)
+  add_imgui_test(qa_ImControl)
   add_imgui_test(qa_ImControlNumber)
   add_imgui_test(qa_StatusBarView)
   add_imgui_test(qa_HostComposition)

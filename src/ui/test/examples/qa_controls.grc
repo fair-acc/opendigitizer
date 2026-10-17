@@ -29,7 +29,6 @@ blocks:
       name: control_a_field
       label: Amplitude
       unit: V
-      value_type: float32
       value: 1
       style: field
       target_map: "SignalGenerator1,SignalGenerator2:amplitude"
@@ -37,7 +36,6 @@ blocks:
     parameters:
       name: control_b_spin
       label: Frequency
-      value_type: float32
       value: 1
       step: 1
       style: spinBox
@@ -46,7 +44,6 @@ blocks:
     parameters:
       name: control_c_slider
       label: Level
-      value_type: float32
       value: 2
       min: 0
       max: 10
@@ -57,7 +54,6 @@ blocks:
       name: control_d_sliderSpinner
       label: Gain
       unit: "%"
-      value_type: float64
       value: 50
       min: 0
       max: 100

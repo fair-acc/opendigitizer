@@ -374,6 +374,7 @@ add_library(
   StatusBarView.hpp
   ToolbarView.cpp
   ToolbarView.hpp
+  UniqueNameRegistry.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
   blocks/SineSource.hpp
@@ -381,8 +382,16 @@ add_library(
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
+  blocks/ImControl.hpp
+  blocks/ImControlChoice.hpp
+  blocks/ImControlColor.hpp
   blocks/ImControlNumber.hpp
+  blocks/ImControlText.hpp
+  blocks/ImControlToggle.hpp
+  blocks/ImControlTrigger.hpp
+  blocks/ImPropertyReadout.hpp
   blocks/TargetMap.hpp
+  blocks/DrawableBlockConfig.hpp
   blocks/ToolbarBlock.hpp
   blocks/meta.hpp
   components/Block.cpp
@@ -395,8 +404,6 @@ add_library(
   components/DataTypeStyle.hpp
   components/Docking.cpp
   components/Docking.hpp
-  components/ExportedPropertiesList.cpp
-  components/ExportedPropertiesList.hpp
   components/GlobalSignalLegend.hpp
   components/SignalSelector.cpp
   components/SignalSelector.hpp
@@ -426,6 +433,8 @@ add_library(
   FlowgraphPage.cpp
   FlowgraphPage.hpp
   common/ImguiNodeEditorWrap.hpp
+  components/UiControlInteractionComponents.cpp
+  components/UiControlInteractionComponents.hpp
   components/NewBlockSelector.cpp
   components/NewBlockSelector.hpp
   components/NewBlockSelectorFuzzySearch.cpp

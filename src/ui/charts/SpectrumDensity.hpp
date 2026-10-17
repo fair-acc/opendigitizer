@@ -38,12 +38,12 @@ struct SpectrumDensity : gr::Block<SpectrumDensity, gr::Drawable<gr::UICategory:
     A<gr::Size_t, "histogram decay tau", gr::Doc<"histogram decay in frames (0 = infinite)">> histogram_decay_tau_frames = 100U;
 
     // trace overlays
-    A<bool, "show current overlay", gr::Visible>                                                     show_current_overlay   = true;
-    A<bool, "show max hold", gr::Visible>                                                            show_max_hold          = false;
-    A<bool, "show min hold", gr::Visible>                                                            show_min_hold          = false;
-    A<bool, "show average", gr::Visible>                                                             show_average           = false;
-    A<std::uint32_t, "trace color", gr::Visible, gr::Doc<"RGB colour for overlay lines (0xRRGGBB)">> trace_color            = 0xFF8C00U;
-    A<gr::Size_t, "trace decay tau", gr::Doc<"trace decay in frames (0 = infinite hold)">>           trace_decay_tau_frames = 25U;
+    A<bool, "show current overlay", gr::Visible>                                                                        show_current_overlay   = true;
+    A<bool, "show max hold", gr::Visible>                                                                               show_max_hold          = false;
+    A<bool, "show min hold", gr::Visible>                                                                               show_min_hold          = false;
+    A<bool, "show average", gr::Visible>                                                                                show_average           = false;
+    A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for overlay lines (0xRRGGBB)">> trace_color            = 0xFF8C00U;
+    A<gr::Size_t, "trace decay tau", gr::Doc<"trace decay in frames (0 = infinite hold)">>                              trace_decay_tau_frames = 25U;
 
     A<bool, "GPU acceleration", gr::Doc<"use GPU shaders for histogram (falls back to CPU if unavailable)">> gpu_acceleration = true;
     A<bool, "adaptive Y range", gr::Visible, gr::Doc<"rebin histogram to visible Y-axis range on zoom">>     adaptive_y_range = true;

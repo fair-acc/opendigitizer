@@ -5,8 +5,10 @@
 #include "scope_exit.hpp"
 
 #include <gnuradio-4.0/Logger.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/YamlPmt.hpp>
+#include <gnuradio-4.0/formatter/ValueFormatter.hpp>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -15,9 +17,13 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <ranges>
 #include <set>
+#include <span>
 
 #include "MapUtils.hpp"
+
+#include "blocks/TargetMap.hpp"
 
 using namespace std::string_literals;
 
@@ -266,27 +272,16 @@ void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& upd
         return;
     }
 
-    const auto setSettingImpl = [](UiGraphBlock& block, std::string_view keyToUpdateImpl, gr::pmt::Value&& updatedValueImpl) {
-        gr::Message message;
-        message.serviceName = block.blockUniqueName;
-        message.endpoint    = gr::block::property::kSetting;
-        message.cmd         = gr::message::Command::Set;
-        message.data        = gr::property_map{{std::pmr::string(keyToUpdateImpl), std::move(updatedValueImpl)}};
-        block.ownerGraph->sendMessage(std::move(message));
-    };
-
-    // set matching exported properties
-    auto exportedPropertyIter = exportedProperties.find(keyToUpdate);
-    if (exportedPropertyIter != std::end(exportedProperties) && exportedPropertyIter->second.windowId.has_value()) {
-        for (const auto& result : ownerGraph->recursiveGatherMatchingExportedProperties(*exportedPropertyIter->second.windowId, this)) {
-            if (result.block == this) {
-                break;
-            }
-            setSettingImpl(*result.block, result.propertyName, gr::pmt::Value{updatedValue});
-        }
+    if (keyToUpdate == "name" && updatedValue.is_string() && updatedValue.value_or(std::string_view{}) != blockName) {
+        updatedValue = ownerGraph->nameRegistry.ensureNameIsUnique(updatedValue.value_or(std::string_view{}));
     }
 
-    setSettingImpl(*this, keyToUpdate, std::move(updatedValue));
+    gr::Message message;
+    message.serviceName = blockUniqueName;
+    message.endpoint    = gr::block::property::kSetting;
+    message.cmd         = gr::message::Command::Set;
+    message.data        = gr::property_map{{std::pmr::string(keyToUpdate), std::move(updatedValue)}};
+    ownerGraph->sendMessage(std::move(message));
 }
 
 void UiGraphBlock::setBlockData(const gr::property_map& data) {
@@ -318,15 +313,24 @@ void UiGraphBlock::setBlockData(const gr::property_map& data) {
     }
 }
 
+void UiGraphBlock::setBlockName(std::string newBlockName) {
+    blockName = std::move(newBlockName);
+    if (ownerGraph) {
+        ownerGraph->nameRegistry.markBlockNameUsed(blockName);
+    }
+}
+
 void UiGraphBlock::setBasicBlockData(const gr::property_map& blockData) {
     if (blockUniqueName.empty()) {
         updateFieldFrom(blockUniqueName, blockData, blockUniqueName, gr::serialization_fields::BLOCK_UNIQUE_NAME);
     }
 
-    updateFieldFrom(blockName, blockData, blockName, "name"s);
-    if (blockName.empty()) {
-        updateFieldFrom(blockName, blockData, {}, "parameters"s, "name"s);
+    std::string newBlockName;
+    updateFieldFrom(newBlockName, blockData, blockName, "name"s);
+    if (newBlockName.empty()) {
+        updateFieldFrom(newBlockName, blockData, {}, "parameters"s, "name"s);
     }
+    setBlockName(std::move(newBlockName));
 
     std::optional<gr::property_map> parameters;
     const auto                      tryGetParameters = [&parameters](const gr::property_map& map) {
@@ -688,21 +692,18 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
         }
 
         const auto extractDouble = [&](std::string_view attr) -> std::optional<double> {
+            std::optional<double> result;
             if (const auto v = findMeta(settingKey, attr)) {
-                if (const auto* d = v->get_if<double>()) {
-                    return *d;
-                }
-                if (const auto* f = v->get_if<float>()) {
-                    return static_cast<double>(*f);
-                }
-                if (const auto* i = v->get_if<int32_t>()) {
-                    return static_cast<double>(*i);
-                }
+                gr::pmt::ValueVisitor([&result]<typename T>(const T& number) {
+                    if constexpr (std::is_arithmetic_v<T> && !std::same_as<T, bool>) {
+                        result = static_cast<double>(number);
+                    }
+                }).visit(*v);
             }
-            return std::nullopt;
+            return result;
         };
-        std::optional<double> minVal = extractDouble("min_value");
-        std::optional<double> maxVal = extractDouble("max_value");
+        std::optional<double> minVal = extractDouble("min");
+        std::optional<double> maxVal = extractDouble("max");
 
         std::vector<std::string> enumValues;
         if (const auto v = findMeta(settingKey, "enum_values")) {
@@ -717,8 +718,6 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
 
         blockSettingsMetaInformation.insert_or_assign(std::string(settingKey), SettingsMetaInformation{.unit = std::move(unit), .description = std::move(description), .isVisible = isVisible, .minValue = minVal, .maxValue = maxVal, .enumValues = std::move(enumValues)});
     }
-
-    std::erase_if(exportedProperties, [this](const auto& item) { return !blockSettings.contains(item.first); });
 }
 
 UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByUniqueName(std::string_view uniqueName) {
@@ -747,31 +746,123 @@ UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByName(std::string
     return out;
 }
 
-UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {
-    ExportedPropertiesView output;
-    recursiveForEachBlock([&output](const FindBlockResult& element) {
-        if (!element.block->exportedProperties.empty()) {
-            output.try_emplace(element.block->blockName, std::addressof(element.block->exportedProperties));
-        }
-        return VisitorResult::Recurse;
-    });
-    return output;
+UiGraphBlock* UiGraphModel::rootGraphBlock() {
+    UiGraphBlock* root = &rootBlock;
+    if (root->isScheduler() && !root->childBlocks.empty()) {
+        root = root->childBlocks.front().get();
+    }
+    return root;
 }
 
-std::vector<UiGraphModel::ExportedPropertyMatchResult> UiGraphModel::recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude) {
-    std::vector<ExportedPropertyMatchResult> output;
-    recursiveForEachBlock([&output, id, exclude](const FindBlockResult& element) {
-        if (element.block != exclude) {
-            for (const auto& [propertyName, exportedInfo] : element.block->exportedProperties) {
-                if (exportedInfo.windowId == id) {
-                    output.emplace_back(element.block, propertyName);
-                    break;
-                }
+UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const UiGraphBlock& targetBlock) {
+    ControlledPropertyMap result;
+    for (const auto& uiControlBlock : rootGraphBlock()->childBlocks) {
+        if (!uiControlBlock->isUiControl()) {
+            continue;
+        }
+        const auto targets = uiControlBlock->uiControlTargetMap();
+        if (!targets) {
+            continue;
+        }
+        // iterate the settings so as to retain ordering of properties
+        for (const auto& [propertyKey, _] : targetBlock.blockSettings) {
+            if (targets->relationshipToTarget(targetBlock.blockName, propertyKey) != TargetRelationship::NotTargeting) {
+                result[std::string(propertyKey)].push_back(uiControlBlock.get());
             }
         }
-        return VisitorResult::Recurse;
+    }
+    return result;
+}
+
+static BlockPropertyHints aggregatePropertyHints(std::span<const UiGraphModel::BlockPointerPropertyNamePair> controlled) {
+    if (controlled.empty()) {
+        return {};
+    }
+    const BlockPropertyHints          firstHints = controlled.front().block->propertyHints(controlled.front().property);
+    std::optional<BlockPropertyHints> aggregate  = firstHints;
+    for (const auto& [block, property] : controlled | std::views::drop(1)) {
+        aggregate = aggregate->intersection(block->propertyHints(property));
+        if (!aggregate) {
+            return {.choices = firstHints.choices};
+        }
+    }
+    return *aggregate;
+}
+
+std::vector<std::string> UiGraphModel::globConnectableProperties(const UiGraphBlock& control) {
+    const std::string                  compatibleTypeMap = control.uiControlCompatibleTypeMap();
+    std::set<std::string, std::less<>> properties;
+    forEachBlockRecursive(rootBlock, [&](UiGraphBlock& candidate) {
+        if (&candidate == &control) {
+            return;
+        }
+        for (auto&& property : candidate.connectableProperties(compatibleTypeMap)) {
+            properties.insert(std::move(property));
+        }
     });
-    return output;
+    return properties | std::ranges::to<std::vector>();
+}
+
+std::vector<UiGraphModel::BlockPointerPropertyNamePair> UiGraphModel::resolveControlledProperties(const UiGraphBlock& control, const TargetMap& targetMap) {
+    std::vector<BlockPointerPropertyNamePair> result;
+    for (const TargetEntry& entry : targetMap.entries()) {
+        recursiveForEachBlock([&control, &entry, &result](const FindBlockResult& element) {
+            const bool identified = element.block != &control && entry.relationshipToTarget(element.block->blockName, entry.propertyName) != TargetRelationship::NotTargeting && !element.block->propertyTypeName(entry.propertyName).empty();
+            if (identified) {
+                result.push_back({.block = element.block, .property = entry.propertyName});
+            }
+            return VisitorResult::Recurse;
+        });
+    }
+    return result;
+}
+
+void UiGraphModel::aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control) {
+    const auto controlled                   = resolveControlledProperties(control).value_or(std::vector<BlockPointerPropertyNamePair>{});
+    config.firstControlledProperty          = firstControlledPropertyConfig(controlled);
+    config.aggregateControlledPropertyHints = aggregatePropertyHints(controlled);
+}
+
+DrawableBlockConfig::ControlledProperty UiGraphModel::firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled) {
+    if (controlled.empty()) {
+        return {};
+    }
+    const auto& [target, property] = controlled.front();
+    return {
+        .value              = target->blockSettings.find_value(std::string_view(property)).value_or(gr::pmt::Value{}),
+        .hints              = target->propertyHints(property),
+        .targetBlockName    = target->blockName,
+        .targetPropertyName = property,
+    };
+}
+
+bool UiGraphModel::isCompatibleWithControlledProperties(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const BlockPointerPropertyNamePair& property) {
+    assert(property.block);
+    if (!property.block || property.block == &control || !property.block->isConnectableProperty(property.property, control.uiControlCompatibleTypeMap())) {
+        return false;
+    }
+    if (controlled.empty()) {
+        return true;
+    }
+    const auto& [firstBlock, firstProperty] = controlled.front();
+    return property.block->propertyTypeName(property.property) == firstBlock->propertyTypeName(firstProperty) && aggregatePropertyHints(controlled).intersection(property.block->propertyHints(property.property)).has_value();
+}
+
+bool UiGraphModel::doesBlockHaveACompatibleProperty(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const UiGraphBlock& candidate) {
+    return std::ranges::any_of(candidate.connectableProperties(control.uiControlCompatibleTypeMap()), [&](const std::string& property) { return isCompatibleWithControlledProperties(control, controlled, {&candidate, property}); });
+}
+
+void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property) {
+    UiGraphBlock* control = this->recursiveFindBlockByUniqueName(controlUniqueName).block;
+    if (!control) {
+        return;
+    }
+    auto targets = control->uiControlTargetMap();
+    if (!targets) {
+        return;
+    }
+    targets->removeTarget(TargetEntry{.blockTarget = std::string(blockSelector), .propertyName = property});
+    control->setSetting("target_map", targets->toString());
 }
 
 std::vector<UiGraphBlock*> UiGraphModel::recursiveGatherPlotSinks() {
@@ -897,11 +988,55 @@ void UiGraphModel::saveBlockPositions(gr::property_map& graphData) {
     graphData["blocks"] = std::move(blocks);
 }
 
+std::string UiGraphBlock::uiControlCompatibleTypeMap() const { return blockSettings.value_or<std::string>("compatible_type_map", std::string{}); }
+
+std::string UiGraphBlock::propertyTypeName(std::string_view property) const {
+    const gr::pmt::Value value = blockSettings.find_value(property, std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
+    if (!value.has_value() || value.is_tensor() || value.is_map()) {
+        return {};
+    }
+    const auto meta = blockSettingsMetaInformation.find(std::string(property));
+    if (meta != blockSettingsMetaInformation.end() && !meta->second.enumValues.empty()) {
+        return "enum";
+    }
+    return gr::pmt::detail::type_name(value);
+}
+
+bool UiGraphBlock::isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const {
+    if (isChart() || property == "description" || property.contains("::")) {
+        return false;
+    }
+    const std::string typeName = propertyTypeName(property);
+    const auto        meta     = blockSettingsMetaInformation.find(std::string(property));
+    const std::string unit     = meta != blockSettingsMetaInformation.end() ? meta->second.unit : std::string{};
+    return !typeName.empty() && isCompatibleType(compatibleTypeMap, typeName, unit);
+}
+
+std::vector<std::string> UiGraphBlock::connectableProperties(std::string_view compatibleTypeMap) const {
+    std::vector<std::string> properties;
+    for (const auto& [propertyKey, _] : blockSettings) {
+        if (isConnectableProperty(propertyKey, compatibleTypeMap)) {
+            properties.emplace_back(propertyKey);
+        }
+    }
+    return properties;
+}
+
+BlockPropertyHints UiGraphBlock::propertyHints(std::string_view property) const {
+    const auto meta = blockSettingsMetaInformation.find(std::string(property));
+    if (meta == blockSettingsMetaInformation.end()) {
+        return {};
+    }
+    return {.min = meta->second.minValue, .max = meta->second.maxValue, .choices = meta->second.enumValues};
+}
+
 bool UiGraphBlock::isUiControl() const {
     const auto drawable = blockMetaInformation.find_value(std::string("Drawable"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
     const auto info     = drawable.get_if<gr::property_map>();
     return info && info->find_value(std::string("Category"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(std::string()) == "Toolbar";
 }
+
+bool UiGraphBlock::isViewOnlyUiControl() const { return blockMetaInformation.find_value(std::string("viewonly_ui_control"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(false); }
 
 bool UiGraphModel::processMessage(const gr::Message& message) {
     namespace graph     = gr::graph::property;
@@ -1090,9 +1225,23 @@ bool UiGraphModel::processMessage(const gr::Message& message) {
     }
 
     if (std::ranges::contains(std::array<std::string_view, 5UZ>{scheduler::kBlockEmplaced, scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected, graph::kGraphInspected}, message.endpoint)) {
-        ++topologyGeneration;
+        handleTopologyUpdated();
+    }
+    if (std::ranges::contains(std::array<std::string_view, 3UZ>{scheduler::kBlockRemoved, scheduler::kBlockReplaced, scheduler::kSchedulerInspected}, message.endpoint)) {
+        rebuildNameRegistry();
     }
     return true;
+}
+
+void UiGraphModel::rebuildNameRegistry() {
+    nameRegistry.usedNames.clear();
+    nameRegistry.markBlockNameUsed(rootBlock.blockName);
+    forEachBlockRecursive(rootBlock, [this](const UiGraphBlock& block) { nameRegistry.markBlockNameUsed(block.blockName); });
+}
+
+void UiGraphModel::handleTopologyUpdated() {
+    ++topologyGeneration;
+    sendMessage(subscriptionMessageForAllBlocksSettings());
 }
 
 void UiGraphModel::requestFullUpdate(std::source_location location) {
@@ -1156,6 +1305,9 @@ void UiGraphModel::handleBlockSettingsChanged(const std::string& uniqueName, con
             keysChanged = keysChanged || !block->blockSettings.contains(key);
             block->blockSettings.insert_or_assign(key, value);
         }
+    }
+    if (const auto name = data.find("name"); name != data.end() && name->second.is_string()) {
+        block->setBlockName(name->second.value_or(std::string()));
     }
     if (keysChanged) {
         block->updateBlockSettingsMetaInformation();
@@ -1271,23 +1423,15 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
     return false;
 }
 
-constexpr bool isColourField(const UiGraphBlock::SettingsMetaInformation& meta, std::string_view pattern) {
-    auto containsColo = [](std::string_view s) {
-        constexpr std::string_view target = "colo";
-        return !std::ranges::search(s, target, [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); }).empty();
-    };
-    return containsColo(meta.description) || containsColo(pattern);
-};
-
-UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::controlType(std::string_view propertyName, const gr::pmt::Value& value) const {
+UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::controlType(const gr::pmt::Value& value) const {
     SettingsControlType out{};
     gr::pmt::ValueVisitor([&](auto& currentValue) {
         using T = std::remove_cvref_t<decltype(currentValue)>;
         if constexpr (std::is_same_v<T, bool>) {
             out = SettingsControlType::Checkbox;
         } else if constexpr (std::integral<T>) {
-            if constexpr (std::unsigned_integral<T> && sizeof(T) >= 4) {
-                if (isColourField(*this, propertyName)) {
+            if constexpr (std::same_as<T, std::uint32_t>) {
+                if (isColorUnit(unit)) {
                     out = SettingsControlType::Color;
                     return;
                 }

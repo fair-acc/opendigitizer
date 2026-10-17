@@ -4,6 +4,23 @@
 #include <gnuradio-4.0/Message.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
+inline std::string valueToString(const gr::pmt::Value& val) {
+    std::string out;
+    gr::pmt::ValueVisitor([&]<typename TArg>(const TArg& arg) {
+        using T = std::decay_t<TArg>;
+        if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
+            out = std::string(arg);
+        } else if constexpr (std::same_as<T, bool>) {
+            out = arg ? "true" : "false";
+        } else if constexpr (std::integral<T> || std::floating_point<T>) {
+            out = std::to_string(arg);
+        } else {
+            out.clear();
+        }
+    }).visit(val);
+    return out;
+}
+
 inline void pretty_print_map(const gr::property_map& map, std::size_t maxLevel = -1UZ, std::size_t level = 0) {
     if (level == maxLevel) {
         return;

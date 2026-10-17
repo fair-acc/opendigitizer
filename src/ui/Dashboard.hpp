@@ -8,7 +8,6 @@
 
 #include "components/ColourManager.hpp"
 #include "components/Docking.hpp"
-#include "components/ExportedPropertiesList.hpp"
 
 #include "utils/TransparentStringHash.hpp"
 
@@ -113,13 +112,9 @@ struct Dashboard {
 
     struct PropertyControlWindow {
         std::shared_ptr<DockSpace::Window> window;
-        std::string                        label; // label for the editor widget, chosen by user
+        std::string                        label; // chosen by user
 
         PropertyControlWindow(DeserializeTag, std::string_view labelView, std::string_view windowName);
-
-        // all the parameters of these constructors are just to know how to generate a good and unique name for the window
-        PropertyControlWindow(Dashboard& dashboard, UiGraphModel* graphModel, std::string_view propertyName, std::string_view labelView, std::string_view blockName);
-        PropertyControlWindow(Dashboard& dashboard, UiGraphBlock* block, std::string_view propertyName, std::string_view labelView);
     };
 
     struct Service {
@@ -151,7 +146,6 @@ struct Dashboard {
     DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
     bool                                                   schedulerUi = false; // .grc dashboard.scheduler_ui
     gr::property_map                                       windowLayout;
-    gr::property_map                                       exportedProperties;
     std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
     plf::colony<Service>                                   services;
     std::atomic<bool>                                      isInitialised = false;
@@ -178,11 +172,7 @@ struct Dashboard {
     bool transmuteUIWindow(UIWindow& uiWindow, std::string_view newChartType);
     void bindChartWindows();
 
-    std::pair<std::size_t, PropertyControlWindow&> newPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName, std::string_view label);
-    void                                           applyExportedPropertiesToUiGraph();
-    [[nodiscard]] constexpr bool                   hasPendingExportedPropertiesConfiguration() const noexcept { return !this->exportedProperties.empty(); }
-    std::string                                    generateUniqueNameForPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName);
-    std::unordered_set<std::string_view>           getAllWindowNamesInUse() const;
+    std::unordered_set<std::string_view> getAllWindowNamesInUse() const;
 
     std::shared_ptr<gr::BlockModel> emplaceChartBlock(gr::Graph& graph, std::string_view chartTypeName, const std::string& chartName, const gr::property_map& chartParameters = {});
     [[nodiscard]] std::string       resolveChartTypeName(std::string_view chartTypeName) const;
@@ -196,16 +186,7 @@ struct Dashboard {
     void removeUnusedRemoteServices();
     void saveRemoteServiceFlowgraph(Service* s);
 
-    void handleMessages() {
-        session.handleMessages();
-
-        if (hasPendingExportedPropertiesConfiguration()) [[unlikely]] {
-            const auto* schedulerInfo = std::get_if<UiGraphBlock::SchedulerBlockInfo>(&session.graphModel.rootBlock.blockCategoryInfo);
-            if (schedulerInfo && schedulerInfo->childrenLoaded) {
-                applyExportedPropertiesToUiGraph();
-            }
-        }
-    }
+    void handleMessages() { session.handleMessages(); }
 
     [[nodiscard]] UIWindow* findUIWindow(const std::shared_ptr<gr::BlockModel>& block) noexcept {
         if (!block) {

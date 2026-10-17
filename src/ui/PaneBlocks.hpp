@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <gnuradio-4.0/BlockModel.hpp>
@@ -24,6 +25,9 @@ private:
     std::optional<std::uint64_t>                 _topologyGeneration;
     std::vector<std::shared_ptr<gr::BlockModel>> _blocks;
 };
+
+/// Find the actual block model representation for a drawable/UI block with a given unique name
+[[nodiscard]] std::shared_ptr<gr::BlockModel> findDrawableBlock(const GraphSession& session, gr::UICategory category, std::string_view uniqueName);
 
 } // namespace DigitizerUi
 

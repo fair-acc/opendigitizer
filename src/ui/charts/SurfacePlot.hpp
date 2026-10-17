@@ -697,7 +697,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
     A<bool, "show legend", gr::Visible>                                                                       show_legend     = false;
     A<bool, "show grid", gr::Visible>                                                                         show_grid       = true;
     A<bool, "show minor grid", gr::Visible>                                                                   show_minor_grid = false;
-    A<std::uint32_t, "grid color", gr::Visible, gr::Doc<"grid line colour (0xRRGGBB)">>                       grid_color      = 0xFFFFFFU;
+    A<std::uint32_t, "grid color", gr::Visible, gr::Unit<"Color">, gr::Doc<"grid line colour (0xRRGGBB)">>    grid_color      = 0xFFFFFFU;
     A<float, "grid opacity", gr::Visible, gr::Limits<0.f, 1.f>, gr::Doc<"grid line opacity (0=transparent)">> grid_opacity    = 0.3f;
 
     // surface

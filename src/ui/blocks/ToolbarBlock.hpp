@@ -225,9 +225,12 @@ namespace toolbar {
         IMW::Font font(LookAndFeel::instance().fontIconsSolid);
         changed = widget(icon.c_str());
     }
-    if (!tooltip.empty()) {
-        ImGui::SetItemTooltip("%s", tooltip.c_str());
-    }
+
+    (void)tooltip;
+    // TODO: fix tooltips not drawing correctly in the flowgraph. this is the same issue as ImControlChoice being disabled when drawn in the flowgraph.
+    // if (!tooltip.empty()) {
+    //     ImGui::SetItemTooltip("%s", tooltip.c_str());
+    // }
     return changed;
 }
 
@@ -260,50 +263,6 @@ inline void sendSettings(gr::MsgPortOutBuiltin& port, const std::string& targetB
     gr::sendMessage<gr::message::Command::Set>(port, targetBlock, gr::block::property::kSetting, std::move(settings));
 }
 } // namespace toolbar
-
-struct ToolbarButton : gr::Block<ToolbarButton, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
-    using Description = gr::Doc<"toolbar button that sends its payload as settings to the target block when pressed">;
-
-    std::string      label = "button";
-    std::string      icon;
-    std::string      tooltip;
-    std::string      target_block;
-    gr::property_map payload; // settings applied to the target block, e.g. {amplitude: 2.0}
-
-    GR_MAKE_REFLECTABLE(ToolbarButton, label, icon, tooltip, target_block, payload);
-
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
-
-    gr::work::Status draw(const gr::property_map& = {}) noexcept {
-        if (toolbar::drawItem(unique_name, label, icon, tooltip, [](const char* text) { return ImGui::Button(text); })) {
-            toolbar::sendSettings(msgOut, target_block, payload);
-        }
-        return gr::work::Status::OK;
-    }
-};
-
-struct ToolbarCheckbox : gr::Block<ToolbarCheckbox, gr::Drawable<gr::UICategory::Toolbar, "ImGui">> {
-    using Description = gr::Doc<"toolbar checkbox that sets a boolean setting of the target block to its checked state">;
-
-    std::string label = "checkbox";
-    std::string icon;
-    std::string tooltip;
-    std::string target_block;
-    std::string target_setting;
-    bool        checked = false;
-
-    GR_MAKE_REFLECTABLE(ToolbarCheckbox, label, icon, tooltip, target_block, target_setting, checked);
-
-    gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
-
-    gr::work::Status draw(const gr::property_map& = {}) noexcept {
-        if (toolbar::drawItem(unique_name, label, icon, tooltip, [this](const char* text) { return ImGui::Checkbox(text, &checked); })) {
-            toolbar::sendSettings(msgOut, target_block, gr::property_map{{std::pmr::string(target_setting), checked}});
-        }
-        return gr::work::Status::OK;
-    }
-};
-
 } // namespace DigitizerUi
 
 #endif

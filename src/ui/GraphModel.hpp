@@ -2,16 +2,22 @@
 #define GRAPHMODEL_H
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/Graph.hpp>
 #include <gnuradio-4.0/PluginLoader.hpp>
+
+#include "UniqueNameRegistry.hpp"
+#include "blocks/DrawableBlockConfig.hpp"
+#include "blocks/TargetMap.hpp"
 
 struct TestApp;
 
@@ -117,6 +123,7 @@ struct UiGraphBlock {
     void setSetting(std::string_view keyToUpdate, gr::pmt::Value&& updatedValue);
     void setBlockData(const gr::property_map& data);
     void setBasicBlockData(const gr::property_map& blockData);
+    void setBlockName(std::string newBlockName);
     /// Rebuilds _inputPorts and _outputPorts. Graphs and schedulers take them from the
     /// exported ports of their children, every other block from its own port list.
     /// Returns true if they were derived from exported ports, i.e. if a change in ports
@@ -134,8 +141,24 @@ struct UiGraphBlock {
     [[nodiscard]] constexpr bool isPlotSink() const { return this->blockTypeName.starts_with("opendigitizer::ImPlotSink"); }
     [[nodiscard]] constexpr bool isChart() const { return isChartTypeName(blockTypeName); }
     [[nodiscard]] bool           isUiControl() const;
+    [[nodiscard]] bool           isViewOnlyUiControl() const;
+    [[nodiscard]] bool           usesTargetMap() const { return blockSettings.contains("target_map"); }
     [[nodiscard]] constexpr bool isScheduler() const { return std::holds_alternative<SchedulerBlockInfo>(blockCategoryInfo); }
     [[nodiscard]] constexpr bool isGraph() const { return std::holds_alternative<GraphBlockInfo>(blockCategoryInfo); } // unmanaged/unscheduled
+
+    /// Returns the value of the compatible_type_map block setting
+    [[nodiscard]] std::string                           uiControlCompatibleTypeMap() const;
+    [[nodiscard]] std::expected<TargetMap, std::string> uiControlTargetMap() const {
+        if (!usesTargetMap()) {
+            return std::unexpected("Attempt to get target map for a block which does not implement it");
+        }
+        return TargetMap::fromString(blockSettings.value_or<std::string>("target_map", std::string{}));
+    }
+    /// Get the name of the type of a block property with some additional info, namely if the meta information specifies enumValues then this returns "enum" instead of "string"
+    [[nodiscard]] std::string              propertyTypeName(std::string_view property) const;
+    [[nodiscard]] bool                     isConnectableProperty(std::string_view property, std::string_view compatibleTypeMap) const;
+    [[nodiscard]] std::vector<std::string> connectableProperties(std::string_view compatibleTypeMap) const;
+    [[nodiscard]] BlockPropertyHints       propertyHints(std::string_view property) const;
 
     // We often search by name, but as we don't expect graphs with
     // a large $n$ of blocks, linear search will be fine
@@ -190,20 +213,12 @@ public:
         std::optional<double>    maxValue;
         std::vector<std::string> enumValues;
 
-        SettingsControlType controlType(std::string_view propertyName, const gr::pmt::Value& value) const;
+        SettingsControlType controlType(const gr::pmt::Value& value) const;
     };
 
-    struct ExportedProperty {
-        // if null, this is not visible on any control
-        std::optional<std::size_t> windowId;
-    };
-
-    template<typename Key, typename Value>
-    using UnorderedMap = std::unordered_map<Key, Value, gr::pmt::Value::MapHash, gr::pmt::Value::MapEqual>;
-
-    UnorderedMap<std::string, ExportedProperty>    exportedProperties;
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
-    void                                           updateBlockSettingsMetaInformation();
+
+    void updateBlockSettingsMetaInformation();
 
     struct PortNameMapper {
         std::string internalName;
@@ -246,6 +261,23 @@ public:
     bool isConnected() const;
 };
 
+inline void forEachBlockRecursive(UiGraphBlock& root, auto&& fn) {
+    for (const auto& child : root.childBlocks) {
+        fn(*child);
+        forEachBlockRecursive(*child, fn);
+    }
+}
+
+[[nodiscard]] inline gr::Message subscriptionMessageForAllBlocksSettings() {
+    gr::Message message;
+    message.cmd             = gr::message::Command::Subscribe;
+    message.serviceName     = "";
+    message.clientRequestID = "UI";
+    message.endpoint        = gr::block::property::kSetting;
+    message.data            = gr::property_map{};
+    return message;
+}
+
 class UiGraphModel {
 public:
     friend struct ::TestApp;
@@ -258,6 +290,8 @@ public:
     void sendMessage(gr::Message message, std::source_location location = std::source_location::current()) { sendMessage_(std::move(message), std::move(location)); }
 
     UiGraphBlock rootBlock;
+
+    UniqueNameRegistry nameRegistry;
 
     std::string m_localFlowgraphGrc;
     bool        requestedFullUpdate = false;
@@ -279,6 +313,8 @@ public:
      */
     bool processMessage(const gr::Message& message);
 
+    void handleTopologyUpdated();
+    void rebuildNameRegistry();
     void requestFullUpdate(std::source_location location = std::source_location::current());
     void requestAvailableBlocksTypesUpdate();
     void saveBlockPositions(gr::property_map& graphData);
@@ -306,16 +342,42 @@ public:
     FindBlockResult recursiveFindBlockByUniqueName(std::string_view uniqueName);
     FindBlockResult recursiveFindBlockByName(std::string_view name);
 
-    struct ExportedPropertyMatchResult {
-        UiGraphBlock* block;
-        std::string   propertyName;
+    [[nodiscard]] UiGraphBlock* rootGraphBlock();
+
+    using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
+    /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
+    [[nodiscard]] ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock);
+
+    /// Return a list of the names of all properties in all blocks which have a type listed in the "compatible_type_map" setting of this control block
+    [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
+
+    struct BlockPointerPropertyNamePair {
+        const UiGraphBlock* block = nullptr;
+        std::string         property;
     };
 
-    using ExportedPropertiesView = std::unordered_map<std::string_view, UiGraphBlock::UnorderedMap<std::string, UiGraphBlock::ExportedProperty>*>;
-    /// Returns a map of block names to their exported properties, if the exported properties are not empty
-    ExportedPropertiesView                   recursiveGatherExportedProperties();
-    std::vector<ExportedPropertyMatchResult> recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude);
-    std::vector<UiGraphBlock*>               recursiveGatherPlotSinks();
+    /// Returns every block property the target map refers to. Excludes properties from the @param control
+    [[nodiscard]] std::vector<BlockPointerPropertyNamePair> resolveControlledProperties(const UiGraphBlock& control, const TargetMap& targets);
+
+    /// Parse the TargetMap of the control, and then search the graph for matching properties.
+    /// Returns a std::expected if parsing the TargetMap fails
+    [[nodiscard]] auto resolveControlledProperties(const UiGraphBlock& control) {
+        return control.uiControlTargetMap().transform([this, &control](const TargetMap& targets) { return resolveControlledProperties(control, targets); });
+    }
+
+    /// Modifies a DrawableBlockConfig to take into account all the properties it controls. this means filling out both first_controlled_property and combining
+    /// all the hints and typeinfo to find the acceptable min/max range and choices for the property
+    void aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control);
+
+    /// Returns true if the given control with the given controlled properties (return value from resolveControlledProperties()) makes sense to control the given property
+    [[nodiscard]] static bool isCompatibleWithControlledProperties(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const BlockPointerPropertyNamePair& property);
+
+    /// Whether any property of @param candidate passes isCompatibleWithControlledProperties
+    [[nodiscard]] static bool doesBlockHaveACompatibleProperty(const UiGraphBlock& control, std::span<const BlockPointerPropertyNamePair> controlled, const UiGraphBlock& candidate);
+
+    void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
+
+    std::vector<UiGraphBlock*> recursiveGatherPlotSinks();
 
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 
@@ -350,6 +412,9 @@ private:
     }
 
     void unsubscribeFromResponses(std::size_t subscriptionId) { _testResponseSubscriptions.erase(subscriptionId); }
+
+    // used by tests
+    [[nodiscard]] static DrawableBlockConfig::ControlledProperty firstControlledPropertyConfig(std::span<const BlockPointerPropertyNamePair> controlled);
 };
 
 } // namespace DigitizerUi

@@ -5,10 +5,15 @@
 #include <implot3d.h>
 
 #include "LogHistory.hpp"
+#include "blocks/ImControlChoice.hpp"
+#include "blocks/ImControlColor.hpp"
 #include "blocks/ImControlNumber.hpp"
+#include "blocks/ImControlText.hpp"
+#include "blocks/ImControlToggle.hpp"
+#include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/ImPropertyReadout.hpp"
 #include "blocks/StatusBarBlock.hpp"
-#include "blocks/ToolbarBlock.hpp"
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
 #include "components/ImGuiNotify.hpp"
@@ -25,9 +30,13 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<WaterfallPlot>(registry);
     std::ignore = gr::registerBlock<SurfacePlot>(registry);
     std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(registry);
-    std::ignore = gr::registerBlock<ToolbarButton>(registry);
-    std::ignore = gr::registerBlock<ToolbarCheckbox>(registry);
     std::ignore = gr::registerBlock<ImControlNumber>(registry);
+    std::ignore = gr::registerBlock<ImControlToggle>(registry);
+    std::ignore = gr::registerBlock<ImControlTrigger>(registry);
+    std::ignore = gr::registerBlock<ImControlText>(registry);
+    std::ignore = gr::registerBlock<ImControlChoice>(registry);
+    std::ignore = gr::registerBlock<ImControlColor>(registry);
+    std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
 }
 
