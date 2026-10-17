@@ -282,7 +282,7 @@ static void blockContextComboBox(UiGraphBlock* block) {
     }
 }
 
-static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext& panelContext, bool verticalLayout) {
+static void BlockControlsPanelImpl(BlockControlsPanelContext& panelContext, bool verticalLayout) {
     // guaranteed to be non-null by check in BlockControlsPanel()
     UiGraphBlock* block = panelContext.selectedBlock();
 
@@ -302,7 +302,6 @@ static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext&
     auto minpos = ImGui::GetCursorPos();
     auto size   = ImGui::GetContentRegionAvail();
 
-    BlockPropertyEditResult propertyEditResult;
     {
         IMW::Child settings("Settings", verticalLayout ? ImVec2(size.x, ImGui::GetContentRegionAvail().y - lineHeight - itemSpacing.y) : ImVec2(ImGui::GetContentRegionAvail().x, size.y), true, ImGuiWindowFlags_HorizontalScrollbar);
         ImGui::TextUnformatted(block->blockName.c_str());
@@ -337,7 +336,7 @@ static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext&
             BlockNeighboursPreview(panelContext, ImGui::GetContentRegionAvail());
         }
 
-        propertyEditResult = BlockSettingsControls(panelContext, block);
+        BlockSettingsControls(panelContext, block);
 
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
             panelContext.resetTime();
@@ -345,19 +344,17 @@ static BlockPropertyEditResult BlockControlsPanelImpl(BlockControlsPanelContext&
     }
 
     ImGui::SetCursorPos(minpos);
-
-    return propertyEditResult;
 }
 
-BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
+void BlockControlsPanel(BlockControlsPanelContext& panelContext, const ImVec2& pos, const ImVec2& frameSize, bool verticalLayout) {
     if (!panelContext.selectedBlock()) {
-        return {};
+        return;
     }
 
     auto size = frameSize;
     if (panelContext.closeTime < std::chrono::system_clock::now()) {
         panelContext = {};
-        return {};
+        return;
     }
 
     ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
@@ -380,15 +377,9 @@ BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelCont
 
     IMW::TabBar tabBar("blockControlsPanel##", ImGuiTabBarFlags_None);
 
-    const ImGuiTabItemFlags  selectedBlockFlags = std::exchange(panelContext.wantsSelectedBlockTab, false) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-    BlockControlsPanelResult result;
+    const ImGuiTabItemFlags selectedBlockFlags = std::exchange(panelContext.wantsSelectedBlockTab, false) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
     if (auto item = IMW::TabItem("Selected Block", nullptr, selectedBlockFlags)) {
-        result.blockEditPaneResult = BlockControlsPanelImpl(panelContext, verticalLayout);
-    }
-    if (auto item = IMW::TabItem("All Exported Properties", nullptr, ImGuiTabItemFlags_None)) {
-        using Flags                            = ExportedPropertyList::Flags;
-        const auto params                      = ExportedPropertyList::Params{.flags = Flags::DragDropHandle | Flags::ContextMenuButton};
-        result.allExportedPropertiesPageResult = panelContext.propertyList.draw(*panelContext.graphModel, params);
+        BlockControlsPanelImpl(panelContext, verticalLayout);
     }
 
     if (panelContext.modifyConnectionsDialog && !panelContext.modifyConnectionsDialog->draw(panelContext.graphModel)) {
@@ -397,7 +388,6 @@ BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelCont
     if (panelContext.jumpToControlPopup && !panelContext.jumpToControlPopup->draw(panelContext.graphModel, panelContext.focusBlockRequest)) {
         panelContext.jumpToControlPopup.reset();
     }
-    return result;
 }
 
 constexpr ImGuiColorEditFlags colorFieldEditorFlags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoAlpha; // ColorEdit3 implies NoAlpha
@@ -491,27 +481,6 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     return out;
 }
 
-IMW::WidgetSize calcEditorSize(const char* label, const std::string& propertyName, const gr::pmt::Value& value, const UiGraphBlock::SettingsMetaInformation& meta) {
-    using enum UiGraphBlock::SettingsControlType;
-    switch (meta.controlType(propertyName, value)) {
-    case Checkbox: return IMW::CalcCheckboxSize(label);
-    case Color: return IMW::CalcColorEditorSize(label, colorFieldEditorFlags);
-    // could calculate no. of digits needed by slider with logarithms, but it is okay to clip off big numbers
-    case Slider: return IMW::CalcSliderSize(label, 5);
-    case Keypad: {
-        if (value.is_floating_point()) {
-            return InputKeypad<>::calcSize<float>(label, meta.unit);
-        } else if (value.is_integral()) {
-            return InputKeypad<>::calcSize<std::uint32_t>(label, meta.unit);
-        }
-        return InputKeypad<>::calcSize<std::string>(label, meta.unit);
-    }
-    case Combo: return IMW::CalcComboSize(label, value.value_or(std::string{}).c_str(), 0);
-    case TextInput: return IMW::CalcTextInputSize(label, value.value_or(std::string{}).c_str());
-    }
-    return {};
-}
-
 /// Drawn in place of the editor of a property which is controlled by a UI control block
 static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelContext, UiGraphBlock& block, const std::string& key) {
     const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
@@ -541,10 +510,9 @@ static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelCont
     }
 }
 
-/// Returns a value if the row was successfully drawn
-static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, bool uiControlled) {
+static void drawSettingRow(BlockControlsPanelContext& panelContext, const std::string& key, UiGraphBlock& block, const gr::pmt::Value& value, bool uiControlled) {
     if (!value.is_string() && !value.is_floating_point() && !value.is_integral()) {
-        return {}; // unsupported type
+        return; // unsupported type
     }
 
     auto          id = ImGui::GetID(key.c_str());
@@ -556,7 +524,7 @@ static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelC
     auto metaInfoIter = block.blockSettingsMetaInformation.find(std::string(key));
     if (metaInfoIter == std::end(block.blockSettingsMetaInformation)) {
         assert(false);
-        return {};
+        return;
     }
     auto& metaInfo = metaInfoIter->second;
     ImGui::TextUnformatted(metaInfo.description.c_str());
@@ -588,14 +556,11 @@ static std::optional<BlockPropertyEditResult> drawSettingRow(BlockControlsPanelC
             ImGui::SetTooltip("%s", key.c_str());
         }
     }
-
-    return BlockPropertyEditResult{};
 }
 
-BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock* block, const ImVec2& /*size*/) {
+void BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock* block, const ImVec2& /*size*/) {
     InputKeypad<>::clearIfNewBlock(block->blockUniqueName);
-    BlockPropertyEditResult result{};
-    const auto              controlledProperties = block->ownerGraph ? block->ownerGraph->uiControlledProperties(*block) : UiGraphModel::ControlledPropertyMap{};
+    const auto controlledProperties = block->ownerGraph ? block->ownerGraph->uiControlledProperties(*block) : UiGraphModel::ControlledPropertyMap{};
     // don't allow editing properties which are being edited by a UI control block
     const auto isPropertyLocked = [&controlledProperties](const std::string& key) {
         const auto controls = controlledProperties.find(key);
@@ -615,9 +580,7 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
                 if (isMarked != visibleOnly) {
                     continue;
                 }
-                if (auto rowResult = drawSettingRow(panelContext, keyStr, *block, value, isPropertyLocked(keyStr)); rowResult && *rowResult) {
-                    result = std::move(*rowResult);
-                }
+                drawSettingRow(panelContext, keyStr, *block, value, isPropertyLocked(keyStr));
             }
         }
     };
@@ -655,7 +618,6 @@ BlockPropertyEditResult BlockSettingsControls(BlockControlsPanelContext& panelCo
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Reset all settings to defaults");
     }
-    return result;
 }
 
 BlockControlsPanelContext::BlockControlsPanelContext() {
