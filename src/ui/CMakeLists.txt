@@ -403,8 +403,6 @@ add_library(
   components/DataTypeStyle.hpp
   components/Docking.cpp
   components/Docking.hpp
-  components/ExportedPropertiesList.cpp
-  components/ExportedPropertiesList.hpp
   components/GlobalSignalLegend.hpp
   components/SignalSelector.cpp
   components/SignalSelector.hpp

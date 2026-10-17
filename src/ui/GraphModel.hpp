@@ -216,17 +216,9 @@ public:
         SettingsControlType controlType(std::string_view propertyName, const gr::pmt::Value& value) const;
     };
 
-    struct ExportedProperty {
-        // if null, this is not visible on any control
-        std::optional<std::size_t> windowId;
-    };
-
-    template<typename Key, typename Value>
-    using UnorderedMap = std::unordered_map<Key, Value, gr::pmt::Value::MapHash, gr::pmt::Value::MapEqual>;
-
-    UnorderedMap<std::string, ExportedProperty>    exportedProperties;
     std::map<std::string, SettingsMetaInformation> blockSettingsMetaInformation;
-    void                                           updateBlockSettingsMetaInformation();
+
+    void updateBlockSettingsMetaInformation();
 
     struct PortNameMapper {
         std::string internalName;
@@ -385,16 +377,7 @@ public:
 
     void removeUiControlConnection(const std::string& controlUniqueName, std::string_view blockSelector, const std::string& property);
 
-    struct ExportedPropertyMatchResult {
-        UiGraphBlock* block;
-        std::string   propertyName;
-    };
-
-    using ExportedPropertiesView = std::unordered_map<std::string_view, UiGraphBlock::UnorderedMap<std::string, UiGraphBlock::ExportedProperty>*>;
-    /// Returns a map of block names to their exported properties, if the exported properties are not empty
-    ExportedPropertiesView                   recursiveGatherExportedProperties();
-    std::vector<ExportedPropertyMatchResult> recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude);
-    std::vector<UiGraphBlock*>               recursiveGatherPlotSinks();
+    std::vector<UiGraphBlock*> recursiveGatherPlotSinks();
 
     std::unique_ptr<UiGraphBlock> makeGraphBlock(UiGraphBlock* parent, const gr::property_map& blockData, const std::string& ownerSchedulerUniqueName, const std::string& ownerGraphUniqueName);
 

@@ -272,31 +272,16 @@ void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& upd
         return;
     }
 
-    const auto setSettingImpl = [](UiGraphBlock& block, std::string_view keyToUpdateImpl, gr::pmt::Value&& updatedValueImpl) {
-        if (keyToUpdateImpl == "name" && updatedValueImpl.is_string() && updatedValueImpl.value_or(std::string_view{}) != block.blockName) {
-            updatedValueImpl = block.ownerGraph->nameRegistry.ensureNameIsUnique(updatedValueImpl.value_or(std::string_view{}));
-        }
-
-        gr::Message message;
-        message.serviceName = block.blockUniqueName;
-        message.endpoint    = gr::block::property::kSetting;
-        message.cmd         = gr::message::Command::Set;
-        message.data        = gr::property_map{{std::pmr::string(keyToUpdateImpl), std::move(updatedValueImpl)}};
-        block.ownerGraph->sendMessage(std::move(message));
-    };
-
-    // set matching exported properties
-    auto exportedPropertyIter = exportedProperties.find(keyToUpdate);
-    if (exportedPropertyIter != std::end(exportedProperties) && exportedPropertyIter->second.windowId.has_value()) {
-        for (const auto& result : ownerGraph->recursiveGatherMatchingExportedProperties(*exportedPropertyIter->second.windowId, this)) {
-            if (result.block == this) {
-                break;
-            }
-            setSettingImpl(*result.block, result.propertyName, gr::pmt::Value{updatedValue});
-        }
+    if (keyToUpdate == "name" && updatedValue.is_string() && updatedValue.value_or(std::string_view{}) != blockName) {
+        updatedValue = ownerGraph->nameRegistry.ensureNameIsUnique(updatedValue.value_or(std::string_view{}));
     }
 
-    setSettingImpl(*this, keyToUpdate, std::move(updatedValue));
+    gr::Message message;
+    message.serviceName = blockUniqueName;
+    message.endpoint    = gr::block::property::kSetting;
+    message.cmd         = gr::message::Command::Set;
+    message.data        = gr::property_map{{std::pmr::string(keyToUpdate), std::move(updatedValue)}};
+    ownerGraph->sendMessage(std::move(message));
 }
 
 void UiGraphBlock::setBlockData(const gr::property_map& data) {
@@ -733,8 +718,6 @@ void UiGraphBlock::updateBlockSettingsMetaInformation() {
 
         blockSettingsMetaInformation.insert_or_assign(std::string(settingKey), SettingsMetaInformation{.unit = std::move(unit), .description = std::move(description), .isVisible = isVisible, .minValue = minVal, .maxValue = maxVal, .enumValues = std::move(enumValues)});
     }
-
-    std::erase_if(exportedProperties, [this](const auto& item) { return !blockSettings.contains(item.first); });
 }
 
 UiGraphModel::FindBlockResult UiGraphModel::recursiveFindBlockByUniqueName(std::string_view uniqueName) {
@@ -880,33 +863,6 @@ void UiGraphModel::removeUiControlConnection(const std::string& controlUniqueNam
     }
     targets->removeTarget(TargetEntry{.blockTarget = std::string(blockSelector), .propertyName = property});
     control->setSetting("target_map", targets->toString());
-}
-
-UiGraphModel::ExportedPropertiesView UiGraphModel::recursiveGatherExportedProperties() {
-    ExportedPropertiesView output;
-    recursiveForEachBlock([&output](const FindBlockResult& element) {
-        if (!element.block->exportedProperties.empty()) {
-            output.try_emplace(element.block->blockName, std::addressof(element.block->exportedProperties));
-        }
-        return VisitorResult::Recurse;
-    });
-    return output;
-}
-
-std::vector<UiGraphModel::ExportedPropertyMatchResult> UiGraphModel::recursiveGatherMatchingExportedProperties(std::size_t id, UiGraphBlock* exclude) {
-    std::vector<ExportedPropertyMatchResult> output;
-    recursiveForEachBlock([&output, id, exclude](const FindBlockResult& element) {
-        if (element.block != exclude) {
-            for (const auto& [propertyName, exportedInfo] : element.block->exportedProperties) {
-                if (exportedInfo.windowId == id) {
-                    output.emplace_back(element.block, propertyName);
-                    break;
-                }
-            }
-        }
-        return VisitorResult::Recurse;
-    });
-    return output;
 }
 
 std::vector<UiGraphBlock*> UiGraphModel::recursiveGatherPlotSinks() {

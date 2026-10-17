@@ -254,24 +254,6 @@ std::shared_ptr<DashboardStorageInfo> DashboardStorageInfo::memoryDashboardStora
     return storageInfo;
 }
 
-std::size_t& lastUsedWindowId() {
-    static std::size_t lastUsedWindowId = 0;
-    return lastUsedWindowId;
-}
-
-std::string Dashboard::generateUniqueNameForPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName) {
-    auto        currentlyInUse = getAllWindowNamesInUse();
-    const char* blockName      = block ? block->blockName.c_str() : "UNKNOWN";
-    const auto  prefix         = std::format("Property control for {} of block {}", propertyName, blockName);
-    // imgui restores a window's position by name: a new property window needs a new name
-    std::string out;
-    do {
-        ++lastUsedWindowId();
-        out = std::format("{}{}", prefix, lastUsedWindowId());
-    } while (currentlyInUse.contains(out));
-    return out;
-}
-
 std::unordered_set<std::string_view> Dashboard::getAllWindowNamesInUse() const {
     std::unordered_set<std::string_view> output;
     for (const auto& window : uiWindows) {
@@ -292,17 +274,6 @@ Dashboard::PropertyControlWindow::PropertyControlWindow(DeserializeTag, std::str
     : window(std::make_shared<DockSpace::Window>(std::string{windowName})), //
       label{labelView}                                                      //
 {}
-
-Dashboard::PropertyControlWindow::PropertyControlWindow(Dashboard& dashboard, UiGraphModel* graphModel, //
-    std::string_view propertyName, std::string_view labelView, std::string_view blockName)              //
-    : PropertyControlWindow(dashboard, graphModel->recursiveFindBlockByName(blockName).block, propertyName, labelView) {}
-
-Dashboard::PropertyControlWindow::PropertyControlWindow(Dashboard& dashboard, UiGraphBlock* block, std::string_view propertyName, std::string_view labelView) //
-    : window(std::make_shared<DockSpace::Window>(dashboard.generateUniqueNameForPropertyControlWindow(block, propertyName))),                                 //
-      label{labelView}                                                                                                                                        //
-{
-    assert(block && "trying to control property of nonexistent block");
-}
 
 Dashboard::Dashboard(PrivateTag, std::shared_ptr<opencmw::client::RestClient> client, const std::shared_ptr<const DashboardDescription>& desc) : restClient(std::move(client)), description(desc) { description->lastUsed = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now()); }
 
@@ -568,11 +539,6 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
         uiWindows.push_back(std::move(uiWindow));
     }
 
-    if (dashboard.contains("exportedProperties")) {
-        if (const auto expOpt = dashboard.find_value("exportedProperties").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
-            this->exportedProperties = *expOpt;
-        }
-    }
     if (dashboard.contains("propertyControlWindows")) {
         if (const auto controlWindowsByWindowName = dashboard.find_value("propertyControlWindows").value_or(gr::pmt::Value{}).get_if<gr::property_map>()) {
             for (const auto& [controlWindowName, controlWindowPropertiesValue] : *controlWindowsByWindowName) {
@@ -705,20 +671,6 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
             out.try_emplace(std::pmr::string{controlWindow.window->name}, std::move(windowProperties));
         }
         return out;
-    }();
-
-    dashboardYaml["exportedProperties"] = [this] {
-        auto             exported = this->session.graphModel.recursiveGatherExportedProperties();
-        gr::property_map properties;
-        for (const auto& [block, exportedPropertiesPtr] : exported) {
-            gr::property_map blockProperties;
-            blockProperties.reserve(static_cast<std::uint32_t>(exportedPropertiesPtr->size()));
-            for (const auto& [propertyName, info] : *exportedPropertiesPtr) {
-                blockProperties.try_emplace(std::pmr::string{propertyName}, info.windowId ? gr::pmt::Value{static_cast<gr::Size_t>(*info.windowId)} : gr::pmt::Value{});
-            }
-            properties[std::pmr::string{block}] = blockProperties;
-        }
-        return properties;
     }();
 
     gr::Tensor<gr::pmt::Value> plots;
@@ -864,29 +816,6 @@ void Dashboard::bindChartWindows() {
         }
     }
     std::erase_if(uiWindows, [&](const UIWindow& w) { return !std::ranges::contains(charts, w.block) && !(w.window && pendingCharts.contains(w.window->name)); });
-}
-
-std::pair<std::size_t, Dashboard::PropertyControlWindow&> Dashboard::newPropertyControlWindow(UiGraphBlock* block, std::string_view propertyName, std::string_view label) {
-    static std::size_t lastUsedId = 0;
-    do {
-        ++lastUsedId;
-    } while (this->propertyControlWindows.contains(lastUsedId));
-    auto [iter, _] = this->propertyControlWindows.try_emplace(lastUsedId, *this, block, propertyName, label);
-    return {lastUsedId, iter->second};
-}
-
-void Dashboard::applyExportedPropertiesToUiGraph() {
-    for (const auto& [blockNameKey, mapValue] : this->exportedProperties) {
-        const auto exportedPropertiesForThisBlock = mapValue.get_if<gr::property_map>();
-        auto*      block                          = session.graphModel.recursiveFindBlockByName(blockNameKey).block;
-        if (block && exportedPropertiesForThisBlock) {
-            for (const auto& [propertyName, maybeWindowId] : *exportedPropertiesForThisBlock) {
-                auto optionalWindowId = maybeWindowId.is_unsigned_integral() ? std::optional<gr::Size_t>{maybeWindowId.value_or<>(gr::Size_t{})} : std::optional<gr::Size_t>{};
-                block->exportedProperties.try_emplace(std::string{propertyName}, optionalWindowId);
-            }
-        }
-    }
-    this->exportedProperties = {};
 }
 
 void Dashboard::removeSinkFromPlots(std::string_view sinkName) {
