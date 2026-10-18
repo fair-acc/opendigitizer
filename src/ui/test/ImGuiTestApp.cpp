@@ -177,7 +177,8 @@ void ImGuiTestApp::initImGui() {
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
 
-    initialise(LookAndFeel::Style::Dark);
+    const char* testStyle = std::getenv("OPENDIGITIZER_TEST_STYLE");
+    initialise(testStyle != nullptr && std::string_view(testStyle) == "light" ? LookAndFeel::Style::Light : LookAndFeel::Style::Dark);
 
     registerTests();
 }
