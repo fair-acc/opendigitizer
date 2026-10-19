@@ -61,7 +61,7 @@ void initialise(std::optional<LookAndFeel::Style> style) {
     if (ImPlot3D::GetCurrentContext() == nullptr) {
         ImPlot3D::CreateContext();
     }
-    if (LookAndFeel::instance().fontNormal[0] == nullptr) {
+    if (LookAndFeel::instance().fontNormal() == nullptr) {
         LookAndFeel::mutableInstance().loadFonts();
     }
     std::ignore = opendigitizer::ColourManager::instance();

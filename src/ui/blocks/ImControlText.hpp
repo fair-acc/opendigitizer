@@ -24,7 +24,7 @@ struct ImControlText : ImControl<ImControlText> {
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, LookAndFeel::instance().dashboardStyle.toolbarControlInputWidth, LookAndFeel::instance().dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         drawWithLabelAndTooltip(layout, [this](float width) {
             const std::string id = "##" + label;

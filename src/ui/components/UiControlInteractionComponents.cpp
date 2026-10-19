@@ -16,12 +16,9 @@
 
 namespace {
 
-constexpr float kUiControlNotchLengthInwards  = 5.F;
-constexpr float kUiControlNotchLengthOutwards = 5.F;
-
 [[nodiscard]] ImVec2 uiControlConnectionLabelSize(std::string_view label) {
     using namespace DigitizerUi;
-    auto* font = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    auto* font = LookAndFeel::instance().fontTiny();
     return font->CalcTextSizeA(font->LegacySize, FLT_MAX, 0.F, label.data(), label.data() + label.size());
 }
 
@@ -29,7 +26,7 @@ constexpr float kUiControlNotchLengthOutwards = 5.F;
 /// Must be called while the editor is active
 [[nodiscard]] float uiControlConnectionLabelGap() {
     // the part of the node padding not covered by the notch, plus some extra since imgui seems to underestimate text size
-    return ax::NodeEditor::GetStyle().NodePadding.x - kUiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
+    return ax::NodeEditor::GetStyle().NodePadding.x - DigitizerUi::LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
 }
 
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
@@ -43,9 +40,9 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
     const ImVec4 nodePadding = ax::NodeEditor::GetStyle().NodePadding;
     const auto   blockLeft   = blockStartCursorPosition.x - nodePadding.x;
 
-    assert(kUiControlNotchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
+    assert(LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards < nodePadding.x && "notch is going to draw on top of text");
     auto*      fgDrawList = ImGui::GetWindowDrawList();
-    auto*      font       = LookAndFeel::instance().fontTiny[LookAndFeel::instance().prototypeMode];
+    auto*      font       = LookAndFeel::instance().fontTiny();
     const auto textSize   = uiControlConnectionLabelSize(outsideLabel);
     const auto centerY    = ImGui::GetCursorScreenPos().y + ((rowHeight > 0.F ? rowHeight : textSize.y) / 2.F);
 
@@ -63,7 +60,7 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
 
     components::OverlayButtonState notch;
     if (interactionId) {
-        const ImRect notchRect{ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY - (textSize.y / 2.F)}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY + (textSize.y / 2.F)}};
+        const ImRect notchRect{ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY - (textSize.y / 2.F)}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY + (textSize.y / 2.F)}};
         notch               = components::overlayButtonBehavior(std::format("{}.unlink", interactionId).c_str(), notchRect);
         result.notchClicked = notch.clicked;
     }
@@ -81,7 +78,7 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
         const auto iconColor = LookAndFeel::getColorU32ImGui(notch.held ? &Palette::flowgraphUiControlUnlinkPressed : &Palette::flowgraphUiControlUnlink);
         fgDrawList->AddText(iconFont, iconFontSize, ImVec2{blockLeft, centerY} - (iconSize / 2.F), iconColor, unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
     } else {
-        fgDrawList->AddLine(ImVec2{blockLeft - kUiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + kUiControlNotchLengthInwards, centerY}, color);
+        fgDrawList->AddLine(ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY}, color);
     }
     fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     return result;
@@ -106,13 +103,13 @@ namespace DigitizerUi::components {
 
 void BlockDragConnectOverlay::draw() const {
     const auto  lineColor = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection);
-    const float thickness = 2.F;
+    const float thickness = LookAndFeel::instance().flowgraph.highlightThickness;
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(clipRect.Min, clipRect.Max, true);
     drawList->AddLine(lineStart, lineEnd, lineColor, thickness);
     if (dropTargetOutline) {
-        drawList->AddRect(dropTargetOutline->Min, dropTargetOutline->Max, lineColor, 0, ImDrawFlags_None, 2.F * thickness);
+        drawList->AddRect(dropTargetOutline->Min, dropTargetOutline->Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
     }
     drawList->PopClipRect();
 }
@@ -314,7 +311,7 @@ bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
     const auto highlightColor = ImGui::GetColorU32(LookAndFeel::instance().palette().flowgraphUiControlHighlight);
 
     // calculate positioning for icon to center it in the button
-    const float  fontSize = 12.f;
+    const float  fontSize = LookAndFeel::instance().flowgraph.uiControlDragHandleIconSize;
     ImFont*      font     = LookAndFeel::instance().fontIconsSolidLarge;
     const ImVec2 iconSize = [font, fontSize] {
         IMW::FontWithSize fontChange(font, fontSize);
@@ -323,8 +320,8 @@ bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2
     const ImVec2 iconOffset = ((max - min) / 2.F) - iconSize / 2.F;
 
     auto* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(min, max, fillColor);
-    drawList->AddRect(min, max, highlightColor, 0, ImDrawFlags_None, 3.F);
+    drawList->AddRectFilled(min, max, fillColor, ImGui::GetStyle().FrameRounding);
+    drawList->AddRect(min, max, highlightColor, ImGui::GetStyle().FrameRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.uiControlBlockDragHandleBorderThickness);
     drawList->AddText(font, fontSize, min + iconOffset, highlightColor, dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
 
     ImGui::SetCursorPos({cursorBefore.x, cursorBefore.y + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F)});
@@ -339,7 +336,7 @@ void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& contr
     const auto rowTexts = targets->entries() | std::views::transform([](const TargetEntry& entry) { return std::format("{}:{}", entry.isGlob() ? "*" : entry.blockTarget, entry.propertyName); }) | std::ranges::to<std::vector>();
 
     ImGui::Spacing();
-    IMW::Font   font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font   font(LookAndFeel::instance().fontSmall());
     const float spacing      = ImGui::GetStyle().ItemInnerSpacing.x;
     const float rowHeight    = ImGui::GetTextLineHeight();
     const float maxTextWidth = std::ranges::max(rowTexts | std::views::transform([](const std::string& text) { return ImGui::CalcTextSize(text.c_str()).x; }));
@@ -368,10 +365,10 @@ std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(UiGraph
         const ImVec2 size = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(block));
         return flowgraph_layout::Size{.width = uiControlConnectionLabelsWidth(graphModel, *block) + size.x, .height = size.y};
     }) | std::ranges::to<std::vector>();
-    const auto rows      = flowgraph_layout::computeFixedBlockWrappingWithGap(nodeSizes, graphBounds.GetWidth(), kUiControlRegionGap, kUiControlRegionMinimumNodesOnFirstRow);
+    const auto rows      = flowgraph_layout::computeFixedBlockWrappingWithGap(nodeSizes, graphBounds.GetWidth(), LookAndFeel::instance().flowgraph.uiControlRegionGap, kUiControlRegionMinimumNodesOnFirstRow);
 
     // imgui node editor floors node positions internally
-    const ImVec2 topLeft = ImFloor(ImVec2{graphBounds.Min.x, graphBounds.Min.y - kUiControlRegionGap - rows.containerSize.height});
+    const ImVec2 topLeft = ImFloor(ImVec2{graphBounds.Min.x, graphBounds.Min.y - LookAndFeel::instance().flowgraph.uiControlRegionGap - rows.containerSize.height});
     for (std::size_t i = 0UZ; i < controlBlocks.size(); ++i) {
         ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(controlBlocks[i]), ImFloor(topLeft + ImVec2{rows.offsets[i].x + uiControlConnectionLabelsWidth(graphModel, *controlBlocks[i]), rows.offsets[i].y}));
     }
@@ -389,8 +386,8 @@ void drawUiControlRegionBackgroundRect(const ImRect& region) {
 
     const int blockDrawChannel = drawList->_Splitter._Current;
     drawList->ChannelsSetCurrent(kNodeEditorBackgroundDrawChannel);
-    drawList->AddRectFilled(region.Min, region.Max, rgbToImGuiABGR(opaque, fillAlpha));
-    drawList->AddRect(region.Min, region.Max, rgbToImGuiABGR(opaque), 0, ImDrawFlags_None, 2.F);
+    drawList->AddRectFilled(region.Min, region.Max, rgbToImGuiABGR(opaque, fillAlpha), LookAndFeel::instance().flowgraph.nodeRounding);
+    drawList->AddRect(region.Min, region.Max, rgbToImGuiABGR(opaque), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.uiControlRegionBorderThickness);
     drawList->ChannelsSetCurrent(blockDrawChannel);
 }
 
@@ -404,7 +401,7 @@ void drawIncomingPropertyConnectionIndicators(                                  
     if (indicators.empty()) {
         return;
     }
-    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontSmall());
 
     // iterate blockSettings rather than indicators so that we draw in the same order the properties would be drawn in if they were not being indicated as connected
     for (const auto& [propertyKey, propertyValue] : block.blockSettings) {

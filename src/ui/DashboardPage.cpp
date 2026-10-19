@@ -308,8 +308,8 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
 }
 
 DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(Mode mode, std::vector<std::size_t>& windowRemoveList) {
-    constexpr float splitterWidth     = 6;
-    constexpr float halfSplitterWidth = splitterWidth / 2.f;
+    const float splitterWidth     = LookAndFeel::instance().splitterWidth;
+    const float halfSplitterWidth = splitterWidth / 2.f;
 
     const float  left          = ImGui::GetCursorPosX();
     const float  top           = ImGui::GetCursorPosY();
@@ -317,7 +317,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     const ImVec2 size          = ImGui::GetContentRegionAvail();
 
     const bool  horizontalSplit = size.x > size.y;
-    const float ratio           = mode == Mode::Interaction ? components::Splitter(_splitter, size, horizontalSplit, splitterWidth, 0.2f, !_editPane.selectedBlock()) : 0.f;
+    const float ratio           = mode == Mode::Interaction ? components::Splitter(_splitter, size, horizontalSplit, splitterWidth, LookAndFeel::instance().splitterDefaultRatio, !_editPane.selectedBlock()) : 0.f;
 
     ImGui::SetCursorPosX(left);
     ImGui::SetCursorPosY(top);
@@ -416,7 +416,7 @@ void DashboardPage::drawNewPlotModal() {
 
     const ImVec2 center = ImGui::GetWindowPos() + ImGui::GetWindowSize() * 0.5f;
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(LookAndFeel::instance().dashboardStyle.newChartPopupWidth, 0.f), ImGuiCond_Appearing);
 
     bool showCloseButton = true; // just pass this to imgui to cause it to put an (X) button on the popup
     if (auto popup = IMW::ModalPopup(addChartPopupID, &showCloseButton, ImGuiWindowFlags_AlwaysAutoResize)) {

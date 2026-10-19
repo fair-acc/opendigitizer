@@ -326,7 +326,7 @@ OpenDashboardPage::~OpenDashboardPage() = default;
 void OpenDashboardPage::addDashboard(std::string_view path) { m_dashboardsCollection.addSource(path); }
 
 void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
-    ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().openDashboardPageStyle.saveAsPopupSize, ImGuiCond_Once);
     auto popup = IMW::ModalPopup("saveAsDialog", nullptr, 0);
     if (!popup) {
         return;
@@ -381,7 +381,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
 void OpenDashboardPage::drawSourcesSection() {
     ImGui::SeparatorText("Available Sources");
 
-    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontSmall());
 
     const ImVec2 trashButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
@@ -457,7 +457,7 @@ void OpenDashboardPage::drawDateFilter() {
 }
 
 void OpenDashboardPage::drawFavoritesFilter() {
-    IMW::Font        font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font        font(LookAndFeel::instance().fontSmall());
     IMW::ChangeStrId rowId("favoritesFilterRow");
 
     // the plus button is only enabled while pressing it would change the active filter
@@ -500,7 +500,7 @@ void OpenDashboardPage::drawKeyValueFilter() {
 }
 
 void OpenDashboardPage::drawViewOptionsSection() {
-    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontSmall());
 
     const auto drawModeSelectable = [this](const char* label, ListViewMode mode) {
         const ImVec2 padding   = ImGui::GetStyle().FramePadding * 2.f;
@@ -697,7 +697,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
             .columns           = columnHeaderLabels,
             .fixedColumnWidths = fixedColumnWidths,
             .scrollToElement   = scrollToRow,
-            .columnHeaderFont  = LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode],
+            .columnHeaderFont  = LookAndFeel::instance().fontSmall(),
             .sortMarker        = sortMarker,
         },
         ImVec2{0.f, size.y});
@@ -725,7 +725,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
             if (optionalDashboard != nullptr && optionalDashboard->isInitialised && optionalDashboard->description && description->name == optionalDashboard->description->name && description->storageInfo == optionalDashboard->description->storageInfo) {
                 // this dashboard is the loaded dashboard
-                ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_HeaderActive), 0.f, 0, 2.f);
+                ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_HeaderActive), ImGui::GetStyle().FrameRounding, 0, LookAndFeel::instance().openDashboardPageStyle.loadedDashboardIndicatorBorderThickness);
             }
 
             ImGui::SetCursorPos({rowCursor.x + std::max(0.f, (starCellWidth - starButtonWidth) * 0.5f), rowCursor.y + std::max(0.f, (rowHeight - ImGui::GetFrameHeight()) * 0.5f)});
@@ -760,7 +760,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
                     }
                 } else {
                     // placeholder in case the preview is still loading or failed, so the rows stay the same size
-                    ImGui::GetWindowDrawList()->AddRectFilled(previewTop, {previewTop.x + previewSize.x, previewTop.y + previewSize.y}, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.f);
+                    ImGui::GetWindowDrawList()->AddRectFilled(previewTop, {previewTop.x + previewSize.x, previewTop.y + previewSize.y}, ImGui::GetColorU32(ImGuiCol_FrameBg), LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewRounding);
                 }
             }
 
@@ -956,7 +956,7 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
 
 void OpenDashboardPage::drawOAuthPopup() {
 #ifndef __EMSCRIPTEN__
-    ImGui::SetNextWindowSize({500, 0}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.oauthPopupWidth, 0.f}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(oauthPopupId, nullptr, 0)) {
         auto& session = DigitizerUi::OAuthSession::instance();
 
@@ -994,19 +994,19 @@ void OpenDashboardPage::drawOAuthPopup() {
 }
 
 void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
-    constexpr float panelPadding     = 15.f;
-    constexpr float panelItemSpacing = 10.f;
+    const float panelPadding     = LookAndFeel::instance().openDashboardPageStyle.currentDashboardPanelPadding;
+    const float panelItemSpacing = LookAndFeel::instance().openDashboardPageStyle.currentDashboardPanelSpacing;
 
     const bool hasDashboardAndDescription = optionalDashboard && optionalDashboard->description;
 
     float titleHeight    = 0.f;
     float subtitleHeight = 0.f;
     {
-        IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+        IMW::Font titleFont(LookAndFeel::instance().fontBigger());
         titleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
     {
-        IMW::Font subtitleFont(LookAndFeel::instance().fontBig[LookAndFeel::instance().prototypeMode]);
+        IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
         subtitleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
 
@@ -1016,7 +1016,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
     const float  previewWidth  = previewHeight * DashboardPreview::preferredAspectRatio;
     const float  panelHeight   = previewHeight + 2.f * panelPadding;
 
-    ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg));
+    ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg), ImGui::GetStyle().ChildRounding);
 
     // draw preview, or else a grey placeholder
     bool         previewDrawn = false;
@@ -1029,7 +1029,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         }
     }
     if (!previewDrawn) {
-        ImGui::GetWindowDrawList()->AddRectFilled(previewStart, previewEnd, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.f);
+        ImGui::GetWindowDrawList()->AddRectFilled(previewStart, previewEnd, ImGui::GetColorU32(ImGuiCol_FrameBg), LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewRounding);
     }
 
     // vertically centered title and optional "Currently open" subtitle
@@ -1037,12 +1037,12 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         const float  textBlockHeight = hasDashboardAndDescription ? titleHeight + subtitleHeight : titleHeight;
         const ImVec2 textStart{previewEnd.x + panelItemSpacing, previewStart.y + std::max(0.f, (previewHeight - textBlockHeight) / 2.f)};
         {
-            IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+            IMW::Font titleFont(LookAndFeel::instance().fontBigger());
             ImGui::SetCursorScreenPos(textStart);
             ImGui::TextUnformatted(hasDashboardAndDescription ? optionalDashboard->description->name.c_str() : "No dashboard currently open");
         }
         if (hasDashboardAndDescription) {
-            IMW::Font subtitleFont(LookAndFeel::instance().fontBig[LookAndFeel::instance().prototypeMode]);
+            IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
             ImGui::SetCursorScreenPos(textStart + ImVec2{0, titleHeight});
             ImGui::TextUnformatted("Currently open");
         }
@@ -1102,8 +1102,8 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
     drawSearchInput();
     ImGui::Spacing();
 
-    constexpr float sidebarRatio    = 1.f / 4.f;
-    constexpr float sidebarMaxWidth = 320.f;
+    const float sidebarRatio    = LookAndFeel::instance().openDashboardPageStyle.sidebarWidthRatio;
+    const float sidebarMaxWidth = LookAndFeel::instance().openDashboardPageStyle.sidebarMaxWidth;
 
     const float sidebarWidth     = std::max(components::DateFilterRow::rowWidth(kLastUsedText), std::min(ImGui::GetContentRegionAvail().x * sidebarRatio, sidebarMaxWidth));
     const float mainContentWidth = ImGui::GetContentRegionAvail().x - sidebarWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -1119,7 +1119,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         IMW::Child mainContent("##dashboardMainContent", ImVec2{mainContentWidth, 0.f}, 0, 0);
 
         {
-            IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+            IMW::Font font(LookAndFeel::instance().fontSmall());
 
             drawActiveFilterTags();
 
@@ -1230,7 +1230,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 }
 
 void OpenDashboardPage::drawAddSourcePopup() {
-    ImGui::SetNextWindowSize({600, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
+    ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.addSourcePopupWidth, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
     if (auto popup = IMW::ModalPopup(addSourcePopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");

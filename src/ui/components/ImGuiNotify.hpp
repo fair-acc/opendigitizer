@@ -200,12 +200,12 @@ public:
      */
     inline ImVec4 getColor() const {
         switch (this->type) {
-        case ImGuiToastType::None: return {255, 255, 255, 255};  // White
-        case ImGuiToastType::Success: return {0, 255, 0, 255};   // Green
-        case ImGuiToastType::Warning: return {255, 255, 0, 255}; // Yellow
-        case ImGuiToastType::Error: return {255, 0, 0, 255};     // Error
-        case ImGuiToastType::Info: return {0, 157, 255, 255};    // Blue
-        default: return {255, 255, 255, 255};                    // White
+        case ImGuiToastType::None: return DigitizerUi::LookAndFeel::instance().palette().notificationDefault;
+        case ImGuiToastType::Success: return DigitizerUi::LookAndFeel::instance().palette().notificationSuccess;
+        case ImGuiToastType::Warning: return DigitizerUi::LookAndFeel::instance().palette().notificationWarning;
+        case ImGuiToastType::Error: return DigitizerUi::LookAndFeel::instance().palette().notificationError;
+        case ImGuiToastType::Info: return DigitizerUi::LookAndFeel::instance().palette().notificationInfo;
+        default: return DigitizerUi::LookAndFeel::instance().palette().notificationDefault;
         }
     }
 
@@ -548,10 +548,10 @@ inline void RenderNotifications() {
 namespace DigitizerUi::components {
 
 struct Notification {
-    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Success, dismissTime, text); }
-    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Warning, dismissTime, text); }
-    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{10}) { post(ImGuiToastType::Error, dismissTime, text); }
-    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = std::chrono::seconds{5}) { post(ImGuiToastType::Info, dismissTime, text); }
+    inline static void success(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Success, dismissTime, text); }
+    inline static void warning(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Warning, dismissTime, text); }
+    inline static void error(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationErrorDismissTime) { post(ImGuiToastType::Error, dismissTime, text); }
+    inline static void info(const std::string& text, std::chrono::milliseconds dismissTime = LookAndFeel::instance().notificationDismissTime) { post(ImGuiToastType::Info, dismissTime, text); }
 
     inline static void post(ImGuiToastType type, std::chrono::milliseconds dismissTime, const std::string& text) {
         switch (type) {
@@ -564,8 +564,8 @@ struct Notification {
 
     inline static void render() {
         // Notifications style setup
-        IMW::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, 0.5f);    // round borders
-        IMW::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, 1.f); // visible borders
+        IMW::StyleFloatVar windowRounding(ImGuiStyleVar_WindowRounding, LookAndFeel::instance().notificationRounding);
+        IMW::StyleFloatVar windowBorderSize(ImGuiStyleVar_WindowBorderSize, LookAndFeel::instance().notificationBorderSize);
         IMW::StyleColor    _(ImGuiCol_WindowBg, LookAndFeel::instance().palette().notificationWindowBg);
 
         // Main rendering function

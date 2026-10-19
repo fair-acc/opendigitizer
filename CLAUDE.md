@@ -188,7 +188,13 @@ Every API MUST be verified against the headers in `core/include/gnuradio-4.0/` b
 applies to every dependency and to any signature recalled from memory: unread is unverified, and
 unverified APIs are assumed not to exist.
 
-## 8 · Testing
+## 8 · Opendigitizer conventions
+
+All color, layout, timing, and size constants related to UI/UX should go into LookAndFeel. Always
+consider whether a UI component will be legible in both light and dark mode, and under different
+themes.
+
+## 9 · Testing
 
 `qa_<TypeUnderTest>.cpp`, Boost.UT:
 
@@ -229,7 +235,7 @@ Factor out common test utilities into this header to reduce duplication between 
 (<=15 line) dashboards, you may define them inline with strings, but generally prefer creating
 `qa_foo.grc` files in `src/ui/test/examples/` and using the `TestDashboardRunner::reload()` function.
 
-## 9 · Building
+## 10 · Building
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++-15
@@ -260,7 +266,7 @@ Follow each file's existing include-guard style — never convert between `#prag
 `#ifndef`. Formatters (`clang-format`, `cmake-format`, `black`, `prettier`, `shellcheck`) MUST be run
 before committing; never adjust whitespace by hand.
 
-## 10 · Before submitting
+## 11 · Before submitting
 
 `struct` unless an invariant demands `class` · names self-explanatory · canonical member order ·
 reflected fields `snake_case`, methods lowerCamelCase · no method-level Doxygen · no commented-out

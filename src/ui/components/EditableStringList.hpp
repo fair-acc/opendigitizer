@@ -27,7 +27,7 @@ struct EditableStringList {
 
         IMW::ChangeStrId listId(strId);
         const ImVec2     squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
-        const float      inputWidth = ImGui::GetFontSize() * 12.f;
+        const float      inputWidth = ImGui::GetFontSize() * LookAndFeel::instance().editableStringListInputWidthEms;
 
         std::optional<std::size_t> rowToDelete;
         for (std::size_t row = 0UZ; row < entries.size(); ++row) {

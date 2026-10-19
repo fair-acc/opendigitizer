@@ -50,8 +50,8 @@ bool drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std
     }
 
     const auto color = (style.color & alphaClearMask) | alphaSetMask;
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, color);
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(color));
+    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, color, LookAndFeel::instance().flowgraph.portRounding);
+    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(color), LookAndFeel::instance().flowgraph.portRounding);
     ImGui::SetCursorPos(pinPosition);
 
     return ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize);

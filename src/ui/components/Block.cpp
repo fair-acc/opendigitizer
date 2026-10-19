@@ -208,7 +208,7 @@ constexpr const char* addContextPopupId    = "Add Context";
 constexpr const char* removeContextPopupId = "Remove Context";
 
 void drawAddContextPopup(UiGraphBlock* block) {
-    ImGui::SetNextWindowSize({600, 120}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().addContextPopupSize, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(addContextPopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
@@ -231,7 +231,7 @@ void drawAddContextPopup(UiGraphBlock* block) {
 }
 
 bool drawRemoveContextPopup(const std::string& context) {
-    ImGui::SetNextWindowSize({600, 100}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().removeContextPopupSize, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(removeContextPopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Do you want to remove '%s' context?", context.c_str());

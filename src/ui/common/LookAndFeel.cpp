@@ -32,82 +32,105 @@ LookAndFeel& LookAndFeel::mutableInstance() {
 
 const LookAndFeel& LookAndFeel::instance() { return mutableInstance(); }
 
+namespace {
+ImVec4 rgba(std::uint32_t rgb, std::uint8_t alpha = 0xFF) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(rgb, alpha)); }
+
+Palette classicPalette(LookAndFeel::Style style) {
+    const bool          dark                    = style == LookAndFeel::Style::Dark;
+    const ImVec4        quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
+    const ImVec4        quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
+    const ImVec4        black                   = {0.0f, 0.0f, 0.0f, 1.f};
+    const ImVec4        white                   = {1.0f, 1.0f, 1.0f, 1.f};
+    const std::uint32_t uiControlHighlight      = 0x1E90FF;
+    const std::uint32_t nodeEditorHover         = 0x32B0FF;
+    const std::uint32_t nodeEditorSelection     = 0xFFB032;
+    const std::uint32_t nodeEditorSelectionRect = 0x0582FF;
+    const std::uint32_t nodeEditorPinRect       = 0x3CB4FF;
+    const std::uint8_t  overlayAlpha            = 0x99;
+    return Palette{
+        .gridLines = dark ? quarterTransparentWhite : quarterTransparentBlack,
+
+        .mainWindowButtonIcon       = dark ? rgba(0xCCCCCC) : rgba(0xCCCCCC, 0x99),
+        .mainWindowButtonBgInactive = dark ? rgba(0xFFFFFF, 0x00) : rgba(0x000000, 0x00),
+        .mainWindowButtonBgHovered  = dark ? rgba(0xFFFFFF, 0x20) : rgba(0x000000, 0x20),
+        .mainWindowButtonBgActive   = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
+
+        .notificationWindowBg = dark ? rgba(0x202020) : rgba(0xFFFFFF),
+        .toolbarLineColor     = dark ? quarterTransparentWhite : quarterTransparentBlack,
+
+        .flowgraphBg                           = dark ? rgba(0x202020) : rgba(0xFFFFFF),
+        .flowgraphNodeBg                       = dark ? rgba(0x333333) : rgba(0xEFEAFF),
+        .flowgraphNodeBorder                   = dark ? rgba(0xB3B3B3) : rgba(0x606060),
+        .flowgraphSubgraphBorder               = rgba(0xDFA32B),
+        .flowgraphSubgraphBorderText           = black,
+        .flowgraphUiControlFill                = rgba(uiControlHighlight, 0x33),
+        .flowgraphUiControlHighlight           = rgba(uiControlHighlight),
+        .flowgraphUiControlConnectionIndicator = rgba(0x555555),
+        .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
+        .flowgraphUiControlUnlink              = rgba(0xD32F2F),
+        .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
+
+        .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
+        .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
+        .flowgraphBoundingBoxExteriorSelectionHovered        = rgba(0x7B69FF, 0x55),
+        .flowgraphBoundingBoxExteriorSelectionOutlineHovered = rgba(0x563AE0),
+
+        .flowgraphGrid                = rgba(0x787878, 40),
+        .flowgraphNodeBorderHovered   = rgba(nodeEditorHover),
+        .flowgraphNodeBorderSelected  = rgba(nodeEditorSelection),
+        .flowgraphSelectionRect       = rgba(nodeEditorSelectionRect, 64),
+        .flowgraphSelectionRectBorder = rgba(nodeEditorSelectionRect, 128),
+        .flowgraphLinkHovered         = rgba(nodeEditorHover),
+        .flowgraphLinkSelected        = rgba(nodeEditorSelection),
+        .flowgraphLinkHighlighted     = rgba(0xCC6900),
+        .flowgraphPinRect             = rgba(nodeEditorPinRect, 100),
+        .flowgraphPinRectBorder       = rgba(nodeEditorPinRect, 128),
+
+        .rowBgAlt                   = dark ? rgba(0x333333) : rgba(0xCCCCCC),
+        .highlightedSearchResultsBg = dark ? rgba(0x1A94F0, 0x66) : rgba(0xFFFF00, 0x88), // dark: saturated but transparent blue, goes behind white text
+        .errorColor                 = rgba(0xFF0000),
+        .warningColor               = {1.f, .65f, 0.f, 1.f},
+        .successColor               = {.2f, .75f, .2f, 1.f},
+        .currentDashboardPanelBg    = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
+        .contentSeparator           = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
+        .clearColor                 = white,
+
+        .layoutModePanel        = rgba(0x9EF7F1, overlayAlpha),
+        .layoutModePanelHovered = rgba(0x6EC9CF, overlayAlpha),
+        .layoutModePanelGrabbed = rgba(0x63E69F, overlayAlpha),
+
+        .appHeaderFAIRLogoButton        = {0, 0, 0, 0},
+        .appHeaderFAIRLogoButtonHovered = {.8f, .8f, .8f, .4f},
+        .appHeaderFAIRLogoButtonActive  = {0, 0, 0, 0},
+        .headerMenuButton               = rgba(0x7EBC89),
+        .devMenuIcon                    = {.8f, .8f, .8f, 1.f},
+        .devMenuButton                  = {.3f, .3f, 1.f, 1.f},
+        .devMenuQuitButton              = rgba(0xFF0000),
+
+        .legendButton        = {0.f, 0.f, 0.f, 0.f},
+        .legendButtonHovered = {0.f, 0.f, 0.f, .1f},
+        .legendButtonActive  = {0.f, 0.f, 0.f, .2f},
+
+        .keypadButtonColor                      = rgba(0x0B59BF),
+        .keypadTextColor                        = white,
+        .keypadFunctionKeyButtonColorMultiplier = {.6f, .6f, .8f, 1.f},
+
+        .notificationSuccess = rgba(0x00FF00),
+        .notificationWarning = rgba(0xFFFF00),
+        .notificationError   = rgba(0xFF0000),
+        .notificationInfo    = rgba(0x00FFFF),
+        .notificationDefault = white,
+
+        .chartTagFishy          = rgba(0xFF00FF),
+        .chartTagDroppedSamples = {1.f, .2f, .2f, 1.f},
+    };
+}
+} // namespace
+
 const Palette& LookAndFeel::palette() const noexcept {
-    static const auto    rgba                    = [](std::uint32_t color, std::uint8_t alpha = 0xFF) { return ImGui::ColorConvertU32ToFloat4(rgbToImGuiABGR(color, alpha)); };
-    static const ImVec4  quarterTransparentWhite = {1.0f, 1.0f, 1.0f, 0.25f};
-    static const ImVec4  quarterTransparentBlack = {0.0f, 0.0f, 0.0f, 0.25f};
-    static const ImVec4  black                   = {0.0f, 0.0f, 0.0f, 1.f};
-    static const auto    uiControlHighlight      = std::uint32_t{0x1E90FF};
-    static const Palette darkModePalette{
-        .gridLines = quarterTransparentWhite,
-
-        .mainWindowButtonIcon       = rgba(0xCCCCCC),
-        .mainWindowButtonBgInactive = rgba(0xFFFFFF, 0x00),
-        .mainWindowButtonBgHovered  = rgba(0xFFFFFF, 0x20),
-        .mainWindowButtonBgActive   = rgba(0xFFFFFF, 0x33),
-
-        .notificationWindowBg = rgba(0x202020),
-        .toolbarLineColor     = quarterTransparentWhite,
-
-        .flowgraphBg                           = rgba(0x202020),
-        .flowgraphNodeBg                       = rgba(0x333333),
-        .flowgraphNodeBorder                   = rgba(0xB3B3B3),
-        .flowgraphSubgraphBorder               = rgba(0xDFA32B),
-        .flowgraphSubgraphBorderText           = black,
-        .flowgraphUiControlFill                = rgba(uiControlHighlight, 0x33),
-        .flowgraphUiControlHighlight           = rgba(uiControlHighlight),
-        .flowgraphUiControlConnectionIndicator = rgba(0x555555),
-        .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
-        .flowgraphUiControlUnlink              = rgba(0xD32F2F),
-        .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
-
-        .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
-        .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
-        .flowgraphBoundingBoxExteriorSelectionHovered        = rgba(0x7B69FF, 0x55),
-        .flowgraphBoundingBoxExteriorSelectionOutlineHovered = rgba(0x563AE0),
-
-        .rowBgAlt                   = rgba(0x333333),
-        .highlightedSearchResultsBg = rgba(0x1A94F0, 0x66), // saturated but transparent blue, goes behind white text
-        .errorColor                 = rgba(0xFF0000),
-        .currentDashboardPanelBg    = rgba(0xFFFFFF, 0x33),
-        .contentSeparator           = rgba(0xFFFFFF, 0x33),
-    };
-    static const Palette lightModePalette{
-        .gridLines = quarterTransparentBlack,
-
-        .mainWindowButtonIcon       = rgba(0xCCCCCC, 0x99),
-        .mainWindowButtonBgInactive = rgba(0x000000, 0x00),
-        .mainWindowButtonBgHovered  = rgba(0x000000, 0x20),
-        .mainWindowButtonBgActive   = rgba(0x000000, 0x33),
-
-        .notificationWindowBg = rgba(0xFFFFFF),
-        .toolbarLineColor     = quarterTransparentBlack,
-
-        .flowgraphBg                           = rgba(0xFFFFFF),
-        .flowgraphNodeBg                       = rgba(0xEFEAFF),
-        .flowgraphNodeBorder                   = rgba(0x606060),
-        .flowgraphSubgraphBorder               = rgba(0xDFA32B),
-        .flowgraphSubgraphBorderText           = black,
-        .flowgraphUiControlFill                = rgba(uiControlHighlight, 0x33),
-        .flowgraphUiControlHighlight           = rgba(uiControlHighlight),
-        .flowgraphUiControlConnectionIndicator = rgba(0x555555),
-        .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
-        .flowgraphUiControlUnlink              = rgba(0xD32F2F),
-        .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
-
-        .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
-        .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
-        .flowgraphBoundingBoxExteriorSelectionHovered        = rgba(0x7B69FF, 0x55),
-        .flowgraphBoundingBoxExteriorSelectionOutlineHovered = rgba(0x563AE0),
-
-        .rowBgAlt                   = rgba(0xCCCCCC),
-        .highlightedSearchResultsBg = rgba(0xFFFF00, 0x88),
-        .errorColor                 = rgba(0xFF0000),
-        .currentDashboardPanelBg    = rgba(0x000000, 0x33),
-        .contentSeparator           = rgba(0x000000, 0x33),
-    };
-
-    return style == Style::Light ? lightModePalette : darkModePalette;
+    static const Palette classicLight = classicPalette(Style::Light);
+    static const Palette classicDark  = classicPalette(Style::Dark);
+    return style == Style::Light ? classicLight : classicDark;
 }
 
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return fontSize<3>(*this) * 1.7f; }
@@ -158,18 +181,18 @@ void LookAndFeel::loadFonts() {
             return resultFont;
         };
 
-        auto& lookAndFeel             = LookAndFeel::mutableInstance();
-        lookAndFeel.fontTiny[index]   = loadFont(fontSize<FontSizeTiny>(lookAndFeel));
-        lookAndFeel.fontSmall[index]  = loadFont(fontSize<FontSizeSmall>(lookAndFeel));
-        lookAndFeel.fontNormal[index] = loadFont(fontSize<FontSizeNormal>(lookAndFeel));
-        lookAndFeel.fontBig[index]    = loadFont(fontSize<FontSizeBig>(lookAndFeel));
-        lookAndFeel.fontBigger[index] = loadFont(fontSize<FontSizeBigger>(lookAndFeel));
-        lookAndFeel.fontLarge[index]  = loadFont(fontSize<FontSizeLarge>(lookAndFeel));
+        auto& lookAndFeel              = LookAndFeel::mutableInstance();
+        lookAndFeel._fontTiny[index]   = loadFont(fontSize<FontSizeTiny>(lookAndFeel));
+        lookAndFeel._fontSmall[index]  = loadFont(fontSize<FontSizeSmall>(lookAndFeel));
+        lookAndFeel._fontNormal[index] = loadFont(fontSize<FontSizeNormal>(lookAndFeel));
+        lookAndFeel._fontBig[index]    = loadFont(fontSize<FontSizeBig>(lookAndFeel));
+        lookAndFeel._fontBigger[index] = loadFont(fontSize<FontSizeBigger>(lookAndFeel));
+        lookAndFeel._fontLarge[index]  = loadFont(fontSize<FontSizeLarge>(lookAndFeel));
     };
 
     loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0, rangeLatinPlusExtended);
     loadDefaultFont(cmrc::ui_assets::get_filesystem().open("assets/xkcd/xkcd-script.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 1, {}, rangeLatinExtended);
-    ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
+    ImGui::GetIO().FontDefault = LookAndFeel::instance().fontNormal();
 
     auto loadIconsFont = [](auto name, float iconFontSize) {
         auto file = cmrc::ui_assets::get_filesystem().open(name);

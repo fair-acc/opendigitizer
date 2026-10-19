@@ -1,6 +1,8 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_VIRTUAL_SCROLL_TABLE_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_VIRTUAL_SCROLL_TABLE_HPP_
 
+#include "../common/LookAndFeel.hpp"
+
 #include <imgui.h>
 #include <imgui_internal.h> // for RenderArrow
 
@@ -83,9 +85,9 @@ struct VirtualScrollTable {
                 continue;
             }
             if (_params.sortMarker && _params.sortMarker->columnIndex == columnIndex) {
-                constexpr float arrowScale = 0.75f;
-                const ImGuiDir  arrowDir   = _params.sortMarker->direction == ImGuiSortDirection_Ascending ? ImGuiDir_Up : ImGuiDir_Down;
-                const ImVec2    arrowPos   = ImGui::GetCursorScreenPos() + ImVec2{0.f, ImGui::GetStyle().FramePadding.y};
+                const float    arrowScale = LookAndFeel::instance().sortArrowScale;
+                const ImGuiDir arrowDir   = _params.sortMarker->direction == ImGuiSortDirection_Ascending ? ImGuiDir_Up : ImGuiDir_Down;
+                const ImVec2   arrowPos   = ImGui::GetCursorScreenPos() + ImVec2{0.f, ImGui::GetStyle().FramePadding.y};
                 ImGui::RenderArrow(ImGui::GetWindowDrawList(), arrowPos, ImGui::GetColorU32(ImGuiCol_Text), arrowDir, arrowScale);
                 ImGui::Dummy(ImVec2{ImGui::GetFontSize(), 0.f});
                 ImGui::SameLine();

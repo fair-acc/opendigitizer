@@ -16,6 +16,7 @@
 
 #include <gnuradio-4.0/DataSet.hpp>
 
+#include "../common/LookAndFeel.hpp"
 #include "../utils/ShaderHelper.hpp"
 #include <implot.h>
 
@@ -266,13 +267,13 @@ inline void drawTraceOverlays(TraceAccumulator& traces, const SpectrumFrame& new
     }
 
     if (showMaxHold) {
-        plotTrace("##maxHold", newest.xValues, traces.maxHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.9f));
+        plotTrace("##maxHold", newest.xValues, traces.maxHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.maxHoldTraceAlpha));
     }
     if (showMinHold) {
-        plotTrace("##minHold", newest.xValues, traces.minHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.5f));
+        plotTrace("##minHold", newest.xValues, traces.minHold(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.minHoldTraceAlpha));
     }
     if (showAverage) {
-        plotTrace("##average", newest.xValues, traces.average(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, 0.7f));
+        plotTrace("##average", newest.xValues, traces.average(), newest.nBins, ImVec4(baseColor.x, baseColor.y, baseColor.z, DigitizerUi::LookAndFeel::instance().chartStyle.averageTraceAlpha));
     }
 }
 

@@ -26,7 +26,7 @@ ImVec4 colourOf(Level level) {
     case Level::fatal:
     case Level::failure:
     case Level::error: return LookAndFeel::instance().palette().errorColor;
-    case Level::warning: return kAmber;
+    case Level::warning: return LookAndFeel::instance().palette().warningColor;
     case Level::info: return ImGui::GetStyleColorVec4(ImGuiCol_Text);
     case Level::debug:
     case Level::trace: return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
@@ -82,13 +82,13 @@ void StatusBarView::draw(GraphSession* session) {
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(version.c_str()).x));
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, .6f), "%s", version.c_str());
+    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, LookAndFeel::instance().dashboardStyle.infoTextAlpha), "%s", version.c_str());
     if (!versionDetails.empty()) {
         ImGui::SetItemTooltip("%s", versionDetails.c_str());
     }
 }
 
-bool StatusBarView::isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept { return nowNanos < latestInfoOrDebugNanos + static_cast<std::uint64_t>(std::chrono::nanoseconds(kInfoDotLifetime).count()); }
+bool StatusBarView::isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept { return nowNanos < latestInfoOrDebugNanos + static_cast<std::uint64_t>(std::chrono::nanoseconds(LookAndFeel::instance().infoDotLifetime).count()); }
 
 void StatusBarView::drawLogLine(float width) {
     const auto          counts   = logHistory().counts();
@@ -100,7 +100,7 @@ void StatusBarView::drawLogLine(float width) {
 
     const float startX   = ImGui::GetCursorPosX();
     const auto  levelDot = [](const char* id, bool isLit, ImVec4 colour, std::uint64_t count) {
-        const float radius = ImGui::GetFontSize() * .3f;
+        const float radius = ImGui::GetFontSize() * LookAndFeel::instance().dashboardStyle.statusDotRadiusEms;
         ImGui::InvisibleButton(id, ImVec2(2.f * radius, ImGui::GetFrameHeight()));
         if (ImGui::IsItemClicked()) {
             ImGui::OpenPopup(kLogPopup);
@@ -109,14 +109,14 @@ void StatusBarView::drawLogLine(float width) {
         if (isLit) {
             ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, ImGui::ColorConvertFloat4ToU32(colour));
         } else {
-            ImGui::GetWindowDrawList()->AddCircle(centre, radius, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, .3f)));
+            ImGui::GetWindowDrawList()->AddCircle(centre, radius, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, LookAndFeel::instance().dashboardStyle.statusDotUnlitAlpha)));
         }
         ImGui::SetItemTooltip("%llu", static_cast<unsigned long long>(count));
         ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
     };
     levelDot("##errorDot", errors > 0U, LookAndFeel::instance().palette().errorColor, errors);
-    levelDot("##warningDot", warnings > 0U, kAmber, warnings);
-    levelDot("##infoDot", isInfoDotLit(logHistory().latestInfoOrDebugNanos(), now), kGreen, others);
+    levelDot("##warningDot", warnings > 0U, LookAndFeel::instance().palette().warningColor, warnings);
+    levelDot("##infoDot", isInfoDotLit(logHistory().latestInfoOrDebugNanos(), now), LookAndFeel::instance().palette().successColor, others);
 
     const std::string label = std::format("{}###statusLine", latest ? textOf(*latest) : std::string_view{});
     {

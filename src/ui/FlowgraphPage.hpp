@@ -81,9 +81,8 @@ private:
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
 
-    static constexpr float borderExteriorHoverFadeTransitionDurationSeconds = 0.4f;
-    float                  _timeSpentHoveringBoundingBoxExterior            = 0.0;
-    bool                   _wasHoveringBoundingBoxExteriorThisFrame         = false;
+    float _timeSpentHoveringBoundingBoxExterior    = 0.0;
+    bool  _wasHoveringBoundingBoxExteriorThisFrame = false;
 
     void makeCurrent() { ax::NodeEditor::SetCurrentEditor(_editorPtr); }
 
@@ -185,15 +184,32 @@ public:
     void updateStyle() {
         makeCurrent();
 
-        auto& style        = ax::NodeEditor::GetStyle();
-        style.NodeRounding = 0;
-        style.PinRounding  = 0;
-        style.LinkStrength = 60.f;
+        const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
+        const auto& palette              = LookAndFeel::instance().palette();
 
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().flowgraph.canvasBackground ? LookAndFeel::instance().palette().flowgraphBg : ImVec4{};
-        style.Colors[ax::NodeEditor::StyleColor_Grid]       = LookAndFeel::instance().flowgraph.canvasGrid ? ax::NodeEditor::Style{}.Colors[ax::NodeEditor::StyleColor_Grid] : ImVec4{};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
-        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = LookAndFeel::instance().palette().flowgraphNodeBorder;
+        auto& style           = ax::NodeEditor::GetStyle();
+        style.NodeRounding    = flowgraphLookAndFeel.nodeRounding;
+        style.NodeBorderWidth = flowgraphLookAndFeel.nodeBorderWidth;
+        style.PinRounding     = flowgraphLookAndFeel.pinRounding;
+        style.GroupRounding   = flowgraphLookAndFeel.groupRounding;
+        style.LinkStrength    = flowgraphLookAndFeel.linkStrength;
+
+        using enum ax::NodeEditor::StyleColor;
+        style.Colors[StyleColor_Bg]                  = flowgraphLookAndFeel.canvasBackground ? palette.flowgraphBg : ImVec4{};
+        style.Colors[StyleColor_Grid]                = flowgraphLookAndFeel.canvasGrid ? palette.flowgraphGrid : ImVec4{};
+        style.Colors[StyleColor_NodeBg]              = palette.flowgraphNodeBg;
+        style.Colors[StyleColor_NodeBorder]          = palette.flowgraphNodeBorder;
+        style.Colors[StyleColor_HovNodeBorder]       = palette.flowgraphNodeBorderHovered;
+        style.Colors[StyleColor_SelNodeBorder]       = palette.flowgraphNodeBorderSelected;
+        style.Colors[StyleColor_NodeSelRect]         = palette.flowgraphSelectionRect;
+        style.Colors[StyleColor_NodeSelRectBorder]   = palette.flowgraphSelectionRectBorder;
+        style.Colors[StyleColor_HovLinkBorder]       = palette.flowgraphLinkHovered;
+        style.Colors[StyleColor_SelLinkBorder]       = palette.flowgraphLinkSelected;
+        style.Colors[StyleColor_HighlightLinkBorder] = palette.flowgraphLinkHighlighted;
+        style.Colors[StyleColor_LinkSelRect]         = palette.flowgraphSelectionRect;
+        style.Colors[StyleColor_LinkSelRectBorder]   = palette.flowgraphSelectionRectBorder;
+        style.Colors[StyleColor_PinRect]             = palette.flowgraphPinRect;
+        style.Colors[StyleColor_PinRectBorder]       = palette.flowgraphPinRectBorder;
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);

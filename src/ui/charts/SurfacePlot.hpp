@@ -782,7 +782,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
 
         // reduce tick label font size for the 3D plot to avoid overlap with the mesh
         const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
-        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
         const bool pushedFont             = labelFace != nullptr || labelSize > 0.f;
         if (pushedFont) {
             ImGui::PushFont(labelFace, labelSize);
@@ -1041,7 +1041,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         static constexpr std::array kAxisNames  = {"X-Axis", "Y-Axis", "Z-Axis"};
         static constexpr std::array kScaleNames = {"Linear", "Log10"};
         static constexpr std::array kScaleIds   = {ImPlot3DScale_Linear, ImPlot3DScale_Log10};
-        constexpr float             kDragWidth  = 70.0f;
+        const float                 kDragWidth  = DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisLimitDragWidth;
 
         auto ai = static_cast<std::size_t>(axisIndex);
 
@@ -1074,7 +1074,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                 currentScale = static_cast<int>(_savedPlot->Axes[axisIndex].Scale);
             }
             std::string_view currentName = (currentScale == ImPlot3DScale_Log10) ? kScaleNames[1] : kScaleNames[0];
-            ImGui::SetNextItemWidth(80.0f);
+            ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
             if (ImGui::BeginCombo("##scale", currentName.data())) {
                 for (std::size_t s = 0; s < kScaleNames.size(); ++s) {
                     if (ImGui::Selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
@@ -1089,7 +1089,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
         {
             menu_icons::iconText(menu_icons::kFormat, "format:");
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(80.0f);
+            ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
             if (ImGui::BeginCombo("##format", magic_enum::enum_name(_axisFormat[ai]).data())) {
                 for (auto f : magic_enum::enum_values<LabelFormat>()) {
                     if (ImGui::Selectable(magic_enum::enum_name(f).data(), f == _axisFormat[ai])) {
@@ -1152,7 +1152,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                     assign(val);
                 }
             }
-            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
             ImGui::SetNextItemWidth(kDragWidth);
             if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
                 assign(val);
@@ -1161,7 +1161,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
                 val += static_cast<double>(wheel) * increment;
                 assign(val);
             });
-            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
             {
                 DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
                 if (ImGui::Button(incId.c_str())) {

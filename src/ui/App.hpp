@@ -276,7 +276,7 @@ public:
             IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
-            header.draw(title, LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode], LookAndFeel::instance().style);
+            header.draw(title, LookAndFeel::instance().fontLarge(), LookAndFeel::instance().style);
 
             if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
                 toolbarView.draw(dashboard->session, dashboard->schedulerUi);

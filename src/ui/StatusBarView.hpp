@@ -18,8 +18,6 @@ namespace DigitizerUi {
 
 class StatusBarView {
 public:
-    static constexpr std::chrono::seconds kInfoDotLifetime{5};
-
     std::string version = "app/grc version";
     std::string versionDetails;
 

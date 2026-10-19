@@ -46,7 +46,7 @@ inline OverlayButtonState drawFilterToggleButton(const char* strId, ImVec2 topRi
 
     auto* drawList = ImGui::GetWindowDrawList();
     if (toggledOn || state.hovered || state.held) {
-        drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(toggledOn || state.held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered));
+        drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(toggledOn || state.held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered), ImGui::GetStyle().FrameRounding);
     }
     drawList->AddText(font, fontSize, rect.GetCenter() - (iconSize / 2.F), ImGui::GetColorU32(toggledOn || state.hovered ? ImGuiCol_Text : ImGuiCol_TextDisabled), filterIcon.data(), filterIcon.data() + filterIcon.size());
     return state;

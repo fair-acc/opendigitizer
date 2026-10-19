@@ -56,7 +56,7 @@ void drawRowLabel(const char* label) {
 } // namespace
 
 std::optional<std::string> TagFilterRow::draw(const char* strId, const char* label) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font        font(LookAndFeel::instance().fontSmall());
     IMW::ChangeStrId rowId(strId);
     const float      rowWidth  = ImGui::GetContentRegionAvail().x;
     bool             addFilter = drawPlusButton(!pendingInput.empty());
@@ -71,7 +71,7 @@ std::optional<std::string> TagFilterRow::draw(const char* strId, const char* lab
 }
 
 std::optional<KeyValueFilterRow::Committed> KeyValueFilterRow::draw(const char* strId) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font        font(LookAndFeel::instance().fontSmall());
     IMW::ChangeStrId rowId(strId);
     const bool       hasKey = !pendingKey.empty();
 
@@ -102,7 +102,7 @@ std::optional<KeyValueFilterRow::Committed> KeyValueFilterRow::draw(const char* 
 }
 
 std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, const char* rowLabel) {
-    IMW::Font        font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font        font(LookAndFeel::instance().fontSmall());
     IMW::ChangeStrId rowId(strId);
 
     std::optional<Committed> committed;
@@ -130,7 +130,7 @@ std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, c
 }
 
 float DateFilterRow::rowWidth(const char* rowLabel) {
-    IMW::Font   font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font   font(LookAndFeel::instance().fontSmall());
     const float spacing      = ImGui::GetStyle().ItemSpacing.x;
     const float squareButton = ImGui::GetFrameHeight();
     return squareButton + spacing + ImGui::CalcTextSize(rowLabel).x + spacing + calcFilterDateComboWidth() + spacing + calcDateInputWidth();
@@ -181,7 +181,7 @@ std::optional<std::size_t> drawSortByCombo(const char* strId, const char* rowLab
 }
 
 SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint, bool sortingBySearch) {
-    IMW::Font font(LookAndFeel::instance().fontBig[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontBig());
 
     const float inputFrameHeight = ImGui::GetFrameHeight();
     {

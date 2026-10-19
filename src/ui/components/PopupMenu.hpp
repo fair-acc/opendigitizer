@@ -43,7 +43,7 @@ struct MenuButton {
         {
             const float        actualButtonSize = size();
             IMW::Font          _(font);
-            IMW::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? .5f * actualButtonSize : buttonRounding);
+            IMW::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? LookAndFeel::instance().popupMenuRadialButtonRoundingPercentage * actualButtonSize : buttonRounding);
 
             struct ButtonStyle {
                 IMW::StyleColor normal, hover, active;
@@ -53,11 +53,11 @@ struct MenuButton {
 
             auto styles = [&]() -> std::optional<ButtonStyle> {
                 if (!isTransparent) {
-                    ImVec4 buttonColorHover  = lightenColor(buttonColor, 0.5f);
-                    ImVec4 buttonColorActive = darkenColor(buttonColor, 0.7f);
-                    buttonColor.w            = 1.0;
-                    buttonColorHover.w       = 1.0;
-                    buttonColorActive.w      = 1.0;
+                    ImVec4 buttonColorHover  = lightenColor(buttonColor, LookAndFeel::instance().popupMenuButtonHoverLighten);
+                    ImVec4 buttonColorActive = darkenColor(buttonColor, LookAndFeel::instance().popupMenuButtonActiveDarken);
+                    buttonColor.w            = LookAndFeel::instance().popupMenuButtonAlpha;
+                    buttonColorHover.w       = LookAndFeel::instance().popupMenuButtonAlpha;
+                    buttonColorActive.w      = LookAndFeel::instance().popupMenuButtonAlpha;
 
                     return std::make_optional<ButtonStyle>(buttonColor, buttonColorHover, buttonColorActive);
                 } else {
@@ -92,9 +92,9 @@ class PopupMenu {
     float                          _startAngle       = 0.f;
     float                          _stopAngle        = 90.f;
     float                          _extraRadius      = 0.f;
-    float                          _animationSpeed   = 0.25f;
-    float                          _timeOut          = 0.5f; // time in seconds to close the menu when the mouse is out of range
-    float                          _autoCloseTimeOut = 5.0f; // time in seconds to close the menu when the mouse is out of range
+    float                          _animationSpeed   = LookAndFeel::instance().popupMenuAnimationLengthSeconds;
+    float                          _timeOut          = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds;      // time in seconds to close the menu when the mouse is out of range
+    float                          _autoCloseTimeOut = LookAndFeel::instance().popupMenuMouseInactiveCloseDelaySeconds; // time in seconds to close the menu when the mouse is out of range
 
     //
     [[nodiscard]] float maxButtonSize(std::size_t firstButtonIndex = 0) const {
@@ -168,9 +168,9 @@ class PopupMenu {
     }
 
 public:
-    float frameRounding = 6.f;
+    float frameRounding = LookAndFeel::instance().popupMenuButtonRounding;
 
-    explicit PopupMenu(ImVec2 menuSize = {100, 100}, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = .25f, float timeOut = 0.5f) : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) { updateAndDraw(); }
+    explicit PopupMenu(ImVec2 menuSize = {100, 100}, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = LookAndFeel::instance().popupMenuAnimationLengthSeconds, float timeOut = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds) : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) { updateAndDraw(); }
 
     template<bool transparent = false, bool newRow = false>
     void addButton(std::string label, auto onClick, float buttonSize = -1.f, std::string toolTip = "") {

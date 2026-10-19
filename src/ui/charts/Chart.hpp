@@ -579,11 +579,11 @@ namespace detail {
 constexpr bool isCompatible(SignalKind signal, SignalKind chartSupport) { return (std::to_underlying(signal) & std::to_underlying(chartSupport)) != 0; }
 } // namespace detail
 
-inline std::pair<ImFont*, float> chartTextFont(const std::array<ImFont*, 2>& defaultFaces) {
+inline std::pair<ImFont*, float> chartTextFont(ImFont* defaultFace) {
     const auto& lnf   = DigitizerUi::LookAndFeel::instance();
     const auto& style = lnf.chartStyle;
     if (style.labelFont == nullptr && !style.labelFontSize) {
-        return {defaultFaces[lnf.prototypeMode], lnf.relativeFontSize(defaultFaces)};
+        return {defaultFace, lnf.relativeFontSize(defaultFace)};
     }
     return {style.labelFont, style.labelFontSize.value_or(0.f)};
 }
@@ -627,7 +627,7 @@ inline ImVec2 plotVerticalTagLabel(std::string_view label, double xData, const I
 template<typename ForEachTagFn>
 inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xMin, double xMax, ImVec4 tagColor) {
     const auto& lnf               = DigitizerUi::LookAndFeel::instance();
-    const auto [tagFace, tagSize] = chartTextFont(lnf.fontTiny);
+    const auto [tagFace, tagSize] = chartTextFont(lnf.fontTiny());
     DigitizerUi::IMW::FontWithSize titleFont(tagFace, tagSize);
 
     const float fontHeight  = ImGui::GetFontSize();
@@ -650,9 +650,9 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
         const bool isDrop = properties.contains(gr::tag::N_DROPPED_SAMPLES);
         // highlight fishy tags (out-of-order timestamps) magenta, lost-sample markers red
         if (properties.contains(kFishyTagKey)) {
-            ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.0f, 1.0f, 1.0f));
+            ImPlot::SetNextLineStyle(DigitizerUi::LookAndFeel::instance().palette().chartTagFishy);
         } else if (isDrop) {
-            ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
+            ImPlot::SetNextLineStyle(DigitizerUi::LookAndFeel::instance().palette().chartTagDroppedSamples);
         } else {
             ImPlot::SetNextLineStyle(tagColor);
         }
@@ -701,7 +701,7 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
     }
 
     ImVec4 tagColor = baseColor;
-    tagColor.w *= 0.35f;
+    tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
 
     const auto&  xAxisSpan   = dataSet.axisValues(0);
     const double xMin        = static_cast<double>(xAxisSpan.front());
@@ -767,7 +767,7 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
 
 namespace tooltip {
 
-inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
+inline void showPlotMouseTooltip(double onDelay = DigitizerUi::LookAndFeel::instance().plotTooltipDelay, double offDelay = DigitizerUi::LookAndFeel::instance().plotTooltipDuration) {
     if (!ImPlot::IsPlotHovered()) {
         return;
     }
@@ -783,8 +783,8 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
     static double lastTime = 0.0;
     const double  now      = ImGui::GetTime();
 
-    constexpr float epsilon = 10.0f;
-    const bool      samePos = std::abs(px.x - lastPX.x) < epsilon && std::abs(px.y - lastPX.y) < epsilon;
+    const float epsilon = DigitizerUi::LookAndFeel::instance().plotTooltipStillDistance;
+    const bool  samePos = std::abs(px.x - lastPX.x) < epsilon && std::abs(px.y - lastPX.y) < epsilon;
 
     if (!samePos) {
         lastPX   = px;
@@ -833,7 +833,7 @@ inline void showPlotMouseTooltip(double onDelay = 1.0, double offDelay = 30.0) {
 
     {
         const auto& lnf                       = DigitizerUi::LookAndFeel::instance();
-        const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall);
+        const auto [tooltipFace, tooltipSize] = chartTextFont(lnf.fontSmall());
         DigitizerUi::IMW::FontWithSize font(tooltipFace, tooltipSize);
         DigitizerUi::IMW::ToolTip      tip;
         for (int i = 0; i < 3; ++i) {
@@ -968,7 +968,7 @@ inline void renderDragTooltip(const std::shared_ptr<SignalSink>& sink) {
     }
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
     const float  boxSize   = ImGui::GetTextLineHeight();
-    ImGui::GetWindowDrawList()->AddRectFilled(cursorPos, ImVec2(cursorPos.x + boxSize, cursorPos.y + boxSize), rgbToImGuiABGR(sink->color()));
+    ImGui::GetWindowDrawList()->AddRectFilled(cursorPos, ImVec2(cursorPos.x + boxSize, cursorPos.y + boxSize), rgbToImGuiABGR(sink->color()), DigitizerUi::LookAndFeel::instance().dashboardStyle.legendSwatchRounding);
     ImGui::Dummy(ImVec2(boxSize, boxSize));
     ImGui::SameLine();
     const auto signalName = sink->signalName();
@@ -1619,8 +1619,8 @@ struct Chart {
     /// Axis submenu content with scale, auto-fit, and min/max controls.
     template<typename Self>
     void drawAxisSubmenuContent(this Self& self, AxisKind axis, std::size_t axisIndex = 0UZ) {
-        const bool      isX        = (axis == AxisKind::X);
-        constexpr float kDragWidth = 70.0f;
+        const bool  isX        = (axis == AxisKind::X);
+        const float kDragWidth = DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisLimitDragWidth;
 
         // Get current plot limits for the specific axis being edited
         const ImAxis targetXAxis = ImAxis_X1 + static_cast<int>(isX ? axisIndex : 0);
@@ -1768,7 +1768,7 @@ struct Chart {
                             assign(val);
                         }
                     }
-                    ImGui::SameLine(0.0f, 2.0f);
+                    ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
                     ImGui::SetNextItemWidth(kDragWidth);
                     if (ImGui::DragScalar(dragId.c_str(), ImGuiDataType_Double, &val, dragSpeed, nullptr, nullptr, "%.4g")) {
                         assign(val);
@@ -1777,7 +1777,7 @@ struct Chart {
                         val += static_cast<double>(wheel) * increment;
                         assign(val);
                     });
-                    ImGui::SameLine(0.0f, 2.0f);
+                    ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
                     {
                         DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
                         if (ImGui::Button(incId.c_str())) {
@@ -1813,8 +1813,8 @@ struct Chart {
     /// n_history (gr::Size_t, samples) is the persistent property; display unit is UI-only state
     template<typename Self>
     void drawHistoryDepthWidget(this Self& self) {
-        constexpr float      kDragWidth  = 60.0f;
-        constexpr float      kComboWidth = 65.0f;
+        const float          kDragWidth  = DigitizerUi::LookAndFeel::instance().chartStyle.historyDepthDragWidth;
+        const float          kComboWidth = DigitizerUi::LookAndFeel::instance().chartStyle.historyDepthComboWidth;
         constexpr gr::Size_t kMinSamples = 4U;
         constexpr gr::Size_t kMaxSamples = 1'000'000U;
 
@@ -1874,7 +1874,7 @@ struct Chart {
                 scheduleResize();
             }
         }
-        ImGui::SameLine(0.0f, 2.0f);
+        ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
 
         // value drag input with logarithmic speed
         ImGui::SetNextItemWidth(kDragWidth);
@@ -1892,7 +1892,7 @@ struct Chart {
             scheduleResize();
         });
 
-        ImGui::SameLine(0.0f, 2.0f);
+        ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
         // increase button
         {
             DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
@@ -2100,7 +2100,7 @@ struct Chart {
             effectiveShowLegend = chartMode == ChartMode::Interaction && self.show_legend.value;
         }
 
-        float       layoutOffset = layoutMode ? 5.f : 0.f;
+        float       layoutOffset = layoutMode ? DigitizerUi::LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
         ImVec2      plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
         ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
         if (!effectiveShowLegend) {
@@ -2291,11 +2291,11 @@ struct Chart {
 
     template<typename FieldType>
     static void drawAutoSettingWidget(FieldType& field, std::string_view fieldName) {
-        using ValueType              = FieldType::value_type;
-        using LimitType              = FieldType::LimitType;
-        constexpr float kWidgetWidth = 120.0f;
-        constexpr bool  hasLimits    = (LimitType::MinRange != LimitType::MaxRange);
-        constexpr bool  useLog       = hasLimits && (static_cast<double>(LimitType::MaxRange) - static_cast<double>(LimitType::MinRange)) > 100'000.0;
+        using ValueType             = FieldType::value_type;
+        using LimitType             = FieldType::LimitType;
+        const float    kWidgetWidth = DigitizerUi::LookAndFeel::instance().chartStyle.menuSettingWidgetWidth;
+        constexpr bool hasLimits    = (LimitType::MinRange != LimitType::MaxRange);
+        constexpr bool useLog       = hasLimits && (static_cast<double>(LimitType::MaxRange) - static_cast<double>(LimitType::MinRange)) > 100'000.0;
 
         const auto             label       = std::format("##{}", fieldName);
         const ImGuiSliderFlags sliderFlags = useLog ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None;

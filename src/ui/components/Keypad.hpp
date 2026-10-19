@@ -735,11 +735,11 @@ private:
     }
 
     [[nodiscard]] ReturnState drawKeypadPopup(std::string& valueLabel) noexcept {
-        const auto&      mainViewPort     = *ImGui::GetMainViewport();
-        const ImVec2     mainViewPortSize = mainViewPort.WorkSize;
-        const bool       portraitMode     = mainViewPortSize.x < mainViewPortSize.y;
-        constexpr ImVec2 defaultPortraitSize{400.f, 600.f};
-        constexpr ImVec2 defaultLandscapeSize{485.f, 400.f};
+        const auto&  mainViewPort         = *ImGui::GetMainViewport();
+        const ImVec2 mainViewPortSize     = mainViewPort.WorkSize;
+        const bool   portraitMode         = mainViewPortSize.x < mainViewPortSize.y;
+        const ImVec2 defaultPortraitSize  = LookAndFeel::instance().keypadPortraitSize;
+        const ImVec2 defaultLandscapeSize = LookAndFeel::instance().keypadLandscapeSize;
 
         if (mainViewPortSize.x > defaultPortraitSize.x && mainViewPortSize.y > defaultPortraitSize.y) { // fits on screen
             ImGui::SetNextWindowSize(defaultPortraitSize);
@@ -760,8 +760,8 @@ private:
                 const ImVec2 windowSize = ImGui::GetContentRegionAvail(); // now inside this child;
 
                 // setup number and function keypad -- global style settings
-                IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, 6.0f);
-                IMW::Font          font(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+                IMW::StyleFloatVar style(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().keypadRounding);
+                IMW::Font          font(LookAndFeel::instance().fontBigger());
                 const Button       activatedKey = windowSize.x < windowSize.y ? drawPortraitKeypad(valueLabel, windowSize) : drawLandscapeKeypad(valueLabel, windowSize);
                 returnState                     = processKeypadLogic(activatedKey);
             }
@@ -858,7 +858,7 @@ private:
         buffer.resize(BufferSize);
 
         {
-            IMW::Font font(LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode]);
+            IMW::Font font(LookAndFeel::instance().fontLarge());
             // the '-1' is to accommodate the 'Esc' button
             IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 1.f) + (nCols - 2.f) * style.WindowPadding.x);
             if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
@@ -869,20 +869,20 @@ private:
 
         // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
         // start row 2: 2nd,sin[h],cos[h],tan[h],<-
         if (_altMode) {
             ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= 0.6f; // R
-            button_color.y *= 0.6f; // G
-            button_color.z *= 0.8f; // B
+            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
 
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
 
         } else {
@@ -914,11 +914,11 @@ private:
         // start row 3: Inv,1/x,x²,²√,^
         if (_invMode) {
             ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= 0.6f; // R
-            button_color.y *= 0.6f; // G
-            button_color.z *= 0.8f; // B
+            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
             key = keypadButton<None, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
@@ -967,8 +967,8 @@ private:
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
 
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             const float     vpos_before_enter = ImGui::GetCursorPosY();
             key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
             ImGui::SetCursorPosY(vpos_before_enter);
@@ -1012,7 +1012,7 @@ private:
         buffer.resize(BufferSize);
 
         {
-            IMW::Font font(LookAndFeel::instance().fontLarge[LookAndFeel::instance().prototypeMode]);
+            IMW::Font font(LookAndFeel::instance().fontLarge());
             // the '-2' is to accommodate the '<-' and 'Esc' button
             IMW::ItemWidth itemWidth(buttonSize.x * (nCols - 2.f) + (nCols - 3.f) * style.WindowPadding.x);
             if (ImGui::InputText("##hidden", buffer.data(), buffer.size(), ImGuiInputTextFlags_CharsScientific)) {
@@ -1026,30 +1026,30 @@ private:
 
         // the 'ESC' clause button
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<SameLine, Escape, ImGuiKey_Escape>(buttonSize, key);
         }
 
         // Row 2: 2nd,Inv,Log,10^x,/,*,-
         if (_altMode) {
             ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= 0.6f; // R
-            button_color.y *= 0.6f; // G
-            button_color.z *= 0.8f; // B
+            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
         } else {
             key = keypadButton<None, Alt_2nd, ImGuiKey_NumLock>(buttonSize, key);
         }
         if (_invMode) {
             ImVec4 button_color = style.Colors[ImGuiCol_Button];
-            button_color.x *= 0.6f; // R
-            button_color.y *= 0.6f; // G
-            button_color.z *= 0.8f; // B
+            button_color.x *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.x;
+            button_color.y *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.y;
+            button_color.z *= LookAndFeel::instance().palette().keypadFunctionKeyButtonColorMultiplier.z;
             IMW::StyleColor button(ImGuiCol_Button, button_color);
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
         } else {
             key = keypadButton<SameLine, Alt_Inv, ImGuiKey_CapsLock>(buttonSize, key);
@@ -1120,8 +1120,8 @@ private:
         key = keypadButton<SameLine, Button2, ImGuiKey_2, ImGuiKey_Keypad2>(buttonSize, key);
         key = keypadButton<SameLine, Button3, ImGuiKey_3, ImGuiKey_Keypad3>(buttonSize, key);
         {
-            IMW::StyleColor button(ImGuiCol_Button, ImVec4{11.f / 255.f, 89.f / 255.f, 191.f / 255.f, 1.0f});
-            IMW::StyleColor text(ImGuiCol_Text, ImVec4{1.0f, 1.0f, 1.0f, 1.0f});
+            IMW::StyleColor button(ImGuiCol_Button, LookAndFeel::instance().palette().keypadButtonColor);
+            IMW::StyleColor text(ImGuiCol_Text, LookAndFeel::instance().palette().keypadTextColor);
             const float     vpos_before_enter = ImGui::GetCursorPosY();
             key                               = keypadButton<SameLine, Enter, ImGuiKey_Enter, ImGuiKey_KeypadEnter>({buttonSize.x, buttonSize.y * 2.f + 0.5f * style.WindowPadding.y}, key);
             ImGui::SetCursorPosY(vpos_before_enter);

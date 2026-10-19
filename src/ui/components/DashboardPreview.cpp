@@ -249,8 +249,8 @@ ImU32 signalColor(const DashboardPreview::Signal& signal) { return signal.color 
 
 /// Draw some stand-in lines either to look like a sine wave or spectrum, depending on if the type of the plot sink is a gr::DataSet or not
 void drawSignalLines(ImDrawList& drawList, std::span<const DashboardPreview::Signal> signals, ImVec2 origin, ImVec2 size, bool forceSpectrumStyle) {
-    constexpr float lineThickness = 1.f;
-    constexpr int   numPoints     = 24;
+    const float   lineThickness = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewLineThickness;
+    constexpr int numPoints     = 24;
 
     std::array<ImVec2, numPoints> points{};
     for (std::size_t signalIndex = 0UZ; signalIndex < signals.size(); ++signalIndex) {
@@ -291,7 +291,7 @@ void drawSurfacePlotBoxIcon(ImDrawList& drawList, ImVec2 origin, ImVec2 size) {
     const ImVec2 rightBottom = outline[2];
     const ImVec2 top         = outline[0];
 
-    constexpr float lineThickness = 1.f;
+    const float lineThickness = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewLineThickness;
     drawList.AddPolyline(outline.data(), static_cast<int>(outline.size()), color, ImDrawFlags_Closed, lineThickness);
     drawList.AddLine(backCorner, leftBottom, color, lineThickness);
     drawList.AddLine(backCorner, rightBottom, color, lineThickness);
@@ -302,13 +302,14 @@ void drawPreviewChart(ImDrawList& drawList, const DashboardPreview::Chart& chart
     using enum DashboardPreview::ChartType;
 
     constexpr float borderInset        = 0.5f;
-    constexpr float chartSignalPadding = 2.f;
-    constexpr float minSize            = chartSignalPadding * 2.f; // nothing could fit if smaller than this
+    const float     chartSignalPadding = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewChartPadding;
+    const float     minSize            = chartSignalPadding * 2.f; // nothing could fit if smaller than this
 
-    topLeft     = {topLeft.x + borderInset, topLeft.y + borderInset};
-    bottomRight = {bottomRight.x - borderInset, bottomRight.y - borderInset};
-    drawList.AddRectFilled(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_FrameBg), 0.f);
-    drawList.AddRect(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_Border), 0.f);
+    topLeft                   = {topLeft.x + borderInset, topLeft.y + borderInset};
+    bottomRight               = {bottomRight.x - borderInset, bottomRight.y - borderInset};
+    const float chartRounding = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewChartRounding;
+    drawList.AddRectFilled(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_FrameBg), chartRounding);
+    drawList.AddRect(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_Border), chartRounding);
 
     const float width  = bottomRight.x - topLeft.x - 2.f * chartSignalPadding;
     const float height = bottomRight.y - topLeft.y - 2.f * chartSignalPadding;
@@ -323,21 +324,21 @@ void drawPreviewChart(ImDrawList& drawList, const DashboardPreview::Chart& chart
     switch (chart.type) {
     case SpectrumDensity: {
         constexpr float emptyBottomArea = 1.f / 3.f;
-        drawList.AddRectFilled(origin, {origin.x + width, origin.y + height}, spectrumHistoryColor, 0.f);
+        drawList.AddRectFilled(origin, {origin.x + width, origin.y + height}, spectrumHistoryColor, chartRounding);
         drawSignalLines(drawList, chart.signals, origin, {width, height * (1.f - emptyBottomArea)}, true);
         return;
     }
     case SpectrumView: {
         // top 1/3 is the spectrum with a waterfall below that
         constexpr float spectrumArea = 1.f / 3.f;
-        constexpr float gap          = 2.f;
+        const float     gap          = LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewSpectrumWaterfallGap;
 
         const float spectrumHeight = std::max(0.f, (height - gap) * spectrumArea);
-        drawList.AddRectFilled({origin.x, origin.y + spectrumHeight + gap}, {origin.x + width, origin.y + height}, spectrumHistoryColor, 0.f);
+        drawList.AddRectFilled({origin.x, origin.y + spectrumHeight + gap}, {origin.x + width, origin.y + height}, spectrumHistoryColor, chartRounding);
         drawSignalLines(drawList, chart.signals, origin, {width, spectrumHeight}, true);
         return;
     }
-    case WaterfallPlot: drawList.AddRectFilled(origin, {origin.x + width, origin.y + height}, spectrumHistoryColor, 0.f); return;
+    case WaterfallPlot: drawList.AddRectFilled(origin, {origin.x + width, origin.y + height}, spectrumHistoryColor, chartRounding); return;
     case SurfacePlot: drawSurfacePlotBoxIcon(drawList, origin, {width, height}); return;
     case SpectrumPlot: drawSignalLines(drawList, chart.signals, origin, {width, height}, true); return;
     case Chart2D:

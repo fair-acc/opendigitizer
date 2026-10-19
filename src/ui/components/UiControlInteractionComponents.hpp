@@ -214,9 +214,6 @@ void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& contr
 /// Must be called while the editor is active
 [[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block);
 
-/// Spacing between the UI control block region and the rest of the graph, and between the blocks within it
-constexpr float kUiControlRegionGap = 16.0f;
-
 /// Sets UI control blocks' positions based on the number of UI blocks and the region occupied by non-UI blocks.
 /// This creates a wrapped row at the top of the graph view which is separate from the regular block nodes
 /// Each block is given extra room on its left for UI control connection source labels

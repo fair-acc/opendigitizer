@@ -99,11 +99,54 @@ struct Palette {
     ImVec4 flowgraphBoundingBoxExteriorSelectionHovered;
     ImVec4 flowgraphBoundingBoxExteriorSelectionOutlineHovered;
 
+    ImVec4 flowgraphGrid;
+    ImVec4 flowgraphNodeBorderHovered;
+    ImVec4 flowgraphNodeBorderSelected;
+    ImVec4 flowgraphSelectionRect;
+    ImVec4 flowgraphSelectionRectBorder;
+    ImVec4 flowgraphLinkHovered;
+    ImVec4 flowgraphLinkSelected;
+    ImVec4 flowgraphLinkHighlighted;
+    ImVec4 flowgraphPinRect;
+    ImVec4 flowgraphPinRectBorder;
+
     ImVec4 rowBgAlt;
     ImVec4 highlightedSearchResultsBg;
     ImVec4 errorColor;
+    ImVec4 warningColor;
+    ImVec4 successColor;
     ImVec4 currentDashboardPanelBg;
     ImVec4 contentSeparator; // subtle divider lines between page content areas
+    ImVec4 clearColor;       // behind every window, visible only where no window covers the viewport
+
+    ImVec4 layoutModePanel;
+    ImVec4 layoutModePanelHovered;
+    ImVec4 layoutModePanelGrabbed;
+
+    ImVec4 appHeaderFAIRLogoButton;
+    ImVec4 appHeaderFAIRLogoButtonHovered;
+    ImVec4 appHeaderFAIRLogoButtonActive;
+    ImVec4 headerMenuButton;
+    ImVec4 devMenuIcon; // alpha is set by the fade-out
+    ImVec4 devMenuButton;
+    ImVec4 devMenuQuitButton;
+
+    ImVec4 legendButton;
+    ImVec4 legendButtonHovered;
+    ImVec4 legendButtonActive;
+
+    ImVec4 keypadButtonColor;
+    ImVec4 keypadTextColor;
+    ImVec4 keypadFunctionKeyButtonColorMultiplier; // multiplied with ImGuiCol_Button
+
+    ImVec4 notificationSuccess;
+    ImVec4 notificationWarning;
+    ImVec4 notificationError;
+    ImVec4 notificationInfo;
+    ImVec4 notificationDefault;
+
+    ImVec4 chartTagFishy;
+    ImVec4 chartTagDroppedSamples;
 };
 
 /// chart look a host may set process-wide; an unset field keeps ImPlot's current style
@@ -119,6 +162,18 @@ struct ChartStyle {
     std::optional<float>          labelFontSize;       // unscaled base size, as ImGui::PushFont takes it
     std::optional<ImVec4>         axisColour;
     std::optional<ImVec4>         gridColour;
+
+    float  tagAlpha               = .35f; // multiplied with the signal colour
+    float  maxHoldTraceAlpha      = .9f;
+    float  minHoldTraceAlpha      = .5f;
+    float  averageTraceAlpha      = .7f;
+    ImVec2 spectrumFitPadding     = {0.f, .05f};
+    float  menuSpinnerSpacing     = 2.f; // between the spinner buttons and their drag field
+    float  menuAxisLimitDragWidth = 70.f;
+    float  menuAxisComboWidth     = 80.f;
+    float  menuSettingWidgetWidth = 120.f;
+    float  historyDepthDragWidth  = 60.f;
+    float  historyDepthComboWidth = 65.f;
 };
 
 /// dashboard look a host may set process-wide, for every DashboardView
@@ -126,6 +181,45 @@ struct DashboardStyle {
     enum class LegendPosition { Bottom, Top, Left, Right, None }; // None: no shared bar, charts may show their own legend
     LegendPosition legend     = LegendPosition::Bottom;
     bool           background = true; // false: chart windows and frames, plots area, bar and toolbar draw no background or border
+
+    float toolbarRowHeight                = 36.f;
+    float toolbarLeftPadding              = 16.f;
+    float layoutModeChartInset            = 5.f;
+    float legendSwatchBorderThickness     = 2.f;
+    float legendSwatchRounding            = 0.f;
+    float layoutModePanelRounding         = 0.f;
+    float statusDotRadiusEms              = .3f; // relative to the font size
+    float infoTextAlpha                   = .6f; // multiplied with ImGuiCol_TextDisabled
+    float statusDotUnlitAlpha             = .3f; // multiplied with ImGuiCol_TextDisabled
+    float toolbarBlockButtonSize          = 28.f;
+    float toolbarBlockButtonRoundingRatio = .5f; // of the button size, .5 is a circle
+    float toolbarControlInputWidth        = 110.f;
+    float toolbarControlMinimumWidth      = 60.f;
+    float toolbarControlSliderWidth       = 160.f;
+    float newChartPopupWidth              = 300.f;
+
+    struct DragAreaInteractionState {
+        bool grabbed = false;
+        bool hovered = false;
+    };
+
+    std::uint32_t draggableLayoutModePanelColor(DragAreaInteractionState interactionState) const;
+};
+
+struct OpenDashboardPageStyle {
+    float  dashboardPreviewRounding                = 4.f;
+    float  dashboardPreviewChartRounding           = 0.f;
+    float  currentDashboardPanelPadding            = 15.f;
+    float  currentDashboardPanelSpacing            = 10.f;
+    float  loadedDashboardIndicatorBorderThickness = 2.f;
+    float  dashboardPreviewLineThickness           = 1.f;
+    float  dashboardPreviewChartPadding            = 2.f;
+    float  dashboardPreviewSpectrumWaterfallGap    = 2.f;
+    float  sidebarWidthRatio                       = .25f; // of the available width
+    float  sidebarMaxWidth                         = 320.f;
+    ImVec2 saveAsPopupSize                         = {600.f, 300.f};
+    float  oauthPopupWidth                         = 500.f;
+    float  addSourcePopupWidth                     = 600.f;
 };
 
 struct LookAndFeel {
@@ -143,6 +237,46 @@ struct LookAndFeel {
         float exportedTabPaddingH = 4.0f;
         float exportedTabPaddingV = 2.0f;
 
+        float nodeRounding                            = 0.f;
+        float nodeBorderWidth                         = 1.5f;
+        float subgraphBorderWidth                     = 3.f;
+        float pinRounding                             = 0.f; // node editor pin hover rect
+        float groupRounding                           = 6.f; // node editor group nodes
+        float portRounding                            = 0.f; // drawn ports and exported tabs
+        float pinArrowSize                            = 10.f;
+        float pinArrowWidth                           = 10.f;
+        float linkStrength                            = 60.f;
+        float newLinkThickness                        = 1.f;
+        float highlightThickness                      = 2.f; // drop target outline, pending connection line
+        float uiControlBlockDragHandleBorderThickness = 3.f;
+        float uiControlRegionBorderThickness          = 2.f;
+        float uiControlNotchLengthInwards             = 5.f;
+        float uiControlNotchLengthOutwards            = 5.f;
+        float previewBorderThickness                  = 2.f;
+        float filteredOutBlockAlpha                   = .25f;
+        float controlsBarHeight                       = 37.f;
+        float controlsBarPadding                      = 16.f;
+        float nestedEditorInset                       = 16.f;
+        float controlsBarButtonAlpha                  = 1.f;
+        float computeDomainTagMaxOffset               = 30.f; // from the left edge of the subgraph
+        float computeDomainTagOffsetRatio             = .2f;  // of the space available for the tag
+        float uiControlRegionGap                      = 16.f; // around the UI control block region and between its blocks
+        float uiControlDragHandleIconSize             = 12.f;
+
+        float  previewBlockInnerPadding = 5.f; // per side
+        float  previewBlockHeight       = 35.f;
+        float  previewBlockSpacing      = 40.f;
+        float  previewVerticalSpacing   = 10.f;
+        ImVec2 previewPortSize          = {6.f, 6.f};
+        float  previewCenterBlockSize   = 50.f;
+        ImVec2 previewMargin            = {10.f, 10.f};
+        ImVec2 previewArrowSize         = {9.f, 9.f};
+        float  previewLinkThickness     = 1.f;
+
+        float exportAreaHoverFadeSeconds = .4f;
+        float exportAreaFadeInSeconds    = 1.f;
+        float exportAreaFadeInSpeedup    = 4.f; // while a pin is held
+
         bool canvasBackground = true;
         bool canvasGrid       = true;
         bool canvasBorder     = true;
@@ -153,16 +287,12 @@ struct LookAndFeel {
 #else
     static constexpr bool isDesktop = true;
 #endif
+    static constexpr std::chrono::milliseconds longPressDuration{500};
+
     bool                      prototypeMode = false;
     std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
     float                     defaultDPI  = 76.2f;
     float                     verticalDPI = defaultDPI;
-    std::array<ImFont*, 2>    fontTiny    = {nullptr, nullptr}; /// default font [0] production [1] prototype use
-    std::array<ImFont*, 2>    fontSmall   = {nullptr, nullptr}; /// 0: production 1: prototype use
-    std::array<ImFont*, 2>    fontNormal  = {nullptr, nullptr}; /// 0: production 1: prototype use
-    std::array<ImFont*, 2>    fontBig     = {nullptr, nullptr}; /// 0: production 1: prototype use
-    std::array<ImFont*, 2>    fontBigger  = {nullptr, nullptr}; /// 0: production 1: prototype use
-    std::array<ImFont*, 2>    fontLarge   = {nullptr, nullptr}; /// 0: production 1: prototype use
     ImFont*                   fontIcons;
     ImFont*                   fontIconsBig;
     ImFont*                   fontIconsLarge;
@@ -170,16 +300,59 @@ struct LookAndFeel {
     ImFont*                   fontIconsSolidBig;
     ImFont*                   fontIconsSolidLarge;
     std::chrono::seconds      editPaneCloseDelay{15};
+    float                     requiredDragDistanceForWindowUndock     = 30.f;
+    float                     floatingWindowMinSizeFractionOfViewport = .25f;
+    float                     splitterWidth                           = 6.f;
+    float                     splitterDefaultRatio                    = .2f;
+    float                     splitterRatioDeltaPerFrame              = .02f; // how much of (splitter / rest of screen) fraction to add
+    float                     splitterRatioDeltaPerFrameSlow          = .01f;
+    float                     keypadRounding                          = 6.f;
+    ImVec2                    keypadPortraitSize                      = {400.f, 600.f};
+    ImVec2                    keypadLandscapeSize                     = {485.f, 400.f};
+    float                     popupMenuButtonRounding                 = 6.f;
+    float                     popupMenuRadialButtonRoundingPercentage = .5f; // percentage of button size, so .5 is a circle
+    float                     popupMenuAnimationLengthSeconds         = .25f;
+    float                     popupMenuMouseoutCloseDelaySeconds      = .5f;
+    float                     popupMenuMouseInactiveCloseDelaySeconds = 5.f;
+    float                     popupMenuButtonHoverLighten             = .5f; // saturation factor
+    float                     popupMenuButtonActiveDarken             = .7f; // value factor
+    float                     popupMenuButtonAlpha                    = 1.f;
+    float                     appHeaderRightMenuStartDegrees          = 75.f;
+    float                     appHeaderRightMenuStopDegrees           = 195.f;
+    float                     yesNoPopupWidth                         = 300.f;
+    ImVec2                    addContextPopupSize                     = {600.f, 120.f};
+    ImVec2                    removeContextPopupSize                  = {600.f, 100.f};
+    float                     editableStringListInputWidthEms         = 12.f;
+    float                     sortArrowScale                          = .75f;
+    float                     searchHighlightRounding                 = 0.f;
+    float                     selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
+    float                     notificationRounding                    = .5f;
+    float                     notificationBorderSize                  = 1.f;
+    float                     devMenuHideDelaySeconds                 = 2.f;
+    float                     devMenuButtonAlpha                      = 0.9f;
+    std::chrono::seconds      infoDotLifetime{5};
+    std::chrono::seconds      notificationDismissTime{5};
+    std::chrono::seconds      notificationErrorDismissTime{10};
+    double                    plotTooltipDelay         = 1.;  // s
+    double                    plotTooltipDuration      = 30.; // s
+    float                     plotTooltipStillDistance = 10.f;
     Flowgraph                 flowgraph;
     ChartStyle                chartStyle;
     DashboardStyle            dashboardStyle;
+    OpenDashboardPageStyle    openDashboardPageStyle;
 
     [[nodiscard]] const Palette& palette() const noexcept;
     [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
 
-    [[nodiscard]] float relativeFontSize(const std::array<ImFont*, 2>& faces) const noexcept {
-        const ImFont* face   = faces[prototypeMode];
-        const ImFont* normal = fontNormal[prototypeMode];
+    [[nodiscard]] ImFont* fontTiny() const noexcept { return _fontTiny[prototypeMode]; }
+    [[nodiscard]] ImFont* fontSmall() const noexcept { return _fontSmall[prototypeMode]; }
+    [[nodiscard]] ImFont* fontNormal() const noexcept { return _fontNormal[prototypeMode]; }
+    [[nodiscard]] ImFont* fontBig() const noexcept { return _fontBig[prototypeMode]; }
+    [[nodiscard]] ImFont* fontBigger() const noexcept { return _fontBigger[prototypeMode]; }
+    [[nodiscard]] ImFont* fontLarge() const noexcept { return _fontLarge[prototypeMode]; }
+
+    [[nodiscard]] float relativeFontSize(const ImFont* face) const noexcept {
+        const ImFont* normal = fontNormal();
         return face && normal ? ImGui::GetStyle().FontSizeBase * face->LegacySize / normal->LegacySize : 0.f;
     }
 
@@ -204,6 +377,13 @@ struct LookAndFeel {
     void loadFonts();
 
 private:
+    std::array<ImFont*, 2> _fontTiny   = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontSmall  = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontNormal = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontBig    = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontBigger = {nullptr, nullptr}; // [0] production, [1] prototype
+    std::array<ImFont*, 2> _fontLarge  = {nullptr, nullptr}; // [0] production, [1] prototype
+
     LookAndFeel() {}
 };
 

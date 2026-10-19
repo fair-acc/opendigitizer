@@ -1,6 +1,8 @@
 #ifndef OPENDIGITIZER_UI_COMPONENTS_YES_NO_POPUP_HPP_
 #define OPENDIGITIZER_UI_COMPONENTS_YES_NO_POPUP_HPP_
 
+#include "../common/LookAndFeel.hpp"
+
 #include <imgui.h>
 
 namespace DigitizerUi::components {
@@ -25,9 +27,9 @@ inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions option
     const float  buttonSizeY = (ImGui::GetTextLineHeight() * 3) + spacing.y * 2;
     const float  textHeight  = options.titleText ? ImGui::GetTextLineHeightWithSpacing() : 0.f;
     const ImVec2 popupCenter = ImGui::GetMainViewport()->GetCenter();
-    const ImVec2 popupSize{300.f, (buttonSizeY * 3.f) + (spacing.y * 2.f) + textHeight};
+    const ImVec2 popupSize{LookAndFeel::instance().yesNoPopupWidth, (buttonSizeY * 3.f) + (spacing.y * 2.f) + textHeight};
     ImGui::SetNextWindowPos(popupCenter - popupSize / 2.f, ImGuiCond_Appearing, ImVec2{0.5f, 0.5f});
-    ImGui::SetNextWindowSize(ImVec2{300, 0}, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2{LookAndFeel::instance().yesNoPopupWidth, 0.f}, ImGuiCond_Appearing);
 
     using enum YesNoPopupResult;
     if (ImGui::BeginPopupModal(id, nullptr, windowFlags)) {

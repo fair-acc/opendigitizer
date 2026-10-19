@@ -50,10 +50,10 @@ struct Symbol {
             const char* matchEnd   = exactMatch.data() + exactMatch.size();
             const auto  boxPos     = textCursorInitial + ImVec2{ImGui::CalcTextSize(fullSymbolName.data(), matchStart).x, 0.0};
             const auto  boxSize    = ImGui::CalcTextSize(matchStart, matchEnd);
-            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(DigitizerUi::LookAndFeel::instance().palette().highlightedSearchResultsBg));
+            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(DigitizerUi::LookAndFeel::instance().palette().highlightedSearchResultsBg), DigitizerUi::LookAndFeel::instance().searchHighlightRounding);
         }
 
-        ImFont*    font      = DigitizerUi::LookAndFeel::instance().fontNormal[DigitizerUi::LookAndFeel::instance().prototypeMode];
+        ImFont*    font      = DigitizerUi::LookAndFeel::instance().fontNormal();
         const auto textColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
         window->DrawList->AddText(font, fontSize, textCursorInitial, textColor, fullSymbolName.data(), fullSymbolName.data() + fullSymbolName.size());
         return selected;

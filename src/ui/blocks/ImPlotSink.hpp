@@ -675,7 +675,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             // draw tags before data (data is drawn on top)
             if (getValueOrDefault<bool>(config, "draw_tag", false)) {
                 ImVec4 tagColor = lineColor;
-                tagColor.w *= 0.35f; // semi-transparent tags
+                tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
                 drawTags(
                     [&](auto&& fn) {
                         for (const auto& t : _tagValues) {

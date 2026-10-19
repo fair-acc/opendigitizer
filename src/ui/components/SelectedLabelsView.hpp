@@ -55,7 +55,7 @@ inline bool XLabel(const char* label, const ImColor& color, const ImVec2& size_a
     // Render
     // const ImU32 col = ImGui::GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
     ImGui::RenderNavHighlight(bb, id);
-    ImGui::RenderFrame(bb.Min, bb.Max, color, true, labelSize.y);
+    ImGui::RenderFrame(bb.Min, bb.Max, color, true, LookAndFeel::instance().selectedLabelRoundingPercentage * labelSize.y);
 
     bb.Min.x += padding;
     bb.Max.x -= textOffset + padding;

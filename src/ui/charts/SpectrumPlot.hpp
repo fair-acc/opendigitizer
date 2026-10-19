@@ -75,7 +75,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         }
 
         const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
-        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
         DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
 
         if (!DigitizerUi::TouchHandler<>::BeginZoomablePlot(chart_name.value, plotSize, plotFlags)) {

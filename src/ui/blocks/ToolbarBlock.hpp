@@ -162,12 +162,12 @@ private:
             default: return "Error";
             }
         };
-        const float actualButtonSize = 28.f;
+        const float actualButtonSize = LookAndFeel::instance().dashboardStyle.toolbarBlockButtonSize;
         {
             const bool                  disabled = this->isStateDisabled(buttonType);
             IMW::Disabled               _(disabled);
             IMW::Font                   font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            IMW::StyleFloatVar          style(ImGuiStyleVar_FrameRounding, .5f * actualButtonSize);
+            IMW::StyleFloatVar          style(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().dashboardStyle.toolbarBlockButtonRoundingRatio * actualButtonSize);
             [[maybe_unused]] const bool clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
             ImGui::SameLine();
         }

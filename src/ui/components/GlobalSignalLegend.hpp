@@ -51,8 +51,9 @@ struct GlobalSignalLegend {
         if (ImGui::InvisibleButton("##ColorBox", colorRectSize)) {
             result = ClickResult::Left;
         }
-        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color, enabled ? 0xFF : 0x88));
-        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color), {}, {}, 2);
+        const DashboardStyle& dashboardStyle = LookAndFeel::instance().dashboardStyle;
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color, enabled ? 0xFF : 0x88), dashboardStyle.legendSwatchRounding);
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color), dashboardStyle.legendSwatchRounding, ImDrawFlags_None, dashboardStyle.legendSwatchBorderThickness);
 
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
@@ -63,9 +64,9 @@ struct GlobalSignalLegend {
         ImGui::SameLine();
 
         // signal name button with transparent background
-        IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.1f));
-        IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
+        IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().legendButton);
+        IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().legendButtonHovered);
+        IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().legendButtonActive);
         IMW::StyleColor textStyle(ImGuiCol_Text, enabled ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
         if (ImGui::Button(text.data(), buttonSize)) {
