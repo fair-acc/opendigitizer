@@ -40,6 +40,40 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
         expect(TargetMap::fromString(namespacedBlockMap)->toString() == namespacedBlockMap);
     };
 
+    "parsing target map with block names that have multiple template arguments"_test = [&] {
+        constexpr static auto* fftMap = "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>:output_in_db";
+        expect(entriesString(fftMap) == "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>/output_in_db");
+        expect(TargetMap::fromString(fftMap)->toString() == fftMap);
+        constexpr static auto* mixedMap = "A<x, y>,B,C<z<1, 2>, w>:gain";
+        expect(entriesString(mixedMap) == "A<x, y>/gain B/gain C<z<1, 2>, w>/gain");
+        expect(TargetMap::fromString(mixedMap)->toString() == mixedMap);
+    };
+
+    "names that have unbalanced <> or unecessary commas and would mess up parsing are marked as invalid"_test = [] {
+        using DigitizerUi::isValidBlockName;
+        for (const std::string_view valid : {"", "BlockA", "sub:BlockA", "gr::blocks::fft::FFT<float32, gr::DataSet<float32>>"}) {
+            expect(isValidBlockName(valid)) << valid;
+        }
+        for (const std::string_view invalid : {"A,B", "A<x>,B", "A;B", "A<x;y>", "*", "A*", "A<*>", " A", "A ", "A<", "A>", "A<x>>", "A>x<"}) {
+            expect(!isValidBlockName(invalid)) << invalid;
+        }
+    };
+
+    "sanitizeUserInputtedName"_test = [] {
+        using DigitizerUi::sanitizeUserInputtedName;
+        expect(sanitizeUserInputtedName("BlockA") == "BlockA");
+        expect(sanitizeUserInputtedName("  A,B ") == "A_B");
+        expect(sanitizeUserInputtedName("A;B") == "A_B");
+        expect(sanitizeUserInputtedName("*") == "_");
+        expect(sanitizeUserInputtedName("A*B<*>") == "A_B___");
+        expect(sanitizeUserInputtedName("A<x, y>,B") == "A_x_ y__B");
+        expect(sanitizeUserInputtedName("A<,B") == "A__B");
+        expect(sanitizeUserInputtedName("A>,B") == "A__B");
+        for (const std::string_view input : {"A,B", " * ", "A<x;y>", "A<*>", " A ; B , C ", "A<", "A>,B"}) {
+            expect(DigitizerUi::isValidBlockName(sanitizeUserInputtedName(input))) << input;
+        }
+    };
+
     "test whitespace and empty target_map"_test = [&] {
         expect(entriesString(" BlockA , BlockC : sample_rate ") == "BlockA/sample_rate BlockC/sample_rate");
         expect(entriesString("").empty());
@@ -47,7 +81,7 @@ const boost::ut::suite<"target_map"> targetMapTests = [] {
     };
 
     "invalid target_maps return an error"_test = [] {
-        for (const std::string_view malformed : {"BlockA", "BlockA:", ":gain", "A:b:", "A:b;", "A:b;;C:d", "A,,B:x", "*,A:x", "A,*:x"}) {
+        for (const std::string_view malformed : {"BlockA", "BlockA:", ":gain", "A:b:", "A:b;", "A:b;;C:d", "A,,B:x", "*,A:x", "A,*:x", "A<x:gain", "A>:gain", "A<x>>,B:gain", "A<,B:gain"}) {
             expect(!TargetMap::fromString(malformed).has_value()) << malformed;
         }
     };

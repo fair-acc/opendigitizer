@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <expected>
 #include <format>
 #include <ranges>
@@ -42,6 +43,33 @@ struct TargetEntry {
 };
 
 namespace detail {
+/// Normally we try to prevent the user from inputting names that have commas or semicolons, because those are part of the TargetMap grammar
+/// However, it is valid for gnuradio to give a block a default name of its typename, which may contain <Template, Arguments> with commas
+/// Splitting this way instead of std::views::split(',') allows supporting those names
+[[nodiscard]] inline std::expected<std::vector<std::string_view>, std::string> splitStringOutsideOfAngleBrackets(std::string_view text, char separator) {
+    std::vector<std::string_view> parts;
+    std::size_t                   depth     = 0UZ;
+    std::size_t                   partStart = 0UZ;
+    for (std::size_t i = 0UZ; i < text.size(); ++i) {
+        if (text[i] == '<') {
+            ++depth;
+        } else if (text[i] == '>') {
+            if (depth == 0UZ) {
+                return std::unexpected(std::format("unbalanced < and >", text));
+            }
+            --depth;
+        } else if (text[i] == separator && depth == 0UZ) {
+            parts.push_back(text.substr(partStart, i - partStart));
+            partStart = i + 1UZ;
+        }
+    }
+    if (depth != 0UZ) {
+        return std::unexpected(std::format("unbalanced < and >", text));
+    }
+    parts.push_back(text.substr(partStart));
+    return parts;
+}
+
 [[nodiscard]] inline std::expected<std::vector<TargetEntry>, std::string> parseTargetEntries(std::string_view entryText) {
     if (entryText.empty()) {
         return std::unexpected("empty entry between ';'");
@@ -61,9 +89,13 @@ namespace detail {
     if (blocksText == "*") {
         return std::vector{TargetEntry{.blockTarget = blocksText, .propertyName = property}};
     }
+    const auto nameTexts = splitStringOutsideOfAngleBrackets(blocksText, ',');
+    if (!nameTexts) {
+        return std::unexpected(nameTexts.error());
+    }
     std::vector<TargetEntry> entries;
-    for (const auto nameRange : blocksText | std::views::split(',')) {
-        std::string name = Digitizer::trimWhitespace(std::string_view(nameRange.begin(), nameRange.end()));
+    for (const std::string_view nameText : *nameTexts) {
+        std::string name = Digitizer::trimWhitespace(nameText);
         if (name.empty() || name == "*") {
             return std::unexpected(std::format("'{}': {}", entryText, name.empty() ? "empty block name" : "'*' mixed with block names"));
         }
@@ -72,6 +104,22 @@ namespace detail {
     return entries;
 }
 } // namespace detail
+
+[[nodiscard]] inline bool isValidBlockName(std::string_view name) { //
+    return !name.contains(';')                                      //
+           && !name.contains('*')                                   //
+           && Digitizer::trimWhitespace(name) == name               //
+           && detail::splitStringOutsideOfAngleBrackets(name, ',').transform([](const auto& parts) { return parts.size() == 1UZ; }).value_or(false);
+}
+
+/// trim whitespace and replace special characters with underscores (;*,<>)
+[[nodiscard]] inline std::string sanitizeUserInputtedName(std::string_view name) {
+    static constexpr std::string_view kTargetMapGrammarCharacters = ";*,<>";
+    std::string                       sanitized                   = Digitizer::trimWhitespace(name);
+    std::ranges::replace_if(sanitized, [](char c) { return kTargetMapGrammarCharacters.contains(c); }, '_');
+    assert(isValidBlockName(sanitized));
+    return sanitized;
+}
 
 /// A parsed version of target_map which supports finding the strongest connection, and adding and removing items with deduplication
 class TargetMap {

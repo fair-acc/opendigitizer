@@ -273,7 +273,8 @@ void UiGraphBlock::setSetting(std::string_view keyToUpdate, gr::pmt::Value&& upd
     }
 
     if (keyToUpdate == "name" && updatedValue.is_string() && updatedValue.value_or(std::string_view{}) != blockName) {
-        updatedValue = ownerGraph->nameRegistry.ensureNameIsUnique(updatedValue.value_or(std::string_view{}));
+        const std::string validName = sanitizeUserInputtedName(updatedValue.value_or(std::string_view{}));
+        updatedValue                = ownerGraph->nameRegistry.ensureNameIsUnique(validName);
     }
 
     gr::Message message;
