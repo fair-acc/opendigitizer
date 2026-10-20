@@ -13,6 +13,7 @@
 #include "../common/LookAndFeel.hpp"
 #include "../components/Dialog.hpp"
 #include "Keypad.hpp"
+#include "StyledStandardWidgets.hpp"
 
 using namespace std::string_literals;
 
@@ -110,7 +111,7 @@ bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
             IMW::Child list("##connections", listSize, true, 0);
             int        index = 0;
             for (auto& connection : this->connections) {
-                ImGui::Checkbox(std::format("##connected{}", index++).c_str(), &connection.keep);
+                DigitizerUi::Checkbox(std::format("##connected{}", index++).c_str(), &connection.keep);
                 ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
                 ImGui::TextUnformatted(connection.controlName.c_str());
                 ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
@@ -244,7 +245,7 @@ static void blockContextComboBox(UiGraphBlock* block) {
     const auto& activeContext = block->activeContext;
 
     const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
-    if (auto combo = IMW::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
+    if (auto combo = DigitizerUi::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
         for (const auto& contextNameAndTime : block->contexts) {
             const bool        selected = activeContext.context == contextNameAndTime.context;
             const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
@@ -312,7 +313,7 @@ static void BlockControlsPanelImpl(BlockControlsPanelContext& panelContext, bool
         auto typeParams = block->ownerGraph ? block->ownerGraph->availableParametrizationsFor(block->blockTypeName) : UiGraphModel::AvailableParametrizationsResult{};
 
         if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
-            if (auto combo = IMW::Combo("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
+            if (auto combo = DigitizerUi::Combo("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
                 for (const auto& availableParametrization : *typeParams.availableParametrizations) {
                     if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                         gr::Message message;
@@ -420,7 +421,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     case Type::Combo: {
         assert(!meta.enumValues.empty());
         std::string current = currentPropertyValue.value_or(std::string{});
-        if (ImGui::BeginCombo(label, current.c_str())) {
+        if (DigitizerUi::BeginCombo(label, current.c_str())) {
             for (const auto& enumName : meta.enumValues) {
                 const bool isCurrent = enumName == current;
                 if (ImGui::Selectable(enumName.c_str(), isCurrent)) {
@@ -436,7 +437,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     }
     case Type::Checkbox: {
         bool temp = currentPropertyValue.value_or(false);
-        if (ImGui::Checkbox(label, &temp)) {
+        if (DigitizerUi::Checkbox(label, &temp)) {
             out = temp;
         }
         break;

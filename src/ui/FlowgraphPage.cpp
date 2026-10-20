@@ -28,6 +28,7 @@
 #include "components/DataTypeStyle.hpp"
 #include "components/OverlayButton.hpp"
 #include "components/Splitter.hpp"
+#include "components/StyledStandardWidgets.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "scope_exit.hpp"
@@ -1141,7 +1142,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
         bool exported = port.isExportedTo(exportTarget);
 
         // only one item in the menu: a checkbox to toggle whether exported
-        if (!ImGui::Checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
+        if (!DigitizerUi::Checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
             continue;
         }
 

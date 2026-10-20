@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "common/Events.hpp"
+#include "common/FramePacer.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
 
@@ -30,6 +32,7 @@
 #include <LoadTest.hpp>
 
 #include <implot.h>
+#include <magic_enum.hpp>
 
 #include <gnuradio-4.0/CircularBuffer.hpp>
 #include <gnuradio-4.0/Message.hpp>
@@ -78,6 +81,7 @@ public:
 
 public:
     App() : openDashboardPage(restClient) {
+        LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(Digitizer::Settings::instance().theme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
         if (!Digitizer::Settings::instance().editableMode) {
             // start in view mode without application-authoring controls, while retaining chart interaction
@@ -167,6 +171,11 @@ public:
         flowgraphPage.updateStyle();
     }
 
+    void setTheme(LookAndFeel::Theme theme) {
+        applyTheme(theme);
+        flowgraphPage.updateStyle();
+    }
+
     void init(int argc, char** argv) {
         Digitizer::Settings& settings = Digitizer::Settings::instance();
 
@@ -192,9 +201,21 @@ public:
         };
 
         // Init header
-        header.requestApplicationSwitchMode  = [this](ViewMode mode) { mainViewMode = mode; };
-        header.requestApplicationSwitchTheme = [this](LookAndFeel::Style style) { setStyle(style); };
-        header.requestApplicationStop        = [this] { isRunning = false; };
+        header.requestApplicationSwitchMode = [this](ViewMode mode) { mainViewMode = mode; };
+        // use executeLater to avoid a potential bug where the style gets set in the scope of a push/restore of a style var from a different theme
+        header.requestApplicationSwitchStyle = [this](LookAndFeel::Style style) {
+            EventLoop::instance().executeLater([this, style] {
+                setStyle(style);
+                globalFramePacer().requestFrame();
+            });
+        };
+        header.requestApplicationSwitchTheme = [this](LookAndFeel::Theme theme) {
+            EventLoop::instance().executeLater([this, theme] {
+                setTheme(theme);
+                globalFramePacer().requestFrame();
+            });
+        };
+        header.requestApplicationStop = [this] { isRunning = false; };
         header.loadAssets();
 
         auto resolveDefaultDashboardPath = [&settings]() -> std::string {

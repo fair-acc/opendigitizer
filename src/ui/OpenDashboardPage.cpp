@@ -11,6 +11,7 @@
 #include "components/Dialog.hpp"
 #include "components/HoverRevealedTrashButton.hpp"
 #include "components/NewBlockSelectorFuzzySearch.hpp"
+#include "components/StyledStandardWidgets.hpp"
 #include "components/VirtualScrollTable.hpp"
 #include "settings.hpp"
 
@@ -351,7 +352,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
         IMW::Group group;
         for (const auto& s : m_dashboardsCollection.sources()) {
             bool enabled = s == storageInfo;
-            if (ImGui::Checkbox(s->path.c_str(), &enabled)) {
+            if (DigitizerUi::Checkbox(s->path.c_str(), &enabled)) {
                 storageInfo = s;
             }
         }
@@ -391,7 +392,7 @@ void OpenDashboardPage::drawSourcesSection() {
 
     const auto drawSource = [this, trashButtonSize, &sourceToRemove](const std::shared_ptr<DashboardStorageInfo>& source, const std::string& displayName) {
         IMW::Group sourceGroup;
-        if (ImGui::Checkbox(displayName.c_str(), &source->isEnabled)) {
+        if (DigitizerUi::Checkbox(displayName.c_str(), &source->isEnabled)) {
             forceRecalculateSortingAndFilteringOfListModel(); // we have a filter that removes things that are not enabled
         }
         ImGui::SameLine();
@@ -473,7 +474,7 @@ void OpenDashboardPage::drawFavoritesFilter() {
     const auto favoritesFilterToString = [](FavoritesFilter filter) { return filter == FavoritesFilter::ShowFavorited ? "favorited" : "not favorited"; };
 
     ImGui::SetNextItemWidth(IMW::CalcComboSize("##favoritesFilterCombo", favoritesFilterToString(FavoritesFilter::ShowUnfavorited), ImGuiComboFlags_None).preferred.x);
-    if (auto comboBox = IMW::Combo{"##favoritesFilterCombo", favoritesFilterToString(m_pendingFavoritesFilter), ImGuiComboFlags_None}) {
+    if (auto comboBox = DigitizerUi::Combo{"##favoritesFilterCombo", favoritesFilterToString(m_pendingFavoritesFilter), ImGuiComboFlags_None}) {
         if (ImGui::Selectable(favoritesFilterToString(FavoritesFilter::ShowFavorited))) {
             m_pendingFavoritesFilter = FavoritesFilter::ShowFavorited;
         }
@@ -883,7 +884,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
                 // this is on the path to the selected node, so keep it open
                 ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             }
-            return ImGui::TreeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
+            return DigitizerUi::TreeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
         };
 
         const auto beginDraw = [&drawBranchNode, &drawLeafRow](const components::SortFilterTreeModelNode& node) {

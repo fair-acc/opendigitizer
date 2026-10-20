@@ -15,6 +15,7 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 
 #include "../common/LookAndFeel.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 #include <imgui.h>
 #include <implot3d.h>
 #include <implot3d_internal.h>
@@ -1075,7 +1076,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             }
             std::string_view currentName = (currentScale == ImPlot3DScale_Log10) ? kScaleNames[1] : kScaleNames[0];
             ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
-            if (ImGui::BeginCombo("##scale", currentName.data())) {
+            if (DigitizerUi::BeginCombo("##scale", currentName.data())) {
                 for (std::size_t s = 0; s < kScaleNames.size(); ++s) {
                     if (ImGui::Selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
                         _pendingScale[ai] = kScaleIds[s];
@@ -1090,7 +1091,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             menu_icons::iconText(menu_icons::kFormat, "format:");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
-            if (ImGui::BeginCombo("##format", magic_enum::enum_name(_axisFormat[ai]).data())) {
+            if (DigitizerUi::BeginCombo("##format", magic_enum::enum_name(_axisFormat[ai]).data())) {
                 for (auto f : magic_enum::enum_values<LabelFormat>()) {
                     if (ImGui::Selectable(magic_enum::enum_name(f).data(), f == _axisFormat[ai])) {
                         _axisFormat[ai] = f;
@@ -1107,7 +1108,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::TextUnformatted(menu_icons::kAutoFit);
         }
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        if (ImGui::Checkbox("##auto", &autoFit)) {
+        if (DigitizerUi::Checkbox("##auto", &autoFit)) {
             if (autoFit) {
                 _needsRefit = true;
             } else {

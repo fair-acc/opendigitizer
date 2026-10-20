@@ -14,6 +14,7 @@ void initialise(std::optional<LookAndFeel::Style> style = {}); // once, after th
 void registerDashboardBlocks(gr::BlockRegistry& registry);
 
 void applyStyle(LookAndFeel::Style style);
+void applyTheme(LookAndFeel::Theme theme);
 
 } // namespace DigitizerUi
 

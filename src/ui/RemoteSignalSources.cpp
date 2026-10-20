@@ -1,6 +1,7 @@
 #include "RemoteSignalSources.hpp"
 
 #include "common/ImguiWrap.hpp"
+#include "components/StyledStandardWidgets.hpp"
 
 #include <charconv>
 #include <cstdlib>
@@ -9,7 +10,7 @@
 
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
-    if (auto combo = DigitizerUi::IMW::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
+    if (auto combo = DigitizerUi::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
         for (std::size_t i = 0; i < field_names.size(); i++) {
             bool isSelected = _selectedIndex == i;
             if (ImGui::Selectable(field_names[i], isSelected)) {

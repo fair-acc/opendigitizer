@@ -2,9 +2,10 @@
 #define OPENDIGITIZER_UI_COMPONENTS_VIRTUAL_SCROLL_TABLE_HPP_
 
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 #include <imgui.h>
-#include <imgui_internal.h> // for RenderArrow
+#include <imgui_internal.h> // for GetCurrentTable
 
 #include <cstddef>
 #include <optional>

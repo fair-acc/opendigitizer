@@ -7,6 +7,7 @@
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/ImGuiNotify.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 
 #include <imgui.h>
 #include <implot.h>
@@ -1667,7 +1668,7 @@ struct Chart {
                 return maxW + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
             }();
             ImGui::SetNextItemWidth(w);
-            if (ImGui::BeginCombo(comboId, magic_enum::enum_name(current).data())) {
+            if (DigitizerUi::BeginCombo(comboId, magic_enum::enum_name(current).data())) {
                 for (auto e : magic_enum::enum_values<E>()) {
                     if (ImGui::Selectable(magic_enum::enum_name(e).data(), e == current)) {
                         setter(e);
@@ -1726,7 +1727,7 @@ struct Chart {
                     ImGui::TextUnformatted(menu_icons::kAutoFit);
                 }
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                if (ImGui::Checkbox("##auto", &autoFit)) {
+                if (DigitizerUi::Checkbox("##auto", &autoFit)) {
                     if (autoFit) {
                         self.enableAxisAutoFit(axis, axisIndex);
                     } else {
@@ -1909,7 +1910,7 @@ struct Chart {
         // unit combo (display unit only, not persisted)
         ImGui::SetNextItemWidth(kComboWidth);
         auto currentUnitName = magic_enum::enum_name(self._historyDisplayUnit);
-        if (ImGui::BeginCombo("##historyUnit", currentUnitName.data())) {
+        if (DigitizerUi::BeginCombo("##historyUnit", currentUnitName.data())) {
             for (auto unit : magic_enum::enum_values<HistoryUnit>()) {
                 bool enabled  = (unit != HistoryUnit::seconds) || rateKnown;
                 bool selected = (unit == self._historyDisplayUnit);
@@ -2302,7 +2303,7 @@ struct Chart {
 
         if constexpr (std::is_same_v<ValueType, bool>) {
             bool val = field.value;
-            if (ImGui::Checkbox(label.c_str(), &val)) {
+            if (DigitizerUi::Checkbox(label.c_str(), &val)) {
                 field = val;
             }
         } else if constexpr (std::is_floating_point_v<ValueType>) {
@@ -2377,7 +2378,7 @@ struct Chart {
         } else if constexpr (std::is_same_v<ValueType, ImPlotColormap_>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             auto current = static_cast<ImPlotColormap>(field.value);
-            if (ImGui::BeginCombo(label.c_str(), ImPlot::GetColormapName(current))) {
+            if (DigitizerUi::BeginCombo(label.c_str(), ImPlot::GetColormapName(current))) {
                 const float gradientWidth = ImGui::GetContentRegionAvail().x;
                 const float lineHeight    = ImGui::GetTextLineHeight();
                 for (int i = 0; i < ImPlot::GetColormapCount(); ++i) {
@@ -2407,7 +2408,7 @@ struct Chart {
         } else if constexpr (std::is_enum_v<ValueType>) {
             ImGui::SetNextItemWidth(kWidgetWidth);
             auto current = field.value;
-            if (ImGui::BeginCombo(label.c_str(), magic_enum::enum_name(current).data())) {
+            if (DigitizerUi::BeginCombo(label.c_str(), magic_enum::enum_name(current).data())) {
                 for (auto e : magic_enum::enum_values<ValueType>()) {
                     bool selected = (e == current);
                     if (ImGui::Selectable(magic_enum::enum_name(e).data(), selected)) {

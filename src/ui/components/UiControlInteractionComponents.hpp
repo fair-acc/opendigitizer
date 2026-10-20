@@ -16,6 +16,7 @@
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 namespace DigitizerUi::components {
 
@@ -37,7 +38,7 @@ struct CheckboxListItem {
     bool        selected = false;
 
     bool draw() {
-        ImGui::Checkbox(name.c_str(), &selected);
+        DigitizerUi::Checkbox(name.c_str(), &selected);
         return selected;
     }
 };

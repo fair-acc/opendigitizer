@@ -6,6 +6,7 @@
 
 #include "../components/Dialog.hpp"
 #include "../components/ListBox.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
 #include "scope_exit.hpp"
@@ -116,7 +117,7 @@ struct NamespaceOrSymbol {
                 if (newOpenValue) {
                     ImGui::SetNextItemOpen(*newOpenValue);
                 }
-                if (ImGui::TreeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
+                if (DigitizerUi::TreeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
                     if (auto maybeSelected = child->drawTreeRecursive(currentlySelected, keyBuffer, scrollToSelected, newOpenValue); !maybeSelected.empty()) {
                         selected = maybeSelected;
                     }

@@ -15,6 +15,8 @@
 #include "../components/ImGuiNotify.hpp"
 
 #include <SDL3/SDL_opengl.h>
+#include <magic_enum.hpp>
+#include <magic_enum_utility.hpp>
 #include <stb_image.h>
 
 #include "PopupMenu.hpp"
@@ -82,7 +84,8 @@ class AppHeader {
 public:
     std::function<void()>                   requestApplicationStop;
     std::function<void(ViewMode)>           requestApplicationSwitchMode;
-    std::function<void(LookAndFeel::Style)> requestApplicationSwitchTheme;
+    std::function<void(LookAndFeel::Style)> requestApplicationSwitchStyle;
+    std::function<void(LookAndFeel::Theme)> requestApplicationSwitchTheme;
 
     ImVec2 logoSize{0.f, 0.f};
     GLuint imgFairLogo     = 0;
@@ -218,11 +221,20 @@ public:
                 rightMenu.addButton((LookAndFeel::instance().style == Light) ? "" : "",
                     [this](MenuButton& button) {
                         const bool isDarkMode = LookAndFeel::instance().style == Dark;
-                        requestApplicationSwitchTheme(isDarkMode ? Light : Dark);
+                        requestApplicationSwitchStyle(isDarkMode ? Light : Dark);
                         button.label   = isDarkMode ? "" : "";
                         button.toolTip = isDarkMode ? "switch to dark mode" : "switch to light mode";
                     },
                     LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().style == Dark ? "switch to light mode" : "switch to dark mode");
+
+                rightMenu.addButton(
+                    "\uF1FC",
+                    [this](MenuButton& button) {
+                        const auto next = magic_enum::enum_next_value_circular(LookAndFeel::instance().theme);
+                        requestApplicationSwitchTheme(next);
+                        button.toolTip = std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(next)));
+                    },
+                    LookAndFeel::instance().fontIconsSolidBig, std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(LookAndFeel::instance().theme))));
 
                 rightMenu.addButton(
                     LookAndFeel::instance().prototypeMode ? "" : "",

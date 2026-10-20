@@ -8,6 +8,7 @@
 #include "imgui_test_engine/imgui_te_internal.h"
 #include "imgui_test_engine/imgui_te_ui.h"
 #include "implot.h"
+#include <magic_enum.hpp>
 #pragma GCC diagnostic pop
 
 #include "shared/imgui_app.h"
@@ -177,6 +178,9 @@ void ImGuiTestApp::initImGui() {
     ImGuiTestEngine_Start(_engine, ImGui::GetCurrentContext());
     ImGuiTestEngine_InstallDefaultCrashHandler();
 
+    if (const char* testTheme = std::getenv("OPENDIGITIZER_TEST_THEME"); testTheme != nullptr) {
+        LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(testTheme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
+    }
     const char* testStyle = std::getenv("OPENDIGITIZER_TEST_STYLE");
     initialise(testStyle != nullptr && std::string_view(testStyle) == "light" ? LookAndFeel::Style::Light : LookAndFeel::Style::Dark);
 

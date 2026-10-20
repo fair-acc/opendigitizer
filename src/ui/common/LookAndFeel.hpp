@@ -149,6 +149,16 @@ struct Palette {
     ImVec4 chartTagDroppedSamples;
 };
 
+// from https://github.com/adobe/imgui imgui_spectrum.h
+struct SpectrumSchemeKeywordColors {
+    std::uint32_t gray50, gray75, gray100, gray200, gray300, gray400, gray500, gray600, gray700, gray800, gray900;
+    std::uint32_t blue400, blue500, blue600, blue700;
+    std::uint32_t red400, red500, red600, red700;
+    std::uint32_t orange400, orange500, orange600, orange700;
+    std::uint32_t green400, green500, green600, green700;
+    std::uint32_t magenta500;
+};
+
 /// chart look a host may set process-wide; an unset field keeps ImPlot's current style
 struct ChartStyle {
     std::optional<ImVec4>         plotBackground; // alpha 0: transparent
@@ -224,6 +234,7 @@ struct OpenDashboardPageStyle {
 
 struct LookAndFeel {
     enum class Style { Light, Dark };
+    enum class Theme { Classic, Advanced };
 
     struct Flowgraph {
         float  pinWidth  = 10;
@@ -341,8 +352,9 @@ struct LookAndFeel {
     DashboardStyle            dashboardStyle;
     OpenDashboardPageStyle    openDashboardPageStyle;
 
-    [[nodiscard]] const Palette& palette() const noexcept;
-    [[nodiscard]] float          mainWindowIconButtonSize() const noexcept;
+    [[nodiscard]] const Palette&                     palette() const noexcept;
+    [[nodiscard]] const SpectrumSchemeKeywordColors& spectrumColours() const noexcept; // for the current style, also while theme is Classic
+    [[nodiscard]] float                              mainWindowIconButtonSize() const noexcept;
 
     [[nodiscard]] ImFont* fontTiny() const noexcept { return _fontTiny[prototypeMode]; }
     [[nodiscard]] ImFont* fontSmall() const noexcept { return _fontSmall[prototypeMode]; }
@@ -357,6 +369,7 @@ struct LookAndFeel {
     }
 
     Style      style      = Style::Light;
+    Theme      theme      = Theme::Classic;
     WindowMode windowMode = WindowMode::RESTORED;
 
     static LookAndFeel&       mutableInstance();
@@ -375,6 +388,7 @@ struct LookAndFeel {
     }
 
     void loadFonts();
+    void applyTheme();
 
 private:
     std::array<ImFont*, 2> _fontTiny   = {nullptr, nullptr}; // [0] production, [1] prototype
