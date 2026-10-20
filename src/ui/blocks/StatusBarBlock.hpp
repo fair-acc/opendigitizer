@@ -8,6 +8,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 
@@ -37,7 +38,7 @@ struct SchedulerStateIndicator : gr::Block<SchedulerStateIndicator, gr::Drawable
         // a selectable, not text: hosts and tests can find the shown state
         const std::string label = std::format("{}###schedulerState", gr::meta::enumName(state).value_or("?"));
         IMW::StyleColor   textColour(ImGuiCol_Text, colour);
-        std::ignore = ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(label.c_str(), nullptr, true).x, 0.f));
+        std::ignore = DigitizerUi::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(label.c_str(), nullptr, true).x, 0.f));
         return gr::work::Status::OK;
     }
 };

@@ -61,22 +61,26 @@ inline ImVec4 darkenColor(const ImVec4& color, float percent) {
 
 inline ImVec4 darkenOrLighten(ImVec4 color, float percentage);
 
+inline ImVec4 overlayTransparentOverOpaque(ImVec4 color, ImVec4 opaqueBackground) {
+    const float a = color.w;
+    return {color.x * a + opaqueBackground.x * (1.f - a), color.y * a + opaqueBackground.y * (1.f - a), color.z * a + opaqueBackground.z * (1.f - a), 1.f};
+}
+
 struct ImFont;
 
 namespace DigitizerUi {
 
 /// Colors that are not obviously included in the regular ImGuiStyle
-/// TODO: maybe include popup menu colors (light grey hamburger icon, green buttons
-/// on hamburger popup, red/violet buttons on radial menu) here, or make those use
-/// colors from a style
 struct Palette {
     ImVec4 gridLines;
 
+    std::optional<ImVec4> buttonContents; // text color used by buttons and selectables and checkboxes. ImGuiCol_Text by default
+
     // main window buttons, shown on top of windowBg color, bg colors can be transparent
-    ImVec4 mainWindowButtonIcon;
-    ImVec4 mainWindowButtonBgInactive;
-    ImVec4 mainWindowButtonBgHovered;
-    ImVec4 mainWindowButtonBgActive;
+    std::optional<ImVec4> mainWindowButtonIcon; // ImGuiCol_Text by default
+    ImVec4                mainWindowButtonBgInactive;
+    ImVec4                mainWindowButtonBgHovered;
+    ImVec4                mainWindowButtonBgActive;
 
     ImVec4 notificationWindowBg;
 
@@ -116,20 +120,20 @@ struct Palette {
     ImVec4 warningColor;
     ImVec4 successColor;
     ImVec4 currentDashboardPanelBg;
-    ImVec4 contentSeparator; // subtle divider lines between page content areas
-    ImVec4 clearColor;       // behind every window, visible only where no window covers the viewport
+    ImVec4 clearColor;
 
     ImVec4 layoutModePanel;
     ImVec4 layoutModePanelHovered;
     ImVec4 layoutModePanelGrabbed;
 
-    ImVec4 appHeaderFAIRLogoButton;
-    ImVec4 appHeaderFAIRLogoButtonHovered;
-    ImVec4 appHeaderFAIRLogoButtonActive;
-    ImVec4 headerMenuButton;
-    ImVec4 devMenuIcon; // alpha is set by the fade-out
-    ImVec4 devMenuButton;
-    ImVec4 devMenuQuitButton;
+    ImVec4                appHeaderFAIRLogoButton;
+    ImVec4                appHeaderFAIRLogoButtonHovered;
+    ImVec4                appHeaderFAIRLogoButtonActive;
+    ImVec4                headerMenuButton;
+    std::optional<ImVec4> devMenuIcon; // ImGuiCol_Text by default
+    ImVec4                devMenuButton;
+    std::optional<ImVec4> popupMenuButtonIcon; // ImGuiCol_Text by default
+    ImVec4                devMenuQuitButton;
 
     ImVec4 legendButton;
     ImVec4 legendButtonHovered;
@@ -194,14 +198,15 @@ struct DashboardStyle {
 
     float toolbarRowHeight                = 36.f;
     float toolbarLeftPadding              = 16.f;
+    float toolbarItemSpacing              = 24.f;
     float layoutModeChartInset            = 5.f;
-    float legendSwatchBorderThickness     = 2.f;
+    float legendColorRectBorderThickness  = 2.f;
+    float legendAddButtonIconScale        = .7f; // icon font size relative to the button size
     float legendSwatchRounding            = 0.f;
     float layoutModePanelRounding         = 0.f;
     float statusDotRadiusEms              = .3f; // relative to the font size
     float infoTextAlpha                   = .6f; // multiplied with ImGuiCol_TextDisabled
     float statusDotUnlitAlpha             = .3f; // multiplied with ImGuiCol_TextDisabled
-    float toolbarBlockButtonSize          = 28.f;
     float toolbarBlockButtonRoundingRatio = .5f; // of the button size, .5 is a circle
     float toolbarControlInputWidth        = 110.f;
     float toolbarControlMinimumWidth      = 60.f;
@@ -258,7 +263,8 @@ struct LookAndFeel {
         float pinArrowWidth                           = 10.f;
         float linkStrength                            = 60.f;
         float newLinkThickness                        = 1.f;
-        float highlightThickness                      = 2.f; // drop target outline, pending connection line
+        float highlightThickness                      = 2.f;  // drop target outline, pending connection line
+        float filterButtonOverhang                    = .25f; // fraction of the filter button outside the node, on each axis
         float uiControlBlockDragHandleBorderThickness = 3.f;
         float uiControlRegionBorderThickness          = 2.f;
         float uiControlNotchLengthInwards             = 5.f;
@@ -268,7 +274,6 @@ struct LookAndFeel {
         float controlsBarHeight                       = 37.f;
         float controlsBarPadding                      = 16.f;
         float nestedEditorInset                       = 16.f;
-        float controlsBarButtonAlpha                  = 1.f;
         float computeDomainTagMaxOffset               = 30.f; // from the left edge of the subgraph
         float computeDomainTagOffsetRatio             = .2f;  // of the space available for the tag
         float uiControlRegionGap                      = 16.f; // around the UI control block region and between its blocks
@@ -328,6 +333,8 @@ struct LookAndFeel {
     float                     popupMenuButtonHoverLighten             = .5f; // saturation factor
     float                     popupMenuButtonActiveDarken             = .7f; // value factor
     float                     popupMenuButtonAlpha                    = 1.f;
+    ImVec2                    buttonFramePaddingMultiplier            = {2.f, 1.f}; // buttons should multiply with ImGuiStyle::FramePadding
+    float                     appHeaderMenuToLogoGap                  = 12.f;
     float                     appHeaderRightMenuStartDegrees          = 75.f;
     float                     appHeaderRightMenuStopDegrees           = 195.f;
     float                     yesNoPopupWidth                         = 300.f;
@@ -375,14 +382,14 @@ struct LookAndFeel {
     static LookAndFeel&       mutableInstance();
     static const LookAndFeel& instance();
 
-    static std::uint8_t  getColorAlphaU8(ImVec4 Palette::*color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
-    static std::uint32_t getColorU32(ImVec4 Palette::*color) { return float4ToRGBA(instance().palette().*color); }
-    static std::uint32_t getColorU32ImGui(ImVec4 Palette::*color) {
+    static std::uint8_t  getColorAlphaU8(ImVec4 Palette::* color) { return std::clamp(static_cast<std::uint8_t>((instance().palette().*color).w * 255.f), std::uint8_t{0x00}, std::uint8_t{0xFF}); }
+    static std::uint32_t getColorU32(ImVec4 Palette::* color) { return float4ToRGBA(instance().palette().*color); }
+    static std::uint32_t getColorU32ImGui(ImVec4 Palette::* color) {
         const auto vec4 = instance().palette().*color;
         const auto rgba = float4ToRGBA(vec4);
         return rgbToImGuiABGR(rgba >> 8, static_cast<std::uint8_t>(vec4.w * 0xFF));
     }
-    static std::uint32_t getColorU32Opaque(ImVec4 Palette::*color) {
+    static std::uint32_t getColorU32Opaque(ImVec4 Palette::* color) {
         const auto vec4 = instance().palette().*color;
         return float4ToRGBA({vec4.x, vec4.y, vec4.z, 1.f}) >> 8;
     }

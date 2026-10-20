@@ -98,7 +98,7 @@ public:
 
             const float doneWidth = 100.F;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
-            if (ImGui::Button("Done", ImVec2(doneWidth, 0.F))) {
+            if (DigitizerUi::TextButton("Done", ImVec2(doneWidth, 0.F))) {
                 confirmed = true;
                 ImGui::CloseCurrentPopup();
             }
@@ -117,10 +117,15 @@ public:
 ///
 /// all coordinates here are screen space, because they are intended to be drawn after the canvas is done
 struct BlockDragConnectOverlay {
-    ImRect                clipRect;
-    ImVec2                lineStart;
-    ImVec2                lineEnd;
-    std::optional<ImRect> dropTargetOutline;
+    struct DropTargetOutline {
+        ImRect node;
+        ImRect filterButton;
+    };
+
+    ImRect                           clipRect;
+    ImVec2                           lineStart;
+    ImVec2                           lineEnd;
+    std::optional<DropTargetOutline> dropTargetOutline;
 
     void draw() const;
 };

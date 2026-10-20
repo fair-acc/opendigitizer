@@ -31,7 +31,21 @@ ImVec4 spectrumTone(SpectrumColor tone, float alpha = 1.f) {
 
 ImU32 spectrumToneU32(SpectrumColor tone, float alpha = 1.f) { return ImGui::GetColorU32(spectrumTone(tone, alpha)); } // includes the BeginDisabled() alpha
 
-SpectrumColor colorDependingOnInteraction(bool hovered, bool held, SpectrumColor idle, SpectrumColor hover, SpectrumColor press) { return (held && hovered) ? press : hovered ? hover : idle; }
+ImVec2 buttonFramePadding() { return ImGui::GetStyle().FramePadding * LookAndFeel::instance().buttonFramePaddingMultiplier; }
+
+template<typename T>
+auto colorDependingOnInteraction(bool hovered, bool held, T idle, T hover, T press) {
+    if (held && hovered) {
+        return press;
+    } else {
+        return hovered ? hover : idle;
+    }
+}
+
+ImVec4 spectrumCheckboxColor(bool hovered, bool held) {
+    return colorDependingOnInteraction(hovered, held, ImGui::GetStyleColorVec4(ImGuiCol_Button), ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    // return colorDependingOnInteraction(hovered, held, &SpectrumSchemeKeywordColors::blue500, &SpectrumSchemeKeywordColors::blue600, &SpectrumSchemeKeywordColors::blue700);
+}
 
 bool spectrumCheckbox(const char* label, bool* v) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -78,8 +92,8 @@ bool spectrumCheckbox(const char* label, bool* v) {
     const bool   mixedValue = (g.LastItemData.ItemFlags & ImGuiItemFlags_MixedValue) != 0;
     if (isVisible) {
         ImGui::RenderNavCursor(totalBoundingBox, id);
-        const ImU32 fillColor = spectrumToneU32(colorDependingOnInteraction(hovered, held, &SpectrumSchemeKeywordColors::blue500, &SpectrumSchemeKeywordColors::blue600, &SpectrumSchemeKeywordColors::blue700));
-        const ImU32 markColor = spectrumToneU32(&SpectrumSchemeKeywordColors::gray50);
+        const ImU32 fillColor = ImGui::GetColorU32((spectrumCheckboxColor(hovered, held)));
+        const ImU32 markColor = ImGui::GetColorU32(ButtonContentsColor());
         if (mixedValue) {
             window->DrawList->AddRectFilled(boxBoundingBox.Min, boxBoundingBox.Max, fillColor, kSpectrumCheckboxRounding);
             const float pad = ImMax(1.f, IM_TRUNC(squareSize / 3.6f));
@@ -133,7 +147,7 @@ bool spectrumArrowButton(const char* strId, ImGuiDir dir) {
     ImGui::RenderNavCursor(bb, id);
     ImGui::RenderFrame(bb.Min, bb.Max, backgroundColor, true, g.Style.FrameRounding);
     const float arrowInset = ImMax(0.f, (size - g.FontSize) * 0.5f);
-    ImGui::RenderArrow(window->DrawList, bb.Min + ImVec2(arrowInset, arrowInset), ImGui::GetColorU32(ImGuiCol_Text), dir, 1.f);
+    ImGui::RenderArrow(window->DrawList, bb.Min + ImVec2(arrowInset, arrowInset), ImGui::GetColorU32(ButtonContentsColor()), dir, 1.f);
 
     IMGUI_TEST_ENGINE_ITEM_INFO(id, strId, g.LastItemData.StatusFlags);
     return pressed;
@@ -191,6 +205,46 @@ bool TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     case LookAndFeel::Theme::Advanced: return spectrumTreeNodeEx(label, flags);
     }
     std::unreachable();
+}
+
+ImVec4 ButtonContentsColor() { return LookAndFeel::instance().palette().buttonContents.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)); }
+
+bool Button(const char* label, const ImVec2& size) {
+    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+    return ImGui::Button(label, size);
+}
+
+bool SmallButton(const char* label) {
+    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+    return ImGui::SmallButton(label);
+}
+
+bool TextButton(const char* label, const ImVec2& size) {
+    IMW::StyleVar   framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
+    IMW::StyleColor text(ImGuiCol_Text, ButtonContentsColor());
+    return ImGui::Button(label, size);
+}
+
+ImVec2 CalcButtonSize(const char* label) {
+    IMW::StyleVar framePadding(ImGuiStyleVar_FramePadding, buttonFramePadding());
+    return IMW::CalcButtonSize(label);
+}
+
+ImVec4 SelectableBackgroundColor(bool selected, bool hovered, bool held) {
+    if (selected && LookAndFeel::instance().theme == LookAndFeel::Theme::Advanced) {
+        return spectrumCheckboxColor(hovered, held);
+    }
+    return ImGui::GetStyleColorVec4((held && hovered) ? ImGuiCol_HeaderActive : hovered ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
+}
+
+ImVec4 SelectableTextColor(bool selected) { return selected ? ButtonContentsColor() : ImGui::GetStyleColorVec4(ImGuiCol_Text); }
+
+bool Selectable(const char* label, bool selected, ImGuiSelectableFlags flags, const ImVec2& size) {
+    IMW::StyleColor idle(ImGuiCol_Header, SelectableBackgroundColor(selected, false, false));
+    IMW::StyleColor hovered(ImGuiCol_HeaderHovered, SelectableBackgroundColor(selected, true, false));
+    IMW::StyleColor held(ImGuiCol_HeaderActive, SelectableBackgroundColor(selected, true, true));
+    IMW::StyleColor text(ImGuiCol_Text, SelectableTextColor(selected));
+    return ImGui::Selectable(label, selected, flags, size);
 }
 
 } // namespace DigitizerUi

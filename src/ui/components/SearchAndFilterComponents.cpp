@@ -43,7 +43,7 @@ void drawVerticallyCenteredText(const char* label, float lineHeight) {
 
     IMW::Disabled disabled(!enabled);
     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-    const bool pressed = ImGui::Button(kIconPlus, squareButtonSize);
+    const bool pressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
     ImGui::PopFont();
     return pressed;
 }
@@ -113,12 +113,12 @@ std::optional<DateFilterRow::Committed> DateFilterRow::draw(const char* strId, c
     drawRowLabel(rowLabel);
 
     ImGui::SetNextItemWidth(calcFilterDateComboWidth());
-    if (auto combo = DigitizerUi::Combo(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(pendingDirection)], 0)) {
+    if (auto combo = DigitizerUi::ComboBox(kFilterDateComboLabel, kFilterDateLabels[static_cast<std::size_t>(pendingDirection)], 0)) {
         using enum Direction;
-        if (ImGui::Selectable(kFilterDateLabels[std::to_underlying(Before)])) {
+        if (DigitizerUi::Selectable(kFilterDateLabels[std::to_underlying(Before)])) {
             pendingDirection = Before;
         }
-        if (ImGui::Selectable(kFilterDateLabels[std::to_underlying(After)])) {
+        if (DigitizerUi::Selectable(kFilterDateLabels[std::to_underlying(After)])) {
             pendingDirection = After;
         }
     }
@@ -143,11 +143,11 @@ std::optional<bool> drawMatchAnyOrAllFiltersCombo(const char* strId, bool requir
 
     ImGui::SetNextItemWidth(IMW::CalcComboSize(strId, matchAllLabel, ImGuiComboFlags_None).preferred.x);
     bool matchAllFilters = requiresAll;
-    if (auto combo = DigitizerUi::Combo(strId, matchAllFilters ? matchAllLabel : matchAnyLabel, ImGuiComboFlags_None)) {
-        if (ImGui::Selectable(matchAllLabel)) {
+    if (auto combo = DigitizerUi::ComboBox(strId, matchAllFilters ? matchAllLabel : matchAnyLabel, ImGuiComboFlags_None)) {
+        if (DigitizerUi::Selectable(matchAllLabel)) {
             matchAllFilters = true;
         }
-        if (ImGui::Selectable(matchAnyLabel)) {
+        if (DigitizerUi::Selectable(matchAnyLabel)) {
             matchAllFilters = false;
         }
     }
@@ -170,10 +170,10 @@ std::optional<std::size_t> drawSortByCombo(const char* strId, const char* rowLab
     ImGui::SetNextItemWidth(comboWidth);
 
     std::optional<std::size_t> chosen;
-    if (auto combo = DigitizerUi::Combo(strId, options[currentIndex].label, ImGuiComboFlags_None)) {
+    if (auto combo = DigitizerUi::ComboBox(strId, options[currentIndex].label, ImGuiComboFlags_None)) {
         for (std::size_t optionIndex = 0UZ; optionIndex < options.size(); ++optionIndex) {
             IMW::Disabled disabled(!options[optionIndex].enabled);
-            if (ImGui::Selectable(options[optionIndex].label, optionIndex == currentIndex)) {
+            if (DigitizerUi::Selectable(options[optionIndex].label, optionIndex == currentIndex)) {
                 chosen = optionIndex;
             }
         }

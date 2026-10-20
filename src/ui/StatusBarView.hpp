@@ -23,7 +23,7 @@ public:
 
     void draw(GraphSession* session); // nullptr: log only
 
-    [[nodiscard]] static float height() noexcept;
+    [[nodiscard]] static float height() noexcept; // the bar and the item spacing above it, for the host to reserve
     [[nodiscard]] static bool  isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept;
 
 private:

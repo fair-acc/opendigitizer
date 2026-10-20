@@ -13,6 +13,7 @@
 #include "blocks/StatusBarBlock.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
+#include "components/StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 
@@ -57,7 +58,7 @@ std::string timeOfDay(std::uint64_t timestampNanos) {
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
 
 void StatusBarView::draw(GraphSession* session) {
-    IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2   pos       = ImGui::GetWindowPos();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
     ImGui::GetWindowDrawList()->AddLine(pos, ImVec2(pos.x + ImGui::GetWindowWidth(), pos.y), lineColor);
@@ -121,7 +122,7 @@ void StatusBarView::drawLogLine(float width) {
     const std::string label = std::format("{}###statusLine", latest ? textOf(*latest) : std::string_view{});
     {
         IMW::StyleColor colour(ImGuiCol_Text, latest ? colourOf(latest->level) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
-        if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
+        if (DigitizerUi::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
             ImGui::OpenPopup(kLogPopup);
         }
     }
@@ -152,12 +153,12 @@ void StatusBarView::drawLogPopup() {
     Records records                          = logHistory().snapshot();
     _selectedRecords.UserData                = &records;
     _selectedRecords.AdapterIndexToStorageId = selectionIdAt;
-    if (ImGui::Button("Clear")) {
+    if (DigitizerUi::TextButton("Clear")) {
         logHistory().clear();
         _selectedRecords.Clear();
     }
     ImGui::SameLine();
-    if (ImGui::Button(_selectedRecords.Size > 0 ? "Copy selected###copyLog" : "Copy all###copyLog") || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
+    if (DigitizerUi::TextButton(_selectedRecords.Size > 0 ? "Copy selected###copyLog" : "Copy all###copyLog") || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
         ImGui::SetClipboardText(selectedOrAllAsText(records).c_str());
     }
     if (const std::uint64_t dropped = logHistory().dropped(); dropped > 0U) {
@@ -179,7 +180,9 @@ void StatusBarView::drawLogPopup() {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::SetNextItemSelectionUserData(static_cast<ImGuiSelectionUserData>(index));
-        ImGui::Selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), _selectedRecords.Contains(selectionIdOf(record)), ImGuiSelectableFlags_SpanAllColumns);
+        const bool recordSelected = _selectedRecords.Contains(selectionIdOf(record));
+        DigitizerUi::Selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), recordSelected, ImGuiSelectableFlags_SpanAllColumns);
+        IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(recordSelected));
         ImGui::TableNextColumn();
         ImGui::TextColored(colourOf(record.level), "%.*s", static_cast<int>(nameOf(record.level).size()), nameOf(record.level).data());
         ImGui::TableNextColumn();

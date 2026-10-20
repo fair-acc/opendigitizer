@@ -3,6 +3,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 namespace DigitizerUi::components {
 
@@ -12,7 +13,7 @@ namespace DigitizerUi::components {
 
     IMW::StyleFloatVar alpha(ImGuiStyleVar_Alpha, revealed ? ImGui::GetStyle().Alpha : 0.F);
     ImGui::PushFont(LookAndFeel::instance().fontIcons, size.y / 2.F);
-    const bool pressed = ImGui::Button(kIconTrash, size);
+    const bool pressed = DigitizerUi::Button(kIconTrash, size);
     ImGui::PopFont();
     return pressed;
 }

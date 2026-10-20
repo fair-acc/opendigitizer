@@ -50,7 +50,9 @@ Palette classicPalette(LookAndFeel::Style style) {
     return Palette{
         .gridLines = dark ? quarterTransparentWhite : quarterTransparentBlack,
 
-        .mainWindowButtonIcon       = dark ? rgba(0xCCCCCC) : rgba(0xCCCCCC, 0x99),
+        .buttonContents = std::nullopt,
+
+        .mainWindowButtonIcon       = dark ? std::make_optional(rgba(0xCCCCCC)) : std::nullopt,
         .mainWindowButtonBgInactive = dark ? rgba(0xFFFFFF, 0x00) : rgba(0x000000, 0x00),
         .mainWindowButtonBgHovered  = dark ? rgba(0xFFFFFF, 0x20) : rgba(0x000000, 0x20),
         .mainWindowButtonBgActive   = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
@@ -92,7 +94,6 @@ Palette classicPalette(LookAndFeel::Style style) {
         .warningColor               = {1.f, .65f, 0.f, 1.f},
         .successColor               = {.2f, .75f, .2f, 1.f},
         .currentDashboardPanelBg    = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
-        .contentSeparator           = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x33),
         .clearColor                 = white,
 
         .layoutModePanel        = rgba(0x9EF7F1, overlayAlpha),
@@ -103,8 +104,9 @@ Palette classicPalette(LookAndFeel::Style style) {
         .appHeaderFAIRLogoButtonHovered = {.8f, .8f, .8f, .4f},
         .appHeaderFAIRLogoButtonActive  = {0, 0, 0, 0},
         .headerMenuButton               = rgba(0x7EBC89),
-        .devMenuIcon                    = {.8f, .8f, .8f, 1.f},
+        .devMenuIcon                    = dark ? std::make_optional(ImVec4{.8f, .8f, .8f, 1.f}) : std::nullopt,
         .devMenuButton                  = {.3f, .3f, 1.f, 1.f},
+        .popupMenuButtonIcon            = std::nullopt,
         .devMenuQuitButton              = rgba(0xFF0000),
 
         .legendButton        = {0.f, 0.f, 0.f, 0.f},
@@ -118,7 +120,7 @@ Palette classicPalette(LookAndFeel::Style style) {
         .notificationSuccess = rgba(0x00FF00),
         .notificationWarning = rgba(0xFFFF00),
         .notificationError   = rgba(0xFF0000),
-        .notificationInfo    = rgba(0x00FFFF),
+        .notificationInfo    = rgba(0x009DFF),
         .notificationDefault = white,
 
         .chartTagFishy          = rgba(0xFF00FF),
@@ -197,7 +199,13 @@ Palette spectrumPalette(LookAndFeel::Style style) {
     return Palette{
         .gridLines = rgba(c.gray400),
 
-        .mainWindowButtonIcon       = rgba(c.gray700),
+        // it would be nice to use white with a bright highlight color, but there are some limitations
+        // such as the imgui date picker which cannot use this component of our custom style, causing
+        // illegible buttons or clashing in that popup
+        // .buttonContents = white,
+        .buttonContents = std::nullopt,
+
+        .mainWindowButtonIcon       = dark ? std::make_optional(rgba(c.gray700)) : std::nullopt,
         .mainWindowButtonBgInactive = rgba(c.gray200, 0x00),
         .mainWindowButtonBgHovered  = rgba(c.gray200),
         .mainWindowButtonBgActive   = rgba(c.gray300),
@@ -212,7 +220,7 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .flowgraphSubgraphBorderText           = rgba(c.gray50),
         .flowgraphUiControlFill                = rgba(c.blue400, 0x33),
         .flowgraphUiControlHighlight           = rgba(c.blue500),
-        .flowgraphUiControlConnectionIndicator = rgba(c.gray600),
+        .flowgraphUiControlConnectionIndicator = rgba(c.gray800),
         .flowgraphUiControlPendingConnection   = rgba(c.blue500),
         .flowgraphUiControlUnlink              = rgba(c.red500),
         .flowgraphUiControlUnlinkPressed       = rgba(c.red700),
@@ -239,7 +247,6 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .warningColor               = rgba(c.orange500),
         .successColor               = rgba(c.green500),
         .currentDashboardPanelBg    = dark ? rgba(c.gray200) : rgba(c.gray50),
-        .contentSeparator           = rgba(c.gray300),
         .clearColor                 = rgba(c.gray100),
 
         .layoutModePanel        = rgba(c.blue400, 0x40),
@@ -250,10 +257,12 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .appHeaderFAIRLogoButtonHovered = rgba(c.gray200),
         .appHeaderFAIRLogoButtonActive  = {},
         .headerMenuButton               = rgba(c.blue500),
-        .devMenuIcon                    = rgba(c.gray700),
+        .devMenuIcon                    = dark ? std::make_optional(rgba(c.gray700)) : std::nullopt,
         .devMenuButton                  = rgba(c.blue500),
+        .popupMenuButtonIcon            = dark ? std::nullopt : std::make_optional(white),
         .devMenuQuitButton              = rgba(c.red500),
 
+        .legendButton        = {0, 0, 0, 0},
         .legendButtonHovered = rgba(c.gray900, 0x14),
         .legendButtonActive  = rgba(c.gray900, 0x29),
 
@@ -273,9 +282,11 @@ Palette spectrumPalette(LookAndFeel::Style style) {
 }
 
 void applySpectrumColours(ImGuiStyle& imStyle, LookAndFeel::Style style) {
-    const bool                         dark = style == LookAndFeel::Style::Dark;
-    const SpectrumSchemeKeywordColors& c    = spectrumRamp(style);
-    ImVec4*                            col  = imStyle.Colors;
+    const bool                         dark             = style == LookAndFeel::Style::Dark;
+    const SpectrumSchemeKeywordColors& c                = spectrumRamp(style);
+    ImVec4*                            col              = imStyle.Colors;
+    const ImVec4                       highlight        = rgba(c.blue400, 0x55);
+    const ImVec4                       hoveredHighlight = rgba(c.blue400, 0x88);
 
     col[ImGuiCol_Text]                      = rgba(c.gray800);
     col[ImGuiCol_TextDisabled]              = rgba(c.gray500);
@@ -296,14 +307,14 @@ void applySpectrumColours(ImGuiStyle& imStyle, LookAndFeel::Style style) {
     col[ImGuiCol_ScrollbarGrabHovered]      = rgba(c.gray600);
     col[ImGuiCol_ScrollbarGrabActive]       = rgba(c.gray700);
     col[ImGuiCol_CheckMark]                 = rgba(c.blue500);
-    col[ImGuiCol_SliderGrab]                = rgba(c.gray700);
+    col[ImGuiCol_SliderGrab]                = highlight;
     col[ImGuiCol_SliderGrabActive]          = rgba(c.gray800);
-    col[ImGuiCol_Button]                    = rgba(c.gray75);
-    col[ImGuiCol_ButtonHovered]             = rgba(c.gray50);
+    col[ImGuiCol_Button]                    = highlight;
+    col[ImGuiCol_ButtonHovered]             = hoveredHighlight;
     col[ImGuiCol_ButtonActive]              = rgba(c.gray200);
-    col[ImGuiCol_Header]                    = rgba(c.blue400, 0x26);
-    col[ImGuiCol_HeaderHovered]             = rgba(c.blue500, 0x40);
-    col[ImGuiCol_HeaderActive]              = rgba(c.blue600, 0x59);
+    col[ImGuiCol_Header]                    = highlight;
+    col[ImGuiCol_HeaderHovered]             = hoveredHighlight;
+    col[ImGuiCol_HeaderActive]              = rgba(c.gray300);
     col[ImGuiCol_Separator]                 = rgba(c.gray400);
     col[ImGuiCol_SeparatorHovered]          = rgba(c.gray600);
     col[ImGuiCol_SeparatorActive]           = rgba(c.gray700);
@@ -345,7 +356,6 @@ void applySpectrumPlotColours(ImPlotStyle& plotStyle, LookAndFeel::Style style) 
     const SpectrumSchemeKeywordColors& c   = spectrumRamp(style);
     ImVec4*                            col = plotStyle.Colors;
 
-    col[ImPlotCol_PlotBg]       = rgba(c.gray50);
     col[ImPlotCol_PlotBorder]   = rgba(c.gray300);
     col[ImPlotCol_LegendBg]     = rgba(c.gray50, 0xE6);
     col[ImPlotCol_LegendBorder] = rgba(c.gray300);
@@ -353,7 +363,7 @@ void applySpectrumPlotColours(ImPlotStyle& plotStyle, LookAndFeel::Style style) 
     col[ImPlotCol_TitleText]    = rgba(c.gray900);
     col[ImPlotCol_InlayText]    = rgba(c.gray800);
     col[ImPlotCol_AxisText]     = rgba(c.gray700);
-    col[ImPlotCol_AxisGrid]     = rgba(c.gray300);
+    col[ImPlotCol_AxisGrid]     = rgba(c.gray400);
     col[ImPlotCol_AxisTick]     = rgba(c.gray500);
     col[ImPlotCol_Selection]    = rgba(c.blue500);
     col[ImPlotCol_Crosshairs]   = rgba(c.gray800, 0x80);

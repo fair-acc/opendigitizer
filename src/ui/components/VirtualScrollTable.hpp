@@ -93,7 +93,7 @@ struct VirtualScrollTable {
                 ImGui::Dummy(ImVec2{ImGui::GetFontSize(), 0.f});
                 ImGui::SameLine();
             }
-            if (ImGui::Selectable(column.c_str())) { // instead of ImGui::TableHeader
+            if (DigitizerUi::Selectable(column.c_str())) { // instead of ImGui::TableHeader
                 clickedColumn = columnIndex;
             }
         }

@@ -65,6 +65,7 @@ private:
     void drawNewPlotModal();
     void drawBarLeading(LegendItemClickResult& clickResult) noexcept;
     void drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept;
+    void drawAddSignalButton(ImVec2 size) noexcept;
     void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
     void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
 

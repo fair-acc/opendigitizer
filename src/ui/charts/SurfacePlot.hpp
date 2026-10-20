@@ -1078,7 +1078,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
             if (DigitizerUi::BeginCombo("##scale", currentName.data())) {
                 for (std::size_t s = 0; s < kScaleNames.size(); ++s) {
-                    if (ImGui::Selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
+                    if (DigitizerUi::Selectable(kScaleNames[s], kScaleIds[s] == currentScale)) {
                         _pendingScale[ai] = kScaleIds[s];
                     }
                 }
@@ -1093,7 +1093,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::SetNextItemWidth(DigitizerUi::LookAndFeel::instance().chartStyle.menuAxisComboWidth);
             if (DigitizerUi::BeginCombo("##format", magic_enum::enum_name(_axisFormat[ai]).data())) {
                 for (auto f : magic_enum::enum_values<LabelFormat>()) {
-                    if (ImGui::Selectable(magic_enum::enum_name(f).data(), f == _axisFormat[ai])) {
+                    if (DigitizerUi::Selectable(magic_enum::enum_name(f).data(), f == _axisFormat[ai])) {
                         _axisFormat[ai] = f;
                     }
                 }
@@ -1123,7 +1123,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::SetTooltip("Auto-fit axis range");
         }
         ImGui::SameLine();
-        if (ImGui::Button("Fit once")) {
+        if (DigitizerUi::TextButton("Fit once")) {
             _needsRefit = true;
         }
         if (ImGui::IsItemHovered()) {
@@ -1148,7 +1148,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             const std::string dragId = std::format("##{}", id);
             {
                 DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button(decId.c_str())) {
+                if (DigitizerUi::Button(decId.c_str())) {
                     val -= increment;
                     assign(val);
                 }
@@ -1165,7 +1165,7 @@ struct SurfacePlot : gr::Block<SurfacePlot, gr::Drawable<gr::UICategory::Content
             ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
             {
                 DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                if (ImGui::Button(incId.c_str())) {
+                if (DigitizerUi::Button(incId.c_str())) {
                     val += increment;
                     assign(val);
                 }

@@ -3,6 +3,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -47,7 +48,7 @@ struct EditableStringList {
                 {
                     IMW::Disabled disabled(!canAddRow);
                     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-                    plusPressed = ImGui::Button(kIconPlus, squareButtonSize);
+                    plusPressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
                     ImGui::PopFont();
                 }
                 if (plusPressed || (enterPressed && canAddRow)) {
@@ -56,7 +57,7 @@ struct EditableStringList {
                 }
             } else {
                 ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-                if (ImGui::Button(kIconTrash, squareButtonSize)) {
+                if (DigitizerUi::Button(kIconTrash, squareButtonSize)) {
                     rowToDelete = row;
                 }
                 ImGui::PopFont();

@@ -186,44 +186,45 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScree
         ImGui::SetNextWindowSize({contentSize.x * (1 - horizontalSplitRatio), height});
         IMW::Window overlay("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
 
-        // These Buttons are rendered on top of the Editor, to make them properly readable, take out the transparency
-        ImVec4 buttonColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
-        buttonColor.w      = LookAndFeel::instance().flowgraph.controlsBarButtonAlpha;
-
         {
-            IMW::StyleColor buttonStyle(ImGuiCol_Button, buttonColor);
+            // These Buttons are rendered on top of the Editor, to make them properly readable, take out the transparency
+            // by blending the button colours over the canvas they are drawn on
+            const ImVec4    canvas = canvasBackgroundColor().value_or(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+            IMW::StyleColor buttonStyle(ImGuiCol_Button, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_Button), canvas));
+            IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), canvas));
+            IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive), canvas));
 
             ImGui::SetCursorPosX(padding);
 
             if (buttons.openNewBlockDialog) {
-                if (ImGui::Button("Add block...")) {
+                if (DigitizerUi::TextButton("Add block...")) {
                     result.openNewBlockDialog = true;
                 }
                 ImGui::SameLine();
             }
 
             if (buttons.openNewSubGraphDialog) {
-                if (ImGui::Button("Add sub graph...")) {
+                if (DigitizerUi::TextButton("Add sub graph...")) {
                     result.openNewSubGraphDialog = true;
                 }
                 ImGui::SameLine();
             }
 
             if (buttons.openRemoteSignalSelector) {
-                if (ImGui::Button("Add remote signal...")) {
+                if (DigitizerUi::TextButton("Add remote signal...")) {
                     result.openRemoteSignalSelector = true;
                 }
                 ImGui::SameLine();
             }
 
             auto placeButtonRight = [padding, posFromRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - padding](const char* text) mutable { //
-                float width = ImGui::CalcTextSize(text).x;
+                float width = DigitizerUi::CalcButtonSize(text).x;
 
                 ImGui::SetCursorPosX(posFromRight - width);
                 posFromRight -= width + padding;
 
                 bool clicked = false;
-                if (ImGui::Button(text)) {
+                if (DigitizerUi::TextButton(text)) {
                     clicked = true;
                 }
                 ImGui::SameLine();
@@ -349,12 +350,13 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     drawlist->AddRectFilled({bb.minX, bb.maxY}, {bb.maxX, visibleRegionMax.y}, outerColor);                         // bottom middle between the two columns
 }
 
-FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                       //
-    UiGraphBlock&                                          block,                //
-    std::span<const UiGraphPort* const>                    inputPorts,           //
-    std::span<const UiGraphPort* const>                    outputPorts,          //
-    float                                                  pinHorizontalPadding, //
-    std::optional<components::PropertyConnectionIndicator> connectionPreview     //
+FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                             //
+    UiGraphBlock&                                          block,                      //
+    std::span<const UiGraphPort* const>                    inputPorts,                 //
+    std::span<const UiGraphPort* const>                    outputPorts,                //
+    float                                                  pinHorizontalPadding,       //
+    std::optional<components::PropertyConnectionIndicator> connectionPreview,          //
+    bool                                                   isUiControlConnectionTarget //
 ) {
     const auto            blockId        = ax::NodeEditor::NodeId(std::addressof(block));
     const auto            isGroup        = block.isScheduler() || block.isGraph();
@@ -373,16 +375,33 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
 
     // Draw block title
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
+    {
+        // make sure the title does not overlap with the filter button
+        const float filterButtonWidthInsideNode = -components::nodeFilterButtonRect(ImVec2{}).Min.x;
+        const float titleRightPadding           = std::max(0.f, filterButtonWidthInsideNode - ax::NodeEditor::GetStyle().NodePadding.z) + ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::SameLine(0.f, 0.f);
+        ImGui::Dummy(ImVec2{titleRightPadding, 0.f});
+    }
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
-    // draw a filter button icon at the top right of the node area
-    const float filterButtonSideLength = ImGui::GetTextLineHeight();
-    ImGui::SameLine();
-    ImGui::Dummy(ImVec2{filterButtonSideLength, filterButtonSideLength});
-    const ImVec4 nodePadding             = ax::NodeEditor::GetStyle().NodePadding;
-    const float  nodeContentRightScreenX = std::max(ImGui::GetItemRectMax().x, blockScreenPosition.x - nodePadding.x + blockSize.x - nodePadding.z);
-    const bool   isFilter                = _filterBlock == std::addressof(block);
-    const auto   filterButton            = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), ImVec2{nodeContentRightScreenX, blockScreenPosition.y}, filterButtonSideLength, isFilter);
+    // draw a filter button over the top right corner of the node
+    const auto&  nodeEditorStyle          = ax::NodeEditor::GetStyle();
+    const ImVec2 nodeTopRight             = ImVec2{blockScreenPosition.x - nodeEditorStyle.NodePadding.x + blockSize.x, blockScreenPosition.y - nodeEditorStyle.NodePadding.y};
+    const ImVec4 filterButtonOutlineColor = [&] {
+        if (isUiControlConnectionTarget) {
+            return LookAndFeel::instance().palette().flowgraphUiControlPendingConnection;
+        }
+        if (ax::NodeEditor::IsNodeSelected(blockId)) {
+            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_SelNodeBorder];
+        }
+        if (ax::NodeEditor::GetHoveredNode() == blockId) {
+            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_HovNodeBorder];
+        }
+        return borderColor;
+    }();
+    const float filterButtonOutlineThickness = isUiControlConnectionTarget ? LookAndFeel::instance().flowgraph.highlightThickness : nodeEditorStyle.NodeBorderWidth;
+    const bool  isFilter                     = _filterBlock == std::addressof(block);
+    const auto  filterButton                 = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), components::nodeFilterButtonRect(nodeTopRight), isFilter, nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_NodeBg], filterButtonOutlineColor, filterButtonOutlineThickness);
     if (filterButton.clicked) {
         _filterBlock = isFilter ? nullptr : std::addressof(block);
     }
@@ -452,6 +471,14 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
 
     const float nodeTopScreenY = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
     const float pinAreaHeight  = pinAreaBottomScreenY - nodeTopScreenY;
+
+    // this is a fix for a weird bug which is caused by imgui adding the last seen item in a group to the measured size of the group.
+    // for flowgraph nodes with no block properties, this is the filter button, which is drawn outside the node's boundaries. this
+    // would cause the node to grow every frame to become extremely long horizontally
+    {
+        IMW::StyleVar noSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});
+        ImGui::Dummy(ImVec2{});
+    }
 
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
@@ -723,17 +750,18 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             filteredOutNodes.push_back(blockId);
         }
 
-        const bool pendingMultiSelect = multiSelectControl && isPendingMultiSelectConnection(*multiSelectControl, *multiSelectHoveredProperty, *block);
-        const auto connectionPreview  = pendingMultiSelect ? std::optional(components::PropertyConnectionIndicator{
-                                                                 .propertyName    = std::string(*multiSelectHoveredProperty),
-                                                                 .blockName       = multiSelectControl->blockName,
-                                                                 .blockUniqueName = multiSelectControl->blockUniqueName,
-                                                                 .color           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
-                                                                 .isInteractive   = false,
+        const bool pendingMultiSelect          = multiSelectControl && isPendingMultiSelectConnection(*multiSelectControl, *multiSelectHoveredProperty, *block);
+        const auto connectionPreview           = pendingMultiSelect ? std::optional(components::PropertyConnectionIndicator{
+                                                                          .propertyName    = std::string(*multiSelectHoveredProperty),
+                                                                          .blockName       = multiSelectControl->blockName,
+                                                                          .blockUniqueName = multiSelectControl->blockUniqueName,
+                                                                          .color           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
+                                                                          .isInteractive   = false,
                                                             })
-                                                           : std::nullopt;
-        const auto blockPosition      = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview);
-        const auto blockSize          = ax::NodeEditor::GetNodeSize(blockId);
+                                                                    : std::nullopt;
+        const bool isUiControlConnectionTarget = pendingMultiSelect || isCompatibleWithDragSource(*block);
+        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview, isUiControlConnectionTarget);
+        const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
         if (blockPosition.filterButtonHovered) {
             // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
@@ -783,7 +811,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         }
 
         // show rectangular highlights for blocks that would be selected by a multi-select, or *could* be selected by a drag select
-        if (pendingMultiSelect || isCompatibleWithDragSource(*block)) {
+        if (isUiControlConnectionTarget) {
             const auto nodePosition = ax::NodeEditor::GetNodePosition(blockId);
             ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.highlightThickness);
         }
@@ -971,7 +999,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
             {
                 IMW::Disabled _(exportPortTextField.empty());
-                if (ImGui::Button("OK")) {
+                if (DigitizerUi::TextButton("OK")) {
                     exportPortRequest->exportedName = exportPortTextField;
                     requestExportPort(*exportPortRequest);
 
@@ -981,7 +1009,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
+            if (DigitizerUi::TextButton("Cancel")) {
                 exportPortRequest.reset();
                 exportPortTextField.clear();
                 shouldShowExportPortPopup = false;
@@ -1694,7 +1722,7 @@ void FlowgraphPage::drawNodeEditorTab() {
 }
 
 void FlowgraphPage::drawLocalYamlTab() {
-    if (ImGui::Button("Reset") || _currentTabIsFlowGraph) {
+    if (DigitizerUi::TextButton("Reset") || _currentTabIsFlowGraph) {
         // Reload yaml whenever "Local - YAML" tab is selected
         _currentTabIsFlowGraph = false;
 
@@ -1710,7 +1738,7 @@ void FlowgraphPage::drawLocalYamlTab() {
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Apply")) {
+    if (DigitizerUi::TextButton("Apply")) {
         if (auto owner = _editors.front().ownersForRoot()) {
             gr::Message message;
             message.cmd         = gr::message::Command::Set;
@@ -1727,11 +1755,11 @@ void FlowgraphPage::drawLocalYamlTab() {
 void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
     std::string tabTitle = "Remote YAML for " + service.name;
     if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
-        if (ImGui::Button("Reload from service")) {
+        if (DigitizerUi::TextButton("Reload from service")) {
             service.reload();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Execute on service")) {
+        if (DigitizerUi::TextButton("Execute on service")) {
             service.execute();
         }
 
@@ -1739,7 +1767,7 @@ void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
         // once we have a proper server-side graph editor
         // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
         ImGui::SameLine();
-        if (ImGui::Button("Create a block")) {
+        if (DigitizerUi::TextButton("Create a block")) {
             service.emplaceBlock("gr::basic::DataSink", "float");
         }
         // }

@@ -106,14 +106,14 @@ struct WidgetSize {
 ImVec2 CalcButtonSize(const char* label);
 
 /// Calculates how big a series of buttons will be if they are all drawn on the
-/// same line
+/// same line, calcButtonSize gives the size of one of them
 template<std::size_t N>
 requires(N > 0)
-inline ImVec2 CalcAdjacentButtonSizes(const std::array<const char*, N>& labels) {
+inline ImVec2 CalcAdjacentButtonSizes(const std::array<const char*, N>& labels, ImVec2 (*calcButtonSize)(const char*) = CalcButtonSize) {
     ImVec2     total{};
     const auto spacing = ImGui::GetStyle().ItemSpacing.x;
     for (std::size_t i = 0; i < N; ++i) {
-        auto size = CalcButtonSize(labels[i]);
+        auto size = calcButtonSize(labels[i]);
         total.x += size.x + (i > 0 ? spacing : 0.f);
         total.y = std::max(total.y, size.y);
     }

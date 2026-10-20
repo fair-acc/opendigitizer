@@ -6,6 +6,7 @@
 
 #include <gnuradio-4.0/Block.hpp>
 
+#include "../components/StyledStandardWidgets.hpp"
 #include "ImControl.hpp"
 
 namespace DigitizerUi {
@@ -30,7 +31,7 @@ struct ImControlTrigger : ImControl<ImControlTrigger> {
 
         drawWithLabelAndTooltip(layout, [this, buttonSize](float) {
             LabelAndFont labelAndFont(*this);
-            if (ImGui::Button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
+            if (DigitizerUi::Button(labelAndFont.selectedLabel().c_str(), buttonSize)) {
                 sendToTargets(true);
             }
         });

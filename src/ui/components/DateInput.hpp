@@ -3,6 +3,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 #include <ImGuiDatePicker.hpp>
 
@@ -25,7 +26,7 @@ constexpr const char* kExampleDate = "00/00/0000";
     const ImVec2          squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f); // TODO: use FontWithSize when rebased on branch that added it
-    const bool result = ImGui::Button(kIconCalendar, squareButtonSize);
+    const bool result = DigitizerUi::Button(kIconCalendar, squareButtonSize);
     ImGui::PopFont();
     return result;
 }

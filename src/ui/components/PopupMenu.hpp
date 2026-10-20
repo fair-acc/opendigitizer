@@ -17,16 +17,16 @@ namespace DigitizerUi {
 
 struct MenuButton {
     using CallbackFun = std::variant<std::function<void()>, std::function<void(MenuButton&)>>;
-    std::string   label;
-    std::string   optionalLabel;
-    mutable float _size;
-    CallbackFun   onClick;
-    ImFont*       font = nullptr;
-    std::string   toolTip;
-    bool          isTransparent = false;
-    bool          isNewRow      = false;
-    float         padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
-    ImVec4        buttonColor   = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+    std::string           label;
+    mutable float         _size;
+    CallbackFun           onClick;
+    ImFont*               font = nullptr;
+    std::string           toolTip;
+    bool                  isTransparent = false;
+    bool                  isNewRow      = false;
+    float                 padding       = std::max(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y);
+    std::optional<ImVec4> buttonColor   = std::nullopt; // by default it is an opaque version of the ImGui button color
+    std::optional<ImVec4> iconColor     = std::nullopt; // by default is whatever ImGuiCol_Text is
 
     [[nodiscard]] float size() const {
         IMW::Font    _(font);
@@ -43,6 +43,7 @@ struct MenuButton {
         {
             const float        actualButtonSize = size();
             IMW::Font          _(font);
+            IMW::StyleColor    iconStyle(ImGuiCol_Text, iconColor.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
             IMW::StyleFloatVar frameStyle(ImGuiStyleVar_FrameRounding, buttonRounding < 0 ? LookAndFeel::instance().popupMenuRadialButtonRoundingPercentage * actualButtonSize : buttonRounding);
 
             struct ButtonStyle {
@@ -52,17 +53,20 @@ struct MenuButton {
             };
 
             auto styles = [&]() -> std::optional<ButtonStyle> {
-                if (!isTransparent) {
-                    ImVec4 buttonColorHover  = lightenColor(buttonColor, LookAndFeel::instance().popupMenuButtonHoverLighten);
-                    ImVec4 buttonColorActive = darkenColor(buttonColor, LookAndFeel::instance().popupMenuButtonActiveDarken);
-                    buttonColor.w            = LookAndFeel::instance().popupMenuButtonAlpha;
-                    buttonColorHover.w       = LookAndFeel::instance().popupMenuButtonAlpha;
-                    buttonColorActive.w      = LookAndFeel::instance().popupMenuButtonAlpha;
-
-                    return std::make_optional<ButtonStyle>(buttonColor, buttonColorHover, buttonColorActive);
-                } else {
+                if (isTransparent) {
                     return std::nullopt;
                 }
+                if (!buttonColor) {
+                    const ImVec4 windowBg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+                    return std::make_optional<ButtonStyle>(overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_Button), windowBg), overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), windowBg), overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive), windowBg));
+                }
+                ImVec4 buttonColorNormal = *buttonColor;
+                ImVec4 buttonColorHover  = lightenColor(buttonColorNormal, LookAndFeel::instance().popupMenuButtonHoverLighten);
+                ImVec4 buttonColorActive = darkenColor(buttonColorNormal, LookAndFeel::instance().popupMenuButtonActiveDarken);
+                buttonColorNormal.w      = LookAndFeel::instance().popupMenuButtonAlpha;
+                buttonColorHover.w       = LookAndFeel::instance().popupMenuButtonAlpha;
+                buttonColorActive.w      = LookAndFeel::instance().popupMenuButtonAlpha;
+                return std::make_optional<ButtonStyle>(buttonColorNormal, buttonColorHover, buttonColorActive);
             }();
 
             if (ImGui::Button(label.c_str(), ImVec2{actualButtonSize, actualButtonSize})) {
@@ -147,13 +151,15 @@ class PopupMenu {
                 ImGui::SetNextWindowSize(ImVec2(requiredPopupSize, requiredPopupSize));
                 ImGui::SetNextWindowPos(ImVec2(popupCenter.x - .5f * requiredPopupSize / 2, popupCenter.y - .5f * requiredPopupSize));
             } else {
-                const ImVec2 size{buttonSize, static_cast<float>(_buttons.size() + 1UL) * (buttonSize + ImGui::GetStyle().ItemSpacing.y)};
+                const ImVec2 size{std::max(_itemBoundaryBox.GetWidth(), buttonSize), _itemBoundaryBox.GetHeight() + static_cast<float>(_buttons.size()) * (buttonSize + _padding)};
                 const ImVec2 pos = _itemBoundaryBox.GetTL();
                 ImGui::SetNextWindowSize(size);
                 ImGui::SetNextWindowPos(pos);
                 out.wasHovered = ImGui::IsMouseHoveringRect(pos, pos + size);
             }
 
+            // window clip region is inset by padding so it cuts off the buttons a bit
+            IMW::StyleVar noClipInset(ImGuiStyleVar_WindowPadding, ImVec2{});
             if (auto popup = IMW::Window(_popupId.c_str(), nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing)) {
                 ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
                 if constexpr (menuType == MenuType::Radial) {
@@ -172,29 +178,27 @@ public:
 
     explicit PopupMenu(ImVec2 menuSize = {100, 100}, float startAngle = 0.f, float stopAngle = 360.f, float extraRadius = 0.f, float animationSpeed = LookAndFeel::instance().popupMenuAnimationLengthSeconds, float timeOut = LookAndFeel::instance().popupMenuMouseoutCloseDelaySeconds) : _menuSize(menuSize), _startAngle(startAngle), _stopAngle(stopAngle), _extraRadius(extraRadius), _animationSpeed(animationSpeed), _timeOut(timeOut) { updateAndDraw(); }
 
+    // calculate size returned by addButton() for a single icon button in the given font
+    [[nodiscard]] static float calcAddButtonIconButtonSize(ImFont* font) { return font->LegacySize + 2.f * ImGui::GetStyle().WindowPadding.x; }
+
     template<bool transparent = false, bool newRow = false>
     void addButton(std::string label, auto onClick, float buttonSize = -1.f, std::string toolTip = "") {
         if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
             return;
         }
         updateElementCoordinate();
-        _buttons.emplace_back(label, "", buttonSize, std::move(onClick), nullptr, std::move(toolTip), transparent, newRow);
+        _buttons.push_back(MenuButton{.label = std::move(label), ._size = buttonSize, .onClick = std::move(onClick), .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow});
         _isOpen = true;
     }
 
     template<bool transparent = false, bool newRow = false>
-    void addButton(std::string label, auto onClick, ImFont* font, std::string toolTip = "") {
+    void addButton(std::string label, auto onClick, ImFont* font, std::string toolTip = "", std::optional<ImVec4> buttonColor = std::nullopt, std::optional<ImVec4> iconColor = std::nullopt) {
         if (_animationProgress > 0.f) { // we do not allow to add buttons when the popup is already open or animating
             return;
         }
         updateElementCoordinate();
-        float buttonSize = 0.f;
-        if (font == nullptr) {
-            buttonSize = ImGui::CalcTextSize(label.c_str()).y + 2.f * _padding;
-        } else {
-            buttonSize = font->LegacySize + 2.f * _padding;
-        }
-        _buttons.emplace_back(label, "", buttonSize, std::move(onClick), font, std::move(toolTip), transparent, newRow);
+        const float buttonSize = font == nullptr ? ImGui::CalcTextSize(label.c_str()).y + 2.f * _padding : calcAddButtonIconButtonSize(font);
+        _buttons.push_back(MenuButton{.label = std::move(label), ._size = buttonSize, .onClick = std::move(onClick), .font = font, .toolTip = std::move(toolTip), .isTransparent = transparent, .isNewRow = newRow, .buttonColor = buttonColor, .iconColor = iconColor});
         _isOpen = true;
     }
 
@@ -312,7 +316,7 @@ private:
             drawButton(button);
             ++nRows;
 
-            posBeneathMenu.y += buttonSize + button.padding;
+            posBeneathMenu.y += buttonSize + _padding;
         }
         return nRows;
     }

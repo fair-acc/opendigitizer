@@ -14,6 +14,7 @@
 
 #include "components/ImGuiNotify.hpp"
 #include "components/Splitter.hpp"
+#include "components/StyledStandardWidgets.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "blocks/ImPlotSink.hpp"
@@ -27,7 +28,7 @@ namespace DigitizerUi {
 bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSize) noexcept {
     const bool ret = [&] {
         IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
-        IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
+        IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
         IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().mainWindowButtonBgActive);
         IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().mainWindowButtonBgHovered);
         IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
@@ -237,23 +238,37 @@ void DashboardPage::drawBarLeading(LegendItemClickResult& clickResult) noexcept 
     ImGui::SameLine();
 }
 
+void DashboardPage::drawAddSignalButton(ImVec2 size) noexcept {
+    const bool clicked = [&] {
+        const Palette&    palette = LookAndFeel::instance().palette();
+        IMW::StyleColor   buttonStyle(ImGuiCol_Button, palette.mainWindowButtonBgInactive);
+        IMW::StyleColor   textStyle(ImGuiCol_Text, palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
+        IMW::StyleColor   buttonActiveStyle(ImGuiCol_ButtonActive, palette.mainWindowButtonBgActive);
+        IMW::StyleColor   buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
+        IMW::StyleVar     noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
+        IMW::FontWithSize font(LookAndFeel::instance().fontIconsSolid, LookAndFeel::instance().dashboardStyle.legendAddButtonIconScale * size.y);
+        return ImGui::Button("\u{F067}##addSignal", size);
+    }();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("add signal");
+    }
+    if (!clicked) {
+        return;
+    }
+    try {
+        if (!_remoteSignalSelector) {
+            _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->session.graphModel);
+        }
+        _remoteSignalSelector->open();
+    } catch (const std::exception& error) {
+        components::Notification::error(std::format("Failed to open signal selector: {}", error.what()));
+    }
+}
+
 void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept {
     const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
 
     if (mode == Mode::Interaction && _dashboard) {
-        ImGui::SameLine();
-        if (plotSquareIconButton("\u{F067}", "add signal", plotButtonSize)) {
-            // 'plus' button in the global legend, adds a new signal to the dashboard
-            try {
-                if (!_remoteSignalSelector) {
-                    _remoteSignalSelector = std::make_unique<SignalSelector>(_dashboard->session.graphModel);
-                }
-                _remoteSignalSelector->open();
-            } catch (const std::exception& error) {
-                components::Notification::error(std::format("Failed to open signal selector: {}", error.what()));
-            }
-        }
-
         if (_remoteSignalSelector) {
             for (const auto& selectedRemoteSignal : _remoteSignalSelector->drawAndReturnSelected()) {
                 this->addSelectedRemoteSignal(selectedRemoteSignal);
@@ -342,6 +357,9 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
         options.barCentre = [&] { drawToolbarLayoutButtons(plotButtonSize); };
     }
     options.barTrailing = [&] { drawBarTrailing(mode, legendClickResult); };
+    if (mode == Mode::Interaction) {
+        options.callbackAfterAllLegendItemsDrawn = [this](ImVec2 buttonSize) { drawAddSignalButton(buttonSize); };
+    }
 
     const auto viewResult = _view.draw(*_dashboard, mode, options);
     if (viewResult.backgroundClicked) {
@@ -425,13 +443,13 @@ void DashboardPage::drawNewPlotModal() {
 
         auto chartTypes = opendigitizer::charts::registeredChartTypes();
         for (const auto& type : chartTypes) {
-            if (ImGui::Selectable(type.c_str())) {
+            if (DigitizerUi::Selectable(type.c_str())) {
                 newUIBlock(type, _sinkForNewPlot);
             }
         }
 
         ImGui::Separator();
-        if (ImGui::Button("Cancel", ImVec2(ImGui::GetWindowSize().x - (ImGui::GetStyle().WindowPadding.x * 2.f), 0))) {
+        if (DigitizerUi::TextButton("Cancel", ImVec2(ImGui::GetWindowSize().x - (ImGui::GetStyle().WindowPadding.x * 2.f), 0))) {
             ImGui::CloseCurrentPopup();
         }
     }

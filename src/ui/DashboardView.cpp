@@ -1,6 +1,7 @@
 #include "DashboardView.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
@@ -17,7 +18,10 @@ void alignForWidth(float width, float alignment) noexcept {
     const float avail  = ImGui::GetContentRegionAvail().x;
     const float offset = (avail - width) * alignment;
     if (offset > 0.0f) {
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+        // whole pixels, like ImGui's own line starts, otherwise the measured width of the aligned items changes with
+        // the fractional start, which moves the start again in the next frame
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(ImVec2{std::floor(cursor.x + offset), cursor.y});
     }
 }
 
@@ -190,7 +194,7 @@ void DashboardView::drawLegendColumn(Mode mode, float height, const Options& opt
         ImGui::NewLine();
     }
     _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, 1.f);
+    const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, 1.f, 0.f, options.callbackAfterAllLegendItemsDrawn);
     if (mode == Mode::Interaction) {
         result.rightClickedSinkName = std::string(rightClickedSinkName);
     }
@@ -207,13 +211,16 @@ void DashboardView::drawBar(Mode mode, ImVec2 chartPaneSize, const Options& opti
         options.barLeading();
     }
 
-    alignForWidth(std::max(10.f, _legendBox.x), 0.5f);
+    // centred on the dashboard view, not on the space left after the leading items
+    const float  viewCentreX = ImGui::GetWindowPos().x + (ImGui::GetWindowWidth() / 2.f);
+    const ImVec2 cursor      = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(ImVec2{std::max(cursor.x, std::floor(viewCentreX - (_legendBox.x / 2.f))), cursor.y});
     if (options.barCentre) {
         options.barCentre();
         _legendBox = ImGui::GetItemRectSize();
     } else {
         _signalLegend.setDragDropEnabled(mode == Mode::Interaction);
-        const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, chartPaneSize.x);
+        const auto rightClickedSinkName = _signalLegend.draw(_dashboard->session.graphModel, chartPaneSize.x, LookAndFeel::instance().mainWindowIconButtonSize(), options.callbackAfterAllLegendItemsDrawn);
         if (mode == Mode::Interaction) {
             result.rightClickedSinkName = std::string(rightClickedSinkName);
         }

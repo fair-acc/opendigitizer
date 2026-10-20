@@ -34,9 +34,9 @@ struct ImControlChoice : ImControl<ImControlChoice> {
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
             IMW::Disabled nothingToChooseOrCannotOpen(parsedConfig.aggregateControlledPropertyHints.choices.empty() || insideNodeEditor);
             ImGui::SetNextItemWidth(width);
-            if (auto combo = DigitizerUi::Combo(id.c_str(), value.c_str(), 0)) {
+            if (auto combo = DigitizerUi::ComboBox(id.c_str(), value.c_str(), 0)) {
                 for (const std::string& choice : parsedConfig.aggregateControlledPropertyHints.choices) {
-                    if (ImGui::Selectable(choice.c_str(), choice == value)) {
+                    if (DigitizerUi::Selectable(choice.c_str(), choice == value)) {
                         value       = choice;
                         std::ignore = settings().setStaged({{"value", value}});
                         sendToTargets(value);

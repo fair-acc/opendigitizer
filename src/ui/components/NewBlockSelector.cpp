@@ -32,7 +32,7 @@ struct Symbol {
         const auto* window = ImGui::GetCurrentWindow();
 
         const bool wasSelected = fullSymbolName == currentlySelected;
-        if (ImGui::Selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
+        if (DigitizerUi::Selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
             selected = true;
         }
 
@@ -149,20 +149,20 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
     constexpr const char* foldButtonText   = "Fold all";
     constexpr const char* unfoldButtonText = "Unfold all";
     const auto            originalCursorX  = ImGui::GetCursorPosX();
-    const auto            buttonStart      = ImGui::GetContentRegionAvail().x - (IMW::CalcAdjacentButtonSizes(std::array{clearButtonText, foldButtonText, unfoldButtonText})).x;
+    const auto            buttonStart      = ImGui::GetContentRegionAvail().x - (IMW::CalcAdjacentButtonSizes(std::array{clearButtonText, foldButtonText, unfoldButtonText}, DigitizerUi::CalcButtonSize)).x;
     bool                  scrollToSelected = false;
     ImGui::SetCursorPosX(buttonStart);
-    if (ImGui::Button(clearButtonText)) {
+    if (DigitizerUi::TextButton(clearButtonText)) {
         m_blockFilter.clear();
         scrollToSelected = true; // more things are visible now that there is no filter
     }
     std::optional<bool> newUnfoldedValue;
     ImGui::SameLine();
-    if (ImGui::Button(foldButtonText)) {
+    if (DigitizerUi::TextButton(foldButtonText)) {
         newUnfoldedValue = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button(unfoldButtonText)) {
+    if (DigitizerUi::TextButton(unfoldButtonText)) {
         newUnfoldedValue = true;
     }
     ImGui::SameLine();

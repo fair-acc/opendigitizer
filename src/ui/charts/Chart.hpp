@@ -1670,7 +1670,7 @@ struct Chart {
             ImGui::SetNextItemWidth(w);
             if (DigitizerUi::BeginCombo(comboId, magic_enum::enum_name(current).data())) {
                 for (auto e : magic_enum::enum_values<E>()) {
-                    if (ImGui::Selectable(magic_enum::enum_name(e).data(), e == current)) {
+                    if (DigitizerUi::Selectable(magic_enum::enum_name(e).data(), e == current)) {
                         setter(e);
                     }
                     if (e == current) {
@@ -1740,7 +1740,7 @@ struct Chart {
                     ImGui::SetTooltip("Auto-fit axis range");
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Fit once")) {
+                if (DigitizerUi::TextButton("Fit once")) {
                     self.requestAxisFit(axis, axisIndex);
                 }
                 if (ImGui::IsItemHovered()) {
@@ -1764,7 +1764,7 @@ struct Chart {
                     const std::string dragId = std::format("##{}", id);
                     {
                         DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                        if (ImGui::Button(decId.c_str())) {
+                        if (DigitizerUi::Button(decId.c_str())) {
                             val -= increment;
                             assign(val);
                         }
@@ -1781,7 +1781,7 @@ struct Chart {
                     ImGui::SameLine(0.0f, DigitizerUi::LookAndFeel::instance().chartStyle.menuSpinnerSpacing);
                     {
                         DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-                        if (ImGui::Button(incId.c_str())) {
+                        if (DigitizerUi::Button(incId.c_str())) {
                             val += increment;
                             assign(val);
                         }
@@ -1868,7 +1868,7 @@ struct Chart {
         // decrease button
         {
             DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (ImGui::Button("\uf146##depthDec")) { // minus-square
+            if (DigitizerUi::Button("\u{f146}##depthDec")) { // minus-square
                 double step    = std::max(self._historyDisplayUnit == HistoryUnit::seconds ? 0.1 : 100.0, displayValue * 0.1);
                 displayValue   = std::max(displayValue - step, self._historyDisplayUnit == HistoryUnit::seconds ? 0.001 : static_cast<double>(kMinSamples));
                 self.n_history = toSamples(displayValue);
@@ -1897,7 +1897,7 @@ struct Chart {
         // increase button
         {
             DigitizerUi::IMW::Font iconFont(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
-            if (ImGui::Button("\uf0fe##depthInc")) { // plus-square
+            if (DigitizerUi::Button("\u{f0fe}##depthInc")) { // plus-square
                 double step    = std::max(self._historyDisplayUnit == HistoryUnit::seconds ? 0.1 : 100.0, displayValue * 0.1);
                 displayValue   = displayValue + step;
                 self.n_history = toSamples(displayValue);
@@ -1918,7 +1918,7 @@ struct Chart {
                 if (!enabled) {
                     ImGui::BeginDisabled();
                 }
-                if (ImGui::Selectable(magic_enum::enum_name(unit).data(), selected)) {
+                if (DigitizerUi::Selectable(magic_enum::enum_name(unit).data(), selected)) {
                     self._historyDisplayUnit = unit; // just change display, n_history stays unchanged
                 }
                 if (selected) {
@@ -2384,7 +2384,7 @@ struct Chart {
                 for (int i = 0; i < ImPlot::GetColormapCount(); ++i) {
                     bool   selected = (i == current);
                     ImVec2 pos      = ImGui::GetCursorScreenPos();
-                    if (ImGui::Selectable(std::format("##{}", i).c_str(), selected, 0, ImVec2(gradientWidth, lineHeight))) {
+                    if (DigitizerUi::Selectable(std::format("##{}", i).c_str(), selected, 0, ImVec2(gradientWidth, lineHeight))) {
                         field = static_cast<ImPlotColormap_>(i);
                     }
                     auto*       drawList = ImGui::GetWindowDrawList();
@@ -2411,7 +2411,7 @@ struct Chart {
             if (DigitizerUi::BeginCombo(label.c_str(), magic_enum::enum_name(current).data())) {
                 for (auto e : magic_enum::enum_values<ValueType>()) {
                     bool selected = (e == current);
-                    if (ImGui::Selectable(magic_enum::enum_name(e).data(), selected)) {
+                    if (DigitizerUi::Selectable(magic_enum::enum_name(e).data(), selected)) {
                         field = e;
                     }
                     if (selected) {

@@ -12,6 +12,7 @@
 #include <imgui_node_editor.h>
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 struct TestState;
@@ -181,6 +182,13 @@ public:
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
 
+    [[nodiscard]] static std::optional<ImVec4> canvasBackgroundColor() {
+        if (!LookAndFeel::instance().flowgraph.canvasBackground) {
+            return std::nullopt; // transparent, let caller default to whatever is behind the canvas
+        }
+        return LookAndFeel::instance().palette().flowgraphBg;
+    }
+
     void updateStyle() {
         makeCurrent();
 
@@ -195,7 +203,7 @@ public:
         style.LinkStrength    = flowgraphLookAndFeel.linkStrength;
 
         using enum ax::NodeEditor::StyleColor;
-        style.Colors[StyleColor_Bg]                  = flowgraphLookAndFeel.canvasBackground ? palette.flowgraphBg : ImVec4{};
+        style.Colors[StyleColor_Bg]                  = canvasBackgroundColor().value_or(ImVec4{});
         style.Colors[StyleColor_Grid]                = flowgraphLookAndFeel.canvasGrid ? palette.flowgraphGrid : ImVec4{};
         style.Colors[StyleColor_NodeBg]              = palette.flowgraphNodeBg;
         style.Colors[StyleColor_NodeBorder]          = palette.flowgraphNodeBorder;
@@ -238,7 +246,8 @@ public:
         std::span<const UiGraphPort* const>                    inputPorts,           //
         std::span<const UiGraphPort* const>                    outputPorts,          //
         float                                                  pinHorizontalPadding, //
-        std::optional<components::PropertyConnectionIndicator> connectionPreview);
+        std::optional<components::PropertyConnectionIndicator> connectionPreview,    //
+        bool                                                   isUiControlConnectionTarget);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 

@@ -78,7 +78,9 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
         const auto iconColor = LookAndFeel::getColorU32ImGui(notch.held ? &Palette::flowgraphUiControlUnlinkPressed : &Palette::flowgraphUiControlUnlink);
         fgDrawList->AddText(iconFont, iconFontSize, ImVec2{blockLeft, centerY} - (iconSize / 2.F), iconColor, unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
     } else {
-        fgDrawList->AddLine(ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY}, color);
+        // the outside label text and the inside label text may be different colors so we can draw a nice gradient between them on the notch to make it less noticable
+        const ImU32 insideColor = ImGui::GetColorU32(ImGuiCol_Text);
+        fgDrawList->AddRectFilledMultiColor(ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY - .5F}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY + .5F}, color, insideColor, insideColor, color);
     }
     fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     return result;
@@ -109,19 +111,33 @@ void BlockDragConnectOverlay::draw() const {
     drawList->PushClipRect(clipRect.Min, clipRect.Max, true);
     drawList->AddLine(lineStart, lineEnd, lineColor, thickness);
     if (dropTargetOutline) {
-        drawList->AddRect(dropTargetOutline->Min, dropTargetOutline->Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
+        const ImRect& node                     = dropTargetOutline->node;
+        const ImRect& filterButton             = dropTargetOutline->filterButton;
+        const auto    drawNodeOutlineClippedTo = [&](ImVec2 clipMin, ImVec2 clipMax) {
+            drawList->PushClipRect(clipMin, clipMax, true);
+            drawList->AddRect(node.Min, node.Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
+            drawList->PopClipRect();
+        };
+        drawNodeOutlineClippedTo(clipRect.Min, ImVec2{filterButton.Min.x, clipRect.Max.y});
+        drawNodeOutlineClippedTo(ImVec2{filterButton.Min.x, filterButton.Max.y}, clipRect.Max);
+        drawList->AddRect(filterButton.Min, filterButton.Max, lineColor, ImGui::GetStyle().FrameRounding, ImDrawFlags_None, 2.F * thickness);
     }
     drawList->PopClipRect();
 }
 
 BlockDragConnectOverlay BlockDragConnectInteraction::createOverlayDescription(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) const {
-    const ImDrawList*     canvasDrawList = ImGui::GetWindowDrawList();
-    const UiGraphBlock*   dropTarget     = blockUnderMouse(drawnBlocks);
-    std::optional<ImRect> dropTargetOutline;
+    const ImDrawList*                                         canvasDrawList = ImGui::GetWindowDrawList();
+    const UiGraphBlock*                                       dropTarget     = blockUnderMouse(drawnBlocks);
+    std::optional<BlockDragConnectOverlay::DropTargetOutline> dropTargetOutline;
     if (dropTarget && isCompatibleDropTarget(*dropTarget)) {
-        const auto   nodeId   = ax::NodeEditor::NodeId(dropTarget);
-        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
-        dropTargetOutline     = ImRect(ax::NodeEditor::CanvasToScreen(position), ax::NodeEditor::CanvasToScreen(position + ax::NodeEditor::GetNodeSize(nodeId)));
+        const auto   nodeId       = ax::NodeEditor::NodeId(dropTarget);
+        const ImVec2 position     = ax::NodeEditor::GetNodePosition(nodeId);
+        const ImVec2 size         = ax::NodeEditor::GetNodeSize(nodeId);
+        const ImRect filterButton = components::nodeFilterButtonRect(position + ImVec2{size.x, 0.F});
+        dropTargetOutline         = BlockDragConnectOverlay::DropTargetOutline{
+                    .node         = ImRect(ax::NodeEditor::CanvasToScreen(position), ax::NodeEditor::CanvasToScreen(position + size)),
+                    .filterButton = ImRect(ax::NodeEditor::CanvasToScreen(filterButton.Min), ax::NodeEditor::CanvasToScreen(filterButton.Max)),
+        };
     }
     return BlockDragConnectOverlay{
         .clipRect          = ImRect(ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMin()), ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMax())),

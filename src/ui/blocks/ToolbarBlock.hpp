@@ -10,6 +10,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 namespace play_stop {
@@ -162,13 +163,13 @@ private:
             default: return "Error";
             }
         };
-        const float actualButtonSize = LookAndFeel::instance().dashboardStyle.toolbarBlockButtonSize;
+        const float actualButtonSize = ImGui::GetFrameHeight();
         {
             const bool                  disabled = this->isStateDisabled(buttonType);
             IMW::Disabled               _(disabled);
             IMW::Font                   font(DigitizerUi::LookAndFeel::instance().fontIconsSolid);
             IMW::StyleFloatVar          style(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().dashboardStyle.toolbarBlockButtonRoundingRatio * actualButtonSize);
-            [[maybe_unused]] const bool clicked = ImGui::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
+            [[maybe_unused]] const bool clicked = DigitizerUi::Button(buttonName(), ImVec2(actualButtonSize, actualButtonSize));
             ImGui::SameLine();
         }
 #if 0 // TODO port to new messaging architecture

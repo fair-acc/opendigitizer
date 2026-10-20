@@ -3,6 +3,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 #include <any>
 #include <charconv>
@@ -526,7 +527,7 @@ class InputKeypad {
         {
             ImGui::SameLine();
             IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-            if (ImGui::Button(decrementButtonIcon)) {
+            if (DigitizerUi::Button(decrementButtonIcon)) {
                 auto it = keyPad._manualyEditedIncrements.find(key);
                 if (it == keyPad._manualyEditedIncrements.end()) {
                     const double increment = computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));
@@ -543,7 +544,7 @@ class InputKeypad {
         {
             ImGui::SameLine();
             IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-            if (ImGui::Button(incrementButtonIcon)) {
+            if (DigitizerUi::Button(incrementButtonIcon)) {
                 auto it = keyPad._manualyEditedIncrements.find(key);
                 if (it == keyPad._manualyEditedIncrements.end()) {
                     const double increment = computeIncrementNonZero(std::format("{:.4f}", static_cast<double>(*value)));

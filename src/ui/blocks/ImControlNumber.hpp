@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_BLOCKS_IMCONTROLNUMBER_HPP
 
 #include "../components/Keypad.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 #include "ImControl.hpp"
 
 #include <imgui_internal.h>
@@ -173,12 +174,12 @@ private:
             ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
             const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (ImGui::Button("-", buttonSize)) {
+            if (DigitizerUi::Button("-", buttonSize)) {
                 number  = std::clamp(onStepGrid(static_cast<double>(number) - static_cast<double>(stepSize)), lower, upper);
                 changed = true;
             }
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (ImGui::Button("+", buttonSize)) {
+            if (DigitizerUi::Button("+", buttonSize)) {
                 number  = std::clamp(onStepGrid(static_cast<double>(number) + static_cast<double>(stepSize)), lower, upper);
                 changed = true;
             }

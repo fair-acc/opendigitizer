@@ -76,35 +76,35 @@ const DataTypeStyle& styleForDataType(std::string_view type) {
     };
 
     static auto styleForDataTypeLight = withDataSetColors({
-        {"float32"s, {0xffF57C00}}, //
-        {"float64"s, {0xff00BCD4}}, //
+        {"float32"s, {rgbToImGuiABGR(0xF57C00)}}, //
+        {"float64"s, {rgbToImGuiABGR(0x00BCD4)}}, //
 
-        {"int8"s, {0xffD500F9}},                  //
-        {"int16"s, {0xffFFEB3B}},                 //
-        {"int32"s, {0xff009688}},                 //
-        {"int64"s, {0xffCDDC39}},                 //
-        {"uint8"s, {0xffD500F9, true}},           //
-        {"uint16"s, {0xffFFEB3B, true}},          //
-        {"uint32"s, {0xff009688, true}},          //
-        {"uint64"s, {0xffCDDC39, true}},          //
-                                                  //
-        {"std::complex<float32>"s, {0xff2196F3}}, //
-        {"std::complex<float64>"s, {0xff795548}}, //
-                                                  //
-        {"std::complex<int8>"s, {0xff9C27B0}},    //
-        {"std::complex<int16>"s, {0xffFFC107}},   //
-        {"std::complex<int32>"s, {0xff4CAF50}},   //
-        {"std::complex<int64>"s, {0xff8BC34A}},   //
+        {"int8"s, {rgbToImGuiABGR(0xD500F9)}},                  //
+        {"int16"s, {rgbToImGuiABGR(0xFFEB3B)}},                 //
+        {"int32"s, {rgbToImGuiABGR(0x009688)}},                 //
+        {"int64"s, {rgbToImGuiABGR(0xCDDC39)}},                 //
+        {"uint8"s, {rgbToImGuiABGR(0xD500F9), true}},           //
+        {"uint16"s, {rgbToImGuiABGR(0xFFEB3B), true}},          //
+        {"uint32"s, {rgbToImGuiABGR(0x009688), true}},          //
+        {"uint64"s, {rgbToImGuiABGR(0xCDDC39), true}},          //
+                                                                //
+        {"std::complex<float32>"s, {rgbToImGuiABGR(0x2196F3)}}, //
+        {"std::complex<float64>"s, {rgbToImGuiABGR(0x795548)}}, //
+                                                                //
+        {"std::complex<int8>"s, {rgbToImGuiABGR(0x9C27B0)}},    //
+        {"std::complex<int16>"s, {rgbToImGuiABGR(0xFFC107)}},   //
+        {"std::complex<int32>"s, {rgbToImGuiABGR(0x4CAF50)}},   //
+        {"std::complex<int64>"s, {rgbToImGuiABGR(0x8BC34A)}},   //
 
-        {"gr::DataSet<float32>"s, {0xffF57C00, false, true}}, //
-        {"gr::DataSet<float64>"s, {0xff00BCD4, false, true}}, //
-                                                              //
-        {"gr::Message"s, {0xffDBDBDB}},                       //
+        {"gr::DataSet<float32>"s, {rgbToImGuiABGR(0xF57C00), false, true}}, //
+        {"gr::DataSet<float64>"s, {rgbToImGuiABGR(0x00BCD4), false, true}}, //
+                                                                            //
+        {"gr::Message"s, {rgbToImGuiABGR(0xDBDBDB)}},                       //
 
-        {"Bits"s, {0xffEA80FC}},          //
-        {"BusConnection"s, {0xffffffff}}, //
-        {"Wildcard"s, {0xffffffff}},      //
-        {"Untyped"s, {0xffffffff}},       //
+        {"Bits"s, {rgbToImGuiABGR(0xEA80FC)}},          //
+        {"BusConnection"s, {rgbToImGuiABGR(0xffffff)}}, //
+        {"Wildcard"s, {rgbToImGuiABGR(0xffffff)}},      //
+        {"Untyped"s, {rgbToImGuiABGR(0xffffff)}},       //
     });
 
     static auto styleForDataTypeDark = withDataSetColors({

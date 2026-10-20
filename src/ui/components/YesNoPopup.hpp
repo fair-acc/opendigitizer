@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_YES_NO_POPUP_HPP_
 
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 #include <imgui.h>
 
@@ -40,11 +41,11 @@ inline YesNoPopupResult beginYesNoPopup(const char* id, YesNoPopupOptions option
         bool        pressedYes  = false;
         const float buttonSizeX = ImGui::GetContentRegionAvail().x;
 
-        if (ImGui::Button(options.yesText, {buttonSizeX, buttonSizeY})) {
+        if (DigitizerUi::TextButton(options.yesText, {buttonSizeX, buttonSizeY})) {
             pressedYes = true;
             ImGui::CloseCurrentPopup();
         }
-        if (ImGui::Button(options.noText, {buttonSizeX, buttonSizeY})) {
+        if (DigitizerUi::TextButton(options.noText, {buttonSizeX, buttonSizeY})) {
             ImGui::CloseCurrentPopup();
         }
         return pressedYes ? PopupOpen_YesPressed : PopupOpen_NothingPressed;

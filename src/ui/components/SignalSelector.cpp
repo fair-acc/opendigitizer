@@ -5,6 +5,7 @@
 
 #include "../blocks/RemoteSource.hpp"
 #include "FAIR/DeviceNameHelper.hpp"
+#include "StyledStandardWidgets.hpp"
 
 using namespace std::string_literals;
 
@@ -69,7 +70,8 @@ void SignalSelector::drawElement(const SignalData& entry, std::size_t idx, const
     ImGui::TableNextColumn();
     const bool itemSelected = selection.Contains(static_cast<ImGuiID>(idx));
     ImGui::SetNextItemSelectionUserData(static_cast<ImGuiSelectionUserData>(idx));
-    ImGui::Selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+    DigitizerUi::Selectable(entry.device.c_str(), itemSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+    IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(itemSelected));
     ImGui::TableNextColumn();
     ImGui::TextUnformatted(entry.signalName.c_str());
     ImGui::TableNextColumn();
@@ -207,7 +209,7 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
         }
     }
 
-    if (ImGui::Button("Add Signal")) {
+    if (DigitizerUi::TextButton("Add Signal")) {
         std::vector<SignalData> selectedEntries;
         void*                   it = nullptr;
         ImGuiID                 id = 0;
@@ -219,7 +221,7 @@ std::vector<SignalData> SignalSelector::drawSignalSelector() {
         return selectedEntries;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Refresh")) {
+    if (DigitizerUi::TextButton("Refresh")) {
         m_signalList.update();
     }
 
@@ -237,7 +239,7 @@ std::vector<SignalData> SignalSelector::drawAndReturnSelected() {
         float windowWidth = ImGui::GetWindowWidth();
         float buttonPosX  = windowWidth - 2 * ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x - ImGui::CalcTextSize("Close").x;
         ImGui::SetCursorPosX(buttonPosX);
-        if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (DigitizerUi::TextButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ImGui::CloseCurrentPopup();
             return {};
         }

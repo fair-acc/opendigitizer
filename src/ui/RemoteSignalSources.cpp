@@ -10,14 +10,14 @@
 
 void QueryFilterElement::drawFilterLine() {
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x / 3);
-    if (auto combo = DigitizerUi::Combo(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
+    if (auto combo = DigitizerUi::ComboBox(_keyIdentifier.c_str(), field_names[_selectedIndex], 0)) {
         for (std::size_t i = 0; i < field_names.size(); i++) {
             bool isSelected = _selectedIndex == i;
-            if (ImGui::Selectable(field_names[i], isSelected)) {
+            if (DigitizerUi::Selectable(field_names[i], isSelected)) {
                 if (std::any_of(list.begin(), list.end(), [&i, this](auto& e) { return e._keyIdentifier != _keyIdentifier && e._selectedIndex == i; })) {
                     if (auto popup = DigitizerUi::IMW::ModalPopup("Wrong Entry", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
                         ImGui::Text("Key already selected. Please select a different one");
-                        if (ImGui::Button("Ok")) {
+                        if (DigitizerUi::TextButton("Ok")) {
                             ImGui::CloseCurrentPopup();
                         }
                     }
@@ -39,7 +39,7 @@ void QueryFilterElement::drawFilterLine() {
     }
 
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFontSize() - ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button(_buttonIdentifier.data())) {
+    if (DigitizerUi::Button(_buttonIdentifier.data())) {
         list.pop(*this);
     }
 }
@@ -139,7 +139,7 @@ void SignalList::drawElement(const opencmw::service::dns::Entry& entry, int idx)
         }
     });
     ImGui::TableNextColumn();
-    if (ImGui::Button(("+##" + std::to_string(idx)).c_str())) {
+    if (DigitizerUi::Button(("+##" + std::to_string(idx)).c_str())) {
         if (addRemoteSignalCallback) {
             addRemoteSignalCallback(entry);
         }
