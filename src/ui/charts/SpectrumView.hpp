@@ -41,11 +41,11 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
     A<TopPaneMode, "top pane mode", gr::Visible> top_pane_mode = TopPaneMode::Spectrum;
 
     // spectrum trace settings (top pane mode 0)
-    A<bool, "show max hold", gr::Visible>                                                                       show_max_hold    = true;
-    A<bool, "show min hold", gr::Visible>                                                                       show_min_hold    = true;
-    A<bool, "show average", gr::Visible>                                                                        show_average     = false;
-    A<std::uint32_t, "trace color", gr::Visible, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">>       trace_color      = 0x8855BBU;
-    A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">> decay_tau_frames = 100U;
+    A<bool, "show max hold", gr::Visible>                                                                                    show_max_hold    = true;
+    A<bool, "show min hold", gr::Visible>                                                                                    show_min_hold    = true;
+    A<bool, "show average", gr::Visible>                                                                                     show_average     = false;
+    A<std::uint32_t, "trace color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour for accumulated traces (0xRRGGBB)">> trace_color      = 0x8855BBU;
+    A<gr::Size_t, "decay tau frames", gr::Doc<"exponential decay time constant in frames (0 = infinite hold)">>              decay_tau_frames = 100U;
 
     // density settings (top pane mode 1)
     A<gr::Size_t, "amplitude bins", gr::Visible, gr::Limits<4U, 1024U>>                       amplitude_bins             = 256U;

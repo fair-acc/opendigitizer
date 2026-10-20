@@ -9,6 +9,7 @@
 
 #include "OAuthSession.hpp"
 #include "components/Dialog.hpp"
+#include "components/HoverRevealedTrashButton.hpp"
 #include "components/NewBlockSelectorFuzzySearch.hpp"
 #include "components/VirtualScrollTable.hpp"
 #include "settings.hpp"
@@ -37,7 +38,6 @@ constexpr const char* kIconSave    = "\u{f0c7}";
 constexpr const char* kIconSaveAs  = "\u{f56e}";
 constexpr const char* kIconClose   = "\u{f00d}";
 constexpr const char* kIconStar    = "\u{f005}";
-constexpr const char* kIconTrash   = "\u{f2ed}";
 constexpr const char* kIconPlus    = "\u{f067}";
 constexpr const char* kIconArrowUp = "\u{f062}";
 
@@ -396,15 +396,8 @@ void OpenDashboardPage::drawSourcesSection() {
         }
         ImGui::SameLine();
 
-        // only draw trash can if hovered
-        if (m_storageInfoHovered == source.get()) {
-            ImGui::PushFont(LookAndFeel::instance().fontIcons, trashButtonSize.y / 2.f);
-            if (ImGui::Button(kIconTrash, trashButtonSize)) {
-                sourceToRemove = source;
-            }
-            ImGui::PopFont();
-        } else {
-            ImGui::Dummy(trashButtonSize);
+        if (components::hoverRevealedTrashButton(m_storageInfoHovered == source.get(), trashButtonSize)) {
+            sourceToRemove = source;
         }
     };
 

@@ -41,38 +41,6 @@ bool plotSquareIconButton(const char* glyph, const char* tooltip, float buttonSi
     return ret;
 }
 
-struct PropertyInfo {
-    gr::pmt::Value                               currentValue;
-    const UiGraphBlock::SettingsMetaInformation& meta;
-    UiGraphBlock&                                block;
-};
-
-static std::optional<PropertyInfo> getPropertyInfo(UiGraphModel& graphModel, const std::string& blockName, const std::string& propertyName) {
-    if (auto* block = graphModel.recursiveFindBlockByName(blockName).block) {
-        auto       propertyValue = block->blockSettings.find_value(propertyName, std::pmr::get_default_resource());
-        const auto metaIter      = block->blockSettingsMetaInformation.find(propertyName);
-        if (propertyValue && metaIter != std::end(block->blockSettingsMetaInformation)) {
-            return PropertyInfo{std::move(*propertyValue), metaIter->second, *block};
-        }
-    }
-    return {};
-};
-
-static IMW::WidgetSize                                            //
-getEditorWidgetSize(UiGraphModel&                     graphModel, //
-    Dashboard::PropertyControlWindow&                 window,     //
-    std::span<const components::ExportedPropertyPair> properties) //
-{
-    if (!properties.empty()) {
-        const auto& [frontBlockName, frontPropertyName] = properties.front();
-        if (const auto propertyInfo = getPropertyInfo(graphModel, frontBlockName, frontPropertyName)) {
-            const auto& [currentValue, meta, _] = *propertyInfo;
-            return components::calcEditorSize(window.label.c_str(), frontPropertyName, currentValue, meta);
-        }
-    }
-    return {};
-};
-
 DashboardPage::DashboardPage() {
     // Use SinkRegistry for listening to sink registration events
     opendigitizer::charts::SinkRegistry::instance().addListener(this, [this](opendigitizer::charts::SignalSink& sink, bool wasAdded) {
@@ -112,143 +80,30 @@ DashboardPage::PropertyControlWindowContextMenuAction DashboardPage::drawPropert
         if (menu_icons::menuItemWithIcon(menu_icons::kRemove, "Remove")) {
             params.removeList.push_back(params.windowId);
         }
-        ImGui::SetItemTooltip("Removes the window and unbinds the assigned properties from each other");
-        if (menu_icons::menuItemWithIcon(menu_icons::kDisconnect, "Disconnect")) {
-            this->_propertyControlWindowID = params.windowId;
-            action                         = PropertyControlWindowContextMenuAction::OpenDisconnectCurrentPropertiesPopup;
-        }
+        ImGui::SetItemTooltip("Removes the window");
         if (menu_icons::menuItemWithIcon(menu_icons::kFormat, "Change Label")) {
             this->_propertyControlWindowID = params.windowId;
             action                         = PropertyControlWindowContextMenuAction::OpenChangeLabelPopup;
         }
-        ImGui::SetItemTooltip("Select properties to remove from this window's control");
     }
     return action;
 }
 
 DashboardPage::PropertyControlWindowContextMenuAction DashboardPage::drawPropertyControlWindow(const PropertyControlWindowsDrawParams& params) {
-    this->propertyControlWindowEditProperties(params);
-
-    // highlight drop target always even if there is no hovering from cursor, if the payload is compatible
-    using ControlTypeAndBlock            = std::pair<UiGraphBlock::SettingsControlType, UiGraphBlock&>;
-    const auto getControlTypeForProperty = [this](const components::ExportedPropertyPair& pair) -> std::optional<ControlTypeAndBlock> {
-        if (auto propertyInfo = getPropertyInfo(this->_dashboard->session.graphModel, pair.blockName, pair.propertyName)) {
-            const auto& [currentValue, meta, block] = *propertyInfo;
-            return ControlTypeAndBlock{meta.controlType(pair.propertyName, currentValue), block};
-        }
-        return {};
-    };
-    const auto controlTypeConstraint = params.properties.empty() //
-                                           ? std::optional<ControlTypeAndBlock>{}
-                                           : getControlTypeForProperty(params.properties.front());
-
-    const auto    draggedPropertyPair            = components::ExportedPropertyDragDropPayload::getCurrentPayload();
-    bool          isValidDragPayloadActive       = false;
-    UiGraphBlock* blockForDraggedPayloadProperty = nullptr;
-    if (draggedPropertyPair) {
-        if (auto maybeControlTypeAndProperty = getControlTypeForProperty(draggedPropertyPair)) {
-            const auto& [draggedControlType, block] = *maybeControlTypeAndProperty;
-            // property in the payload is valid, only now can we consider setting isValidDragPayloadActive to true
-            isValidDragPayloadActive       = !controlTypeConstraint || controlTypeConstraint->first == draggedControlType;
-            blockForDraggedPayloadProperty = std::addressof(block);
-        }
-    }
-
-    const auto dragTargetRect   = ImGui::GetCurrentWindow()->WorkRect;
-    const bool isHoveringTarget = ImGui::IsMouseHoveringRect(dragTargetRect.Min, dragTargetRect.Max);
+    const auto windowRect       = ImGui::GetCurrentWindow()->WorkRect;
+    const bool isHoveringWindow = ImGui::IsMouseHoveringRect(windowRect.Min, windowRect.Max);
     const bool isRightClicked   = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
-    // always draw outline rect when user is dragging something
-    if (draggedPropertyPair) {
-        constexpr auto green     = rgbToImGuiABGR(0x28d14c);
-        constexpr auto red       = rgbToImGuiABGR(0xf53333);
-        const float    thickness = isHoveringTarget && isValidDragPayloadActive ? 5.f : 1.f;
-        ImGui::GetCurrentWindow()->DrawList->AddRect(dragTargetRect.Min, dragTargetRect.Max, isValidDragPayloadActive ? green : red, 0, 0, thickness);
-    }
-
-    // install drop target over entire window
-    if (ImGui::BeginDragDropTargetCustom(dragTargetRect, ImGui::GetID(std::format("{}##", params.controlWindow.window->name).c_str()))) {
-        if (auto* accepted = ImGui::AcceptDragDropPayload(components::ExportedPropertyDragDropPayload::kType); isValidDragPayloadActive && accepted) {
-            assert(blockForDraggedPayloadProperty);
-            auto exportedIter = blockForDraggedPayloadProperty->exportedProperties.find(draggedPropertyPair.propertyName);
-            if (exportedIter != std::end(blockForDraggedPayloadProperty->exportedProperties)) {
-                exportedIter->second.windowId = params.windowId;
-            }
-        }
-        ImGui::EndDragDropTarget();
-    }
-
-    if (isHoveringTarget && isRightClicked) {
+    if (isHoveringWindow && isRightClicked) {
         ImGui::OpenPopup(propertyControLWindowContextWindowID);
     }
 
     return this->drawPropertyControlWindowContextMenu(params);
 }
 
-void DashboardPage::propertyControlWindowEditProperties(const PropertyControlWindowsDrawParams& params) const {
-    if (params.properties.empty()) {
-        return;
-    }
-
-    const auto& [blockName, propertyName] = params.properties.front();
-
-    const auto optionalPropertyInfo = getPropertyInfo(this->_dashboard->session.graphModel, blockName, propertyName);
-    assert(optionalPropertyInfo && "property info should always be valid because its parameters were taken from the current graph");
-
-    const auto& [currentValue, meta, block] = *optionalPropertyInfo;
-
-    IMW::ChangeId id(static_cast<int>(params.windowId)); // push an ID in case the control label is empty and provides to differentiation
-
-    ImGui::SetNextItemWidth(params.editWidgetSize.preferred.x - params.editWidgetSize.labelPreferredWidth);
-    auto newPropertyValue = components::editBlockProperty(params.controlWindow.label.c_str(), propertyName, currentValue, meta);
-    if (newPropertyValue) {
-        block.setSetting(propertyName, std::move(newPropertyValue));
-    }
-}
-
-DashboardPage::ExportedPropertyPairsByWindowID DashboardPage::getExportedPropertyPairsByWindowID() const noexcept {
-    ExportedPropertyPairsByWindowID propertyPairsByWindowID;
-    for (auto [blockName, exportedPropertiesPtr] : _dashboard->session.graphModel.recursiveGatherExportedProperties()) {
-        for (auto& [propertyName, exportedPropertyInfo] : *exportedPropertiesPtr) {
-            if (exportedPropertyInfo.windowId) {
-                if (!_dashboard->propertyControlWindows.contains(*exportedPropertyInfo.windowId)) {
-                    // window no longer exists
-                    exportedPropertyInfo.windowId.reset();
-                } else {
-                    propertyPairsByWindowID.values[*exportedPropertyInfo.windowId].emplace_back(std::string{blockName}, propertyName);
-                }
-            }
-        }
-    }
-    return propertyPairsByWindowID;
-}
-
-auto DashboardPage::ExportedPropertyPairsByWindowID::getForWindow(std::size_t id) const noexcept -> PropertyPairSpan {
-    const auto propertyPairsIter = values.find(id);
-    return propertyPairsIter == std::end(values) ? PropertyPairSpan{} : propertyPairsIter->second;
-}
-
 void DashboardPage::addPropertyControlWindows(const AddPropertyControlWindowsParams& params) {
     for (auto& [id, controlWindow] : _dashboard->propertyControlWindows) {
         params.output.emplace_back(controlWindow.window);
-
-        auto propertyPairsForThisWindow = params.pairs.getForWindow(id);
-
-        const IMW::WidgetSize editorWidgetSize     = getEditorWidgetSize(_dashboard->session.graphModel, controlWindow, propertyPairsForThisWindow);
-        const auto            windowTitleBarHeight = ImGui::GetFrameHeight();
-        const auto&           style                = ImGui::GetStyle();
-        const ImVec2          fittedSize{
-            editorWidgetSize.preferred.x + style.WindowPadding.x * 2.0f,
-            editorWidgetSize.preferred.y + style.WindowPadding.y * 2.0f + windowTitleBarHeight,
-        };
-
-        if (!propertyPairsForThisWindow.empty()) {
-            controlWindow.window->windowMinSizeOverride = fittedSize;
-            controlWindow.window->windowMaxSize         = fittedSize;
-        } else {
-            controlWindow.window->windowMinSizeOverride.reset();
-            controlWindow.window->windowMaxSize.reset();
-        }
 
         auto*      existingWindow                      = ImGui::FindWindowByName(controlWindow.window->name.c_str());
         const bool docked                              = existingWindow ? existingWindow->DockIsActive : false;
@@ -256,79 +111,15 @@ void DashboardPage::addPropertyControlWindows(const AddPropertyControlWindowsPar
 
         auto  onContextMenuAction        = params.onContextMenuAction;
         auto& removeList                 = params.removeList;
-        controlWindow.window->renderFunc = [this, id, &controlWindow, onContextMenuAction, &removeList, editorWidgetSize, propertyPairsForThisWindow] {
+        controlWindow.window->renderFunc = [this, id, onContextMenuAction, &removeList] {
             auto action = this->drawPropertyControlWindow({
-                .windowId       = id,
-                .controlWindow  = controlWindow,
-                .properties     = propertyPairsForThisWindow,
-                .editWidgetSize = editorWidgetSize,
-                .removeList     = removeList,
+                .windowId   = id,
+                .removeList = removeList,
             });
             if (action != PropertyControlWindowContextMenuAction::None) {
                 onContextMenuAction(action);
             }
         };
-    }
-}
-
-void DashboardPage::drawCurrentPropertiesPopup(const ExportedPropertyPairsByWindowID& pairs) {
-    bool          isOpen = true;
-    IMW::StyleVar minSize(ImGuiStyleVar_WindowMinSize, ImVec2{300.f, 200.f});
-    auto          popup = IMW::ModalPopup(currentPropertiesPopupID, &isOpen, 0);
-    if (!popup) {
-        return;
-    }
-
-    {
-        IMW::Font             font(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
-        constexpr const char* title = "Disconnect Properties";
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(title).x) / 2.f);
-        ImGui::TextUnformatted(title);
-    }
-
-    IMW::Child child("childProperties", ImVec2{}, 0, 0);
-
-    const std::size_t numColumns = 3;
-    if (auto table = IMW::Table("propertiesTable", numColumns, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg, ImVec2(0, 0), 0.0f)) {
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
-
-        std::size_t id = 0;
-        for (const auto& [blockName, propertyName] : pairs.getForWindow(_propertyControlWindowID)) {
-            IMW::ChangeId rowId{++id};
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-
-            const auto propertyInfo = getPropertyInfo(_dashboard->session.graphModel, blockName, propertyName);
-            if (!propertyInfo) {
-                assert(false && "Attempt to edit nonexistent property or block");
-                continue;
-            }
-            const auto& [currentValue, meta, block] = *propertyInfo;
-
-            ImGui::TableSetColumnIndex(0);
-
-            constexpr ImGuiSelectableFlags flags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap;
-            const ImVec2                   selectableDimensions{0, ImGui::GetFrameHeight()};
-            const bool                     clicked = ImGui::Selectable(std::format("##selectable{}{}", blockName, propertyName).c_str(), false, flags, selectableDimensions);
-
-            ImGui::SameLine();
-            const auto controlType = meta.controlType(propertyName, currentValue);
-            components::ExportedPropertyList::drawPropertyUninteractiveNoLabel(propertyName.c_str(), controlType, currentValue);
-
-            ImGui::TableSetColumnIndex(1);
-
-            ImGui::TextUnformatted(block.blockName.c_str());
-
-            ImGui::TableSetColumnIndex(2);
-
-            ImGui::TextUnformatted(propertyName.c_str());
-
-            if (clicked) {
-                block.exportedProperties.at(propertyName).windowId.reset();
-            }
-        }
     }
 }
 
@@ -406,11 +197,12 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
             : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float32>") ? "<gr::DataSet<float32>>"s //
             : (remoteSourceBaseType == "opendigitizer::RemoteDataSetSource" && remoteSourceTypeParams == "<float64>") ? "<gr::DataSet<float64>>"s //
                                                                                                                       : /* otherwise error */ ""s;
-
-        const std::string baseName = std::format("{}_sink", remoteSource.uniqueName());
-        std::string       sinkName = baseName;
-        for (std::size_t suffix = 2UZ; _dashboard->session.graphModel.recursiveFindBlockByName(sinkName) || opendigitizer::charts::SinkRegistry::instance().findSink([&](const auto& sink) { return sink.name() == sinkName || sink.signalName() == sinkName; }); ++suffix) {
-            sinkName = std::format("{}_{}", baseName, suffix);
+        // need to avoid name collisions with both sink name and signal name because data_sinks searches for both
+        const auto          isSignalNameOfASink = [](std::string_view name) { return opendigitizer::charts::SinkRegistry::instance().findSink([name](const auto& sink) { return sink.signalName() == name; }) != nullptr; };
+        UniqueNameRegistry& nameRegistry        = _dashboard->session.graphModel.nameRegistry;
+        std::string         sinkName            = nameRegistry.ensureNameIsUnique(std::format("{}_sink", remoteSource.uniqueName()));
+        while (isSignalNameOfASink(sinkName)) {
+            sinkName = nameRegistry.ensureNameIsUnique(sinkName);
         }
         gr::property_map sinkProperties{{"name", std::move(sinkName)}, {"signal_name", selectedRemoteSignal.signalName}};
         if (!selectedRemoteSignal.unit.empty()) {
@@ -515,66 +307,7 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
     }
 }
 
-void applyExportPropertiesPageResult(const components::BlockControlsPanelResult& controlPanelAction, Dashboard& dashboard) {
-    using Action         = components::ExportedPropertyList::Action;
-    const auto& property = controlPanelAction.allExportedPropertiesPageResult.targetProperty;
-    switch (controlPanelAction.allExportedPropertiesPageResult.action) {
-    case Action::Unexport: {
-        if (const auto propertyInfo = getPropertyInfo(dashboard.session.graphModel, property.blockName, property.propertyName)) {
-            propertyInfo->block.exportedProperties.erase(property.propertyName);
-        }
-        break;
-    }
-    case Action::AddWindow: {
-        if (const auto propertyInfo = getPropertyInfo(dashboard.session.graphModel, property.blockName, property.propertyName)) {
-            auto exportedPropertyIterator = propertyInfo->block.exportedProperties.find(property.propertyName);
-            if (exportedPropertyIterator == std::end(propertyInfo->block.exportedProperties)) {
-                assert(false && "Results from getPropertyInfo() did not describe an exported property");
-                break;
-            }
-
-            // if we got here, the property and block must actually exist, so it's okay to make a window now
-            const auto& [windowId, _]                 = dashboard.newPropertyControlWindow(std::addressof(propertyInfo->block), property.propertyName, property.propertyName);
-            exportedPropertyIterator->second.windowId = windowId;
-        }
-        break;
-    }
-    case Action::Selected: break;
-    }
-}
-
-void DashboardPage::applyControlPanelWindowAction(const components::BlockControlsPanelResult& controlPanelAction, const ExportedPropertyPairsByWindowID& pairs, std::vector<std::size_t>& windowRemoveList) {
-    if (controlPanelAction.allExportedPropertiesPageResult) {
-        applyExportPropertiesPageResult(controlPanelAction, *_dashboard);
-    }
-    if (controlPanelAction.blockEditPaneResult) {
-        const auto& [type, block, propertyName] = controlPanelAction.blockEditPaneResult;
-        using enum components::BlockPropertyEditResult::Type;
-        switch (type) {
-        case AddNewWindow: {
-            const auto& [id, window]                         = this->_dashboard->newPropertyControlWindow(block, propertyName, propertyName);
-            block->exportedProperties[propertyName].windowId = id;
-            window.window->wantsDockAtBottom                 = true; // dockspace relayout() is about to be triggered due to a new window, it will see this
-            ImGui::FocusWindow(ImGui::FindWindowByName(window.window->name.c_str()));
-        } break;
-        case RemoveFromExistingWindow: {
-            auto exportedIter = block->exportedProperties.find(propertyName);
-            if (exportedIter != std::end(block->exportedProperties) && exportedIter->second.windowId.has_value()) {
-                // erase window if this property being removed was the last one
-                auto pairsForExistingWindow = pairs.getForWindow(*exportedIter->second.windowId);
-                if (pairsForExistingWindow.size() == 1) {
-                    assert(pairsForExistingWindow.front().blockName == block->blockName);
-                    assert(pairsForExistingWindow.front().propertyName == propertyName);
-                    windowRemoveList.push_back(*exportedIter->second.windowId);
-                }
-                exportedIter->second.windowId.reset();
-            }
-        } break;
-        }
-    }
-}
-
-DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(Mode mode, const ExportedPropertyPairsByWindowID& propertyPairsByWindowID, std::vector<std::size_t>& windowRemoveList) {
+DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(Mode mode, std::vector<std::size_t>& windowRemoveList) {
     constexpr float splitterWidth     = 6;
     constexpr float halfSplitterWidth = splitterWidth / 2.f;
 
@@ -600,7 +333,6 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
         options.addDockWindows = [&](DockSpace::Windows& windows) {
             addPropertyControlWindows({
                 .output              = windows,
-                .pairs               = propertyPairsByWindowID,
                 .onContextMenuAction = [&contextMenuAction](PropertyControlWindowContextMenuAction action) { contextMenuAction = action; },
                 .removeList          = windowRemoveList,
             });
@@ -625,9 +357,7 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     switch (contextMenuAction) {
     case PropertyControlWindowContextMenuAction::None: break;
     case PropertyControlWindowContextMenuAction::OpenChangeLabelPopup: ImGui::OpenPopup(changeLabelPopupID); break;
-    case PropertyControlWindowContextMenuAction::OpenDisconnectCurrentPropertiesPopup: ImGui::OpenPopup(currentPropertiesPopupID); break;
     }
-    drawCurrentPropertiesPopup(propertyPairsByWindowID);
     drawChangeLabelPopup();
 
     if (!legendClickResult.sinkForNewPlot.empty()) {
@@ -637,20 +367,19 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
     // edit pane
     if (horizontalSplit) {
         const float w = size.x * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x + size.x - w + halfSplitterWidth, screenTopLeft.y}, {w - halfSplitterWidth, size.y}, true), propertyPairsByWindowID, windowRemoveList);
+        components::BlockControlsPanel(_editPane, {screenTopLeft.x + size.x - w + halfSplitterWidth, screenTopLeft.y}, {w - halfSplitterWidth, size.y}, true);
     } else {
         const float h = size.y * ratio;
-        applyControlPanelWindowAction(components::BlockControlsPanel(_editPane, {screenTopLeft.x, screenTopLeft.y + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false), propertyPairsByWindowID, windowRemoveList);
+        components::BlockControlsPanel(_editPane, {screenTopLeft.x, screenTopLeft.y + size.y - h + halfSplitterWidth}, {size.x, h - halfSplitterWidth}, false);
     }
 
     return legendClickResult;
 }
 
 void DashboardPage::draw(Mode mode) noexcept {
-    const auto               propertyPairsByWindowID = this->getExportedPropertyPairsByWindowID();
     std::vector<std::size_t> windowRemoveList; // queue removal of windows here, submitted at end of draw()
 
-    const auto legendClickResult = this->drawChartsLegendAndEditPane(mode, propertyPairsByWindowID, windowRemoveList);
+    const auto legendClickResult = this->drawChartsLegendAndEditPane(mode, windowRemoveList);
 
     // Modal dialogs
     if (legendClickResult.shouldOpenNewPlotModal) {
@@ -669,21 +398,8 @@ void DashboardPage::draw(Mode mode) noexcept {
         ImGui::EndPopup();
     }
 
-    // submit window remove list
-    if (!windowRemoveList.empty()) {
-        auto allExportedProperties = _dashboard->session.graphModel.recursiveGatherExportedProperties();
-        for (std::size_t id : windowRemoveList) {
-            // unbind properties
-            for (auto& [_, exportedPropertiesPtr] : allExportedProperties) {
-                for (auto& [propertyName, exportedPropertyInfo] : *exportedPropertiesPtr) {
-                    if (exportedPropertyInfo.windowId == id) {
-                        exportedPropertyInfo.windowId.reset();
-                    }
-                }
-            }
-            // remove ui windows
-            _dashboard->propertyControlWindows.erase(id);
-        }
+    for (std::size_t id : windowRemoveList) {
+        _dashboard->propertyControlWindows.erase(id);
     }
 }
 

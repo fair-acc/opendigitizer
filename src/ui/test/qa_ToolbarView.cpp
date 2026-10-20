@@ -1,4 +1,5 @@
 #include "ImGuiTestApp.hpp"
+#include "TestPropertySetterButton.hpp"
 
 #include <ClientCommon.hpp>
 #include <boost/ut.hpp>
@@ -144,7 +145,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(eq(ForeignToolbarBlock::drawCount, 0UZ)) << "the Qt block is never drawn";
                 expect(schedulerBlock("toolbar_c_foreign") != nullptr) << "the Qt block is in the flowgraph";
 
-                const ImGuiTestItemInfo checkbox = ctx->ItemInfo("**/Hold");
+                const ImGuiTestItemInfo checkbox = ctx->ItemInfo("**/##Hold");
                 const ImGuiTestItemInfo button   = ctx->ItemInfo("**/Amplify");
                 expect(checkbox.ID != 0 && button.ID != 0) << fatal << "both items are drawn";
                 expect(checkbox.RectFull.Max.x <= button.RectFull.Min.x) << std::format("checkbox right edge {} left of the button at {}", checkbox.RectFull.Max.x, button.RectFull.Min.x);
@@ -160,9 +161,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "checking the checkbox sets the boolean setting of the target block in the flowgraph"_test = [&] {
                 expect(waitForSetting<bool>(ctx, "ClockSource1", "do_zero_order_hold", false)) << fatal << "initial value from the .grc";
-                ctx->ItemClick("**/Hold");
+                ctx->ItemClick("**/##Hold");
                 expect(waitForSetting<bool>(ctx, "ClockSource1", "do_zero_order_hold", true)) << "checked";
-                ctx->ItemClick("**/Hold");
+                ctx->ItemClick("**/##Hold");
                 expect(waitForSetting<bool>(ctx, "ClockSource1", "do_zero_order_hold", false)) << "unchecked again";
             };
 
@@ -228,7 +229,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 message.cmd         = gr::message::Command::Set;
                 message.endpoint    = gr::scheduler::property::kEmplaceBlock;
                 message.serviceName = state.dashboard->session.graphModel.rootBlock.ownerSchedulerUniqueName();
-                message.data        = gr::property_map{{"type", std::string("DigitizerUi::ToolbarButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}};
+                message.data        = gr::property_map{{"type", std::string("opendigitizer::test::TestPropertySetterButton")}, {"properties", gr::property_map{{"name", std::string("toolbar_d_extra")}, {"label", std::string("Extra")}}}};
                 state.dashboard->session.graphModel.sendMessage(std::move(message));
 
                 for (int frame = 0; frame < kMaxFrames && !ctx->ItemExists("**/Extra"); ++frame) {
@@ -258,6 +259,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
     std::ignore = gr::registerBlock<ForeignToolbarBlock>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::test::TestPropertySetterButton>(registry);
 
     auto grcFile     = cmrc::ui_test_assets::get_filesystem().open("examples/qa_toolbar.grc");
     state.grc        = std::string(grcFile.begin(), grcFile.end());

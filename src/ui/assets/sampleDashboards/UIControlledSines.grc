@@ -32,22 +32,26 @@ blocks:
       signal_unit: V
   - id: DigitizerUi::ImControlNumber
     parameters:
-      name: frequency1
+      name: uiFrequency1
       label: f1
       unit: Hz
-      value_type: float32
       value: 2
       min: 0.1
       max: 20
       step: 0.5
       style: sliderSpinner
       target_map: "sineSource1:frequency"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: uiFrequency1Style
+      label: Control style
+      value: sliderSpinner
+      target_map: "uiFrequency1:style"
   - id: DigitizerUi::ImControlNumber
     parameters:
-      name: amplitude1
+      name: uiAmplitude1
       label: A1
       unit: V
-      value_type: float32
       value: 1
       min: 0
       max: 2
@@ -56,10 +60,9 @@ blocks:
       target_map: "sineSource1:amplitude"
   - id: DigitizerUi::ImControlNumber
     parameters:
-      name: frequency2
+      name: uiFrequency2
       label: f2
       unit: Hz
-      value_type: float32
       value: 5
       min: 0.1
       max: 20
@@ -68,16 +71,21 @@ blocks:
       target_map: "sineSource2:frequency"
   - id: DigitizerUi::ImControlNumber
     parameters:
-      name: amplitude2
+      name: uiAmplitude2
       label: A2
       unit: V
-      value_type: float32
       value: 1
       min: 0
       max: 2
       step: 0.1
       style: sliderSpinner
       target_map: "sineSource2:amplitude"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: uiWaveType
+      label: wave
+      value: Sin
+      target_map: "sineSource1,sineSource2:signal_type"
 connections:
   - [ sineSource1, 0, sineSum, 0 ]
   - [ sineSource2, 0, sineSum, 1 ]

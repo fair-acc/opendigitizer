@@ -1,20 +1,18 @@
 #pragma once
 
-#include <functional>
-#include <vector>
-
-#include "common/ImguiNodeEditorWrap.hpp"
-#include "common/LookAndFeel.hpp"
-
 #include "Dashboard.hpp"
+#include "GraphModel.hpp"
 
 #include "components/Block.hpp"
-#include "components/DataTypeStyle.hpp"
 #include "components/NewBlockSelector.hpp"
 #include "components/SignalSelector.hpp"
 #include "components/Splitter.hpp"
+#include "components/UiControlInteractionComponents.hpp"
 
-#include "GraphModel.hpp"
+#include <imgui_node_editor.h>
+
+#include <functional>
+#include <vector>
 
 struct TestState;
 struct TestApp;
@@ -65,6 +63,20 @@ private:
 
     float                                _timeSpentHoldingPin = 0.0;
     std::optional<ExportPortMessageData> _draggingPinExportRequest;
+
+    // variables for tracking the state of UI control block drag-to-connect actions
+    std::optional<components::BlockDragConnectInteraction> _blockDragConnect;
+    std::optional<components::UiControlPropertyLinkPopup>  _uiControlPropertyLinkPopup;
+    std::optional<components::UiControlMultiSelectPopup>   _uiControlMultiSelectPopup;
+    std::optional<components::ModifyUiConnectionsPopup>    _modifyUiConnectionsPopup;
+
+    std::optional<std::string> _focusBlockRequest;
+    void                       focusOnBlockWithDefaultZoomLevel(const UiGraphBlock& block) const;
+
+    void drawUiControlPopups();
+
+    /// Check how the user is interacting with UI blocks, if they are dragging a connection, and what valid blocks are available as targets for it. Returns a description of what to draw
+    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget);
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
@@ -154,6 +166,7 @@ public:
     FlowgraphEditor(std::string name, UiGraphModel& graphModel, UiGraphBlock* rootBlock, std::size_t level) : _editorConfig(defaultEditorConfig()), _editorName(std::move(name)), _editorLevel(level), _graphModel(&graphModel), _rootBlockUniqueName(rootBlock->blockUniqueName), _exportPortTargetBlockUniqueName(rootBlock->blockUniqueName), _editorPtr(ax::NodeEditor::CreateEditor(std::addressof(_editorConfig))) {
         makeCurrent();
         _editPaneContext.showNeighboursPreview = true;
+        _editPaneContext.focusBlockRequest     = [this](const std::string& uniqueName) { requestFocusOnBlock(uniqueName); };
 
         if (rootBlock->blockCategory == "ScheduledBlockGroup") {
             if (!rootBlock->childBlocks.empty()) {
@@ -187,18 +200,29 @@ public:
 
     void requestRelayout() { _rearrangeRequested = true; }
 
+    void requestFocusOnBlock(std::string uniqueName) { _focusBlockRequest = std::move(uniqueName); }
+
     bool showEditorControls  = true;
     bool showUiControlBlocks = true;
 
     void drawPortsMenu(const char* text, const char* portDirection, const auto& blockPorts);
 
-    void drawGraph(const ImVec2& size);
+    /// Returns a description of what to draw after / above the graph
+    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> drawGraph(const ImVec2& size);
 
     struct NodeDrawResult {
         ImVec2 topLeft;
         float  bottomY;
+        // to prevent pins from overlapping with other content, only place them on some top portion of the node
+        float pinAreaHeight       = 0.F;
+        bool  filterButtonHovered = false;
     };
-    NodeDrawResult drawNode(UiGraphBlock& block, std::span<const UiGraphPort*> inputPorts, std::span<const UiGraphPort*> outputPorts, float pinHorizontalPadding);
+    NodeDrawResult drawNode(                                                         //
+        UiGraphBlock&                                          block,                //
+        std::span<const UiGraphPort* const>                    inputPorts,           //
+        std::span<const UiGraphPort* const>                    outputPorts,          //
+        float                                                  pinHorizontalPadding, //
+        std::optional<components::PropertyConnectionIndicator> connectionPreview);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 
@@ -278,9 +302,20 @@ public:
         return std::visit(gr::meta::overloaded{graphCase, schedulerCase, elseCase}, _rootBlock->blockCategoryInfo);
     }
 
+    /// returns the scheduler and graph which contain the block
+    /// might not be the ownersForRoot(), for example for UI control blocks, which are always present in the UI but are always owned by the root graph
+    static std::optional<SchedulerGraphPair> ownersFor(const UiGraphBlock& block) {
+        if (!block.parentBlock) {
+            return {};
+        }
+        return SchedulerGraphPair{block.parentBlock->ownerSchedulerUniqueName(), block.parentBlock->blockUniqueName};
+    }
+
     std::function<void(components::BlockControlsPanelContext&, const ImVec2&, const ImVec2&, bool)> requestBlockControlsPanel;
 
     std::function<void(UiGraphBlock*)> requestGraphEdit;
+
+    std::function<void(const UiGraphBlock&, float)> drawUiControlWidget;
 };
 
 class FlowgraphPage {
@@ -300,6 +335,7 @@ private:
     std::unique_ptr<SignalSelector> _remoteSignalSelector;
     NewBlockSelector                _newBlockSelector;
 
+    void drawUiControlWidget(const UiGraphBlock& control, float maxWidth);
     void drawNodeEditorTab();
     void drawLocalNodeEditor();
     void drawLocalYamlTab();

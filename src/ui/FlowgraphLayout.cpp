@@ -282,4 +282,35 @@ std::vector<Position> compute(const std::vector<Size>& nodeSizes, const std::vec
     return positions;
 }
 
+WrappedRows computeFixedBlockWrappingWithGap(std::span<const Size> nodeSizes, float minimumContainerWidth, float gap, std::size_t minimumNodesOnFirstRow) {
+    WrappedRows result;
+    if (nodeSizes.empty()) {
+        return result;
+    }
+    result.offsets.reserve(nodeSizes.size());
+
+    float       x          = gap;
+    float       y          = gap;
+    float       rowHeight  = 0.f;
+    float       widestRow  = 0.f;
+    std::size_t nodesInRow = 0UZ;
+    for (std::size_t i = 0UZ; i < nodeSizes.size(); i++) {
+        const Size& node = nodeSizes[i];
+        if (nodesInRow > 0UZ && i >= minimumNodesOnFirstRow && x + node.width + gap > minimumContainerWidth) {
+            x = gap;
+            y += rowHeight + gap;
+            rowHeight  = 0.f;
+            nodesInRow = 0UZ;
+        }
+        result.offsets.push_back({x, y});
+        x += node.width + gap;
+        rowHeight = std::max(rowHeight, node.height);
+        widestRow = std::max(widestRow, x);
+        nodesInRow++;
+    }
+
+    result.containerSize = {.width = std::max(minimumContainerWidth, widestRow), .height = y + rowHeight + gap};
+    return result;
+}
+
 } // namespace DigitizerUi::flowgraph_layout
