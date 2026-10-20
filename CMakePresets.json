@@ -59,8 +59,8 @@
       "cacheVariables": {
         "OPENDIGITIZER_ENABLE_TESTING": "ON",
         "ENABLE_IMGUI_TEST_ENGINE": "ON",
-        "CMAKE_C_COMPILER": "gcc-14",
-        "CMAKE_CXX_COMPILER": "g++-14",
+        "CMAKE_C_COMPILER": "gcc-15",
+        "CMAKE_CXX_COMPILER": "g++-15",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_PREFIX_PATH": "/opt/gnuradio4-gcc;/opt/gnuradio4-emscripten-static",
@@ -71,8 +71,8 @@
     {
       "name": "ci-gcc-debug",
       "inherits": "ci-base",
-      "displayName": "CI GCC 14 Debug (native + ui-wasm)",
-      "description": "Matches GitHub Actions gcc-14 Debug: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
+      "displayName": "CI GCC 15 Debug (native + ui-wasm)",
+      "description": "Matches GitHub Actions gcc-15 Debug: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -80,8 +80,8 @@
     {
       "name": "ci-gcc-release",
       "inherits": "ci-base",
-      "displayName": "CI GCC 14 Release (native + ui-wasm)",
-      "description": "Matches GitHub Actions gcc-14 Release: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
+      "displayName": "CI GCC 15 Release (native + ui-wasm)",
+      "description": "Matches GitHub Actions gcc-15 Release: superbuild with /opt/gnuradio4-gcc and /opt/gnuradio4-emscripten-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
