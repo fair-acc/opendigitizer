@@ -195,18 +195,12 @@ BlockControlsPanelResult BlockControlsPanel(BlockControlsPanelContext& panelCont
     const ImGuiTabItemFlags  selectedBlockFlags = std::exchange(panelContext.wantsSelectedBlockTab, false) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
     BlockControlsPanelResult result;
     if (auto item = IMW::TabItem("Selected Block", nullptr, selectedBlockFlags)) {
-        result = {
-            .allExportedPropertiesPageResult = {},
-            .blockEditPaneResult             = BlockControlsPanelImpl(panelContext, verticalLayout),
-        };
+        result.blockEditPaneResult = BlockControlsPanelImpl(panelContext, verticalLayout);
     }
     if (auto item = IMW::TabItem("All Exported Properties", nullptr, ImGuiTabItemFlags_None)) {
-        using Flags       = ExportedPropertyList::Flags;
-        const auto params = ExportedPropertyList::Params{.flags = Flags::DragDropHandle | Flags::ContextMenuButton};
-        result            = {
-                       .allExportedPropertiesPageResult = panelContext.propertyList.draw(*panelContext.graphModel, params),
-                       .blockEditPaneResult             = {},
-        };
+        using Flags                            = ExportedPropertyList::Flags;
+        const auto params                      = ExportedPropertyList::Params{.flags = Flags::DragDropHandle | Flags::ContextMenuButton};
+        result.allExportedPropertiesPageResult = panelContext.propertyList.draw(*panelContext.graphModel, params);
     }
     return result;
 }
