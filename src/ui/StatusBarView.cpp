@@ -6,11 +6,14 @@
 #include <cctype>
 #include <chrono>
 #include <ctime>
-#include <filesystem>
 #include <format>
 #include <iterator>
 #include <string>
 #include <system_error>
+
+#ifndef __EMSCRIPTEN__
+#include <filesystem>
+#endif
 
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -30,9 +33,12 @@ namespace DigitizerUi {
 namespace {
 using gr::log::Level;
 
-constexpr inline const char* kLogPopup              = "##statusBarLog";
+constexpr inline const char* kLogPopup = "##statusBarLog";
+
+#ifndef __EMSCRIPTEN__
 constexpr inline const char* kSaveLogPopup          = "Save log to file##statusBarLogSave";
 constexpr inline const char* kSaveLogOverwritePopup = "Overwrite file##statusBarLogOverwrite";
+#endif
 
 ImVec4 colourOf(Level level) {
     switch (level) {
@@ -84,6 +90,7 @@ Records filterRecords(const Records& records, std::optional<Level> levelFilter, 
     });
     return filtered;
 }
+
 } // namespace
 
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
@@ -174,6 +181,18 @@ std::string StatusBarView::selectedOrAllAsText(const std::vector<gr::log::LogRec
 }
 
 void StatusBarView::openSavePopup(std::string text) {
+#ifdef __EMSCRIPTEN__
+    static constexpr std::string_view filename = "download:/opendigitizer.log";
+
+    _saving = SaveData{.pendingText = std::move(text),       //
+        .path                       = std::string(filename), //
+        .writerPath                 = std::string(filename), //
+        .writer                     = {}};
+
+    // There's no save popup to close on __EMSCRIPTEN__
+    std::ignore = startSavePendingTextToFile();
+
+#else
     _saving = SaveData{
         .pendingText = std::move(text),      //
         .path        = "opendigitizer.log"s, //
@@ -181,6 +200,7 @@ void StatusBarView::openSavePopup(std::string text) {
         .writer      = {}                    //
     };
     ImGui::OpenPopup(kSaveLogPopup);
+#endif
 }
 
 bool StatusBarView::startSavePendingTextToFile() {
@@ -216,6 +236,7 @@ void StatusBarView::pollSaveResult() {
 }
 
 void StatusBarView::drawSavePopup() {
+#ifndef __EMSCRIPTEN__
     ImGui::SetNextWindowSize({700.f, ImGui::GetFrameHeight() * 4.f}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(kSaveLogPopup, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
@@ -270,6 +291,7 @@ void StatusBarView::drawSavePopup() {
             ImGui::CloseCurrentPopup();
         }
     }
+#endif
 }
 
 void StatusBarView::drawLogPopup() {
@@ -351,34 +373,36 @@ void StatusBarView::drawLogPopup() {
         triggerNewSelectionID();
     }
 
-    ImGui::SameLine();
-    if (DigitizerUi::TextButton("Clear")) {
-        logHistory().clear();
-        _selectedRecords.Clear();
-        triggerNewSelectionID();
-        records.clear();
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button(hasVisibleSelection ? copySelectedText : copyAllText) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
-        ImGui::SetClipboardText(selectedOrAllAsText(visibleRecords, hasVisibleSelection).c_str());
-    }
-    ImGui::SameLine();
-    if (DigitizerUi::TextButton(_selectedRecords.Size > 0 ? "Copy selected###copyLog" : "Copy all###copyLog") || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
-        ImGui::SetClipboardText(selectedOrAllAsText(records, true).c_str());
-    }
-
     {
-        IMW::Disabled disabled(_saving && _saving->writer.has_value());
-        if (ImGui::Button(hasVisibleSelection ? saveSelectedText : saveAllText)) {
-            openSavePopup(selectedOrAllAsText(visibleRecords, hasVisibleSelection));
+        IMW::Disabled disabledButtons(visibleRecords.size() == 0);
+        ImGui::SameLine();
+        if (DigitizerUi::TextButton(clearLogsText)) {
+            logHistory().clear();
+            _selectedRecords.Clear();
+            triggerNewSelectionID();
+            records.clear();
+        }
+
+        ImGui::SameLine();
+        if (DigitizerUi::TextButton(hasVisibleSelection ? copySelectedText : copyAllText) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
+            ImGui::SetClipboardText(selectedOrAllAsText(visibleRecords, hasVisibleSelection).c_str());
+        }
+        ImGui::SameLine();
+        {
+            IMW::Disabled _(visibleRecords.size() != 0 && (_saving && _saving->writer.has_value()));
+            if (DigitizerUi::TextButton(hasVisibleSelection ? saveSelectedText : saveAllText)) {
+                openSavePopup(selectedOrAllAsText(visibleRecords, hasVisibleSelection));
+            }
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button(closeText)) {
+    if (DigitizerUi::TextButton(closeText)) {
         ImGui::CloseCurrentPopup();
     }
+
+#ifndef __EMSCRIPTEN__
     drawSavePopup();
+#endif
 
     if (const std::uint64_t dropped = logHistory().dropped(); dropped > 0U) {
         ImGui::TextDisabled("(%llu records not kept: logged while the history was read)", static_cast<unsigned long long>(dropped));
