@@ -269,6 +269,9 @@ struct LookAndFeel {
         float uiControlRegionBorderThickness          = 2.f;
         float uiControlNotchLengthInwards             = 5.f;
         float uiControlNotchLengthOutwards            = 5.f;
+        float uiControlTargetLineThickness            = 1.f;
+        float uiControlTargetDotRadius                = 3.f;
+        float uiControlTargetRowSpacing               = 2.f;
         float previewBorderThickness                  = 2.f;
         float filteredOutBlockAlpha                   = .25f;
         float controlsBarHeight                       = 37.f;

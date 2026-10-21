@@ -213,8 +213,11 @@ struct UiControlConnectionNotchResult {
     bool  notchClicked = false;
 };
 
-/// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
-void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control);
+/// Draws the target_map entries of @param control below @param node, with remove operations to unlink each connection
+void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node);
+
+/// Height of the area below the block which is reserved for the target list drawn by drawUiControlTargetList
+[[nodiscard]] float uiControlTargetListHeight(const UiGraphBlock& block);
 
 /// Width of the area to the left of the block which is reserved for UI control connection labels
 /// Must be called while the editor is active

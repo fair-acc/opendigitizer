@@ -460,7 +460,8 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         if (drawUiControlWidget) {
             drawUiControlWidget(block, blockSize.x);
         }
-        components::drawUiControlTargetList(*_graphModel, block);
+        const ImVec2 nodeTopLeft = blockScreenPosition - ImVec2{nodeEditorStyle.NodePadding.x, nodeEditorStyle.NodePadding.y};
+        components::drawUiControlTargetList(*_graphModel, block, ImRect{nodeTopLeft, nodeTopLeft + blockSize});
 
         if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
             _blockDragConnect.emplace(block.blockUniqueName, ImGui::GetMousePos());
@@ -1333,7 +1334,7 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedB
     const auto addNode = [this, &bounds](const UiGraphBlock* block, float margin) {
         const auto blockId  = ax::NodeEditor::NodeId(block);
         const auto position = ax::NodeEditor::GetNodePosition(blockId);
-        bounds.Add(ImRect(position - ImVec2{margin + components::uiControlConnectionLabelsWidth(*_graphModel, *block), margin}, position + ax::NodeEditor::GetNodeSize(blockId) + ImVec2{margin, margin}));
+        bounds.Add(ImRect(position - ImVec2{margin + components::uiControlConnectionLabelsWidth(*_graphModel, *block), margin}, position + ax::NodeEditor::GetNodeSize(blockId) + ImVec2{margin, margin + components::uiControlTargetListHeight(*block)}));
     };
     std::ranges::for_each(blocks, [&addNode](const UiGraphBlock* block) { addNode(block, 0.f); });
     std::ranges::for_each(controlBlocks, [&addNode](const UiGraphBlock* block) { addNode(block, LookAndFeel::instance().flowgraph.uiControlRegionGap); });
