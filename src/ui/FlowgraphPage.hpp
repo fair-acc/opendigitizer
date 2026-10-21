@@ -196,10 +196,11 @@ public:
         const auto& palette              = LookAndFeel::instance().palette();
 
         auto& style           = ax::NodeEditor::GetStyle();
+        style.NodePadding     = ImVec4{flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding};
         style.NodeRounding    = flowgraphLookAndFeel.nodeRounding;
         style.NodeBorderWidth = flowgraphLookAndFeel.nodeBorderWidth;
-        style.PinRounding     = flowgraphLookAndFeel.pinRounding;
-        style.GroupRounding   = flowgraphLookAndFeel.groupRounding;
+        style.PinRounding     = flowgraphLookAndFeel.imguiNodeEditorPortRounding;
+        style.GroupRounding   = flowgraphLookAndFeel.imguiNodeEditorGroupNodeRounding;
         style.LinkStrength    = flowgraphLookAndFeel.linkStrength;
 
         using enum ax::NodeEditor::StyleColor;
@@ -236,17 +237,15 @@ public:
 
     struct NodeDrawResult {
         ImVec2 topLeft;
-        float  bottomY;
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
         float pinAreaHeight       = 0.F;
         bool  filterButtonHovered = false;
     };
-    NodeDrawResult drawNode(                                                         //
-        UiGraphBlock&                                          block,                //
-        std::span<const UiGraphPort* const>                    inputPorts,           //
-        std::span<const UiGraphPort* const>                    outputPorts,          //
-        float                                                  pinHorizontalPadding, //
-        std::optional<components::PropertyConnectionIndicator> connectionPreview,    //
+    NodeDrawResult drawNode(                                                      //
+        UiGraphBlock&                                          block,             //
+        std::span<const UiGraphPort* const>                    inputPorts,        //
+        std::span<const UiGraphPort* const>                    outputPorts,       //
+        std::optional<components::PropertyConnectionIndicator> connectionPreview, //
         bool                                                   isUiControlConnectionTarget);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);

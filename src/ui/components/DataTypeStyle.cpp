@@ -5,11 +5,15 @@
 
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <print>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 namespace DigitizerUi {
 
@@ -39,116 +43,87 @@ float pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeigh
     return ImFloor(spacing * (static_cast<float>(index) + 1) - (pinHeight / 2));
 }
 
+std::uint32_t withStyleAlpha(std::uint32_t color, float styleAlpha) {
+    constexpr std::uint32_t kAlphaClearMask = 0x00ffffff;
+    const std::uint32_t     alpha           = styleAlpha < 0.9f ? static_cast<std::uint32_t>(styleAlpha * 255) : 0xff;
+    return (color & kAlphaClearMask) | (alpha << 24);
+}
+
 bool drawPin(ImDrawList* drawList, ImVec2 pinPosition, ImVec2 pinSize, const std::string& type) {
     const auto& style = styleForDataType(type);
-
-    std::uint32_t alphaClearMask = 0x00ffffff;
-    std::uint32_t alphaSetMask   = 0xff000000;
-    if (ImGui::GetStyle().Alpha < 0.9f) {
-        alphaSetMask = static_cast<std::uint32_t>(ImGui::GetStyle().Alpha * 255);
-        alphaSetMask <<= 3 * 8;
-    }
-
-    const auto color = (style.color & alphaClearMask) | alphaSetMask;
-    drawList->AddRectFilled(pinPosition, pinPosition + pinSize, color, LookAndFeel::instance().flowgraph.portRounding);
-    drawList->AddRect(pinPosition, pinPosition + pinSize, darkenOrLighten(color), LookAndFeel::instance().flowgraph.portRounding);
+    style.drawShape(drawList, pinPosition + pinSize * 0.5f, std::min(pinSize.x, pinSize.y), withStyleAlpha(style.color(), ImGui::GetStyle().Alpha));
     ImGui::SetCursorPos(pinPosition);
 
     return ImGui::IsMouseHoveringRect(pinPosition, pinPosition + pinSize);
 }
 
+void drawPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float alpha, void* userData) {
+    const auto& style = *static_cast<const DataTypeStyle*>(userData);
+    style.drawShape(drawList, (min + max) * 0.5f, std::min(max.x - min.x, max.y - min.y), withStyleAlpha(style.color(), alpha));
+}
+
+void drawHoveredPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float /*alpha*/, void* userData) {
+    const auto& style = *static_cast<const DataTypeStyle*>(userData);
+    style.drawShapeSolid(drawList, (min + max) * 0.5f, std::min(max.x - min.x, max.y - min.y), LookAndFeel::getColorU32ImGui(&Palette::flowgraphPinRect));
+}
+
+std::uint32_t DataTypeStyle::color() const { return rgbToImGuiABGR(colorARGB & 0x00ffffff, static_cast<std::uint8_t>(colorARGB >> 24)); }
+
 const DataTypeStyle& styleForDataType(std::string_view type) {
     using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, opendigitizer::TransparentStringHash, std::equal_to<>>;
 
-    auto withDataSetColors = [](DataTypeStyleMap&& map) {
-        DataTypeStyleMap result;
-        while (map.begin() != map.end()) {
-            auto it          = map.begin();
-            auto datasetName = "gr::DataSet<"s + it->first + ">"s;
-
-            result[datasetName]               = it->second;
-            result[datasetName].datasetMarker = true;
-
-            result.insert(map.extract(it));
+    // If there is a style for T, then there should also be a matching style for DataSet<T> unless another one is already specified
+    auto withDataSetStyles = [](DataTypeStyleMap map) {
+        const std::vector<std::pair<std::string, DataTypeStyle>> explicitStyles(map.begin(), map.end());
+        for (const auto& [name, style] : explicitStyles) {
+            if (!name.starts_with("gr::DataSet<"sv)) {
+                map.try_emplace("gr::DataSet<"s + name + ">"s, style);
+            }
         }
-
-        return result;
+        return map;
     };
 
-    static auto styleForDataTypeLight = withDataSetColors({
-        {"float32"s, {rgbToImGuiABGR(0xF57C00)}}, //
-        {"float64"s, {rgbToImGuiABGR(0x00BCD4)}}, //
+    static const auto styles = withDataSetStyles({
+        {"float32"s, {0xffF57C00, &drawDot, &drawSolidDotPort}},                        //
+        {"float64"s, {0xff00BCD4, &drawRingedDot, &drawSolidDotPort}},                  //
+                                                                                        //
+        {"int8"s, {0xffD500F9, &drawTriangle, &drawSolidTrianglePort}},                 //
+        {"int16"s, {0xffFFEB3B, &drawSquare, &drawSolidSquarePort}},                    //
+        {"int32"s, {0xff009688, &drawPentagon, &drawSolidPentagonPort}},                //
+        {"int64"s, {0xffCDDC39, &drawHexagon, &drawSolidHexagonPort}},                  //
+        {"uint8"s, {0xffD500F9, &drawHollowTriangle, &drawSolidTrianglePort}},          //
+        {"uint16"s, {0xffFFEB3B, &drawHollowSquare, &drawSolidSquarePort}},             //
+        {"uint32"s, {0xff009688, &drawHollowPentagon, &drawSolidPentagonPort}},         //
+        {"uint64"s, {0xffCDDC39, &drawHollowHexagon, &drawSolidHexagonPort}},           //
+                                                                                        //
+        {"complex<float32>"s, {0xff2196F3, &drawDotPair, &drawSolidDotPairPort}},       //
+        {"complex<float64>"s, {0xff795548, &drawRingedDotPair, &drawSolidDotPairPort}}, //
+                                                                                        //
+        {"std::complex<int8>"s, {0xff9C27B0}},                                          //
+        {"std::complex<int16>"s, {0xffFFC107}},                                         //
+        {"std::complex<int32>"s, {0xff4CAF50}},                                         //
+        {"std::complex<int64>"s, {0xff8BC34A}},                                         //
 
-        {"int8"s, {rgbToImGuiABGR(0xD500F9)}},                  //
-        {"int16"s, {rgbToImGuiABGR(0xFFEB3B)}},                 //
-        {"int32"s, {rgbToImGuiABGR(0x009688)}},                 //
-        {"int64"s, {rgbToImGuiABGR(0xCDDC39)}},                 //
-        {"uint8"s, {rgbToImGuiABGR(0xD500F9), true}},           //
-        {"uint16"s, {rgbToImGuiABGR(0xFFEB3B), true}},          //
-        {"uint32"s, {rgbToImGuiABGR(0x009688), true}},          //
-        {"uint64"s, {rgbToImGuiABGR(0xCDDC39), true}},          //
-                                                                //
-        {"std::complex<float32>"s, {rgbToImGuiABGR(0x2196F3)}}, //
-        {"std::complex<float64>"s, {rgbToImGuiABGR(0x795548)}}, //
-                                                                //
-        {"std::complex<int8>"s, {rgbToImGuiABGR(0x9C27B0)}},    //
-        {"std::complex<int16>"s, {rgbToImGuiABGR(0xFFC107)}},   //
-        {"std::complex<int32>"s, {rgbToImGuiABGR(0x4CAF50)}},   //
-        {"std::complex<int64>"s, {rgbToImGuiABGR(0x8BC34A)}},   //
+        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},         //
+        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},   //
+        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},       //
+        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}}, //
+                                                                                                           //
+        {"event"s, {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}},                                     //
+        {"gr::Message"s, {0xffDBDBDB}},                                                                    //
 
-        {"gr::DataSet<float32>"s, {rgbToImGuiABGR(0xF57C00), false, true}}, //
-        {"gr::DataSet<float64>"s, {rgbToImGuiABGR(0x00BCD4), false, true}}, //
-                                                                            //
-        {"gr::Message"s, {rgbToImGuiABGR(0xDBDBDB)}},                       //
-
-        {"Bits"s, {rgbToImGuiABGR(0xEA80FC)}},          //
-        {"BusConnection"s, {rgbToImGuiABGR(0xffffff)}}, //
-        {"Wildcard"s, {rgbToImGuiABGR(0xffffff)}},      //
-        {"Untyped"s, {rgbToImGuiABGR(0xffffff)}},       //
+        {"Bits"s, {0xffEA80FC}},          //
+        {"BusConnection"s, {0xffffffff}}, //
+        {"Wildcard"s, {0xffffffff}},      //
+        {"Untyped"s, {0xffffffff}},       //
     });
 
-    static auto styleForDataTypeDark = withDataSetColors({
-        {"float32"s, {0xff0a83ff}}, //
-        {"float64"s, {0xffff432b}}, //
-
-        {"int8"s, {0xff2aff06}},         //
-        {"int16"s, {0xff0014c4}},        //
-        {"int32"s, {0xffff6977}},        //
-        {"int64"s, {0xff3223c6}},        //
-        {"uint8"s, {0xff2aff06, true}},  //
-        {"uint16"s, {0xff0014c4, true}}, //
-        {"uint32"s, {0xffff6977, true}}, //
-        {"uint64"s, {0xff3223c6, true}}, //
-
-        {"std::complex<float32>"s, {0xffde690c}}, //
-        {"std::complex<float64>"s, {0xff86aab8}}, //
-
-        {"std::complex<int8>"s, {0xff63d84f}},  //
-        {"std::complex<int16>"s, {0xff003ef8}}, //
-        {"std::complex<int32>"s, {0xffb350af}}, //
-        {"std::complex<int64>"s, {0xff743cb5}}, //
-
-        {"gr::DataSet<float64>"s, {0xffff432b}}, //
-        {"gr::DataSet<float32>"s, {0xff0a83ff}}, //
-
-        {"gr::Message"s, {0xff242424}}, //
-
-        {"Bits"s, {0xff158003}},          //
-        {"BusConnection"s, {0xff000000}}, //
-        {"Wildcard"s, {0xff000000}},      //
-        {"Untyped"s, {0xff000000}},       //
-
-    });
-
-    auto& map = LookAndFeel::instance().style == LookAndFeel::Style::Light ? styleForDataTypeLight : styleForDataTypeDark;
-    auto  it  = map.find(type);
-    if (it == map.cend()) {
-        std::print("Warning: Color not defined for {}\n", type);
-        static DataTypeStyle none{0x00000000};
+    auto it = styles.find(type);
+    if (it == styles.cend()) {
+        static const DataTypeStyle none{0x00000000};
         return none;
-    } else {
-        return it->second;
     }
+    return it->second;
 }
 
 } // namespace DigitizerUi

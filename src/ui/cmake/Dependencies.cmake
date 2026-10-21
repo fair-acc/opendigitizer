@@ -34,6 +34,8 @@ FetchContent_Declare(
   # Upstream https://github.com/thedmd/imgui-node-editor.git
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
   GIT_TAG 6d4f0c38558be808bb84acf14a6c851b3c990887 # latest as of 2024-03-02
+  PATCH_COMMAND git checkout -- . && git apply
+                ${CMAKE_CURRENT_LIST_DIR}/patches/imgui-node-editor-pin-draw-callbacks.patch
   EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(

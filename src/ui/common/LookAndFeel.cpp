@@ -432,8 +432,8 @@ void LookAndFeel::applyTheme() {
     flowgraph.nodeRounding           = pick(fgDefaults.nodeRounding, 4.f);
     flowgraph.nodeBorderWidth        = pick(fgDefaults.nodeBorderWidth, 1.f);
     flowgraph.subgraphBorderWidth    = pick(fgDefaults.subgraphBorderWidth, 2.f);
-    flowgraph.pinRounding            = pick(fgDefaults.pinRounding, 2.f);
-    flowgraph.portRounding           = pick(fgDefaults.portRounding, 2.f);
+    flowgraph.imguiNodeEditorPortRounding            = pick(fgDefaults.imguiNodeEditorPortRounding, 2.f);
+    flowgraph.rectangularPortRounding           = pick(fgDefaults.rectangularPortRounding, 2.f);
     flowgraph.previewBorderThickness = pick(fgDefaults.previewBorderThickness, 1.f);
     keypadRounding                   = pick(lookAndFeelDefaults.keypadRounding, 4.f);
     popupMenuButtonRounding          = pick(lookAndFeelDefaults.popupMenuButtonRounding, 4.f);

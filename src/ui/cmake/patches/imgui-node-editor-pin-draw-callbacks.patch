@@ -1,0 +1,158 @@
+--- a/imgui_node_editor_api.cpp
++++ b/imgui_node_editor_api.cpp
+@@ -178,6 +178,11 @@
+     s_Editor->GetNodeBuilder().PinPivotAlignment(alignment);
+ }
+ 
++void ax::NodeEditor::PinDrawCallbacks(PinDrawCallback draw, PinDrawCallback drawHovered, void* userData)
++{
++    s_Editor->GetNodeBuilder().PinDrawCallbacks(draw, drawHovered, userData);
++}
++
+ void ax::NodeEditor::EndPin()
+ {
+     s_Editor->GetNodeBuilder().EndPin();
+--- a/imgui_node_editor.cpp
++++ b/imgui_node_editor.cpp
+@@ -570,18 +570,33 @@
+ //------------------------------------------------------------------------------
+ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
+ {
+-    if (flags & Hovered)
++    if (flags == Detail::Object::None)
++    {
++        if (m_DrawCallback)
++        {
++            drawList->ChannelsSetCurrent(m_Node->m_Channel + c_NodePinChannel);
++            m_DrawCallback(drawList, m_Bounds.Min, m_Bounds.Max, m_Alpha, m_DrawUserData);
++        }
++    }
++    else if (flags & Hovered)
+     {
+         drawList->ChannelsSetCurrent(m_Node->m_Channel + c_NodePinChannel);
+ 
+-        drawList->AddRectFilled(m_Bounds.Min, m_Bounds.Max,
+-            m_Color, m_Rounding, m_Corners);
+-
+-        if (m_BorderWidth > 0.0f)
++        if (m_DrawHoveredCallback)
+         {
+-            FringeScaleScope fringe(1.0f);
+-            drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
+-                m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
++            m_DrawHoveredCallback(drawList, m_Bounds.Min, m_Bounds.Max, m_Alpha, m_DrawUserData);
++        }
++        else
++        {
++            drawList->AddRectFilled(m_Bounds.Min, m_Bounds.Max,
++                m_Color, m_Rounding, m_Corners);
++
++            if (m_BorderWidth > 0.0f)
++            {
++                FringeScaleScope fringe(1.0f);
++                drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
++                    m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
++            }
+         }
+ 
+         if (!Editor->IsSelected(m_Node))
+@@ -1293,8 +1308,16 @@
+ 
+     // Draw nodes
+     for (auto node : m_Nodes)
+-        if (node->m_IsLive && node->IsVisible())
+-            node->Draw(m_DrawList);
++    {
++        if (!node->m_IsLive || !node->IsVisible())
++            continue;
++
++        node->Draw(m_DrawList);
++
++        for (auto pin = node->m_LastPin; pin; pin = pin->m_PreviousPin)
++            if (pin->m_IsLive)
++                pin->Draw(m_DrawList);
++    }
+ 
+     // Draw links
+     for (auto link : m_Links)
+@@ -5374,6 +5397,10 @@
+     m_CurrentPin->m_Dir         = kind == PinKind::Output ? editorStyle.SourceDirection : editorStyle.TargetDirection;
+     m_CurrentPin->m_Strength    = editorStyle.LinkStrength;
+     m_CurrentPin->m_SnapLinkToDir = editorStyle.SnapLinkToPinDir != 0.0f;
++    m_CurrentPin->m_Alpha       = ImGui::GetStyle().Alpha;
++    m_CurrentPin->m_DrawCallback        = nullptr;
++    m_CurrentPin->m_DrawHoveredCallback = nullptr;
++    m_CurrentPin->m_DrawUserData        = nullptr;
+ 
+     m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;
+     m_CurrentNode->m_LastPin    = m_CurrentPin;
+@@ -5439,6 +5466,15 @@
+     m_ResolvePinRect     = false;
+ }
+ 
++void ed::NodeBuilder::PinDrawCallbacks(PinDrawCallback draw, PinDrawCallback drawHovered, void* userData)
++{
++    IM_ASSERT(nullptr != m_CurrentPin);
++
++    m_CurrentPin->m_DrawCallback        = draw;
++    m_CurrentPin->m_DrawHoveredCallback = drawHovered;
++    m_CurrentPin->m_DrawUserData        = userData;
++}
++
+ void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
+ {
+     IM_ASSERT(nullptr != m_CurrentPin);
+--- a/imgui_node_editor.h
++++ b/imgui_node_editor.h
+@@ -313,6 +313,11 @@
+ IMGUI_NODE_EDITOR_API void PinPivotSize(const ImVec2& size);
+ IMGUI_NODE_EDITOR_API void PinPivotScale(const ImVec2& scale);
+ IMGUI_NODE_EDITOR_API void PinPivotAlignment(const ImVec2& alignment);
++// Call between BeginPin() and EndPin(). The editor calls draw on the pin channel after drawing the pin's node, and calls
++// drawHovered instead of drawing the default hover rectangle. Either may be null. alpha is ImGui::GetStyle().Alpha at
++// the time of BeginPin(), and userData must stay valid until End().
++typedef void (*PinDrawCallback)(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float alpha, void* userData);
++IMGUI_NODE_EDITOR_API void PinDrawCallbacks(PinDrawCallback draw, PinDrawCallback drawHovered, void* userData);
+ IMGUI_NODE_EDITOR_API void EndPin();
+ IMGUI_NODE_EDITOR_API void Group(const ImVec2& size);
+ IMGUI_NODE_EDITOR_API void EndNode();
+--- a/imgui_node_editor_internal.h
++++ b/imgui_node_editor_internal.h
+@@ -141,6 +141,7 @@
+ };
+ 
+ using ax::NodeEditor::PinKind;
++using ax::NodeEditor::PinDrawCallback;
+ using ax::NodeEditor::StyleColor;
+ using ax::NodeEditor::StyleVar;
+ using ax::NodeEditor::SaveReasonFlags;
+@@ -308,6 +309,10 @@
+     bool    m_SnapLinkToDir;
+     bool    m_HasConnection;
+     bool    m_HadConnection;
++    float   m_Alpha;
++    PinDrawCallback m_DrawCallback;
++    PinDrawCallback m_DrawHoveredCallback;
++    void*   m_DrawUserData;
+ 
+     Pin(EditorContext* editor, PinId id, PinKind kind)
+         : Object(editor)
+@@ -329,6 +334,10 @@
+         , m_SnapLinkToDir(true)
+         , m_HasConnection(false)
+         , m_HadConnection(false)
++        , m_Alpha(1.0f)
++        , m_DrawCallback(nullptr)
++        , m_DrawHoveredCallback(nullptr)
++        , m_DrawUserData(nullptr)
+     {
+     }
+ 
+@@ -1208,6 +1217,7 @@
+     void PinPivotSize(const ImVec2& size);
+     void PinPivotScale(const ImVec2& scale);
+     void PinPivotAlignment(const ImVec2& alignment);
++    void PinDrawCallbacks(PinDrawCallback draw, PinDrawCallback drawHovered, void* userData);
+ 
+     void Group(const ImVec2& size);
+ 

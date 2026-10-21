@@ -96,7 +96,8 @@ bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_vie
 
 } // namespace
 
-void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
+/// Style can be null if drawn client side (which node editor supports for rectangular port shapes)
+void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size, const DataTypeStyle* style) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
@@ -111,6 +112,9 @@ void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2
     ax::NodeEditor::BeginPin(id, kind);
     ax::NodeEditor::PinPivotRect(pivot, pivot);
     ax::NodeEditor::PinRect(min, max);
+    if (style) {
+        ax::NodeEditor::PinDrawCallbacks(&drawPinForNodeEditor, &drawHoveredPinForNodeEditor, const_cast<DataTypeStyle*>(style));
+    }
     ax::NodeEditor::EndPin();
 
     if (input) {
@@ -147,12 +151,17 @@ std::optional<std::string> exportedPortShortenedDisplayName(const UiGraphPort* p
     return name;
 }
 
+float minimumPinAreaHeight(std::size_t numPins) {
+    const auto& fg = LookAndFeel::instance().flowgraph;
+    return numPins == 0 ? 0.f : static_cast<float>(numPins + 1) * (fg.pinHeight + fg.minimumPinGap);
+}
+
 PinDrawInfo calculatePinDrawInfo(const std::optional<std::string>& displayName, std::size_t index, std::size_t numPins, float anchorX, float blockTopY, float blockHeight, bool isInput) {
     const auto& fg = LookAndFeel::instance().flowgraph;
 
     if (!displayName) {
         const float y = blockTopY + pinLocalPositionY(index, numPins, blockHeight, fg.pinHeight);
-        const float x = isInput ? (anchorX - fg.pinHeight) : anchorX;
+        const float x = anchorX - fg.pinWidth / 2;
         return {.topLeft = {x, y}, .size = {fg.pinWidth, fg.pinHeight}};
     }
 
@@ -354,7 +363,6 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     UiGraphBlock&                                          block,                      //
     std::span<const UiGraphPort* const>                    inputPorts,                 //
     std::span<const UiGraphPort* const>                    outputPorts,                //
-    float                                                  pinHorizontalPadding,       //
     std::optional<components::PropertyConnectionIndicator> connectionPreview,          //
     bool                                                   isUiControlConnectionTarget //
 ) {
@@ -369,11 +377,12 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         this->drawComputeDomainTag(block);
     }
 
-    const auto minimumBlockSize    = LookAndFeel::instance().flowgraph.minimumBlockSize;
-    const auto blockScreenPosition = ImGui::GetCursorScreenPos();
-    auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
+    const auto  minimumBlockSize    = LookAndFeel::instance().flowgraph.minimumBlockSize;
+    const auto  blockScreenPosition = ImGui::GetCursorScreenPos();
+    const float nodeTopScreenY      = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
-    // Draw block title
+    // Draw block title. use slightly less padding at the top of the node due to the font having some empty space at the top of glyphs
+    ImGui::SetCursorScreenPos(blockScreenPosition - ImVec2{0.f, ImGui::GetFontBaked()->FindGlyph('H')->Y0});
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     {
         // make sure the title does not overlap with the filter button
@@ -428,10 +437,12 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         }
     }
 
-    ImGui::Spacing();
-
-    // pins get laid out in the space up until this point
-    const float pinAreaBottomScreenY = ImGui::GetCursorScreenPos().y;
+    // pins are spaced evenly from the node top down to the bottom of the content so far plus the bottom padding
+    const auto pinAreaBottomScreenY = [] { return ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y + ax::NodeEditor::GetStyle().NodePadding.w; };
+    if (const float missingPinSpace = minimumPinAreaHeight(std::max(inputPorts.size(), outputPorts.size())) - (pinAreaBottomScreenY() - nodeTopScreenY); missingPinSpace > 0.f) {
+        ImGui::Dummy(ImVec2{0.f, std::max(0.f, missingPinSpace - ImGui::GetStyle().ItemSpacing.y)});
+    }
+    const float pinAreaHeight = pinAreaBottomScreenY() - nodeTopScreenY;
 
     // draw property connection indicators, the little circuit-diagram-like marks. includes a preview item
     // which is only shown when the user is hovering an interaction that is about to connect to that property
@@ -468,24 +479,21 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         }
     }
 
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
-
-    const float nodeTopScreenY = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
-    const float pinAreaHeight  = pinAreaBottomScreenY - nodeTopScreenY;
-
-    // this is a fix for a weird bug which is caused by imgui adding the last seen item in a group to the measured size of the group.
-    // for flowgraph nodes with no block properties, this is the filter button, which is drawn outside the node's boundaries. this
-    // would cause the node to grow every frame to become extremely long horizontally
-    {
-        IMW::StyleVar noSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});
-        ImGui::Dummy(ImVec2{});
+    if (const float missingHeight = blockScreenPosition.y + minimumBlockSize.y - ImGui::GetCursorScreenPos().y; missingHeight > 0.f) {
+        ImGui::Dummy(ImVec2{0.f, missingHeight});
     }
+
+    // if this dummy is not here then anything that goes over the edge of the node like the filter button or ports could be taken as
+    // part of the bounding box (due to imgui adding the last item when closing a group) and cause the node to expand every frame
+    ImGui::SetCursorScreenPos(blockScreenPosition);
+    IMW::StyleVar noSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});
+    ImGui::Dummy(ImVec2{});
 
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
-    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
+    auto  registerPins = [exportTarget, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
-            position.x += blockSize.x - pinHorizontalPadding;
+            position.x += blockSize.x - ax::NodeEditor::GetStyle().NodePadding.x;
         }
 
         const float blockY  = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
@@ -495,21 +503,15 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
             auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
             auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, pinAreaHeight, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
-            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
+            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size, portDisplayName ? nullptr : &styleForDataType(ports[i]->portType));
         }
     };
 
-    ImVec2 position = {blockScreenPosition.x - pinHorizontalPadding, blockScreenPosition.y};
+    ImVec2 position = {blockScreenPosition.x - ax::NodeEditor::GetStyle().NodePadding.x, blockScreenPosition.y};
     registerPins(inputPorts, position, ax::NodeEditor::PinKind::Input);
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
-
     registerPins(outputPorts, blockScreenPosition, ax::NodeEditor::PinKind::Output);
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
-    ImGui::SetCursorScreenPos({position.x, blockBottomY});
-
-    ImGui::Dummy(ImVec2(0.f, 0.f));
-    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
+    return NodeDrawResult{.topLeft = position, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
 }
 
 std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) {
@@ -708,7 +710,6 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             }
         }
     };
-    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
     std::optional<BoundingBox> boundingBox;
     const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {
@@ -761,7 +762,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
                                                             })
                                                                     : std::nullopt;
         const bool isUiControlConnectionTarget = pendingMultiSelect || isCompatibleWithDragSource(*block);
-        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview, isUiControlConnectionTarget);
+        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview, isUiControlConnectionTarget);
         const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
         if (blockPosition.filterButtonHovered) {
@@ -775,14 +776,11 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         // drawing them would increase the node size, which we need to know to correctly place the
         // output pins, and that would cause the nodes to continuously grow in width
         {
-            auto leftPos = blockPosition.topLeft.x - padding.x;
-
             ImGui::SetCursorScreenPos(blockPosition.topLeft);
             auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
-            auto drawPorts = [&](auto& ports, auto portLeftPos, bool isInput) {
+            auto drawPorts = [&](auto& ports, float anchorX, bool isInput) {
                 const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
-                const float anchorX              = portLeftPos + padding.x;
                 const float blockTopY            = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
                 for (std::size_t i = 0; i < ports.size(); ++i) {
@@ -790,7 +788,8 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
                     auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockPosition.pinAreaHeight, isInput);
 
                     if (!portExportedDisplayName) {
-                        if (drawPin(drawList, info.topLeft, info.size, ports[i]->portType)) {
+                        // the node editor draws these pins, see addPin()
+                        if (ImGui::IsMouseHoveringRect(info.topLeft, info.topLeft + info.size)) {
                             // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
                             ax::NodeEditor::Suspend();
                             ImGui::SetTooltip("%s (%s)", ports[i]->portName.c_str(), ports[i]->portType.c_str());
@@ -801,14 +800,14 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
                     const auto& typeStyle = styleForDataType(ports[i]->portType);
                     const auto  textColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphBg);
-                    drawList->AddRectFilled(info.topLeft, info.topLeft + info.size, typeStyle.color, flowgraphLookAndFeel.portRounding);
-                    drawList->AddRect(info.topLeft, info.topLeft + info.size, darkenOrLighten(typeStyle.color), flowgraphLookAndFeel.portRounding);
+                    drawList->AddRectFilled(info.topLeft, info.topLeft + info.size, typeStyle.color(), flowgraphLookAndFeel.rectangularPortRounding);
+                    drawList->AddRect(info.topLeft, info.topLeft + info.size, darkenOrLighten(typeStyle.color()), flowgraphLookAndFeel.rectangularPortRounding);
                     drawList->AddText(info.font, info.fontSize, ImVec2{info.topLeft.x + flowgraphLookAndFeel.exportedTabPaddingH, info.topLeft.y + flowgraphLookAndFeel.exportedTabPaddingV}, textColor, portExportedDisplayName->c_str());
                 }
             };
 
-            drawPorts(inputPorts, leftPos, true);
-            drawPorts(outputPorts, leftPos + blockSize.x, false);
+            drawPorts(inputPorts, blockPosition.topLeft.x, true);
+            drawPorts(outputPorts, blockPosition.topLeft.x + blockSize.x, false);
         }
 
         // show rectangular highlights for blocks that would be selected by a multi-select, or *could* be selected by a drag select
@@ -872,7 +871,10 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         _focusBlockRequest.reset();
     }
 
-    const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+    const auto linkColor = [](const UiGraphPort& sourcePort) {
+        const ImU32 typeColor = styleForDataType(sourcePort.portType).color();
+        return (typeColor >> IM_COL32_A_SHIFT) == 0 ? ImGui::GetStyle().Colors[ImGuiCol_Text] : ImGui::ColorConvertU32ToFloat4(typeColor);
+    };
     for (auto& edge : graphEdges) {
         const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
         const auto destinationBlockId = ax::NodeEditor::NodeId(edge.edgeDestinationPort->ownerBlock);
@@ -881,7 +883,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             })) {
             ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
                 ax::NodeEditor::PinId(edge.edgeSourcePort),     //
-                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor(*edge.edgeSourcePort));
         }
     }
 
@@ -905,7 +907,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             out.maxY += marginPixels;
             return out;
         }(),
-        linkColor);
+        ImGui::GetStyle().Colors[ImGuiCol_Text]);
 
     // play fade animation for hovering outside the bounding box
     if (this->_wasHoveringBoundingBoxExteriorThisFrame) {

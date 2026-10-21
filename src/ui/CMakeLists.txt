@@ -407,6 +407,8 @@ add_library(
   components/Docking.cpp
   components/Docking.hpp
   components/GlobalSignalLegend.hpp
+  components/PortShapes.cpp
+  components/PortShapes.hpp
   components/SignalSelector.cpp
   components/SignalSelector.hpp
   utils/ImGuiDockSpaceState.cpp

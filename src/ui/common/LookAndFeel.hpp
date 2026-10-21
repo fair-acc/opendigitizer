@@ -33,7 +33,7 @@ constexpr std::uint32_t float4ToRGBA(ImVec4 float4) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
-inline ImVec4 lightenColor(const ImVec4& color, float percent) {
+inline ImVec4 lightenColorByReducingSaturation(const ImVec4& color, float percent) {
     float h;
     float s;
     float v;
@@ -46,7 +46,7 @@ inline ImVec4 lightenColor(const ImVec4& color, float percent) {
     return {r, g, b, color.w};
 }
 
-inline ImVec4 darkenColor(const ImVec4& color, float percent) {
+inline ImVec4 darkenColorByReducingValue(const ImVec4& color, float percent) {
     float h;
     float s;
     float v;
@@ -58,8 +58,6 @@ inline ImVec4 darkenColor(const ImVec4& color, float percent) {
     ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
     return {r, g, b, color.w};
 }
-
-inline ImVec4 darkenOrLighten(ImVec4 color, float percentage);
 
 inline ImVec4 overlayTransparentOverOpaque(ImVec4 color, ImVec4 opaqueBackground) {
     const float a = color.w;
@@ -242,8 +240,9 @@ struct LookAndFeel {
     enum class Theme { Classic, Advanced };
 
     struct Flowgraph {
-        float  pinWidth  = 10;
-        float  pinHeight = 10;
+        float  pinWidth      = 16;
+        float  pinHeight     = 16;
+        float  minimumPinGap = 10; // edge to edge, between vertically neighbouring pins
         ImVec2 minimumBlockSize{80.0f, 0.0f};
 
         float flowgraphBoundingBoxExteriorSelectionOutlineThickness        = 1.f;
@@ -254,11 +253,20 @@ struct LookAndFeel {
         float exportedTabPaddingV = 2.0f;
 
         float nodeRounding                            = 0.f;
+        float nodePadding                             = 13.f;
         float nodeBorderWidth                         = 1.5f;
         float subgraphBorderWidth                     = 3.f;
-        float pinRounding                             = 0.f; // node editor pin hover rect
-        float groupRounding                           = 6.f; // node editor group nodes
-        float portRounding                            = 0.f; // drawn ports and exported tabs
+        float imguiNodeEditorPortRounding             = 0.f;
+        float imguiNodeEditorGroupNodeRounding        = 6.f;
+        float rectangularPortRounding                 = 0.f;
+        float dataTypeIconLineThickness               = 1.f;
+        float float64IconRingGapWidthPixels           = 1.f;
+        float complexNumbersIconDotWidthFactor        = 1.5f; // relative to the regular single dot diameter
+        float complexNumbersIconDotPairGap            = 1.f;
+        float containerIconsCornerRingRadiusFactor    = 0.25f; // relative to shape size
+        float containerIconsCornerRingInsetFactor     = 0.1f;  // relative to shape size
+        float dataSetIconWaveAmplitudeFactor          = 0.1f;
+        int   dataSetIconNumLineSegmentsPerWave       = 16;
         float pinArrowSize                            = 10.f;
         float pinArrowWidth                           = 10.f;
         float linkStrength                            = 60.f;
@@ -412,9 +420,5 @@ private:
 };
 
 } // namespace DigitizerUi
-
-inline ImVec4 darkenOrLighten(ImVec4 color, float percentage) { //
-    return DigitizerUi::LookAndFeel::instance().style == DigitizerUi::LookAndFeel::Style::Dark ? lightenColor(color, percentage) : darkenColor(color, percentage);
-};
 
 #endif
