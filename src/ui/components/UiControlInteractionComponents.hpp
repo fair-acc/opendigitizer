@@ -16,6 +16,7 @@
 #include "../GraphModel.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 namespace DigitizerUi::components {
 
@@ -37,7 +38,7 @@ struct CheckboxListItem {
     bool        selected = false;
 
     bool draw() {
-        ImGui::Checkbox(name.c_str(), &selected);
+        DigitizerUi::Checkbox(name.c_str(), &selected);
         return selected;
     }
 };
@@ -97,7 +98,7 @@ public:
 
             const float doneWidth = 100.F;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
-            if (ImGui::Button("Done", ImVec2(doneWidth, 0.F))) {
+            if (DigitizerUi::TextButton("Done", ImVec2(doneWidth, 0.F))) {
                 confirmed = true;
                 ImGui::CloseCurrentPopup();
             }
@@ -116,10 +117,15 @@ public:
 ///
 /// all coordinates here are screen space, because they are intended to be drawn after the canvas is done
 struct BlockDragConnectOverlay {
-    ImRect                clipRect;
-    ImVec2                lineStart;
-    ImVec2                lineEnd;
-    std::optional<ImRect> dropTargetOutline;
+    struct DropTargetOutline {
+        ImRect node;
+        ImRect filterButton;
+    };
+
+    ImRect                           clipRect;
+    ImVec2                           lineStart;
+    ImVec2                           lineEnd;
+    std::optional<DropTargetOutline> dropTargetOutline;
 
     void draw() const;
 };
@@ -207,15 +213,15 @@ struct UiControlConnectionNotchResult {
     bool  notchClicked = false;
 };
 
-/// Draws the target_map entries of @param control as a bunch of rows with the labels block:property, with remove buttons
-void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control);
+/// Draws the target_map entries of @param control below @param node, with remove operations to unlink each connection
+void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node);
+
+/// Height of the area below the block which is reserved for the target list drawn by drawUiControlTargetList
+[[nodiscard]] float uiControlTargetListHeight(const UiGraphBlock& block);
 
 /// Width of the area to the left of the block which is reserved for UI control connection labels
 /// Must be called while the editor is active
 [[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block);
-
-/// Spacing between the UI control block region and the rest of the graph, and between the blocks within it
-constexpr float kUiControlRegionGap = 16.0f;
 
 /// Sets UI control blocks' positions based on the number of UI blocks and the region occupied by non-UI blocks.
 /// This creates a wrapped row at the top of the graph view which is separate from the regular block nodes

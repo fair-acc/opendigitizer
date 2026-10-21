@@ -1849,36 +1849,30 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
-            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control blocks list their targets and each target has a remove button");
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "list of targets with unlink buttons drawn below UI control blocks");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = uiControlGuiFunc;
 
             t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
                 auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
 
-                static constexpr const char* specificTargetRemoveButton = "**/controlA.target.sinkA:signal_quantity/\u{f2ed}";
-                static constexpr const char* globTargetRemoveButton     = "**/controlB.target.*:signal_name/\u{f2ed}";
+                static constexpr const char* specificTargetUnlinkButton = "**/controlA.target.sinkA:signal_quantity.unlink";
+                static constexpr const char* globTargetUnlinkButton     = "**/controlB.target.*:signal_name.unlink";
 
-                "the target list is drawn within the bounds of the control block"_test = [&] {
-                    const ImRect button = canvasItemRect(ctx, specificTargetRemoveButton);
+                "the target list is drawn below the control block, within its horizontal extent"_test = [&] {
+                    const ImRect button = canvasItemRect(ctx, specificTargetUnlinkButton);
                     editor.makeCurrent();
                     const auto   nodeId       = ax::NodeEditor::NodeId(findRootChildByName("controlA"));
                     const ImVec2 nodePosition = ax::NodeEditor::GetNodePosition(nodeId);
-                    expect(ImRect(nodePosition, nodePosition + ax::NodeEditor::GetNodeSize(nodeId)).Contains(button));
+                    const ImVec2 nodeSize     = ax::NodeEditor::GetNodeSize(nodeId);
+                    expect(ge(button.Min.y, nodePosition.y + nodeSize.y)) << "drawn below the block";
+                    expect(ge(button.Min.x, nodePosition.x) && le(button.Max.x, nodePosition.x + nodeSize.x)) << "drawn between the min and max X of the block";
                 };
 
-                "hovering a target does not move its remove button"_test = [&] {
-                    const ImRect before = canvasItemRect(ctx, specificTargetRemoveButton);
-                    moveMouseToCanvasItem(ctx, editor, specificTargetRemoveButton);
-                    captureScreenshot(*ctx);
-                    const ImRect after = canvasItemRect(ctx, specificTargetRemoveButton);
-                    expect(eq(before.Min.x, after.Min.x) && eq(before.Min.y, after.Min.y) && eq(before.Max.x, after.Max.x) && eq(before.Max.y, after.Max.y));
-                };
-
-                "pressing the remove button of a target removes that entry from the target_map"_test = [&] {
-                    clickCanvasItem(ctx, editor, specificTargetRemoveButton);
+                "pressing the dot of a target removes that entry from the target_map"_test = [&] {
+                    clickCanvasItem(ctx, editor, specificTargetUnlinkButton);
                     g_state.waitUntil(ctx, "the entry naming a block has been removed", [] { return getTargetMapForBlock("controlA").empty(); });
-                    clickCanvasItem(ctx, editor, globTargetRemoveButton);
+                    clickCanvasItem(ctx, editor, globTargetUnlinkButton);
                     g_state.waitUntil(ctx, "the glob entry has been removed", [] { return getTargetMapForBlock("controlB").empty(); });
                     expect(getTargetMapForBlock("controlC") == "sinkB:signal_quantity" && getTargetMapForBlock("controlD") == "sinkB:signal_quantity") << "other control blocks keep their targets";
                 };

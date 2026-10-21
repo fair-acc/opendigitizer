@@ -233,7 +233,7 @@ struct TouchHandler {
             --nFingers;
             releaseIndex(event.tfinger.fingerID);
             if (nFingers == 0 && !gestureActive && !gestureDragActive && !gestureZoomActive) {
-                if (getFingerPressedDuration(fingerIndex) < std::chrono::milliseconds(500)) { // short click -> process as left click
+                if (getFingerPressedDuration(fingerIndex) < LookAndFeel::longPressDuration) { // short click -> process as left click
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
                     ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
                     ImGui::GetIO().MouseDown[ImGuiMouseButton_Right]    = false;

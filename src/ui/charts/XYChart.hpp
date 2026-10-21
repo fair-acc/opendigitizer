@@ -237,7 +237,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                         double      xMax       = sink->xAt(offset + dataCount - 1);
                         AxisScale   xAxisScale = _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear;
                         ImVec4      tagColor   = baseColor;
-                        tagColor.w *= 0.35f;
+                        tagColor.w *= DigitizerUi::LookAndFeel::instance().chartStyle.tagAlpha;
                         tags::drawTags([&](auto&& fn) { sink->forEachTag(fn); }, xAxisScale, xMin, xMax, tagColor);
                         tagsDrawnForFirstSink = true;
                     }

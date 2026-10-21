@@ -9,6 +9,7 @@
 
 #include <implot.h>
 
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -26,52 +27,75 @@ struct GlobalSignalLegend {
 
     void setDragDropEnabled(bool isNowEnabled) { _dragDropEnabled = isNowEnabled; }
 
-    /// Returns the unique name of a signal which was right-clicked, if any
-    std::string draw(UiGraphModel& graphModel, float paneWidth) noexcept {
+    /// Returns the unique name of a signal which was right-clicked, if any.
+    /// @param firstRowLineHeight determines vertical centering of legend items
+    /// @param drawTrailingItem is used for the caller to optionally inject the "add signal" button
+    std::string draw(UiGraphModel& graphModel, float paneWidth, float firstRowLineHeight = 0.f, const std::function<void(ImVec2)>& drawTrailingItem = {}) noexcept {
         std::string out;
-        std::tie(_legendSize, out) = drawLegend(graphModel, paneWidth);
+        std::tie(_legendSize, out) = drawLegend(graphModel, paneWidth, firstRowLineHeight, drawTrailingItem);
         return out;
     }
 
     [[nodiscard]] ImVec2 legendSize() const noexcept { return _legendSize; }
 
+    [[nodiscard]] static float  legendItemHeight() { return ImGui::GetTextLineHeight() + 2.f * ImPlot::GetStyle().LegendInnerPadding.y; }
+    [[nodiscard]] static ImVec2 legendColorRectSize() { return {ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()}; }
+
     static ClickResult drawLegendItem(std::uint32_t color, std::string_view text, bool enabled = true) {
         ClickResult                result = ClickResult::None;
         constexpr ImGuiMouseButton kRMB   = ImGuiMouseButton_Right;
 
-        IMW::StyleVar resetSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});     // no space between button and color rect
-        const ImVec2  innerPad      = ImPlot::GetStyle().LegendInnerPadding; // mimic implot legends
-        const auto    textSize      = ImGui::CalcTextSize(text.data());
-        const auto    buttonSize    = textSize + innerPad * 2;
-        const ImVec2  colorRectSize = {ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()};
-
-        // colour indicator square, centered vertically next to the text
-        const auto cursorOriginalY = ImGui::GetCursorPosY();
-        ImGui::SetCursorPosY(cursorOriginalY + (buttonSize.y - colorRectSize.y) / 2.f);
-        if (ImGui::InvisibleButton("##ColorBox", colorRectSize)) {
-            result = ClickResult::Left;
+        IMW::StyleVar     resetSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});     // no space between the swatch and the name
+        const ImVec2      innerPad      = ImPlot::GetStyle().LegendInnerPadding; // mimic implot legends
+        const auto        textSize      = ImGui::CalcTextSize(text.data());
+        const ImVec2      colorRectSize = legendColorRectSize();
+        const ImGuiStyle& style         = ImGui::GetStyle();
+        const ImVec2      totalSize     = {innerPad.x + colorRectSize.x + textSize.x + (2.f * innerPad.x), legendItemHeight()};
+        const ImVec2      groupMin      = ImGui::GetCursorScreenPos();
+        const ImVec2      groupMax      = groupMin + totalSize;
+        const bool        groupHovered  = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::IsMouseHoveringRect(groupMin, groupMax);
+        const Palette&    palette       = LookAndFeel::instance().palette();
+        const ImVec4      groupBg       = [&palette, groupHovered] {
+            if (!groupHovered) {
+                return palette.legendButton;
+            } else {
+                return ImGui::IsMouseDown(ImGuiMouseButton_Left) ? palette.legendButtonActive : palette.legendButtonHovered;
+            }
+        }();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRectFilled(groupMin, groupMax, ImGui::GetColorU32(groupBg), style.FrameRounding);
+        if (style.FrameBorderSize > 0.f) {
+            drawList->AddRect(groupMin, groupMax, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding, ImDrawFlags_None, style.FrameBorderSize);
         }
-        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color, enabled ? 0xFF : 0x88));
-        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), rgbToImGuiABGR(color), {}, {}, 2);
 
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+        const DashboardStyle& dashboardStyle           = LookAndFeel::instance().dashboardStyle;
+        const float           colorRectBorderThickness = dashboardStyle.legendColorRectBorderThickness;
+        {
+            IMW::PushCursorPosition cursorRestore;
+            ImGui::SetCursorScreenPos(ImGui::GetCursorScreenPos() + innerPad);
+            if (ImGui::InvisibleButton("##ColorBox", colorRectSize)) {
+                result = ClickResult::Left;
+            }
+        }
+
+        const ImVec2 colorRectMin = groupMin + ImVec2{innerPad.x, .5f * (totalSize.y - colorRectSize.y)};
+        const ImVec2 colorRectMax = colorRectMin + colorRectSize;
+        drawList->AddRectFilled(colorRectMin, colorRectMax, rgbToImGuiABGR(color, enabled ? 0xFF : 0x88), style.FrameRounding);
+        drawList->AddRect(colorRectMin, colorRectMax, rgbToImGuiABGR(color), style.FrameRounding, ImDrawFlags_None, colorRectBorderThickness);
+
+        const bool colorRectHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+        if (colorRectHovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
             if (ImGui::IsMouseReleased(kRMB)) {
                 result = ClickResult::RightColor;
             }
         }
-        ImGui::SameLine();
 
-        // signal name button with transparent background
-        IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.1f));
-        IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.2f));
-        IMW::StyleColor textStyle(ImGuiCol_Text, enabled ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-
-        if (ImGui::Button(text.data(), buttonSize)) {
+        if (ImGui::InvisibleButton(text.data(), totalSize)) {
             result = ClickResult::Left;
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+        drawList->AddText(groupMin + ImVec2{innerPad.x + colorRectSize.x, 0.f} + innerPad, ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled), text.data(), text.data() + text.size());
+        if (!colorRectHovered && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
             if (ImGui::IsMouseReleased(kRMB)) {
                 result = ClickResult::RightName;
@@ -136,7 +160,7 @@ struct GlobalSignalLegend {
         return clickResult == ClickResult::RightName;
     }
 
-    std::pair<ImVec2, std::string> drawLegend(UiGraphModel& graphModel, float paneWidth) {
+    std::pair<ImVec2, std::string> drawLegend(UiGraphModel& graphModel, float paneWidth, float firstRowLineHeight, const std::function<void(ImVec2)>& drawTrailingItem) {
         using namespace opendigitizer::charts;
         ImVec2 legendSize{0.f, 0.f};
         float  accumulatedWidth = paneWidth; // start at full width to force new line
@@ -146,6 +170,11 @@ struct GlobalSignalLegend {
         std::string rightClickedBlockName;
         {
             IMW::Group group;
+            {
+                IMW::StyleVar noSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});
+                // use Dummy instead of setting cursor position because legend items use SameLine which looks at the last item
+                ImGui::Dummy(ImVec2{0.f, std::max(0.f, (firstRowLineHeight - legendItemHeight()) / 2.f)});
+            }
 
             int index = 0;
             for (UiGraphBlock* sink : graphModel.recursiveGatherPlotSinks()) {
@@ -153,6 +182,13 @@ struct GlobalSignalLegend {
                     rightClickedBlockName = sink->blockUniqueName;
                 }
                 ++index;
+            }
+
+            if (drawTrailingItem) {
+                if (index > 0) {
+                    ImGui::SameLine();
+                }
+                drawTrailingItem(ImVec2{legendItemHeight(), legendItemHeight()});
             }
         }
 

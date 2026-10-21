@@ -1,5 +1,7 @@
 #include "Splitter.hpp"
 
+#include "StyledStandardWidgets.hpp"
+
 namespace DigitizerUi::components {
 
 float Splitter(SplitterState& splitter_state, ImVec2 space, bool vertical, float size, float defaultRatio, bool reset) {
@@ -22,7 +24,7 @@ float Splitter(SplitterState& splitter_state, ImVec2 space, bool vertical, float
 
     {
         IMW::Child child("##c", ImVec2(0, 0), 0, 0);
-        ImGui::Button("##sep", vertical ? ImVec2{size, space.y} : ImVec2{space.x, size});
+        DigitizerUi::Button("##sep", vertical ? ImVec2{size, space.y} : ImVec2{space.x, size});
 
         const auto cursor = vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS;
         if (ImGui::IsItemHovered()) {

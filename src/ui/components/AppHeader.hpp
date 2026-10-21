@@ -10,10 +10,13 @@
 
 #include "../common/AppDefinitions.hpp"
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 #include "../common/TouchHandler.hpp"
 #include "../components/ImGuiNotify.hpp"
 
 #include <SDL3/SDL_opengl.h>
+#include <magic_enum.hpp>
+#include <magic_enum_utility.hpp>
 #include <stb_image.h>
 
 #include "PopupMenu.hpp"
@@ -31,10 +34,10 @@ inline void TextCentered(const std::string_view text) {
     ImGui::Text("%s", text.data());
 }
 
-inline void TextRight(const std::string_view text) {
+inline void TextRight(const std::string_view text, float rightInset) {
     auto windowWidth = ImGui::GetWindowSize().x;
     auto textWidth   = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-    ImGui::SetCursorPosX(windowWidth - textWidth - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SetCursorPosX(windowWidth - textWidth - rightInset);
     ImGui::Text("%s", text.data());
 }
 
@@ -81,7 +84,8 @@ class AppHeader {
 public:
     std::function<void()>                   requestApplicationStop;
     std::function<void(ViewMode)>           requestApplicationSwitchMode;
-    std::function<void(LookAndFeel::Style)> requestApplicationSwitchTheme;
+    std::function<void(LookAndFeel::Style)> requestApplicationSwitchStyle;
+    std::function<void(LookAndFeel::Theme)> requestApplicationSwitchTheme;
 
     ImVec2 logoSize{0.f, 0.f};
     GLuint imgFairLogo     = 0;
@@ -106,14 +110,43 @@ public:
         std::string utcClock      = std::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
         const auto  utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
-        const auto topLeft = ImGui::GetCursorPos();
+        const auto& settings = Digitizer::Settings::instance();
+        const auto& palette  = DigitizerUi::LookAndFeel::instance().palette();
+
+        const auto  topLeft            = ImGui::GetCursorPos();
+        const float headerHeight       = 2.f * ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; // hardcodes that the largest item in the header is date/time text display
+        const auto  verticallyCentredY = [&](float itemHeight) { return topLeft.y + .5f * (headerHeight - itemHeight); };
+
+        ImFont*     headerIconFont = LookAndFeel::instance().fontIconsSolidLarge;
+        const float iconButtonSize = VerticalPopupMenu<1>::calcAddButtonIconButtonSize(headerIconFont);
+
+        const auto headerIconButton = [&](const char* label, ImVec4 iconColor) {
+            IMW::StyleColor    buttonStyle(ImGuiCol_Button, palette.mainWindowButtonBgInactive);
+            IMW::StyleColor    textStyle(ImGuiCol_Text, iconColor);
+            IMW::StyleColor    buttonActiveStyle(ImGuiCol_ButtonActive, palette.mainWindowButtonBgActive);
+            IMW::StyleColor    buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
+            IMW::StyleFloatVar rounding(ImGuiStyleVar_FrameRounding, LookAndFeel::instance().popupMenuButtonRounding);
+            IMW::Font          font(headerIconFont);
+            return ImGui::Button(label, ImVec2{iconButtonSize, iconButtonSize});
+        };
+
+        const bool   mouseMoved    = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
+        static float buttonTimeOut = 0;
+        buttonTimeOut -= std::max(ImGui::GetIO().DeltaTime, 0.f);
+        if (mouseMoved) {
+            buttonTimeOut = DigitizerUi::LookAndFeel::instance().devMenuHideDelaySeconds;
+        }
+        const bool showDevMenuButton = settings.editableMode && (mouseMoved || buttonTimeOut > 0.f);
+
+        constexpr const char* kDevMenuIcon    = "";
+        const float           devMenuButtonX  = ImGui::GetWindowSize().x - ImGui::GetStyle().WindowPadding.x - iconButtonSize;
+        const float           clockRightInset = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
+
         // draw title
-        ImVec2 localLogoSize;
+        const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
         {
             IMW::Font  font(title_font);
             const auto titleSize = ImGui::CalcTextSize(title.data());
-            const auto scale     = titleSize.y / logoSize.y;
-            localLogoSize        = ImVec2(scale * logoSize.x, scale * logoSize.y);
             // suppress title if it doesn't fit or is likely to overlap
             if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
                 TextCentered(title);
@@ -122,42 +155,25 @@ public:
 
         ImGui::SameLine();
         auto pos = ImGui::GetCursorPos();
-        TextRight(localClock);
+        TextRight(localClock, clockRightInset);
         pos.y += ImGui::GetTextLineHeightWithSpacing();
         ImGui::SetCursorPos(pos);
-        TextRight(utcClock);
+        TextRight(utcClock, clockRightInset);
         auto posBeneathClock = ImGui::GetCursorPos();
 
         // left menu
-        ImGui::SetCursorPos(topLeft);
-
-        IMW::StyleColor      normalStyle(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        IMW::StyleColor      hoveredStyle(ImGuiCol_ButtonHovered, ImVec4(.8f, .8f, .8f, 0.4f));
-        IMW::StyleColor      activeStyle(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
         VerticalPopupMenu<1> leftMenu;
+        ImGui::SetCursorPos(ImVec2{topLeft.x, verticallyCentredY(iconButtonSize)});
 
-        const auto& settings         = Digitizer::Settings::instance();
-        const auto  menuButtonPushed = settings.editableMode && [&] {
-            IMW::StyleColor buttonStyle(ImGuiCol_Button, LookAndFeel::instance().palette().mainWindowButtonBgInactive);
-            IMW::StyleColor textStyle(ImGuiCol_Text, LookAndFeel::instance().palette().mainWindowButtonIcon);
-            IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, LookAndFeel::instance().palette().mainWindowButtonBgActive);
-            IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, LookAndFeel::instance().palette().mainWindowButtonBgHovered);
-            IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
-            return ImGui::Button(LookAndFeel::instance().prototypeMode ? "" : "");
-        }();
-
-        IMW::StyleVar framePaddingStyle(ImGuiStyleVar_FramePadding, ImVec2(4, 6));
+        const auto menuButtonPushed = settings.editableMode && headerIconButton(LookAndFeel::instance().prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
 
         if ((menuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
             using DigitizerUi::MenuButton;
             const bool wasAlreadyOpen = leftMenu.isOpen();
 
-            {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{126.f / 255.f, 188.f / 255.f, 137.f / 255.f, 1.f}); // green
-                leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::INTERACTION); }, LookAndFeel::instance().fontIconsSolidLarge, "switch to chart view");
-                leftMenu.addButton("\uF542", [this]() { requestApplicationSwitchMode(ViewMode::FLOWGRAPH); }, LookAndFeel::instance().fontIconsSolidLarge, "click to edit flow-graph");
-                leftMenu.addButton("", [this]() { requestApplicationSwitchMode(ViewMode::OPEN_SAVE_DASHBOARD); }, LookAndFeel::instance().fontIconsSolidLarge, "click to open/save new dashboards");
-            }
+            leftMenu.addButton("\uF201", [this]() { requestApplicationSwitchMode(ViewMode::INTERACTION); }, headerIconFont, "switch to chart view", palette.headerMenuButton, palette.popupMenuButtonIcon);
+            leftMenu.addButton("\uF542", [this]() { requestApplicationSwitchMode(ViewMode::FLOWGRAPH); }, headerIconFont, "click to edit flow-graph", palette.headerMenuButton, palette.popupMenuButtonIcon);
+            leftMenu.addButton("", [this]() { requestApplicationSwitchMode(ViewMode::OPEN_SAVE_DASHBOARD); }, headerIconFont, "click to open/save new dashboards", palette.headerMenuButton, palette.popupMenuButtonIcon);
 
             if (wasAlreadyOpen && !ImGui::IsItemHovered()) {
                 std::print("was already open -> closing\n");
@@ -166,36 +182,36 @@ public:
         }
 
         // draw fair logo
-        if (settings.editableMode) {
-            ImGui::SameLine(0.f, 0.f);
-        }
-        const auto imgLogo = static_cast<ImTextureID>(style_ == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
-        if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
-            // call url to project site
+        const float logoX = settings.editableMode ? topLeft.x + iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : topLeft.x;
+        ImGui::SetCursorPos(ImVec2{logoX, verticallyCentredY(localLogoSize.y)});
+        {
+            IMW::StyleColor normalStyle(ImGuiCol_Button, palette.appHeaderFAIRLogoButton);
+            IMW::StyleColor hoveredStyle(ImGuiCol_ButtonHovered, palette.appHeaderFAIRLogoButtonHovered);
+            IMW::StyleColor activeStyle(ImGuiCol_ButtonActive, palette.appHeaderFAIRLogoButtonActive);
+            IMW::StyleVar   noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
+            const auto      imgLogo = static_cast<ImTextureID>(style_ == LookAndFeel::Style::Light ? imgFairLogo : imgFairLogoDark);
+            if (ImGui::ImageButton("logo", imgLogo, localLogoSize)) {
+                // call url to project site
+            }
         }
 
         // right menu
-        RadialCircularMenu<2> rightMenu(localLogoSize, 75.f, 195.f);
-        ImGui::SetCursorPos(ImVec2(ImGui::GetIO().DisplaySize.x - localLogoSize.x, 0));
+        const float           rightMenuStartAngle = LookAndFeel::instance().appHeaderRightMenuStartDegrees;
+        const float           rightMenuStopAngle  = LookAndFeel::instance().appHeaderRightMenuStopDegrees;
+        RadialCircularMenu<2> rightMenu(localLogoSize, rightMenuStartAngle, rightMenuStopAngle);
+        ImGui::SetCursorPos(ImVec2(devMenuButtonX, verticallyCentredY(iconButtonSize)));
 
-        const bool   mouseMoved    = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
-        static float buttonTimeOut = 0;
-        buttonTimeOut -= std::max(ImGui::GetIO().DeltaTime, 0.f);
-        if (mouseMoved) {
-            buttonTimeOut = 2.f;
-        }
-
-        const bool devMenuButtonPushed = settings.editableMode && [&] {
-            IMW::StyleColor textStyle(ImGuiCol_Text, ImVec4(.8f, .8f, .8f, (mouseMoved || buttonTimeOut > 0.f) ? 0.9f : 0.f));
-            IMW::Font       font(LookAndFeel::instance().fontIconsSolidLarge);
-            return ImGui::Button("");
+        const bool devMenuButtonPushed = showDevMenuButton && [&] {
+            ImVec4 iconColor = palette.devMenuIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            iconColor.w      = LookAndFeel::instance().devMenuButtonAlpha;
+            return headerIconButton(kDevMenuIcon, iconColor);
         }();
 
-        if ((devMenuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
+        // check showDevMenuButton first to make sure that IsItemHovered is referring to the dev menu and not some other item in the header
+        if (showDevMenuButton && (devMenuButtonPushed || ImGui::IsItemHovered())) {
             using enum WindowMode;
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
                 rightMenu.addButton(
                     LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065",
                     [&rightMenu](MenuButton& button) {
@@ -203,34 +219,41 @@ public:
                         button.label                              = LookAndFeel::instance().windowMode == FULLSCREEN ? "\uF066" : "\uF065";
                         rightMenu.forceClose();
                     },
-                    LookAndFeel::instance().fontIconsSolidLarge, "toggle between fullscreen and windowed mode");
+                    LookAndFeel::instance().fontIconsSolidLarge, "toggle between fullscreen and windowed mode", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
                 using enum LookAndFeel::Style;
                 rightMenu.addButton((LookAndFeel::instance().style == Light) ? "" : "",
                     [this](MenuButton& button) {
                         const bool isDarkMode = LookAndFeel::instance().style == Dark;
-                        requestApplicationSwitchTheme(isDarkMode ? Light : Dark);
+                        requestApplicationSwitchStyle(isDarkMode ? Light : Dark);
                         button.label   = isDarkMode ? "" : "";
                         button.toolTip = isDarkMode ? "switch to dark mode" : "switch to light mode";
                     },
-                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().style == Dark ? "switch to light mode" : "switch to dark mode");
+                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().style == Dark ? "switch to light mode" : "switch to dark mode", palette.devMenuButton, palette.popupMenuButtonIcon);
+
+                rightMenu.addButton(
+                    "\uF1FC",
+                    [this](MenuButton& button) {
+                        const auto next = magic_enum::enum_next_value_circular(LookAndFeel::instance().theme);
+                        requestApplicationSwitchTheme(next);
+                        button.toolTip = std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(next)));
+                    },
+                    LookAndFeel::instance().fontIconsSolidBig, std::format("switch to the {} theme", magic_enum::enum_name(magic_enum::enum_next_value_circular(LookAndFeel::instance().theme))), palette.devMenuButton, palette.popupMenuButtonIcon);
 
                 rightMenu.addButton(
                     LookAndFeel::instance().prototypeMode ? "" : "",
                     [](MenuButton& button) {
                         LookAndFeel::mutableInstance().prototypeMode = !LookAndFeel::instance().prototypeMode;
                         button.label                                 = LookAndFeel::instance().prototypeMode ? "" : "";
-                        ImGui::GetIO().FontDefault                   = LookAndFeel::instance().fontNormal[LookAndFeel::instance().prototypeMode];
+                        ImGui::GetIO().FontDefault                   = LookAndFeel::instance().fontNormal();
                     },
-                    LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode");
+                    LookAndFeel::instance().fontIconsSolidBig, "switch between prototype and production mode", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             if (LookAndFeel::instance().isDesktop) {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
-                rightMenu.addButton("", []() { LookAndFeel::mutableInstance().windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window");
+                rightMenu.addButton("", []() { LookAndFeel::mutableInstance().windowMode = MINIMISED; }, LookAndFeel::instance().fontIconsSolidBig, "minimise window", palette.devMenuButton, palette.popupMenuButtonIcon);
                 rightMenu.addButton(
                     LookAndFeel::instance().windowMode == RESTORED ? "" : "",
                     [&rightMenu](MenuButton& button) {
@@ -239,11 +262,10 @@ public:
                         button.toolTip                            = LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window";
                         rightMenu.forceClose();
                     },
-                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window");
+                    LookAndFeel::instance().fontIconsSolidBig, LookAndFeel::instance().windowMode == MAXIMISED ? "restore window" : "maximise window", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{.3f, .3f, 1.0f, 1.f}); // blue
 #ifdef __EMSCRIPTEN__
                 constexpr bool newLine = false;
 #else
@@ -256,11 +278,10 @@ public:
                         button.font                 = TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig;
                         button.toolTip              = TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics";
                     },
-                    TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics");
+                    TouchHandler<>::diagnostics ? LookAndFeel::instance().fontIconsBig : LookAndFeel::instance().fontIconsSolidBig, TouchHandler<>::diagnostics ? "disable extra touch diagnostics" : "enable extra touch diagnostics", palette.devMenuButton, palette.popupMenuButtonIcon);
             }
 
             if (LookAndFeel::instance().isDesktop) {
-                IMW::StyleColor buttonStyle(ImGuiCol_Button, ImVec4{1.0f, 0.0f, 0.0f, 1.0f}); // red
                 rightMenu.addButton(
                     "",
                     [this, &rightMenu]() {
@@ -268,7 +289,7 @@ public:
                         requestApplicationStop();
                         rightMenu.forceClose();
                     },
-                    LookAndFeel::instance().fontIconsBig, "close app");
+                    LookAndFeel::instance().fontIconsBig, "close app", palette.devMenuQuitButton, palette.popupMenuButtonIcon);
             }
         }
 

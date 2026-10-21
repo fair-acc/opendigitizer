@@ -3,6 +3,8 @@
 
 #include "ImControl.hpp"
 
+#include "../components/StyledStandardWidgets.hpp"
+
 #include <gnuradio-4.0/Block.hpp>
 
 #include <string>
@@ -23,7 +25,7 @@ struct ImControlChoice : ImControl<ImControlChoice> {
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, LookAndFeel::instance().dashboardStyle.toolbarControlInputWidth, LookAndFeel::instance().dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         drawWithLabelAndTooltip(layout, [&](float width) {
             const std::string id = "##" + label;
@@ -32,9 +34,9 @@ struct ImControlChoice : ImControl<ImControlChoice> {
             const bool    insideNodeEditor = parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView;
             IMW::Disabled nothingToChooseOrCannotOpen(parsedConfig.aggregateControlledPropertyHints.choices.empty() || insideNodeEditor);
             ImGui::SetNextItemWidth(width);
-            if (auto combo = IMW::Combo(id.c_str(), value.c_str(), 0)) {
+            if (auto combo = DigitizerUi::ComboBox(id.c_str(), value.c_str(), 0)) {
                 for (const std::string& choice : parsedConfig.aggregateControlledPropertyHints.choices) {
-                    if (ImGui::Selectable(choice.c_str(), choice == value)) {
+                    if (DigitizerUi::Selectable(choice.c_str(), choice == value)) {
                         value       = choice;
                         std::ignore = settings().setStaged({{"value", value}});
                         sendToTargets(value);

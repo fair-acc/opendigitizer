@@ -11,6 +11,7 @@
 #include "components/Dialog.hpp"
 #include "components/HoverRevealedTrashButton.hpp"
 #include "components/NewBlockSelectorFuzzySearch.hpp"
+#include "components/StyledStandardWidgets.hpp"
 #include "components/VirtualScrollTable.hpp"
 #include "settings.hpp"
 
@@ -60,9 +61,38 @@ void wrapIfTooLarge(float nextItemWidth, float availableWidth = ImGui::GetConten
 
     IMW::Disabled disabled(!enabled);
     ImGui::PushFont(LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
-    const bool pressed = ImGui::Button(kIconPlus, squareButtonSize);
+    const bool pressed = DigitizerUi::Button(kIconPlus, squareButtonSize);
     ImGui::PopFont();
     return pressed;
+}
+
+// draw custom star button. it is different from a regular button/selectable in that it does not get highlighted and instead just toggles the star being filled in
+[[nodiscard]] bool drawFavoriteButton(bool isFavorite) {
+    const ImVec2 squareButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
+
+    ImGui::PushFont(isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons, squareButtonSize.y / 2.f);
+    IMW::StyleColor background(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    IMW::StyleColor hoveredBackground(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+    IMW::StyleColor activeBackground(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+    const bool      pressed = ImGui::Button(kIconStar, squareButtonSize);
+    ImGui::PopFont();
+    return pressed;
+}
+
+/// A selectable which uses framehight size, supports rounded corners, and respects style options
+[[nodiscard]] bool frameHeightSelectable(const char* label, bool selected) {
+    const ImGuiStyle& style    = ImGui::GetStyle();
+    const char*       textEnd  = ImGui::FindRenderedTextEnd(label);
+    const ImVec2      textSize = ImGui::CalcTextSize(label, textEnd);
+    const bool        clicked  = ImGui::InvisibleButton(label, ImVec2{textSize.x + (2.f * style.FramePadding.x), ImGui::GetFrameHeight()}, ImGuiButtonFlags_PressedOnClick);
+    const bool        hovered  = ImGui::IsItemHovered();
+    const bool        held     = ImGui::IsItemActive();
+    ImDrawList*       drawList = ImGui::GetWindowDrawList();
+    if (selected || hovered || held) {
+        drawList->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(SelectableBackgroundColor(selected, hovered, held)), style.FrameRounding);
+    }
+    drawList->AddText(ImGui::GetItemRectMin() + style.FramePadding, ImGui::GetColorU32(SelectableTextColor(selected)), label, textEnd);
+    return clicked;
 }
 
 void drawRowLabel(const char* label) {
@@ -96,7 +126,8 @@ bool doIconTextButton(const char* label, const char* icon, ImVec2 size) {
     ImVec2       textMax      = buttonBoundingBox.Max - framePadding;
     const ImVec2 labelSize    = ImGui::CalcTextSize(label, nullptr, true);
 
-    const ImVec2 align{0.5f, 0.5f}; // ImGui::GetStyle().ButtonTextAlign is typical but we wouldn't automatically respect that as expected
+    const ImVec2    align{0.5f, 0.5f}; // ImGui::GetStyle().ButtonTextAlign is typical but we wouldn't automatically respect that as expected
+    IMW::StyleColor contentsColor(ImGuiCol_Text, ButtonContentsColor());
     {
         IMW::Font iconFont(LookAndFeel::instance().fontIconsSolidLarge);
 
@@ -326,7 +357,7 @@ OpenDashboardPage::~OpenDashboardPage() = default;
 void OpenDashboardPage::addDashboard(std::string_view path) { m_dashboardsCollection.addSource(path); }
 
 void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
-    ImGui::SetNextWindowSize({600, 300}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().openDashboardPageStyle.saveAsPopupSize, ImGuiCond_Once);
     auto popup = IMW::ModalPopup("saveAsDialog", nullptr, 0);
     if (!popup) {
         return;
@@ -351,11 +382,11 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
         IMW::Group group;
         for (const auto& s : m_dashboardsCollection.sources()) {
             bool enabled = s == storageInfo;
-            if (ImGui::Checkbox(s->path.c_str(), &enabled)) {
+            if (DigitizerUi::Checkbox(s->path.c_str(), &enabled)) {
                 storageInfo = s;
             }
         }
-        if (ImGui::Button("Add new")) {
+        if (DigitizerUi::TextButton("Add new")) {
             ImGui::OpenPopup(addSourcePopupId);
         }
     }
@@ -381,7 +412,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
 void OpenDashboardPage::drawSourcesSection() {
     ImGui::SeparatorText("Available Sources");
 
-    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontSmall());
 
     const ImVec2 trashButtonSize{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
@@ -391,7 +422,7 @@ void OpenDashboardPage::drawSourcesSection() {
 
     const auto drawSource = [this, trashButtonSize, &sourceToRemove](const std::shared_ptr<DashboardStorageInfo>& source, const std::string& displayName) {
         IMW::Group sourceGroup;
-        if (ImGui::Checkbox(displayName.c_str(), &source->isEnabled)) {
+        if (DigitizerUi::Checkbox(displayName.c_str(), &source->isEnabled)) {
             forceRecalculateSortingAndFilteringOfListModel(); // we have a filter that removes things that are not enabled
         }
         ImGui::SameLine();
@@ -434,9 +465,9 @@ void OpenDashboardPage::drawSourcesSection() {
     }
 
     if (!isFirstItem) {
-        wrapIfTooLarge(IMW::CalcButtonSize("Add new source").x);
+        wrapIfTooLarge(DigitizerUi::CalcButtonSize("Add new source").x);
     }
-    if (ImGui::Button("Add new source")) {
+    if (DigitizerUi::TextButton("Add new source")) {
         ImGui::OpenPopup(addSourcePopupId);
     }
 }
@@ -457,7 +488,7 @@ void OpenDashboardPage::drawDateFilter() {
 }
 
 void OpenDashboardPage::drawFavoritesFilter() {
-    IMW::Font        font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font        font(LookAndFeel::instance().fontSmall());
     IMW::ChangeStrId rowId("favoritesFilterRow");
 
     // the plus button is only enabled while pressing it would change the active filter
@@ -473,11 +504,11 @@ void OpenDashboardPage::drawFavoritesFilter() {
     const auto favoritesFilterToString = [](FavoritesFilter filter) { return filter == FavoritesFilter::ShowFavorited ? "favorited" : "not favorited"; };
 
     ImGui::SetNextItemWidth(IMW::CalcComboSize("##favoritesFilterCombo", favoritesFilterToString(FavoritesFilter::ShowUnfavorited), ImGuiComboFlags_None).preferred.x);
-    if (auto comboBox = IMW::Combo{"##favoritesFilterCombo", favoritesFilterToString(m_pendingFavoritesFilter), ImGuiComboFlags_None}) {
-        if (ImGui::Selectable(favoritesFilterToString(FavoritesFilter::ShowFavorited))) {
+    if (auto comboBox = DigitizerUi::ComboBox{"##favoritesFilterCombo", favoritesFilterToString(m_pendingFavoritesFilter), ImGuiComboFlags_None}) {
+        if (DigitizerUi::Selectable(favoritesFilterToString(FavoritesFilter::ShowFavorited))) {
             m_pendingFavoritesFilter = FavoritesFilter::ShowFavorited;
         }
-        if (ImGui::Selectable(favoritesFilterToString(FavoritesFilter::ShowUnfavorited))) {
+        if (DigitizerUi::Selectable(favoritesFilterToString(FavoritesFilter::ShowUnfavorited))) {
             m_pendingFavoritesFilter = FavoritesFilter::ShowUnfavorited;
         }
     }
@@ -500,7 +531,7 @@ void OpenDashboardPage::drawKeyValueFilter() {
 }
 
 void OpenDashboardPage::drawViewOptionsSection() {
-    IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+    IMW::Font font(LookAndFeel::instance().fontSmall());
 
     const auto drawModeSelectable = [this](const char* label, ListViewMode mode) {
         const ImVec2 padding   = ImGui::GetStyle().FramePadding * 2.f;
@@ -509,7 +540,7 @@ void OpenDashboardPage::drawViewOptionsSection() {
         const float   leftoverWidth = std::max(1.f, ImGui::GetContentRegionAvail().x - labelSize.x);
         IMW::StyleVar textAlign(ImGuiStyleVar_SelectableTextAlign, ImVec2{std::min(1.f, padding.x / leftoverWidth), 0.5f});
         // use the size parameter of Selectable to add padding vertically
-        if (ImGui::Selectable(label, m_viewMode == mode, ImGuiSelectableFlags_None, ImVec2{0.f, labelSize.y + 2.f * padding.y}) && m_viewMode != mode) {
+        if (DigitizerUi::Selectable(label, m_viewMode == mode, ImGuiSelectableFlags_None, ImVec2{0.f, labelSize.y + 2.f * padding.y}) && m_viewMode != mode) {
             const bool customTreeChanged = (m_viewMode == ListViewMode::CustomTree) != (mode == ListViewMode::CustomTree);
             m_viewMode                   = mode;
             m_scrollToSelected           = true;
@@ -636,11 +667,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
     ViewResult result;
 
-    float starButtonWidth = 0.f;
-    {
-        IMW::Font iconFont(LookAndFeel::instance().fontIcons);
-        starButtonWidth = IMW::CalcButtonSize(kIconStar).x;
-    }
+    const float starButtonWidth = ImGui::GetFrameHeight();
 
     const float cellPaddingY  = ImGui::GetStyle().CellPadding.y;
     const float rowHeight     = std::max(ImGui::GetFrameHeight(), ImGui::GetTextLineHeightWithSpacing() * 3.f);
@@ -697,7 +724,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
             .columns           = columnHeaderLabels,
             .fixedColumnWidths = fixedColumnWidths,
             .scrollToElement   = scrollToRow,
-            .columnHeaderFont  = LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode],
+            .columnHeaderFont  = LookAndFeel::instance().fontSmall(),
             .sortMarker        = sortMarker,
         },
         ImVec2{0.f, size.y});
@@ -716,7 +743,8 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
             const ImVec2 rowCursor     = ImGui::GetCursorPos();
             const float  starCellWidth = ImGui::GetContentRegionAvail().x;
-            if (ImGui::Selectable("##dashboardRow", m_selectedDashboard == description, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap, {0.f, rowHeight})) {
+            const bool   rowSelected   = m_selectedDashboard == description;
+            if (DigitizerUi::Selectable("##dashboardRow", rowSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap, {0.f, rowHeight})) {
                 m_selectedDashboard = description;
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -725,19 +753,18 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
 
             if (optionalDashboard != nullptr && optionalDashboard->isInitialised && optionalDashboard->description && description->name == optionalDashboard->description->name && description->storageInfo == optionalDashboard->description->storageInfo) {
                 // this dashboard is the loaded dashboard
-                ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_HeaderActive), 0.f, 0, 2.f);
+                const float rounding = 0.f; // selectable doesn't currently support rounded corners so if we drew this with rounded corners it would lead to weird pixel artifacts on the corners when selected
+                ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_HeaderActive), rounding, 0, LookAndFeel::instance().openDashboardPageStyle.loadedDashboardIndicatorBorderThickness);
             }
 
             ImGui::SetCursorPos({rowCursor.x + std::max(0.f, (starCellWidth - starButtonWidth) * 0.5f), rowCursor.y + std::max(0.f, (rowHeight - ImGui::GetFrameHeight()) * 0.5f)});
-            {
-                IMW::Font starFont(description->isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons);
-                if (ImGui::Button(kIconStar)) {
-                    description->isFavorite = !description->isFavorite;
-                    if (hasActiveFavoritesFilter()) {
-                        result.dashboardAction = DashboardAction::favoriteChanged;
-                    }
+            if (drawFavoriteButton(description->isFavorite)) {
+                description->isFavorite = !description->isFavorite;
+                if (hasActiveFavoritesFilter()) {
+                    result.dashboardAction = DashboardAction::favoriteChanged;
                 }
             }
+            IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(rowSelected)); // after the star button, which keeps the normal text colour on its own background
 
             ImGui::TableNextColumn();
             {
@@ -760,7 +787,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
                     }
                 } else {
                     // placeholder in case the preview is still loading or failed, so the rows stay the same size
-                    ImGui::GetWindowDrawList()->AddRectFilled(previewTop, {previewTop.x + previewSize.x, previewTop.y + previewSize.y}, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.f);
+                    ImGui::GetWindowDrawList()->AddRectFilled(previewTop, {previewTop.x + previewSize.x, previewTop.y + previewSize.y}, ImGui::GetColorU32(ImGuiCol_FrameBg), LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewRounding);
                 }
             }
 
@@ -841,22 +868,16 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
             const auto&   description = dashboards()[itemIndex];
             IMW::ChangeId leafId(static_cast<int>(itemIndex));
 
-            {
-                // explicitly sized to match the selectable next to it, a bare SmallButton would hug the glyph
-                const ImVec2 starButtonSize{ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()};
-                ImGui::PushFont(description->isFavorite ? LookAndFeel::instance().fontIconsSolid : LookAndFeel::instance().fontIcons, starButtonSize.y * 0.75f);
-                if (ImGui::Button(kIconStar, starButtonSize)) {
-                    description->isFavorite = !description->isFavorite;
-                    if (hasActiveFavoritesFilter()) {
-                        result.dashboardAction = DashboardAction::favoriteChanged;
-                    }
+            if (drawFavoriteButton(description->isFavorite)) {
+                description->isFavorite = !description->isFavorite;
+                if (hasActiveFavoritesFilter()) {
+                    result.dashboardAction = DashboardAction::favoriteChanged;
                 }
-                ImGui::PopFont();
             }
             ImGui::SameLine();
 
             const bool isSelected = m_selectedDashboard == description;
-            if (ImGui::Selectable(description->name.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2{ImGui::CalcTextSize(description->name.c_str()).x, 0.f})) {
+            if (frameHeightSelectable(description->name.c_str(), isSelected)) {
                 m_selectedDashboard = description;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                     result.dashboardToLoad = description;
@@ -883,7 +904,7 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardFileTree(ImVec2 si
                 // this is on the path to the selected node, so keep it open
                 ImGui::SetNextItemOpen(true, ImGuiCond_Always);
             }
-            return ImGui::TreeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
+            return DigitizerUi::TreeNodeEx(node.name.data(), ImGuiTreeNodeFlags_SpanAvailWidth);
         };
 
         const auto beginDraw = [&drawBranchNode, &drawLeafRow](const components::SortFilterTreeModelNode& node) {
@@ -923,7 +944,7 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
 
     float overlayWidth = squareButtonSize.x;
     if (m_viewMode != ListViewMode::Table) {
-        overlayWidth += IMW::CalcButtonSize("collapse all").x + IMW::CalcButtonSize("expand all").x + 2.f * spacing;
+        overlayWidth += DigitizerUi::CalcButtonSize("collapse all").x + DigitizerUi::CalcButtonSize("expand all").x + 2.f * spacing;
     }
 
     const ImVec2 oldCursorScreenPosition = ImGui::GetCursorScreenPos();
@@ -935,17 +956,18 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
     {
         IMW::Child overlay("##viewOverlayButtons", ImVec2{overlayWidth, frameHeight}, 0, ImGuiWindowFlags_NoScrollbar);
         if (m_viewMode != ListViewMode::Table) {
-            if (ImGui::Button("collapse all")) {
+            if (DigitizerUi::TextButton("collapse all")) {
                 m_treeSetAllOpen = false;
             }
             ImGui::SameLine();
-            if (ImGui::Button("expand all")) {
+            if (DigitizerUi::TextButton("expand all")) {
                 m_treeSetAllOpen = true;
             }
             ImGui::SameLine();
         }
         ImGui::PushFont(LookAndFeel::instance().fontIconsSolid, frameHeight / 2.f);
-        if (ImGui::Button(kIconArrowUp, squareButtonSize)) {
+        IMW::StyleVar noHorizontalPadding(ImGuiStyleVar_FramePadding, ImVec2{0.f, ImGui::GetStyle().FramePadding.y}); // the doubled padding is wider than the square leaves for the icon
+        if (DigitizerUi::Button(kIconArrowUp, squareButtonSize)) {
             m_scrollToTop = true;
         }
         ImGui::PopFont();
@@ -956,7 +978,7 @@ void OpenDashboardPage::drawViewOverlayButtons(ImVec2 viewTopLeft, ImVec2 viewSi
 
 void OpenDashboardPage::drawOAuthPopup() {
 #ifndef __EMSCRIPTEN__
-    ImGui::SetNextWindowSize({500, 0}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.oauthPopupWidth, 0.f}, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(oauthPopupId, nullptr, 0)) {
         auto& session = DigitizerUi::OAuthSession::instance();
 
@@ -978,7 +1000,7 @@ void OpenDashboardPage::drawOAuthPopup() {
         static std::string endpoint = "mdp://127.0.0.1:12340/oauth";
         ImGui::InputText("##endpoint", &endpoint);
 
-        if (ImGui::Button("Sign in")) {
+        if (DigitizerUi::TextButton("Sign in")) {
             session.signIn(scope, clientid, endpoint);
         }
 
@@ -986,7 +1008,7 @@ void OpenDashboardPage::drawOAuthPopup() {
         ImGui::Text("Roles: %s", session.availableRoles().empty() ? "N/A" : session.availableRoles().c_str());
 
         ImGui::Separator();
-        if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (DigitizerUi::TextButton("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             ImGui::CloseCurrentPopup();
         }
     }
@@ -994,19 +1016,19 @@ void OpenDashboardPage::drawOAuthPopup() {
 }
 
 void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
-    constexpr float panelPadding     = 15.f;
-    constexpr float panelItemSpacing = 10.f;
+    const float panelPadding     = LookAndFeel::instance().openDashboardPageStyle.currentDashboardPanelPadding;
+    const float panelItemSpacing = LookAndFeel::instance().openDashboardPageStyle.currentDashboardPanelSpacing;
 
     const bool hasDashboardAndDescription = optionalDashboard && optionalDashboard->description;
 
     float titleHeight    = 0.f;
     float subtitleHeight = 0.f;
     {
-        IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+        IMW::Font titleFont(LookAndFeel::instance().fontBigger());
         titleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
     {
-        IMW::Font subtitleFont(LookAndFeel::instance().fontBig[LookAndFeel::instance().prototypeMode]);
+        IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
         subtitleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
 
@@ -1016,7 +1038,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
     const float  previewWidth  = previewHeight * DashboardPreview::preferredAspectRatio;
     const float  panelHeight   = previewHeight + 2.f * panelPadding;
 
-    ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg));
+    ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg), ImGui::GetStyle().ChildRounding);
 
     // draw preview, or else a grey placeholder
     bool         previewDrawn = false;
@@ -1029,7 +1051,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         }
     }
     if (!previewDrawn) {
-        ImGui::GetWindowDrawList()->AddRectFilled(previewStart, previewEnd, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.f);
+        ImGui::GetWindowDrawList()->AddRectFilled(previewStart, previewEnd, ImGui::GetColorU32(ImGuiCol_FrameBg), LookAndFeel::instance().openDashboardPageStyle.dashboardPreviewRounding);
     }
 
     // vertically centered title and optional "Currently open" subtitle
@@ -1037,12 +1059,12 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         const float  textBlockHeight = hasDashboardAndDescription ? titleHeight + subtitleHeight : titleHeight;
         const ImVec2 textStart{previewEnd.x + panelItemSpacing, previewStart.y + std::max(0.f, (previewHeight - textBlockHeight) / 2.f)};
         {
-            IMW::Font titleFont(LookAndFeel::instance().fontBigger[LookAndFeel::instance().prototypeMode]);
+            IMW::Font titleFont(LookAndFeel::instance().fontBigger());
             ImGui::SetCursorScreenPos(textStart);
             ImGui::TextUnformatted(hasDashboardAndDescription ? optionalDashboard->description->name.c_str() : "No dashboard currently open");
         }
         if (hasDashboardAndDescription) {
-            IMW::Font subtitleFont(LookAndFeel::instance().fontBig[LookAndFeel::instance().prototypeMode]);
+            IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
             ImGui::SetCursorScreenPos(textStart + ImVec2{0, titleHeight});
             ImGui::TextUnformatted("Currently open");
         }
@@ -1092,8 +1114,8 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
 }
 
 void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage) {
-    ImGui::Dummy({});
-    ImGui::SameLine();
+    const float leftPadding = ImGui::GetStyle().ItemSpacing.x;
+    ImGui::Indent(leftPadding);
     drawCurrentDashboardPanel(optionalDashboard, optionalDashboardPage);
     ImGui::Spacing();
 
@@ -1102,16 +1124,11 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
     drawSearchInput();
     ImGui::Spacing();
 
-    constexpr float sidebarRatio    = 1.f / 4.f;
-    constexpr float sidebarMaxWidth = 320.f;
+    const float sidebarRatio    = LookAndFeel::instance().openDashboardPageStyle.sidebarWidthRatio;
+    const float sidebarMaxWidth = LookAndFeel::instance().openDashboardPageStyle.sidebarMaxWidth;
 
     const float sidebarWidth     = std::max(components::DateFilterRow::rowWidth(kLastUsedText), std::min(ImGui::GetContentRegionAvail().x * sidebarRatio, sidebarMaxWidth));
     const float mainContentWidth = ImGui::GetContentRegionAvail().x - sidebarWidth - ImGui::GetStyle().ItemSpacing.x;
-
-    // vertical separator between main content and sidebar
-    const ImVec2 contentTopLeft = ImGui::GetCursorScreenPos();
-    const float  dividerX       = contentTopLeft.x + mainContentWidth + ImGui::GetStyle().ItemSpacing.x * 0.5f;
-    ImGui::GetWindowDrawList()->AddLine(ImVec2{dividerX, contentTopLeft.y}, ImVec2{dividerX, contentTopLeft.y + ImGui::GetContentRegionAvail().y}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().contentSeparator));
 
     std::shared_ptr<const DashboardDescription> dashboardToLoad;
 
@@ -1119,7 +1136,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         IMW::Child mainContent("##dashboardMainContent", ImVec2{mainContentWidth, 0.f}, 0, 0);
 
         {
-            IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+            IMW::Font font(LookAndFeel::instance().fontSmall());
 
             drawActiveFilterTags();
 
@@ -1161,9 +1178,8 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         const auto buttonSize = ImVec2{0, buttonHeight};
         {
             IMW::Disabled disabled(m_selectedDashboard == nullptr);
-            const auto    loadButtonMinSize = IMW::CalcButtonSize("Load");
-            const auto    loadButtonSize    = ImVec2{loadButtonMinSize.x + ImGui::GetStyle().ItemInnerSpacing.x * 4.f, buttonHeight};
-            if (ImGui::Button("Load", loadButtonSize) && m_selectedDashboard != nullptr) {
+            const auto    loadButtonSize = ImVec2{DigitizerUi::CalcButtonSize("Load").x, buttonHeight};
+            if (DigitizerUi::TextButton("Load", loadButtonSize) && m_selectedDashboard != nullptr) {
                 // it is okay to override dashboardToLoad because there is only one interaction per frame
                 dashboardToLoad = m_selectedDashboard;
             }
@@ -1173,12 +1189,12 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         constexpr const char* openEmptyDashboardButtonLabel     = "Open empty dashboard";
         constexpr const char* openNewDigitizerWindowButtonlabel = "Open a new Digitizer Window";
 
-        auto openButtonsTotalWidth = IMW::CalcAdjacentButtonSizes(std::array{openEmptyDashboardButtonLabel, openNewDigitizerWindowButtonlabel}).x;
+        auto openButtonsTotalWidth = IMW::CalcAdjacentButtonSizes(std::array{openEmptyDashboardButtonLabel, openNewDigitizerWindowButtonlabel}, DigitizerUi::CalcButtonSize).x;
 
 #ifndef __EMSCRIPTEN__
         constexpr const char* openOAuthPopupLabel = "OAuth/RBAC";
         if (Digitizer::Settings::instance().editableMode && LookAndFeel::instance().prototypeMode) {
-            openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + IMW::CalcButtonSize(openOAuthPopupLabel).x;
+            openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + DigitizerUi::CalcButtonSize(openOAuthPopupLabel).x;
         }
 #endif
 
@@ -1186,11 +1202,11 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2{std::max(0.f, ImGui::GetContentRegionAvail().x - openButtonsTotalWidth), 0});
 
-        if (ImGui::Button(openEmptyDashboardButtonLabel, buttonSize)) {
+        if (DigitizerUi::TextButton(openEmptyDashboardButtonLabel, buttonSize)) {
             requestLoadDashboard(nullptr);
         }
         ImGui::SameLine();
-        if (ImGui::Button(openNewDigitizerWindowButtonlabel, buttonSize)) {
+        if (DigitizerUi::TextButton(openNewDigitizerWindowButtonlabel, buttonSize)) {
             // TODO: ivan
             // app->openNewWindow();
         }
@@ -1198,7 +1214,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 #ifndef __EMSCRIPTEN__
         if (Digitizer::Settings::instance().editableMode && LookAndFeel::instance().prototypeMode) {
             ImGui::SameLine();
-            if (ImGui::Button("OAuth/RBAC", buttonSize)) {
+            if (DigitizerUi::TextButton("OAuth/RBAC", buttonSize)) {
                 ImGui::OpenPopup(oauthPopupId);
             }
         }
@@ -1224,13 +1240,15 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         drawViewOptionsSection();
     }
 
+    ImGui::Unindent(leftPadding);
+
     if (dashboardToLoad) {
         requestLoadDashboard(dashboardToLoad);
     }
 }
 
 void OpenDashboardPage::drawAddSourcePopup() {
-    ImGui::SetNextWindowSize({600, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
+    ImGui::SetNextWindowSize({LookAndFeel::instance().openDashboardPageStyle.addSourcePopupWidth, ImGui::GetFrameHeight() * 4.F}, ImGuiCond_Once); // 4 line heights: window top bar, path entry, buttons, and some extra spacing
     if (auto popup = IMW::ModalPopup(addSourcePopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Path:");

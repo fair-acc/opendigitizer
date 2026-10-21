@@ -238,7 +238,10 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
     }
     const ImGuiIO& io = ImGui::GetIO();
     glViewport(0, 0, int(io.DisplaySize.x), int(io.DisplaySize.y));
-    glClearColor(1, 1, 1, 1);
+    {
+        const ImVec4& clearColor = DigitizerUi::LookAndFeel::instance().palette().clearColor;
+        glClearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
+    }
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     if (beforeSwap) {

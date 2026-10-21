@@ -41,16 +41,13 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
 }
 
 void applyStyle(LookAndFeel::Style style) {
-    switch (style) {
-    case LookAndFeel::Style::Dark: ImGui::StyleColorsDark(); break;
-    case LookAndFeel::Style::Light: ImGui::StyleColorsLight(); break;
-    }
     LookAndFeel::mutableInstance().style = style;
+    LookAndFeel::mutableInstance().applyTheme();
+}
 
-    ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.f;
-
-    // dark style: the plot frame would match a button
-    ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+void applyTheme(LookAndFeel::Theme theme) {
+    LookAndFeel::mutableInstance().theme = theme;
+    LookAndFeel::mutableInstance().applyTheme();
 }
 
 void initialise(std::optional<LookAndFeel::Style> style) {
@@ -61,7 +58,7 @@ void initialise(std::optional<LookAndFeel::Style> style) {
     if (ImPlot3D::GetCurrentContext() == nullptr) {
         ImPlot3D::CreateContext();
     }
-    if (LookAndFeel::instance().fontNormal[0] == nullptr) {
+    if (LookAndFeel::instance().fontNormal() == nullptr) {
         LookAndFeel::mutableInstance().loadFonts();
     }
     std::ignore = opendigitizer::ColourManager::instance();

@@ -12,6 +12,7 @@
 #include <imgui_node_editor.h>
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 struct TestState;
@@ -81,9 +82,8 @@ private:
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
 
-    static constexpr float borderExteriorHoverFadeTransitionDurationSeconds = 0.4f;
-    float                  _timeSpentHoveringBoundingBoxExterior            = 0.0;
-    bool                   _wasHoveringBoundingBoxExteriorThisFrame         = false;
+    float _timeSpentHoveringBoundingBoxExterior    = 0.0;
+    bool  _wasHoveringBoundingBoxExteriorThisFrame = false;
 
     void makeCurrent() { ax::NodeEditor::SetCurrentEditor(_editorPtr); }
 
@@ -182,18 +182,43 @@ public:
         ax::NodeEditor::DestroyEditor(_editorPtr);
     }
 
+    [[nodiscard]] static std::optional<ImVec4> canvasBackgroundColor() {
+        if (!LookAndFeel::instance().flowgraph.canvasBackground) {
+            return std::nullopt; // transparent, let caller default to whatever is behind the canvas
+        }
+        return LookAndFeel::instance().palette().flowgraphBg;
+    }
+
     void updateStyle() {
         makeCurrent();
 
-        auto& style        = ax::NodeEditor::GetStyle();
-        style.NodeRounding = 0;
-        style.PinRounding  = 0;
-        style.LinkStrength = 60.f;
+        const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
+        const auto& palette              = LookAndFeel::instance().palette();
 
-        style.Colors[ax::NodeEditor::StyleColor_Bg]         = LookAndFeel::instance().flowgraph.canvasBackground ? LookAndFeel::instance().palette().flowgraphBg : ImVec4{};
-        style.Colors[ax::NodeEditor::StyleColor_Grid]       = LookAndFeel::instance().flowgraph.canvasGrid ? ax::NodeEditor::Style{}.Colors[ax::NodeEditor::StyleColor_Grid] : ImVec4{};
-        style.Colors[ax::NodeEditor::StyleColor_NodeBg]     = LookAndFeel::instance().palette().flowgraphNodeBg;
-        style.Colors[ax::NodeEditor::StyleColor_NodeBorder] = LookAndFeel::instance().palette().flowgraphNodeBorder;
+        auto& style           = ax::NodeEditor::GetStyle();
+        style.NodePadding     = ImVec4{flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding, flowgraphLookAndFeel.nodePadding};
+        style.NodeRounding    = flowgraphLookAndFeel.nodeRounding;
+        style.NodeBorderWidth = flowgraphLookAndFeel.nodeBorderWidth;
+        style.PinRounding     = flowgraphLookAndFeel.imguiNodeEditorPortRounding;
+        style.GroupRounding   = flowgraphLookAndFeel.imguiNodeEditorGroupNodeRounding;
+        style.LinkStrength    = flowgraphLookAndFeel.linkStrength;
+
+        using enum ax::NodeEditor::StyleColor;
+        style.Colors[StyleColor_Bg]                  = canvasBackgroundColor().value_or(ImVec4{});
+        style.Colors[StyleColor_Grid]                = flowgraphLookAndFeel.canvasGrid ? palette.flowgraphGrid : ImVec4{};
+        style.Colors[StyleColor_NodeBg]              = palette.flowgraphNodeBg;
+        style.Colors[StyleColor_NodeBorder]          = palette.flowgraphNodeBorder;
+        style.Colors[StyleColor_HovNodeBorder]       = palette.flowgraphNodeBorderHovered;
+        style.Colors[StyleColor_SelNodeBorder]       = palette.flowgraphNodeBorderSelected;
+        style.Colors[StyleColor_NodeSelRect]         = palette.flowgraphSelectionRect;
+        style.Colors[StyleColor_NodeSelRectBorder]   = palette.flowgraphSelectionRectBorder;
+        style.Colors[StyleColor_HovLinkBorder]       = palette.flowgraphLinkHovered;
+        style.Colors[StyleColor_SelLinkBorder]       = palette.flowgraphLinkSelected;
+        style.Colors[StyleColor_HighlightLinkBorder] = palette.flowgraphLinkHighlighted;
+        style.Colors[StyleColor_LinkSelRect]         = palette.flowgraphSelectionRect;
+        style.Colors[StyleColor_LinkSelRectBorder]   = palette.flowgraphSelectionRectBorder;
+        style.Colors[StyleColor_PinRect]             = palette.flowgraphPinRect;
+        style.Colors[StyleColor_PinRectBorder]       = palette.flowgraphPinRectBorder;
     }
 
     void draw(const ImVec2& contentTopLeft, const ImVec2& contentSize, bool isCurrentEditor);
@@ -212,17 +237,16 @@ public:
 
     struct NodeDrawResult {
         ImVec2 topLeft;
-        float  bottomY;
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
         float pinAreaHeight       = 0.F;
         bool  filterButtonHovered = false;
     };
-    NodeDrawResult drawNode(                                                         //
-        UiGraphBlock&                                          block,                //
-        std::span<const UiGraphPort* const>                    inputPorts,           //
-        std::span<const UiGraphPort* const>                    outputPorts,          //
-        float                                                  pinHorizontalPadding, //
-        std::optional<components::PropertyConnectionIndicator> connectionPreview);
+    NodeDrawResult drawNode(                                                      //
+        UiGraphBlock&                                          block,             //
+        std::span<const UiGraphPort* const>                    inputPorts,        //
+        std::span<const UiGraphPort* const>                    outputPorts,       //
+        std::optional<components::PropertyConnectionIndicator> connectionPreview, //
+        bool                                                   isUiControlConnectionTarget);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 

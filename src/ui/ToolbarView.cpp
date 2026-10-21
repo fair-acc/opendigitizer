@@ -4,12 +4,11 @@
 
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
+#include "components/StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 
 namespace {
-constexpr inline float kHeight      = 36.f;
-constexpr inline float kLeftPadding = 16.f;
 
 void drawSchedulerControls(GraphSession& session) {
     using enum gr::lifecycle::State;
@@ -19,10 +18,11 @@ void drawSchedulerControls(GraphSession& session) {
     const gr::lifecycle::State state  = session.state();
     const auto                 button = [](const char* label, const char* tooltip, bool enabled) {
         IMW::Disabled disabled(!enabled);
-        bool          pressed = false;
+        bool          pressed    = false;
+        const float   buttonSide = ImGui::GetFrameHeight(); // of the text font, like the other toolbar buttons
         {
             IMW::Font font(LookAndFeel::instance().fontIconsSolid);
-            pressed = ImGui::Button(label);
+            pressed = DigitizerUi::Button(label, ImVec2{buttonSide, buttonSide});
         }
         ImGui::SetItemTooltip("%s", tooltip);
         ImGui::SameLine();
@@ -100,7 +100,7 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
         return;
     }
 
-    IMW::Child toolbar("##Toolbar", ImVec2(ImGui::GetContentRegionAvail().x, kHeight * static_cast<float>(_rows)), false, ImGuiWindowFlags_NoScrollbar);
+    IMW::Child toolbar("##Toolbar", ImVec2(ImGui::GetContentRegionAvail().x, LookAndFeel::instance().dashboardStyle.toolbarRowHeight * static_cast<float>(_rows)), false, ImGuiWindowFlags_NoScrollbar);
     const auto widthsOf = [this](const std::string& key) {
         const float fixed = _fixedWidths.contains(key) ? _fixedWidths.at(key) : 0.f;
         return toolbar::publishedWidths(key).value_or(toolbar::ItemWidths{.natural = fixed, .minimum = fixed, .label = 0.f});
@@ -112,15 +112,15 @@ void ToolbarView::draw(GraphSession& session, bool schedulerControls) {
     std::ranges::transform(blocks, std::back_inserter(keys), [](const auto& block) { return std::string(block->uniqueName()); });
     std::vector<toolbar::ItemWidths> widths;
     std::ranges::transform(keys, std::back_inserter(widths), widthsOf);
-    const std::vector<ToolbarSlot> slots = planToolbar(widths, ImGui::GetContentRegionAvail().x - kLeftPadding, ImGui::GetStyle().ItemSpacing.x);
+    const std::vector<ToolbarSlot> slots = planToolbar(widths, ImGui::GetContentRegionAvail().x - LookAndFeel::instance().dashboardStyle.toolbarLeftPadding, LookAndFeel::instance().dashboardStyle.toolbarItemSpacing);
     _rows                                = slots.empty() ? 1UZ : slots.back().row + 1UZ;
 
     const ImVec2 origin = ImGui::GetCursorPos();
     for (std::size_t i = 0UZ; i < keys.size(); ++i) {
         if (i == 0UZ || slots[i].row != slots[i - 1UZ].row) {
-            ImGui::SetCursorPos(ImVec2(origin.x + kLeftPadding, origin.y + kHeight * static_cast<float>(slots[i].row)));
+            ImGui::SetCursorPos(ImVec2(origin.x + LookAndFeel::instance().dashboardStyle.toolbarLeftPadding, origin.y + LookAndFeel::instance().dashboardStyle.toolbarRowHeight * static_cast<float>(slots[i].row)));
         } else {
-            ImGui::SameLine();
+            ImGui::SameLine(0.f, LookAndFeel::instance().dashboardStyle.toolbarItemSpacing);
         }
         ImGui::BeginGroup();
         if (keys[i] == kSchedulerControlsKey) {

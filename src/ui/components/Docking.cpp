@@ -147,11 +147,11 @@ void DockSpace::captureFreeLayout() const {
 
 void DockSpace::renderWindows(const Windows& windows, bool isEditable, ImVec2 paneSize) {
     for (const auto& window : windows) {
-        constexpr float floatingWindowMinSizeFractionOfMainWindow = 1.f / 4.f;
-        const ImVec2    windowSizeMax                             = window->windowMaxSize.value_or(paneSize);
-        const ImVec2    windowSizeMin                             = window->windowMinSizeOverride.value_or(ImVec2{
-            std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfMainWindow),
-            std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfMainWindow),
+        const float  floatingWindowMinSizeFractionOfViewport = LookAndFeel::instance().floatingWindowMinSizeFractionOfViewport;
+        const ImVec2 windowSizeMax                           = window->windowMaxSize.value_or(paneSize);
+        const ImVec2 windowSizeMin                           = window->windowMinSizeOverride.value_or(ImVec2{
+            std::max(1.f, windowSizeMax.x * floatingWindowMinSizeFractionOfViewport),
+            std::max(1.f, windowSizeMax.y * floatingWindowMinSizeFractionOfViewport),
         });
         ImGui::SetNextWindowSizeConstraints(windowSizeMin, windowSizeMax);
 
@@ -216,10 +216,10 @@ void DockSpace::drawEditableWindowDragArea() {
         return rgbToImGuiABGR(hovered ? 0x6ec9cf : 0x9ef7f1, 0x99);
     }();
 
-    currentWindow->DrawList->AddRectFilled(dragArea.GetTR(), dragArea.GetBL(), highlightColor);
+    currentWindow->DrawList->AddRectFilled(dragArea.Min, dragArea.Max, highlightColor, LookAndFeel::instance().dashboardStyle.layoutModePanelRounding);
 
     if (held) {
-        const float dragMinimumDelta = isFloating ? 0.0f : 30.f;
+        const float dragMinimumDelta = isFloating ? 0.0f : LookAndFeel::instance().requiredDragDistanceForWindowUndock;
 
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, dragMinimumDelta)) {
             dragWindow(currentWindow, dragArea);

@@ -5,6 +5,7 @@
 #include "tolower.hpp"
 
 #include "InputTextCompletion.hpp"
+#include "StyledStandardWidgets.hpp"
 #include <misc/cpp/imgui_stdlib.h>
 
 #include <optional>
@@ -146,7 +147,7 @@ auto FilteredListBox(const char* id, const ImVec2& size, const Items& items, Ite
 requires std::is_invocable_v<ItemGetter, decltype(*items.begin())>
 {
     using T = decltype(getItem(*items.begin()));
-    return FilteredListBox<T>(id, size, items, std::forward<ItemGetter>(getItem), [](auto&& item, bool selected) { return ImGui::Selectable(item.second.data(), selected); });
+    return FilteredListBox<T>(id, size, items, std::forward<ItemGetter>(getItem), [](auto&& item, bool selected) { return DigitizerUi::Selectable(item.second.data(), selected); });
 }
 
 template<typename Items, typename ItemGetter, typename ItemDrawer>

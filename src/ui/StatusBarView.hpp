@@ -18,14 +18,12 @@ namespace DigitizerUi {
 
 class StatusBarView {
 public:
-    static constexpr std::chrono::seconds kInfoDotLifetime{5};
-
     std::string version = "app/grc version";
     std::string versionDetails;
 
     void draw(GraphSession* session); // nullptr: log only
 
-    [[nodiscard]] static float height() noexcept;
+    [[nodiscard]] static float height() noexcept; // the bar and the item spacing above it, for the host to reserve
     [[nodiscard]] static bool  isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept;
 
 private:

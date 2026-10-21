@@ -7,6 +7,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 
@@ -37,10 +38,10 @@ inline auto ColorComboBox(char* id, const std::string& label, ImColor color, flo
     IMW::StyleColor buttonHovered(ImGuiCol_ButtonHovered, color);
     IMW::StyleColor buttonActive(ImGuiCol_ButtonActive, color);
 
-    if (auto combo = IMW::Combo(id, label.c_str(), 0)) {
+    if (auto combo = DigitizerUi::ComboBox(id, label.c_str(), 0)) {
         for (auto& item : items) {
             IMW::StyleColor itemBg(ImGuiCol_Header, color);
-            if (ImGui::Selectable(item.title.c_str(), item.isActive)) {
+            if (DigitizerUi::Selectable(item.title.c_str(), item.isActive)) {
                 result = std::addressof(item);
             }
         }

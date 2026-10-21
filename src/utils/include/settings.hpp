@@ -59,6 +59,7 @@ struct Settings {
     std::string           basePath;
     bool                  checkCertificates{true};
     bool                  darkMode{false};
+    std::string           theme{"Classic"}; // LookAndFeel::Theme name
 #ifdef __EMSCRIPTEN__
     bool editableMode{false};
 #else
@@ -94,6 +95,7 @@ private:
             bindAddresses = bindAddressesString | std::views::split(';') | std::views::transform([](auto&& s) { return s | std::ranges::to<std::string>(); }) | std::ranges::to<std::set>();
         }
         darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enable 'dark mode'
+        theme             = getValueFromEnv("DIGITIZER_THEME", theme);                          // Classic or Advanced
         editableMode      = getValueFromEnv("DIGITIZER_EDIT_MODE", editableMode);               // enable 'editable mode'
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
         hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
@@ -148,13 +150,15 @@ private:
                 darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
             } else if (sv.starts_with("darkMode")) {
                 darkMode = true;
+            } else if (sv.starts_with("theme=")) {
+                theme = sv.substr("theme="sv.length());
             } else if (sv.starts_with("editable")) {
                 editableMode = true;
             }
         }
 #endif
-        std::println("settings loaded: bindAddresses={}, darkMode={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
-            gr::join(bindAddresses), darkMode, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
+        std::println("settings loaded: bindAddresses={}, darkMode={}, theme={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+            gr::join(bindAddresses), darkMode, theme, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:

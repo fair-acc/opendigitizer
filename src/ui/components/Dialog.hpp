@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_DIALOG_HPP_
 
 #include "../common/ImguiWrap.hpp"
+#include "StyledStandardWidgets.hpp"
 #include <imgui.h>
 
 namespace DigitizerUi::components {
@@ -15,14 +16,14 @@ inline DialogButton DialogButtons(bool okEnabled = true) {
 
     {
         IMW::Disabled disabled(!okEnabled);
-        if (ImGui::Button("Ok") || (okEnabled && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
+        if (DigitizerUi::TextButton("Ok") || (okEnabled && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
             ImGui::CloseCurrentPopup();
             return DialogButton::Ok;
         }
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (DigitizerUi::TextButton("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         ImGui::CloseCurrentPopup();
         return DialogButton::Cancel;
     }

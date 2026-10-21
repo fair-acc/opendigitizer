@@ -28,6 +28,7 @@
 #include "components/DataTypeStyle.hpp"
 #include "components/OverlayButton.hpp"
 #include "components/Splitter.hpp"
+#include "components/StyledStandardWidgets.hpp"
 #include "components/YesNoPopup.hpp"
 
 #include "scope_exit.hpp"
@@ -95,21 +96,25 @@ bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_vie
 
 } // namespace
 
-void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size) {
+/// Style can be null if drawn client side (which node editor supports for rectangular port shapes)
+void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size, const DataTypeStyle* style) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
     const ImVec2 pivot = ImVec2(input ? min.x : max.x, (min.y + max.y) / 2.f);
 
     if (input) {
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, 10);
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, 10);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowSize, LookAndFeel::instance().flowgraph.pinArrowSize);
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_PinArrowWidth, LookAndFeel::instance().flowgraph.pinArrowWidth);
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_SnapLinkToPinDir, 1);
     }
 
     ax::NodeEditor::BeginPin(id, kind);
     ax::NodeEditor::PinPivotRect(pivot, pivot);
     ax::NodeEditor::PinRect(min, max);
+    if (style) {
+        ax::NodeEditor::PinDrawCallbacks(&drawPinForNodeEditor, &drawHoveredPinForNodeEditor, const_cast<DataTypeStyle*>(style));
+    }
     ax::NodeEditor::EndPin();
 
     if (input) {
@@ -146,16 +151,21 @@ std::optional<std::string> exportedPortShortenedDisplayName(const UiGraphPort* p
     return name;
 }
 
+float minimumPinAreaHeight(std::size_t numPins) {
+    const auto& fg = LookAndFeel::instance().flowgraph;
+    return numPins == 0 ? 0.f : static_cast<float>(numPins + 1) * (fg.pinHeight + fg.minimumPinGap);
+}
+
 PinDrawInfo calculatePinDrawInfo(const std::optional<std::string>& displayName, std::size_t index, std::size_t numPins, float anchorX, float blockTopY, float blockHeight, bool isInput) {
     const auto& fg = LookAndFeel::instance().flowgraph;
 
     if (!displayName) {
         const float y = blockTopY + pinLocalPositionY(index, numPins, blockHeight, fg.pinHeight);
-        const float x = isInput ? (anchorX - fg.pinHeight) : anchorX;
+        const float x = anchorX - fg.pinWidth / 2;
         return {.topLeft = {x, y}, .size = {fg.pinWidth, fg.pinHeight}};
     }
 
-    auto* font = LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode];
+    auto* font = LookAndFeel::instance().fontSmall();
     if (!font) {
         font = ImGui::GetFont();
     }
@@ -169,11 +179,6 @@ PinDrawInfo calculatePinDrawInfo(const std::optional<std::string>& displayName, 
     return {.topLeft = {tabX, tabY}, .size = {tabW, tabH}, .font = font, .fontSize = fontSize};
 }
 
-namespace {
-constexpr float kButtonBarPadding = 16.0f;
-constexpr float kButtonBarHeight  = 37.0f;
-} // namespace
-
 FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScreenTopLeft, const ImVec2& contentSize, Buttons buttons, float horizontalSplitRatio) {
     Buttons result;
     if (!(buttons.openNewBlockDialog || buttons.openNewSubGraphDialog || buttons.openRemoteSignalSelector || buttons.rearrangeBlocks || buttons.exportAllUnusedPorts || buttons.closeWindow)) {
@@ -182,52 +187,53 @@ FlowgraphEditor::Buttons FlowgraphEditor::drawButtons(const ImVec2& contentScree
 
     IMW::PushCursorPosition _;
 
-    constexpr float padding = kButtonBarPadding;
-    constexpr float height  = kButtonBarHeight;
+    const float padding = LookAndFeel::instance().flowgraph.controlsBarPadding;
+    const float height  = LookAndFeel::instance().flowgraph.controlsBarHeight;
 
     {
         ImGui::SetNextWindowPos({contentScreenTopLeft.x, contentScreenTopLeft.y + contentSize.y - height - padding});
         ImGui::SetNextWindowSize({contentSize.x * (1 - horizontalSplitRatio), height});
         IMW::Window overlay("Button Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
 
-        // These Buttons are rendered on top of the Editor, to make them properly readable, take out the transparency
-        ImVec4 buttonColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
-        buttonColor.w      = 1.0f;
-
         {
-            IMW::StyleColor buttonStyle(ImGuiCol_Button, buttonColor);
+            // These Buttons are rendered on top of the Editor, to make them properly readable, take out the transparency
+            // by blending the button colours over the canvas they are drawn on
+            const ImVec4    canvas = canvasBackgroundColor().value_or(ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+            IMW::StyleColor buttonStyle(ImGuiCol_Button, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_Button), canvas));
+            IMW::StyleColor buttonHoveredStyle(ImGuiCol_ButtonHovered, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), canvas));
+            IMW::StyleColor buttonActiveStyle(ImGuiCol_ButtonActive, overlayTransparentOverOpaque(ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive), canvas));
 
             ImGui::SetCursorPosX(padding);
 
             if (buttons.openNewBlockDialog) {
-                if (ImGui::Button("Add block...")) {
+                if (DigitizerUi::TextButton("Add block...")) {
                     result.openNewBlockDialog = true;
                 }
                 ImGui::SameLine();
             }
 
             if (buttons.openNewSubGraphDialog) {
-                if (ImGui::Button("Add sub graph...")) {
+                if (DigitizerUi::TextButton("Add sub graph...")) {
                     result.openNewSubGraphDialog = true;
                 }
                 ImGui::SameLine();
             }
 
             if (buttons.openRemoteSignalSelector) {
-                if (ImGui::Button("Add remote signal...")) {
+                if (DigitizerUi::TextButton("Add remote signal...")) {
                     result.openRemoteSignalSelector = true;
                 }
                 ImGui::SameLine();
             }
 
-            auto placeButtonRight = [posFromRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - padding](const char* text) mutable { //
-                float width = ImGui::CalcTextSize(text).x;
+            auto placeButtonRight = [padding, posFromRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - padding](const char* text) mutable { //
+                float width = DigitizerUi::CalcButtonSize(text).x;
 
                 ImGui::SetCursorPosX(posFromRight - width);
                 posFromRight -= width + padding;
 
                 bool clicked = false;
-                if (ImGui::Button(text)) {
+                if (DigitizerUi::TextButton(text)) {
                     clicked = true;
                 }
                 ImGui::SameLine();
@@ -282,28 +288,28 @@ void FlowgraphEditor::drawComputeDomainTag(UiGraphBlock& block) {
         return;
     }
 
-    const auto      lineHeight                   = ImGui::GetFrameHeight();
-    constexpr float maxLabelSpaceFromLeft        = 30.f;
-    constexpr float labelSpaceFromLeftPercentage = 0.2f;
-    const auto      spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
-    const auto      topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
+    const auto  lineHeight                   = ImGui::GetFrameHeight();
+    const float maxLabelSpaceFromLeft        = LookAndFeel::instance().flowgraph.computeDomainTagMaxOffset;
+    const float labelSpaceFromLeftPercentage = LookAndFeel::instance().flowgraph.computeDomainTagOffsetRatio;
+    const auto  spacingLeft                  = std::min(availableSpace * labelSpaceFromLeftPercentage, maxLabelSpaceFromLeft);
+    const auto  topLeftOfRect                = topLeft + ImVec2{spacingLeft, -(lineHeight / 2.f)};
 
     const auto schedulerColorU32 = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorder);
     const auto textColorU32      = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphSubgraphBorderText);
     auto*      drawList          = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32);
+    drawList->AddRectFilled(topLeftOfRect, topLeftOfRect + textSize + ImVec2{textRectPadding * 2.f, 0.f}, schedulerColorU32, ImGui::GetStyle().FrameRounding);
     drawList->AddText(topLeftOfRect + ImVec2{textRectPadding, 0.f}, textColorU32, tagLabel.data(), tagLabel.data() + tagLabel.size());
 }
 
 void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBoundingBox) {
-    constexpr static float fadeLengthSeconds = 1.0;
-    const auto             alphaPercentage   = std::clamp(this->_timeSpentHoldingPin, 0.f, fadeLengthSeconds) / fadeLengthSeconds;
+    const float fadeLengthSeconds = LookAndFeel::instance().flowgraph.exportAreaFadeInSeconds;
+    const auto  alphaPercentage   = std::clamp(this->_timeSpentHoldingPin, 0.f, fadeLengthSeconds) / fadeLengthSeconds;
 
     // while in canvas space, ImGui::GetMousePos() returns the canvas space value and does not need to be converted
     if (!canvasSpacingBoundingBox.contains(ImGui::GetMousePos())) {
         this->_wasHoveringBoundingBoxExteriorThisFrame = true;
         if (this->_timeSpentHoldingPin < fadeLengthSeconds) { // accelerate quickly to the background being fully faded in
-            this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime * 4;
+            this->_timeSpentHoldingPin += ImGui::GetIO().DeltaTime * LookAndFeel::instance().flowgraph.exportAreaFadeInSpeedup;
         }
         // user dragging connection outside of bounding box.
         ax::NodeEditor::Suspend();
@@ -320,7 +326,7 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     std::uint32_t outerOpaqueColor   = LookAndFeel::getColorU32Opaque(&Palette::flowgraphBoundingBoxExteriorSelection);
     float         outlineThickness   = LookAndFeel::instance().flowgraph.flowgraphBoundingBoxExteriorSelectionOutlineThickness;
     {
-        auto       animPercentage = std::clamp(_timeSpentHoveringBoundingBoxExterior, 0.f, borderExteriorHoverFadeTransitionDurationSeconds) / borderExteriorHoverFadeTransitionDurationSeconds;
+        auto       animPercentage = std::clamp(_timeSpentHoveringBoundingBoxExterior, 0.f, LookAndFeel::instance().flowgraph.exportAreaHoverFadeSeconds) / LookAndFeel::instance().flowgraph.exportAreaHoverFadeSeconds;
         const auto lerpColor      = [animPercentage](std::uint32_t coloru32, std::uint32_t targetu32) { //
             return ImGui::ColorConvertFloat4ToU32(ImLerp(ImGui::ColorConvertU32ToFloat4(coloru32), ImGui::ColorConvertU32ToFloat4(targetu32), animPercentage));
         };
@@ -353,17 +359,17 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     drawlist->AddRectFilled({bb.minX, bb.maxY}, {bb.maxX, visibleRegionMax.y}, outerColor);                         // bottom middle between the two columns
 }
 
-FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                       //
-    UiGraphBlock&                                          block,                //
-    std::span<const UiGraphPort* const>                    inputPorts,           //
-    std::span<const UiGraphPort* const>                    outputPorts,          //
-    float                                                  pinHorizontalPadding, //
-    std::optional<components::PropertyConnectionIndicator> connectionPreview     //
+FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                             //
+    UiGraphBlock&                                          block,                      //
+    std::span<const UiGraphPort* const>                    inputPorts,                 //
+    std::span<const UiGraphPort* const>                    outputPorts,                //
+    std::optional<components::PropertyConnectionIndicator> connectionPreview,          //
+    bool                                                   isUiControlConnectionTarget //
 ) {
     const auto            blockId        = ax::NodeEditor::NodeId(std::addressof(block));
     const auto            isGroup        = block.isScheduler() || block.isGraph();
     const ImVec4          borderColor    = isGroup ? LookAndFeel::instance().palette().flowgraphSubgraphBorder : ax::NodeEditor::GetStyle().Colors[ax::NodeEditor::StyleColor_NodeBorder];
-    const auto            borderWidthVar = IMW::NodeEditor::StyleFloatVar(ax::NodeEditor::StyleVar_NodeBorderWidth, isGroup ? 3.0f : ax::NodeEditor::GetStyle().NodeBorderWidth);
+    const auto            borderWidthVar = IMW::NodeEditor::StyleFloatVar(ax::NodeEditor::StyleVar_NodeBorderWidth, isGroup ? LookAndFeel::instance().flowgraph.subgraphBorderWidth : ax::NodeEditor::GetStyle().NodeBorderWidth);
     const auto            borderColorVar = IMW::NodeEditor::StyleColor(ax::NodeEditor::StyleColor_NodeBorder, borderColor);
     IMW::NodeEditor::Node node(blockId);
 
@@ -371,22 +377,40 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         this->drawComputeDomainTag(block);
     }
 
-    const auto minimumBlockSize    = LookAndFeel::instance().flowgraph.minimumBlockSize;
-    const auto blockScreenPosition = ImGui::GetCursorScreenPos();
-    auto       blockBottomY{blockScreenPosition.y + minimumBlockSize.y}; // we have to keep track of the Node Size ourselves
+    const auto  minimumBlockSize    = LookAndFeel::instance().flowgraph.minimumBlockSize;
+    const auto  blockScreenPosition = ImGui::GetCursorScreenPos();
+    const float nodeTopScreenY      = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
-    // Draw block title
+    // Draw block title. use slightly less padding at the top of the node due to the font having some empty space at the top of glyphs
+    ImGui::SetCursorScreenPos(blockScreenPosition - ImVec2{0.f, ImGui::GetFontBaked()->FindGlyph('H')->Y0});
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
+    {
+        // make sure the title does not overlap with the filter button
+        const float filterButtonWidthInsideNode = -components::nodeFilterButtonRect(ImVec2{}).Min.x;
+        const float titleRightPadding           = std::max(0.f, filterButtonWidthInsideNode - ax::NodeEditor::GetStyle().NodePadding.z) + ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::SameLine(0.f, 0.f);
+        ImGui::Dummy(ImVec2{titleRightPadding, 0.f});
+    }
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
-    // draw a filter button icon at the top right of the node area
-    const float filterButtonSideLength = ImGui::GetTextLineHeight();
-    ImGui::SameLine();
-    ImGui::Dummy(ImVec2{filterButtonSideLength, filterButtonSideLength});
-    const ImVec4 nodePadding             = ax::NodeEditor::GetStyle().NodePadding;
-    const float  nodeContentRightScreenX = std::max(ImGui::GetItemRectMax().x, blockScreenPosition.x - nodePadding.x + blockSize.x - nodePadding.z);
-    const bool   isFilter                = _filterBlock == std::addressof(block);
-    const auto   filterButton            = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), ImVec2{nodeContentRightScreenX, blockScreenPosition.y}, filterButtonSideLength, isFilter);
+    // draw a filter button over the top right corner of the node
+    const auto&  nodeEditorStyle          = ax::NodeEditor::GetStyle();
+    const ImVec2 nodeTopRight             = ImVec2{blockScreenPosition.x - nodeEditorStyle.NodePadding.x + blockSize.x, blockScreenPosition.y - nodeEditorStyle.NodePadding.y};
+    const ImVec4 filterButtonOutlineColor = [&] {
+        if (isUiControlConnectionTarget) {
+            return LookAndFeel::instance().palette().flowgraphUiControlPendingConnection;
+        }
+        if (ax::NodeEditor::IsNodeSelected(blockId)) {
+            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_SelNodeBorder];
+        }
+        if (ax::NodeEditor::GetHoveredNode() == blockId) {
+            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_HovNodeBorder];
+        }
+        return borderColor;
+    }();
+    const float filterButtonOutlineThickness = isUiControlConnectionTarget ? LookAndFeel::instance().flowgraph.highlightThickness : nodeEditorStyle.NodeBorderWidth;
+    const bool  isFilter                     = _filterBlock == std::addressof(block);
+    const auto  filterButton                 = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), components::nodeFilterButtonRect(nodeTopRight), isFilter, nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_NodeBg], filterButtonOutlineColor, filterButtonOutlineThickness);
     if (filterButton.clicked) {
         _filterBlock = isFilter ? nullptr : std::addressof(block);
     }
@@ -395,7 +419,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
 
     // Draw block properties
     {
-        IMW::Font font(LookAndFeel::instance().fontSmall[LookAndFeel::instance().prototypeMode]);
+        IMW::Font font(LookAndFeel::instance().fontSmall());
         for (const auto& [propertyKey, propertyValue] : block.blockSettings) {
             if (propertyKey == "description" || propertyKey.contains("::")) {
                 continue;
@@ -413,10 +437,12 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         }
     }
 
-    ImGui::Spacing();
-
-    // pins get laid out in the space up until this point
-    const float pinAreaBottomScreenY = ImGui::GetCursorScreenPos().y;
+    // pins are spaced evenly from the node top down to the bottom of the content so far plus the bottom padding
+    const auto pinAreaBottomScreenY = [] { return ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y + ax::NodeEditor::GetStyle().NodePadding.w; };
+    if (const float missingPinSpace = minimumPinAreaHeight(std::max(inputPorts.size(), outputPorts.size())) - (pinAreaBottomScreenY() - nodeTopScreenY); missingPinSpace > 0.f) {
+        ImGui::Dummy(ImVec2{0.f, std::max(0.f, missingPinSpace - ImGui::GetStyle().ItemSpacing.y)});
+    }
+    const float pinAreaHeight = pinAreaBottomScreenY() - nodeTopScreenY;
 
     // draw property connection indicators, the little circuit-diagram-like marks. includes a preview item
     // which is only shown when the user is hovering an interaction that is about to connect to that property
@@ -445,23 +471,29 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
         if (drawUiControlWidget) {
             drawUiControlWidget(block, blockSize.x);
         }
-        components::drawUiControlTargetList(*_graphModel, block);
+        const ImVec2 nodeTopLeft = blockScreenPosition - ImVec2{nodeEditorStyle.NodePadding.x, nodeEditorStyle.NodePadding.y};
+        components::drawUiControlTargetList(*_graphModel, block, ImRect{nodeTopLeft, nodeTopLeft + blockSize});
 
         if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
             _blockDragConnect.emplace(block.blockUniqueName, ImGui::GetMousePos());
         }
     }
 
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
+    if (const float missingHeight = blockScreenPosition.y + minimumBlockSize.y - ImGui::GetCursorScreenPos().y; missingHeight > 0.f) {
+        ImGui::Dummy(ImVec2{0.f, missingHeight});
+    }
 
-    const float nodeTopScreenY = blockScreenPosition.y - ax::NodeEditor::GetStyle().NodePadding.y;
-    const float pinAreaHeight  = pinAreaBottomScreenY - nodeTopScreenY;
+    // if this dummy is not here then anything that goes over the edge of the node like the filter button or ports could be taken as
+    // part of the bounding box (due to imgui adding the last item when closing a group) and cause the node to expand every frame
+    ImGui::SetCursorScreenPos(blockScreenPosition);
+    IMW::StyleVar noSpacing(ImGuiStyleVar_ItemSpacing, ImVec2{});
+    ImGui::Dummy(ImVec2{});
 
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
-    auto  registerPins = [exportTarget, &pinHorizontalPadding, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
+    auto  registerPins = [exportTarget, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
-            position.x += blockSize.x - pinHorizontalPadding;
+            position.x += blockSize.x - ax::NodeEditor::GetStyle().NodePadding.x;
         }
 
         const float blockY  = position.y - ax::NodeEditor::GetStyle().NodePadding.y;
@@ -471,21 +503,15 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
             auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
             auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, pinAreaHeight, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
-            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size);
+            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size, portDisplayName ? nullptr : &styleForDataType(ports[i]->portType));
         }
     };
 
-    ImVec2 position = {blockScreenPosition.x - pinHorizontalPadding, blockScreenPosition.y};
+    ImVec2 position = {blockScreenPosition.x - ax::NodeEditor::GetStyle().NodePadding.x, blockScreenPosition.y};
     registerPins(inputPorts, position, ax::NodeEditor::PinKind::Input);
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
-
     registerPins(outputPorts, blockScreenPosition, ax::NodeEditor::PinKind::Output);
-    blockBottomY = std::max(blockBottomY, ImGui::GetCursorPosY());
 
-    ImGui::SetCursorScreenPos({position.x, blockBottomY});
-
-    ImGui::Dummy(ImVec2(0.f, 0.f));
-    return NodeDrawResult{.topLeft = position, .bottomY = blockBottomY, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
+    return NodeDrawResult{.topLeft = position, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
 }
 
 std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) {
@@ -579,7 +605,7 @@ void FlowgraphEditor::sendPinsConnectedGraphMessage(ax::NodeEditor::PinId startP
 
 void FlowgraphEditor::handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor) {
     // Handle creation action, returns true if editor want to create new object (node or link)
-    if (auto creation = IMW::NodeEditor::Creation(linkColor, 1.0f)) {
+    if (auto creation = IMW::NodeEditor::Creation(linkColor, LookAndFeel::instance().flowgraph.newLinkThickness)) {
         // allow the user to drag outside the bounds of a subgraph to export a port
         if (_editorLevel > 0) {
             this->drawBoundingBoxExterior(boundingBox);
@@ -684,7 +710,6 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             }
         }
     };
-    const auto padding = ax::NodeEditor::GetStyle().NodePadding;
 
     std::optional<BoundingBox> boundingBox;
     const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {
@@ -720,24 +745,25 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         const bool filteredOut = _filterBlock && !_graphModel->blockInTree(*block, *_filterBlock);
 
         // If filteredOut, set opacity to 25% until we exit the scope
-        float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? 0.25f : ImGui::GetStyle().Alpha));
+        float                        originalAlpha = std::exchange(ImGui::GetStyle().Alpha, (filteredOut ? LookAndFeel::instance().flowgraph.filteredOutBlockAlpha : ImGui::GetStyle().Alpha));
         Digitizer::utils::scope_exit restoreStyle  = [&] { ImGui::GetStyle().Alpha = originalAlpha; };
 
         if (filteredOut) {
             filteredOutNodes.push_back(blockId);
         }
 
-        const bool pendingMultiSelect = multiSelectControl && isPendingMultiSelectConnection(*multiSelectControl, *multiSelectHoveredProperty, *block);
-        const auto connectionPreview  = pendingMultiSelect ? std::optional(components::PropertyConnectionIndicator{
-                                                                 .propertyName    = std::string(*multiSelectHoveredProperty),
-                                                                 .blockName       = multiSelectControl->blockName,
-                                                                 .blockUniqueName = multiSelectControl->blockUniqueName,
-                                                                 .color           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
-                                                                 .isInteractive   = false,
+        const bool pendingMultiSelect          = multiSelectControl && isPendingMultiSelectConnection(*multiSelectControl, *multiSelectHoveredProperty, *block);
+        const auto connectionPreview           = pendingMultiSelect ? std::optional(components::PropertyConnectionIndicator{
+                                                                          .propertyName    = std::string(*multiSelectHoveredProperty),
+                                                                          .blockName       = multiSelectControl->blockName,
+                                                                          .blockUniqueName = multiSelectControl->blockUniqueName,
+                                                                          .color           = LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection),
+                                                                          .isInteractive   = false,
                                                             })
-                                                           : std::nullopt;
-        const auto blockPosition      = this->drawNode(*block, inputPorts, outputPorts, padding.x, connectionPreview);
-        const auto blockSize          = ax::NodeEditor::GetNodeSize(blockId);
+                                                                    : std::nullopt;
+        const bool isUiControlConnectionTarget = pendingMultiSelect || isCompatibleWithDragSource(*block);
+        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview, isUiControlConnectionTarget);
+        const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
         if (blockPosition.filterButtonHovered) {
             // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
@@ -750,22 +776,20 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         // drawing them would increase the node size, which we need to know to correctly place the
         // output pins, and that would cause the nodes to continuously grow in width
         {
-            auto leftPos = blockPosition.topLeft.x - padding.x;
-
             ImGui::SetCursorScreenPos(blockPosition.topLeft);
             auto drawList = ax::NodeEditor::GetNodeBackgroundDrawList(blockId);
 
-            auto drawPorts = [&](auto& ports, auto portLeftPos, bool isInput) {
-                const auto& fg        = LookAndFeel::instance().flowgraph;
-                const float anchorX   = portLeftPos + padding.x;
-                const float blockTopY = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y;
+            auto drawPorts = [&](auto& ports, float anchorX, bool isInput) {
+                const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
+                const float blockTopY            = blockPosition.topLeft.y - ax::NodeEditor::GetStyle().NodePadding.y;
 
                 for (std::size_t i = 0; i < ports.size(); ++i) {
                     auto portExportedDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
                     auto info                    = calculatePinDrawInfo(portExportedDisplayName, i, ports.size(), anchorX, blockTopY, blockPosition.pinAreaHeight, isInput);
 
                     if (!portExportedDisplayName) {
-                        if (drawPin(drawList, info.topLeft, info.size, ports[i]->portType)) {
+                        // the node editor draws these pins, see addPin()
+                        if (ImGui::IsMouseHoveringRect(info.topLeft, info.topLeft + info.size)) {
                             // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
                             ax::NodeEditor::Suspend();
                             ImGui::SetTooltip("%s (%s)", ports[i]->portName.c_str(), ports[i]->portType.c_str());
@@ -776,20 +800,20 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
                     const auto& typeStyle = styleForDataType(ports[i]->portType);
                     const auto  textColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().flowgraphBg);
-                    drawList->AddRectFilled(info.topLeft, info.topLeft + info.size, typeStyle.color);
-                    drawList->AddRect(info.topLeft, info.topLeft + info.size, darkenOrLighten(typeStyle.color));
-                    drawList->AddText(info.font, info.fontSize, ImVec2{info.topLeft.x + fg.exportedTabPaddingH, info.topLeft.y + fg.exportedTabPaddingV}, textColor, portExportedDisplayName->c_str());
+                    drawList->AddRectFilled(info.topLeft, info.topLeft + info.size, typeStyle.color(), flowgraphLookAndFeel.rectangularPortRounding);
+                    drawList->AddRect(info.topLeft, info.topLeft + info.size, darkenOrLighten(typeStyle.color()), flowgraphLookAndFeel.rectangularPortRounding);
+                    drawList->AddText(info.font, info.fontSize, ImVec2{info.topLeft.x + flowgraphLookAndFeel.exportedTabPaddingH, info.topLeft.y + flowgraphLookAndFeel.exportedTabPaddingV}, textColor, portExportedDisplayName->c_str());
                 }
             };
 
-            drawPorts(inputPorts, leftPos, true);
-            drawPorts(outputPorts, leftPos + blockSize.x, false);
+            drawPorts(inputPorts, blockPosition.topLeft.x, true);
+            drawPorts(outputPorts, blockPosition.topLeft.x + blockSize.x, false);
         }
 
         // show rectangular highlights for blocks that would be selected by a multi-select, or *could* be selected by a drag select
-        if (pendingMultiSelect || isCompatibleWithDragSource(*block)) {
+        if (isUiControlConnectionTarget) {
             const auto nodePosition = ax::NodeEditor::GetNodePosition(blockId);
-            ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), 0, ImDrawFlags_None, 2.F);
+            ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.highlightThickness);
         }
     };
 
@@ -831,7 +855,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         _fitRequested = true;
     } else if (_fitRequested) {
         _fitRequested = false;
-        fitIntoView(*rootBlock, showEditorControls || closeRequestedCallback ? kButtonBarHeight + kButtonBarPadding : 0.f);
+        fitIntoView(*rootBlock, showEditorControls || closeRequestedCallback ? LookAndFeel::instance().flowgraph.controlsBarHeight + LookAndFeel::instance().flowgraph.controlsBarPadding : 0.f);
         _fitJustApplied = true;
     }
 
@@ -847,7 +871,10 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         _focusBlockRequest.reset();
     }
 
-    const auto linkColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+    const auto linkColor = [](const UiGraphPort& sourcePort) {
+        const ImU32 typeColor = styleForDataType(sourcePort.portType).color();
+        return (typeColor >> IM_COL32_A_SHIFT) == 0 ? ImGui::GetStyle().Colors[ImGuiCol_Text] : ImGui::ColorConvertU32ToFloat4(typeColor);
+    };
     for (auto& edge : graphEdges) {
         const auto sourceBlockId      = ax::NodeEditor::NodeId(edge.edgeSourcePort->ownerBlock);
         const auto destinationBlockId = ax::NodeEditor::NodeId(edge.edgeDestinationPort->ownerBlock);
@@ -856,7 +883,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             })) {
             ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
                 ax::NodeEditor::PinId(edge.edgeSourcePort),     //
-                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor);
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor(*edge.edgeSourcePort));
         }
     }
 
@@ -880,11 +907,11 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             out.maxY += marginPixels;
             return out;
         }(),
-        linkColor);
+        ImGui::GetStyle().Colors[ImGuiCol_Text]);
 
     // play fade animation for hovering outside the bounding box
     if (this->_wasHoveringBoundingBoxExteriorThisFrame) {
-        if (this->_timeSpentHoveringBoundingBoxExterior < borderExteriorHoverFadeTransitionDurationSeconds) {
+        if (this->_timeSpentHoveringBoundingBoxExterior < LookAndFeel::instance().flowgraph.exportAreaHoverFadeSeconds) {
             this->_timeSpentHoveringBoundingBoxExterior += ImGui::GetIO().DeltaTime;
         }
     } else if (this->_timeSpentHoveringBoundingBoxExterior > 0) {
@@ -925,10 +952,10 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         return;
     }
 
-    const bool      horizontalSplit   = contentSize.x > contentSize.y;
-    constexpr float splitterWidth     = 6;
-    constexpr float halfSplitterWidth = splitterWidth / 2.f;
-    const float     ratio             = components::Splitter(_splitter, contentSize, horizontalSplit, splitterWidth, 0.2f, !_editPaneContext.selectedBlock());
+    const bool  horizontalSplit   = contentSize.x > contentSize.y;
+    const float splitterWidth     = LookAndFeel::instance().splitterWidth;
+    const float halfSplitterWidth = splitterWidth / 2.f;
+    const float ratio             = components::Splitter(_splitter, contentSize, horizontalSplit, splitterWidth, LookAndFeel::instance().splitterDefaultRatio, !_editPaneContext.selectedBlock());
 
     const auto clicked = drawButtons(contentScreenTopLeft, contentSize,
         {
@@ -975,7 +1002,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
 
             {
                 IMW::Disabled _(exportPortTextField.empty());
-                if (ImGui::Button("OK")) {
+                if (DigitizerUi::TextButton("OK")) {
                     exportPortRequest->exportedName = exportPortTextField;
                     requestExportPort(*exportPortRequest);
 
@@ -985,7 +1012,7 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
+            if (DigitizerUi::TextButton("Cancel")) {
                 exportPortRequest.reset();
                 exportPortTextField.clear();
                 shouldShowExportPortPopup = false;
@@ -1146,7 +1173,7 @@ void FlowgraphEditor::drawPortsMenu(const char* text, const char* portDirection,
         bool exported = port.isExportedTo(exportTarget);
 
         // only one item in the menu: a checkbox to toggle whether exported
-        if (!ImGui::Checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
+        if (!DigitizerUi::Checkbox(std::format("{}##{}-{}", port.portName, port.ownerBlock->blockUniqueName, port.portName).c_str(), &exported)) {
             continue;
         }
 
@@ -1309,10 +1336,10 @@ void FlowgraphEditor::fitIntoView(const UiGraphBlock& rootBlock, float reservedB
     const auto addNode = [this, &bounds](const UiGraphBlock* block, float margin) {
         const auto blockId  = ax::NodeEditor::NodeId(block);
         const auto position = ax::NodeEditor::GetNodePosition(blockId);
-        bounds.Add(ImRect(position - ImVec2{margin + components::uiControlConnectionLabelsWidth(*_graphModel, *block), margin}, position + ax::NodeEditor::GetNodeSize(blockId) + ImVec2{margin, margin}));
+        bounds.Add(ImRect(position - ImVec2{margin + components::uiControlConnectionLabelsWidth(*_graphModel, *block), margin}, position + ax::NodeEditor::GetNodeSize(blockId) + ImVec2{margin, margin + components::uiControlTargetListHeight(*block)}));
     };
     std::ranges::for_each(blocks, [&addNode](const UiGraphBlock* block) { addNode(block, 0.f); });
-    std::ranges::for_each(controlBlocks, [&addNode](const UiGraphBlock* block) { addNode(block, components::kUiControlRegionGap); });
+    std::ranges::for_each(controlBlocks, [&addNode](const UiGraphBlock* block) { addNode(block, LookAndFeel::instance().flowgraph.uiControlRegionGap); });
 
     // NavigateTo widens the rect by half of this fraction of its larger dimension per side
     constexpr float kNavigationZoomMargin = 0.1f;
@@ -1677,7 +1704,7 @@ void FlowgraphPage::drawNodeEditorTab() {
     // for (const auto& [level, editor] : std::views::enumerate(_editors)) { TODO: Use once we bump to an EMSDK that supports it
     for (auto& editor : _editors) {
         if (level != 0) {
-            static constexpr float levelPadding = 16.0f;
+            const float levelPadding = LookAndFeel::instance().flowgraph.nestedEditorInset;
             contentTopLeft += ImVec2(levelPadding, levelPadding);
             contentSize -= ImVec2(2 * levelPadding, 2 * levelPadding);
         }
@@ -1698,7 +1725,7 @@ void FlowgraphPage::drawNodeEditorTab() {
 }
 
 void FlowgraphPage::drawLocalYamlTab() {
-    if (ImGui::Button("Reset") || _currentTabIsFlowGraph) {
+    if (DigitizerUi::TextButton("Reset") || _currentTabIsFlowGraph) {
         // Reload yaml whenever "Local - YAML" tab is selected
         _currentTabIsFlowGraph = false;
 
@@ -1714,7 +1741,7 @@ void FlowgraphPage::drawLocalYamlTab() {
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Apply")) {
+    if (DigitizerUi::TextButton("Apply")) {
         if (auto owner = _editors.front().ownersForRoot()) {
             gr::Message message;
             message.cmd         = gr::message::Command::Set;
@@ -1731,11 +1758,11 @@ void FlowgraphPage::drawLocalYamlTab() {
 void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
     std::string tabTitle = "Remote YAML for " + service.name;
     if (auto item = IMW::TabItem(tabTitle.c_str(), nullptr, 0)) {
-        if (ImGui::Button("Reload from service")) {
+        if (DigitizerUi::TextButton("Reload from service")) {
             service.reload();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Execute on service")) {
+        if (DigitizerUi::TextButton("Execute on service")) {
             service.execute();
         }
 
@@ -1743,7 +1770,7 @@ void FlowgraphPage::drawRemoteYamlTab(Dashboard::Service& service) {
         // once we have a proper server-side graph editor
         // if (::getenv("DIGITIZER_UI_SHOW_SERVER_TEST_BUTTONS")) {
         ImGui::SameLine();
-        if (ImGui::Button("Create a block")) {
+        if (DigitizerUi::TextButton("Create a block")) {
             service.emplaceBlock("gr::basic::DataSink", "float");
         }
         // }

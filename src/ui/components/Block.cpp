@@ -13,6 +13,7 @@
 #include "../common/LookAndFeel.hpp"
 #include "../components/Dialog.hpp"
 #include "Keypad.hpp"
+#include "StyledStandardWidgets.hpp"
 
 using namespace std::string_literals;
 
@@ -110,7 +111,7 @@ bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
             IMW::Child list("##connections", listSize, true, 0);
             int        index = 0;
             for (auto& connection : this->connections) {
-                ImGui::Checkbox(std::format("##connected{}", index++).c_str(), &connection.keep);
+                DigitizerUi::Checkbox(std::format("##connected{}", index++).c_str(), &connection.keep);
                 ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
                 ImGui::TextUnformatted(connection.controlName.c_str());
                 ImGui::SameLine(0.F, ImGui::GetStyle().ItemInnerSpacing.x);
@@ -126,12 +127,12 @@ bool ModifyUiConnectionsPopup::draw(UiGraphModel* graphModel) {
             }
         }
         const float halfWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.F;
-        if (ImGui::Button("Done", ImVec2(halfWidth, 0.F))) {
+        if (DigitizerUi::TextButton("Done", ImVec2(halfWidth, 0.F))) {
             action = Action::apply;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(halfWidth, 0.F))) {
+        if (DigitizerUi::TextButton("Cancel", ImVec2(halfWidth, 0.F))) {
             action = Action::cancel;
             ImGui::CloseCurrentPopup();
         }
@@ -174,7 +175,7 @@ bool JumpToControlPopup::draw(UiGraphModel* graphModel, std::function<void(const
             if (controllersIt != controlled.end()) {
                 for (UiGraphBlock* control : controllersIt->second) {
                     // using a button instead of a selectable will prevent the selection from closing the popup
-                    if (ImGui::Button(control->blockName.c_str(), ImVec2{0.f, ImGui::GetFrameHeightWithSpacing()}) && focusBlockCallback) {
+                    if (DigitizerUi::TextButton(control->blockName.c_str(), ImVec2{0.f, ImGui::GetFrameHeightWithSpacing()}) && focusBlockCallback) {
                         focusBlockCallback(control->blockUniqueName);
                     }
                 }
@@ -182,7 +183,7 @@ bool JumpToControlPopup::draw(UiGraphModel* graphModel, std::function<void(const
         }
         const float doneWidth = 100.F;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.F, (ImGui::GetContentRegionAvail().x - doneWidth) / 2.F));
-        if (ImGui::Button("Done", ImVec2(doneWidth, 0.F))) {
+        if (DigitizerUi::TextButton("Done", ImVec2(doneWidth, 0.F))) {
             ImGui::CloseCurrentPopup();
         }
     }
@@ -208,7 +209,7 @@ constexpr const char* addContextPopupId    = "Add Context";
 constexpr const char* removeContextPopupId = "Remove Context";
 
 void drawAddContextPopup(UiGraphBlock* block) {
-    ImGui::SetNextWindowSize({600, 120}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().addContextPopupSize, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(addContextPopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Name:");
@@ -231,7 +232,7 @@ void drawAddContextPopup(UiGraphBlock* block) {
 }
 
 bool drawRemoveContextPopup(const std::string& context) {
-    ImGui::SetNextWindowSize({600, 100}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(LookAndFeel::instance().removeContextPopupSize, ImGuiCond_Once);
     if (auto popup = IMW::ModalPopup(removeContextPopupId, nullptr, 0)) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Do you want to remove '%s' context?", context.c_str());
@@ -244,11 +245,11 @@ static void blockContextComboBox(UiGraphBlock* block) {
     const auto& activeContext = block->activeContext;
 
     const std::string activeContextLabel = activeContext.context.empty() ? "Default" : activeContext.context;
-    if (auto combo = IMW::Combo("##contextNameCombo", activeContextLabel.c_str(), 0)) {
+    if (auto combo = DigitizerUi::ComboBox("##contextNameCombo", activeContextLabel.c_str(), 0)) {
         for (const auto& contextNameAndTime : block->contexts) {
             const bool        selected = activeContext.context == contextNameAndTime.context;
             const std::string label    = contextNameAndTime.context.empty() ? "Default" : contextNameAndTime.context;
-            if (ImGui::Selectable(label.c_str(), selected)) {
+            if (DigitizerUi::Selectable(label.c_str(), selected)) {
                 block->setActiveContext(contextNameAndTime);
             }
             if (selected) {
@@ -261,7 +262,7 @@ static void blockContextComboBox(UiGraphBlock* block) {
         ImGui::SameLine();
         IMW::Disabled disableDueDefaultAction(activeContext.context.empty());
         IMW::Font     _(LookAndFeel::instance().fontIconsSolid);
-        if (ImGui::Button("\uf146")) {
+        if (DigitizerUi::Button("\uf146")) {
             ImGui::OpenPopup(removeContextPopupId);
         }
     }
@@ -270,7 +271,7 @@ static void blockContextComboBox(UiGraphBlock* block) {
     {
         ImGui::SameLine();
         IMW::Font _(LookAndFeel::instance().fontIconsSolid);
-        if (ImGui::Button("\uf0fe")) {
+        if (DigitizerUi::Button("\uf0fe")) {
             ImGui::OpenPopup(addContextPopupId);
         }
     }
@@ -312,9 +313,9 @@ static void BlockControlsPanelImpl(BlockControlsPanelContext& panelContext, bool
         auto typeParams = block->ownerGraph ? block->ownerGraph->availableParametrizationsFor(block->blockTypeName) : UiGraphModel::AvailableParametrizationsResult{};
 
         if (typeParams.availableParametrizations && typeParams.availableParametrizations->size() > 1) {
-            if (auto combo = IMW::Combo("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
+            if (auto combo = DigitizerUi::ComboBox("##baseTypeCombo", typeParams.parametrization.c_str(), 0)) {
                 for (const auto& availableParametrization : *typeParams.availableParametrizations) {
-                    if (ImGui::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
+                    if (DigitizerUi::Selectable(availableParametrization.c_str(), availableParametrization == typeParams.parametrization)) {
                         gr::Message message;
                         assert(!panelContext.targetGraph.empty());
                         message.cmd      = gr::message::Command::Set;
@@ -420,10 +421,10 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     case Type::Combo: {
         assert(!meta.enumValues.empty());
         std::string current = currentPropertyValue.value_or(std::string{});
-        if (ImGui::BeginCombo(label, current.c_str())) {
+        if (DigitizerUi::BeginCombo(label, current.c_str())) {
             for (const auto& enumName : meta.enumValues) {
                 const bool isCurrent = enumName == current;
-                if (ImGui::Selectable(enumName.c_str(), isCurrent)) {
+                if (DigitizerUi::Selectable(enumName.c_str(), isCurrent)) {
                     out = enumName;
                 }
                 if (isCurrent) {
@@ -436,7 +437,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
     }
     case Type::Checkbox: {
         bool temp = currentPropertyValue.value_or(false);
-        if (ImGui::Checkbox(label, &temp)) {
+        if (DigitizerUi::Checkbox(label, &temp)) {
             out = temp;
         }
         break;
@@ -490,11 +491,11 @@ static void drawUiControlledPropertyActions(BlockControlsPanelContext& panelCont
         ImGui::TextUnformatted("\u{f023}"); // lock
     }
     ImGui::SameLine(0.f, spacing);
-    if (ImGui::Button(std::format("Unlink##unlink_{}", key).c_str())) {
+    if (DigitizerUi::TextButton(std::format("Unlink##unlink_{}", key).c_str())) {
         panelContext.modifyConnectionsDialog = unlinkUiControlledProperty(block, key);
     }
     ImGui::SameLine(0.f, spacing);
-    if (ImGui::Button(std::format("Jump to control##jumpToControl_{}", key).c_str())) {
+    if (DigitizerUi::TextButton(std::format("Jump to control##jumpToControl_{}", key).c_str())) {
         const auto                         connections = uiControlConnectionsFor(block, key);
         std::set<std::string, std::less<>> uniqueControls;
         for (const auto& connection : connections) {
@@ -608,7 +609,7 @@ void BlockSettingsControls(BlockControlsPanelContext& panelContext, UiGraphBlock
         ImGui::TextUnformatted("\uf2ea");
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (ImGui::SmallButton("Reset all") && block->ownerGraph) {
+    if (DigitizerUi::SmallButton("Reset all") && block->ownerGraph) {
         gr::Message message;
         message.serviceName = block->blockUniqueName;
         message.endpoint    = gr::block::property::kResetDefaults;

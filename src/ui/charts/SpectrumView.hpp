@@ -140,7 +140,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
         }
 
         const auto& lnf                   = DigitizerUi::LookAndFeel::instance();
-        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall);
+        const auto [labelFace, labelSize] = chartTextFont(lnf.fontSmall());
         DigitizerUi::IMW::FontWithSize plotFont(labelFace, labelSize);
 
         ImPlotSubplotFlags subplotFlags = ImPlotSubplotFlags_LinkCols | ImPlotSubplotFlags_LinkAllX;
@@ -167,7 +167,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
             ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
         }
 
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
         if (ImPlot::BeginPlot("##spectrum", ImVec2(0, 0), plotFlags)) {
             setupFrequencyAxis(paneSize, showGrid);
             setupMagnitudeAxis(paneSize, showGrid);
@@ -247,7 +247,7 @@ struct SpectrumView : gr::Block<SpectrumView, gr::Drawable<gr::UICategory::Conte
 
         ImGui::PushID("bottom");
         ImPlot::PushStyleColor(ImPlotCol_AxisGrid, contrastingGridColor(colormap.value));
-        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2{0.0f, 0.05f});
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, DigitizerUi::LookAndFeel::instance().chartStyle.spectrumFitPadding);
 
         if (ImPlot::BeginPlot("##waterfall", ImVec2(0, 0), plotFlags | ImPlotFlags_NoLegend)) {
             setupBottomFrequencyAxis(paneSize, showGrid);

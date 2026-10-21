@@ -6,6 +6,7 @@
 
 #include "../components/Dialog.hpp"
 #include "../components/ListBox.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 
 #include "NewBlockSelectorFuzzySearch.hpp"
 #include "scope_exit.hpp"
@@ -31,7 +32,7 @@ struct Symbol {
         const auto* window = ImGui::GetCurrentWindow();
 
         const bool wasSelected = fullSymbolName == currentlySelected;
-        if (ImGui::Selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
+        if (DigitizerUi::Selectable(std::format("##{}", fullSymbolName).c_str(), wasSelected, ImGuiSelectableFlags_None, {buttonWidth, 0.f})) {
             selected = true;
         }
 
@@ -50,10 +51,10 @@ struct Symbol {
             const char* matchEnd   = exactMatch.data() + exactMatch.size();
             const auto  boxPos     = textCursorInitial + ImVec2{ImGui::CalcTextSize(fullSymbolName.data(), matchStart).x, 0.0};
             const auto  boxSize    = ImGui::CalcTextSize(matchStart, matchEnd);
-            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(DigitizerUi::LookAndFeel::instance().palette().highlightedSearchResultsBg));
+            window->DrawList->AddRectFilled(boxPos, boxPos + boxSize, ImGui::ColorConvertFloat4ToU32(DigitizerUi::LookAndFeel::instance().palette().highlightedSearchResultsBg), DigitizerUi::LookAndFeel::instance().searchHighlightRounding);
         }
 
-        ImFont*    font      = DigitizerUi::LookAndFeel::instance().fontNormal[DigitizerUi::LookAndFeel::instance().prototypeMode];
+        ImFont*    font      = DigitizerUi::LookAndFeel::instance().fontNormal();
         const auto textColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
         window->DrawList->AddText(font, fontSize, textCursorInitial, textColor, fullSymbolName.data(), fullSymbolName.data() + fullSymbolName.size());
         return selected;
@@ -116,7 +117,7 @@ struct NamespaceOrSymbol {
                 if (newOpenValue) {
                     ImGui::SetNextItemOpen(*newOpenValue);
                 }
-                if (ImGui::TreeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
+                if (DigitizerUi::TreeNodeEx(keyBuffer.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DrawLinesFull)) {
                     if (auto maybeSelected = child->drawTreeRecursive(currentlySelected, keyBuffer, scrollToSelected, newOpenValue); !maybeSelected.empty()) {
                         selected = maybeSelected;
                     }
@@ -148,20 +149,20 @@ void NewBlockSelector::drawNamespaceTree(const ImVec2& size) {
     constexpr const char* foldButtonText   = "Fold all";
     constexpr const char* unfoldButtonText = "Unfold all";
     const auto            originalCursorX  = ImGui::GetCursorPosX();
-    const auto            buttonStart      = ImGui::GetContentRegionAvail().x - (IMW::CalcAdjacentButtonSizes(std::array{clearButtonText, foldButtonText, unfoldButtonText})).x;
+    const auto            buttonStart      = ImGui::GetContentRegionAvail().x - (IMW::CalcAdjacentButtonSizes(std::array{clearButtonText, foldButtonText, unfoldButtonText}, DigitizerUi::CalcButtonSize)).x;
     bool                  scrollToSelected = false;
     ImGui::SetCursorPosX(buttonStart);
-    if (ImGui::Button(clearButtonText)) {
+    if (DigitizerUi::TextButton(clearButtonText)) {
         m_blockFilter.clear();
         scrollToSelected = true; // more things are visible now that there is no filter
     }
     std::optional<bool> newUnfoldedValue;
     ImGui::SameLine();
-    if (ImGui::Button(foldButtonText)) {
+    if (DigitizerUi::TextButton(foldButtonText)) {
         newUnfoldedValue = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button(unfoldButtonText)) {
+    if (DigitizerUi::TextButton(unfoldButtonText)) {
         newUnfoldedValue = true;
     }
     ImGui::SameLine();

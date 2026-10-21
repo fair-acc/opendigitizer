@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_BLOCKS_IMCONTROLNUMBER_HPP
 
 #include "../components/Keypad.hpp"
+#include "../components/StyledStandardWidgets.hpp"
 #include "ImControl.hpp"
 
 #include <imgui_internal.h>
@@ -127,11 +128,12 @@ private:
     }
 
     [[nodiscard]] static std::pair<float, float> naturalAndMinimumWidgetWidth(NumberStyle style) {
+        const DashboardStyle& dashboardStyle = LookAndFeel::instance().dashboardStyle;
         switch (style) {
-        case NumberStyle::field: return {control::kImControlTextInputWidth, control::kImControlMinimumWidth};
-        case NumberStyle::spinBox: return {control::kImControlTextInputWidth + spinnerWidth(), control::kImControlMinimumWidth + spinnerWidth()};
-        case NumberStyle::slider: return {kSliderWidth, control::kImControlMinimumWidth};
-        case NumberStyle::sliderSpinner: return {kSliderWidth + spinnerWidth(), control::kImControlMinimumWidth + spinnerWidth()};
+        case NumberStyle::field: return {dashboardStyle.toolbarControlInputWidth, dashboardStyle.toolbarControlMinimumWidth};
+        case NumberStyle::spinBox: return {dashboardStyle.toolbarControlInputWidth + spinnerWidth(), dashboardStyle.toolbarControlMinimumWidth + spinnerWidth()};
+        case NumberStyle::slider: return {dashboardStyle.toolbarControlSliderWidth, dashboardStyle.toolbarControlMinimumWidth};
+        case NumberStyle::sliderSpinner: return {dashboardStyle.toolbarControlSliderWidth + spinnerWidth(), dashboardStyle.toolbarControlMinimumWidth + spinnerWidth()};
         }
         std::unreachable();
     }
@@ -172,12 +174,12 @@ private:
             ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
             const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (ImGui::Button("-", buttonSize)) {
+            if (DigitizerUi::Button("-", buttonSize)) {
                 number  = std::clamp(onStepGrid(static_cast<double>(number) - static_cast<double>(stepSize)), lower, upper);
                 changed = true;
             }
             ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (ImGui::Button("+", buttonSize)) {
+            if (DigitizerUi::Button("+", buttonSize)) {
                 number  = std::clamp(onStepGrid(static_cast<double>(number) + static_cast<double>(stepSize)), lower, upper);
                 changed = true;
             }
@@ -211,8 +213,6 @@ private:
         std::ignore = settings().setStaged({{"value", value}});
         sendToTargets(number);
     }
-
-    static constexpr float kSliderWidth = 160.f;
 };
 
 } // namespace DigitizerUi

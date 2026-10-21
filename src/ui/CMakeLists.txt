@@ -271,6 +271,8 @@ add_library(
   components/SortFilterTreeModel.hpp
   components/Splitter.cpp
   components/Splitter.hpp
+  components/StyledStandardWidgets.cpp
+  components/StyledStandardWidgets.hpp
   components/VirtualScrollTable.hpp
   components/ViewModeBlocker.hpp
   components/YesNoPopup.hpp)
@@ -405,6 +407,8 @@ add_library(
   components/Docking.cpp
   components/Docking.hpp
   components/GlobalSignalLegend.hpp
+  components/PortShapes.cpp
+  components/PortShapes.hpp
   components/SignalSelector.cpp
   components/SignalSelector.hpp
   utils/ImGuiDockSpaceState.cpp

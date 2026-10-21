@@ -321,7 +321,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the label face and size are current while a chart draws, and its own smaller text uses them"_test = [&] {
                 auto&         lnf  = DigitizerUi::LookAndFeel::mutableInstance();
-                ImFont* const face = lnf.fontTiny[0];
+                ImFont* const face = lnf.fontTiny();
                 expect(face != nullptr && face != ImGui::GetFont()) << fatal << "a face other than the default";
                 state.fontProbeStyle = chartStyle([face](DigitizerUi::ChartStyle& s) {
                     s.labelFont     = face;
@@ -332,11 +332,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(state.probedFont == face);
                 expect(eq(state.probedFontSize, 23.f));
 
-                const auto defaultText = opendigitizer::charts::chartTextFont(lnf.fontSmall);
-                expect(defaultText.first == lnf.fontSmall[lnf.prototypeMode] && defaultText.second == lnf.relativeFontSize(lnf.fontSmall)) << "unset: the small face at its relative size";
+                const auto defaultText = opendigitizer::charts::chartTextFont(lnf.fontSmall());
+                expect(defaultText.first == lnf.fontSmall() && defaultText.second == lnf.relativeFontSize(lnf.fontSmall())) << "unset: the small face at its relative size";
                 lnf.chartStyle.labelFont     = face;
                 lnf.chartStyle.labelFontSize = 23.f;
-                const auto hostText          = opendigitizer::charts::chartTextFont(lnf.fontSmall);
+                const auto hostText          = opendigitizer::charts::chartTextFont(lnf.fontSmall());
                 lnf.chartStyle               = {};
                 expect(hostText.first == face && hostText.second == 23.f) << "set: the host's face and size";
             };

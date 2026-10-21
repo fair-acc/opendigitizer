@@ -24,6 +24,7 @@ public:
         std::function<void()>                    barLeading;
         std::function<void()>                    barCentre;
         std::function<void()>                    barTrailing;
+        std::function<void(ImVec2)>              callbackAfterAllLegendItemsDrawn; // one item of the given size after the legend items
         std::function<void(DockSpace::Windows&)> addDockWindows;
     };
 

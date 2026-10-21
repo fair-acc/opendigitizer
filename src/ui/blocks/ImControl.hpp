@@ -20,11 +20,6 @@
 
 namespace DigitizerUi {
 
-namespace control {
-constexpr inline float kImControlTextInputWidth = 110.f;
-constexpr inline float kImControlMinimumWidth   = 60.f;
-} // namespace control
-
 /*
  * CRTP wrapper for class which should be a block that is an item in the
  * toolbar, drawn using ImGui. This class adds some common utilities that,

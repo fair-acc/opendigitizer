@@ -110,30 +110,31 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     };
 
     // Layout parameters
-    const float blockInnerPadding  = 5.0f * 2;
-    const float leftRectsMaxWidth  = maxBlockTextSize(leftBlocks) + blockInnerPadding;
-    const float rightRectsMaxWidth = maxBlockTextSize(rightBlocks) + blockInnerPadding;
-    const float blockHeight        = 35.0f;
-    const float blockSpacing       = 40;
-    const float verticalSpacing    = 10;
-    const auto  numBlocksLeft      = leftBlocks.size();
-    const auto  numBlocksRight     = rightBlocks.size();
-    const auto  maxRects           = static_cast<float>(std::max(numBlocksLeft, numBlocksRight));
+    const auto& flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
+    const float blockInnerPadding    = flowgraphLookAndFeel.previewBlockInnerPadding * 2;
+    const float leftRectsMaxWidth    = maxBlockTextSize(leftBlocks) + blockInnerPadding;
+    const float rightRectsMaxWidth   = maxBlockTextSize(rightBlocks) + blockInnerPadding;
+    const float blockHeight          = flowgraphLookAndFeel.previewBlockHeight;
+    const float blockSpacing         = flowgraphLookAndFeel.previewBlockSpacing;
+    const float verticalSpacing      = flowgraphLookAndFeel.previewVerticalSpacing;
+    const auto  numBlocksLeft        = leftBlocks.size();
+    const auto  numBlocksRight       = rightBlocks.size();
+    const auto  maxRects             = static_cast<float>(std::max(numBlocksLeft, numBlocksRight));
 
     // Port parameters
-    const float portWidth  = 6.0f;
-    const float portHeight = 6.0f;
+    const float portWidth  = flowgraphLookAndFeel.previewPortSize.x;
+    const float portHeight = flowgraphLookAndFeel.previewPortSize.y;
 
     // Center rectangle parameters
-    const float centerBlockWidth  = 50;
+    const float centerBlockWidth  = flowgraphLookAndFeel.previewCenterBlockSize;
     const float centerBlockHeight = centerBlockWidth;
 
     const bool hasLeft  = numBlocksLeft;
     const bool hasRight = numBlocksRight;
 
     // Calculate total height needed for N rects with spacing
-    const float topMargin        = 10.0f;
-    const float horizontalMargin = 10.0f;
+    const float topMargin        = flowgraphLookAndFeel.previewMargin.y;
+    const float horizontalMargin = flowgraphLookAndFeel.previewMargin.x;
     const float totalHeight      = std::max(maxRects * blockHeight + (maxRects - 1.0f) * verticalSpacing + (topMargin * 2), centerBlockHeight + (topMargin * 2));
     const float totalWidth       = [&] {
         float result = centerBlockWidth;
@@ -157,18 +158,17 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // Calculate positions
     const float startX       = horizontalMargin;
-    const float startY       = 10.f;
+    const float startY       = topMargin;
     const float middleBlockX = startX + (hasLeft ? leftRectsMaxWidth + blockSpacing : 0);
     const float rightBlocksX = middleBlockX + centerBlockWidth + blockSpacing;
 
-    // same colours as the flowgraph editor: palette entries, hover/selection as imgui-node-editor's defaults
-    const auto& palette          = LookAndFeel::instance().palette();
-    const ImU32 fillColor        = ImGui::ColorConvertFloat4ToU32(palette.flowgraphNodeBg);
-    const ImU32 hoverColor       = IM_COL32(50, 176, 255, 255);
-    const ImU32 borderColor      = ImGui::ColorConvertFloat4ToU32(palette.flowgraphNodeBorder);
-    const ImU32 bgColor          = ImGui::ColorConvertFloat4ToU32(palette.flowgraphBg);
-    const ImU32 outerBorderColor = IM_COL32(255, 176, 50, 255);
-    const float borderThickness  = 2.0f;
+    const auto& lookAndFeel      = LookAndFeel::instance();
+    const ImU32 fillColor        = ImGui::ColorConvertFloat4ToU32(lookAndFeel.palette().flowgraphNodeBg);
+    const ImU32 hoverColor       = ImGui::ColorConvertFloat4ToU32(lookAndFeel.palette().flowgraphNodeBorderHovered);
+    const ImU32 borderColor      = ImGui::ColorConvertFloat4ToU32(lookAndFeel.palette().flowgraphNodeBorder);
+    const ImU32 bgColor          = ImGui::ColorConvertFloat4ToU32(lookAndFeel.palette().flowgraphBg);
+    const ImU32 outerBorderColor = ImGui::ColorConvertFloat4ToU32(lookAndFeel.palette().flowgraphNodeBorderSelected);
+    const float borderThickness  = lookAndFeel.flowgraph.previewBorderThickness;
     const ImU32 lineColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
     const ImU32 textColor        = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
 
@@ -180,7 +180,7 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
 
     // background
     auto drawList = ImGui::GetWindowDrawList();
-    ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor);
+    ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), bgColor, ImGui::GetStyle().ChildRounding);
 
     auto drawPort = [drawList, portWidth, portHeight](ImVec2 portPosition, UiGraphPort& port) { //
         if (drawPin(drawList, portPosition, ImVec2(portWidth, portHeight), port.portType)) {
@@ -216,9 +216,9 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     }
 
     // Draw middle block
-    drawList->AddRectFilled(centerBlockTopLeft, centerBlockBottomRight, fillColor);
-    drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, 0.0f, 0, borderThickness);
-    drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, 0.0f, 0, borderThickness);
+    drawList->AddRectFilled(centerBlockTopLeft, centerBlockBottomRight, fillColor, lookAndFeel.flowgraph.nodeRounding);
+    drawList->AddRect(centerBlockTopLeft - ImVec2(1, 1), centerBlockBottomRight + ImVec2(1, 1), outerBorderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
+    drawList->AddRect(centerBlockTopLeft, centerBlockBottomRight, borderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
     if (ImGui::IsMouseHoveringRect(centerBlockTopLeft, centerBlockBottomRight)) {
         ImGui::SetTooltip("%s", context.selectedBlock()->blockName.c_str());
     }
@@ -264,8 +264,8 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
         const ImU32 blockColor = ImGui::IsMouseHoveringRect(rectMin, rectMax) ? hoverColor : fillColor;
 
         // Draw block
-        drawList->AddRectFilled(rectMin, rectMax, blockColor);
-        drawList->AddRect(rectMin, rectMax, borderColor, 0.0f, 0, borderThickness);
+        drawList->AddRectFilled(rectMin, rectMax, blockColor, lookAndFeel.flowgraph.nodeRounding);
+        drawList->AddRect(rectMin, rectMax, borderColor, lookAndFeel.flowgraph.nodeRounding, 0, borderThickness);
 
         // Button and callback
         std::string buttonId = (isLeft ? "left_block_" : "right_block_") + std::to_string(index);
@@ -281,15 +281,15 @@ void BlockNeighboursPreview(const BlockControlsPanelContext& context, ImVec2 ava
     };
 
     auto drawEdge = [&](UiGraphEdge& edge) {
-        const float arrowWidth  = 9.0f;
-        const float arrowHeight = 9.0f;
+        const float arrowWidth  = flowgraphLookAndFeel.previewArrowSize.x;
+        const float arrowHeight = flowgraphLookAndFeel.previewArrowSize.y;
 
         const ImVec2 lineStart = portPositions[edge.edgeSourcePort];
         const ImVec2 lineEnd   = portPositions[edge.edgeDestinationPort] - ImVec2(arrowHeight, 0);
 
         const ImVec2 cp1 = lineStart + ImVec2(blockSpacing / 2, 0);
         const ImVec2 cp2 = lineEnd + ImVec2(-blockSpacing / 2, 0);
-        drawList->AddBezierCubic(lineStart, cp1, cp2, lineEnd, lineColor, 1.0f);
+        drawList->AddBezierCubic(lineStart, cp1, cp2, lineEnd, lineColor, flowgraphLookAndFeel.previewLinkThickness);
 
         // Draw arrow at line end:
         ImVec2 arrowPoints[3];

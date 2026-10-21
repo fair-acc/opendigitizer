@@ -13,6 +13,7 @@
 #include <Dashboard.hpp>
 #include <ToolbarView.hpp>
 #include <blocks/ImControlNumber.hpp>
+#include <common/LookAndFeel.hpp>
 
 #include <cmrc/cmrc.hpp>
 
@@ -182,22 +183,25 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the toolbar fits its host: natural row, shrunk row, two rows, then without labels"_test = [&] {
-                // qa_controls.grc: field, spin box 110 px, sliders 160; at least 60 per widget, plus step buttons and labels
                 const ImGuiStyle&                  style      = ImGui::GetStyle();
+                const DigitizerUi::DashboardStyle& toolbar    = DigitizerUi::LookAndFeel::instance().dashboardStyle;
                 const auto                         labelWidth = [&](const char* label) { return ImGui::CalcTextSize(label).x + style.ItemInnerSpacing.x; };
                 const std::array<const char*, 4UZ> labels{"Amplitude", "Frequency", "Level", "Gain"};
                 const float                        spinner = 2.f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
-                const std::array<float, 4UZ>       naturalWidget{110.f, 110.f + spinner, 160.f, 160.f + spinner};
-                const std::array<float, 4UZ>       minimumWidget{60.f, 60.f + spinner, 60.f, 60.f + spinner};
+                const float                        input   = toolbar.toolbarControlInputWidth;
+                const float                        slider  = toolbar.toolbarControlSliderWidth;
+                const float                        least   = toolbar.toolbarControlMinimumWidth;
+                const std::array<float, 4UZ>       naturalWidget{input, input + spinner, slider, slider + spinner};
+                const std::array<float, 4UZ>       minimumWidget{least, least + spinner, least, least + spinner};
                 std::array<float, 4UZ>             minimum{};
-                float                              naturalRow = 3.f * style.ItemSpacing.x;
-                float                              minimumRow = 3.f * style.ItemSpacing.x;
+                float                              naturalRow = 3.f * toolbar.toolbarItemSpacing;
+                float                              minimumRow = 3.f * toolbar.toolbarItemSpacing;
                 for (std::size_t i = 0UZ; i < labels.size(); ++i) {
                     minimum[i] = minimumWidget[i] + labelWidth(labels[i]);
                     naturalRow += naturalWidget[i] + labelWidth(labels[i]);
                     minimumRow += minimum[i];
                 }
-                const float frame    = 16.f + 2.f * style.WindowPadding.x;
+                const float frame    = toolbar.toolbarLeftPadding + 2.f * style.WindowPadding.x;
                 const auto  layoutAt = [&](float rowWidth) {
                     g_state.hostWidth = rowWidth + frame;
                     ctx->Yield(4);
@@ -222,22 +226,22 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     return std::ranges::all_of(frames, [&](const ImRect& rect) { return host.Contains(rect); });
                 };
                 const auto  sliderWidth    = [&] { return ctx->ItemInfo("**/##Level").RectFull.GetWidth(); };
-                const float rowStart       = kHostPos.x + style.WindowPadding.x + 16.f;
+                const float rowStart       = kHostPos.x + style.WindowPadding.x + toolbar.toolbarLeftPadding;
                 const auto  firstFrameLeft = [&] { return ctx->ItemInfo("**/##Amplitude").RectFull.Min.x; };
 
                 layoutAt(naturalRow + 40.f);
                 auto frames = visibleFrames();
                 expect(eq(frames.size(), 4UZ) && eq(rowsOf(frames), 1UZ) && insideHost(frames)) << "one row";
-                expect(std::abs(sliderWidth() - 160.f) < 1.f) << std::format("the slider at its natural 160 px: {}", sliderWidth());
+                expect(std::abs(sliderWidth() - slider) < 1.f) << std::format("the slider at its natural {} px: {}", slider, sliderWidth());
                 expect(std::abs(firstFrameLeft() - rowStart - labelWidth("Amplitude")) < 1.f) << "the label comes first, then its field";
 
                 layoutAt(0.5f * (naturalRow + minimumRow));
                 frames = visibleFrames();
                 expect(eq(frames.size(), 4UZ) && eq(rowsOf(frames), 1UZ) && insideHost(frames)) << "still one row";
-                expect(sliderWidth() > 60.f && sliderWidth() < 160.f) << std::format("the slider shrunk to {} px", sliderWidth());
+                expect(sliderWidth() > least && sliderWidth() < slider) << std::format("the slider shrunk to {} px", sliderWidth());
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + ImVec2(g_state.hostWidth, kHostSize.y)));
 
-                layoutAt(std::max(minimum[0] + minimum[1], minimum[2] + minimum[3]) + style.ItemSpacing.x + 1.f);
+                layoutAt(std::max(minimum[0] + minimum[1], minimum[2] + minimum[3]) + toolbar.toolbarItemSpacing + 1.f);
                 frames = visibleFrames();
                 expect(eq(frames.size(), 4UZ) && eq(rowsOf(frames), 2UZ) && insideHost(frames)) << "two rows, labels kept";
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + ImVec2(g_state.hostWidth, kHostSize.y)));

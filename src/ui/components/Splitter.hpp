@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_COMPONENTS_SPLITTER_HPP_
 
 #include "../common/ImguiWrap.hpp"
+#include "../common/LookAndFeel.hpp"
 
 namespace DigitizerUi::components {
 
@@ -10,7 +11,7 @@ struct SplitterState {
 
     float start_ratio = 0.0f;
     float ratio       = 0.0f;
-    float speed       = 0.02f;
+    float speed       = LookAndFeel::instance().splitterRatioDeltaPerFrame;
 
     void move(float max, bool forward = true) noexcept {
         if (forward) {
@@ -27,14 +28,14 @@ struct SplitterState {
 
         anim_state = State::AnimatedForward;
         if (ratio / max >= 0.7f) {
-            speed = 0.01f;
+            speed = LookAndFeel::instance().splitterRatioDeltaPerFrameSlow;
         }
 
         ratio += speed;
         if (ratio >= max) {
             ratio      = max;
             anim_state = State::Shown;
-            speed      = 0.02f;
+            speed      = LookAndFeel::instance().splitterRatioDeltaPerFrame;
         }
     }
     void move_backward() noexcept {

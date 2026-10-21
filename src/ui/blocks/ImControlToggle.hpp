@@ -3,6 +3,8 @@
 
 #include "ImControl.hpp"
 
+#include "../components/StyledStandardWidgets.hpp"
+
 #include <gnuradio-4.0/Block.hpp>
 
 #include <string>
@@ -27,7 +29,7 @@ struct ImControlToggle : ImControl<ImControlToggle> {
         loadValueIfConnectionChanged(value, parsedConfig);
         drawWithLabelAndTooltip(layout, [this](float) {
             const std::string id = "##" + label;
-            if (ImGui::Checkbox(id.c_str(), &value)) {
+            if (DigitizerUi::Checkbox(id.c_str(), &value)) {
                 std::ignore = settings().setStaged({{"value", value}});
                 sendToTargets(value);
             }

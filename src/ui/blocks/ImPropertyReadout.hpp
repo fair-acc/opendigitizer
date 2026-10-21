@@ -30,7 +30,7 @@ struct ImPropertyReadout : ImControl<ImPropertyReadout> {
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, control::kImControlTextInputWidth, control::kImControlMinimumWidth, labelWidth());
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, LookAndFeel::instance().dashboardStyle.toolbarControlInputWidth, LookAndFeel::instance().dashboardStyle.toolbarControlMinimumWidth, labelWidth());
         drawWithLabelAndTooltip(layout, [&](float width) {
             const std::string id   = "##" + label;
             std::string       text = readoutText(parsedConfig);

@@ -29,30 +29,28 @@ class TestApp : public DigitizerUi::test::ImGuiTestApp {
             IMW::Window window("Test Window", nullptr, ImGuiWindowFlags_NoSavedSettings);
             auto&       sizes      = ctx->GetVars<FontSizes>();
             const auto& lnf        = DigitizerUi::LookAndFeel::instance();
-            const auto  idx        = lnf.prototypeMode;
-            const float normalSize = lnf.fontNormal[idx]->LegacySize;
+            const float normalSize = lnf.fontNormal()->LegacySize;
 
-            auto sizeOf = [&](const std::array<ImFont*, 2>& faces, float hostSize) {
+            auto sizeOf = [&](ImFont* face, float hostSize) {
                 IMW::FontWithSize host(nullptr, hostSize);
-                IMW::FontWithSize face(faces[idx], lnf.relativeFontSize(faces));
+                IMW::FontWithSize faceWithSize(face, lnf.relativeFontSize(face));
                 return ImGui::GetFontSize();
             };
-            auto legacySizeOf = [&](const std::array<ImFont*, 2>& faces) {
-                IMW::FontWithSize face(faces[idx], faces[idx]->LegacySize);
+            auto legacySizeOf = [&](ImFont* face) {
+                IMW::FontWithSize faceWithSize(face, face->LegacySize);
                 return ImGui::GetFontSize();
             };
 
-            sizes.legacyTiny      = legacySizeOf(lnf.fontTiny);
-            sizes.legacySmall     = legacySizeOf(lnf.fontSmall);
-            sizes.legacyNormal    = legacySizeOf(lnf.fontNormal);
-            sizes.hostNormalTiny  = sizeOf(lnf.fontTiny, normalSize);
-            sizes.hostNormalSmall = sizeOf(lnf.fontSmall, normalSize);
-            sizes.hostDoubleTiny  = sizeOf(lnf.fontTiny, 2.f * normalSize);
-            sizes.hostDoubleSmall = sizeOf(lnf.fontSmall, 2.f * normalSize);
+            sizes.legacyTiny      = legacySizeOf(lnf.fontTiny());
+            sizes.legacySmall     = legacySizeOf(lnf.fontSmall());
+            sizes.legacyNormal    = legacySizeOf(lnf.fontNormal());
+            sizes.hostNormalTiny  = sizeOf(lnf.fontTiny(), normalSize);
+            sizes.hostNormalSmall = sizeOf(lnf.fontSmall(), normalSize);
+            sizes.hostDoubleTiny  = sizeOf(lnf.fontTiny(), 2.f * normalSize);
+            sizes.hostDoubleSmall = sizeOf(lnf.fontSmall(), 2.f * normalSize);
 
-            const std::array<ImFont*, 2> noFaces{nullptr, nullptr};
-            IMW::FontWithSize            host(nullptr, normalSize);
-            IMW::FontWithSize            face(nullptr, DigitizerUi::LookAndFeel::instance().relativeFontSize(noFaces));
+            IMW::FontWithSize host(nullptr, normalSize);
+            IMW::FontWithSize face(nullptr, DigitizerUi::LookAndFeel::instance().relativeFontSize(nullptr));
             sizes.hostNormalNoFonts = ImGui::GetFontSize();
         };
 

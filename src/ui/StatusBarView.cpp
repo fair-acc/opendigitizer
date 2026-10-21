@@ -13,6 +13,7 @@
 #include "blocks/StatusBarBlock.hpp"
 #include "common/ImguiWrap.hpp"
 #include "common/LookAndFeel.hpp"
+#include "components/StyledStandardWidgets.hpp"
 
 namespace DigitizerUi {
 
@@ -26,7 +27,7 @@ ImVec4 colourOf(Level level) {
     case Level::fatal:
     case Level::failure:
     case Level::error: return LookAndFeel::instance().palette().errorColor;
-    case Level::warning: return kAmber;
+    case Level::warning: return LookAndFeel::instance().palette().warningColor;
     case Level::info: return ImGui::GetStyleColorVec4(ImGuiCol_Text);
     case Level::debug:
     case Level::trace: return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
@@ -57,7 +58,7 @@ std::string timeOfDay(std::uint64_t timestampNanos) {
 float StatusBarView::height() noexcept { return ImGui::GetFrameHeightWithSpacing(); }
 
 void StatusBarView::draw(GraphSession* session) {
-    IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, height()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    IMW::Child     bar("##StatusBar", ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight()), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const ImVec2   pos       = ImGui::GetWindowPos();
     const uint32_t lineColor = ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().toolbarLineColor);
     ImGui::GetWindowDrawList()->AddLine(pos, ImVec2(pos.x + ImGui::GetWindowWidth(), pos.y), lineColor);
@@ -82,13 +83,13 @@ void StatusBarView::draw(GraphSession* session) {
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(version.c_str()).x));
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, .6f), "%s", version.c_str());
+    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, LookAndFeel::instance().dashboardStyle.infoTextAlpha), "%s", version.c_str());
     if (!versionDetails.empty()) {
         ImGui::SetItemTooltip("%s", versionDetails.c_str());
     }
 }
 
-bool StatusBarView::isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept { return nowNanos < latestInfoOrDebugNanos + static_cast<std::uint64_t>(std::chrono::nanoseconds(kInfoDotLifetime).count()); }
+bool StatusBarView::isInfoDotLit(std::uint64_t latestInfoOrDebugNanos, std::uint64_t nowNanos) noexcept { return nowNanos < latestInfoOrDebugNanos + static_cast<std::uint64_t>(std::chrono::nanoseconds(LookAndFeel::instance().infoDotLifetime).count()); }
 
 void StatusBarView::drawLogLine(float width) {
     const auto          counts   = logHistory().counts();
@@ -100,7 +101,7 @@ void StatusBarView::drawLogLine(float width) {
 
     const float startX   = ImGui::GetCursorPosX();
     const auto  levelDot = [](const char* id, bool isLit, ImVec4 colour, std::uint64_t count) {
-        const float radius = ImGui::GetFontSize() * .3f;
+        const float radius = ImGui::GetFontSize() * LookAndFeel::instance().dashboardStyle.statusDotRadiusEms;
         ImGui::InvisibleButton(id, ImVec2(2.f * radius, ImGui::GetFrameHeight()));
         if (ImGui::IsItemClicked()) {
             ImGui::OpenPopup(kLogPopup);
@@ -109,19 +110,19 @@ void StatusBarView::drawLogLine(float width) {
         if (isLit) {
             ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, ImGui::ColorConvertFloat4ToU32(colour));
         } else {
-            ImGui::GetWindowDrawList()->AddCircle(centre, radius, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, .3f)));
+            ImGui::GetWindowDrawList()->AddCircle(centre, radius, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled) * ImVec4(1.f, 1.f, 1.f, LookAndFeel::instance().dashboardStyle.statusDotUnlitAlpha)));
         }
         ImGui::SetItemTooltip("%llu", static_cast<unsigned long long>(count));
         ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
     };
     levelDot("##errorDot", errors > 0U, LookAndFeel::instance().palette().errorColor, errors);
-    levelDot("##warningDot", warnings > 0U, kAmber, warnings);
-    levelDot("##infoDot", isInfoDotLit(logHistory().latestInfoOrDebugNanos(), now), kGreen, others);
+    levelDot("##warningDot", warnings > 0U, LookAndFeel::instance().palette().warningColor, warnings);
+    levelDot("##infoDot", isInfoDotLit(logHistory().latestInfoOrDebugNanos(), now), LookAndFeel::instance().palette().successColor, others);
 
     const std::string label = std::format("{}###statusLine", latest ? textOf(*latest) : std::string_view{});
     {
         IMW::StyleColor colour(ImGuiCol_Text, latest ? colourOf(latest->level) : ImGui::GetStyleColorVec4(ImGuiCol_Text));
-        if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
+        if (DigitizerUi::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(std::max(1.f, width - (ImGui::GetCursorPosX() - startX)), 0.f))) {
             ImGui::OpenPopup(kLogPopup);
         }
     }
@@ -152,12 +153,12 @@ void StatusBarView::drawLogPopup() {
     Records records                          = logHistory().snapshot();
     _selectedRecords.UserData                = &records;
     _selectedRecords.AdapterIndexToStorageId = selectionIdAt;
-    if (ImGui::Button("Clear")) {
+    if (DigitizerUi::TextButton("Clear")) {
         logHistory().clear();
         _selectedRecords.Clear();
     }
     ImGui::SameLine();
-    if (ImGui::Button(_selectedRecords.Size > 0 ? "Copy selected###copyLog" : "Copy all###copyLog") || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
+    if (DigitizerUi::TextButton(_selectedRecords.Size > 0 ? "Copy selected###copyLog" : "Copy all###copyLog") || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C)) {
         ImGui::SetClipboardText(selectedOrAllAsText(records).c_str());
     }
     if (const std::uint64_t dropped = logHistory().dropped(); dropped > 0U) {
@@ -179,7 +180,9 @@ void StatusBarView::drawLogPopup() {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::SetNextItemSelectionUserData(static_cast<ImGuiSelectionUserData>(index));
-        ImGui::Selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), _selectedRecords.Contains(selectionIdOf(record)), ImGuiSelectableFlags_SpanAllColumns);
+        const bool recordSelected = _selectedRecords.Contains(selectionIdOf(record));
+        DigitizerUi::Selectable(std::format("{}###record{}", timeOfDay(record.timestampNanos), index).c_str(), recordSelected, ImGuiSelectableFlags_SpanAllColumns);
+        IMW::StyleColor rowText(ImGuiCol_Text, SelectableTextColor(recordSelected));
         ImGui::TableNextColumn();
         ImGui::TextColored(colourOf(record.level), "%.*s", static_cast<int>(nameOf(record.level).size()), nameOf(record.level).data());
         ImGui::TableNextColumn();
