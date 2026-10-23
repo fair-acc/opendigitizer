@@ -170,7 +170,7 @@ public:
 
         if (rootBlock->blockCategory == "ScheduledBlockGroup") {
             if (!rootBlock->childBlocks.empty()) {
-                assert(std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo)->childrenLoaded);
+                assert(std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo) && std::get_if<UiGraphBlock::SchedulerBlockInfo>(&rootBlock->blockCategoryInfo)->childrenLoaded);
                 _rootBlockUniqueName = rootBlock->childBlocks.front()->blockUniqueName;
             }
             // otherwise the children of the scheduler block are not loaded yet, we check every draw() to see if they are

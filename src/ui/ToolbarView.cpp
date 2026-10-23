@@ -85,7 +85,7 @@ std::vector<ToolbarSlot> planToolbar(std::span<const toolbar::ItemWidths> items,
         return {};
     }
     for (const bool withLabel : {true, false}) {
-        if (const auto rowOf = fillRows(withLabel); rowOf.back() < maxRows) {
+        if (const auto rowOf = fillRows(withLabel); !rowOf.empty() && rowOf.back() < maxRows) {
             return assign(rowOf, withLabel);
         }
     }

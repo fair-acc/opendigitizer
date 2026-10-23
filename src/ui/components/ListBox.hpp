@@ -35,15 +35,7 @@ struct FilterListContext {
     std::vector<T>   filteredItems;
     bool             filterInputReclaimFocus = false;
 
-    [[nodiscard]] bool filter(std::string_view name) {
-        if (!filterString.empty()) {
-            auto subrange = std::ranges::search(name, filterString, [](char a, char b) { return Digitizer::utils::safe_tolower(a) == Digitizer::utils::safe_tolower(b); });
-            if (std::begin(subrange) == name.end()) {
-                return false;
-            }
-        }
-        return true;
-    };
+    [[nodiscard]] bool filter(std::string_view name) { return Digitizer::utils::caseInsensitiveContains(name, filterString); };
 
     std::pair<int, bool> initSelection(bool shouldScrollToSelected) {
         if (selected && !filter(selected->second)) {
