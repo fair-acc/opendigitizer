@@ -310,7 +310,7 @@ void StatusBarView::drawLogPopup() {
 
         const char* data;
         std::string textOnly;
-        auto        width() const { return ImGui::CalcTextSize(textOnly.c_str()).x; }
+        auto        width() const { return DigitizerUi::CalcButtonSize(textOnly.c_str()).x; }
     };
 
     static const ButtonText clearLogsText("Clear logs###clearLogs");
@@ -331,7 +331,6 @@ void StatusBarView::drawLogPopup() {
 
     const std::optional<Level> levelFilterBefore   = _levelFilter;
     const std::string          messageFilterBefore = _messageFilter;
-    const ImVec2               buttonPadding       = ImGui::GetStyle().FramePadding;
 
     Records       records                    = logHistory().snapshot();
     const Records visibleRecords             = filterRecords(records, _levelFilter, _messageFilter);
@@ -339,10 +338,10 @@ void StatusBarView::drawLogPopup() {
     _selectedRecords.AdapterIndexToStorageId = selectionIdAt;
     const bool hasVisibleSelection           = std::any_of(visibleRecords.begin(), visibleRecords.end(), [this](const gr::log::LogRecord& record) { return _selectedRecords.Contains(selectionIdOf(record)); });
 
-    const float clearWidth            = clearLogsText.width() + 2.f * buttonPadding.x;
-    const float closeWidth            = closeText.width() + 2.f * buttonPadding.x;
-    const float copyWidth             = (hasVisibleSelection ? copySelectedText.width() : copyAllText.width()) + 2.f * buttonPadding.x;
-    const float saveWidth             = (hasVisibleSelection ? saveSelectedText.width() : saveAllText.width()) + 2.f * buttonPadding.x;
+    const float clearWidth            = clearLogsText.width();
+    const float closeWidth            = closeText.width();
+    const float copyWidth             = (hasVisibleSelection ? copySelectedText.width() : copyAllText.width());
+    const float saveWidth             = (hasVisibleSelection ? saveSelectedText.width() : saveAllText.width());
     const float trailingControlsWidth = clearWidth + copyWidth + saveWidth + closeWidth + 4.f * ImGui::GetStyle().ItemSpacing.x;
 
     ImGui::SameLine();
