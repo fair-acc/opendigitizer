@@ -123,6 +123,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_uicontrol_connections.grc
     examples/qa_uicontrol_readout.grc
     examples/qa_uicontrol_compatibility.grc
+    examples/qa_property_limits.grc
     examples/qa_toolbar.grc
     baselines/dashboard_layout.txt)
 

@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <set>
@@ -1424,6 +1426,18 @@ bool UiGraphModel::blockInTree(const UiGraphBlock& block, const UiGraphBlock& tr
     return false;
 }
 
+template<typename T>
+static bool fitsImGuiSlider(double minValue, double maxValue) {
+    if constexpr (std::floating_point<T>) {
+        constexpr double limit = std::numeric_limits<double>::max() / 2.; // limit for imgui double slider, there is an assert in imgui_widgets.cpp
+        return minValue >= -limit && maxValue <= limit;
+    } else {
+        // imgui limit for integer slider is (2^62 - 1) (using < below instead of subtracting to prevent overflowing double precision at this large of a number)
+        constexpr double limit = static_cast<double>(std::int64_t{1} << 62);
+        return minValue >= -limit && maxValue < limit;
+    }
+}
+
 UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::controlType(const gr::pmt::Value& value) const {
     SettingsControlType out{};
     gr::pmt::ValueVisitor([&](auto& currentValue) {
@@ -1437,9 +1451,9 @@ UiGraphBlock::SettingsControlType UiGraphBlock::SettingsMetaInformation::control
                     return;
                 }
             }
-            out = (minValue && maxValue) ? SettingsControlType::Slider : SettingsControlType::Keypad;
+            out = (minValue && maxValue && fitsImGuiSlider<T>(*minValue, *maxValue)) ? SettingsControlType::Slider : SettingsControlType::Keypad;
         } else if constexpr (std::floating_point<T>) {
-            out = (minValue && maxValue) ? SettingsControlType::Slider : SettingsControlType::Keypad;
+            out = (minValue && maxValue && fitsImGuiSlider<T>(*minValue, *maxValue)) ? SettingsControlType::Slider : SettingsControlType::Keypad;
         } else if constexpr (std::same_as<T, std::string> || std::same_as<T, std::string_view> || std::same_as<T, std::pmr::string>) {
             out = !enumValues.empty() ? SettingsControlType::Combo : SettingsControlType::TextInput;
         }
