@@ -1471,10 +1471,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_compatibility.grc");
                     dragAndDropControlToTargetAndUsePopupAsRef(ctx, editor, "controlNumber", "signalGenerator1");
                     expect(isPropertyCheckboxEnabled(ctx, "input_chunk_size")) << "uint32 property is enabled initially";
-                    expect(isPropertyCheckboxEnabled(ctx, "frequency")) << "float32 property is enabled initially";
+                    expect(isPropertyCheckboxEnabled(ctx, "frequency")) << "float64 property is enabled initially";
 
                     ctx->ItemClick("**/input_chunk_size");
-                    expect(!isPropertyCheckboxEnabled(ctx, "frequency")) << "selecting the uint32 property disables the float32 property";
+                    expect(!isPropertyCheckboxEnabled(ctx, "frequency")) << "selecting the uint32 property disables the float64 property";
 
                     ctx->ItemClick("**/frequency");
                     closePopupWithDone(ctx);

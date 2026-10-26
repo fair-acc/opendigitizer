@@ -47,7 +47,7 @@ struct BlockPropertyHints {
         return result;
     }
 
-    [[nodiscard]] constexpr static BlockPropertyHints fromMap(const gr::property_map& hintsMap) {
+    [[nodiscard]] constexpr static BlockPropertyHints fromMap(const gr::property_map_view& hintsMap) {
         BlockPropertyHints result;
 
         using namespace std::string_view_literals;
@@ -113,9 +113,9 @@ struct DrawableBlockConfig {
         [[nodiscard]] static constexpr ControlledProperty fromMap(const gr::property_map& configMap) {
             ControlledProperty result;
             using namespace std::string_view_literals;
-            if (const auto controlledProperty = configMap.get_if<gr::property_map>("first_controlled_property"sv)) {
+            if (const auto controlledProperty = configMap.get_if<gr::property_map_view>("first_controlled_property"sv)) {
                 result.value = controlledProperty->find_value("value"sv, std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
-                if (const auto hints = controlledProperty->get_if<gr::property_map>("hints"sv)) {
+                if (const auto hints = controlledProperty->get_if<gr::property_map_view>("hints"sv)) {
                     result.hints = BlockPropertyHints::fromMap(*hints);
                 }
                 if (const auto targetBlockName = controlledProperty->get_if<std::string_view>("target_block_name"sv)) {
@@ -164,7 +164,7 @@ struct DrawableBlockConfig {
     [[nodiscard]] static constexpr DrawableBlockConfig fromMap(const gr::property_map& configMap) {
         using namespace std::string_view_literals;
         DrawableBlockConfig result{.firstControlledProperty = ControlledProperty::fromMap(configMap)};
-        if (auto aggregateHints = configMap.get_if<gr::property_map>("aggregate_controlled_property_hints"sv)) {
+        if (auto aggregateHints = configMap.get_if<gr::property_map_view>("aggregate_controlled_property_hints"sv)) {
             result.aggregateControlledPropertyHints = BlockPropertyHints::fromMap(*aggregateHints);
         }
         if (auto maxWidth = configMap.get_if<float>("max_width"sv)) {
