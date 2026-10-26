@@ -9,6 +9,7 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "../GraphModel.hpp"
+#include "../blocks/ImControlNumber.hpp"
 #include "../blocks/TargetMap.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/Dialog.hpp"
@@ -452,7 +453,10 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                     out = static_cast<T>(temp);
                 }
             } else if constexpr (std::integral<T>) {
-                auto       temp     = static_cast<std::int64_t>(num);
+                auto                              temp     = static_cast<std::int64_t>(num);
+                [[maybe_unused]] constexpr double int64Max = 0x1p63;
+                assert(*meta.minValue >= -int64Max && *meta.minValue < int64Max && "overflow would occur when casting minValue to double");
+                assert(*meta.maxValue >= -int64Max && *meta.maxValue < int64Max && "overflow would occur when casting maxValue to double");
                 const auto minValue = static_cast<std::int64_t>(*meta.minValue);
                 const auto maxValue = static_cast<std::int64_t>(*meta.maxValue);
                 if (ImGui::SliderScalar(label, ImGuiDataType_S64, &temp, &minValue, &maxValue, "%lld", {})) {
@@ -463,13 +467,18 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
         break;
     }
     case Type::Keypad: {
-        assert(!meta.minValue || !meta.maxValue);
         assert(currentPropertyValue.is_arithmetic());
         gr::pmt::ValueVisitor([&propertyName, label, &meta, &out]<typename T>(const T& num) {
             // sizeof(T) >= 4 is just here to reduce template instantiations of InputKeypad<>::edit
             if constexpr (std::is_arithmetic_v<T> && sizeof(T) >= 4) {
                 T temp = num;
                 if (InputKeypad<>::edit(propertyName, label, &temp, meta.unit)) {
+                    if (meta.minValue) {
+                        temp = std::max(temp, control::clampedTo<T>(*meta.minValue));
+                    }
+                    if (meta.maxValue) {
+                        temp = std::min(temp, control::clampedTo<T>(*meta.maxValue));
+                    }
                     out = static_cast<T>(temp);
                 }
             } else {

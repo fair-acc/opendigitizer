@@ -1,5 +1,6 @@
 #include "FlowgraphPage.hpp"
 #include "ImGuiTestApp.hpp"
+#include "PropertyLimitsTarget.hpp"
 #include "TestDashboardRunner.hpp"
 #include "TestingBlockInspectionUtils.hpp"
 #include "UiControlCompatibilityTarget.hpp"
@@ -517,6 +518,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         editor._editPaneContext.setSelectedBlock(block, std::addressof(g_state.dashboard->session.graphModel));
         setBlockPanelAlwaysOpen(editor);
         g_state.waitUntil(ctx, "the block panel has finished opening", [&editor] { return editor._splitter.anim_state == DigitizerUi::components::SplitterState::State::Shown; });
+    }
+
+    static void openBlockPropertyPanelWaitMetainfo(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, std::string_view blockName) {
+        DigitizerUi::UiGraphBlock* block = findRootChildByName(blockName);
+        expect(block != nullptr) << fatal << blockName << " not found";
+        g_state.waitUntil(ctx, "the meta information of the setting is known", [block] { return block->blockSettingsMetaInformation.contains("value"); });
+        openBlockPanel(ctx, editor, block);
+        ctx->SetRef("//BlockControlsPanel");
+        ctx->Yield(2);
     }
 
     /// clicks one of the buttons which the block panel draws in place of the editor of a UI-controlled property, for example "**/Unlink##unlink_signal_name"
@@ -1992,6 +2002,72 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 g_state.flowgraphPage.showEditorControls = true;
             };
         }
+
+        {
+            // there used to be a bug where we would try to draw sliders even if a double value or min or max was out of the range imgui accepts for those
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "we can draw valid imgui slider for values with min/max ranges, regression test");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_property_limits.grc");
+                openBlockPropertyPanelWaitMetainfo(ctx, editor, "doubleToNumericLimit");
+
+                "control exists"_test = [&] { expect(ctx->ItemExists("**/##parameter_value")); };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            /// regression test for undefined behavior when clamping very large doubles into the range of int64
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "valid number editor for int64 with extremely large min and max values");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_property_limits.grc");
+                openBlockPropertyPanelWaitMetainfo(ctx, editor, "int64ToNumericLimit");
+
+                "control exists"_test = [&] { expect(ctx->ItemExists("**/##parameter_value")); };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "keypad editor field's text input");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_property_limits.grc");
+                openBlockPropertyPanelWaitMetainfo(ctx, editor, "unlimitedDouble");
+
+                "typing into the text input of the keypad"_test = [&] {
+                    expect(blockHasBasicTypeKeyValuePair<double>("unlimitedDouble", "value", 1.)) << fatal;
+                    // avoid opening keypad popup by not clicking on the control and using tab to get there. Arguably
+                    // the behavior here could also be changed so that tabbing skips the keypad text input or finds
+                    // it disabled or auto-opens the keypad popup. But it seems nicest to support both, to avoid the
+                    // keypad popping up when tabbing through and to not unexpectedly skip the item
+                    const ImGuiID fieldId = ctx->ItemInfo("**/##parameter_value").ID;
+                    ctx->NavMoveTo("**/##parameter_value");
+                    // if there were other tab-navigation targets then this would take us away, but this input is the only one
+                    ctx->KeyPress(ImGuiKey_Tab);
+                    expect(ImGui::GetActiveID() == fieldId) << fatal << "the text input of the field is activated by tab";
+                    ctx->KeyCharsReplaceEnter("5");
+                    expect(!DigitizerUi::components::InputKeypad<>::isVisible());
+                    const auto changed = [] { return setting("unlimitedDouble", "value").value_or(1.) == 5.; };
+                    for (int frame = 0; frame < 60 && !changed(); ++frame) {
+                        g_state.dashboard->handleMessages();
+                        ctx->Yield();
+                    }
+                    expect(changed()) << "the setting is " << setting("unlimitedDouble", "value").value_or(1.);
+                };
+
+                finishUiControlTest();
+            };
+        }
     }
 };
 
@@ -2010,6 +2086,9 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<DigitizerUi::ImControlChoice>(registry);
     gr::registerBlock<DigitizerUi::ImPropertyReadout>(registry);
     gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
+    gr::registerBlock<opendigitizer::test::DoubleToNumericLimitTarget>(registry);
+    gr::registerBlock<opendigitizer::test::Int64ToNumericLimitTarget>(registry);
+    gr::registerBlock<opendigitizer::test::UnlimitedDoubleTarget>(registry);
     // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 

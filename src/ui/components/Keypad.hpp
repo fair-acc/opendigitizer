@@ -643,10 +643,11 @@ public:
             EdTy min = 0;
             EdTy max = 0;
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
-            ImGui::DragScalar(label, type, value, 1.f, &min, &max, floatingPointDragFormat(key, value, suffix).c_str());
+            const bool wasDragged = ImGui::DragScalar(label, type, value, 1.f, &min, &max, floatingPointDragFormat(key, value, suffix).c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
-            return drawChangeButtons(key, label, value);
+            const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
+            return wasDragged || changedByKeypadOrButtons;
         } else if constexpr (std::integral<EdTy>) {
             ImGuiDataType type = ImGuiDataType_S32;
             if constexpr (std::is_same_v<EdTy, std::int64_t>) {
@@ -662,10 +663,11 @@ public:
             EdTy min = 0;
             EdTy max = 0;
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
-            ImGui::DragScalar(label, type, value, 1.f, &min, &max, intDragFormat(suffix).c_str());
+            const bool wasDragged = ImGui::DragScalar(label, type, value, 1.f, &min, &max, intDragFormat(suffix).c_str());
             IMW::detail::setItemTooltip(key.c_str());
 
-            return drawChangeButtons(key, label, value);
+            const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
+            return wasDragged || changedByKeypadOrButtons;
         } else {
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
             ImGui::InputText(label, value);

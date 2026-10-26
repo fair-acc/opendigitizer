@@ -1,0 +1,34 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clockSource1
+      n_samples_max: 0
+      sample_rate: 4096
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: signalGenerator1
+      frequency: 1
+      sample_rate: 4096
+      signal_type: Sin
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sink1
+  - id: opendigitizer::test::DoubleToNumericLimitTarget
+    parameters:
+      name: doubleToNumericLimit
+  - id: opendigitizer::test::Int64ToNumericLimitTarget
+    parameters:
+      name: int64ToNumericLimit
+  - id: opendigitizer::test::UnlimitedDoubleTarget
+    parameters:
+      name: unlimitedDouble
+connections:
+  - [clockSource1, 0, signalGenerator1, 0]
+  - [signalGenerator1, 0, doubleToNumericLimit, 0]
+  - [doubleToNumericLimit, 0, int64ToNumericLimit, 0]
+  - [int64ToNumericLimit, 0, unlimitedDouble, 0]
+  - [unlimitedDouble, 0, sink1, 0]
+dashboard:
+  layout: Free
+  sources: []
+  plots: []
