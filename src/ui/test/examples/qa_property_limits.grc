@@ -22,12 +22,16 @@ blocks:
   - id: opendigitizer::test::UnlimitedDoubleTarget
     parameters:
       name: unlimitedDouble
+  - id: opendigitizer::test::SliderDoubleTarget
+    parameters:
+      name: sliderDouble
 connections:
   - [clockSource1, 0, signalGenerator1, 0]
   - [signalGenerator1, 0, doubleToNumericLimit, 0]
   - [doubleToNumericLimit, 0, int64ToNumericLimit, 0]
   - [int64ToNumericLimit, 0, unlimitedDouble, 0]
-  - [unlimitedDouble, 0, sink1, 0]
+  - [unlimitedDouble, 0, sliderDouble, 0]
+  - [sliderDouble, 0, sink1, 0]
 dashboard:
   layout: Free
   sources: []

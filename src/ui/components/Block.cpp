@@ -463,6 +463,9 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                     out = static_cast<T>(temp);
                 }
             }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on slider converts it to a text input
+            }
         }).visit(currentPropertyValue);
         break;
     }

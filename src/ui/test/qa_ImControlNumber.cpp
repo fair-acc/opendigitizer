@@ -181,6 +181,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(eq(dragged, std::round(dragged))) << std::format("dragged to {}: whole numbers", dragged);
             };
 
+            "right clicking slider temporarily converts it to a text input"_test = [&] {
+                const ImGuiID sliderId = ctx->ItemInfo("**/##Coarse").ID;
+                ctx->ItemClick("**/##Coarse", ImGuiMouseButton_Right);
+                expect(ImGui::TempInputIsActive(sliderId)) << fatal << "the slider is a text input";
+                ctx->KeyCharsReplaceEnter("6.5");
+                expect(!ImGui::TempInputIsActive(sliderId)) << "enter confirms changes";
+                expect(g_state.waitUntil(ctx, "value is updated when using the textInput", [] { return g_state.coarseControl->block.value == 6.5; }));
+            };
+
             "the toolbar fits its host: natural row, shrunk row, two rows, then without labels"_test = [&] {
                 const ImGuiStyle&                  style      = ImGui::GetStyle();
                 const DigitizerUi::DashboardStyle& toolbar    = DigitizerUi::LookAndFeel::instance().dashboardStyle;

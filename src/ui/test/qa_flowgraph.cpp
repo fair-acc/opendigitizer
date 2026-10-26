@@ -2068,6 +2068,44 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 finishUiControlTest();
             };
         }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "right-clicking a number editor turns it into a text input");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_property_limits.grc");
+
+                for (const char* blockName : {"sliderDouble", "unlimitedDouble"}) {
+                    openBlockPropertyPanelWaitMetainfo(ctx, editor, blockName);
+                    const ImGuiID fieldId = ctx->ItemInfo("**/##parameter_value").ID;
+
+                    ut::test(std::format("right-clicking the number editor of {} and typing works like interacting with the editor", blockName)) = [&] {
+                        expect(blockHasBasicTypeKeyValuePair<double>(blockName, "value", 1.)) << fatal;
+                        ctx->ItemClick("**/##parameter_value", ImGuiMouseButton_Right);
+                        expect(ImGui::TempInputIsActive(fieldId)) << fatal << "the editor is a text input";
+                        expect(!DigitizerUi::components::InputKeypad<>::isVisible());
+                        ctx->KeyCharsReplaceEnter("5");
+                        expect(!ImGui::TempInputIsActive(fieldId)) << "enter confirms changes";
+                        expect(g_state.waitUntil(ctx, "the value gets set on the block", [blockName] { return blockHasBasicTypeKeyValuePair<double>(blockName, "value", 5.); }));
+                    };
+
+                    ut::test(std::format("end text input for {} by clicking outside it", blockName)) = [&] {
+                        ctx->ItemClick("**/##parameter_value", ImGuiMouseButton_Right);
+                        expect(ImGui::TempInputIsActive(fieldId)) << fatal << "the editor is a text input";
+                        const ImGuiWindow* panel = ctx->GetWindowByRef("//BlockControlsPanel");
+                        expect(panel != nullptr) << fatal;
+                        ctx->MouseMoveToPos(panel->InnerRect.Max - ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+                        expect(ImGui::GetHoveredID() == 0U) << fatal << "click was in empty space";
+                        ctx->MouseClick(ImGuiMouseButton_Left);
+                        expect(!ImGui::TempInputIsActive(fieldId)) << "text input is gone";
+                    };
+                }
+
+                finishUiControlTest();
+            };
+        }
     }
 };
 
@@ -2089,6 +2127,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<opendigitizer::test::DoubleToNumericLimitTarget>(registry);
     gr::registerBlock<opendigitizer::test::Int64ToNumericLimitTarget>(registry);
     gr::registerBlock<opendigitizer::test::UnlimitedDoubleTarget>(registry);
+    gr::registerBlock<opendigitizer::test::SliderDoubleTarget>(registry);
     // TODO: fix gnuradio so the explicit alias is not needed for this block to be reachable by its own name
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);
 
