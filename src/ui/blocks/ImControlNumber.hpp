@@ -168,6 +168,9 @@ private:
                 number  = std::clamp(typed ? number : onStepGrid(static_cast<double>(number)), lower, upper);
                 changed = true;
             }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on slider converts it to a text input
+            }
         };
         const auto spinner = [&] {
             IMW::ChangeStrId spinnerScope(id.c_str());

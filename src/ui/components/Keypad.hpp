@@ -644,6 +644,9 @@ public:
             EdTy max = 0;
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
             const bool wasDragged = ImGui::DragScalar(label, type, value, 1.f, &min, &max, floatingPointDragFormat(key, value, suffix).c_str());
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on drag input converts it to a text input
+            }
             IMW::detail::setItemTooltip(key.c_str());
 
             const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
@@ -664,6 +667,9 @@ public:
             EdTy max = 0;
             ImGui::SetNextItemWidth(spaceAvailableBeforeButtons);
             const bool wasDragged = ImGui::DragScalar(label, type, value, 1.f, &min, &max, intDragFormat(suffix).c_str());
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on drag input converts it to a text input
+            }
             IMW::detail::setItemTooltip(key.c_str());
 
             const bool changedByKeypadOrButtons = drawChangeButtons(key, label, value);
@@ -784,7 +790,7 @@ private:
 
     template<typename EdTy>
     [[nodiscard]] bool editImpl(const char* /* label */, EdTy* value) noexcept {
-        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
             _visible = true;
             ImGui::OpenPopup(keypad_name);
             _prevValue.emplace<EdTy>(*value); // save for discard

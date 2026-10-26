@@ -34,6 +34,19 @@ struct Int64ToNumericLimitTarget : gr::Block<Int64ToNumericLimitTarget> {
     [[nodiscard]] constexpr float processOne(float input) const noexcept { return input; }
 };
 
+struct SliderDoubleTarget : gr::Block<SliderDoubleTarget> {
+    using Description = gr::Doc<"testing block with a double setting with min/max values that work well for an imgui slider">;
+
+    gr::PortIn<float>  in;
+    gr::PortOut<float> out;
+
+    gr::Annotated<double, "double value in 0..10", gr::Visible, gr::Limits<0., 10.>> value = 1.;
+
+    GR_MAKE_REFLECTABLE(SliderDoubleTarget, in, out, value);
+
+    [[nodiscard]] constexpr float processOne(float input) const noexcept { return input; }
+};
+
 struct UnlimitedDoubleTarget : gr::Block<UnlimitedDoubleTarget> {
     using Description = gr::Doc<"testing block with a double setting without limits">;
 
