@@ -56,6 +56,47 @@ inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEv
 }
 #endif
 
+/// Writes `text` to the system clipboard (WASM only). SDL3's Emscripten backend has no clipboard support, so
+/// ImGui::SetClipboardText never leaves the page; this must run shortly after a user click for the browser to allow it.
+inline void copyToBrowserClipboard([[maybe_unused]] const std::string& text) {
+#ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
+    // clang-format off
+    // MAIN_THREAD: navigator/document are only valid on the browser main thread (pthreads build).
+    MAIN_THREAD_EM_ASM(
+        {
+            const text = UTF8ToString($0);
+            const fallbackCopy = function () {
+                const previouslyFocused = document.activeElement;
+                const area = document.createElement("textarea");
+                area.value = text;
+                area.style.position = "fixed";
+                area.style.opacity = "0";
+                document.body.appendChild(area);
+                area.select();
+                try {
+                    document.execCommand("copy");
+                } catch (error) {
+                    console.error("copy to clipboard failed", error);
+                }
+                area.remove();
+                if (previouslyFocused && previouslyFocused.focus) {
+                    previouslyFocused.focus();
+                }
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+            }
+        },
+        text.c_str());
+    // clang-format on
+#pragma clang diagnostic pop
+#endif
+}
+
 // clang-format off
 inline void listPersistentFiles([[maybe_unused]] bool recursive = true) {
 #ifdef __EMSCRIPTEN__
