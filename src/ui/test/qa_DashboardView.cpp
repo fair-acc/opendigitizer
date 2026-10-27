@@ -13,8 +13,6 @@
 #include <DashboardPage.hpp>
 #include <DashboardView.hpp>
 
-#include "blocks/SineSource.hpp"
-
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>

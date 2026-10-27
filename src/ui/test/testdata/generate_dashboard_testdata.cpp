@@ -137,7 +137,7 @@ std::vector<BlockSpec> makeSources() {
         BlockSpec        source;
         switch (kind) {
         case SourceKind::sine:
-            source.id                      = "opendigitizer::SineSource<float32>";
+            source.id                      = "gr::basic::SignalGenerator<float32>";
             source.name                    = std::format("sineSource{}", i + 1);
             source.parameters["frequency"] = static_cast<float>(randomRangeReal(0.05, 2.0));
             break;

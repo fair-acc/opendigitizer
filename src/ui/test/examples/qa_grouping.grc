@@ -1,5 +1,5 @@
 blocks:
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: source
   - id: gr::testing::Copy<float32>
@@ -11,10 +11,10 @@ blocks:
   - id: gr::testing::AtomicCountingSink<float32>
     parameters:
       name: sink
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: loner1
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: loner2
 connections:

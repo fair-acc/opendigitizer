@@ -379,7 +379,6 @@ add_library(
   UniqueNameRegistry.hpp
   blocks/Arithmetic.hpp
   blocks/RemoteSource.hpp
-  blocks/SineSource.hpp
   blocks/StatusBarBlock.hpp
   blocks/StridedWindow.hpp
   blocks/TagToSample.hpp
