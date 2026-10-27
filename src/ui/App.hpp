@@ -177,9 +177,10 @@ public:
 
     /// reflect the loaded dashboard in the browser URL: the first load replaces the initial entry, later loads add one
     void publishDashboardLocation(const std::shared_ptr<const DashboardDescription>& desc) {
-        const bool linkable = desc && desc->storageInfo && isLinkableStorage(*desc->storageInfo);
+        // filename, not name: name is the stem, so `v1.2` would otherwise be linked as `v1`
+        const bool linkable = desc && desc->storageInfo && isLinkableStorage(*desc->storageInfo) && Digitizer::AppLocation::isValidDashboardName(desc->filename);
         // keeps flags such as darkMode, drops the dashboard when it cannot be linked
-        const Digitizer::AppLocation location = linkable ? Digitizer::AppLocation::forDashboard(desc->name, history.current().query) : Digitizer::AppLocation{.segments = {}, .query = history.current().query};
+        const Digitizer::AppLocation location = linkable ? Digitizer::AppLocation::forDashboard(desc->filename, history.current().query) : Digitizer::AppLocation{.segments = {}, .query = history.current().query};
         if (locationPublished && linkable) {
             history.push(location);
         } else {
@@ -198,7 +199,7 @@ public:
             mainViewMode                                 = *editable ? ViewMode::INTERACTION : ViewMode::VIEW;
             previousViewMode                             = mainViewMode;
         }
-        if (const auto name = location.dashboardName(); name && (!dashboard || dashboard->description->name != *name)) {
+        if (const auto name = location.dashboardName(); name && (!dashboard || dashboard->description->filename != *name)) {
             deferredDashboardUrl          = builtinSampleUrl(*name).value_or(resolveServiceDashboardPath(*name));
             prepareForANewDashboardToLoad = true;
         }
@@ -254,7 +255,7 @@ public:
             }
         };
         openDashboardPage.shareLinkFor = [this](std::string_view name, const DashboardStorageInfo& storage) -> std::optional<std::string> {
-            if (name.empty() || !isLinkableStorage(storage)) {
+            if (!Digitizer::AppLocation::isValidDashboardName(name) || !isLinkableStorage(storage)) {
                 return std::nullopt;
             }
             return history.linkTo(Digitizer::AppLocation::forDashboard(name));

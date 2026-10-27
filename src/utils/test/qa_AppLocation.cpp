@@ -41,7 +41,7 @@ const boost::ut::suite<"AppLocation"> tests = [] {
 
         "percent decoding"_test = [] {
             expect(AppLocation::parse("/dashboard/My%20Board").dashboardName() == std::optional<std::string>{"My Board"});
-            expect(AppLocation::parse("/dashboard/a%2Fb%3Fc%23d").dashboardName() == std::optional<std::string>{"a/b?c#d"});
+            expect(AppLocation::parse("/dashboard/a%2Fb%3Fc%23d").segments == Segments{"dashboard", "a/b?c#d"});
             expect(AppLocation::parse("/dashboard/%C3%A4").dashboardName() == std::optional<std::string>{"\xC3\xA4"}); // U+00E4
             expect(AppLocation::parse("/?k=a%26b%3Dc").query.at("k") == "a&b=c");
         };
@@ -89,11 +89,33 @@ const boost::ut::suite<"AppLocation"> tests = [] {
     };
 
     "round trip"_test = [] {
-        for (const std::string name : {"Demo", "My Board", "a/b", "a?b", "a#b", "a&b=c", "100%", "%41", "\xC3\xA4\xE2\x82\xAC", "~._-", "+"}) {
+        for (const std::string name : {"Demo", "My Board", "a/b", "a?b", "a#b", "a&b=c", "100%", "%41", "\xC3\xA4\xE2\x82\xAC", "~._-", "+", "v1.2", "a:b"}) {
             const AppLocation location = AppLocation::forDashboard(name, {{"darkMode", ""}, {"k", name}});
-            expect(AppLocation::parse(location.toHash()) == location) << name;
-            expect(AppLocation::parse('#' + location.toHash()).dashboardName() == std::optional<std::string>{name}) << name;
+            const AppLocation parsed   = AppLocation::parse('#' + location.toHash());
+            expect(parsed == location) << name;
+            expect(parsed.segments.at(1) == name) << name;
         }
+    };
+
+    "dashboard names from the URL are validated"_test = [] {
+        "names that select a remote or parent path are rejected"_test = [] {
+            for (const std::string hash : {"/dashboard/http%3A%2F%2Fevil.example%2Fd.grc", "/dashboard/https%3A%2F%2Fevil.example", "/dashboard/..%2F..%2Fsecret", "/dashboard/..", "/dashboard/.", "/dashboard/a%5Cb", "/dashboard/a%3Fb", "/dashboard/a%23b", "/dashboard/a%00b", "/dashboard/a%0Ab", "/dashboard/%7F", "/dashboard/%2Fetc%2Fpasswd"}) {
+                expect(!AppLocation::parse(hash).dashboardName().has_value()) << hash;
+            }
+        };
+
+        "ordinary names are accepted"_test = [] {
+            for (const std::string name : {"Demo", "My Board", "v1.2", "a:b", "100%", "\xC3\xA4", "a&b=c", "...", "-"}) {
+                expect(AppLocation::forDashboard(name).dashboardName() == std::optional<std::string>{name}) << name;
+            }
+        };
+
+        "isValidDashboardName"_test = [] {
+            expect(AppLocation::isValidDashboardName("Demo"));
+            expect(!AppLocation::isValidDashboardName(""));
+            expect(!AppLocation::isValidDashboardName(std::string("a\0b", 3)));
+            expect(!AppLocation::isValidDashboardName("a/b"));
+        };
     };
 
     "flag"_test = [] {
