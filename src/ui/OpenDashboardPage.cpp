@@ -399,7 +399,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
         const std::optional<std::string> link = shareLinkFor(name, *storageInfo);
         {
             IMW::Disabled disabled(!link);
-            if (ImGui::Button("Copy link") && link) {
+            if (DigitizerUi::TextButton("Copy link") && link) {
                 ImGui::SetClipboardText(link->c_str());
                 copyToBrowserClipboard(*link);
                 components::Notification::info("Link copied to clipboard");
