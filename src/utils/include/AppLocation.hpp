@@ -58,8 +58,15 @@ struct AppLocation {
         return hash;
     }
 
+    /// a name that is safe to append to a dashboards path: no separators, query or fragment delimiters, control characters, or dot names
+    [[nodiscard]] static bool isValidDashboardName(std::string_view name) {
+        constexpr auto isForbidden = [](char c) { return c == '/' || c == '\\' || c == '?' || c == '#' || static_cast<unsigned char>(c) < 0x20 || c == 0x7F; };
+        return !name.empty() && name != "." && name != ".." && std::ranges::none_of(name, isForbidden);
+    }
+
+    /// only names passing isValidDashboardName: the URL is untrusted input, a name like `https://host/x` must not select a remote file
     [[nodiscard]] std::optional<std::string> dashboardName() const {
-        if (segments.size() == 2 && segments[0] == kDashboardSegment) {
+        if (segments.size() == 2 && segments[0] == kDashboardSegment && isValidDashboardName(segments[1])) {
             return segments[1];
         }
         return std::nullopt;
