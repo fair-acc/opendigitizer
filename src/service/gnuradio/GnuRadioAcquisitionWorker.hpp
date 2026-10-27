@@ -610,6 +610,8 @@ private:
                     for (auto& sinkBlockName : signalEntryBySink | std::views::keys) {
                         emit<Get>(*_messagesToScheduler, {}, {.endpoint = block::property::kSetting, .serviceName = sinkBlockName});
                     }
+                    // attach pollers before running the graph, to prevent losing / not observing initial samples
+                    std::ignore = handleSubscriptions(streamingPollers, dataSetPollers, signalEntryBySink);
 
                     {
                         std::lock_guard lg{_graphChangeMutex};
