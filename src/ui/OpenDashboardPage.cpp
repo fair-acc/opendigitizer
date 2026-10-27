@@ -15,6 +15,7 @@
 #include "components/StyledStandardWidgets.hpp"
 #include "components/VirtualScrollTable.hpp"
 #include "settings.hpp"
+#include "utils/EmscriptenHelper.hpp"
 
 #include <gnuradio-4.0/meta/utils.hpp>
 
@@ -400,6 +401,7 @@ void OpenDashboardPage::drawSaveAsDialog(Dashboard* optionalDashboard, Dashboard
             IMW::Disabled disabled(!link);
             if (ImGui::Button("Copy link") && link) {
                 ImGui::SetClipboardText(link->c_str());
+                copyToBrowserClipboard(*link);
                 components::Notification::info("Link copied to clipboard");
             }
         }
