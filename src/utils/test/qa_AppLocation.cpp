@@ -118,6 +118,52 @@ const boost::ut::suite<"AppLocation"> tests = [] {
         };
     };
 
+    "pages"_test = [] {
+        using Page = AppLocation::Page;
+
+        "routes map to pages"_test = [] {
+            expect(AppLocation::parse("/dashboard/Demo").page() == std::optional<Page>{Page::Chart});
+            expect(AppLocation::parse("/dashboard/Demo/flowgraph").page() == std::optional<Page>{Page::Flowgraph});
+            expect(AppLocation::parse("/dashboards").page() == std::optional<Page>{Page::Dashboards});
+            expect(AppLocation::parse("#/dashboard/Demo/flowgraph?editable").page() == std::optional<Page>{Page::Flowgraph});
+        };
+
+        "the editor route names its dashboard, the list does not"_test = [] {
+            expect(AppLocation::parse("/dashboard/Demo/flowgraph").dashboardName() == std::optional<std::string>{"Demo"});
+            expect(!AppLocation::parse("/dashboards").dashboardName().has_value());
+        };
+
+        "unknown routes have no page"_test = [] {
+            for (const std::string hash : {"", "/", "/dashboard", "/dashboard/Demo/other", "/dashboard/Demo/flowgraph/x", "/dashboards/x", "/other/Demo/flowgraph", "/dashboard/..%2Fx/flowgraph", "/dashboard/../flowgraph", "/dashboard/http%3A%2F%2Fevil.example%2Fd/flowgraph", "/dashboard/Demo/FLOWGRAPH"}) {
+                expect(!AppLocation::parse(hash).page().has_value()) << hash;
+            }
+            expect(!AppLocation::parse("/dashboard/Demo/other").dashboardName().has_value());
+            expect(!AppLocation::parse("/dashboard/Demo/flowgraph/x").dashboardName().has_value());
+        };
+
+        "building routes"_test = [] {
+            expect(AppLocation::forDashboard("Demo", {}, Page::Chart).toHash() == "/dashboard/Demo");
+            expect(AppLocation::forDashboard("Demo", {}, Page::Flowgraph).toHash() == "/dashboard/Demo/flowgraph");
+            expect(AppLocation::forDashboard("My Board", {{"editable", ""}}, Page::Flowgraph).toHash() == "/dashboard/My%20Board/flowgraph?editable");
+            expect(AppLocation::forDashboardList().toHash() == "/dashboards");
+            expect(AppLocation::forDashboardList({{"darkMode", ""}, {"editable", ""}}).toHash() == "/dashboards?darkMode&editable");
+        };
+
+        "a dashboard called like a page is still a chart"_test = [] {
+            const AppLocation location = AppLocation::parse(AppLocation::forDashboard("flowgraph").toHash());
+            expect(location.toHash() == "/dashboard/flowgraph");
+            expect(location.page() == std::optional<Page>{Page::Chart});
+            expect(location.dashboardName() == std::optional<std::string>{"flowgraph"});
+            expect(AppLocation::parse("/dashboard/dashboards").page() == std::optional<Page>{Page::Chart});
+        };
+
+        "pages round trip"_test = [] {
+            for (const AppLocation& location : {AppLocation::forDashboard("v1.2", {{"darkMode", ""}}, Page::Flowgraph), AppLocation::forDashboardList({{"editable", "true"}})}) {
+                expect(AppLocation::parse('#' + location.toHash()) == location);
+            }
+        };
+    };
+
     "flag"_test = [] {
         const AppLocation location = AppLocation::parse("/?a&b=true&c=1&d=false&e=0&f=maybe");
         expect(location.flag("a") == std::optional<bool>{true});

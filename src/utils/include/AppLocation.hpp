@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -15,7 +16,11 @@ namespace Digitizer {
 /// Route-style application state carried in the URL fragment, e.g. `#/dashboard/My%20Board?darkMode&editable=true`.
 /// Never throws: malformed percent escapes are kept literally.
 struct AppLocation {
-    static constexpr std::string_view kDashboardSegment = "dashboard";
+    enum class Page : std::uint8_t { Chart, Flowgraph, Dashboards };
+
+    static constexpr std::string_view kDashboardSegment  = "dashboard";
+    static constexpr std::string_view kFlowgraphSegment  = "flowgraph";
+    static constexpr std::string_view kDashboardsSegment = "dashboards";
 
     std::vector<std::string>                        segments; // decoded path segments, never empty strings
     std::map<std::string, std::string, std::less<>> query;    // decoded; a bare key has an empty value
@@ -66,10 +71,23 @@ struct AppLocation {
 
     /// only names passing isValidDashboardName: the URL is untrusted input, a name like `https://host/x` must not select a remote file
     [[nodiscard]] std::optional<std::string> dashboardName() const {
-        if (segments.size() == 2 && segments[0] == kDashboardSegment && isValidDashboardName(segments[1])) {
+        const bool isChart     = segments.size() == 2;
+        const bool isFlowgraph = segments.size() == 3 && segments[2] == kFlowgraphSegment;
+        if ((isChart || isFlowgraph) && segments[0] == kDashboardSegment && isValidDashboardName(segments[1])) {
             return segments[1];
         }
         return std::nullopt;
+    }
+
+    /// `/dashboard/<name>` is the chart view, `/dashboard/<name>/flowgraph` the editor, `/dashboards` the open/save page; anything else has no page
+    [[nodiscard]] std::optional<Page> page() const {
+        if (segments.size() == 1 && segments[0] == kDashboardsSegment) {
+            return Page::Dashboards;
+        }
+        if (!dashboardName()) {
+            return std::nullopt;
+        }
+        return segments.size() == 2 ? Page::Chart : Page::Flowgraph;
     }
 
     /// bare key, `key=true` and `key=1` are true; `key=false` and `key=0` are false; anything else is absent
@@ -87,7 +105,16 @@ struct AppLocation {
         return std::nullopt;
     }
 
-    [[nodiscard]] static AppLocation forDashboard(std::string_view name, std::map<std::string, std::string, std::less<>> query = {}) { return {.segments = {std::string(kDashboardSegment), std::string(name)}, .query = std::move(query)}; }
+    /// `page` selects the chart view or the editor; Page::Dashboards has no dashboard name, use forDashboardList()
+    [[nodiscard]] static AppLocation forDashboard(std::string_view name, std::map<std::string, std::string, std::less<>> query = {}, Page page = Page::Chart) {
+        AppLocation location{.segments = {std::string(kDashboardSegment), std::string(name)}, .query = std::move(query)};
+        if (page == Page::Flowgraph) {
+            location.segments.emplace_back(kFlowgraphSegment);
+        }
+        return location;
+    }
+
+    [[nodiscard]] static AppLocation forDashboardList(std::map<std::string, std::string, std::less<>> query = {}) { return {.segments = {std::string(kDashboardsSegment)}, .query = std::move(query)}; }
 
     [[nodiscard]] bool operator==(const AppLocation&) const = default;
 
