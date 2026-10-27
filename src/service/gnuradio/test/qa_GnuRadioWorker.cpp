@@ -22,7 +22,6 @@
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/UnitTestHelper.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
-#include <gnuradio-4.0/testing/Sleep.hpp>
 
 #include <array>
 #include <boost/ut.hpp>
@@ -56,7 +55,6 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>(registry);
-    gr::registerBlock<gr::testing::Sleep, float>(registry);
     gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
 #pragma GCC diagnostic pop
 }
@@ -197,6 +195,40 @@ void checkDnsEntries(std::vector<SignalEntry> lastDnsEntries, const std::vector<
     }
 }
 
+[[nodiscard]] bool dnsEntriesMatch(                 //
+    std::vector<SignalEntry>        lastDnsEntries, //
+    const std::vector<SignalType>&  types,          //
+    const std::vector<std::string>& names,          //
+    const std::vector<std::string>& units,          //
+    const std::vector<std::string>& quantities,     //
+    const std::vector<float>&       sampleRates     //
+) {
+    std::ranges::sort(lastDnsEntries, {}, &SignalEntry::name);
+    const auto matches = [&lastDnsEntries](const auto& expected, auto projection) { return expected.empty() || std::ranges::equal(lastDnsEntries | std::views::transform(projection), expected); };
+    return matches(types, &SignalEntry::type)             //
+           && matches(names, &SignalEntry::name)          //
+           && matches(units, &SignalEntry::unit)          //
+           && matches(quantities, &SignalEntry::quantity) //
+           && matches(sampleRates, [](const SignalEntry& dnsEntry) { return dnsEntry.sample_rate.value_or(0.f); });
+}
+
+struct ThreadsafeSignalEntries {
+    std::mutex               mutex;
+    std::vector<SignalEntry> lastNonEmpty;
+
+    void setSignalEntriesIfAny(std::vector<SignalEntry> entries) {
+        if (!entries.empty()) {
+            std::lock_guard lock(mutex);
+            lastNonEmpty = std::move(entries);
+        }
+    }
+
+    [[nodiscard]] std::vector<SignalEntry> getLastSignalEntries() {
+        std::lock_guard lock(mutex);
+        return lastNonEmpty;
+    }
+};
+
 gr::property_map makeFairTimingTagMap(std::uint64_t triggerTime, int eventNumber, std::optional<int> chainIndex = {}, std::optional<int> sequenceIndex = {}, std::optional<int> processIndex = {}, std::optional<int> timingGroupID = {}) {
     gr::property_map metaInfo;
     metaInfo.emplace("EVENT-NO", eventNumber);
@@ -260,17 +292,18 @@ struct TestApp {
         registerTestBlocks(r);
         return r;
     }();
-    gr::PluginLoader      pluginLoader = gr::PluginLoader(registry, gr::globalSchedulerRegistry(), {});
-    majordomo::Broker<>   broker       = majordomo::Broker<>("/PrimaryBroker");
-    AcqWorker             acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
-    FgWorker              fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);
-    std::jthread          brokerThread;
-    std::jthread          acqWorkerThread;
-    std::jthread          fgWorkerThread;
-    zmq::Context          ctx;
-    client::ClientContext client = makeClient(ctx);
+    gr::PluginLoader        pluginLoader = gr::PluginLoader(registry, gr::globalSchedulerRegistry(), {});
+    majordomo::Broker<>     broker       = majordomo::Broker<>("/PrimaryBroker");
+    AcqWorker               acqWorker    = AcqWorker(broker, &pluginLoader, 50ms);
+    FgWorker                fgWorker     = FgWorker(broker, &pluginLoader, {}, acqWorker);
+    std::jthread            brokerThread;
+    std::jthread            acqWorkerThread;
+    std::jthread            fgWorkerThread;
+    zmq::Context            ctx;
+    client::ClientContext   client = makeClient(ctx);
+    ThreadsafeSignalEntries dnsEntries;
 
-    explicit TestApp(std::function<void(std::vector<SignalEntry>)> dnsCallback = {}) {
+    TestApp() {
         const auto brokerPubAddress = broker.bind(URI<>(std::string(mdsHost)));
         expect((brokerPubAddress.has_value() == "bound successful"_b));
         const auto brokerRouterAddress = broker.bind(URI<>(std::string(mdpHost)));
@@ -287,13 +320,39 @@ struct TestApp {
         if (auto rc = broker.bindRest(restSettings); !rc) {
             std::println(std::cerr, "Could not bind REST bridge: {}", rc.error());
         }
-        acqWorker.setUpdateSignalEntriesCallback(std::move(dnsCallback));
+        acqWorker.setUpdateSignalEntriesCallback([this](std::vector<SignalEntry> entries) { dnsEntries.setSignalEntriesIfAny(std::move(entries)); });
 
         brokerThread    = std::jthread([this] { broker.run(); });
         acqWorkerThread = std::jthread([this] { acqWorker.run(); });
         fgWorkerThread  = std::jthread([this] { fgWorker.run(); });
-        // let's give everyone some time to spin up and sort themselves
-        std::this_thread::sleep_for(100ms);
+        expect(waitWhile([this] { return !opendigitizerServiceHasAcquisitionAndFlowgraph(); })) << "both workers should register their service with the broker";
+    }
+
+    [[nodiscard]] bool opendigitizerServiceHasAcquisitionAndFlowgraph() {
+        std::atomic<bool> receivedReply = false;
+        std::string       services;
+        client.get(URI(std::string(mdpHost) + "/mmi.service"s), [&](const mdp::Message& reply) {
+            services      = reply.data.asString();
+            receivedReply = true;
+        });
+        return waitWhile([&receivedReply] { return !receivedReply.load(); }) && services.contains(AcqWorker::name) && services.contains(FgWorker::name);
+    }
+
+    [[nodiscard]] bool waitForNumSubscriptions(std::size_t count, std::source_location location = std::source_location::current()) {
+        return waitWhile([this, count] { return acqWorker.activeSubscriptions().size() < count; }, location);
+    }
+
+    void expectDnsEntries(                                                         //
+        const std::vector<SignalType>&  types,                                     //
+        const std::vector<std::string>& names,                                     //
+        const std::vector<std::string>& units,                                     //
+        const std::vector<std::string>& quantities,                                //
+        const std::vector<float>&       sampleRates,                               //
+        std::string_view                configStr,                                 //
+        std::source_location            location = std::source_location::current() //
+    ) {
+        std::ignore = waitWhile([&] { return !dnsEntriesMatch(dnsEntries.getLastSignalEntries(), types, names, units, quantities, sampleRates); }, location);
+        checkDnsEntries(dnsEntries.getLastSignalEntries(), types, names, units, quantities, sampleRates, configStr, location);
     }
 
     std::string getEnvironmentVariable(const char* name, std::string_view defaultValue) {
@@ -401,10 +460,6 @@ blocks:
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay_up
-      delay_ms: 600
   - id: CountSource<float32>
     parameters:
       name: count_down
@@ -415,10 +470,6 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay_down
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink_up
@@ -428,17 +479,10 @@ blocks:
       name: test_sink_down
       signal_name: "Signal_Down"
 connections:
-  - [count_up, 0, delay_up, 0]
-  - [delay_up, 0, test_sink_up, 0]
-  - [count_down, 0, delay_down, 0]
-  - [delay_down, 0, test_sink_down, 0]
+  - [count_up, 0, test_sink_up, 0]
+  - [count_down, 0, test_sink_down, 0]
 )";
-        std::vector<SignalEntry>   lastDnsEntries;
-        TestApp                    test([&lastDnsEntries](auto entries) {
-            if (!entries.empty()) {
-                lastDnsEntries = std::move(entries);
-            }
-        });
+        TestApp                    test;
         test.config = config;
 
         constexpr std::size_t    kExpectedSamples = 100'000; // this number should be greater than the buffer size to ensure that the metadata is propagated
@@ -465,9 +509,7 @@ connections:
             receivedDownCount = receivedDownData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-
-        if (!test.setGrc(grc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedUpCount < kExpectedSamples || receivedDownCount < kExpectedSamples; })) {
             return;
         }
 
@@ -476,8 +518,7 @@ connections:
         expect(eq(receivedDownData.size(), kExpectedSamples)) << config.toString();
         expect(eq(receivedDownData, expectedDownData)) << config.toString();
 
-        std::this_thread::sleep_for(50ms);
-        checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {}, config.toString());
+        test.expectDnsEntries({SignalType::Plain, SignalType::Plain}, {"Signal_Down", "Signal_Up"}, {"Unit_Down", "Unit_Up"}, {"Quantity_Down", "Quantity_Up"}, {}, config.toString());
     } | testConfigs;
 
     "Streaming late subscription"_test = [](auto config) {
@@ -505,7 +546,7 @@ connections:
         if (!test.setGrc(grc)) {
             return;
         }
-        std::this_thread::sleep_for(200ms);
+        test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {8.f}, config.toString());
 
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCount, &config](const auto& acq) {
             const auto samples = samplesForSignalIndex(acq.channelValues, 0);
@@ -529,17 +570,12 @@ blocks:
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink_up
       signal_name: "Signal_Up"
 connections:
-  - [count_up, 0, delay, 0]
-  - [delay, 0, test_sink_up, 0]
+  - [count_up, 0, test_sink_up, 0]
 )";
         constexpr std::string_view grc2 = R"(
 blocks:
@@ -553,17 +589,12 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink_down
       signal_name: "Signal_Down"
 connections:
-  - [count_down, 0, delay, 0]
-  - [delay, 0, test_sink_down, 0]
+  - [count_down, 0, test_sink_down, 0]
 )";
 
         TestApp test;
@@ -592,8 +623,8 @@ connections:
             receivedDownCount = receivedDownData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc1) ||                                             //
+        if (!test.waitForNumSubscriptions(2UZ) ||                             //
+            !test.setGrc(grc1) ||                                             //
             !waitWhile([&] { return receivedUpCount < kExpectedSamples; }) || //
             !test.setGrc(grc2) ||                                             //
             !waitWhile([&] { return receivedDownCount < kExpectedSamples; })) {
@@ -638,14 +669,7 @@ connections:
   - [source2, 0, test_sink2, 0]
 )";
 
-        std::mutex               dnsMutex;
-        std::vector<SignalEntry> lastDnsEntries;
-        TestApp                  test([&lastDnsEntries, &dnsMutex](auto entries) {
-            if (!entries.empty()) {
-                std::lock_guard lock(dnsMutex);
-                lastDnsEntries = std::move(entries);
-            }
-        });
+        TestApp test;
 
         std::atomic<std::size_t> receivedCount1 = 0;
         test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCount1](const auto& acq) {
@@ -661,27 +685,16 @@ connections:
             receivedCount2 += samples.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc1)) {
-            return;
-        }
-
-        std::this_thread::sleep_for(2000ms);
-        {
-            std::lock_guard lock(dnsMutex);
-            checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f}, "");
-        }
-        if (!test.setGrc(grc2)) {
-            return;
-        }
-
         constexpr auto kExpectedSamples = 50000UZ;
-        if (!waitWhile([&] { return receivedCount1 < kExpectedSamples || receivedCount2 < kExpectedSamples; })) {
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc1) || !waitWhile([&] { return receivedCount1 < kExpectedSamples; })) {
             return;
         }
+        test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {1234.f}, "");
 
-        std::lock_guard lock(dnsMutex);
-        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
+        if (!test.setGrc(grc2) || !waitWhile([&] { return receivedCount2 < kExpectedSamples; })) {
+            return;
+        }
+        test.expectDnsEntries({SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
     };
 
     "Trigger - tightly packed tags"_test = [] {
@@ -695,10 +708,6 @@ blocks:
         - 40,notatrigger
         - 50,hello
         - 60,ignoreme
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink
@@ -706,8 +715,7 @@ blocks:
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, test_sink, 0]
+  - [count, 0, test_sink, 0]
 )";
 
         TestApp test;
@@ -723,8 +731,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
 
@@ -743,10 +750,6 @@ blocks:
         - 1000,notatrigger
         - 800000,hello
         - 900000,ignoreme
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink
@@ -754,8 +757,7 @@ blocks:
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, test_sink, 0]
+  - [count, 0, test_sink, 0]
 )";
 
         TestApp test;
@@ -771,8 +773,7 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
 
@@ -792,10 +793,6 @@ blocks:
         - 50,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
         - 70,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
         - 80,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink
@@ -803,15 +800,9 @@ blocks:
       signal_unit: "Unit_A"
       signal_quantity: "Quantity_A"
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, test_sink, 0]
+  - [count, 0, test_sink, 0]
 )";
-        std::vector<SignalEntry>   lastDnsEntries;
-        TestApp                    test([&lastDnsEntries](auto entries) {
-            if (!entries.empty()) {
-                lastDnsEntries = std::move(entries);
-            }
-        });
+        TestApp                    test;
 
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
@@ -824,15 +815,13 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount < 20; })) {
             return;
         }
-        std::this_thread::sleep_for(50ms);
 
         expect(eq(receivedData, getIota(20, 50)));
 
-        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f}, "");
+        test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f}, "");
     };
 
     "Snapshot"_test = [] {
@@ -851,25 +840,14 @@ blocks:
         - 40,hello
         - 50,shoot
         - 60,world
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink
       signal_name: "Signal_A"
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, test_sink, 0]
+  - [count, 0, test_sink, 0]
 )";
-        std::vector<SignalEntry>   lastDnsEntries;
-
-        TestApp test([&lastDnsEntries](auto entries) {
-            if (!entries.empty()) {
-                lastDnsEntries = std::move(entries);
-            }
-        });
+        TestApp                    test;
 
         std::vector<float>       receivedData;
         std::atomic<std::size_t> receivedCount = 0;
@@ -882,17 +860,14 @@ connections:
             receivedCount = receivedData.size();
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&] { return receivedCount == 0; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCount == 0; })) {
             return;
         }
-
-        std::this_thread::sleep_for(50ms);
 
         // trigger + delay * sample_rate = 50 + 3 * 10 = 80
         expect(eq(receivedData, std::vector{80.f}));
 
-        checkDnsEntries(lastDnsEntries, {SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f}, "");
+        test.expectDnsEntries({SignalType::Plain}, {"Signal_A"}, {"Unit_A"}, {"Quantity_A"}, {10.f}, "");
     };
 
     "DataSet FFT"_test = [](auto config) {
@@ -904,10 +879,6 @@ blocks:
       n_samples: 100000
       signal_name: test signal
       signal_unit: test unit
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
       name: fft
@@ -917,16 +888,10 @@ blocks:
       name: test_sink
       signal_name: FFTTestSignal
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, fft, 0]
+  - [count, 0, fft, 0]
   - [fft, 0, test_sink, 0]
 )";
-        std::vector<SignalEntry>   lastDnsEntries;
-        TestApp                    test([&lastDnsEntries](auto entries) {
-            if (!entries.empty()) {
-                lastDnsEntries = std::move(entries);
-            }
-        });
+        TestApp                    test;
         test.config = config;
 
         std::atomic<std::size_t> receivedCount = 0;
@@ -937,13 +902,12 @@ connections:
             receivedCount++;
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 97UZ; })) {
             return;
         }
         expect(eq(receivedCount.load(), 97UZ)) << config.toString();
 
-        checkDnsEntries(lastDnsEntries, {SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {/*1.0f*/}, config.toString()); // TODO: verify correct handling of sample rate
+        test.expectDnsEntries({SignalType::DataSet}, {"FFTTestSignal"}, {}, {}, {/*1.0f*/}, config.toString()); // TODO: verify correct handling of sample rate
     } | testConfigs;
 
     "DataSet signal values"_test = [](auto config) {
@@ -957,10 +921,6 @@ blocks:
         - 20,mytrigger
         - 50,mytrigger
         - 70,mytrigger
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: stream_to_dataset
@@ -972,8 +932,7 @@ blocks:
       name: test_sink
       signal_name: Signal_A
 connections:
-  - [count, 0, delay, 0]
-  - [delay, 0, stream_to_dataset, 0]
+  - [count, 0, stream_to_dataset, 0]
   - [stream_to_dataset, 0, test_sink, 0]
 )";
         std::vector<float>         receivedData;
@@ -991,8 +950,7 @@ connections:
             receivedDataSetCount++;
         });
 
-        std::this_thread::sleep_for(50ms);
-        if (!test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
+        if (!test.waitForNumSubscriptions(1UZ) || !test.setGrc(grc) || !waitWhile([&receivedCount] { return receivedCount < 12UZ; })) {
             return;
         }
         expect(eq(receivedCount.load(), 12UZ)) << config.toString();
@@ -1007,17 +965,12 @@ blocks:
   - id: UnknownBlock<float32>
     parameters:
       name: unknown
-  - id: gr::testing::Sleep<float32>
-    parameters:
-      name: delay
-      delay_ms: 600
   - id: gr::basic::DataSink<float32>
     parameters:
       name: test_sink
       signal_name: count
 connections:
-  - [unknown, 0, delay, 0]
-  - [delay, 0, test_sink, 0]
+  - [unknown, 0, test_sink, 0]
 )";
 
         TestApp test;
@@ -1069,27 +1022,20 @@ connections:
 )";
         std::atomic<std::size_t>   receivedUpCount   = 0;
         std::atomic<std::size_t>   receivedDownCount = 0;
-        std::vector<SignalEntry>   lastDnsEntries;
+        TestApp                    test;
 
-        TestApp test([&lastDnsEntries](auto entries) {
-            if (!entries.empty()) {
-                lastDnsEntries = std::move(entries);
-            }
-        });
-
-        auto hasExpectedDnsEntries = [&lastDnsEntries] {
-            if (lastDnsEntries.size() != 2) {
+        auto hasExpectedDnsEntries = [&test] {
+            auto entries = test.dnsEntries.getLastSignalEntries();
+            if (entries.size() != 2) {
                 return false;
             }
 
-            auto entries = lastDnsEntries;
             std::ranges::sort(entries, {}, &SignalEntry::name);
 
             return entries[0].name == "Signal_A" && entries[0].unit == "Unit_A" && entries[0].quantity == "Quantity_A" && entries[0].signal_min == std::optional<float>{-42.f} && entries[0].signal_max == std::optional<float>{42.f} //
                    && entries[1].name == "Signal_B" && entries[1].unit == "Unit_B" && entries[1].quantity == "Quantity_B" && entries[1].signal_min == std::optional<float>{0.f} && entries[1].signal_max == std::optional<float>{100.f};
         };
 
-        std::this_thread::sleep_for(50ms);
         if (!test.setGrc(grc) || !waitWhile([&] { return !hasExpectedDnsEntries(); })) {
             return;
         }
@@ -1112,7 +1058,7 @@ connections:
         expect(receivedUpCount > 0);
         expect(receivedDownCount > 0);
 
-        checkDnsEntries(lastDnsEntries, {SignalType::Plain, SignalType::Plain}, {"Signal_A", "Signal_B"}, {"Unit_A", "Unit_B"}, {"Quantity_A", "Quantity_B"}, {}, "");
+        checkDnsEntries(test.dnsEntries.getLastSignalEntries(), {SignalType::Plain, SignalType::Plain}, {"Signal_A", "Signal_B"}, {"Unit_A", "Unit_B"}, {"Quantity_A", "Quantity_B"}, {}, "");
     };
 
     "Streaming timestamp fallback"_test = [] {
