@@ -14,7 +14,6 @@
 
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
-#include "blocks/SineSource.hpp"
 
 #include <cmrc/cmrc.hpp>
 

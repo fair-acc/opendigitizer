@@ -9,7 +9,6 @@
 
 #include <blocks/Arithmetic.hpp>
 #include <blocks/ImPlotSink.hpp>
-#include <blocks/SineSource.hpp>
 #include <blocks/TestSpectrumGenerator.hpp>
 
 #include <gnuradio-4.0/AtomicRef.hpp>
@@ -254,10 +253,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
                 "registry type decoding"_test = [] {
                     UiGraphModel           model;
-                    const gr::property_map data{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("opendigitizer::SineSource<float32>")})}};
+                    const gr::property_map data{{"types", gr::Tensor<gr::pmt::Value>(gr::data_from, {gr::pmt::Value("gr::basic::SignalGenerator<float32>")})}};
                     model.handleAvailableGraphBlockTypes(data);
                     expect(eq(model.knownBlockTypes.size(), 1UZ));
-                    const auto type = model.knownBlockTypes.find("opendigitizer::SineSource");
+                    const auto type = model.knownBlockTypes.find("gr::basic::SignalGenerator");
                     expect(type != model.knownBlockTypes.end()) << fatal;
                     expect(eq(type->second.size(), 1UZ));
                     expect(type->second.contains("<float32>"));
@@ -288,7 +287,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(rootBlock) << fatal;
 
                 // block with outputs
-                UiGraphBlock* outputsBlock = g_state.dashboard->session.graphModel.recursiveFindBlockByName("subgraphSineSource").block;
+                UiGraphBlock* outputsBlock = g_state.dashboard->session.graphModel.recursiveFindBlockByName("subgraphSignalGenerator").block;
                 expect(outputsBlock) << fatal;
 
                 "returns not-exported for port with no exports"_test = [rootBlock, outputsBlock] {
@@ -365,7 +364,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             reloadAndWait(ctx, reloadSubgraph);
 
             UiGraphBlock* subgraph    = findByName("simpleScheduler");
-            UiGraphBlock* innerSource = findByName("subgraphSineSource");
+            UiGraphBlock* innerSource = findByName("subgraphSignalGenerator");
             expect(subgraph != nullptr && innerSource != nullptr) << fatal;
 
             sendExportPort(subgraph->blockUniqueName, innerSource->blockUniqueName, "output", "out", "sigOut");
@@ -384,7 +383,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             reloadAndWait(ctx, reloadSubgraph);
 
             UiGraphBlock* subgraph    = findByName("simpleScheduler");
-            UiGraphBlock* innerSource = findByName("subgraphSineSource");
+            UiGraphBlock* innerSource = findByName("subgraphSignalGenerator");
             expect(subgraph != nullptr && innerSource != nullptr) << fatal;
             const auto& subgraphUniqueName = subgraph->blockUniqueName;
 
@@ -793,7 +792,6 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<opendigitizer::Arithmetic, float>(registry);
-    gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     // TODO: fix gnuradio having this keyed under CountingSinkImpl
     gr::registerBlock<"gr::testing::AtomicCountingSink", gr::testing::AtomicCountingSink, float>(registry);

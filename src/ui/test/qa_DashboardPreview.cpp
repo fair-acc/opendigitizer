@@ -66,7 +66,7 @@ int main() {
 
     "splits in free layout"_test = [expectRect] {
         constexpr std::string_view yaml = R"(blocks:
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: NotASink
   - id: opendigitizer::ImPlotSink<float32>

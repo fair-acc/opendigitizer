@@ -15,8 +15,8 @@ blocks:
             ui_constraints:
               y: !!float32 29
               x: !!float32 -392
-            name:  "subgraphSineSource"
-          id:  "opendigitizer::SineSource<float32>"
+            name:  "subgraphSignalGenerator"
+          id:  "gr::basic::SignalGenerator<float32>"
         - parameters:
             disconnect_on_done: !!bool true
             ui_constraints:

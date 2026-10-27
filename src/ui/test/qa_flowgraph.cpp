@@ -35,7 +35,6 @@
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/ImPropertyReadout.hpp"
-#include "blocks/SineSource.hpp"
 #include "blocks/TestSpectrumGenerator.hpp" // although the symbol is unused by this file, we need this for static block registration
 
 #include <cmrc/cmrc.hpp>
@@ -133,8 +132,8 @@ struct TestState : public opendigitizer::test::TestDashboardRunner {
 constexpr const char* simpleGraph = "connections: []\n"
                                     "blocks:\n"
                                     "  - parameters:\n"
-                                    "      name: \"connectSineSource\"\n"
-                                    "    id: \"opendigitizer::SineSource<float32>\"\n"
+                                    "      name: \"connectSignalGenerator\"\n"
+                                    "    id: \"gr::basic::SignalGenerator<float32>\"\n"
                                     "  - parameters:\n"
                                     "      name: \"connectDataSink\"\n"
                                     "    id: \"gr::basic::DataSink<float32>\"";
@@ -315,7 +314,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         std::string blocks;
         std::string connections;
         for (std::size_t i = 0UZ; i < nPairs; ++i) {
-            blocks += std::format("  - id: \"opendigitizer::SineSource<float32>\"\n    parameters:\n      name: \"source{0}\"\n{1}"
+            blocks += std::format("  - id: \"gr::basic::SignalGenerator<float32>\"\n    parameters:\n      name: \"source{0}\"\n{1}"
                                   "  - id: \"gr::basic::DataSink<float32>\"\n    parameters:\n      name: \"sink{0}\"\n{2}",
                 i, position(2UZ * i + 1UZ), position(2UZ * i + 2UZ));
             connections += std::format("  - [source{0}, 0, sink{0}, 0]\n", i);
@@ -819,13 +818,13 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 };
                 expect(waitFor(ctx, [&] { return findExportedPort() != nullptr; })) << "exported input port should appear on the subgraph block in the root graph\n" << fatal;
 
-                auto* sourcePort = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSineSource", gr::PortDirection::OUTPUT);
+                auto* sourcePort = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSignalGenerator", gr::PortDirection::OUTPUT);
                 expect(sourcePort != nullptr) << fatal;
 
                 // a normal forwards drag, from the source's output pin to the exported input pin
                 dragPinToPin(ctx, g_state.flowgraphPage.currentEditor(), sourcePort, findExportedPort());
 
-                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSineSource", "exported_in"); })) << "edge from root graph block to exported input port should appear in the UI\n";
+                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSignalGenerator", "exported_in"); })) << "edge from root graph block to exported input port should appear in the UI\n";
 
                 g_state.stopScheduler();
             };
@@ -844,7 +843,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     ctx->Yield();
                 }
 
-                auto* sourcePort      = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSineSource", gr::PortDirection::OUTPUT);
+                auto* sourcePort      = findFirstPortOfBlock(g_state.currentRootBlock(), "connectSignalGenerator", gr::PortDirection::OUTPUT);
                 auto* destinationPort = findFirstPortOfBlock(g_state.currentRootBlock(), "connectDataSink", gr::PortDirection::INPUT);
                 expect(sourcePort != nullptr) << fatal;
                 expect(destinationPort != nullptr) << fatal;
@@ -852,7 +851,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                 // drag starting from the input pin towards the output pin
                 dragPinToPin(ctx, g_state.flowgraphPage.currentEditor(), destinationPort, sourcePort);
 
-                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSineSource", "in"); })) << "edge should appear in the UI when connecting backwards\n";
+                expect(waitFor(ctx, [] { return edgeExistsIn(g_state.currentRootBlock(), "connectSignalGenerator", "in"); })) << "edge should appear in the UI when connecting backwards\n";
 
                 g_state.stopScheduler();
             };
@@ -2115,7 +2114,6 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<opendigitizer::Arithmetic, float, double>(registry);
-    gr::registerBlock<opendigitizer::SineSource, float>(registry);
     gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>>(registry);
     gr::registerBlock<DigitizerUi::ImControlNumber>(registry);
     gr::registerBlock<DigitizerUi::ImControlToggle>(registry);

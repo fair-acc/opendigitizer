@@ -3,7 +3,7 @@ blocks:
     parameters:
       name: FFT
       fft_size: 1024
-  - id: opendigitizer::SineSource<float32>
+  - id: gr::basic::SignalGenerator<float32>
     parameters:
       name: sine source 1
       frequency: 0.1

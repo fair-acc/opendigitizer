@@ -50,7 +50,6 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/RemoteSource.hpp"
-#include "blocks/SineSource.hpp"
 #include "blocks/StridedWindow.hpp"
 #include "blocks/TagToSample.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
