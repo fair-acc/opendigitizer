@@ -80,8 +80,10 @@ public:
 
     components::AppHeader header;
 
-    BrowserHistory history;
-    bool           locationPublished = false;
+    BrowserHistory      history;
+    bool                locationPublished = false;
+    Page                publishedPage     = Page::Chart;
+    std::optional<Page> pendingPage; // page requested by the URL, applied once the dashboard it belongs to is ready
 
 public:
     App() : openDashboardPage(restClient) {
@@ -138,7 +140,7 @@ public:
 
         flowgraphPage.setDashboard(dashboard.get());
 
-        publishDashboardLocation(desc);
+        publishLocation();
     }
 
     /// only dashboards a recipient can resolve get a link: the ones served next to the UI and the built-in samples
@@ -175,19 +177,27 @@ public:
         return dashboardPath;
     }
 
-    /// reflect the loaded dashboard in the browser URL: the first load replaces the initial entry, later loads add one
-    void publishDashboardLocation(const std::shared_ptr<const DashboardDescription>& desc) {
+    /// reflect the loaded dashboard and page in the browser URL: the first publication replaces the initial entry, later ones add one
+    void publishLocation() {
+        const std::shared_ptr<const DashboardDescription> desc = dashboard ? dashboard->description : nullptr;
         // filename, not name: name is the stem, so `v1.2` would otherwise be linked as `v1`
         const bool linkable = desc && desc->storageInfo && isLinkableStorage(*desc->storageInfo) && Digitizer::AppLocation::isValidDashboardName(desc->filename);
-        // keeps flags such as darkMode, drops the dashboard when it cannot be linked
-        const Digitizer::AppLocation location = linkable ? Digitizer::AppLocation::forDashboard(desc->filename, history.current().query) : Digitizer::AppLocation{.segments = {}, .query = history.current().query};
-        if (locationPublished && linkable) {
+        const Page page     = pendingPage.value_or(pageFor(mainViewMode));
+        // keeps flags such as darkMode; drops the dashboard when it cannot be linked
+        const auto& query = history.current().query;
+
+        const bool                   listsDashboards = page == Page::Dashboards;
+        const Digitizer::AppLocation location        = listsDashboards ? Digitizer::AppLocation::forDashboardList(query) : linkable ? Digitizer::AppLocation::forDashboard(desc->filename, query, page) : Digitizer::AppLocation{.segments = {}, .query = query};
+        if (locationPublished && (listsDashboards || linkable)) {
             history.push(location);
         } else {
             history.replace(location);
         }
         locationPublished = true;
+        publishedPage     = page;
     }
+
+    [[nodiscard]] bool isLocationChangePending() const noexcept { return prepareForANewDashboardToLoad || deferredDashboardUrl || dashboardToLoad || pendingPage; }
 
     /// apply a location the browser navigated to (hand-edited URL, back, forward) without reloading the page
     void applyBrowserLocation(const Digitizer::AppLocation& location) {
@@ -202,6 +212,27 @@ public:
         if (const auto name = location.dashboardName(); name && (!dashboard || dashboard->description->filename != *name)) {
             deferredDashboardUrl          = builtinSampleUrl(*name).value_or(resolveServiceDashboardPath(*name));
             prepareForANewDashboardToLoad = true;
+        }
+        if (const auto page = location.page()) {
+            pendingPage = page;
+        }
+    }
+
+    /// the editor needs its dashboard initialised: previousViewMode is overwritten every frame and the first
+    /// FlowgraphPage update is requested on the transition into FLOWGRAPH, so switching earlier would leave it empty
+    void applyPendingPage() {
+        if (!pendingPage || prepareForANewDashboardToLoad || deferredDashboardUrl || dashboardToLoad) {
+            return;
+        }
+        const Page page = *pendingPage;
+        if (page != Page::Dashboards && dashboard && !(dashboard->isInitialised && loadedDashboard == dashboard.get())) {
+            return; // wait for the dashboard
+        }
+        pendingPage.reset();
+        const bool reachable = dashboard || page == Page::Dashboards;
+        mainViewMode         = viewModeFor(reachable ? page : Page::Chart, mainViewMode, Digitizer::Settings::instance().editableMode);
+        if (pageFor(mainViewMode) != page) { // not reachable (not editable, or no dashboard): correct the URL
+            publishLocation();
         }
     }
 
@@ -243,6 +274,7 @@ public:
 
         history.onBrowserChange = [] { globalFramePacer().requestFrame(); };
         history.install();
+        pendingPage = history.current().page();
 
         // Init openDashboardPage
         openDashboardPage.requestCloseDashboard = [&] { closeDashboard(); };
@@ -356,6 +388,10 @@ public:
             statusBarView.draw(withGraph ? &dashboard->session : nullptr);
         }
 
+        if (pageFor(mainViewMode) != publishedPage && !isLocationChangePending()) {
+            publishLocation();
+        }
+
         previousViewMode = mainViewMode;
     }
 
@@ -376,9 +412,9 @@ public:
         }
 
         if (dashboardToLoad) {
+            mainViewMode = ViewMode::VIEW; // before loading: loadDashboard publishes the page
             loadDashboard(dashboardToLoad);
             dashboardToLoad = nullptr;
-            mainViewMode    = ViewMode::VIEW;
         }
 
         if (dashboard != nullptr) {
@@ -393,6 +429,8 @@ public:
                 flowgraphPage.reset();
             }
         }
+
+        applyPendingPage();
 
         if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
             if (dashboard != nullptr && dashboard->isInitialised) {

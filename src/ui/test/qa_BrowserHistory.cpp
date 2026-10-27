@@ -1,9 +1,12 @@
+#include "../common/AppDefinitions.hpp"
 #include "../utils/BrowserHistory.hpp"
 
 #include <boost/ut.hpp>
 
 using Digitizer::AppLocation;
 using DigitizerUi::BrowserHistory;
+using DigitizerUi::Page;
+using DigitizerUi::ViewMode;
 
 const boost::ut::suite<"BrowserHistory"> tests = [] {
     using namespace boost::ut;
@@ -78,6 +81,41 @@ const boost::ut::suite<"BrowserHistory"> tests = [] {
     "link without a page is a relative fragment"_test = [&] {
         BrowserHistory history;
         expect(history.linkTo(AppLocation::forDashboard("My Board")) == "#/dashboard/My%20Board");
+    };
+};
+
+const boost::ut::suite<"page and view mode mapping"> pageTests = [] {
+    using namespace boost::ut;
+    using DigitizerUi::pageFor;
+    using DigitizerUi::viewModeFor;
+
+    "chart modes share one page"_test = [] {
+        expect(pageFor(ViewMode::VIEW) == Page::Chart);
+        expect(pageFor(ViewMode::INTERACTION) == Page::Chart);
+        expect(pageFor(ViewMode::LAYOUT) == Page::Chart);
+        expect(pageFor(ViewMode::FLOWGRAPH) == Page::Flowgraph);
+        expect(pageFor(ViewMode::OPEN_SAVE_DASHBOARD) == Page::Dashboards);
+    };
+
+    "editable opens the editor and the open/save page"_test = [] {
+        expect(viewModeFor(Page::Flowgraph, ViewMode::INTERACTION, true) == ViewMode::FLOWGRAPH);
+        expect(viewModeFor(Page::Dashboards, ViewMode::INTERACTION, true) == ViewMode::OPEN_SAVE_DASHBOARD);
+        expect(viewModeFor(Page::Dashboards, ViewMode::FLOWGRAPH, true) == ViewMode::OPEN_SAVE_DASHBOARD);
+    };
+
+    "not editable falls back to the chart view"_test = [] {
+        expect(viewModeFor(Page::Flowgraph, ViewMode::VIEW, false) == ViewMode::VIEW);
+        expect(viewModeFor(Page::Dashboards, ViewMode::VIEW, false) == ViewMode::VIEW);
+        expect(viewModeFor(Page::Flowgraph, ViewMode::FLOWGRAPH, false) == ViewMode::VIEW);
+        expect(viewModeFor(Page::Dashboards, ViewMode::OPEN_SAVE_DASHBOARD, false) == ViewMode::VIEW);
+    };
+
+    "the chart page keeps a chart mode and leaves the other pages for the default one"_test = [] {
+        expect(viewModeFor(Page::Chart, ViewMode::LAYOUT, true) == ViewMode::LAYOUT);
+        expect(viewModeFor(Page::Chart, ViewMode::VIEW, true) == ViewMode::VIEW);
+        expect(viewModeFor(Page::Chart, ViewMode::FLOWGRAPH, true) == ViewMode::INTERACTION);
+        expect(viewModeFor(Page::Chart, ViewMode::OPEN_SAVE_DASHBOARD, true) == ViewMode::INTERACTION);
+        expect(viewModeFor(Page::Chart, ViewMode::FLOWGRAPH, false) == ViewMode::VIEW);
     };
 };
 
