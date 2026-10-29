@@ -27,14 +27,14 @@ For FAIR there are four basic user groups:
 
 The main difference in work overall is the degree to which users do
 
-  - Monitoring or
-  - Bug-tracing
+- Monitoring or
+- Bug-tracing
 
 We decided to create two personas on both edges of this spectrum:
 
 - Susan -- She is very experienced in accelerator relevant physics and knows basic programming. Her main task is to trace bugs to keep the accelerator up and running.
 - Paul -- He is an early graduate (bsc) and does not have programming experience. He works as an operator and his job is to monitor the accelerator working correctly.
-          He does first level bug fixing. In case he cannot fix himself, he has to identify the right person to escalate to and provide a report of the problem.
+  He does first level bug fixing. In case he cannot fix himself, he has to identify the right person to escalate to and provide a report of the problem.
 
 The UX for both personas should
 mirror their workflows and
@@ -63,11 +63,10 @@ b) (primary case) chooses a predefined Dashboard from a 'favourite'/curated list
 She uses both the 'Chart UI' and the 'Flow-graph UI' and
 flips back and forth between them.
 
-
 ### Main tasks (rated by importance from 0-5, 0 - not important, 5 - critical):
 
 - (5) I want to see whether a signal is correct:
-Compare signals to expectations, to other signals, check min/max thresholds;
+  Compare signals to expectations, to other signals, check min/max thresholds;
   - UI operations: zoom/pan charts, define thresholds, ...
 
 - (4-) I want to define signal transformations:
@@ -89,17 +88,15 @@ Compare signals to expectations, to other signals, check min/max thresholds;
   Related to "Define signal transformations", she needs to be able
   to browse and filter through the available signals.
   - UI operations: Browse a list of signals to add as a block
-  to the flowgraph, or as a new chart to the chart page
+    to the flowgraph, or as a new chart to the chart page
 
 - (3) I want to be automatically notified about abnormal states:
   - UI operations: Define thresholds/envelopes; trigger notifications,
-  snapshots (pre/post), or external alerts for post-mortem analysis.
+    snapshots (pre/post), or external alerts for post-mortem analysis.
 
 - (5) I want to be able to change how charts are shown
   - UI operations: Move charts around, merge charts,
     change chart layout
-
-
 
 ## Paul
 
@@ -127,7 +124,6 @@ He enters and would interact directly with the 'Chart UI' view
 and rarely with the 'Flow-Graph UI'
 (adding new data sources and charts would be done in the 'Chart UI' view).
 
-
 ### Main tasks (rated by importance from 0-5, 0 - not important, 5 - critical):
 
 - (5) I want to see whether a signal is correct:
@@ -147,8 +143,6 @@ and rarely with the 'Flow-Graph UI'
 - (5) I want to be able to change how charts are shown
   (Same as Susan)
 
-
-
 By framing the UI around these personas,
 we're designing the UX
 in a way that it is trainable for Paul,
@@ -156,97 +150,92 @@ while extensible for Susan.
 It's a classic empathetic design move:
 one interface, layered interactions, tested through prototypes.
 
-
-
-*Note:*
+_Note:_
 
 This document does not define a persona representing people who deploy the system,
-as that is not a persona that *uses* OpenDigitizer.
+as that is not a persona that _uses_ OpenDigitizer.
 But it is still an aspect of the whole system
 that needs to be kept in mind.
-
-
 
 ## More detailed UI operations for aforementioned user stories:
 
 A few of the above include the subtasks:
 
-   - I want to get an overview of available signals
-   - I want to easily find a (set of) signal(s) I need
+- I want to get an overview of available signals
+- I want to easily find a (set of) signal(s) I need
 
 I want to see whether a signal is correct (Susan and Paul):
 
-   - compared to expected (in mental model)
-   - compared to a second signal (same time or frequency axes)
-   - correlated with a second signal (value 1 versus value 2)
-   - compared to a predefined tolerance band around a reference
-   - compared to a user-defined min max thresholds
-   - is signal even shown
-   - see error log for the signal
-   - usual charting features
-   - usual post processing step (task below)
-   - saving the snapshots of all the shown data sets,
-     maybe even with the reloadable dashboards with the old data
-     screenshots
+- compared to expected (in mental model)
+- compared to a second signal (same time or frequency axes)
+- correlated with a second signal (value 1 versus value 2)
+- compared to a predefined tolerance band around a reference
+- compared to a user-defined min max thresholds
+- is signal even shown
+- see error log for the signal
+- usual charting features
+- usual post processing step (task below)
+- saving the snapshots of all the shown data sets,
+  maybe even with the reloadable dashboards with the old data
+  screenshots
 
 I want to create a dashboard -- reusable view of signals (Susan):
 
-   - save/store - define name/tags, saves screenshot
-   - group signals into the same chart (shared or separated axes)
+- save/store - define name/tags, saves screenshot
+- group signals into the same chart (shared or separated axes)
 
 I want to view a dashboard -- pre-defined set of signals + layout (Susan and Paul):
 
-   - finding the right dashboard
-   - open selected dashboard
-   - from outside: launchable via URL
+- finding the right dashboard
+- open selected dashboard
+- from outside: launchable via URL
 
 I want to create a signal transformation based on basic transformation blocks (Susan):
 
-   - @see GNU Radio companion
-   - frontend and UI flowgraphs
-   - editable flowgraphs - topology and parameters
-     (parameters editable during runtime of the flow, not of the service)
-   - dataset processing
-   - load and store
+- @see GNU Radio companion
+- frontend and UI flowgraphs
+- editable flowgraphs - topology and parameters
+  (parameters editable during runtime of the flow, not of the service)
+- dataset processing
+- load and store
 
 I want automatically (trigger) to be notified about non-normal states (Susan and Paul):
 
-   - define thresholds (min max)
-   - trigger envelopes
-   - impl-wise: specialized post-processing
-   - actions:
-       - notification on the machine
-       - external notification
-       - saving snapshots - pre, actual and post signals - for a defined set of signals
-         (transient recording) - aka post mortem analysis
+- define thresholds (min max)
+- trigger envelopes
+- impl-wise: specialized post-processing
+- actions:
+  - notification on the machine
+  - external notification
+  - saving snapshots - pre, actual and post signals - for a defined set of signals
+    (transient recording) - aka post mortem analysis
 
 I want to be able to change how charts are shown (Susan and Paul)
 
-   - change chart layout
-   - move charts
-   - add new charts from selected signal (@see 'I want to view a set of pre-defined signals')
-   - remove existing charts
-
+- change chart layout
+- move charts
+- add new charts from selected signal (@see 'I want to view a set of pre-defined signals')
+- remove existing charts
 
 # UI hierarchy:
 
 The main focus for the workspace is:
 
-   - Finding the right dashboards
-   - Managing a set of dashboards
-   - Creating new dashboards
+- Finding the right dashboards
+- Managing a set of dashboards
+- Creating new dashboards
 
 The main focus of the dashboard is:
 
-   - Layouting the charts
-   - Manipulating charts (e.g. zoom, disable and enable sources, colors,...)
-   - Arranging charts (e.g. choose layout, arrange charts)
-   - Admin (e.g. save, share, print, ...)
-   - Adding simple signals
+- Layouting the charts
+- Manipulating charts (e.g. zoom, disable and enable sources, colors,...)
+- Arranging charts (e.g. choose layout, arrange charts)
+- Admin (e.g. save, share, print, ...)
+- Adding simple signals
 
 The flowgraph allows the users to define the content (data sinks) of the charts shown on the dashboard.
 The main focus of the flowgraph is:
 
-   - Manage signals (add, remove, disable, ...)
-   - Allow to visually modify / transform the signals (by connecting available blocks)
-   - Define sinks to be used in the charts
+- Manage signals (add, remove, disable, ...)
+- Allow to visually modify / transform the signals (by connecting available blocks)
+- Define sinks to be used in the charts
