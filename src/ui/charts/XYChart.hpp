@@ -195,6 +195,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             auto yCond                                                = trackLimitsCond(false, minLimit, maxLimit, i);
             _symLogLinearThresholds[static_cast<std::size_t>(axisId)] = dashCfg ? static_cast<double>(dashCfg->linearThreshold) : std::numeric_limits<double>::quiet_NaN();
             axis::setupAxis(axisId, _yCategories[i], format, width, minLimit, maxLimit, nAxesY, scale, _unitStringStorage, showGrid, /*foreground=*/false, yCond, &_symLogLinearThresholds[static_cast<std::size_t>(axisId)]);
+            if (ImPlotAxis& yAxis = ImPlot::GetCurrentPlot()->Axes[axisId]; ImHasFlag(yAxis.Flags, ImPlotAxisFlags_AutoFit)) { // Y fits only what X shows
+                yAxis.Flags |= ImPlotAxisFlags_RangeFit;
+            }
         }
     }
 
@@ -243,6 +246,25 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     }
                 }
             }
+        }
+        limitXFitToHistory();
+    }
+
+    void limitXFitToHistory() {
+        if (!_xCategories[0].has_value() || _xCategories[0]->scale != AxisScale::Time) {
+            return;
+        }
+        double newest  = -std::numeric_limits<double>::infinity();
+        double history = 0.0;
+        for (const auto& sink : enabledSinks()) {
+            auto dataLock = sink->dataGuard();
+            if (!sink->hasDataSets() && sink->sampleRate() > 0.0f) {
+                newest  = std::max(newest, sink->timeLast());
+                history = std::max(history, static_cast<double>(n_history.value) / static_cast<double>(sink->sampleRate()));
+            }
+        }
+        for (ImPlotAxis& xAxis : std::span(ImPlot::GetCurrentPlot()->Axes).first(IMPLOT_NUM_X_AXES)) {
+            xAxis.FitExtents.Min = std::max(xAxis.FitExtents.Min, newest - history);
         }
     }
 
