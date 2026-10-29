@@ -68,6 +68,7 @@ target_link_libraries(
   qa_PulsedPowerGrc
   PRIVATE ut
           gnuradio4::gnuradio-core
+          gnuradio4::gr-basic
           gnuradio4::gr-electrical
           gnuradio4::gr-filter
           opendigitizer-options)

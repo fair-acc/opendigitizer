@@ -473,7 +473,7 @@ private:
                 bool       schedulerFinished = false;
 
                 if (stopScheduler) {
-                    sendMessage<Set>(*_messagesToScheduler, schedulerUniqueName, block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP))}}, "");
+                    emit<Set>(*_messagesToScheduler, {{"state", std::string(magic_enum::enum_name(lifecycle::State::REQUESTED_STOP))}}, {.endpoint = block::property::kLifeCycleState, .serviceName = schedulerUniqueName});
                 }
 
                 if (hasScheduler) {
@@ -602,13 +602,13 @@ private:
                     std::ignore            = _messagesToScheduler->connect(_scheduler->msgIn);
                     std::ignore            = _scheduler->msgOut.connect(*_messagesFromScheduler);
                     schedulerUniqueName    = _scheduler->unique_name;
-                    sendMessage<Subscribe>(*_messagesToScheduler, schedulerUniqueName, block::property::kLifeCycleState, {}, "GnuRadioWorker");
-                    sendMessage<Subscribe>(*_messagesToScheduler, "", block::property::kSetting, {}, "GnuRadioWorker");
+                    emit<Subscribe>(*_messagesToScheduler, {}, {.endpoint = block::property::kLifeCycleState, .serviceName = schedulerUniqueName, .clientRequestID = "GnuRadioWorker"});
+                    emit<Subscribe>(*_messagesToScheduler, {}, {.endpoint = block::property::kSetting, .clientRequestID = "GnuRadioWorker"});
                     // make sure that we once get all the updated sink settings
                     // this covers the case that the settings subscriptions are only set up after signal metadata has been propagated through the graph
                     // since the request is sent as a message, it is ensured that the subscription was set up beforehand
                     for (auto& sinkBlockName : signalEntryBySink | std::views::keys) {
-                        sendMessage<Get>(*_messagesToScheduler, sinkBlockName, block::property::kSetting, {});
+                        emit<Get>(*_messagesToScheduler, {}, {.endpoint = block::property::kSetting, .serviceName = sinkBlockName});
                     }
 
                     {

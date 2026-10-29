@@ -10,9 +10,9 @@ struct CountSource : public gr::Block<CountSource<T>> {
     uint32_t                 n_samples       = 0; ///< Number of samples to produce, 0 means infinite
     T                        initial_value   = {};
     float                    sample_rate     = 1.;
-    std::string              signal_name     = "test signal";
-    std::string              signal_unit     = "test unit";
-    std::string              signal_quantity = "test quantity";
+    std::pmr::string         signal_name     = "test signal";
+    std::pmr::string         signal_unit     = "test unit";
+    std::pmr::string         signal_quantity = "test quantity";
     float                    signal_min      = std::numeric_limits<float>::lowest(); ///< minimum value of the signal
     float                    signal_max      = std::numeric_limits<float>::max();    ///< maximum value of the signal
     std::string              direction       = "up";                                 ///< direction of the count, "up" or "down"
