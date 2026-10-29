@@ -26,8 +26,10 @@ FetchContent_Declare(
   imguidatepicker
   GIT_REPOSITORY https://github.com/DnA-IntRicate/ImGuiDatePicker.git
   GIT_TAG ca5e3a20f945c221e76e6bde3b09101acf589b5c
-        PATCH_COMMAND git checkout -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-remove-windows-only-time-function.patch && git apply ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-make-datepicker-just-a-popup.patch
-  EXCLUDE_FROM_ALL SYSTEM)
+  PATCH_COMMAND
+    git checkout -- . && git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-remove-windows-only-time-function.patch && git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-make-datepicker-just-a-popup.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   imgui-node-editor
@@ -35,8 +37,7 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
   GIT_TAG 6d4f0c38558be808bb84acf14a6c851b3c990887 # latest as of 2024-03-02
   PATCH_COMMAND git checkout -- . && git apply
-                ${CMAKE_CURRENT_LIST_DIR}/patches/imgui-node-editor-pin-draw-callbacks.patch
-  EXCLUDE_FROM_ALL SYSTEM)
+                ${CMAKE_CURRENT_LIST_DIR}/patches/imgui-node-editor-pin-draw-callbacks.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
   plf_colony

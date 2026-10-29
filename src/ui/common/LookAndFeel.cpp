@@ -428,16 +428,16 @@ void LookAndFeel::applyTheme() {
     // dark style: the plot frame would match a button
     plot.Colors[ImPlotCol_FrameBg] = im.Colors[ImGuiCol_WindowBg];
 
-    const Flowgraph& fgDefaults      = lookAndFeelDefaults.flowgraph;
-    flowgraph.nodeRounding           = pick(fgDefaults.nodeRounding, 4.f);
-    flowgraph.nodeBorderWidth        = pick(fgDefaults.nodeBorderWidth, 1.f);
-    flowgraph.subgraphBorderWidth    = pick(fgDefaults.subgraphBorderWidth, 2.f);
-    flowgraph.imguiNodeEditorPortRounding            = pick(fgDefaults.imguiNodeEditorPortRounding, 2.f);
-    flowgraph.rectangularPortRounding           = pick(fgDefaults.rectangularPortRounding, 2.f);
-    flowgraph.previewBorderThickness = pick(fgDefaults.previewBorderThickness, 1.f);
-    keypadRounding                   = pick(lookAndFeelDefaults.keypadRounding, 4.f);
-    popupMenuButtonRounding          = pick(lookAndFeelDefaults.popupMenuButtonRounding, 4.f);
-    notificationRounding             = pick(lookAndFeelDefaults.notificationRounding, 4.f);
+    const Flowgraph& fgDefaults           = lookAndFeelDefaults.flowgraph;
+    flowgraph.nodeRounding                = pick(fgDefaults.nodeRounding, 4.f);
+    flowgraph.nodeBorderWidth             = pick(fgDefaults.nodeBorderWidth, 1.f);
+    flowgraph.subgraphBorderWidth         = pick(fgDefaults.subgraphBorderWidth, 2.f);
+    flowgraph.imguiNodeEditorPortRounding = pick(fgDefaults.imguiNodeEditorPortRounding, 2.f);
+    flowgraph.rectangularPortRounding     = pick(fgDefaults.rectangularPortRounding, 2.f);
+    flowgraph.previewBorderThickness      = pick(fgDefaults.previewBorderThickness, 1.f);
+    keypadRounding                        = pick(lookAndFeelDefaults.keypadRounding, 4.f);
+    popupMenuButtonRounding               = pick(lookAndFeelDefaults.popupMenuButtonRounding, 4.f);
+    notificationRounding                  = pick(lookAndFeelDefaults.notificationRounding, 4.f);
 }
 
 [[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return fontSize<3>(*this) * 1.7f; }
