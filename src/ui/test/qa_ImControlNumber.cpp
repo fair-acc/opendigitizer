@@ -39,7 +39,6 @@ namespace {
 constexpr ImVec2 kHostPos{40.f, 80.f};
 constexpr ImVec2 kHostSize{900.f, 120.f};
 constexpr ImVec2 kStandalonePos{40.f, 240.f};
-constexpr int    kMaxFrames = 600;
 
 constexpr std::uint64_t kValueBeforeExceedingDoublePrecision   = 1ULL << std::numeric_limits<double>::digits;
 constexpr std::uint64_t kUint64ValueThatExceedsDoublePrecision = kValueBeforeExceedingDoublePrecision + 1ULL;

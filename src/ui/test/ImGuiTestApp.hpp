@@ -42,7 +42,7 @@ struct TestOptions {
     const char* screenshotPrefix = "";
 
     // run only the tests whose name matches this imgui-test-engine filter pattern
-    std::string testFilter;
+    std::string testFilter{};
 
     // Returns a good default for TestOptions but influenced by program arguments
     static TestOptions fromArgs(int argc, char** argv);

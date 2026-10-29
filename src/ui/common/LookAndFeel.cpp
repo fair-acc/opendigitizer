@@ -4,6 +4,8 @@
 
 #include <cmrc/cmrc.hpp>
 
+#include <vector>
+
 CMRC_DECLARE(fonts);
 CMRC_DECLARE(ui_assets);
 

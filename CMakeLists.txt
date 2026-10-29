@@ -142,12 +142,6 @@ if(NOT DISABLE_WASM_BUILD)
     COMMENT "Copy WASM UI and SIDE_MODULE plugins to ui-wasm/web")
 endif()
 
-# gr-digitizers provides the timing library the service registers only for GCC
-if(OPENDIGITIZER_BUILD_SERVICE
-   AND NOT EMSCRIPTEN
-   AND NOT
-       CMAKE_CXX_COMPILER_ID
-       MATCHES
-       "Clang")
+if(OPENDIGITIZER_BUILD_SERVICE AND NOT EMSCRIPTEN)
   add_subdirectory(src/service)
 endif()
