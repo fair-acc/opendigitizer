@@ -214,16 +214,16 @@ gr::property_map makeFairTimingTagMap(std::uint64_t triggerTime, int eventNumber
     }
 
     gr::property_map tagMap;
-    tagMap.emplace(gr::tag::TRIGGER_TIME, triggerTime);
-    tagMap.emplace(gr::tag::CONTEXT, "FAIR-TIMING:C=1.S=1.P=1.T=1");
-    tagMap.emplace(gr::tag::TRIGGER_META_INFO, metaInfo);
+    tagMap.emplace(gr::tag::kTriggerTime, triggerTime);
+    tagMap.emplace(gr::tag::kContext, "FAIR-TIMING:C=1.S=1.P=1.T=1");
+    tagMap.emplace(gr::tag::kTriggerMetaInfo, metaInfo);
     return tagMap;
 }
 
 gr::property_map makeStreamingTriggerTagMap(std::uint64_t triggerTime, std::string_view name = "trigger") {
     gr::property_map tagMap;
-    tagMap.emplace(gr::tag::TRIGGER_NAME, name);
-    tagMap.emplace(gr::tag::TRIGGER_TIME, triggerTime);
+    tagMap.emplace(gr::tag::kTriggerName, name);
+    tagMap.emplace(gr::tag::kTriggerTime, triggerTime);
     return tagMap;
 }
 
@@ -1126,7 +1126,7 @@ connections:
         };
 
         checkStreamingTimestamp(process(2UZ), 0LL, "NO_REF_TRIGGER");
-        const auto invalidTrigger = gr::property_map{{gr::tag::TRIGGER_NAME, "invalid"}, {gr::tag::TRIGGER_TIME, "invalid"}};
+        const auto invalidTrigger = gr::property_map{{gr::tag::kTriggerName, "invalid"}, {gr::tag::kTriggerTime, "invalid"}};
         const auto firstTrigger   = makeStreamingTriggerTagMap(epoch + 1'000'000LL);
         const auto laterTrigger   = makeStreamingTriggerTagMap(epoch + 20'000'000LL, "later trigger");
         checkStreamingTimestamp(process(3UZ, std::array{gr::Tag{0UZ, invalidTrigger}, gr::Tag{1UZ, firstTrigger}, gr::Tag{2UZ, laterTrigger}}), epoch);

@@ -165,7 +165,7 @@ blocks:
   - id: gr::electrical::PowerMetrics<float32, 3ul>
     parameters:
       name: PowerMetrics
-      decim: 1
+      decimation: 1
   - id: gr::electrical::SystemUnbalance<float32, 3ul>
     parameters:
       name: SystemUnbalance

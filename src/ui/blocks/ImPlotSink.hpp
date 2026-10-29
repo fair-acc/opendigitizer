@@ -111,7 +111,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         auto now = system_clock::now().time_since_epoch();
         return duration<double, std::nano>(now).count() * 1e-9;
     }(); // utc timestamp of the last tag or first sample
-    bool                      _xUtcOffsetInitialised = false; // set to true after first Tag with TRIGGER_TIME arrives and the _xUtcOffset is set
+    bool                      _xUtcOffsetInitialised = false; // set to true after first Tag with kTriggerTime arrives and the _xUtcOffset is set
     gr::HistoryBuffer<double> _xValues{required_size};        // needs to be 'double' because of required ns-level UTC timestamp precision
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
@@ -524,9 +524,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
                 break; // only process tags at the start of the span
             }
             const gr::property_map& tagMap = tagMapRef.get();
-            if (tagMap.contains(gr::tag::TRIGGER_TIME)) {
-                const auto   offsetSeconds = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::TRIGGER_OFFSET, 0.f));
-                const auto   triggerTimeNs = getValueOrDefault<std::uint64_t>(tagMap, gr::tag::TRIGGER_TIME, 0U);
+            if (tagMap.contains(gr::tag::kTriggerTime)) {
+                const auto   offsetSeconds = static_cast<double>(getValueOrDefault<float>(tagMap, gr::tag::kTriggerOffset, 0.f));
+                const auto   triggerTimeNs = getValueOrDefault<std::uint64_t>(tagMap, gr::tag::kTriggerTime, 0U);
                 const double tagEventTime  = static_cast<double>(triggerTimeNs) * 1e-9 + offsetSeconds;
                 bool         tagOK         = true;
 
@@ -564,7 +564,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
 
             // surface dropped-sample tags at the current position so the gap is visible in the plot
-            if (plot_tags && IsStreaming && tagMap.contains(gr::tag::N_DROPPED_SAMPLES)) {
+            if (plot_tags && IsStreaming && tagMap.contains(gr::tag::kNDroppedSamples)) {
                 _tagValues.push_back({.timestamp = _xUtcOffset + static_cast<double>(_sample_count) * _sample_period, .map = tagMap});
             }
         }
