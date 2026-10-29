@@ -369,9 +369,9 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
     using Parent = gr::Block<RemoteStreamSource<T>>;
     gr::PortOut<T> out;
 
-    gr::Annotated<std::string, "signal name", gr::Visible, gr::Doc<"Identifier for the signal">>                                                                              signal_name;
-    gr::Annotated<std::string, "signal quantity", gr::Visible, gr::Doc<"Physical quantity represented by the signal">>                                                        signal_quantity;
-    gr::Annotated<std::string, "signal unit", gr::Visible, gr::Doc<"Unit of measurement for the signal values">>                                                              signal_unit;
+    gr::Annotated<std::pmr::string, "signal name", gr::Visible, gr::Doc<"Identifier for the signal">>                                                                         signal_name;
+    gr::Annotated<std::pmr::string, "signal quantity", gr::Visible, gr::Doc<"Physical quantity represented by the signal">>                                                   signal_quantity;
+    gr::Annotated<std::pmr::string, "signal unit", gr::Visible, gr::Doc<"Unit of measurement for the signal values">>                                                         signal_unit;
     gr::Annotated<float, "signal min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min        = std::numeric_limits<float>::lowest();
     gr::Annotated<float, "signal max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max        = std::numeric_limits<float>::max();
     gr::Annotated<bool, "verbose console", gr::Doc<"For debugging">>                                                                                                          verbose_console   = false;
@@ -519,8 +519,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
         if (rep.error.starts_with(skip_warning_prefix)) {
             skipped_updates = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
         } else if (!rep.error.empty()) {
-            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)));
+            gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription:{}. Re-subscribing {}", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
             this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
@@ -562,8 +561,7 @@ struct RemoteStreamSource : RemoteSourceBase, RemoteSourceCommon<RemoteStreamSou
             std::lock_guard lock(queue->mutex);
             queue->data.push_back({std::move(acq), 0});
         } catch (opencmw::ProtocolException& e) {
-            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+            gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())), {.endpoint = "subscription", .serviceName = this->unique_name});
             return {};
         }
         this->progress->incrementAndGet();
@@ -619,8 +617,7 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
         if (rep.error.starts_with(skip_warning_prefix)) {
             skipped_samples = std::stol(rep.error.substr(std::string_view(skip_warning_prefix).size()));
         } else if (!rep.error.empty()) {
-            sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", //
-                gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)));
+            emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("Error in subscription: {}. Re-subscribing {}\n", rep.error, remote_uri)), {.endpoint = "subscription", .serviceName = this->unique_name});
             uint64_t nowTimeoutNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) //
                                     + static_cast<std::uint64_t>(reconnect_timeout * 1.e9f);
             this->_reconnect.store(nowTimeoutNs, std::memory_order_seq_cst);
@@ -706,7 +703,7 @@ struct RemoteDataSetSource : RemoteSourceBase, RemoteSourceCommon<RemoteDataSetS
             std::lock_guard lock(queue->mutex);
             queue->data.push_back(std::move(ds));
         } catch (opencmw::ProtocolException& e) {
-            gr::sendMessage<gr::message::Command::Notify>(this->msgOut, this->unique_name /* serviceName */, "subscription", gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())));
+            gr::emit<gr::message::Command::Notify>(this->msgOut, gr::Error(std::format("failed to deserialise update from {}: {}\n", remote_uri, e.what())), {.endpoint = "subscription", .serviceName = this->unique_name});
             return {};
         }
         this->progress->incrementAndGet();

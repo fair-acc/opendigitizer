@@ -145,7 +145,7 @@ class GraphSession {
         void pause() { requestState(gr::lifecycle::State::REQUESTED_PAUSE); }
 
     private:
-        void requestState(gr::lifecycle::State target) { gr::sendMessage<gr::message::Command::Set>(_toScheduler, std::string(block().uniqueName()), gr::block::property::kLifeCycleState, {{"state", std::string(magic_enum::enum_name(target))}}, "UI"); }
+        void requestState(gr::lifecycle::State target) { gr::emit<gr::message::Command::Set>(_toScheduler, {{"state", std::string(magic_enum::enum_name(target))}}, {.endpoint = gr::block::property::kLifeCycleState, .serviceName = block().uniqueName(), .clientRequestID = "UI"}); }
 
         [[nodiscard]] bool isRequestBetweenBlocks(const gr::Message& message) const { return message.cmd == gr::message::Command::Set && !message.serviceName.empty() && message.serviceName != block().uniqueName() && message.serviceName != block().name(); }
 
@@ -155,9 +155,9 @@ class GraphSession {
                 return;
             }
             const std::string schedulerName(block().uniqueName());
-            gr::sendMessage<gr::message::Command::Subscribe>(_toScheduler, schedulerName, gr::block::property::kLifeCycleState, {}, "UI");
+            gr::emit<gr::message::Command::Subscribe>(_toScheduler, {}, {.endpoint = gr::block::property::kLifeCycleState, .serviceName = schedulerName, .clientRequestID = "UI"});
             writeMessage(subscriptionMessageForAllBlocksSettings());
-            gr::sendMessage<gr::message::Command::Get>(_toScheduler, "", gr::block::property::kSetting, {}, "UI");
+            gr::emit<gr::message::Command::Get>(_toScheduler, {}, {.endpoint = gr::block::property::kSetting, .clientRequestID = "UI"});
             requestStart(gr::lifecycle::State::RUNNING);
         }
 

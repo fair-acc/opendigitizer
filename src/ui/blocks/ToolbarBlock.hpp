@@ -261,7 +261,7 @@ inline void sendSettings(gr::MsgPortOutBuiltin& port, const std::string& targetB
     if (targetBlock.empty()) { // an empty service name would address every block
         return;
     }
-    gr::sendMessage<gr::message::Command::Set>(port, targetBlock, gr::block::property::kSetting, std::move(settings));
+    gr::emit<gr::message::Command::Set>(port, std::move(settings), {.endpoint = gr::block::property::kSetting, .serviceName = targetBlock});
 }
 } // namespace toolbar
 } // namespace DigitizerUi

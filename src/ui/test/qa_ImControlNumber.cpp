@@ -118,8 +118,8 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "loading the dashboard writes nothing to the targets"_test = [&] {
                 expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator1", "amplitude", 5.f)) << "not the field's 1";
                 expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator2", "amplitude", 3.f)) << "not the field's 1";
-                expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator1", "frequency", 1.f)) << "not the spin box's 1";
-                expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator2", "frequency", 2.f)) << "not the slider's 2";
+                expect(blockHasBasicTypeKeyValuePair<double>("SignalGenerator1", "frequency", 1.0)) << "not the spin box's 1";
+                expect(blockHasBasicTypeKeyValuePair<double>("SignalGenerator2", "frequency", 2.0)) << "not the slider's 2";
                 expect(g_state.steps->takeSent().empty() && g_state.ratio->takeSent().empty()) << "the standalone controls sent nothing";
             };
 
@@ -137,12 +137,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "the spin box's step button raises the target by the step"_test = [&] {
                 ctx->ItemClick("**/##Frequency/+");
-                expect(g_state.waitUntil(ctx, "frequency appears to have incremented", [] { return blockHasBasicTypeKeyValuePair<float>("SignalGenerator1", "frequency", 2.f); })) << "1 + step 1";
+                expect(g_state.waitUntil(ctx, "frequency appears to have incremented", [] { return blockHasBasicTypeKeyValuePair<double>("SignalGenerator1", "frequency", 2.0); })) << "1 + step 1";
             };
 
             "the slider sets the frequency of its target"_test = [&] {
                 ctx->ItemInputValue("**/##Level", 4.f);
-                expect(g_state.waitUntil(ctx, "frequency reaches what was inputted by slider", [] { return blockHasBasicTypeKeyValuePair<float>("SignalGenerator2", "frequency", 4.f); }));
+                expect(g_state.waitUntil(ctx, "frequency reaches what was inputted by slider", [] { return blockHasBasicTypeKeyValuePair<double>("SignalGenerator2", "frequency", 4.0); }));
             };
 
             "the slider spinner's '*' entry is not dispatched yet"_test = [&] {

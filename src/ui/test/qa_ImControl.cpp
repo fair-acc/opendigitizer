@@ -272,7 +272,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         return secondTargetControlledProperty.has_value();
                     })) << fatal;
                     const auto frequency = secondTargetControlledProperty.value;
-                    expect(frequency.get_if<float>() != nullptr && *frequency.get_if<float>() == 2.f) << "signalGenerator2 expects to have a frequency of, according to .grc";
+                    expect(frequency.get_if<double>() != nullptr && *frequency.get_if<double>() == 2.0) << "signalGenerator2 expects to have a frequency of, according to .grc";
                 };
 
                 "changing the target of a control"_test = [&] {

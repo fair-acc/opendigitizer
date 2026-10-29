@@ -22,7 +22,7 @@
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/meta/UnitTestHelper.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
-#include <gnuradio-4.0/testing/Delay.hpp>
+#include <gnuradio-4.0/testing/Sleep.hpp>
 
 #include <array>
 #include <boost/ut.hpp>
@@ -56,7 +56,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>(registry);
-    gr::registerBlock<gr::testing::Delay, float>(registry);
+    gr::registerBlock<gr::testing::Sleep, float>(registry);
     gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
 #pragma GCC diagnostic pop
 }
@@ -401,7 +401,7 @@ blocks:
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay_up
       delay_ms: 600
@@ -415,7 +415,7 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay_down
       delay_ms: 600
@@ -529,7 +529,7 @@ blocks:
       signal_quantity: "Quantity_Up"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -553,7 +553,7 @@ blocks:
       signal_quantity: "Quantity_Down"
       signal_min: 0
       signal_max: 99
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -695,7 +695,7 @@ blocks:
         - 40,notatrigger
         - 50,hello
         - 60,ignoreme
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -743,7 +743,7 @@ blocks:
         - 1000,notatrigger
         - 800000,hello
         - 900000,ignoreme
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -792,7 +792,7 @@ blocks:
         - 50,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2
         - 70,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=3
         - 80,CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=4
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -851,7 +851,7 @@ blocks:
         - 40,hello
         - 50,shoot
         - 60,world
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -904,7 +904,7 @@ blocks:
       n_samples: 100000
       signal_name: test signal
       signal_unit: test unit
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -957,7 +957,7 @@ blocks:
         - 20,mytrigger
         - 50,mytrigger
         - 70,mytrigger
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600
@@ -1007,7 +1007,7 @@ blocks:
   - id: UnknownBlock<float32>
     parameters:
       name: unknown
-  - id: gr::testing::Delay<float32>
+  - id: gr::testing::Sleep<float32>
     parameters:
       name: delay
       delay_ms: 600

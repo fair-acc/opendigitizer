@@ -35,7 +35,7 @@ to the current wall-clock position.)"">;
 
     gr::PortOut<T> out;
 
-    A<float, "frequency", gr::Unit<"Hz">, gr::Visible>                                  frequency   = 1.f;
+    A<double, "frequency", gr::Unit<"Hz">, gr::Visible>                                 frequency   = 1.0;
     A<float, "amplitude", gr::Unit<"a.u.">, gr::Visible>                                amplitude   = 1.f;
     A<float, "phase", gr::Unit<"°">>                                                    phase       = 0.f;
     A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"output sample rate">, gr::Visible> sample_rate = 1000.f;
@@ -78,7 +78,7 @@ to the current wall-clock position.)"">;
 
         const double baseTime     = std::chrono::duration<double>(_lastUpdateTime - _startTime).count();
         const double phaseRad     = static_cast<double>(phase) * std::numbers::pi / 180.0;
-        const double omega        = 2.0 * std::numbers::pi * static_cast<double>(frequency);
+        const double omega        = 2.0 * std::numbers::pi * frequency.value;
         const double samplePeriod = 1.0 / static_cast<double>(sample_rate);
         const double amp          = static_cast<double>(amplitude);
 

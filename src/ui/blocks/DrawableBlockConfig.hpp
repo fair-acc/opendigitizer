@@ -114,7 +114,7 @@ struct DrawableBlockConfig {
             ControlledProperty result;
             using namespace std::string_view_literals;
             if (const auto controlledProperty = configMap.get_if<gr::property_map>("first_controlled_property"sv)) {
-                result.value = controlledProperty->find_value("value"sv).value_or(gr::pmt::Value{});
+                result.value = controlledProperty->find_value("value"sv, std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
                 if (const auto hints = controlledProperty->get_if<gr::property_map>("hints"sv)) {
                     result.hints = BlockPropertyHints::fromMap(*hints);
                 }
