@@ -29,18 +29,18 @@ blocks:
     parameters: { name: NullSinkG }
   - id: gr::testing::NullSink<float32>
     parameters: { name: NullSinkH }
-  # time-domain path: 4 MS/s -> 100 kHz; decimation ratio is the Resampling<40, 1> template (decimate must match)
+  # time-domain path: 4 MS/s -> 100 kHz; decimation ratio is the Resampling<40, 1> template (decimation must match)
   - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
     parameters:
       name: DecimateVoltage
       sample_rate: 4000000
-      decimate: 40
+      decimation: 40
       f_low: 40000.0
   - id: gr::filter::BasicFilterProto<float32, gr::Resampling<40u, 1u, false>>
     parameters:
       name: DecimateCurrent
       sample_rate: 4000000
-      decimate: 40
+      decimation: 40
       f_low: 40000.0
   # spectrum path: take one 2^19-sample window of the raw 4 MS/s current twice per second (stride = sample_rate/2),
   # so the FFT runs on the full bandwidth (0-2 MHz) at ~2 Hz without filtering or per-sample cost on skipped data.

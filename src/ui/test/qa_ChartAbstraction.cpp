@@ -148,8 +148,8 @@ int main() {
         auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kFftSize * kSpectra}, {"mark_tag", false}});
         for (gr::Size_t i = 0U; i < kSpectra; ++i) {
             gr::property_map trigger;
-            gr::tag::put(trigger, gr::tag::TRIGGER_NAME, std::string("CMD_DIAG_TRIGGER1"));
-            gr::tag::put(trigger, gr::tag::TRIGGER_TIME, std::uint64_t{1'000'000'000U} * (i + 1U));
+            gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
+            gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
             source._tags.push_back({i * kFftSize, std::move(trigger)});
         }
         auto& fft  = graph.emplaceBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>({{"fft_size", kFftSize}});

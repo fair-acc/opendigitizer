@@ -648,7 +648,7 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
         double      xTagPosition = transformX(timestamp, axisScale, xMin, xMax);
         const float xPixelPos    = ImPlot::PlotToPixels(xTagPosition, 0.0).x;
 
-        const bool isDrop = properties.contains(gr::tag::N_DROPPED_SAMPLES);
+        const bool isDrop = properties.contains(gr::tag::kNDroppedSamples);
         // highlight fishy tags (out-of-order timestamps) magenta, lost-sample markers red
         if (properties.contains(kFishyTagKey)) {
             ImPlot::SetNextLineStyle(DigitizerUi::LookAndFeel::instance().palette().chartTagFishy);
@@ -666,7 +666,7 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
                 return;
             }
             std::string triggerLabel = "TRIGGER";
-            if (const auto it = properties.find(gr::tag::TRIGGER_NAME); it != properties.end()) {
+            if (const auto it = properties.find(gr::tag::kTriggerName); it != properties.end()) {
                 if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
                     triggerLabel = str;
                 }
@@ -677,7 +677,7 @@ inline void drawTags(ForEachTagFn&& forEachTagFn, AxisScale axisScale, double xM
                 lastTextPixelX = plotVerticalTagLabel(triggerLabel, xTagPosition, plotLimits, true).x;
 
                 std::string triggerCtx;
-                if (const auto it = properties.find(gr::tag::CONTEXT); it != properties.end()) {
+                if (const auto it = properties.find(gr::tag::kContext); it != properties.end()) {
                     if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
                         triggerCtx = str;
                     }
@@ -731,7 +731,7 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
 
             if ((xPixelPos - lastTextPixelX) > 1.5f * fontHeight && (lastAxisPixelX - xPixelPos) > 2.0f * fontHeight) {
                 std::string triggerLabel = "TRIGGER";
-                if (auto it = tagMap.find(gr::tag::TRIGGER_NAME); it != tagMap.end()) {
+                if (auto it = tagMap.find(gr::tag::kTriggerName); it != tagMap.end()) {
                     if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
                         triggerLabel = str;
                     }
@@ -744,9 +744,9 @@ inline void drawDataSetTimingEvents(const gr::DataSet<T>& dataSet, AxisScale axi
                     continue;
                 }
 
-                // Render CONTEXT tag label below trigger label if present and different
+                // Render kContext tag label below trigger label if present and different
                 std::string triggerCtx;
-                if (const auto it = tagMap.find(gr::tag::CONTEXT); it != tagMap.end()) {
+                if (const auto it = tagMap.find(gr::tag::kContext); it != tagMap.end()) {
                     if (const auto str = it->second.value_or(std::string_view{}); str.data() != nullptr) {
                         triggerCtx = str;
                     }

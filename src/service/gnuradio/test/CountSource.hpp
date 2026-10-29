@@ -32,10 +32,10 @@ struct CountSource : public gr::Block<CountSource<T>> {
         _pending_tags.clear();
 
         auto genTrigger = [](std::size_t index, std::string triggerName, std::string triggerCtx = {}) {
-            return PendingTag{index, gr::property_map{{gr::tag::TRIGGER_NAME, std::move(triggerName)}, //
-                                         {gr::tag::TRIGGER_TIME, std::uint64_t{0}},                    //
-                                         {gr::tag::TRIGGER_OFFSET, 0.f},                               //
-                                         {gr::tag::CONTEXT, std::move(triggerCtx)}}};
+            return PendingTag{index, gr::property_map{{gr::tag::kTriggerName, std::move(triggerName)}, //
+                                         {gr::tag::kTriggerTime, std::uint64_t{0}},                    //
+                                         {gr::tag::kTriggerOffset, 0.f},                               //
+                                         {gr::tag::kContext, std::move(triggerCtx)}}};
         };
 
         for (const auto& tagStr : timing_tags) {
