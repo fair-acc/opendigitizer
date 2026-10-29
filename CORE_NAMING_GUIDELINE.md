@@ -1,6 +1,6 @@
 ## Naming Rules and Guidelines
 
-In software development, the right naming conventions bridge the gap between human linguistic patterns and logical code structures, turning abstract concepts into meaningful expressions and algorithmic intent. By aligning our codebase with familiar linguistic constructs, we aim to foster clarity, maintainability, and a more intuitive understanding of our project. Embracing lean and clean code principles, this guideline aims at a concise yet expressive naming. While we strive for consistency, we emphasize the spirit of clarity and meaning over rigid adherence when faced with exceptions.
+In software development, the right naming conventions bridge the gap between human linguistic patterns and logical code structures, turning abstract concepts into meaningful expressions and algorithmic intent. By aligning our codebase with familiar linguistic constructs, we aim to foster clarity, maintainability, and a more intuitive understanding of our project. Embracing lean code principles, this guideline aims at a concise yet expressive naming. While we strive for consistency, we emphasize the spirit of clarity and meaning over rigid adherence when faced with exceptions.
 
 This guideline is embedded into the larger [CORE_DEVELOPMENT_GUIDELINE.md](../blob/main/CORE_DEVELOPMENT_GUIDELINE.md) context of this project [README.md](../blob/main/README.md).
 
@@ -11,7 +11,11 @@ This guideline is embedded into the larger [CORE_DEVELOPMENT_GUIDELINE.md](../bl
 - **General Philosophy**: Strive for clarity and intuition. When in doubt, prioritize clarity over strict adherence to these rules.
 - **Classes/Structs/Enums**: Use `UpperCase` like `Graph` or `SubGraph`.
 - **Methods/Functions/Lambdas**: Use `lowerCase` such as `start()` or `create()`.
-- **Fields**: Use `snake_case` for public fields like `is_valid`. Non-public fields start with `_`, e.g., `_initialised`.
+- **Fields**: Use `snake_case` for a Block's reflected settings like `sample_rate` (SigMF compatibility), `lowerCase` for other public fields and ports like `inputBuffer`. Non-public fields start with `_`, e.g., `_initialised`.
+  The underscore is load-bearing for reflected members: a reflected field whose name starts with `_` travels with the
+  block -- it is serialised with it and follows it onto a device -- but is off the public settings surface. It cannot
+  be set, it is not reported among the block's parameters, and `resetDefaults()` does not restore it. Use it for state
+  derived in `settingsChanged`, never for anything a user is meant to configure.
 - **Function Variables & Parameters**: Use `lowerCase` or discretion.
 - **Template Parameters**: Types use `T` or `TSpecificName`. Non-types are `lowerCase` or context-specific.
 - **Constants**: Use `kUppercase`, e.g., `kConstant`.
@@ -22,9 +26,8 @@ This guideline is embedded into the larger [CORE_DEVELOPMENT_GUIDELINE.md](../bl
 - **Unit Tests**: Prefix with `qa_`.
 - **Comments**: Be concise, focus on the 'why'. Use `/** ... */` for documentation, `//` for inline.
 - **Macros**: Always `UPPERCASE`.
-</details>
 
-You can place this right at the beginning of your detailed guidelines so that developers can quickly familiarize themselves with the essentials before diving into the comprehensive guide.
+</details>
 
 ### Preface Language
 
@@ -46,10 +49,11 @@ For the domain-specific library usage and user-defined code, adhere to the follo
 1. (templated-) **classes/structs** & **enums**: SHOULD use UpperCase in line with _proper nouns_. Examples: `Port`, `Block`, `Graph`, `SubGraph`, `Selector`.
    - enumerator: use UpperCase or lowerCase based on whether the enumerator is a _proper noun_ (e.g. `Planet::Earth`, `Currency::Dollar`) or a _common noun_ concept (e.g. `Color::red`, `Direction::north`) or use your judgment.
 2. (templated-) **methods/functions/lambdas**: SHOULD use lowerCase in akin to _verbs_. Examples: `scheduler.start()`, `scheduler.stop()`, `filter::create()`, `computeMagnitude(...)`.
-3. **fields** of classes/structs: MUST use lower_case. Examples: `temperature`, `filter`, `is_valid`, `sample_rate'.
+3. **fields** of classes/structs: a Block's reflected settings MUST use snake_case (e.g. `sample_rate`, `is_valid`); other public fields and ports SHOULD use lowerCase (e.g. `inputBuffer`, `in`, `out`).
    - place these at the top of the class definition for visibility (hidden state)
    - non-public/private fields MUST be prefixed by `_`. Examples: `_initialised`, `_cachedVector`
    - public API fields, especially if compile-time reflected, should strictly follow snake_case to simplify compatibility with [SigMF](https://github.com/sigmf/SigMF).
+   - a reflected member intended as private state MUST carry the `_` prefix: a leading underscore on a `GR_MAKE_REFLECTABLE` member keeps it reflected (e.g. reachable by a device mirror) but excludes it from the block's public settings surface -- `gr::settings::isPublicSettingName` filters it out, so it cannot be set via the settings map and is not reported among the block's parameters.
 4. **function variables and parameters**: SHOULD use lowerCase or your own judgement. Examples: `sum`, `filter`, `isValid`
    - for functions/methods: should be defined as close to their initial use as possible
    - parameters may use `_` suffix in constructors to avoid name clashes with class field names (e.g. `User(std::string name_) : name(std::move(name_) {/*...*/}`)
@@ -144,7 +148,6 @@ Discussion on naming conventions often slides into [bikeshedding](https://en.wik
 2. **English Vocabulary & Composition**: English predominantly uses single words, making up 80-90% of its vocabulary. Long or compound words often signal specific, non-generic meanings, placing them in the _proper noun_ category. These should not solely be represented through class names but preferably described through functional attributes of the class or methods. In coding, such nuances should not be represented by class names but described through functional attributes, such as template parameters, non-type template parameters (NTTP), or namespace scope. This ensures the class’s attributes are queryable through meta-programming techniques rather than a specific type name check, enhancing composability.
 
 3. **Research-Backed**: Research has shown that naming conventions significantly affect code readability and comprehension. These indicate that:
-
    - While familiar naming conventions can hasten reading, the priority in code review is accuracy, not speed. Over-reliance on familiarity may lead to missed nuances and errors.
    - CamelCase improves reading accuracy for both novice and experienced coders.
    - CamelCase does not significantly impact reading speed for experienced developers.
@@ -156,7 +159,6 @@ Discussion on naming conventions often slides into [bikeshedding](https://en.wik
    Psychologist Daniel Kahneman introduced the concepts of 'System 1' and 'System 2' as two distinct modes of thinking in his groundbreaking work. Here's a quick rundown of these systems:
 
    ### 'System 1'
-
    - **Type**: Automatic, instinctive.
    - **Characteristics**:
      - Fast
@@ -169,7 +171,6 @@ Discussion on naming conventions often slides into [bikeshedding](https://en.wik
      - Recognizing familiar patterns
 
    ### 'System 2'
-
    - **Type**: Deliberative, analytical.
    - **Characteristics**:
      - Slow

@@ -2,6 +2,11 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
+## Scope
+
+Default: uncommitted changes (staged + unstaged vs HEAD).
+If an argument is provided, treat it as a git range (e.g. `HEAD~3`, `main..feature`).
+
 ## Focus
 
 - Unnecessary heap allocations in hot paths (`processOne`, `processBulk`, inner loops)
@@ -15,7 +20,8 @@ Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 - Memory bandwidth bottlenecks
 
 Do NOT flag code that is clearly not on the hot path.
-Do NOT suggest micro-optimisations that harm readability unless profiler-justified.
+Do NOT suggest micro-optimisations that harm readability unless benchmark/profiler-justified.
+Do not comment on formatting — it is handled by clang-format.
 
 ## Output Format
 

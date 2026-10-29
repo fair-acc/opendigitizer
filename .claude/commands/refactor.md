@@ -2,11 +2,12 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
-Apply structural improvements and style fixes to changed files. Edit files directly, then print a summary.
+Apply structural improvements to changed files. Edit files directly, then print a summary.
 
-This command includes `/fix-style` — cosmetic fixes are applied automatically.
+This command includes all cosmetic fixes from `/fix-style` (naming, documentation,
+wrong abstractions) in addition to the structural fixes below.
 
-These changes may alter semantics — review the diff after running.
+These changes may alter semantics — review the diff and run relevant `qa_` tests after applying.
 
 ## Scope
 
@@ -25,29 +26,9 @@ git diff --name-only <range> -- '*.hpp' '*.cpp'
 Only modify structs/classes/functions that are part of the diff or directly affected by it.
 Do not rewrite untouched code.
 
-## Fixes to Apply
+## Structural Fixes
 
-### Style fixes (from /fix-style)
-
-**Naming (§1)**
-
-- Reflected fields in `GR_MAKE_REFLECTABLE`: ensure `snake_case`
-- Public non-reflected fields: ensure `lowerCamelCase`
-- Private fields: ensure `_lowerCamelCase`
-- Methods: ensure `lowerCamelCase`
-- Types/structs/classes: ensure `UpperCamelCase`
-
-**Documentation (§3)**
-
-- Strip method-level `@brief`, `@param`, `@return` Doxygen boilerplate
-- Preserve class/struct-level `/** ... */` block comments for public infrastructure types
-- Remove comments that restate the code
-- Remove commented-out code
-- Remove decorative banners, ASCII art, and section separators (`// ---`, `// ===`, `// ── name ──`)
-
-### Structural fixes
-
-**Member Ordering (§2)**
+**Member ordering**
 Reorder struct/class members to match canonical order:
 
 1. type aliases & nested types
@@ -64,7 +45,7 @@ Reorder struct/class members to match canonical order:
 Preserve all designated initialiser compatibility — if reordering would break
 aggregate initialisation at a call site within the diff, flag it instead of fixing.
 
-**Simplification (§4)**
+**Simplification**
 
 - Replace raw loops with `std::ranges` / `std::algorithms` where intent is clearer
 - Collapse nested `if`/`else` with early returns or guard clauses
