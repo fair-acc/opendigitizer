@@ -2,6 +2,11 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
+## Scope
+
+Default: uncommitted changes (staged + unstaged vs HEAD).
+If an argument is provided, treat it as a git range (e.g. `HEAD~3`, `main..feature`).
+
 ## Focus
 
 - Raw loops replaceable with `std::ranges` / `std::algorithms`
@@ -18,6 +23,7 @@ Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
 Do NOT suggest changes that reduce debuggability, obscure algorithmic intent,
 or degrade compile-time error quality.
+Do not comment on formatting — it is handled by clang-format.
 
 ## Output Format
 

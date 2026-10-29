@@ -2,6 +2,11 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
+## Scope
+
+Default: uncommitted changes (staged + unstaged vs HEAD).
+If an argument is provided, treat it as a git range (e.g. `HEAD~3`, `main..feature`).
+
 ## Focus
 
 - Off-by-one errors in loops and bounds checks
@@ -14,6 +19,10 @@ Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 - Implicit narrowing conversions that lose precision or sign
 - Incorrect `processOne` / `processBulk` return semantics
 - Tag propagation logic errors
+
+Do NOT flag theoretical UB that is prevented by documented preconditions or `assert`.
+Do NOT flag signed/unsigned comparison warnings already handled by the build system.
+Do not comment on formatting — it is handled by clang-format.
 
 ## Output Format
 

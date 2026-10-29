@@ -2,6 +2,11 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
+## Scope
+
+Default: uncommitted changes (staged + unstaged vs HEAD).
+If an argument is provided, treat it as a git range (e.g. `HEAD~3`, `main..feature`).
+
 ## Focus
 
 Evaluate existing tests for:
@@ -19,6 +24,10 @@ Identify missing `qa_` files for public types.
 
 Tests must use `boost::ut`. Test names must be descriptive sentences.
 No `sleep` or timing-based assertions.
+
+Do NOT suggest tests for trivial getters, type aliases, or code fully constrained by the type system.
+Do NOT suggest tests for formatting or serialisation unless the code under review implements those.
+Do not comment on formatting — it is handled by clang-format.
 
 ## Output Format
 

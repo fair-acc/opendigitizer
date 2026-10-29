@@ -2,6 +2,11 @@
 
 Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 
+## Scope
+
+Default: uncommitted changes (staged + unstaged vs HEAD).
+If an argument is provided, treat it as a git range (e.g. `HEAD~3`, `main..feature`).
+
 ## Focus
 
 - CRTP usage: `Block<Derived>` applied correctly, no slicing
@@ -15,6 +20,10 @@ Baseline conventions are in CLAUDE.md — follow them, do not restate them.
 - `snake_case` for reflected fields, `lowerCamelCase` for methods
 - Struct vs class: is `class` justified by an actual invariant?
 - Rule of zero: unnecessary constructors/destructors?
+
+Do NOT flag naming or API patterns in code outside the diff.
+Do NOT request documentation beyond `using Description = Doc<"...">` for self-explanatory code.
+Do not comment on formatting — it is handled by clang-format.
 
 ## Output Format
 
