@@ -52,3 +52,6 @@ CMakeUserPresets.json
 # python venv files
 virtualenv/
 /CMakeSettings.json
+
+# GR4 devtools checked out by CI (build_cmake.yml)
+/.gr4-devtools/

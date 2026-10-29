@@ -57,7 +57,7 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>(registry);
     gr::registerBlock<gr::testing::Delay, float>(registry);
-    gr::registerBlock<gr::basic::StreamToDataSet, float>(registry);
+    gr::registerBlock<"gr::basic::StreamToDataSet", gr::basic::StreamToDataSet, float>(registry);
 #pragma GCC diagnostic pop
 }
 
@@ -961,7 +961,7 @@ blocks:
     parameters:
       name: delay
       delay_ms: 600
-  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: stream_to_dataset
       filter: "mytrigger"
@@ -1221,4 +1221,4 @@ connections:
     };
 };
 
-int main() { /* not needed for ut */ }
+int main() { return boost::ut::cfg<boost::ut::override>.run(); }

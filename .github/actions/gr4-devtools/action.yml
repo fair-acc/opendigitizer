@@ -1,0 +1,45 @@
+name: GR4 devtools
+description: >-
+  Checks out GR4's devtools and its quality-bot report action at the GR4 revision cmake/DependenciesSHAs.cmake pins (or `ref`) into
+  .gr4-devtools, builds qualitybot into $RUNNER_TEMP and fetches the ci-metrics history; with `tools`, also builds
+  naming-check and code-metrics into $RUNNER_TEMP/gr4-devtools. No ccache: qualitybot finds the checkout by __FILE__.
+inputs:
+  ref:
+    description: "a GR4 ref in place of the pin; empty: the pin"
+    default: ""
+  tools:
+    description: "also build naming-check and code-metrics, which need libclang"
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      env:
+        REF: ${{ inputs.ref }}
+      run: |
+        pin=$(awk '/set\(GIT_SHA_GNURADIO4/ { getline; print $1 }' cmake/DependenciesSHAs.cmake)
+        echo "ref=${REF:-$pin}" >> "$GITHUB_OUTPUT"
+        echo "GR4 devtools at ${REF:-$pin}"
+
+    - uses: actions/checkout@v6
+      with:
+        repository: fair-acc/gnuradio4
+        ref: ${{ steps.pin.outputs.ref }}
+        path: .gr4-devtools
+        sparse-checkout: |
+          devtools
+          .github/actions/report
+
+    - name: Build qualitybot
+      shell: bash
+      run: |
+        g++-15 -std=c++23 -O2 -o "$RUNNER_TEMP/qualitybot" "$PWD/.gr4-devtools/devtools/qualitybot.cpp"
+        git fetch --no-tags --depth=1 origin +ci-metrics:refs/remotes/origin/ci-metrics || echo "no history yet"
+
+    - name: Build naming-check and code-metrics
+      if: inputs.tools == 'true'
+      shell: bash
+      run: |
+        cmake -S .gr4-devtools/devtools -B "$RUNNER_TEMP/gr4-devtools" -G Ninja -DCMAKE_CXX_COMPILER=g++-15 -DCMAKE_BUILD_TYPE=Release
+        cmake --build "$RUNNER_TEMP/gr4-devtools" --target naming-check code-metrics

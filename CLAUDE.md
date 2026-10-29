@@ -53,7 +53,7 @@ them inline with strings, but generally prefer creating `qa_foo.grc` files in `s
 
 ## 4 · Repository
 
-- **Layout.** `src/ui` (ImGui application, native and WASM), `src/service` (OpenCMW service, GCC only), `src/acquisition`
+- **Layout.** `src/ui` (ImGui application, native and WASM), `src/service` (OpenCMW service; with Clang without the saftlib timing library), `src/acquisition`
   (DAQ API), `src/utils`; tests are `test/qa_*.cpp` beside each module, UI dashboards for tests in
   `src/ui/test/examples/`.
 - **Options.** `OPENDIGITIZER_ENABLE_TESTING`, `ENABLE_IMGUI_TEST_ENGINE`, `OPENDIGITIZER_BUILD_SERVICE`,

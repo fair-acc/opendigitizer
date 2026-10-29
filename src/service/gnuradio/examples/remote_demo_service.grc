@@ -27,13 +27,13 @@ blocks:
     parameters:
       name: FFT
       fft_size: 1024
-  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSet1
       filter: "CMD_DIAG_TRIGGER1"
       n_pre: 200
       n_post: 600
-  - id: gr::basic::StreamFilterImpl<float32, false, gr::trigger::BasicTriggerNameCtxMatcher::Filter>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSet2
       filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2]"

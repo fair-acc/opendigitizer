@@ -53,59 +53,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
   endif()
 endif()
 
-if((CMAKE_BUILD_TYPE STREQUAL "Debug" OR GENERATOR_IS_MULTI_CONFIG) AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  option(ENABLE_COVERAGE "Enable Coverage" ON)
-else()
-  option(ENABLE_COVERAGE "Enable Coverage" OFF)
-endif()
-
-if(OPENDIGITIZER_ENABLE_TESTING)
-  if(ENABLE_COVERAGE)
-    if(UNIX AND NOT APPLE) # Linux
-      message("Coverage reporting enabled")
-      # https://github.com/bilke/cmake-modules/blob/master/CodeCoverage.cmake
-      include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/CodeCoverage.cmake)
-      # (License: BSL-1.0)
-      target_compile_options(
-        project_options
-        INTERFACE --coverage
-                  -O0
-                  -g
-                  -U_FORTIFY_SOURCE
-                  -D_FORTIFY_SOURCE=0) # fortify_source is not possible without optimization
-      target_link_libraries(project_options INTERFACE --coverage)
-      set(GCOVR_ADDITIONAL_ARGS --print-summary --gcov-ignore-errors=all --verbose)
-      append_coverage_compiler_flags()
-      setup_target_for_coverage_gcovr_xml(
-        NAME
-        opendigitizer_coverage
-        EXECUTABLE
-        ctest
-        EXECUTABLE_ARGS
-        "--output-on-failure"
-        DEPENDENCIES
-        qa_GnuRadioWorker # TODO prevent qa_BlockScalingOffset (gr-digitizers) from being run and remove it here
-        EXCLUDE
-        "$CMAKE_BUILD_DIR/*"
-        ".*/test/.*")
-      setup_target_for_coverage_gcovr_html(
-        NAME
-        opendigitizer_coverage_html
-        EXECUTABLE
-        ctest
-        EXECUTABLE_ARGS
-        "--output-on-failure"
-        DEPENDENCIES
-        qa_GnuRadioWorker
-        EXCLUDE
-        "$CMAKE_BUILD_DIR/*"
-        ".*/test/.*")
-    else()
-      message(WARNING "Coverage is only supported on linux")
-    endif()
-  endif()
-endif()
-
 add_subdirectory(gnuradio)
 add_subdirectory(rest) # worker providing access to static assets
 add_subdirectory(dashboard)
@@ -128,7 +75,6 @@ target_link_libraries(
           opendigitizer-options
           project_options
           fair-picoscope
-          timing
           assets::rest
           digitizer_common_utils
           digitizer_settings
@@ -142,6 +88,15 @@ target_link_libraries(
           gnuradio4::GrHttpBlocksShared
           gnuradio4::GrMathBlocksShared
           gnuradio4::GrTestingBlocksShared)
+
+# saftlib, beneath gr-digitizers' timing library, exposes a libstdc++ ABI and cannot link against libc++
+if(NOT
+   CMAKE_CXX_COMPILER_ID
+   MATCHES
+   "Clang")
+  target_link_libraries(opendigitizer PRIVATE timing)
+  target_compile_definitions(opendigitizer PRIVATE OPENDIGITIZER_TIMING)
+endif()
 
 add_custom_target(
   run-opendigitizer

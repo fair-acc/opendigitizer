@@ -13,11 +13,24 @@ permissions:
   id-token: write
   pull-requests: write
 
+# GR4's quality bots run from GR4's devtools at the pinned GR4 revision (.github/actions/gr4-devtools), scoped by
+# .github/qualitybot.conf; they post a sticky comment and a status but never gate a merge
+env:
+  # a GR4 ref in place of the pin; empty: the GR4 pin in cmake/DependenciesSHAs.cmake
+  GR4_DEVTOOLS_REF: ""
+
 jobs:
   build:
     name: "${{ matrix.preset }}"
     runs-on: ubuntu-latest
     container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    permissions:
+      contents: write
+      pages: write
+      packages: read
+      id-token: write
+      pull-requests: write
+      statuses: write
     env:
       CCACHE_DIR: /home/runner/work/ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
@@ -116,7 +129,6 @@ jobs:
         run: sudo apt-get install -y xvfb || true
 
       - name: execute tests
-        if: matrix.preset != 'ci-gcc-debug'
         timeout-minutes: 10
         working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
         shell: bash
@@ -124,6 +136,8 @@ jobs:
           XDG_RUNTIME_DIR: /tmp/runtime-dir
           SDL_VIDEODRIVER: x11
           SDL_AUDIODRIVER: dummy
+          # the image's Xvfb offers no usable GLX visual since Ubuntu 26.04; Mesa's EGL renders under it
+          SDL_VIDEO_FORCE_EGL: 1
           OPENDIGITIZER_RUN_TESTS_ON_SCREEN: 1
         run: |
           mkdir -p /tmp/runtime-dir
@@ -131,21 +145,44 @@ jobs:
           export DISPLAY=:99
           ctest --output-on-failure
 
-      - name: execute tests with coverage
-        if: matrix.preset == 'ci-gcc-debug'
-        timeout-minutes: 10
-        working-directory: ${{ github.workspace }}/cmake-build-${{ matrix.preset }}
-        shell: bash
-        env:
-          XDG_RUNTIME_DIR: /tmp/runtime-dir
-          SDL_VIDEODRIVER: x11
-          SDL_AUDIODRIVER: dummy
-          OPENDIGITIZER_RUN_TESTS_ON_SCREEN: 1
+      # recorded on main only: hot paths list nothing to measure yet, wasm-size measures the shipped UI module
+      # the bots never block the Pages deployment below
+      - name: GR4 devtools
+        if: ${{ !cancelled() && github.event_name == 'push' && matrix.preset == 'ci-gcc-release' }}
+        continue-on-error: true
+        uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+
+      - name: Hot Paths
+        id: hot-paths
+        if: ${{ !cancelled() && github.event_name == 'push' && matrix.preset == 'ci-gcc-release' }}
+        continue-on-error: true
         run: |
-          mkdir -p /tmp/runtime-dir
-          Xvfb :99 -screen 0 1600x1200x24 &
-          export DISPLAY=:99
-          cmake --build . --target opendigitizer_coverage
+          "$RUNNER_TEMP/qualitybot" hot-paths --build cmake-build-${{ matrix.preset }} --out hot-paths-report
+
+      - name: Report Hot Paths
+        if: steps.hot-paths.outcome == 'success'
+        continue-on-error: true
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: hot-paths-report
+          fail-on-no-go: false
+
+      - name: WASM size
+        id: wasm-size
+        if: ${{ !cancelled() && github.event_name == 'push' && matrix.preset == 'ci-gcc-release' }}
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/qualitybot" wasm-size --build cmake-build-${{ matrix.preset }} --out wasm-size-report
+
+      - name: Report WASM size
+        if: steps.wasm-size.outcome == 'success'
+        continue-on-error: true
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: wasm-size-report
+          fail-on-no-go: false
 
       # only for Release, as this might generate PR comments (which we don't want to duplicate)
       - name: compare captures
@@ -177,6 +214,255 @@ jobs:
 
       - name: Show final ccache stats
         run: ccache --show-stats
+
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/gr4-formatters
+          key: formatters-${{ hashFiles('formatFiles.sh') }}
+
+      - name: Formatting
+        id: formatting
+        run: |
+          ./formatFiles.sh --install
+          "$RUNNER_TEMP/qualitybot" formatting --out formatting-report
+
+      - name: Keep the formatting patch
+        if: ${{ !cancelled() && steps.formatting.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: formatting-patch
+          path: |
+            formatting-report/formatting.patch
+            formatting-report/formatFiles.log
+          if-no-files-found: ignore
+
+      - name: Report Formatting
+        if: ${{ !cancelled() && steps.formatting.outcome == 'success' }}
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: formatting-report
+          fail-on-no-go: false
+
+  metrics:
+    name: Metrics
+    runs-on: ubuntu-latest
+    container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install gnuradio4 packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download latest --repo fair-acc/gnuradio4 --pattern "gnuradio4-clang_*_amd64.deb" --dir /tmp/gr4-pkgs
+          sudo apt install /tmp/gr4-pkgs/*.deb -y || true
+
+      - uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+          tools: "true"
+
+      # the Clang build's compile database; only opencmw-cpp's external headers are built, so libclang's unused-argument
+      # warnings stay warnings
+      - name: Configure
+        env:
+          CC: clang-21
+          CXX: clang++-21
+        run: >-
+          cmake -S . -B ../build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
+          -DOPENDIGITIZER_ENABLE_TESTING=ON -DENABLE_IMGUI_TEST_ENGINE=ON -DDISABLE_WASM_BUILD=ON
+          -DOPENDIGITIZER_WARNINGS_AS_ERRORS=OFF -DCMAKE_PREFIX_PATH=/opt/gnuradio4-clang
+
+      # libclang 22 finds libc++ only under its own prefix, the image carries clang-21's: name it explicitly
+      - name: Compile database for libclang
+        run: |
+          libcxx=$(clang++-21 -stdlib=libc++ -E -x c++ -v /dev/null 2>&1 | grep -m1 -o '/[^ ]*/c++/v1')
+          echo "libc++ headers: $libcxx"
+          sed -i "s#-stdlib=libc++#-stdlib=libc++ -nostdinc++ -isystem $libcxx#g" ../build/compile_commands.json
+          grep -c -- '-nostdinc++' ../build/compile_commands.json
+          # opencmw-cpp installs the ngtcp2 and nghttp3 headers at build time; without them its units do not parse
+          cmake --build ../build --target NgTcp2Project Nghttp3Project
+
+      - name: Naming
+        id: naming
+        run: |
+          "$RUNNER_TEMP/qualitybot" naming --build ../build --tools "$RUNNER_TEMP/gr4-devtools" --out naming-report
+
+      - name: Report Naming
+        if: ${{ !cancelled() && steps.naming.outcome == 'success' }}
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: naming-report
+          fail-on-no-go: false
+
+      - name: Code Style
+        id: code-style
+        if: ${{ !cancelled() }}
+        run: |
+          "$RUNNER_TEMP/qualitybot" code-style --build ../build --tools "$RUNNER_TEMP/gr4-devtools" --out code-style-report
+
+      - name: Report Code Style
+        if: ${{ !cancelled() && steps.code-style.outcome == 'success' }}
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: code-style-report
+          fail-on-no-go: false
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    env:
+      CCACHE_DIR: /home/runner/work/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      # a change of these flags is a change of method: bump coverageMethod in .github/qualitybot.conf
+      INSTRUMENT: -fprofile-instr-generate -fcoverage-mapping -mllvm -runtime-counter-relocation -Wno-unused-command-line-argument
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+
+      - name: Install gnuradio4 packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download latest --repo fair-acc/gnuradio4 --pattern "gnuradio4-clang_*_amd64.deb" --dir /tmp/gr4-pkgs
+          sudo apt install /tmp/gr4-pkgs/*.deb -y || true
+
+      - uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: /home/runner/work/ccache
+          key: ${{ runner.os }}-ccache-coverage-clang-21-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-coverage-clang-21-
+
+      - name: Configure
+        env:
+          CC: clang-21
+          CXX: clang++-21
+        run: >-
+          cmake -S . -B ../build -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_BUILD_TYPE=Debug -DOPENDIGITIZER_ENABLE_TESTING=ON -DENABLE_IMGUI_TEST_ENGINE=ON -DDISABLE_WASM_BUILD=ON
+          -DCMAKE_PREFIX_PATH=/opt/gnuradio4-clang -DCMAKE_C_FLAGS="$INSTRUMENT" -DCMAKE_CXX_FLAGS="$INSTRUMENT"
+
+      - name: Build
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: cmake --build ../build
+
+      - name: Save ccache
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@v5
+        with:
+          path: /home/runner/work/ccache
+          key: ${{ runner.os }}-ccache-coverage-clang-21-${{ github.sha }}
+
+      - name: Install Xvfb
+        run: sudo apt-get install -y xvfb || true
+
+      # the build lanes gate on the tests; coverage is reported regardless
+      - name: Test
+        timeout-minutes: 20
+        working-directory: ../build
+        env:
+          XDG_RUNTIME_DIR: /tmp/runtime-dir
+          SDL_VIDEODRIVER: x11
+          SDL_AUDIODRIVER: dummy
+          # the image's Xvfb offers no usable GLX visual since Ubuntu 26.04; Mesa's EGL renders under it
+          SDL_VIDEO_FORCE_EGL: 1
+          OPENDIGITIZER_RUN_TESTS_ON_SCREEN: 1
+        # set here, not under env: there the workspace expression names the runner host's path, not the container's
+        run: |
+          mkdir -p /tmp/runtime-dir profiles
+          Xvfb :99 -screen 0 1600x1200x24 &
+          export DISPLAY=:99
+          export LLVM_PROFILE_FILE="$PWD/profiles/%c%m-%p.profraw"
+          ctest --output-on-failure || echo "::warning::tests fail; coverage is reported regardless, the build lanes gate on tests"
+
+      - name: Coverage
+        id: coverage
+        if: ${{ !cancelled() }}
+        run: |
+          "$RUNNER_TEMP/qualitybot" coverage --build ../build --profiles ../build/profiles --out coverage-report
+
+      - name: Keep the coverage report
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: coverage-report/html
+
+      - name: Report Coverage
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        uses: ./.gr4-devtools/.github/actions/report
+        with:
+          directory: coverage-report
+          fail-on-no-go: false
+
+  # the only job that writes the repository: one commit replacing the ci-metrics branch
+  record:
+    name: record the figures
+    needs: [build, formatting, metrics, coverage]
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    container: "ghcr.io/fair-acc/gr-digitizers-build-container:latest"
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/gr4-devtools
+        with:
+          ref: ${{ env.GR4_DEVTOOLS_REF }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "*-report"
+          path: reports
+
+      - name: Record
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "$RUNNER_TEMP/qualitybot" record --out "$RUNNER_TEMP/record" reports/*
 
   deploy_pages:
     name: Deploy to GitHub Pages

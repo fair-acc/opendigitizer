@@ -47,37 +47,37 @@ blocks:
     parameters:
       name: SinkH
       signal_name: TT
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetA
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetB
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetC
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetD
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetE
       filter: "systemtime"
       n_pre: 10
       n_post: 50
-  - id: gr::basic::StreamFilterImpl<float32>
+  - id: gr::basic::StreamToDataSet<float32>
     parameters:
       name: StreamToDataSetF
       filter: "systemtime"

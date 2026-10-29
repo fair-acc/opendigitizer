@@ -55,7 +55,9 @@
 #include <fair/picoscope/Picoscope4000a.hpp>
 #include <fair/picoscope/Picoscope5000a.hpp>
 #include <fair/picoscope/Picoscope6000.hpp>
+#ifdef OPENDIGITIZER_TIMING
 #include <fair/timing/TimingSource.hpp>
+#endif
 
 namespace {
 template<typename Registry>
@@ -77,7 +79,9 @@ void registerTestBlocks(Registry& registry) {
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope4000a>, "">(registry);
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope5000a>, "">(registry);
     gr::registerBlock<fair::picoscope::Picoscope<gr::DataSet<float>, fair::picoscope::Picoscope6000>, "">(registry);
+#ifdef OPENDIGITIZER_TIMING
     gr::registerBlock<gr::timing::TimingSource, "">(registry);
+#endif
 }
 } // namespace
 
