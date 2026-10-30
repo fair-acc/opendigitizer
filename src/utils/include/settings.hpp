@@ -3,6 +3,8 @@
 
 #include <URI.hpp>
 
+#include "AppLocation.hpp"
+
 #include <algorithm>
 #include <print>
 #include <ranges>
@@ -68,7 +70,7 @@ struct Settings {
     std::string wasmServeDir{""};
     std::string defaultDashboard{"RemoteStream"};
     std::string remoteDashboards{"../dashboard/defaultDashboards"};
-    bool        dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
+    bool        dashboardFromUrlFragment{false}; // set when the page URL has #/dashboard/<name>
 
 private:
     Settings() {
@@ -140,22 +142,16 @@ private:
         };
         basePath = extractPrefixBefore(basePath, "web/index.html"); // TODO: temporary fix to be compatible with proxy forwarding like: https://my.proxy.com/prefix/web/index.html -> https://my.localdomain.com//web/index.html'. All paths (incl. dashboard need to be relative to the 'prefix' path.
 
-        auto fragment = url.fragment().value_or("");
-        for (auto param : std::ranges::split_view(fragment, "&"sv)) {
-            auto sv = std::string_view(param.begin(), param.end());
-            if (sv.starts_with("dashboard=")) {
-                defaultDashboard         = sv.substr("dashboard="sv.length());
-                dashboardFromUrlFragment = true;
-            } else if (sv.starts_with("darkMode=")) {
-                darkMode = sv.substr("darkMode="sv.length()) == "true"sv;
-            } else if (sv.starts_with("darkMode")) {
-                darkMode = true;
-            } else if (sv.starts_with("theme=")) {
-                theme = sv.substr("theme="sv.length());
-            } else if (sv.starts_with("editable")) {
-                editableMode = true;
-            }
+        const AppLocation location = AppLocation::parse(url.fragment().value_or(""));
+        if (auto name = location.dashboardName()) {
+            defaultDashboard         = *name;
+            dashboardFromUrlFragment = true;
         }
+        darkMode = location.flag("darkMode").value_or(darkMode);
+        if (const auto it = location.query.find("theme"); it != location.query.end()) {
+            theme = it->second;
+        }
+        editableMode = location.flag("editable").value_or(editableMode);
 #endif
         std::println("settings loaded: bindAddresses={}, darkMode={}, theme={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
             gr::join(bindAddresses), darkMode, theme, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);

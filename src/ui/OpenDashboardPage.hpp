@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -68,8 +69,9 @@ public:
     explicit OpenDashboardPage(std::shared_ptr<opencmw::client::RestClient> restClient);
     ~OpenDashboardPage();
 
-    std::function<void()>                                                   requestCloseDashboard;
-    std::function<void(const std::shared_ptr<const DashboardDescription>&)> requestLoadDashboard;
+    std::function<void()>                                                                    requestCloseDashboard;
+    std::function<void(const std::shared_ptr<const DashboardDescription>&)>                  requestLoadDashboard;
+    std::function<std::optional<std::string>(std::string_view, const DashboardStorageInfo&)> shareLinkFor; // link that opens the named dashboard from this source, if there is one
 
     void draw(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage);
 
