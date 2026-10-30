@@ -163,6 +163,26 @@ int main() {
         expect(eq(sink.totalSampleCount(), std::size_t{kSpectra}));
     };
 
+    "trigger tags do not reset the streaming count"_test = [] {
+        constexpr gr::Size_t kSamples = 1000U;
+
+        gr::Graph graph;
+        auto&     source = graph.emplaceBlock<gr::testing::TagSource<float>>({{"n_samples_max", kSamples}, {"mark_tag", false}});
+        for (gr::Size_t i = 0U; i < 5U; ++i) {
+            gr::property_map trigger;
+            gr::tag::put(trigger, gr::tag::kTriggerName, std::string("CMD_DIAG_TRIGGER1"));
+            gr::tag::put(trigger, gr::tag::kTriggerTime, std::uint64_t{1'000'000'000U} * (i + 1U));
+            source._tags.push_back({i * 200U, std::move(trigger)});
+        }
+        auto& sink = graph.emplaceBlock<opendigitizer::ImPlotSink<float>>();
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+        expect(eq(sink.totalSampleCount(), std::size_t{kSamples}));
+    };
+
     "DataSet drag keeps signal"_test = [] {
         gr::Graph graph;
         auto&     linearBlock = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::DataSet<float>>>({{"name", "linearSink"}, {"signal_name", "same signal"}});

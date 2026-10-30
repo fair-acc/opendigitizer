@@ -119,6 +119,7 @@ cmrc_add_resource_library(
   assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc
   assets/sampleDashboards/PulsedPowerDemo.grc
+  assets/sampleDashboards/StreamingStress.grc
   assets/sampleDashboards/UIControlledSines.grc)
 
 if(EMSCRIPTEN)
