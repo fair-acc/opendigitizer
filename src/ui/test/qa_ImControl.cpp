@@ -19,6 +19,7 @@
 #include <blocks/ImControlToggle.hpp>
 #include <blocks/ImControlTrigger.hpp>
 #include <blocks/ImPropertyReadout.hpp>
+#include <blocks/PianoControl.hpp>
 
 #include <cmrc/cmrc.hpp>
 
@@ -41,6 +42,8 @@ namespace {
 constexpr ImVec2 kDashboardWindowPos{40.f, 80.f};
 constexpr ImVec2 kUiControlWindowPos{40.f, 240.f};
 constexpr ImVec2 kWindowSize{900.f, 120.f};
+constexpr ImVec2 kPianoWindowPos{40.f, 400.f};
+constexpr ImVec2 kPianoWindowSize{900.f, 240.f};
 
 struct TestState : TestDashboardRunner {
     DigitizerUi::ToolbarView                                           view;
@@ -49,6 +52,8 @@ struct TestState : TestDashboardRunner {
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlText>>     text;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImControlChoice>>   choice;
     std::unique_ptr<StandaloneControl<DigitizerUi::ImPropertyReadout>> readout;
+    std::unique_ptr<StandaloneControl<opendigitizer::PianoControl>>    piano;
+    std::unique_ptr<StandaloneControl<opendigitizer::PianoControl>>    pianoWithoutGenerator;
     bool                                                               showLabels                        = true;
     bool                                                               includeControlledPropertyInConfig = true;
 };
@@ -86,6 +91,18 @@ ImGuiID choiceComboId(ImGuiTestContext* ctx, const char* windowRef, std::string_
     const ImGuiWindow* window = ctx->WindowInfo(windowRef).Window;
     expect(window != nullptr) << fatal << windowRef;
     return ImHashStr(comboLabel, 0UZ, ImHashStr(controlUniqueName.data(), controlUniqueName.size(), window->ID));
+}
+
+/// the InvisibleButton covering the whole keyboard of @param piano, drawn in the "pianoPanel" window
+ImGuiTestItemInfo pianoKeyboardInfo(ImGuiTestContext* ctx, const opendigitizer::PianoControl& piano) {
+    const ImGuiWindow* window = ctx->WindowInfo("//pianoPanel").Window;
+    expect(window != nullptr) << fatal;
+    const std::string_view uniqueName = piano.unique_name.value();
+    return ctx->ItemInfo(ImHashStr("##piano", 0UZ, ImHashStr(uniqueName.data(), uniqueName.size(), window->ID)));
+}
+
+std::size_t countMessagesSettingKey(const std::vector<gr::Message>& messages, std::string_view key) {
+    return static_cast<std::size_t>(std::ranges::count_if(messages, [key](const gr::Message& message) { return message.data && message.data->contains(key); }));
 }
 
 void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) {
@@ -138,6 +155,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     std::ignore = g_state.choice->block.draw(g_state.includeControlledPropertyInConfig ? controlledConfig("Sin", {"Sin", "Cos", "Square"}) : gr::property_map{});
                     ImGui::SameLine();
                     std::ignore = g_state.readout->block.draw(controlledConfig(std::int32_t{42}));
+                }
+
+                ImGui::SetNextWindowPos(kPianoWindowPos);
+                ImGui::SetNextWindowSize(kPianoWindowSize);
+                {
+                    IMW::Window pianoPanel("pianoPanel", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+                    const auto  connectedConfig = DrawableBlockConfig{.firstControlledProperty = {.value = false}}.toMap().value_or(gr::property_map{});
+                    std::ignore                 = g_state.piano->block.draw(connectedConfig);
+                    std::ignore                 = g_state.pianoWithoutGenerator->block.draw(connectedConfig);
                 }
             }
         };
@@ -410,6 +436,145 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
             };
         }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "imcontrol_piano", "PianoControl lays out one key per semitone and plays the key under the mouse");
+
+            t->GuiFunc = commonGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
+                using opendigitizer::PianoControl;
+                using Key                         = PianoControl::Key;
+                static constexpr float kEpsilon   = 1e-3f;
+                const auto             isNearlyEq = [](float a, float b) { return std::abs(a - b) < kEpsilon; };
+
+                "test PianoControl::noteFrequency() calculation"_test = [] {
+                    expect(approx(PianoControl::noteFrequency(69), 440.f, kEpsilon)) << "MIDI note 69 is A4";
+                    const auto hasExpectedPerceptualFrequencyRatio = [](int note) { return std::abs(PianoControl::noteFrequency(note + 1) / PianoControl::noteFrequency(note) - std::exp2(1.f / 12.f)) < kEpsilon; };
+                    expect(std::ranges::all_of(std::views::iota(0, 127), hasExpectedPerceptualFrequencyRatio));
+                    PianoControl piano;
+                    piano.octave = 4U;
+                    expect(eq(piano.firstNote(), 60)) << "MIDI note 60 is middle C";
+                };
+
+                "piano key layout from PianoControl::calculateKeyLocations()"_test = [&] {
+                    constexpr ImVec2 origin{13.f, 7.f};
+                    constexpr float  kWhiteKeyWidth = 20.f;
+                    constexpr float  kPianoHeight   = 50.f;
+                    for (const gr::Size_t octaveCount : {1U, 2U, 5U}) {
+                        PianoControl piano;
+                        piano.octave_count   = octaveCount;
+                        const auto keys      = piano.calculateKeyLocations(origin, kWhiteKeyWidth, kPianoHeight);
+                        const auto whiteKeys = keys | std::views::filter([](const Key& key) { return !key.isBlackKey; }) | std::ranges::to<std::vector>();
+                        const auto blackKeys = keys | std::views::filter(&Key::isBlackKey) | std::ranges::to<std::vector>();
+                        const auto context   = std::format("{} octaves", octaveCount);
+
+                        expect(eq(keys.size(), 12UZ * octaveCount)) << fatal << context;
+                        expect(eq(whiteKeys.size(), 7UZ * octaveCount)) << context;
+                        expect(eq(blackKeys.size(), 5UZ * octaveCount)) << context;
+
+                        const auto expectedKeyboardWidth = kWhiteKeyWidth * static_cast<float>(whiteKeys.size());
+                        expect(isNearlyEq(whiteKeys.front().min.x, origin.x)) << context << ": white keys start at x=0";
+                        expect(isNearlyEq(whiteKeys.back().max.x, origin.x + expectedKeyboardWidth)) << context << ": white keys occupy entire widget horizontally";
+
+                        for (const Key& blackKey : blackKeys) {
+                            expect(isNearlyEq(blackKey.min.y, origin.y) && blackKey.max.y < origin.y + kPianoHeight) << context << "black keys start at the top and are not as tall as the entire piano widget";
+                            expect(blackKey.max.x - blackKey.min.x < kWhiteKeyWidth) << context << "black keys are narrower than white keys";
+                        }
+                    }
+                };
+
+                const auto calculateExpectedKeyLocationsFromActualDrawnItemSize = [ctx](const PianoControl& piano) {
+                    const ImRect rect = pianoKeyboardInfo(ctx, piano).RectFull;
+                    expect(rect.GetWidth() > 0.f && rect.GetHeight() > 0.f) << fatal << "piano is drawn";
+                    return piano.calculateKeyLocations(rect.Min, rect.GetWidth() / static_cast<float>(piano.whiteKeyCount()), rect.GetHeight());
+                };
+                const auto findKeyWithNote = [](const std::vector<Key>& keys, int note) -> const Key& {
+                    const auto it = std::ranges::find(keys, note, &Key::midiNote);
+                    expect(it != keys.end()) << fatal << std::format("note {} is on the keyboard", note);
+                    return *it;
+                };
+                const auto centerOfKey = [](const Key& key) { return ImVec2{.5f * (key.min.x + key.max.x), .5f * (key.min.y + key.max.y)}; };
+
+                "pressing, sliding across, and releasing the keys"_test = [&] {
+                    auto&      piano       = *g_state.piano;
+                    const auto keys        = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
+                    const int  firstNote   = piano.block.firstNote(); // C key
+                    const int  secondNote  = firstNote + 4;           // E key
+                    const auto pitchOfNote = [](int note) { return PianoControl::noteFrequency(note); };
+
+                    ctx->MouseTeleportToPos(centerOfKey(findKeyWithNote(keys, firstNote)));
+                    expect(piano.takeSent().empty()) << "hovering does not play";
+
+                    ctx->MouseDown();
+                    auto sent = piano.takeSent();
+                    expect(eq(countMatchingSettingsMessages(sent, "Oscillator", "frequency", pitchOfNote(firstNote)), 1UZ)) << "pressing a key sets the generator to its pitch";
+                    expect(eq(countMatchingSettingsMessages(sent, "Envelope", "pressed", true), 1UZ)) << "and opens the envelope";
+
+                    ctx->MouseTeleportToPos(centerOfKey(findKeyWithNote(keys, secondNote)));
+                    sent = piano.takeSent();
+                    expect(containsMatchingMessage(sent, "Oscillator", "frequency", pitchOfNote(secondNote))) << "dragging without releasing causes frequency to slide to new target frequency";
+                    expect(eq(countMatchingSettingsMessages(sent, "Envelope", "pressed", false), 0UZ)) << "envelope does not change (ie. notes do not retrigger) while dragging";
+
+                    ctx->MouseUp();
+                    sent = piano.takeSent();
+                    expect(containsMatchingMessage(sent, "Envelope", "pressed", false)) << "releasing closes the envelope";
+                    expect(eq(countMessagesSettingKey(sent, "frequency"), countMatchingSettingsMessages(sent, "Oscillator", "frequency", pitchOfNote(secondNote)))) << "the pitch fades out on the released key";
+                };
+
+                "dragging off the keyboard closes the envelope"_test = [&] {
+                    auto&        piano = *g_state.piano;
+                    const auto   keys  = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
+                    const ImRect rect  = pianoKeyboardInfo(ctx, piano.block).RectFull;
+                    ctx->MouseTeleportToPos(centerOfKey(keys.front()));
+                    ctx->MouseDown();
+                    expect(containsMatchingMessage(piano.takeSent(), "Envelope", "pressed", true)) << fatal;
+                    ctx->MouseTeleportToPos(ImVec2{rect.GetCenter().x, rect.Max.y + .5f * rect.GetHeight()});
+                    expect(containsMatchingMessage(piano.takeSent(), "Envelope", "pressed", false));
+                    ctx->MouseUp();
+                    expect(piano.takeSent().empty()) << "releasing while not hovering the keyboard does nothing since the button already released due to the mouse dragging away";
+                };
+
+                "white keys are clipped by black keys"_test = [&] {
+                    auto&       piano                     = *g_state.piano;
+                    const auto  keys                      = calculateExpectedKeyLocationsFromActualDrawnItemSize(piano.block);
+                    const int   whiteNote                 = piano.block.firstNote();
+                    const int   blackNote                 = whiteNote + 1; // C#
+                    const Key&  blackKey                  = findKeyWithNote(keys, blackNote);
+                    const Key&  whiteKey                  = findKeyWithNote(keys, whiteNote);
+                    const float verticalCenterOfBlackKeys = .5f * (blackKey.min.y + blackKey.max.y);
+                    const float overlappingX              = .5f * (blackKey.min.x + whiteKey.max.x);
+                    const float aboveWhiteKeysYPos        = .5f * (blackKey.max.y + whiteKey.max.y);
+                    expect(blackKey.contains(ImVec2{overlappingX, verticalCenterOfBlackKeys}));
+                    expect(overlappingX > whiteKey.min.x && overlappingX < whiteKey.max.x && overlappingX > blackKey.min.x) << fatal << "x is where the keys overlap";
+
+                    const auto playAtPositionAndReturnMessages = [&](ImVec2 pos) {
+                        ctx->MouseTeleportToPos(pos);
+                        std::ignore = piano.takeSent();
+                        ctx->MouseDown();
+                        ctx->MouseUp();
+                        return piano.takeSent();
+                    };
+                    const auto upper = playAtPositionAndReturnMessages(ImVec2{overlappingX, verticalCenterOfBlackKeys});
+                    expect(containsMatchingMessage(upper, "Oscillator", "frequency", PianoControl::noteFrequency(blackNote))) << "the black key plays where it covers the white key";
+                    expect(!containsMatchingMessage(upper, "Oscillator", "frequency", PianoControl::noteFrequency(whiteNote))) << "the white key underneath does not play";
+                    const auto lower = playAtPositionAndReturnMessages(ImVec2{overlappingX, aboveWhiteKeysYPos});
+                    expect(containsMatchingMessage(lower, "Oscillator", "frequency", PianoControl::noteFrequency(whiteNote))) << "the white key plays below the black key";
+                };
+
+                "piano only sends frequency messages if there is a target signal generator"_test = [&] {
+                    auto&      gate = *g_state.pianoWithoutGenerator;
+                    const auto keys = calculateExpectedKeyLocationsFromActualDrawnItemSize(gate.block);
+                    ctx->MouseTeleportToPos(centerOfKey(keys.front()));
+                    std::ignore = gate.takeSent();
+                    ctx->MouseDown();
+                    ctx->MouseUp();
+                    const auto sent = gate.takeSent();
+                    expect(eq(countMessagesSettingKey(sent, "frequency"), 0UZ));
+                    expect(containsMatchingMessage(sent, "Envelope", "pressed", true) && containsMatchingMessage(sent, "Envelope", "pressed", false));
+                };
+            };
+        }
     }
 };
 
@@ -430,6 +595,9 @@ int main(int argc, char* argv[]) {
 
     g_state.choice  = std::make_unique<StandaloneControl<DigitizerUi::ImControlChoice>>(gr::property_map{{"name", "standalone_choice"}, {"label", "Waveform"}, {"target_map", "TargetA:shape"}});
     g_state.readout = std::make_unique<StandaloneControl<DigitizerUi::ImPropertyReadout>>(gr::property_map{{"name", "standalone_readout"}, {"label", "Reading"}, {"target_map", "TargetA:shape"}});
+
+    g_state.piano                 = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano"}, {"label", "Keys"}, {"target_map", "Envelope:pressed"}, {"signal_generator_name", "Oscillator"}});
+    g_state.pianoWithoutGenerator = std::make_unique<StandaloneControl<opendigitizer::PianoControl>>(gr::property_map{{"name", "standalone_piano_without_generator"}, {"label", "Gate"}, {"target_map", "Envelope:pressed"}});
 
     const bool result = app.runTests();
     g_state.unloadDashboard(); // ensure scheduler cleanup before global teardown

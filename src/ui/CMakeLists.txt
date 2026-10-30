@@ -115,6 +115,7 @@ cmrc_add_resource_library(
   sample_dashboards
   assets/sampleDashboards/dashboard.grc
   assets/sampleDashboards/ExtendedDemoDashboard.grc
+  assets/sampleDashboards/SynthesizerDemoDashboard.grc
   assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc
   assets/sampleDashboards/PulsedPowerDemo.grc
@@ -394,6 +395,10 @@ add_library(
   blocks/TargetMap.hpp
   blocks/DrawableBlockConfig.hpp
   blocks/ToolbarBlock.hpp
+  blocks/GainEnvelope.hpp
+  blocks/LowPassFilter.hpp
+  blocks/PianoControl.hpp
+  blocks/SineOscillator.hpp
   blocks/meta.hpp
   components/Block.cpp
   components/Block.hpp
@@ -415,7 +420,7 @@ add_library(
   utils/emscripten_compat.hpp)
 target_link_libraries(
   opendigitizer-dashboard
-  PRIVATE opendigitizer-options
+  PRIVATE opendigitizer-options gnuradio4::GrAudioBlocksShared
   PUBLIC opendigitizer-charts
          od_acquisition
          services
