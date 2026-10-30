@@ -1,0 +1,353 @@
+blocks:
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorC3
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 130.813
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeC3
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorBb2
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 116.541
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeBb2
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorAb3
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 207.652
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeAb3
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorD4
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 293.665
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeD4
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorF4
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 349.228
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeF4
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorG4
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 391.995
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeG4
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorAb4
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 415.305
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeAb4
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorB4
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 493.883
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeB4
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorEb5
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 622.254
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeEb5
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: generatorE5
+      sample_rate: 48000
+      chunk_size: 480
+      signal_type: Saw
+      frequency: 659.255
+      amplitude: 0.08
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: envelopeE5
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: chord14maj7
+      label: "14maj7"
+      target_map: "envelopeC3,envelopeF4,envelopeG4,envelopeB4:pressed"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: chordb7min7
+      label: "b7min7"
+      target_map: "envelopeBb2,envelopeD4,envelopeF4,envelopeAb4:pressed"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: chord3maj7flat6
+      label: "3maj7/flat6"
+      target_map: "envelopeAb3,envelopeB4,envelopeEb5,envelopeE5:pressed"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: uiWaveType
+      label: wave
+      value: Saw
+      target_map: "generatorC3,generatorBb2,generatorAb3,generatorD4,generatorF4,generatorG4,generatorAb4,generatorB4,generatorEb5,generatorE5:signal_type"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiAttack
+      label: attack
+      unit: s
+      value: 0.2
+      min: 0.01
+      max: 2
+      step: 0.01
+      style: sliderSpinner
+      target_map: "envelopeC3,envelopeBb2,envelopeAb3,envelopeD4,envelopeF4,envelopeG4,envelopeAb4,envelopeB4,envelopeEb5,envelopeE5:attack"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiRelease
+      label: release
+      unit: s
+      value: 0.5
+      min: 0.01
+      max: 3
+      step: 0.01
+      style: sliderSpinner
+      target_map: "envelopeC3,envelopeBb2,envelopeAb3,envelopeD4,envelopeF4,envelopeG4,envelopeAb4,envelopeB4,envelopeEb5,envelopeE5:release"
+  - id: gr::blocks::math::Add<float32, std::plus<float32>>
+    parameters:
+      name: mixer
+      n_inputs: 10
+  - id: opendigitizer::LowPassFilter<float32>
+    parameters:
+      name: lowPass
+      sample_rate: 48000
+      cutoff: 1140
+      cutoff_smoothing_time: 0.02
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiCutoff
+      label: cutoff
+      unit: Hz
+      value: 1140
+      min: 20
+      max: 18000
+      step: 10
+      style: sliderSpinner
+      target_map: "lowPass:cutoff"
+  - id: gr::audio::AudioSink<float32>
+    parameters:
+      name: audioSink
+      req_sample_rate: 48000
+      drift_correction: None
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: waveSink
+      signal_name: output
+      signal_quantity: amplitude
+      sample_rate: 48000
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: fft
+      fft_size: 4096
+      sample_rate: 48000
+      window: Hann
+      output_in_db: true
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: fftSink
+      dataset_index: 0
+      signal_name: spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+  - id: opendigitizer::SineOscillator<float32>
+    parameters:
+      name: pianoGenerator
+      sample_rate: 48000
+      chunk_size: 480
+      frequency: 440.0
+      amplitude: 0.15
+      portamento: 0.05
+  - id: opendigitizer::GainEnvelope<float32>
+    parameters:
+      name: pianoEnvelope
+      sample_rate: 48000
+      attack: 0.2
+      decay: 0
+      sustain_fraction: 1
+      release: 0.5
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>, gr::Stride<0, false>>
+    parameters:
+      name: pianoLowPass
+      sample_rate: 48000
+      filter_type: IIR
+      filter_response: LOWPASS
+      filter_order: 3
+      f_low: 18000
+  - id: opendigitizer::PianoControl
+    parameters:
+      name: piano
+      label: piano
+      signal_generator_name: pianoGenerator
+      octave: 4
+      octave_count: 2
+      target_map: "pianoEnvelope:pressed"
+  - id: gr::blocks::math::Add<float32, std::plus<float32>>
+    parameters:
+      name: outputMixer
+      n_inputs: 2
+connections:
+  - [generatorC3, 0, envelopeC3, 0]
+  - [envelopeC3, 0, mixer, [0, 0]]
+  - [generatorBb2, 0, envelopeBb2, 0]
+  - [envelopeBb2, 0, mixer, [0, 1]]
+  - [generatorAb3, 0, envelopeAb3, 0]
+  - [envelopeAb3, 0, mixer, [0, 2]]
+  - [generatorD4, 0, envelopeD4, 0]
+  - [envelopeD4, 0, mixer, [0, 3]]
+  - [generatorF4, 0, envelopeF4, 0]
+  - [envelopeF4, 0, mixer, [0, 4]]
+  - [generatorG4, 0, envelopeG4, 0]
+  - [envelopeG4, 0, mixer, [0, 5]]
+  - [generatorAb4, 0, envelopeAb4, 0]
+  - [envelopeAb4, 0, mixer, [0, 6]]
+  - [generatorB4, 0, envelopeB4, 0]
+  - [envelopeB4, 0, mixer, [0, 7]]
+  - [generatorEb5, 0, envelopeEb5, 0]
+  - [envelopeEb5, 0, mixer, [0, 8]]
+  - [generatorE5, 0, envelopeE5, 0]
+  - [envelopeE5, 0, mixer, [0, 9]]
+  - [mixer, 0, lowPass, 0]
+  - [lowPass, 0, outputMixer, [0, 0]]
+  - [pianoGenerator, 0, pianoEnvelope, 0]
+  - [pianoEnvelope, 0, pianoLowPass, 0]
+  - [pianoLowPass, 0, outputMixer, [0, 1]]
+  - [outputMixer, 0, audioSink, 0]
+  - [lowPass, 0, waveSink, 0]
+  - [lowPass, 0, fft, 0]
+  - [fft, 0, fftSink, 0]
+dashboard:
+  layout: Row
+  sources:
+    - name: waveSink
+      block: waveSink
+    - name: fftSink
+      block: fftSink
+  plots:
+    - name: Waveform
+      parameters:
+        history_seconds: 0.05
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: LinearReverse
+        - axis: Y
+          min: -1
+          max: 1
+      sources:
+        - waveSink
+    - name: Spectrum
+      parameters:
+        max_history_count: 1
+      axes:
+        - axis: X
+          min: 20
+          max: 20000
+          scale: Log10
+          format: MetricInline
+        - axis: Y
+          min: -200
+          max: 0
+      sources:
+        - fftSink

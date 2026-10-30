@@ -63,6 +63,15 @@ target_include_directories(qa_TestSpectrumGenerator PRIVATE ${CMAKE_CURRENT_SOUR
                                                             ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include)
 add_test(NAME qa_TestSpectrumGenerator COMMAND qa_TestSpectrumGenerator)
 
+add_executable(qa_AudioSynthesis qa_AudioSynthesis.cpp)
+target_link_libraries(
+  qa_AudioSynthesis
+  PRIVATE ut
+          gnuradio4::gnuradio-core
+          gnuradio4::gnuradio-blocklib-core
+          opendigitizer-options)
+add_test(NAME qa_AudioSynthesis COMMAND qa_AudioSynthesis)
+
 add_executable(qa_PulsedPowerGrc qa_PulsedPowerGrc.cpp)
 target_link_libraries(
   qa_PulsedPowerGrc
