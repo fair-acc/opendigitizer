@@ -1,6 +1,6 @@
 set(GIT_SHA_GNURADIO4
-    f0f48976111f55b0604e109381a3e09894212e12
-    CACHE STRING "" FORCE) # main as of 2026-10-29
+    refactor_data_sink
+    CACHE STRING "" FORCE) # replace with the merged GR4 commit before merging
 
 set(GIT_SHA_OPENCMW_CPP
     1e378d6070acb0da13294c9f3775263392806c90
