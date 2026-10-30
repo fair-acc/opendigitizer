@@ -66,7 +66,7 @@ struct Settings {
     bool editableMode{true}; // running natively
 #endif
     std::string wasmServeDir{""};
-    std::string defaultDashboard{"RemoteStream"};
+    std::string defaultDashboard{"RemoteDemo"};
     std::string remoteDashboards{"../dashboard/defaultDashboards"};
     bool        dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
 

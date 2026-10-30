@@ -248,7 +248,7 @@ public:
         };
 
         // Defer argv / #dashboard= loads until after the first ImGui frame so SIDE_MODULE
-        // dlopen (~60MB) does not race the first paint. Skip stock RemoteStream auto-load
+        // dlopen (~60MB) does not race the first paint. Skip stock RemoteDemo auto-load
         // against the static file server (404 → noisy fetch); open the built-in demo instead.
         if (argc > 1) {
             const char* url = argv[1];

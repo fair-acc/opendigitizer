@@ -1,82 +1,289 @@
 blocks:
   - id: opendigitizer::RemoteStreamSource<float32>
     parameters:
-      name: RemoteSignal1
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Signal1
-  - id: opendigitizer::RemoteDataSetSource<float32>
-    parameters:
-      name: RemoteSignalFFT1
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalFFT1&acquisitionModeFilter=dataset
-  - id: opendigitizer::RemoteDataSetSource<float32>
-    parameters:
-      name: RemoteDataSet1
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSet1&acquisitionModeFilter=dataset
-  - id: opendigitizer::RemoteDataSetSource<float32>
-    parameters:
-      name: RemoteDataSet2
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=DataSet2&acquisitionModeFilter=dataset
-  - id: opendigitizer::RemoteDataSetSource<float32>
-    parameters:
-      name: RemoteTriggered
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalTriggered&acquisitionModeFilter=triggered&preSamples=200&postSamples=600&triggerNameFilter=CMD_DIAG_TRIGGER1%2FCMD_DIAG_TRIGGER1
-  - id: opendigitizer::RemoteDataSetSource<float32>
-    parameters:
-      name: RemoteMultiplexed
-      remote_uri: /GnuRadio/Acquisition?channelNameFilter=SignalMultiplexed&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BCMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D1%2C%20CMD_BP_START%2FFAIR.SELECTOR.C%3D1%3AS%3D1%3AP%3D2%5D
+      name: RemoteSine20k
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20k&acquisitionModeFilter=continuous
   - id: opendigitizer::ImPlotSink<float32>
     parameters:
-      name: PlotSignal1
-      required_size: 5000
-      signal_name: Signal1
+      name: PlotSine20k
+      signal_name: Sine20k
+      signal_quantity: voltage
+      signal_unit: V
+      sample_rate: 20000.0
+      color: 0xCC0000
+  - id: opendigitizer::RemoteStreamSource<float32>
+    parameters:
+      name: RemoteSquare20k
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Square20k&acquisitionModeFilter=continuous
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSquare20k
+      signal_name: Square20k
+      signal_quantity: voltage
+      signal_unit: V
+      sample_rate: 20000.0
+      color: 0x009900
+  - id: opendigitizer::RemoteStreamSource<float32>
+    parameters:
+      name: RemoteSaw10k
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Saw10k&acquisitionModeFilter=continuous
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotSaw10k
+      signal_name: Saw10k
+      signal_quantity: current
+      signal_unit: A
+      sample_rate: 10000.0
+      color: 0x0055CC
+  - id: opendigitizer::RemoteStreamSource<float32>
+    parameters:
+      name: RemoteTriangle10k
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Triangle10k&acquisitionModeFilter=continuous
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotTriangle10k
+      signal_name: Triangle10k
+      signal_quantity: current
+      signal_unit: A
+      sample_rate: 10000.0
+      color: 0xCC7700
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSine20kDataSet
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20kDataSet&acquisitionModeFilter=dataset
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
-      name: PlotSignalFFT1
-      signal_name: FFT1
-      required_size: 1
-  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
-    parameters:
-      name: PlotDataSet1
+      name: PlotSine20kDataSet
+      signal_name: Sine20kDataSet
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0xCC0000
       dataset_index: 0
-      signal_name: DataSet1
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSquare20kDataSet
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Square20kDataSet&acquisitionModeFilter=dataset
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
-      name: PlotDataSet2
+      name: PlotSquare20kDataSet
+      signal_name: Square20kDataSet
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0x009900
       dataset_index: 0
-      signal_name: DataSet2
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSaw10kDataSet
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Saw10kDataSet&acquisitionModeFilter=dataset
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
-      name: PlotTriggered
+      name: PlotSaw10kDataSet
+      signal_name: Saw10kDataSet
+      signal_quantity: current
+      signal_unit: A
+      color: 0x0055CC
       dataset_index: 0
-      signal_name: Triggered
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteTriangle10kDataSet
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Triangle10kDataSet&acquisitionModeFilter=dataset
   - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
     parameters:
-      name: PlotMultiplexed
+      name: PlotTriangle10kDataSet
+      signal_name: Triangle10kDataSet
+      signal_quantity: current
+      signal_unit: A
+      color: 0xCC7700
       dataset_index: 0
-      signal_name: Multiplexed
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSine20kTriggered
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20k&acquisitionModeFilter=triggered&triggerNameFilter=TEST_TRG&preSamples=6000&postSamples=24000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSine20kTriggered
+      signal_name: Sine20kTriggered
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0xCC0000
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSquare20kTriggered
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Square20k&acquisitionModeFilter=triggered&triggerNameFilter=TEST_TRG&preSamples=6000&postSamples=24000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSquare20kTriggered
+      signal_name: Square20kTriggered
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0x009900
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSaw10kTriggered
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Saw10k&acquisitionModeFilter=triggered&triggerNameFilter=TEST_TRG&preSamples=6000&postSamples=24000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSaw10kTriggered
+      signal_name: Saw10kTriggered
+      signal_quantity: current
+      signal_unit: A
+      color: 0x0055CC
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteTriangle10kTriggered
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Triangle10k&acquisitionModeFilter=triggered&triggerNameFilter=TEST_TRG&preSamples=6000&postSamples=24000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotTriangle10kTriggered
+      signal_name: Triangle10kTriggered
+      signal_quantity: current
+      signal_unit: A
+      color: 0xCC7700
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSine20kTriggered16k
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20k&acquisitionModeFilter=triggered&triggerNameFilter=TEST_TRG&preSamples=4000&postSamples=12000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSine20kTriggered16k
+      signal_name: Sine20kTriggered16k
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0xCC0000
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSine20kMultiplexed
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20k&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BTEST_START%2F2%2C%20TEST_STOP%2F3%5D&maximumWindowSize=10000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSine20kMultiplexed
+      signal_name: Sine20kMultiplexed
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0xCC00CC
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSquare20kMultiplexed
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Square20k&acquisitionModeFilter=multiplexed&triggerNameFilter=%5BTEST_START%2F2%2C%20TEST_STOP%2F3%5D&maximumWindowSize=10000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSquare20kMultiplexed
+      signal_name: Square20kMultiplexed
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0x009900
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteSine20kSnapshot
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Sine20k&acquisitionModeFilter=snapshot&triggerNameFilter=TEST_SNAP&snapshotDelay=100000000
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotSine20kSnapshot
+      signal_name: Sine20kSnapshot
+      signal_quantity: voltage
+      signal_unit: V
+      color: 0x888888
+      dataset_index: 0
+  - id: opendigitizer::RemoteDataSetSource<float32>
+    parameters:
+      name: RemoteTone10kFFT
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Tone10kFFT&acquisitionModeFilter=dataset
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: PlotTone10kFFT
+      signal_name: Tone10kFFT
+      signal_quantity: magnitude
+      signal_unit: dB
+      color: 0x8800AA
+      dataset_index: 0
+  - id: opendigitizer::RemoteStreamSource<float32>
+    parameters:
+      name: RemoteTagContext
+      remote_uri: /GnuRadio/Acquisition?channelNameFilter=Saw10k&acquisitionModeFilter=continuous
+  - id: opendigitizer::TagToSample<float32>
+    parameters:
+      name: TagToSampleContext
+      key_filter: "gr:context"
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: PlotTagContext
+      signal_name: TagContext
+      signal_quantity: context
+      signal_unit: a.u.
+      sample_rate: 10000.0
+      color: 0xCC00CC
 connections:
-  - [RemoteSignal1, 0, PlotSignal1, 0]
-  - [RemoteSignalFFT1, 0, PlotSignalFFT1, 0]
-  - [RemoteDataSet1, 0, PlotDataSet1, 0]
-  - [RemoteDataSet2, 0, PlotDataSet2, 0]
-  - [RemoteTriggered, 0, PlotTriggered, 0]
-  - [RemoteMultiplexed, 0, PlotMultiplexed, 0]
+  - [RemoteSine20k, 0, PlotSine20k, 0]
+  - [RemoteSquare20k, 0, PlotSquare20k, 0]
+  - [RemoteSaw10k, 0, PlotSaw10k, 0]
+  - [RemoteTriangle10k, 0, PlotTriangle10k, 0]
+  - [RemoteSine20kDataSet, 0, PlotSine20kDataSet, 0, 8]
+  - [RemoteSquare20kDataSet, 0, PlotSquare20kDataSet, 0, 8]
+  - [RemoteSaw10kDataSet, 0, PlotSaw10kDataSet, 0, 8]
+  - [RemoteTriangle10kDataSet, 0, PlotTriangle10kDataSet, 0, 8]
+  - [RemoteSine20kTriggered, 0, PlotSine20kTriggered, 0, 8]
+  - [RemoteSquare20kTriggered, 0, PlotSquare20kTriggered, 0, 8]
+  - [RemoteSaw10kTriggered, 0, PlotSaw10kTriggered, 0, 8]
+  - [RemoteTriangle10kTriggered, 0, PlotTriangle10kTriggered, 0, 8]
+  - [RemoteSine20kTriggered16k, 0, PlotSine20kTriggered16k, 0, 8]
+  - [RemoteSine20kMultiplexed, 0, PlotSine20kMultiplexed, 0, 8]
+  - [RemoteSquare20kMultiplexed, 0, PlotSquare20kMultiplexed, 0, 8]
+  - [RemoteSine20kSnapshot, 0, PlotSine20kSnapshot, 0, 8]
+  - [RemoteTone10kFFT, 0, PlotTone10kFFT, 0, 8]
+  - [RemoteTagContext, 0, TagToSampleContext, 0]
+  - [TagToSampleContext, 0, PlotTagContext, 0]
 dashboard:
   layout: Free
   sources:
-    - name: PlotSignal1
-      block: PlotSignal1
-    - name: PlotSignalFFT1
-      block: PlotSignalFFT1
-    - name: PlotDataSet1
-      block: PlotDataSet1
-    - name: PlotDataSet2
-      block: PlotDataSet2
-    - name: PlotTriggered
-      block: PlotTriggered
-    - name: PlotMultiplexed
-      block: PlotMultiplexed
+    - name: PlotSine20k
+      block: PlotSine20k
+    - name: PlotSquare20k
+      block: PlotSquare20k
+    - name: PlotSaw10k
+      block: PlotSaw10k
+    - name: PlotTriangle10k
+      block: PlotTriangle10k
+    - name: PlotSine20kDataSet
+      block: PlotSine20kDataSet
+    - name: PlotSquare20kDataSet
+      block: PlotSquare20kDataSet
+    - name: PlotSaw10kDataSet
+      block: PlotSaw10kDataSet
+    - name: PlotTriangle10kDataSet
+      block: PlotTriangle10kDataSet
+    - name: PlotSine20kTriggered
+      block: PlotSine20kTriggered
+    - name: PlotSquare20kTriggered
+      block: PlotSquare20kTriggered
+    - name: PlotSaw10kTriggered
+      block: PlotSaw10kTriggered
+    - name: PlotTriangle10kTriggered
+      block: PlotTriangle10kTriggered
+    - name: PlotSine20kTriggered16k
+      block: PlotSine20kTriggered16k
+    - name: PlotSine20kMultiplexed
+      block: PlotSine20kMultiplexed
+    - name: PlotSquare20kMultiplexed
+      block: PlotSquare20kMultiplexed
+    - name: PlotSine20kSnapshot
+      block: PlotSine20kSnapshot
+    - name: PlotTone10kFFT
+      block: PlotTone10kFFT
+    - name: PlotTagContext
+      block: PlotTagContext
   plots:
-    - name: PlotSignal1
+    - name: StreamsAt20k
+      parameters:
+        n_history: 200000 # 10 s at 20 kHz
+        show_tags: true
+        show_legend: true
       axes:
         - axis: X
           min: inf
@@ -86,60 +293,112 @@ dashboard:
           min: inf
           max: inf
       sources:
-        - PlotSignal1
+        - PlotSine20k
+        - PlotSquare20k
       rect: [0, 0, 1, 1]
-    - name: PlotSignalFFT1
+    - name: StreamsAt10k
+      parameters:
+        n_history: 100000 # 10 s at 10 kHz
+        show_tags: true
+        show_legend: true
       axes:
         - axis: X
-          min: 0
-          max: 512
+          min: inf
+          max: inf
+          scale: Time
         - axis: Y
           min: inf
           max: inf
       sources:
-        - PlotSignalFFT1
+        - PlotSaw10k
+        - PlotTriangle10k
       rect: [1, 0, 1, 1]
-    - name: PlotDataSet1
+    - name: ServiceDataSets
+      parameters:
+        max_history_count: 1
+        show_tags: true
+        show_legend: true
       axes:
         - axis: X
           min: inf
           max: inf
+          scale: Linear
         - axis: Y
           min: inf
           max: inf
       sources:
-        - PlotDataSet1
-      rect: [0, 1, 1, 1]
-    - name: PlotDataSet2
-      axes:
-        - axis: X
-          min: inf
-          max: inf
-        - axis: Y
-          min: inf
-          max: inf
-      sources:
-        - PlotDataSet2
-      rect: [1, 1, 1, 1]
-    - name: PlotTriggered
-      axes:
-        - axis: X
-          min: inf
-          max: inf
-        - axis: Y
-          min: inf
-          max: inf
-      sources:
-        - PlotTriggered
+        - PlotSine20kDataSet
+        - PlotSquare20kDataSet
+        - PlotSaw10kDataSet
+        - PlotTriangle10kDataSet
       rect: [0, 2, 1, 1]
-    - name: PlotMultiplexed
+    - name: TriggeredCaptures
+      parameters:
+        max_history_count: 1
+        show_tags: true
+        show_legend: true
       axes:
         - axis: X
           min: inf
           max: inf
+          scale: Linear
         - axis: Y
           min: inf
           max: inf
       sources:
-        - PlotMultiplexed
+        - PlotSine20kTriggered
+        - PlotSquare20kTriggered
+        - PlotSaw10kTriggered
+        - PlotTriangle10kTriggered
       rect: [1, 2, 1, 1]
+    - name: Sine20kModes
+      parameters:
+        max_history_count: 1
+        show_tags: true
+        show_legend: true
+      axes:
+        - axis: X
+          min: inf
+          max: inf
+          scale: Linear
+        - axis: Y
+          min: inf
+          max: inf
+      sources:
+        - PlotSine20kTriggered16k
+        - PlotSine20kMultiplexed
+        - PlotSquare20kMultiplexed
+        - PlotSine20kSnapshot
+      rect: [0, 3, 2, 1]
+    - name: Tone10kSpectrum
+      parameters:
+        max_history_count: 1
+        show_tags: true
+        show_legend: true
+      axes:
+        - axis: X
+          min: inf
+          max: inf
+          scale: Linear
+        - axis: Y
+          min: inf
+          max: inf
+      sources:
+        - PlotTone10kFFT
+      rect: [0, 1, 1, 1]
+    - name: TagToSample
+      parameters:
+        n_history: 100000 # 10 s at 10 kHz
+        show_tags: true
+        show_legend: true
+      axes:
+        - axis: X
+          min: inf
+          max: inf
+          scale: Time
+        - axis: Y
+          min: inf
+          max: inf
+      sources:
+        - PlotTagContext
+      rect: [1, 1, 1, 1]

@@ -1,76 +1,199 @@
 blocks:
   - id: gr::basic::ClockSource
     parameters:
-      name: ClockSource
-      do_zero_order_hold: true
+      name: Clock20k
       n_samples_max: 0
-      sample_rate: 1000
-      verbose_console: false
-      repeat_period: 1900000000 # 1.9s
-      chunk_size: 250
+      sample_rate: 20000.0
+      chunk_size: 200 # 10 ms
+      repeat_period: 4050000000 # 4.05 s: each capture starts 0.05 s later in the signal period; longer than the largest capture window (3.6 s)
       tag_times: !!uint64
-        - 300000000 # 0.5s
-        - 900000000 # 0.8s
-        - 1200000000 # 1.2s
+        - 0
+        - 600000000
+        - 1000000000
+        - 1400000000
       tag_values: !!str
-        - "CMD_DIAG_TRIGGER1"
-        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1"
-        - "CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2"
+        - "TEST_TRG/1" # numeric contexts: TagToSample turns them into a 1-2-3-4 staircase
+        - "TEST_START/2"
+        - "TEST_STOP/3"
+        - "TEST_SNAP/4"
+  - id: gr::basic::ClockSource
+    parameters:
+      name: Clock10k
+      n_samples_max: 0
+      sample_rate: 10000.0
+      chunk_size: 100 # 10 ms
+      repeat_period: 4050000000
+      tag_times: !!uint64
+        - 0
+        - 600000000
+        - 1000000000
+        - 1400000000
+      tag_values: !!str
+        - "TEST_TRG/1"
+        - "TEST_START/2"
+        - "TEST_STOP/3"
+        - "TEST_SNAP/4"
+
   - id: gr::basic::SignalGenerator<float32>
     parameters:
-      name: SignalGenerator1
-      frequency: 30
-      amplitude: 50
-      sample_rate: 10000
+      name: GenSine20k
       signal_type: Sin
+      frequency: 2.0
+      amplitude: 1.0
+      sample_rate: 20000.0
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkSine20k
+      signal_name: Sine20k
+      signal_quantity: voltage
+      signal_unit: V
+      signal_min: -1.0
+      signal_max: 1.0
+      sample_rate: 20000.0
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: ToDataSetSine20k
+      filter: "TEST_TRG"
+      n_pre: 12000 # 0.6 s before the trigger
+      n_post: 60000 # 3 s after: holds the TEST_START, TEST_STOP and TEST_SNAP tags
+      sample_rate: 20000.0
+      signal_name: Sine20kDataSet
+      signal_quantity: voltage
+      signal_unit: V
+  - id: gr::basic::DataSetSink<float32>
+    parameters:
+      name: DataSetSinkSine20k
+      signal_name: Sine20kDataSet
+
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: GenSquare20k
+      signal_type: Square
+      frequency: 1.0
+      amplitude: 0.5
+      sample_rate: 20000.0
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkSquare20k
+      signal_name: Square20k
+      signal_quantity: voltage
+      signal_unit: V
+      signal_min: -0.5
+      signal_max: 0.5
+      sample_rate: 20000.0
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: ToDataSetSquare20k
+      filter: "TEST_TRG"
+      n_pre: 12000
+      n_post: 60000
+      sample_rate: 20000.0
+      signal_name: Square20kDataSet
+      signal_quantity: voltage
+      signal_unit: V
+  - id: gr::basic::DataSetSink<float32>
+    parameters:
+      name: DataSetSinkSquare20k
+      signal_name: Square20kDataSet
+
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: GenSaw10k
+      signal_type: Saw
+      frequency: 0.5
+      amplitude: 1.0
+      sample_rate: 10000.0
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkSaw10k
+      signal_name: Saw10k
+      signal_quantity: current
+      signal_unit: A
+      signal_min: -1.0
+      signal_max: 1.0
+      sample_rate: 10000.0
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: ToDataSetSaw10k
+      filter: "TEST_TRG"
+      n_pre: 6000
+      n_post: 30000
+      sample_rate: 10000.0
+      signal_name: Saw10kDataSet
+      signal_quantity: current
+      signal_unit: A
+  - id: gr::basic::DataSetSink<float32>
+    parameters:
+      name: DataSetSinkSaw10k
+      signal_name: Saw10kDataSet
+
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: GenTriangle10k
+      signal_type: Triangle
+      frequency: 1.0
+      amplitude: 0.5
+      sample_rate: 10000.0
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: SinkTriangle10k
+      signal_name: Triangle10k
+      signal_quantity: current
+      signal_unit: A
+      signal_min: -0.5
+      signal_max: 0.5
+      sample_rate: 10000.0
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: ToDataSetTriangle10k
+      filter: "TEST_TRG"
+      n_pre: 6000
+      n_post: 30000
+      sample_rate: 10000.0
+      signal_name: Triangle10kDataSet
+      signal_quantity: current
+      signal_unit: A
+  - id: gr::basic::DataSetSink<float32>
+    parameters:
+      name: DataSetSinkTriangle10k
+      signal_name: Triangle10kDataSet
+
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: GenTone10k
+      signal_type: Square
+      frequency: 250.0 # 40 samples per period: odd harmonics, aliases fall on harmonics
+      amplitude: 1.0
+      sample_rate: 10000.0
   - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
     parameters:
-      name: FFT
-      fft_size: 1024
-  - id: gr::basic::StreamToDataSet<float32>
-    parameters:
-      name: StreamToDataSet1
-      filter: "CMD_DIAG_TRIGGER1"
-      n_pre: 200
-      n_post: 600
-  - id: gr::basic::StreamToDataSet<float32>
-    parameters:
-      name: StreamToDataSet2
-      filter: "[CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=1, CMD_BP_START/FAIR.SELECTOR.C=1:S=1:P=2]"
-      n_pre: 100
-      n_post: 100
-  - id: gr::basic::DataSink<float32>
-    parameters:
-      name: Sink1
-      signal_name: Signal1
+      name: FFTTone10k
+      fft_size: 1024 # about 10 spectra per second
+      output_in_db: true
+      sample_rate: 10000.0
+      signal_name: Tone10k
   - id: gr::basic::DataSetSink<float32>
     parameters:
-      name: SinkFFT1
-      signal_name: SignalFFT1
-  - id: gr::basic::DataSetSink<float32>
-    parameters:
-      name: SinkDataSet1
-      signal_name: DataSet1
-  - id: gr::basic::DataSetSink<float32>
-    parameters:
-      name: SinkDataSet2
-      signal_name: DataSet2
-  - id: gr::basic::DataSink<float32>
-    parameters:
-      name: SinkTriggered
-      signal_name: SignalTriggered
-  - id: gr::basic::DataSink<float32>
-    parameters:
-      name: SinkMultiplexed
-      signal_name: SignalMultiplexed
+      name: DataSetSinkTone10kFFT
+      signal_name: Tone10kFFT
+
 connections:
-  - [ClockSource, 0, SignalGenerator1, 0]
-  - [SignalGenerator1, 0, FFT, 0]
-  - [FFT, 0, SinkFFT1, 0 ]
-  - [SignalGenerator1, 0, StreamToDataSet1, 0]
-  - [SignalGenerator1, 0, StreamToDataSet2, 0]
-  - [SignalGenerator1, 0, Sink1, 0]
-  - [StreamToDataSet1, 0, SinkDataSet1, 0]
-  - [StreamToDataSet2, 0, SinkDataSet2, 0]
-  - [SignalGenerator1, 0, SinkTriggered, 0]
-  - [SignalGenerator1, 0, SinkMultiplexed, 0]
+  - [Clock20k, 0, GenSine20k, 0, 131072]
+  - [GenSine20k, 0, SinkSine20k, 0, 262144]
+  - [GenSine20k, 0, ToDataSetSine20k, 0, 262144]
+  - [ToDataSetSine20k, 0, DataSetSinkSine20k, 0, 8]
+  - [Clock20k, 0, GenSquare20k, 0, 131072]
+  - [GenSquare20k, 0, SinkSquare20k, 0, 262144]
+  - [GenSquare20k, 0, ToDataSetSquare20k, 0, 262144]
+  - [ToDataSetSquare20k, 0, DataSetSinkSquare20k, 0, 8]
+  - [Clock10k, 0, GenSaw10k, 0, 131072]
+  - [GenSaw10k, 0, SinkSaw10k, 0, 262144]
+  - [GenSaw10k, 0, ToDataSetSaw10k, 0, 262144]
+  - [ToDataSetSaw10k, 0, DataSetSinkSaw10k, 0, 8]
+  - [Clock10k, 0, GenTriangle10k, 0, 131072]
+  - [GenTriangle10k, 0, SinkTriangle10k, 0, 262144]
+  - [GenTriangle10k, 0, ToDataSetTriangle10k, 0, 262144]
+  - [ToDataSetTriangle10k, 0, DataSetSinkTriangle10k, 0, 8]
+  - [Clock10k, 0, GenTone10k, 0, 131072]
+  - [GenTone10k, 0, FFTTone10k, 0, 65536]
+  - [FFTTone10k, 0, DataSetSinkTone10kFFT, 0, 8]
