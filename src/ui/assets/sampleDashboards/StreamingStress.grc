@@ -1,0 +1,102 @@
+blocks:
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sine1
+      signal_type: Sin
+      frequency: 1
+      sample_rate: 20000
+      chunk_size: 2000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: noise2
+      signal_type: GaussianNoise
+      amplitude: 0.3
+      offset: 3
+      seed: 2
+      sample_rate: 20000
+      chunk_size: 2000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sine3
+      signal_type: Sin
+      frequency: 3
+      sample_rate: 20000
+      chunk_size: 2000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: noise4
+      signal_type: GaussianNoise
+      amplitude: 0.3
+      offset: 3
+      seed: 4
+      sample_rate: 20000
+      chunk_size: 2000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink1
+      signal_name: sine 1
+      signal_unit: V
+      sample_rate: 20000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: noiseSink2
+      signal_name: noise 2
+      signal_unit: V
+      sample_rate: 20000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink3
+      signal_name: sine 3
+      signal_unit: V
+      sample_rate: 20000
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: noiseSink4
+      signal_name: noise 4
+      signal_unit: V
+      sample_rate: 20000
+connections:
+  - [ sine1, 0, sineSink1, 0 ]
+  - [ noise2, 0, noiseSink2, 0 ]
+  - [ sine3, 0, sineSink3, 0 ]
+  - [ noise4, 0, noiseSink4, 0 ]
+dashboard:
+  layout: Grid
+  sources:
+    - name: sineSink1
+      block: sineSink1
+    - name: noiseSink2
+      block: noiseSink2
+    - name: sineSink3
+      block: sineSink3
+    - name: noiseSink4
+      block: noiseSink4
+  plots:
+    - name: Chart 1
+      type: XYChart
+      parameters:
+        n_history: 2000000
+        gpu_acceleration: true
+      sources:
+        - sineSink1
+    - name: Chart 2
+      type: XYChart
+      parameters:
+        n_history: 2000000
+        gpu_acceleration: true
+      sources:
+        - noiseSink2
+    - name: Chart 3
+      type: XYChart
+      parameters:
+        n_history: 2000000
+        gpu_acceleration: true
+      sources:
+        - sineSink3
+    - name: Chart 4
+      type: XYChart
+      parameters:
+        n_history: 2000000
+        gpu_acceleration: true
+      sources:
+        - noiseSink4

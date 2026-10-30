@@ -116,8 +116,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     gr::HistoryBuffer<T>      _yValues{required_size};
     std::deque<TagData>       _tagValues{};
 
-    double      _sample_period = 1.0 / static_cast<double>(sample_rate);
-    std::size_t _sample_count  = 0UZ;
+    double      _sample_period    = 1.0 / static_cast<double>(sample_rate);
+    std::size_t _sample_count     = 0UZ;
+    std::size_t _totalSampleCount = 0UZ;
 
     // shared mutex for thread-safe data access between processBulk() and draw()
     // shared_ptr so SinkAdapter can safely hold a reference that outlives the block
@@ -203,7 +204,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
         }
     }
 
-    [[nodiscard]] std::size_t totalSampleCount() const noexcept { return _sample_count; }
+    [[nodiscard]] std::size_t totalSampleCount() const noexcept { return _totalSampleCount; }
 
     [[nodiscard]] std::size_t size() const noexcept {
         if constexpr (IsStreaming) {
@@ -576,6 +577,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
             _yValues.push_back(sample);
             _sample_count++;
+            _totalSampleCount++;
 
             if constexpr (IsDataSet) {
                 updateAxisMetadataFromDataSet(sample);

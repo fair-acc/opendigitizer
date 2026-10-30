@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_CHARTS_XYCHART_HPP
 
 #include "Chart.hpp"
+#include "GpuLineRenderer.hpp"
 #include "SignalSink.hpp"
 
 #include <algorithm>
@@ -18,6 +19,7 @@
 
 #include "../common/LookAndFeel.hpp"
 #include "../common/TouchHandler.hpp"
+#include "../utils/TransparentStringHash.hpp"
 #include <imgui.h>
 #include <implot.h>
 
@@ -56,10 +58,11 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<gr::Size_t, "history depth", gr::Unit<"samples">, gr::Limits<4U, 2'000'000U>>                                                                                                n_history               = kDefaultHistorySize;
     A<float, "history seconds", gr::Unit<"s">, gr::Doc<"history depth in seconds at the first signal's sample rate, which then sets n_history; 0: n_history as given">>            history_seconds         = 0.0f;
     A<float, "update rate", gr::Unit<"Hz">, gr::Limits<0.f, 240.f>, gr::Doc<"streaming-trace redraw cadence; decouples the display from the mouse/redraw rate (0 = every frame)">> update_rate             = 25.0f;
+    A<bool, "GPU acceleration", gr::Doc<"streaming traces drawn on the GPU, uploading only new samples; false: on the CPU">>                                                       gpu_acceleration        = true;
 
     static constexpr SignalKind supportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate);
+    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
     std::array<std::optional<AxisCategory>, 3UZ> _yCategories{};
@@ -74,7 +77,9 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         std::size_t         sourceCount = 0UZ; // the samples the window was built from, before reduceToColumns
         double              lastRefresh = 0.0;
     };
-    std::unordered_map<std::string, StreamSnapshot> _streamSnapshots;
+    std::unordered_map<std::string, StreamSnapshot>                                                         _streamSnapshots;
+    GpuLineProgram                                                                                          _gpuLineProgram;
+    std::unordered_map<std::string, GpuLineRenderer, opendigitizer::TransparentStringHash, std::equal_to<>> _gpuLines;
 
     static constexpr std::string_view kChartTypeName = "XYChart";
 
@@ -248,6 +253,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
         }
         limitXFitToHistory();
+        std::erase_if(_gpuLines, [frame = ImGui::GetFrameCount()](const auto& entry) { return entry.second.lastDrawnFrame != frame; });
     }
 
     void limitXFitToHistory() {
@@ -286,7 +292,26 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         StreamSnapshot& snap            = _streamSnapshots[std::string(sink.uniqueName())];
         const double    now             = ImGui::GetTime();
         const double    refreshInterval = update_rate.value > 0.f ? 1.0 / static_cast<double>(update_rate.value) : 0.0;
-        if (snap.sourceCount != dataCount || (now - snap.lastRefresh) >= refreshInterval) {
+        const bool      refreshDue      = snap.sourceCount != dataCount || (now - snap.lastRefresh) >= refreshInterval;
+        if (gpu_acceleration.value && _gpuLineProgram.available()) {
+            auto lineIt = _gpuLines.find(sink.uniqueName());
+            if (lineIt == _gpuLines.end()) {
+                lineIt = _gpuLines.try_emplace(std::string(sink.uniqueName())).first;
+            }
+            GpuLineRenderer& line = lineIt->second;
+            if (refreshDue || line.lastDrawnFrame < 0) {
+                line.refresh(sink, static_cast<std::size_t>(n_history.value), xAxisScale);
+                snap.x.clear();
+                snap.sourceCount = dataCount;
+                snap.lastRefresh = now;
+            }
+            line.lastDrawnFrame = ImGui::GetFrameCount();
+            if (!line.outOfMemory) {
+                line.draw(_gpuLineProgram, sink, plotLabel(sink).c_str(), sinkColor(sink.color()), seriesLineWidth(sink), anti_aliasing.value);
+                return;
+            }
+        }
+        if (refreshDue || snap.x.empty()) {
             const double xMin = sink.xAt(offset);
             const double xMax = sink.xAt(offset + dataCount - 1);
             snap.x.resize(dataCount);
