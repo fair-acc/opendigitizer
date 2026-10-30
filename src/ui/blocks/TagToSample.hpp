@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_TAGTOSAMPLE_HPP
 
 #include <gnuradio-4.0/Block.hpp>
+#include <gnuradio-4.0/PmtTypeHelpers.hpp>
 
 namespace opendigitizer {
 
@@ -19,8 +20,10 @@ struct TagToSample : public gr::Block<TagToSample<T>> {
     T processOne(T) noexcept {
         if (this->inputTagsPresent()) {
             const gr::property_map& tagMap = this->mergedInputTag().map;
-            if (const auto it = tagMap.find(key_filter); it != tagMap.end() && it->second.is_string()) {
-                _currentValue = static_cast<T>(std::stod(it->second.value_or(std::string())));
+            if (const auto it = tagMap.find(key_filter); it != tagMap.end()) {
+                const gr::pmt::Value& value  = it->second;
+                const auto            parsed = value.is_string() ? gr::pmt::convert_safely<T>(std::string(value.value_or(std::string_view{}))) : gr::pmt::convert_safely<T>(value);
+                _currentValue                = parsed.value_or(_currentValue);
             }
         }
         return _currentValue;

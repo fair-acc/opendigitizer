@@ -370,20 +370,22 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             }
             int dataCount = static_cast<int>(ds.axis_values[0].size());
 
-            ImPlot::PlotLineG(
-                label.c_str(),
-                [](int idx, void* user_data) -> ImPlotPoint {
-                    auto*       context  = static_cast<DataSetPlotContext*>(user_data);
-                    const auto& data_set = *context->data_set;
-                    double      xVal     = static_cast<double>(data_set.axis_values[0][static_cast<std::size_t>(idx)]);
-                    double      yVal     = 0.0;
-                    auto        sigVals  = data_set.signalValues(context->signal_index);
-                    if (static_cast<std::size_t>(idx) < sigVals.size()) {
-                        yVal = static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
-                    }
-                    return ImPlotPoint(xVal, yVal);
-                },
-                &ctx, dataCount);
+            const ImPlotGetter dataSetPoint = [](int idx, void* user_data) -> ImPlotPoint {
+                auto*       context  = static_cast<DataSetPlotContext*>(user_data);
+                const auto& data_set = *context->data_set;
+                double      xVal     = static_cast<double>(data_set.axis_values[0][static_cast<std::size_t>(idx)]);
+                double      yVal     = 0.0;
+                auto        sigVals  = data_set.signalValues(context->signal_index);
+                if (static_cast<std::size_t>(idx) < sigVals.size()) {
+                    yVal = static_cast<double>(sigVals[static_cast<std::size_t>(idx)]);
+                }
+                return ImPlotPoint(xVal, yVal);
+            };
+            if (dataCount < 2) {
+                ImPlot::PlotScatterG(label.c_str(), dataSetPoint, &ctx, dataCount);
+            } else {
+                ImPlot::PlotLineG(label.c_str(), dataSetPoint, &ctx, dataCount);
+            }
         }
     }
 };
