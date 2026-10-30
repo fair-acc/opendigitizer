@@ -261,7 +261,7 @@ private:
 struct StreamingPollerEntry {
     using SampleType                                               = float;
     bool                                                    in_use = true;
-    std::shared_ptr<gr::basic::StreamingPoller<SampleType>> poller;
+    std::shared_ptr<gr::basic::Poller<SampleType>>          poller;
     std::optional<std::string>                              signal_name;
     std::optional<std::string>                              signal_unit;
     std::optional<std::string>                              signal_quantity;
@@ -275,7 +275,7 @@ struct StreamingPollerEntry {
     std::string                                             _lastTriggerNameFromTag;
     std::set<std::string, std::less<>>                      _keysFromTags;
 
-    explicit StreamingPollerEntry(std::shared_ptr<basic::StreamingPoller<SampleType>> p) : poller{p} {}
+    explicit StreamingPollerEntry(std::shared_ptr<basic::Poller<SampleType>> p) : poller{p} {}
 
     void populateFromSignalEntry(const SignalEntry& entry) {
         const auto unlessFromTags = [this]<typename T>(std::string_view key, std::optional<T>& target, const std::optional<T>& value) {
@@ -391,7 +391,7 @@ inline const SignalEntry* findSignalEntryByName(const std::map<std::string, Sign
 
 struct DataSetPollerEntry {
     using SampleType = float;
-    std::shared_ptr<gr::basic::DataSetPoller<SampleType>> poller;
+    std::shared_ptr<gr::basic::Poller<gr::DataSet<SampleType>>> poller;
 };
 
 template<units::basic_fixed_string serviceName, typename... Meta>
@@ -572,7 +572,13 @@ private:
 
                 if (pendingFlowGraph.has_value()) {
                     gr::graph::forEachBlock<gr::block::Category::NormalBlock>(*pendingFlowGraph.value(), [&signalEntryBySink](const auto& block) {
-                        if (block->typeName().starts_with("gr::basic::DataSink")) {
+                        const std::string_view typeName = block->typeName();
+                        if (typeName.starts_with("gr::basic::DataSink<gr::DataSet<") || typeName.starts_with("gr::basic::DataSetSink<")) {
+                            SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
+                            entry.type         = SignalType::DataSet;
+                            entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
+                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
+                        } else if (typeName.starts_with("gr::basic::DataSink<")) {
                             SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
                             entry.type         = SignalType::Plain;
                             entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
@@ -581,11 +587,6 @@ private:
                             entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
                             entry.signal_min   = detail::getSetting<float>(block, "signal_min");
                             entry.signal_max   = detail::getSetting<float>(block, "signal_max");
-                        } else if (block->typeName().starts_with("gr::basic::DataSetSink")) {
-                            SignalEntry& entry = signalEntryBySink[std::string(block->uniqueName())];
-                            entry.type         = SignalType::DataSet;
-                            entry.name         = detail::getSetting<std::pmr::string>(block, "signal_name").value_or("");
-                            entry.sample_rate  = detail::getSetting<float>(block, "sample_rate");
                         }
                     });
                     if (_updateSignalEntriesCallback) {
@@ -655,13 +656,13 @@ private:
         return pollersFinished;
     }
 
-    auto getStreamingPoller(std::map<PollerKey, StreamingPollerEntry>& pollers, std::string_view signalName, std::size_t minRequiredSamples = 40, std::size_t maxRequiredSamples = std::numeric_limits<std::size_t>::max()) {
+    auto getStreamingPoller(std::map<PollerKey, StreamingPollerEntry>& pollers, std::string_view signalName) {
         const auto key = PollerKey{.mode = AcquisitionMode::Continuous, .signal_name = std::string(signalName)};
 
         auto pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
             const auto query = basic::DataSinkQuery::signalName(signalName);
-            pollerIt         = pollers.emplace(key, gr::basic::globalDataSinkRegistry().getStreamingPoller<StreamingPollerEntry::SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+            pollerIt         = pollers.emplace(key, gr::basic::globalDataSinkRegistry().getPoller<StreamingPollerEntry::SampleType>(query)).first;
         }
         return pollerIt;
     }
@@ -732,13 +733,17 @@ private:
         };
 
         const auto wasFinished = pollerEntry.poller->finished.load();
-        if (pollerEntry.poller->process(processData)) {
+        while (pollerEntry.poller->process(processData)) {
             super_t::notify(context, reply);
+            if (!wasFinished) {
+                break;
+            }
+            reply = {};
         }
         return wasFinished;
     }
 
-    auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName, std::size_t minRequiredSamples = 1, std::size_t maxRequiredSamples = std::numeric_limits<std::size_t>::max()) {
+    auto getDataSetPoller(std::map<PollerKey, DataSetPollerEntry>& pollers, const TimeDomainContext& context, AcquisitionMode mode, std::string_view signalName) {
         const auto key      = PollerKey{.mode = mode, .signal_name = std::string(signalName), .pre_samples = static_cast<std::size_t>(context.preSamples), .post_samples = static_cast<std::size_t>(context.postSamples), .maximum_window_size = static_cast<std::size_t>(context.maximumWindowSize), .snapshot_delay = std::chrono::nanoseconds(context.snapshotDelay)};
         auto       pollerIt = pollers.find(key);
         if (pollerIt == pollers.end()) {
@@ -748,15 +753,15 @@ private:
             // and send snippets from their datasets to the individual subscribers
             if (mode == AcquisitionMode::Triggered) {
                 // clang-format off
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getTriggerPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
-                                                    {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .preSamples = key.pre_samples, .postSamples = key.post_samples, })).first; //
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Trigger, detail::Matcher{.filterDefinition = context.triggerNameFilter}, //
+                                                    {.preSamples = key.pre_samples, .postSamples = key.post_samples, })).first; //
                 // clang-format on
             } else if (mode == AcquisitionMode::Snapshot) {
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getSnapshotPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .delay = key.snapshot_delay})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Snapshot, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.delay = key.snapshot_delay})).first;
             } else if (mode == AcquisitionMode::Multiplexed) {
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getMultiplexedPoller<SampleType>(query, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples, .maximumWindowSize = key.maximum_window_size})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<SampleType>(query, basic::CaptureMode::Multiplexed, detail::Matcher{.filterDefinition = context.triggerNameFilter}, {.maximumWindowSize = key.maximum_window_size})).first;
             } else if (mode == AcquisitionMode::DataSet) {
-                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getDataSetPoller<SampleType>(query, {.minRequiredSamples = minRequiredSamples, .maxRequiredSamples = maxRequiredSamples})).first;
+                pollerIt = pollers.emplace(key, basic::globalDataSinkRegistry().getPoller<gr::DataSet<SampleType>>(query)).first;
             }
         }
         return pollerIt;

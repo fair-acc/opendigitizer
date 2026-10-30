@@ -53,7 +53,7 @@ void registerTestBlocks(Registry& registry) {
 #pragma GCC diagnostic ignored "-Wunused-variable"
     gr::registerBlock<CountSource, float>(registry);
     gr::registerBlock<ForeverSource, float>(registry);
-    gr::registerBlock<gr::basic::DataSetSink, float>(registry);
+    gr::registerBlock<"gr::basic::DataSetSink", gr::basic::DataSetSink, float>(registry);
     gr::registerBlock<gr::basic::DataSink, float>(registry);
     gr::registerBlock<gr::blocks::fft::FFT<float, gr::DataSet<float>>>(registry);
     gr::registerBlock<gr::testing::Sleep, float>(registry);
