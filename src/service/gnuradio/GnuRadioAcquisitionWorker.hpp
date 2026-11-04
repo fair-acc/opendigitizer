@@ -259,21 +259,21 @@ private:
 };
 
 struct StreamingPollerEntry {
-    using SampleType                                               = float;
-    bool                                                    in_use = true;
-    std::shared_ptr<gr::basic::Poller<SampleType>>          poller;
-    std::optional<std::string>                              signal_name;
-    std::optional<std::string>                              signal_unit;
-    std::optional<std::string>                              signal_quantity;
-    std::optional<float>                                    sample_rate;
-    std::optional<float>                                    signal_min;
-    std::optional<float>                                    signal_max;
-    TimingEventState                                        timingEventState;
-    std::optional<std::int64_t>                             _lastRefTimestampFromTag;
-    std::optional<float>                                    _sampleRateForLastRefTimestamp;
-    std::uint64_t                                           _sampleCountFromLastRefTimestamp = 0;
-    std::string                                             _lastTriggerNameFromTag;
-    std::set<std::string, std::less<>>                      _keysFromTags;
+    using SampleType                                      = float;
+    bool                                           in_use = true;
+    std::shared_ptr<gr::basic::Poller<SampleType>> poller;
+    std::optional<std::string>                     signal_name;
+    std::optional<std::string>                     signal_unit;
+    std::optional<std::string>                     signal_quantity;
+    std::optional<float>                           sample_rate;
+    std::optional<float>                           signal_min;
+    std::optional<float>                           signal_max;
+    TimingEventState                               timingEventState;
+    std::optional<std::int64_t>                    _lastRefTimestampFromTag;
+    std::optional<float>                           _sampleRateForLastRefTimestamp;
+    std::uint64_t                                  _sampleCountFromLastRefTimestamp = 0;
+    std::string                                    _lastTriggerNameFromTag;
+    std::set<std::string, std::less<>>             _keysFromTags;
 
     explicit StreamingPollerEntry(std::shared_ptr<basic::Poller<SampleType>> p) : poller{p} {}
 
@@ -392,6 +392,7 @@ inline const SignalEntry* findSignalEntryByName(const std::map<std::string, Sign
 struct DataSetPollerEntry {
     using SampleType = float;
     std::shared_ptr<gr::basic::Poller<gr::DataSet<SampleType>>> poller;
+    bool                                                        in_use = true;
 };
 
 template<units::basic_fixed_string serviceName, typename... Meta>
@@ -635,6 +636,12 @@ private:
     }
 
     bool handleSubscriptions(std::map<PollerKey, StreamingPollerEntry>& streamingPollers, std::map<PollerKey, DataSetPollerEntry>& dataSetPollers, const std::map<std::string, SignalEntry>& signalEntryBySink) {
+        for (auto& entry : streamingPollers | std::views::values) {
+            entry.in_use = false;
+        }
+        for (auto& entry : dataSetPollers | std::views::values) {
+            entry.in_use = false;
+        }
         bool pollersFinished = true;
         for (const auto& subscription : super_t::activeSubscriptions()) {
             const auto filterIn = opencmw::query::deserialise<TimeDomainContext>(subscription.params());
@@ -655,6 +662,8 @@ private:
                 std::println(std::cerr, "Could not handle subscription {}: {}", subscription.toZmqTopic(), e.what());
             }
         }
+        std::erase_if(streamingPollers, [](const auto& item) { return !item.second.in_use; });
+        std::erase_if(dataSetPollers, [](const auto& item) { return !item.second.in_use; });
         return pollersFinished;
     }
 
@@ -674,6 +683,7 @@ private:
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
+        pollerIt->second.in_use = true;
 
         auto& pollerEntry = pollerIt->second;
         if (const auto* entry = detail::findSignalEntryByName(signalEntryBySink, signalName, SignalType::Plain)) {
@@ -794,6 +804,7 @@ private:
         if (pollerIt == pollers.end()) { // flushing, do not create new pollers
             return true;
         }
+        pollerIt->second.in_use = true;
 
         auto& pollerEntry = pollerIt->second;
 

@@ -697,6 +697,47 @@ connections:
         test.expectDnsEntries({SignalType::Plain}, {"Signal_B"}, {"Unit_B"}, {"Quantity_B"}, {123456.f}, "");
     };
 
+    "Streaming - unsubscribed poller is released"_test = [] {
+        constexpr std::string_view grc   = R"(
+blocks:
+  - id: ForeverSource<float32>
+    parameters:
+      name: source
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: test_sink_a
+      signal_name: "Signal_A"
+  - id: gr::basic::DataSink<float32>
+    parameters:
+      name: test_sink_b
+      signal_name: "Signal_B"
+connections:
+  - [source, 0, test_sink_a, 0]
+  - [source, 0, test_sink_b, 0]
+)";
+        constexpr std::string_view kUriB = "/GnuRadio/Acquisition?channelNameFilter=Signal_B";
+
+        TestApp test;
+
+        std::atomic<std::size_t> receivedCountA = 0;
+        test.subscribeClient("/GnuRadio/Acquisition?channelNameFilter=Signal_A", [&receivedCountA](const auto& acq) { receivedCountA += samplesForSignalIndex(acq.channelValues, 0).size(); });
+        std::atomic<std::size_t> receivedCountB = 0;
+        test.subscribeClient(kUriB, [&receivedCountB](const auto& acq) { receivedCountB += samplesForSignalIndex(acq.channelValues, 0).size(); });
+
+        if (!test.waitForNumSubscriptions(2UZ) || !test.setGrc(grc) || !waitWhile([&] { return receivedCountB == 0UZ; })) {
+            return;
+        }
+
+        test.client.unsubscribe(URI(std::format("{}{}", TestApp::mdsHost, kUriB)));
+        if (!waitWhile([&test] { return test.acqWorker.activeSubscriptions().size() > 1UZ; })) {
+            return;
+        }
+
+        constexpr std::size_t kMoreThanBuffered  = 10UZ * gr::basic::detail::data_sink_buffer_size;
+        const std::size_t     countAtUnsubscribe = receivedCountA;
+        expect(waitWhile([&] { return receivedCountA < countAtUnsubscribe + kMoreThanBuffered; })) << "the unread Signal_B poller must not stall the shared source";
+    };
+
     "Trigger - tightly packed tags"_test = [] {
         constexpr std::string_view grc = R"(
 blocks:
