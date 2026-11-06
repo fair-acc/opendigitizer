@@ -396,7 +396,10 @@ jobs:
           key: ${{ runner.os }}-ccache-coverage-clang-21-${{ github.sha }}
 
       - name: Install Xvfb
-        run: sudo apt-get install -y xvfb || true
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/picoscope* || true
+          sudo apt-get update
+          sudo apt-get install -y xvfb || true
 
       # the build lanes gate on the tests; coverage is reported regardless
       - name: Test
