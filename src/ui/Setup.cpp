@@ -1,10 +1,13 @@
 #include "Setup.hpp"
 
+#include <gnuradio-4.0/GrAudioBlocks.hpp>
+
 #include <imgui.h>
 #include <implot.h>
 #include <implot3d.h>
 
 #include "LogHistory.hpp"
+#include "blocks/GainEnvelope.hpp"
 #include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlColor.hpp"
 #include "blocks/ImControlNumber.hpp"
@@ -13,6 +16,9 @@
 #include "blocks/ImControlTrigger.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/ImPropertyReadout.hpp"
+#include "blocks/LowPassFilter.hpp"
+#include "blocks/PianoControl.hpp"
+#include "blocks/SineOscillator.hpp"
 #include "blocks/StatusBarBlock.hpp"
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
@@ -38,6 +44,11 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<ImControlColor>(registry);
     std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
     std::ignore = gr::registerBlock<SchedulerStateIndicator>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::GainEnvelope, float, int16_t>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::LowPassFilter, float>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::PianoControl>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::SineOscillator, float>(registry);
+    gr::blocklib::initGrAudioBlocks(gr::globalBlockRegistry());
 }
 
 void applyStyle(LookAndFeel::Style style) {
