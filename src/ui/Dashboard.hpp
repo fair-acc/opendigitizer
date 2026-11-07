@@ -145,6 +145,7 @@ struct Dashboard {
     std::unordered_map<std::size_t, PropertyControlWindow> propertyControlWindows;
     DockingLayoutType                                      layoutType  = DockingLayoutType::Grid;
     bool                                                   schedulerUi = false; // .grc dashboard.scheduler_ui
+    bool                                                   editable    = true;  // .grc dashboard.editable: false starts locked
     gr::property_map                                       windowLayout;
     std::unordered_map<std::string, std::string>           flowgraphUriByRemoteSource;
     plf::colony<Service>                                   services;

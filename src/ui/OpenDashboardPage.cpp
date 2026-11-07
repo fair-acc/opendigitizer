@@ -1193,7 +1193,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
 #ifndef __EMSCRIPTEN__
         constexpr const char* openOAuthPopupLabel = "OAuth/RBAC";
-        if (Digitizer::Settings::instance().editableMode && LookAndFeel::instance().prototypeMode) {
+        if (LookAndFeel::instance().prototypeMode) {
             openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + DigitizerUi::CalcButtonSize(openOAuthPopupLabel).x;
         }
 #endif
@@ -1212,7 +1212,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
         }
 
 #ifndef __EMSCRIPTEN__
-        if (Digitizer::Settings::instance().editableMode && LookAndFeel::instance().prototypeMode) {
+        if (LookAndFeel::instance().prototypeMode) {
             ImGui::SameLine();
             if (DigitizerUi::TextButton("OAuth/RBAC", buttonSize)) {
                 ImGui::OpenPopup(oauthPopupId);

@@ -3,7 +3,6 @@
 
 namespace DigitizerUi {
 enum class ViewMode {
-    VIEW,
     INTERACTION,
     LAYOUT,
     FLOWGRAPH,

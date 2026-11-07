@@ -4,6 +4,8 @@
 #include <URI.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <set>
@@ -11,6 +13,7 @@
 #include <string_view>
 #include <vector>
 
+#include <gnuradio-4.0/Logger.hpp>
 #include <gnuradio-4.0/meta/formatter.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -60,15 +63,11 @@ struct Settings {
     bool                  checkCertificates{true};
     bool                  darkMode{false};
     std::string           theme{"Classic"}; // LookAndFeel::Theme name
-#ifdef __EMSCRIPTEN__
-    bool editableMode{false};
-#else
-    bool editableMode{true}; // running natively
-#endif
-    std::string wasmServeDir{""};
-    std::string defaultDashboard{"RemoteDemo"};
-    std::string remoteDashboards{"../dashboard/defaultDashboards"};
-    bool        dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
+    std::string           wasmServeDir{""};
+    std::string           defaultDashboard{"RemoteDemo"};
+    std::string           remoteDashboards{"../dashboard/defaultDashboards"};
+    bool                  dashboardFromUrlFragment{false}; // set when the page URL has #dashboard=...
+    std::optional<bool>   deprecatedEditable;              // v1.0 DIGITIZER_EDIT_MODE or URL fragment 'editable': overrides the .grc for one release
 
 private:
     Settings() {
@@ -96,13 +95,16 @@ private:
         }
         darkMode          = getValueFromEnv("DIGITIZER_DARK_MODE", darkMode);                   // enable 'dark mode'
         theme             = getValueFromEnv("DIGITIZER_THEME", theme);                          // Classic or Advanced
-        editableMode      = getValueFromEnv("DIGITIZER_EDIT_MODE", editableMode);               // enable 'editable mode'
         checkCertificates = getValueFromEnv("DIGITIZER_CHECK_CERTIFICATES", checkCertificates); // disable checking validity of certificates
-        hostname          = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                    // hostname to set up or connect to
-        basePath          = getValueFromEnv("DIGITIZER_PATH", basePath);                        // path
-        wasmServeDir      = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);          // directory to serve wasm from
-        defaultDashboard  = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard);   // Default dashboard to load from the service
-        remoteDashboards  = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards);   // Directory the dashboard worker loads the dashboards from
+        if (std::getenv("DIGITIZER_EDIT_MODE") != nullptr) {
+            deprecatedEditable = getValueFromEnv("DIGITIZER_EDIT_MODE", true);
+            gr::log::warning("DIGITIZER_EDIT_MODE is deprecated: set 'editable' in the dashboard section of the .grc");
+        }
+        hostname         = getValueFromEnv("DIGITIZER_HOSTNAME", hostname);                  // hostname to set up or connect to
+        basePath         = getValueFromEnv("DIGITIZER_PATH", basePath);                      // path
+        wasmServeDir     = getValueFromEnv("DIGITIZER_WASM_SERVE_DIR", wasmServeDir);        // directory to serve wasm from
+        defaultDashboard = getValueFromEnv("DIGITIZER_DEFAULT_DASHBOARD", defaultDashboard); // Default dashboard to load from the service
+        remoteDashboards = getValueFromEnv("DIGITIZER_REMOTE_DASHBOARDS", remoteDashboards); // Directory the dashboard worker loads the dashboards from
 #ifdef __EMSCRIPTEN__
         auto        finalURLChar = static_cast<char*>(EM_ASM_PTR({
             var finalURL         = window.location.href;
@@ -152,13 +154,14 @@ private:
                 darkMode = true;
             } else if (sv.starts_with("theme=")) {
                 theme = sv.substr("theme="sv.length());
-            } else if (sv.starts_with("editable")) {
-                editableMode = true;
+            } else if (sv == "editable"sv || sv.starts_with("editable="sv)) {
+                deprecatedEditable = sv.substr("editable"sv.length()) != "=false"sv;
+                gr::log::warning("the URL fragment 'editable' is deprecated: set 'editable' in the dashboard section of the .grc");
             }
         }
 #endif
-        std::println("settings loaded: bindAddresses={}, darkMode={}, theme={}, editable={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
-            gr::join(bindAddresses), darkMode, theme, editableMode, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
+        std::println("settings loaded: bindAddresses={}, darkMode={}, theme={}, checkCertificates={}, hostname={}, basePath='{}', wasmServeDir={}, defaultDashboard={}, remoteDashboards={}", //
+            gr::join(bindAddresses), darkMode, theme, checkCertificates, hostname, basePath, wasmServeDir, defaultDashboard, remoteDashboards);
     }
 
 public:

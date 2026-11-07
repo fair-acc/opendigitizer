@@ -19,8 +19,8 @@
 #include <magic_enum_utility.hpp>
 #include <stb_image.h>
 
+#include "AutoHide.hpp"
 #include "PopupMenu.hpp"
-#include "settings.hpp"
 
 CMRC_DECLARE(ui_assets);
 
@@ -87,6 +87,10 @@ public:
     std::function<void(LookAndFeel::Style)> requestApplicationSwitchStyle;
     std::function<void(LookAndFeel::Theme)> requestApplicationSwitchTheme;
 
+    bool     editable = true; // false: the dashboard is locked, without menu and developer button
+    AutoHide menuAutoHide;
+    AutoHide devMenuAutoHide;
+
     ImVec2 logoSize{0.f, 0.f};
     GLuint imgFairLogo     = 0;
     GLuint imgFairLogoDark = 0;
@@ -110,8 +114,7 @@ public:
         std::string utcClock      = std::format("{:02}:{:02}:{:02} (UTC)", utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
         const auto  utcStringSize = ImGui::CalcTextSize(utcClock.c_str());
 
-        const auto& settings = Digitizer::Settings::instance();
-        const auto& palette  = DigitizerUi::LookAndFeel::instance().palette();
+        const auto& palette = DigitizerUi::LookAndFeel::instance().palette();
 
         const auto  topLeft            = ImGui::GetCursorPos();
         const float headerHeight       = 2.f * ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y; // hardcodes that the largest item in the header is date/time text display
@@ -130,17 +133,12 @@ public:
             return ImGui::Button(label, ImVec2{iconButtonSize, iconButtonSize});
         };
 
-        const bool   mouseMoved    = ImGui::GetIO().MouseDelta.x != 0 || ImGui::GetIO().MouseDelta.y != 0;
-        static float buttonTimeOut = 0;
-        buttonTimeOut -= std::max(ImGui::GetIO().DeltaTime, 0.f);
-        if (mouseMoved) {
-            buttonTimeOut = DigitizerUi::LookAndFeel::instance().devMenuHideDelaySeconds;
-        }
-        const bool showDevMenuButton = settings.editableMode && (mouseMoved || buttonTimeOut > 0.f);
-
-        constexpr const char* kDevMenuIcon    = "";
-        const float           devMenuButtonX  = ImGui::GetWindowSize().x - ImGui::GetStyle().WindowPadding.x - iconButtonSize;
-        const float           clockRightInset = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
+        constexpr const char* kDevMenuIcon   = "";
+        const float           devMenuButtonX = ImGui::GetWindowSize().x - ImGui::GetStyle().WindowPadding.x - iconButtonSize;
+        const ImVec2          devMenuHome{devMenuButtonX, verticallyCentredY(iconButtonSize)};
+        const float           devMenuHidden     = !editable ? 1.f : devMenuAutoHide.update(ImRect(ImGui::GetWindowPos() + devMenuHome, ImGui::GetWindowPos() + devMenuHome + ImVec2{iconButtonSize, iconButtonSize}));
+        const bool            showDevMenuButton = devMenuHidden < 1.f;
+        const float           clockRightInset   = showDevMenuButton ? ImGui::GetWindowSize().x - devMenuButtonX + ImGui::GetStyle().ItemSpacing.x : ImGui::GetStyle().ItemSpacing.x;
 
         // draw title
         const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
@@ -163,11 +161,13 @@ public:
 
         // left menu
         VerticalPopupMenu<1> leftMenu;
-        ImGui::SetCursorPos(ImVec2{topLeft.x, verticallyCentredY(iconButtonSize)});
+        const ImVec2         menuHome{topLeft.x, verticallyCentredY(iconButtonSize)};
+        const float          menuHidden = !editable ? 0.f : menuAutoHide.update(ImRect(ImGui::GetWindowPos() + menuHome, ImGui::GetWindowPos() + menuHome + ImVec2{iconButtonSize, iconButtonSize}));
+        ImGui::SetCursorPos(ImVec2{menuHome.x - menuHidden * (menuHome.x + iconButtonSize), menuHome.y});
 
-        const auto menuButtonPushed = settings.editableMode && headerIconButton(LookAndFeel::instance().prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
+        const auto menuButtonPushed = editable && headerIconButton(LookAndFeel::instance().prototypeMode ? "" : "", palette.mainWindowButtonIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text)));
 
-        if ((menuButtonPushed || ImGui::IsItemHovered()) && settings.editableMode) {
+        if ((menuButtonPushed || ImGui::IsItemHovered()) && editable) {
             using DigitizerUi::MenuButton;
             const bool wasAlreadyOpen = leftMenu.isOpen();
 
@@ -182,7 +182,7 @@ public:
         }
 
         // draw fair logo
-        const float logoX = settings.editableMode ? topLeft.x + iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : topLeft.x;
+        const float logoX = !editable ? topLeft.x : topLeft.x + (1.f - menuHidden) * (iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap);
         ImGui::SetCursorPos(ImVec2{logoX, verticallyCentredY(localLogoSize.y)});
         {
             IMW::StyleColor normalStyle(ImGuiCol_Button, palette.appHeaderFAIRLogoButton);
@@ -199,7 +199,7 @@ public:
         const float           rightMenuStartAngle = LookAndFeel::instance().appHeaderRightMenuStartDegrees;
         const float           rightMenuStopAngle  = LookAndFeel::instance().appHeaderRightMenuStopDegrees;
         RadialCircularMenu<2> rightMenu(localLogoSize, rightMenuStartAngle, rightMenuStopAngle);
-        ImGui::SetCursorPos(ImVec2(devMenuButtonX, verticallyCentredY(iconButtonSize)));
+        ImGui::SetCursorPos(ImVec2{devMenuHome.x + devMenuHidden * (ImGui::GetWindowSize().x - devMenuHome.x), devMenuHome.y});
 
         const bool devMenuButtonPushed = showDevMenuButton && [&] {
             ImVec4 iconColor = palette.devMenuIcon.value_or(ImGui::GetStyleColorVec4(ImGuiCol_Text));
