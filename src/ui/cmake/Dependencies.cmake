@@ -49,7 +49,7 @@ FetchContent_Declare(
   # needed to load images in ImGui
   stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
-  GIT_TAG 8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55 # master from Sep 2022
+  GIT_TAG ${GIT_SHA_STB}
   EXCLUDE_FROM_ALL SYSTEM)
 
 # TODO use proper release once available

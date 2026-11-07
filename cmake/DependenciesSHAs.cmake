@@ -13,3 +13,7 @@ set(GIT_SHA_UT
 set(GIT_SHA_GR_DIGITIZERS
     ccb220841b2cfd820c4a8e7ee8822e385677e472
     CACHE STRING "" FORCE) # main as of 2026-10-30
+
+set(GIT_SHA_STB
+    8b5f1f37b5b75829fc72d38e7b5d4bcbf8a26d55
+    CACHE STRING "" FORCE) # master from Sep 2022
