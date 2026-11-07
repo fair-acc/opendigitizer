@@ -24,3 +24,5 @@ set_tests_properties(
              77
              RUN_SERIAL
              TRUE)
+od_video_test(qa_ImageTransforms)
+target_link_libraries(qa_ImageTransforms PRIVATE gnuradio4::gr-localisation)

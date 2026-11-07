@@ -19,8 +19,14 @@ if(NOT EMSCRIPTEN)
   target_link_libraries(od-video INTERFACE od-video-mjpeg)
   add_executable(ex_test_card_y4m src/ex_test_card_y4m.cpp)
   target_link_libraries(ex_test_card_y4m PRIVATE od-video opendigitizer-options)
-endif()
-
-if(OPENDIGITIZER_ENABLE_TESTING AND NOT EMSCRIPTEN)
-  add_subdirectory(test)
+  add_executable(ex_camera_terminal src/ex_camera_terminal.cpp)
+  target_link_libraries(
+    ex_camera_terminal
+    PRIVATE od-video
+            gnuradio4::gnuradio-core
+            gnuradio4::gnuradio-blocklib-core
+            opendigitizer-options)
+  if(OPENDIGITIZER_ENABLE_TESTING)
+    add_subdirectory(test)
+  endif()
 endif()
