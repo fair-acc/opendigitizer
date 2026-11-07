@@ -449,6 +449,7 @@ void Dashboard::doLoad(const gr::property_map& dashboard, gr::Graph& graph) {
         }
     };
 
+    editable                   = dashboard.value_or<bool>("editable", true);
     schedulerUi                = dashboard.value_or<bool>("scheduler_ui", false);
     layoutType                 = magic_enum::enum_cast<DockingLayoutType>(dashboard.value_or<std::string>("layout", {}), magic_enum::case_insensitive).value_or(DockingLayoutType::Grid);
     const bool hasWindowLayout = dashboard.contains("windowLayout");
@@ -645,6 +646,7 @@ std::pair<gr::property_map, gr::property_map> Dashboard::serialise() {
         graphYaml["blocks"] = std::move(blocksWithoutCharts);
     }
     property_map dashboardYaml;
+    dashboardYaml["editable"] = editable;
 
     gr::Tensor<gr::pmt::Value> sources;
     for (const UiGraphBlock* sink : session.graphModel.recursiveGatherPlotSinks()) {

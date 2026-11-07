@@ -1,6 +1,7 @@
 #ifndef DASHBOARDPAGE_H
 #define DASHBOARDPAGE_H
 
+#include <cfloat>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -10,6 +11,7 @@
 #include "charts/Chart.hpp"
 #include "charts/SinkRegistry.hpp" // For SinkRegistry listener
 #include "common/ImguiWrap.hpp"
+#include "components/AutoHide.hpp"
 #include "components/Block.hpp"
 #include "components/Docking.hpp"
 #include "components/SignalSelector.hpp"
@@ -44,6 +46,10 @@ private:
     std::unordered_map<std::string, SourceBlockInWaiting> _addedSourceBlocksWaitingForSink;
 
     components::BlockControlsPanelContext _editPane;
+    components::AutoHide                  _barAutoHide;
+    ImRect                                _barHomeLastDrawn;
+    static constexpr ImRect               kNoBarDrawn{FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX};
+    ImRect                                _barHomeDrawing = kNoBarDrawn;
     components::SplitterState             _splitter;
     std::unique_ptr<SignalSelector>       _remoteSignalSelector;
     DashboardView                         _view;
@@ -66,6 +72,22 @@ private:
     void drawBarLeading(LegendItemClickResult& clickResult) noexcept;
     void drawBarTrailing(Mode mode, LegendItemClickResult& clickResult) noexcept;
     void drawAddSignalButton(ImVec2 size) noexcept;
+
+    /// laid out in place, painted slid down by the auto-hide fraction and inert while out of sight
+    bool barControl(float size, auto draw) {
+        const ImVec2 home = ImGui::GetCursorScreenPos();
+        _barHomeDrawing.Add(ImRect(home, home + ImVec2{size, size}));
+        ImDrawList*        drawList = ImGui::GetWindowDrawList();
+        const int          first    = drawList->VtxBuffer.Size;
+        const float        shift    = _barAutoHide.hidden * std::max(0.f, ImGui::GetCurrentWindow()->ClipRect.Max.y - home.y);
+        IMW::StyleFloatVar opaque(ImGuiStyleVar_DisabledAlpha, 1.f);
+        IMW::Disabled      inert(_barAutoHide.hidden >= 1.f);
+        const bool         clicked = draw();
+        for (int i = first; i < drawList->VtxBuffer.Size; ++i) {
+            drawList->VtxBuffer[i].pos.y += shift;
+        }
+        return clicked;
+    }
     void drawToolbarLayoutButtons(float plotButtonSize) noexcept;
     void addSelectedRemoteSignal(const SignalData& selectedRemoteSignal) noexcept;
 

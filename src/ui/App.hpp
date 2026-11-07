@@ -83,11 +83,6 @@ public:
     App() : openDashboardPage(restClient) {
         LookAndFeel::mutableInstance().theme = magic_enum::enum_cast<LookAndFeel::Theme>(Digitizer::Settings::instance().theme, magic_enum::case_insensitive).value_or(LookAndFeel::Theme::Classic);
         setStyle(Digitizer::Settings::instance().darkMode ? LookAndFeel::Style::Dark : LookAndFeel::Style::Light);
-        if (!Digitizer::Settings::instance().editableMode) {
-            // start in view mode without application-authoring controls, while retaining chart interaction
-            mainViewMode     = ViewMode::VIEW;
-            previousViewMode = ViewMode::VIEW;
-        }
     }
 
     void openNewWindow() {
@@ -285,18 +280,20 @@ public:
     }
 
     [[nodiscard]] bool drawViewModeBlockerAndCheckExit(float startHeight) const noexcept {
-        if (!Digitizer::Settings::instance().editableMode) {
-            return false;
-        }
         const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
         return components::drawViewModeBlocker(ImRect({0.f, startHeight}, {viewportSize.x, viewportSize.y - StatusBarView::height()}));
     }
+
+    std::optional<bool> _forcedEditable; // Settings::deprecatedEditable until the user locks or unlocks; never saved to the .grc
+
+    [[nodiscard]] bool locked() const noexcept { return dashboard != nullptr && !_forcedEditable.value_or(dashboard->editable); }
 
     void processAndRender() {
         {
             IMW::Window window("Main Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
 
             const char* title = prepareForANewDashboardToLoad ? "Loading..." : dashboard ? dashboard->description->name.data() : "OpenDigitizer";
+            header.editable   = !locked();
             header.draw(title, LookAndFeel::instance().fontLarge(), LookAndFeel::instance().style);
 
             if (mainViewMode != ViewMode::OPEN_SAVE_DASHBOARD && dashboard && dashboard->isInitialised && !prepareForANewDashboardToLoad) {
@@ -331,7 +328,6 @@ public:
         if (dashboardToLoad) {
             loadDashboard(dashboardToLoad);
             dashboardToLoad = nullptr;
-            mainViewMode    = ViewMode::VIEW;
         }
 
         if (dashboard != nullptr) {
@@ -341,22 +337,26 @@ public:
                 loadedDashboard = dashboard.get();
                 dashboardPage   = std::make_unique<DashboardPage>();
                 dashboardPage->setDashboard(*dashboard.get());
-                dashboardPage->setRequestViewOnlyModeHandler([this] { mainViewMode = ViewMode::VIEW; });
+                dashboardPage->setRequestViewOnlyModeHandler([this] {
+                    _forcedEditable.reset();
+                    dashboard->editable = false;
+                    mainViewMode        = ViewMode::INTERACTION;
+                });
+                _forcedEditable = Digitizer::Settings::instance().deprecatedEditable;
+                mainViewMode    = ViewMode::INTERACTION;
                 dashboardPage->setRequestSetLayoutModeHandler([this](bool isLayout) { mainViewMode = isLayout ? ViewMode::LAYOUT : ViewMode::INTERACTION; });
                 flowgraphPage.reset();
             }
         }
 
-        if (mainViewMode == ViewMode::VIEW || mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
+        if (mainViewMode == ViewMode::INTERACTION || mainViewMode == ViewMode::LAYOUT) {
             if (dashboard != nullptr && dashboard->isInitialised) {
-                const auto mode = [&] {
+                const auto mode = [this] {
                     using enum DashboardPage::Mode;
-                    switch (mainViewMode) {
-                    case ViewMode::VIEW: return View;
-                    case ViewMode::INTERACTION: return Interaction;
-                    case ViewMode::LAYOUT: return Layout;
-                    default: assert(false); return View;
+                    if (locked()) {
+                        return View;
                     }
+                    return mainViewMode == ViewMode::LAYOUT ? Layout : Interaction;
                 }();
                 dashboardPage->draw(mode);
             }
@@ -376,8 +376,9 @@ public:
             components::Notification::warning(msg);
         }
 
-        if (mainViewMode == ViewMode::VIEW && this->drawViewModeBlockerAndCheckExit(lockedModeBlockerStart)) {
-            mainViewMode = ViewMode::INTERACTION;
+        if (locked() && this->drawViewModeBlockerAndCheckExit(lockedModeBlockerStart)) {
+            _forcedEditable.reset();
+            dashboard->editable = true;
         }
     }
 };

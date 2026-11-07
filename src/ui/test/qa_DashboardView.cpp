@@ -12,11 +12,13 @@
 #include <Dashboard.hpp>
 #include <DashboardPage.hpp>
 #include <DashboardView.hpp>
+#include <components/AutoHide.hpp>
 
 #include <cmrc/cmrc.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 #include <memory>
 #include <optional>
@@ -158,6 +160,30 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(state.emptyDashboard->uiWindows.empty()) << "no chart windows";
                 state.view.reset();
                 state.drawEmpty = false;
+            };
+
+            "bar and menu controls slide out of sight once the pointer stayed away, and back when it returns"_test = [] {
+                DigitizerUi::components::AutoHide hide;
+                const auto&                       look = DigitizerUi::LookAndFeel::instance();
+                expect(eq(hide.advance(false, look.autoHideDelaySeconds - 0.1f), 0.f)) << "in place until the delay";
+                expect(lt(std::abs(hide.advance(false, 0.2f) - 0.2f / look.autoHideSlideSeconds), 1e-6f)) << "then sliding by dt / autoHideSlideSeconds";
+                expect(eq(hide.advance(false, look.autoHideSlideSeconds), 1.f)) << "out of sight";
+                expect(lt(std::abs(hide.advance(true, 0.5f * look.autoHideSlideSeconds) - 0.5f), 1e-6f)) << "half way back once the pointer is near";
+                expect(eq(hide.advance(true, look.autoHideSlideSeconds), 0.f));
+            };
+
+            "the .grc's dashboard editable sets the starting state (default true) and is saved, first"_test = [&] {
+                const auto restClient = std::make_shared<opencmw::client::RestClient>();
+                for (const std::optional<bool> editable : {std::optional{false}, std::optional{true}, std::optional<bool>{}}) {
+                    auto dashboard = DigitizerUi::Dashboard::create(restClient, DigitizerUi::DashboardDescription::createEmpty("editable"));
+                    dashboard->loadAndThen(std::format("blocks: []\nconnections: []\ndashboard:\n{}  layout: Free\n  sources: []\n  plots: []\n", editable ? std::format("  editable: {}\n", *editable) : std::string{}), [](gr::Graph&&) {}); // parsed, not run
+                    expect(eq(dashboard->editable, editable.value_or(true)));
+                }
+                state.dashboard->editable = false;
+                const auto saved          = state.dashboard->serialise().second.value_or<gr::property_map>("dashboard", {});
+                state.dashboard->editable = true;
+                expect(!saved.value_or<bool>("editable", true)) << "the current state is saved";
+                expect(!saved.empty() && std::string_view(saved.begin()->first) == "editable") << "written first";
             };
 
             "a dashboard drawn in a child of an input-less full-screen window docks its charts inside the child, also under another ID stack"_test = [&] {

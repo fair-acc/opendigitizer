@@ -149,19 +149,19 @@ void DashboardPage::drawChangeLabelPopup() {
 void DashboardPage::drawToolbarLayoutButtons(float plotButtonSize) noexcept {
     using enum DigitizerUi::DockingLayoutType;
     IMW::Group layout;
-    if (plotSquareIconButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize)) {
+    if (barControl(plotButtonSize, [&] { return plotSquareIconButton("\u{F7A5}", "change to the horizontal layout", plotButtonSize); })) {
         _dashboard->layoutType = Row;
     }
     ImGui::SameLine();
-    if (plotSquareIconButton("\u{F7A4}", "change to the vertical layout", plotButtonSize)) {
+    if (barControl(plotButtonSize, [&] { return plotSquareIconButton("\u{F7A4}", "change to the vertical layout", plotButtonSize); })) {
         _dashboard->layoutType = Column;
     }
     ImGui::SameLine();
-    if (plotSquareIconButton("\u{F58D}", "change to the grid layout", plotButtonSize)) {
+    if (barControl(plotButtonSize, [&] { return plotSquareIconButton("\u{F58D}", "change to the grid layout", plotButtonSize); })) {
         _dashboard->layoutType = Grid;
     }
     ImGui::SameLine();
-    if (plotSquareIconButton("\u{F248}", "change to the free layout", plotButtonSize)) {
+    if (barControl(plotButtonSize, [&] { return plotSquareIconButton("\u{F248}", "change to the free layout", plotButtonSize); })) {
         _dashboard->layoutType = Free;
     }
     ImGui::SameLine();
@@ -217,7 +217,7 @@ void DashboardPage::addSelectedRemoteSignal(const SignalData& selectedRemoteSign
 void DashboardPage::drawBarLeading(LegendItemClickResult& clickResult) noexcept {
     const float plotButtonSize = LookAndFeel::instance().mainWindowIconButtonSize();
     namespace dnd              = opendigitizer::charts::dnd;
-    if (plotSquareIconButton("\u{F201}", "create new chart", plotButtonSize)) {
+    if (barControl(plotButtonSize, [&] { return plotSquareIconButton("\u{F201}", "create new chart", plotButtonSize); })) {
         clickResult.shouldOpenNewPlotModal = true;
     }
     const bool dropped = dnd::handleDropTarget(
@@ -247,7 +247,7 @@ void DashboardPage::drawAddSignalButton(ImVec2 size) noexcept {
         IMW::StyleColor   buttonHoveredStyle(ImGuiCol_ButtonHovered, palette.mainWindowButtonBgHovered);
         IMW::StyleVar     noPadding(ImGuiStyleVar_FramePadding, ImVec2{});
         IMW::FontWithSize font(LookAndFeel::instance().fontIconsSolid, LookAndFeel::instance().dashboardStyle.legendAddButtonIconScale * size.y);
-        return ImGui::Button("\u{F067}##addSignal", size);
+        return barControl(size.y, [&] { return ImGui::Button("\u{F067}##addSignal", size); });
     }();
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("add signal");
@@ -305,7 +305,7 @@ void DashboardPage::drawBarTrailing(Mode mode, LegendItemClickResult& clickResul
     const float cursorBeforeButtons = ImGui::GetCursorPosX();
 
     for (const auto& button : buttons) {
-        if (plotSquareIconButton(button.icon, button.tooltip, plotButtonSize)) {
+        if (barControl(plotButtonSize, [&] { return plotSquareIconButton(button.icon, button.tooltip, plotButtonSize); })) {
             button.action();
         }
         ImGui::SameLine();
@@ -361,6 +361,12 @@ DashboardPage::LegendItemClickResult DashboardPage::drawChartsLegendAndEditPane(
         options.callbackAfterAllLegendItemsDrawn = [this](ImVec2 buttonSize) { drawAddSignalButton(buttonSize); };
     }
 
+    _barHomeLastDrawn = std::exchange(_barHomeDrawing, kNoBarDrawn);
+    if (mode == Mode::View) {
+        _barAutoHide = {};
+    } else {
+        std::ignore = _barAutoHide.update(_barHomeLastDrawn);
+    }
     const auto viewResult = _view.draw(*_dashboard, mode, options);
     if (viewResult.backgroundClicked) {
         _editPane.setSelectedBlock(nullptr, nullptr);
