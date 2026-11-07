@@ -206,3 +206,31 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_flowgraph)
   add_imgui_test(qa_GraphModel)
 endif()
+
+# the WASM UI in headless Chrome, from the superbuild's ui-wasm output (or OD_WASM_WEB_DIR); skipped without it
+find_program(OD_NODE node)
+find_program(
+  OD_BROWSER
+  NAMES google-chrome
+        chromium
+        chromium-browser
+        google-chrome-stable)
+set(OD_WASM_WEB_DIR
+    "${CMAKE_BINARY_DIR}/CMakeExternals/Build/ui-wasm/web"
+    CACHE PATH "WASM UI build output for the browser tests")
+if(OD_NODE
+   AND OD_BROWSER
+   AND TARGET ex_test_card_y4m)
+  add_test(NAME qa_BrowserCamera COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserCamera.mjs
+                                         ${OD_WASM_WEB_DIR} $<TARGET_FILE:ex_test_card_y4m>)
+  set_tests_properties(
+    qa_BrowserCamera
+    PROPERTIES LABELS
+               browser
+               TIMEOUT
+               600
+               RUN_SERIAL
+               TRUE
+               SKIP_RETURN_CODE
+               77)
+endif()
