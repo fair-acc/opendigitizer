@@ -194,6 +194,15 @@ struct ChartStyle {
 
     float scatterMarkerSize       = 2.f; // px, YYChart scatter markers
     float scatterNewestMarkerSize = 5.f; // px, the newest point
+
+    float  localisationCurveWidth             = 1.5f;       // px
+    float  localisationSensorMarkerSize       = 5.f;        // px, receivers and transmitters
+    float  localisationIntersectionMarkerSize = 3.f;        // px
+    float  localisationMeanMarkerSize         = 9.f;        // px, the detected mean, alternatives and the reference
+    float  localisationMeanMarkerWeight       = 2.f;        // px
+    float  localisationLabelOffset            = 10.f;       // px above a marker
+    float  localisationTagEdgeMargin          = .1f;        // a curve's annotation keeps this fraction of the roi from its edge
+    ImVec2 localisationStatusPadding          = {6.f, 6.f}; // status line, from the plot's top-left corner
 };
 
 /// dashboard look a host may set process-wide, for every DashboardView

@@ -122,6 +122,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_image_chart.grc
     examples/qa_grouping.grc
     examples/qa_layout.grc
+    examples/qa_localisation.grc
     examples/qa_subgraph.grc
     examples/qa_yy_scatter.grc
     examples/qa_statusbar.grc
@@ -173,6 +174,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_filtercomboboxes)
   add_imgui_test(qa_keypad)
   add_imgui_test(qa_chart)
+  set_tests_properties(qa_chart PROPERTIES TIMEOUT 300) # a hang reports its pending wait within the CI step
   add_imgui_test(qa_ImageChart)
   if(OD_ACOUSTIC_CAMERA)
     cmrc_add_resources(
@@ -181,9 +183,19 @@ if(ENABLE_IMGUI_TEST_ENGINE)
       ../assets/sampleDashboards
       PREFIX
       dashboards
-      ../assets/sampleDashboards/browser/XtraAcousticCamera.grc)
-    target_link_libraries(qa_ImageChart PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
+      ../assets/sampleDashboards/browser/XtraAcousticCamera.grc
+      ../assets/sampleDashboards/browser/XtraLocalisation.grc
+      ../assets/sampleDashboards/browser/XtraLocalisationSquare.grc
+      ../assets/sampleDashboards/browser/XtraLocalisationTetrahedron.grc
+      ../assets/sampleDashboards/browser/XtraLocalisationLine.grc
+      ../assets/sampleDashboards/browser/XtraLocalisationUma16.grc
+      ../assets/sampleDashboards/browser/XtraLocalisationStereo.grc)
+    target_link_libraries(qa_ImageChart PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared
+                                                gnuradio4::GrFilterBlocksShared)
     target_compile_definitions(qa_ImageChart PRIVATE OD_ACOUSTIC_CAMERA)
+    target_link_libraries(qa_chart PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared
+                                           gnuradio4::GrFilterBlocksShared)
+    target_compile_definitions(qa_chart PRIVATE OD_ACOUSTIC_CAMERA)
   endif()
   add_imgui_test(qa_ChartFontSize)
   add_imgui_test(qa_chart_compatibility)
@@ -218,8 +230,32 @@ find_program(
 set(OD_WASM_WEB_DIR
     "${CMAKE_BINARY_DIR}/CMakeExternals/Build/ui-wasm/web"
     CACHE PATH "WASM UI build output for the browser tests")
+# an unoptimised (Debug) WASM UI is too slow in headless, software-rendered Chrome to load the localisation dashboards
 if(OD_NODE
    AND OD_BROWSER
+   AND NOT
+       CMAKE_BUILD_TYPE
+       STREQUAL
+       "Debug")
+  add_test(NAME qa_BrowserMicrophones COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserMicrophones.mjs
+                                              ${OD_WASM_WEB_DIR})
+  set_tests_properties(
+    qa_BrowserMicrophones
+    PROPERTIES LABELS
+               browser
+               TIMEOUT
+               300
+               RUN_SERIAL
+               TRUE
+               SKIP_RETURN_CODE
+               77)
+endif()
+if(OD_NODE
+   AND OD_BROWSER
+   AND NOT
+       CMAKE_BUILD_TYPE
+       STREQUAL
+       "Debug"
    AND TARGET ex_test_card_y4m)
   add_test(NAME qa_BrowserCamera COMMAND ${OD_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/qa_BrowserCamera.mjs
                                          ${OD_WASM_WEB_DIR} $<TARGET_FILE:ex_test_card_y4m>)

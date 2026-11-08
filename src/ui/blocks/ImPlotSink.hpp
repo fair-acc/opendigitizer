@@ -67,7 +67,7 @@ T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& 
 using charts::tags::drawDataSetTimingEvents;
 using charts::tags::drawTags;
 
-GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>)
+GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map)
 
 template<typename T>
 struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">> {
@@ -76,13 +76,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
     static constexpr bool IsDataSet   = gr::DataSetLike<T>;
     static constexpr bool IsTensor    = gr::TensorLike<T>;
+    static constexpr bool IsEvents    = std::is_same_v<T, gr::property_map>;
 
-    static constexpr SignalKind kSignalKind = IsTensor ? SignalKind::Image2D : IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
+    static constexpr SignalKind kSignalKind = IsEvents ? SignalKind::Events : IsTensor ? SignalKind::Image2D : IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
-    std::conditional_t<IsTensor, gr::TensorPortIn<ValueType>, gr::PortIn<T>> in;
+    std::conditional_t<IsTensor, gr::TensorPortIn<ValueType>, std::conditional_t<IsEvents, gr::EventPortIn, gr::PortIn<T>>> in;
 
     ManagedColour _colour;
 
@@ -100,7 +101,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                             sample_rate       = 1000.0f;
     A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                         abscissa_quantity = "time";
     A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                           abscissa_unit     = "s";
-    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                             required_size     = IsTensor ? 1U : gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
+    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                             required_size     = IsTensor ? 1U : IsEvents ? 64U : gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
     A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                                    dataset_index     = std::numeric_limits<gr::Size_t>::max();
     A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                               n_history         = 3U;
     A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>>          history_offset    = 0.01f;
@@ -140,7 +141,12 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     std::deque<std::conditional_t<IsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
     std::uint64_t                                               _frameGeneration = 0U; // of _frames.back(), counting every received frame
-    std::array<ImageAxis, 2>                                    _axes{};               // Tensor<T> sinks: from the latest gr:axis_* tags
+    std::vector<gr::property_map>                               _events;               // event sinks: the newest required_size events, owned
+    std::uint64_t                                               _eventGeneration = 0U;
+    std::array<ImageAxis, 2>                                    _axes{}; // Tensor<T> sinks: from the latest gr:axis_* tags
+
+    [[nodiscard]] std::span<const gr::property_map> events() const noexcept { return _events; }
+    [[nodiscard]] std::uint64_t                     eventGeneration() const noexcept { return _eventGeneration; }
 
     [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const {
         if constexpr (IsTensor) {
@@ -571,6 +577,22 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
+        if constexpr (IsEvents) {
+            std::lock_guard lock(*_dataMutex);
+            for (const gr::property_map_view& event : input) {
+                _events.emplace_back(event);
+            }
+            const std::size_t excess = _events.size() - std::min(_events.size(), static_cast<std::size_t>(required_size.value));
+            _events.erase(_events.begin(), _events.begin() + static_cast<std::ptrdiff_t>(excess));
+            _eventGeneration += input.size();
+            std::ignore = input.consume(input.size());
+            return gr::work::Status::OK;
+        } else {
+            return processSamples(input);
+        }
+    }
+
+    gr::work::Status processSamples(gr::InputSpanLike auto& input) noexcept {
         std::lock_guard lock(*_dataMutex);
         if constexpr (IsTensor) {
             for (const auto& [relIndex, tagMapRef] : input.tags()) {
@@ -676,6 +698,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     }
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
+        if constexpr (IsEvents) {
+            return gr::work::Status::OK;
+        } else {
+            return drawSamples(config);
+        }
+    }
+
+    gr::work::Status drawSamples(const gr::property_map& config) noexcept {
         using enum AxisScale;
         if constexpr (IsTensor) {
             return gr::work::Status::OK;

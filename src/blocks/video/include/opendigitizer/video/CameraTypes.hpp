@@ -33,8 +33,6 @@ static_assert(std::to_underlying(TimestampSource::browserMedia) + 1U == kTimesta
 
 /// what `selectMode` maximises; `requested` picks the mode nearest to the requested width, height and frame rate
 enum class ModePriority : std::uint8_t { bandwidth, resolution, rate, requested };
-inline constexpr std::array<std::string_view, 4> kModePriorityNames{"bandwidth", "resolution", "rate", "requested"};
-static_assert(std::to_underlying(ModePriority::requested) + 1U == kModePriorityNames.size());
 
 struct CameraMode {
     std::uint32_t width     = 640U;
@@ -70,8 +68,7 @@ struct CameraMode {
 /// backend-neutral camera control; common controls carry canonical names (see `kCommonControls`), others the driver's
 struct CameraControl {
     enum class Kind : std::uint8_t { integer, boolean, menu };
-    static constexpr std::array<std::string_view, 3> kKindNames{"integer", "boolean", "menu"};
-    static_assert(std::to_underlying(Kind::menu) + 1U == kKindNames.size());
+
     std::string name;
     Kind        kind         = Kind::integer;
     double      value        = 0.0;
@@ -93,12 +90,14 @@ struct DeviceInfo {
 /// "name [id]", as `available_devices` lists a device; `deviceSelector` turns it back into "@id:<id>"
 [[nodiscard]] inline std::string deviceLabel(const DeviceInfo& device) { return std::format("{} [{}]", device.name, device.id); }
 
+/// "@id:<id>" of a label "name [id]", or "name [id], <details>" as GR4's audio blocks list them; any other label as it is
 [[nodiscard]] inline std::string deviceSelector(std::string_view label) {
-    const auto open = label.rfind(" [");
-    if (open == std::string_view::npos || !label.ends_with(']')) {
+    const auto open  = label.rfind(" [");
+    const auto close = open == std::string_view::npos ? std::string_view::npos : label.find(']', open);
+    if (close == std::string_view::npos) {
         return std::string(label);
     }
-    return std::format("{}{}", kDeviceIdPrefix, label.substr(open + 2UZ, label.size() - open - 3UZ));
+    return std::format("{}{}", kDeviceIdPrefix, label.substr(open + 2UZ, close - open - 2UZ));
 }
 
 struct FrameInfo {

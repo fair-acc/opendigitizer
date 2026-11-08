@@ -11,6 +11,7 @@
 #include "blocks/ImControlCamera.hpp"
 #include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlColor.hpp"
+#include "blocks/ImControlDevice.hpp"
 #include "blocks/ImControlNumber.hpp"
 #include "blocks/ImControlText.hpp"
 #include "blocks/ImControlToggle.hpp"
@@ -25,13 +26,21 @@
 #include "components/ColourManager.hpp"
 #include "components/ImGuiNotify.hpp"
 
+#include <opendigitizer/localisation/DataSetToTensor.hpp>
+#include <opendigitizer/localisation/DelayLocator.hpp>
+#include <opendigitizer/localisation/PairDelayArrivals.hpp>
+#include <opendigitizer/localisation/PointSourceArrivals.hpp>
+#include <opendigitizer/localisation/PointSourceAudio.hpp>
 #include <opendigitizer/video/AcousticImage.hpp>
 #include <opendigitizer/video/BrowserMicrophonePairs.hpp>
 #include <opendigitizer/video/CameraSource.hpp>
 #include <opendigitizer/video/ImageTransforms.hpp>
 
 #if defined(OD_TRIGGER_BLOCKS)
+#include <gnuradio-4.0/filter/time_domain_filter.hpp>
 #include <gnuradio-4.0/trigger/Coincidence.hpp>
+#include <gnuradio-4.0/trigger/EventShaping.hpp>
+#include <gnuradio-4.0/trigger/MultiChannelRecorder.hpp>
 #include <gnuradio-4.0/trigger/SchmittTrigger.hpp>
 #include <gnuradio-4.0/trigger/TagBridge.hpp>
 #include <gnuradio-4.0/trigger/ValueTrigger.hpp>
@@ -50,13 +59,20 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<SurfacePlot>(registry);
     std::ignore = gr::registerBlock<ImageChart>(registry);
     std::ignore = gr::registerBlock<TensorRowsChart>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>>(registry);
+    std::ignore = gr::registerBlock<LocalisationChart>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::CameraSource>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::GreyScale, float, double, std::uint32_t>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::ImageCrop, float, double, std::uint32_t>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::ImageResize, float, double, std::uint32_t>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::ImageDistortion, float, double, std::uint32_t>(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::AcousticImage>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::localisation::DelayLocator>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::localisation::PointSourceArrivals>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::localisation::PairDelayArrivals, float, double>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::localisation::DataSetToTensor, float, double>(registry);
+    std::ignore = gr::registerBlock<gr::filter::BasicFilter<float>, "gr::filter::BasicFilter<float>">(registry); // the localisation dashboards' high-pass, under its alias
+    std::ignore = gr::registerBlock<opendigitizer::localisation::PointSourceAudio>(registry);
 #if defined(__EMSCRIPTEN__)
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry);
 #endif
@@ -65,12 +81,15 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>, "gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>">(registry);
     std::ignore = gr::registerBlock<gr::blocks::trigger::Coincidence>(registry);
     std::ignore = gr::registerBlock<gr::blocks::trigger::EventToTag<float>>(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::Throttle<float>, "gr::blocks::trigger::Throttle<float, false>">(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::MultiChannelRecorder<float>>(registry);
 #endif
     std::ignore = gr::registerBlock<ImControlNumber>(registry);
     std::ignore = gr::registerBlock<ImControlToggle>(registry);
     std::ignore = gr::registerBlock<ImControlTrigger>(registry);
     std::ignore = gr::registerBlock<ImControlText>(registry);
     std::ignore = gr::registerBlock<ImControlCamera>(registry);
+    std::ignore = gr::registerBlock<ImControlDevice>(registry);
     std::ignore = gr::registerBlock<ImControlChoice>(registry);
     std::ignore = gr::registerBlock<ImControlColor>(registry);
     std::ignore = gr::registerBlock<ImPropertyReadout>(registry);

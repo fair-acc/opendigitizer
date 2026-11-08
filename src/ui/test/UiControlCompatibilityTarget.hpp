@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <limits>
+#include <string>
+#include <vector>
 
 namespace opendigitizer::test {
 
@@ -31,6 +33,20 @@ struct UiControlCompatibilityTarget : gr::Block<UiControlCompatibilityTarget> {
     GR_MAKE_REFLECTABLE(UiControlCompatibilityTarget, low_range, high_range, overlapping_both_high_and_low_range, float64_number, int32_number, shape, other_shape, color, color_unit_number, rgb_unit_number, hz_unit_number, no_unit_number, color_unit_float);
 
     gr::work::Result work(std::size_t = std::numeric_limits<std::size_t>::max(), gr::device::DeviceContext& = gr::device::hostBackend()) noexcept { return {0UZ, 0UZ, gr::work::Status::OK}; }
+};
+
+/// a device setting with the devices to choose from, listed as GR4's audio blocks list them; clocked so it applies settings
+struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
+    using Description = gr::Doc<"testing block for a device picker">;
+
+    gr::PortIn<std::uint8_t> clk;
+    std::string              device;
+    std::vector<std::string> available_devices{"First microphone [a], 2 channels", "Second microphone [b], 16 channels"};
+    std::string              route = "none"; // set by the picker's entries and devices alike
+
+    GR_MAKE_REFLECTABLE(UiControlDeviceTarget, clk, device, available_devices, route);
+
+    void processOne(std::uint8_t) {}
 };
 
 } // namespace opendigitizer::test

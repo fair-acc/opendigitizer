@@ -13,8 +13,11 @@
 
 #include <algorithm>
 #include <concepts>
+#include <functional>
 #include <limits>
+#include <map>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <utility>
 
@@ -186,6 +189,23 @@ public:
                 continue; // TODO: GR4 support
             }
             toolbar::sendSettings(this->msgOut, target.blockTarget, gr::property_map{{std::pmr::string(target.propertyName), payload}});
+        }
+    }
+
+    /// Sends each "BlockA,BlockB:property" key's value, every block's settings in one message
+    void sendByTarget(const gr::property_map& valuesByTarget) {
+        std::map<std::string, gr::property_map, std::less<>> settingsByBlock;
+        for (const auto& [key, payload] : valuesByTarget) {
+            const auto targets = TargetMap::fromString(std::string_view(key));
+            if (!targets) {
+                continue; // this is reported during settingsChanged()
+            }
+            for (const TargetEntry& target : targets->entries() | std::views::filter([](const TargetEntry& entry) { return !entry.isGlob(); })) {
+                settingsByBlock[target.blockTarget].insert_or_assign(std::pmr::string(target.propertyName), payload);
+            }
+        }
+        for (auto& [block, settings] : settingsByBlock) {
+            toolbar::sendSettings(this->msgOut, block, std::move(settings));
         }
     }
 };

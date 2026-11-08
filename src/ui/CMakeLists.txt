@@ -94,6 +94,9 @@ endif()
 if(NOT TARGET od-video)
   add_subdirectory(../blocks/video blocks/video)
 endif()
+if(NOT TARGET od-localisation)
+  add_subdirectory(../blocks/localisation blocks/localisation)
+endif()
 
 cmrc_add_resource_library(
   ui_assets
@@ -139,6 +142,32 @@ if((NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
       assets/sampleDashboards/browser/XtraAcousticCamera.grc)
   else()
     cmrc_add_resources(sample_dashboards assets/sampleDashboards/XtraAcousticCamera.grc)
+  endif()
+  if(TARGET gnuradio4::GrTriggerBlocksShared) # microphone triggers into DelayLocator
+    if(EMSCRIPTEN)
+      cmrc_add_resources(
+        sample_dashboards
+        WHENCE
+        assets/sampleDashboards/browser
+        PREFIX
+        assets/sampleDashboards
+        assets/sampleDashboards/browser/XtraLocalisation.grc
+        assets/sampleDashboards/browser/XtraLocalisationSquare.grc
+        assets/sampleDashboards/browser/XtraLocalisationTetrahedron.grc
+        assets/sampleDashboards/browser/XtraLocalisationLine.grc
+        assets/sampleDashboards/browser/XtraLocalisationUma16.grc
+        assets/sampleDashboards/browser/XtraLocalisationStereo.grc)
+    else()
+      cmrc_add_resources(
+        sample_dashboards
+        assets/sampleDashboards/XtraLocalisation.grc
+        assets/sampleDashboards/XtraLocalisationSquare.grc
+        assets/sampleDashboards/XtraLocalisationTetrahedron.grc
+        assets/sampleDashboards/XtraLocalisationLine.grc
+        assets/sampleDashboards/XtraLocalisationUma16.grc
+        assets/sampleDashboards/XtraLocalisationStereo.grc
+        assets/sampleDashboards/XtraLocalisationActive.grc)
+    endif()
   endif()
 endif()
 
@@ -317,6 +346,7 @@ target_sources(
             charts/Chart.hpp
             charts/Charts.hpp
             charts/ImageChart.hpp
+            charts/LocalisationChart.hpp
             charts/TensorRowsChart.hpp
             charts/SignalSink.hpp
             charts/SinkRegistry.hpp
@@ -335,7 +365,8 @@ target_link_libraries(
   INTERFACE opendigitizer-ui-components
             implot3d
             gnuradio4::vir
-            od-video)
+            od-video
+            od-localisation)
 target_compile_definitions(opendigitizer-charts INTERFACE GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT})
 if(NOT EMSCRIPTEN)
   target_compile_definitions(opendigitizer-charts INTERFACE GL_GLEXT_PROTOTYPES)
@@ -422,6 +453,7 @@ add_library(
   blocks/TestSpectrumGenerator.hpp
   blocks/ImControl.hpp
   blocks/ImControlCamera.hpp
+  blocks/ImControlDevice.hpp
   blocks/ImControlChoice.hpp
   blocks/ImControlColor.hpp
   blocks/ImControlNumber.hpp

@@ -5,6 +5,7 @@
 
 #include "Chart.hpp"
 #include "ImageChart.hpp"
+#include "LocalisationChart.hpp"
 #include "SignalSink.hpp"
 #include "SpectrumDensity.hpp"
 #include "SpectrumPlot.hpp"

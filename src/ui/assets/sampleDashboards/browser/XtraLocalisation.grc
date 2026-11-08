@@ -1,0 +1,1036 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clock
+      sample_rate: 48000
+      chunk_size: 1024
+      n_samples_max: 0
+  - id: opendigitizer::localisation::PointSourceAudio
+    parameters:
+      name: simulatedMicrophones
+      n_outputs: 16
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      source_position: [0.3, 0.2, 0.0]
+      orbit_radius: 0.6
+      orbit_period: 20
+      period: 0.5
+      sample_rate: 48000
+      noise: 0.02
+  - id: gr::basic::Selector<float32>
+    parameters:
+      name: display
+      n_inputs: 16
+      n_outputs: 4
+      map_in: !!uint32 [0, 1, 2, 3]
+      map_out: !!uint32 [0, 1, 2, 3]
+      back_pressure: false
+  - id: gr::basic::Selector<float32>
+    parameters:
+      name: filtered
+      n_inputs: 16
+      n_outputs: 4
+      map_in: !!uint32 [0, 1, 2, 3]
+      map_out: !!uint32 [0, 1, 2, 3]
+      back_pressure: false
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass0
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger0
+      trigger_name: "audio0"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle0
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass1
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger1
+      trigger_name: "audio1"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle1
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass2
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger2
+      trigger_name: "audio2"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle2
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass3
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger3
+      trigger_name: "audio3"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle3
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass4
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger4
+      trigger_name: "audio4"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle4
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass5
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger5
+      trigger_name: "audio5"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle5
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass6
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger6
+      trigger_name: "audio6"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle6
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass7
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger7
+      trigger_name: "audio7"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle7
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass8
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger8
+      trigger_name: "audio8"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle8
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass9
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger9
+      trigger_name: "audio9"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle9
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass10
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger10
+      trigger_name: "audio10"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle10
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass11
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger11
+      trigger_name: "audio11"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle11
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass12
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger12
+      trigger_name: "audio12"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle12
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass13
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger13
+      trigger_name: "audio13"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle13
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass14
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger14
+      trigger_name: "audio14"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle14
+      n_samples: 9600
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass15
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger15
+      trigger_name: "audio15"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle15
+      n_samples: 9600
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: locator
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+      pairs: sequential
+      pair_list: !!uint32 [0, 1]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: events
+      signal_name: threshold
+      color: 2062260
+  - id: gr::blocks::trigger::MultiChannelRecorder<float32>
+    parameters:
+      name: window
+      n_inputs: 16
+      n_pre: 486
+      n_post: 1206
+      retrigger: ignore
+      holdoff: 0.2
+      emit_partial: false
+  - id: opendigitizer::localisation::DataSetToTensor<float32>
+    parameters:
+      name: frames
+  - id: gr::localisation::PairCrossCorrelation<float32>
+    parameters:
+      name: correlation
+      max_lag: 246
+      weighting: none
+      f_min: 300
+      f_max: 12000
+  - id: gr::localisation::PairDelay<float32>
+    parameters:
+      name: delays
+      max_lag: 246
+  - id: opendigitizer::localisation::PairDelayArrivals<float32>
+    parameters:
+      name: arrivals
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: correlator
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+      pairs: sequential
+      pair_list: !!uint32 [0, 1]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: correlated
+      signal_name: correlated
+      color: 16744206
+  - id: opendigitizer::ImPlotSink<gr::Tensor<float32>>
+    parameters:
+      name: lags
+      signal_name: pair correlation
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset0
+      trigger_name: audio0
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot0
+      filter: audio0
+      n_pre: 1440
+      n_post: 3360
+      holdoff_samples: 9600
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink0
+      dataset_index: 0
+      signal_name: "audio0, triggered"
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal0
+      signal_name: audio0
+      signal_unit: FS
+      required_size: 480000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset1
+      trigger_name: audio1
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot1
+      filter: audio0
+      n_pre: 1440
+      n_post: 3360
+      holdoff_samples: 9600
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink1
+      dataset_index: 0
+      signal_name: "audio1, triggered"
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal1
+      signal_name: audio1
+      signal_unit: FS
+      required_size: 480000
+  - id: gr::filter::Delay<float32>
+    parameters:
+      name: lag1
+      delay: 4800
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset2
+      trigger_name: audio2
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot2
+      filter: audio0
+      n_pre: 1440
+      n_post: 3360
+      holdoff_samples: 9600
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink2
+      dataset_index: 0
+      signal_name: "audio2, triggered"
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal2
+      signal_name: audio2
+      signal_unit: FS
+      required_size: 480000
+  - id: gr::filter::Delay<float32>
+    parameters:
+      name: lag2
+      delay: 4800
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset3
+      trigger_name: audio3
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot3
+      filter: audio0
+      n_pre: 1440
+      n_post: 3360
+      holdoff_samples: 9600
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink3
+      dataset_index: 0
+      signal_name: "audio3, triggered"
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal3
+      signal_name: audio3
+      signal_unit: FS
+      required_size: 480000
+  - id: gr::filter::Delay<float32>
+    parameters:
+      name: lag3
+      delay: 4800
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: fft
+      fft_size: 4096
+      sample_rate: 48000
+      output_in_db: true
+      signal_name: "audio0 spectrum"
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrum
+      dataset_index: 0
+      signal_name: "audio0 spectrum"
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: array
+      label: array
+      value: square
+      choices: ["stereo", "line", "square", "tetrahedron", "UMA16"]
+      choice_values:
+        stereo:
+          "simulatedMicrophones,locator,correlator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+          "locator,correlator,arrivals,chart:receiver_names": ["audio0", "audio1"]
+          "locator,correlator,chart:roi": [-2.0, 2.0, 0.0, 3.0]
+          "locator,correlator,chart:pairs": sequential
+          "locator,correlator,chart:pair_list": !!uint32 [0, 1]
+          "window:n_pre": !!uint32 290
+          "window:n_post": !!uint32 1010
+          "correlation,delays:max_lag": !!uint32 50
+          "chart:show_receiver_names": true
+          "simulatedMicrophones:source_position": [0.5, 1.0, 0.0]
+          "simulatedMicrophones:orbit_radius": 0.4
+          "simulatedMicrophones:orbit_period": 20
+          "display,filtered:map_in": !!uint32 [0, 1]
+          "display,filtered:map_out": !!uint32 [0, 1]
+          "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
+          "fft,spectrum:signal_name": "audio0 spectrum"
+          "onset0:trigger_name": audio0
+          "signal0:signal_name": audio0
+          "snapshotSink0:signal_name": "audio0, triggered"
+          "signal0,snapshotSink0:visible": true
+          "onset1:trigger_name": audio1
+          "signal1:signal_name": audio1
+          "snapshotSink1:signal_name": "audio1, triggered"
+          "signal1,snapshotSink1:visible": true
+          "onset2:trigger_name": unused2
+          "signal2:signal_name": unused2
+          "snapshotSink2:signal_name": unused2
+          "signal2,snapshotSink2:visible": false
+          "onset3:trigger_name": unused3
+          "signal3:signal_name": unused3
+          "snapshotSink3:signal_name": unused3
+          "signal3,snapshotSink3:visible": false
+        line:
+          "simulatedMicrophones,locator,correlator,chart:element_positions": !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
+          "locator,correlator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,chart:roi": [-8.0, 8.0, 0.0, 8.0]
+          "locator,correlator,chart:pairs": sequential
+          "locator,correlator,chart:pair_list": !!uint32 [0, 1]
+          "window:n_pre": !!uint32 1508
+          "window:n_post": !!uint32 2228
+          "correlation,delays:max_lag": !!uint32 1268
+          "chart:show_receiver_names": true
+          "simulatedMicrophones:source_position": [1.0, 4.0, 0.0]
+          "simulatedMicrophones:orbit_radius": 2.5
+          "simulatedMicrophones:orbit_period": 25
+          "display,filtered:map_in": !!uint32 [0, 1, 2, 3]
+          "display,filtered:map_out": !!uint32 [0, 1, 2, 3]
+          "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
+          "fft,spectrum:signal_name": "audio0 spectrum"
+          "onset0:trigger_name": audio0
+          "signal0:signal_name": audio0
+          "snapshotSink0:signal_name": "audio0, triggered"
+          "signal0,snapshotSink0:visible": true
+          "onset1:trigger_name": audio1
+          "signal1:signal_name": audio1
+          "snapshotSink1:signal_name": "audio1, triggered"
+          "signal1,snapshotSink1:visible": true
+          "onset2:trigger_name": audio2
+          "signal2:signal_name": audio2
+          "snapshotSink2:signal_name": "audio2, triggered"
+          "signal2,snapshotSink2:visible": true
+          "onset3:trigger_name": audio3
+          "signal3:signal_name": audio3
+          "snapshotSink3:signal_name": "audio3, triggered"
+          "signal3,snapshotSink3:visible": true
+        square:
+          "simulatedMicrophones,locator,correlator,chart:element_positions": !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+          "locator,correlator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,chart:roi": [-2.0, 2.0, -2.0, 2.0]
+          "locator,correlator,chart:pairs": sequential
+          "locator,correlator,chart:pair_list": !!uint32 [0, 1]
+          "window:n_pre": !!uint32 486
+          "window:n_post": !!uint32 1206
+          "correlation,delays:max_lag": !!uint32 246
+          "chart:show_receiver_names": true
+          "simulatedMicrophones:source_position": [0.3, 0.2, 0.0]
+          "simulatedMicrophones:orbit_radius": 0.6
+          "simulatedMicrophones:orbit_period": 20
+          "display,filtered:map_in": !!uint32 [0, 1, 2, 3]
+          "display,filtered:map_out": !!uint32 [0, 1, 2, 3]
+          "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
+          "fft,spectrum:signal_name": "audio0 spectrum"
+          "onset0:trigger_name": audio0
+          "signal0:signal_name": audio0
+          "snapshotSink0:signal_name": "audio0, triggered"
+          "signal0,snapshotSink0:visible": true
+          "onset1:trigger_name": audio1
+          "signal1:signal_name": audio1
+          "snapshotSink1:signal_name": "audio1, triggered"
+          "signal1,snapshotSink1:visible": true
+          "onset2:trigger_name": audio2
+          "signal2:signal_name": audio2
+          "snapshotSink2:signal_name": "audio2, triggered"
+          "signal2,snapshotSink2:visible": true
+          "onset3:trigger_name": audio3
+          "signal3:signal_name": audio3
+          "snapshotSink3:signal_name": "audio3, triggered"
+          "signal3,snapshotSink3:visible": true
+        tetrahedron:
+          "simulatedMicrophones,locator,correlator,chart:element_positions": !!float64 [[-0.15, -0.086603, 0.061237], [0.15, -0.086603, 0.061237], [0.0, 0.173205, 0.061237], [0.0, 0.0, -0.183712]]
+          "locator,correlator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,chart:roi": [-1.0, 1.0, -1.0, 1.0]
+          "locator,correlator,chart:pairs": sequential
+          "locator,correlator,chart:pair_list": !!uint32 [0, 1]
+          "window:n_pre": !!uint32 290
+          "window:n_post": !!uint32 1010
+          "correlation,delays:max_lag": !!uint32 50
+          "chart:show_receiver_names": true
+          "simulatedMicrophones:source_position": [0.1, -0.05, 0.05]
+          "simulatedMicrophones:orbit_radius": 0.3
+          "simulatedMicrophones:orbit_period": 15
+          "display,filtered:map_in": !!uint32 [0, 1, 2, 3]
+          "display,filtered:map_out": !!uint32 [0, 1, 2, 3]
+          "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
+          "fft,spectrum:signal_name": "audio0 spectrum"
+          "onset0:trigger_name": audio0
+          "signal0:signal_name": audio0
+          "snapshotSink0:signal_name": "audio0, triggered"
+          "signal0,snapshotSink0:visible": true
+          "onset1:trigger_name": audio1
+          "signal1:signal_name": audio1
+          "snapshotSink1:signal_name": "audio1, triggered"
+          "signal1,snapshotSink1:visible": true
+          "onset2:trigger_name": audio2
+          "signal2:signal_name": audio2
+          "snapshotSink2:signal_name": "audio2, triggered"
+          "signal2,snapshotSink2:visible": true
+          "onset3:trigger_name": audio3
+          "signal3:signal_name": audio3
+          "snapshotSink3:signal_name": "audio3, triggered"
+          "signal3,snapshotSink3:visible": true
+        UMA16:
+          "simulatedMicrophones,locator,correlator,chart:element_positions": !!float64 [[-0.021, -0.063, 0.0], [-0.063, -0.063, 0.0], [-0.021, -0.021, 0.0], [-0.063, -0.021, 0.0], [-0.021, 0.021, 0.0], [-0.063, 0.021, 0.0], [-0.021, 0.063, 0.0], [-0.063, 0.063, 0.0], [0.063, 0.063, 0.0], [0.021, 0.063, 0.0], [0.063, 0.021, 0.0], [0.021, 0.021, 0.0], [0.063, -0.021, 0.0], [0.021, -0.021, 0.0], [0.063, -0.063, 0.0], [0.021, -0.063, 0.0]]
+          "locator,correlator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3", "audio4", "audio5", "audio6", "audio7", "audio8", "audio9", "audio10", "audio11", "audio12", "audio13", "audio14", "audio15"]
+          "locator,correlator,chart:roi": [-0.5, 0.5, -0.5, 0.5]
+          "locator,correlator,chart:pairs": listed
+          "locator,correlator,chart:pair_list": !!uint32 [1, 14, 14, 8, 8, 7]
+          "window:n_pre": !!uint32 273
+          "window:n_post": !!uint32 993
+          "correlation,delays:max_lag": !!uint32 33
+          "chart:show_receiver_names": false
+          "simulatedMicrophones:source_position": [0.15, 0.1, 0.0]
+          "simulatedMicrophones:orbit_radius": 0.15
+          "simulatedMicrophones:orbit_period": 20
+          "display,filtered:map_in": !!uint32 [1, 14, 7, 8]
+          "display,filtered:map_out": !!uint32 [0, 1, 2, 3]
+          "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio1
+          "fft,spectrum:signal_name": "audio1 spectrum"
+          "onset0:trigger_name": audio1
+          "signal0:signal_name": audio1
+          "snapshotSink0:signal_name": "audio1, triggered"
+          "signal0,snapshotSink0:visible": true
+          "onset1:trigger_name": audio14
+          "signal1:signal_name": audio14
+          "snapshotSink1:signal_name": "audio14, triggered"
+          "signal1,snapshotSink1:visible": true
+          "onset2:trigger_name": audio7
+          "signal2:signal_name": audio7
+          "snapshotSink2:signal_name": "audio7, triggered"
+          "signal2,snapshotSink2:visible": true
+          "onset3:trigger_name": audio8
+          "signal3:signal_name": audio8
+          "snapshotSink3:signal_name": "audio8, triggered"
+          "signal3,snapshotSink3:visible": true
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: threshold
+      label: threshold
+      unit: FS
+      value: 0.2
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "trigger0,trigger1,trigger2,trigger3,trigger4,trigger5,trigger6,trigger7,trigger8,trigger9,trigger10,trigger11,trigger12,trigger13,trigger14,trigger15,onset0,onset1,onset2,onset3:threshold"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: hysteresis
+      label: hysteresis
+      unit: FS
+      value: 0.1
+      min: 0
+      max: 0.5
+      step: 0.01
+      style: slider
+      target_map: "trigger0,trigger1,trigger2,trigger3,trigger4,trigger5,trigger6,trigger7,trigger8,trigger9,trigger10,trigger11,trigger12,trigger13,trigger14,trigger15,onset0,onset1,onset2,onset3:hysteresis"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: highpass
+      label: high-pass
+      unit: Hz
+      value: 200
+      min: 20
+      max: 2000
+      step: 10
+      style: slider
+      target_map: "highpass0,highpass1,highpass2,highpass3,highpass4,highpass5,highpass6,highpass7,highpass8,highpass9,highpass10,highpass11,highpass12,highpass13,highpass14,highpass15:f_high"
+connections:
+  - [clock, 0, simulatedMicrophones, 0]
+  - [simulatedMicrophones, [0, 0], display, [1, 0]]
+  - [simulatedMicrophones, [0, 1], display, [1, 1]]
+  - [simulatedMicrophones, [0, 2], display, [1, 2]]
+  - [simulatedMicrophones, [0, 3], display, [1, 3]]
+  - [simulatedMicrophones, [0, 4], display, [1, 4]]
+  - [simulatedMicrophones, [0, 5], display, [1, 5]]
+  - [simulatedMicrophones, [0, 6], display, [1, 6]]
+  - [simulatedMicrophones, [0, 7], display, [1, 7]]
+  - [simulatedMicrophones, [0, 8], display, [1, 8]]
+  - [simulatedMicrophones, [0, 9], display, [1, 9]]
+  - [simulatedMicrophones, [0, 10], display, [1, 10]]
+  - [simulatedMicrophones, [0, 11], display, [1, 11]]
+  - [simulatedMicrophones, [0, 12], display, [1, 12]]
+  - [simulatedMicrophones, [0, 13], display, [1, 13]]
+  - [simulatedMicrophones, [0, 14], display, [1, 14]]
+  - [simulatedMicrophones, [0, 15], display, [1, 15]]
+  - [simulatedMicrophones, [0, 0], highpass0, 0]
+  - [highpass0, 0, trigger0, 0]
+  - [highpass0, 0, filtered, [1, 0]]
+  - [trigger0, 1, throttle0, 1]
+  - [throttle0, 0, locator, 0]
+  - [throttle0, 0, events, 0]
+  - [simulatedMicrophones, [0, 1], highpass1, 0]
+  - [highpass1, 0, trigger1, 0]
+  - [highpass1, 0, filtered, [1, 1]]
+  - [trigger1, 1, throttle1, 1]
+  - [throttle1, 0, locator, 0]
+  - [throttle1, 0, events, 0]
+  - [simulatedMicrophones, [0, 2], highpass2, 0]
+  - [highpass2, 0, trigger2, 0]
+  - [highpass2, 0, filtered, [1, 2]]
+  - [trigger2, 1, throttle2, 1]
+  - [throttle2, 0, locator, 0]
+  - [throttle2, 0, events, 0]
+  - [simulatedMicrophones, [0, 3], highpass3, 0]
+  - [highpass3, 0, trigger3, 0]
+  - [highpass3, 0, filtered, [1, 3]]
+  - [trigger3, 1, throttle3, 1]
+  - [throttle3, 0, locator, 0]
+  - [throttle3, 0, events, 0]
+  - [simulatedMicrophones, [0, 4], highpass4, 0]
+  - [highpass4, 0, trigger4, 0]
+  - [highpass4, 0, filtered, [1, 4]]
+  - [trigger4, 1, throttle4, 1]
+  - [throttle4, 0, locator, 0]
+  - [throttle4, 0, events, 0]
+  - [simulatedMicrophones, [0, 5], highpass5, 0]
+  - [highpass5, 0, trigger5, 0]
+  - [highpass5, 0, filtered, [1, 5]]
+  - [trigger5, 1, throttle5, 1]
+  - [throttle5, 0, locator, 0]
+  - [throttle5, 0, events, 0]
+  - [simulatedMicrophones, [0, 6], highpass6, 0]
+  - [highpass6, 0, trigger6, 0]
+  - [highpass6, 0, filtered, [1, 6]]
+  - [trigger6, 1, throttle6, 1]
+  - [throttle6, 0, locator, 0]
+  - [throttle6, 0, events, 0]
+  - [simulatedMicrophones, [0, 7], highpass7, 0]
+  - [highpass7, 0, trigger7, 0]
+  - [highpass7, 0, filtered, [1, 7]]
+  - [trigger7, 1, throttle7, 1]
+  - [throttle7, 0, locator, 0]
+  - [throttle7, 0, events, 0]
+  - [simulatedMicrophones, [0, 8], highpass8, 0]
+  - [highpass8, 0, trigger8, 0]
+  - [highpass8, 0, filtered, [1, 8]]
+  - [trigger8, 1, throttle8, 1]
+  - [throttle8, 0, locator, 0]
+  - [throttle8, 0, events, 0]
+  - [simulatedMicrophones, [0, 9], highpass9, 0]
+  - [highpass9, 0, trigger9, 0]
+  - [highpass9, 0, filtered, [1, 9]]
+  - [trigger9, 1, throttle9, 1]
+  - [throttle9, 0, locator, 0]
+  - [throttle9, 0, events, 0]
+  - [simulatedMicrophones, [0, 10], highpass10, 0]
+  - [highpass10, 0, trigger10, 0]
+  - [highpass10, 0, filtered, [1, 10]]
+  - [trigger10, 1, throttle10, 1]
+  - [throttle10, 0, locator, 0]
+  - [throttle10, 0, events, 0]
+  - [simulatedMicrophones, [0, 11], highpass11, 0]
+  - [highpass11, 0, trigger11, 0]
+  - [highpass11, 0, filtered, [1, 11]]
+  - [trigger11, 1, throttle11, 1]
+  - [throttle11, 0, locator, 0]
+  - [throttle11, 0, events, 0]
+  - [simulatedMicrophones, [0, 12], highpass12, 0]
+  - [highpass12, 0, trigger12, 0]
+  - [highpass12, 0, filtered, [1, 12]]
+  - [trigger12, 1, throttle12, 1]
+  - [throttle12, 0, locator, 0]
+  - [throttle12, 0, events, 0]
+  - [simulatedMicrophones, [0, 13], highpass13, 0]
+  - [highpass13, 0, trigger13, 0]
+  - [highpass13, 0, filtered, [1, 13]]
+  - [trigger13, 1, throttle13, 1]
+  - [throttle13, 0, locator, 0]
+  - [throttle13, 0, events, 0]
+  - [simulatedMicrophones, [0, 14], highpass14, 0]
+  - [highpass14, 0, trigger14, 0]
+  - [highpass14, 0, filtered, [1, 14]]
+  - [trigger14, 1, throttle14, 1]
+  - [throttle14, 0, locator, 0]
+  - [throttle14, 0, events, 0]
+  - [simulatedMicrophones, [0, 15], highpass15, 0]
+  - [highpass15, 0, trigger15, 0]
+  - [highpass15, 0, filtered, [1, 15]]
+  - [trigger15, 1, throttle15, 1]
+  - [throttle15, 0, locator, 0]
+  - [throttle15, 0, events, 0]
+  - [locator, 0, events, 0]
+  - [highpass0, 0, window, [1, 0]]
+  - [highpass1, 0, window, [1, 1]]
+  - [highpass2, 0, window, [1, 2]]
+  - [highpass3, 0, window, [1, 3]]
+  - [highpass4, 0, window, [1, 4]]
+  - [highpass5, 0, window, [1, 5]]
+  - [highpass6, 0, window, [1, 6]]
+  - [highpass7, 0, window, [1, 7]]
+  - [highpass8, 0, window, [1, 8]]
+  - [highpass9, 0, window, [1, 9]]
+  - [highpass10, 0, window, [1, 10]]
+  - [highpass11, 0, window, [1, 11]]
+  - [highpass12, 0, window, [1, 12]]
+  - [highpass13, 0, window, [1, 13]]
+  - [highpass14, 0, window, [1, 14]]
+  - [highpass15, 0, window, [1, 15]]
+  - [throttle0, 0, window, 0]
+  - [throttle1, 0, window, 0]
+  - [throttle2, 0, window, 0]
+  - [throttle3, 0, window, 0]
+  - [throttle4, 0, window, 0]
+  - [throttle5, 0, window, 0]
+  - [throttle6, 0, window, 0]
+  - [throttle7, 0, window, 0]
+  - [throttle8, 0, window, 0]
+  - [throttle9, 0, window, 0]
+  - [throttle10, 0, window, 0]
+  - [throttle11, 0, window, 0]
+  - [throttle12, 0, window, 0]
+  - [throttle13, 0, window, 0]
+  - [throttle14, 0, window, 0]
+  - [throttle15, 0, window, 0]
+  - [window, 1, frames, 0]
+  - [frames, 0, correlation, 0]
+  - [correlation, 0, delays, 0]
+  - [delays, 0, arrivals, 0]
+  - [arrivals, 0, correlator, 0]
+  - [arrivals, 0, correlated, 0]
+  - [correlator, 0, correlated, 0]
+  - [correlation, 0, lags, 0]
+  - [filtered, [1, 0], onset0, 0]
+  - [snapshot0, 1, snapshotSink0, 0]
+  - [display, [1, 0], signal0, 0]
+  - [onset0, 1, snapshot0, 1]
+  - [filtered, [1, 1], onset1, 0]
+  - [snapshot1, 1, snapshotSink1, 0]
+  - [display, [1, 1], signal1, 0]
+  - [onset1, 1, lag1, 0]
+  - [lag1, 0, snapshot1, 1]
+  - [onset0, 0, snapshot1, 0]
+  - [filtered, [1, 2], onset2, 0]
+  - [snapshot2, 1, snapshotSink2, 0]
+  - [display, [1, 2], signal2, 0]
+  - [onset2, 1, lag2, 0]
+  - [lag2, 0, snapshot2, 1]
+  - [onset0, 0, snapshot2, 0]
+  - [filtered, [1, 3], onset3, 0]
+  - [snapshot3, 1, snapshotSink3, 0]
+  - [display, [1, 3], signal3, 0]
+  - [onset3, 1, lag3, 0]
+  - [lag3, 0, snapshot3, 1]
+  - [onset0, 0, snapshot3, 0]
+  - [display, [1, 0], fft, 0]
+  - [fft, 0, spectrum, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: events
+      block: events
+    - name: correlated
+      block: correlated
+    - name: lags
+      block: lags
+    - name: signal0
+      block: signal0
+    - name: signal1
+      block: signal1
+    - name: signal2
+      block: signal2
+    - name: signal3
+      block: signal3
+    - name: snapshotSink0
+      block: snapshotSink0
+    - name: snapshotSink1
+      block: snapshotSink1
+    - name: snapshotSink2
+      block: snapshotSink2
+    - name: snapshotSink3
+      block: snapshotSink3
+    - name: spectrum
+      block: spectrum
+  plots:
+    - name: Localisation
+      type: opendigitizer::charts::LocalisationChart
+      parameters:
+        name: chart
+        element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+        receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+        roi: [-2.0, 2.0, -2.0, 2.0]
+        pairs: sequential
+        pair_list: !!uint32 [0, 1]
+        show_receiver_names: true
+      sources:
+        - events
+        - correlated
+      rect: [0, 0, 3, 4]
+    - name: Last 10 s
+      type: XYChart
+      parameters:
+        history_seconds: 10
+        show_legend: true
+      axes:
+        - axis: Y
+          min: -1
+          max: 1
+          scale: SymLog
+          linear_threshold: 0.001
+      sources:
+        - signal0
+        - signal1
+        - signal2
+        - signal3
+      rect: [3, 0, 3, 1]
+    - name: Triggered
+      type: XYChart
+      parameters:
+        show_legend: true
+        tags_of_every_signal: true
+        n_history: 4800
+        max_history_count: 1
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+        - axis: Y
+          min: -1
+          max: 1
+          scale: SymLog
+          linear_threshold: 0.001
+      sources:
+        - snapshotSink0
+        - snapshotSink1
+        - snapshotSink2
+        - snapshotSink3
+      rect: [3, 1, 2, 1]
+    - name: Correlation
+      type: opendigitizer::charts::TensorRowsChart
+      parameters:
+        lag_columns: true
+        show_legend: true
+      sources:
+        - lags
+      rect: [5, 1, 1, 1]
+    - name: Spectrum
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        show_max_hold: true
+        n_history: 59
+        colormap: ImPlotColormap_Viridis
+      axes:
+        - axis: X
+          min: 0
+          max: NaN
+        - axis: Y
+          min: -120
+          max: -20
+      sources:
+        - spectrum
+      rect: [3, 2, 3, 2]
