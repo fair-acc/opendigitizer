@@ -280,6 +280,47 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(g_state.waitUntil(ctx, "both the target and the control block contain the newly set value", [] { return blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Cos") && blockHasStringKeyValuePair("controlChoice", "value", "Cos"); }));
                 };
 
+                "an ImControlChoice with explicit choices sends the chosen value: a Selector rerouted"_test = [&] {
+                    const auto routedFrom = [](gr::Size_t input) {
+                        const gr::pmt::Value mapIn = setting("selector", "map_in");
+                        const auto           typed = mapIn.get_if<gr::TensorView<gr::Size_t>>();
+                        return typed.has_value() && typed->size() == 1UZ && *typed->begin() == input;
+                    };
+                    expect(g_state.waitUntil(ctx, "the selector routes input 0 as the .grc says", [&] { return routedFrom(0U); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlRoute").block;
+                    expect(control != nullptr) << fatal;
+                    ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Route"));
+                    for (const char* offered : {"first", "second"}) {
+                        expect(ctx->ItemExists(std::format("//$FOCUSED/{}", offered).c_str())) << offered;
+                    }
+                    ctx->ItemClick("//$FOCUSED/second");
+                    expect(g_state.waitUntil(ctx, "the selector routes input 1 and the control holds the label", [&] { return routedFrom(1U) && blockHasStringKeyValuePair("controlRoute", "value", "second"); }));
+                };
+
+                "an ImControlChoice without target_map sends each key's value to its blocks, the selected one at start"_test = [&] {
+                    const auto preset = [](float amplitude, std::string_view name) { return blockHasBasicTypeKeyValuePair<float>("signalGenerator1", "amplitude", amplitude) && blockHasBasicTypeKeyValuePair<float>("signalGenerator2", "amplitude", amplitude) && blockHasStringKeyValuePair("plotSink3", "signal_name", name); };
+                    expect(g_state.waitUntil(ctx, "'quiet' applied at start, overriding the .grc amplitudes", [&] { return preset(0.5f, "routed quietly"); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlPreset").block;
+                    expect(control != nullptr) << fatal;
+                    ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Preset"));
+                    ctx->ItemClick("//$FOCUSED/loud");
+                    expect(g_state.waitUntil(ctx, "'loud' sets both generators and the sink", [&] { return preset(8.f, "routed loudly") && blockHasStringKeyValuePair("controlPreset", "value", "loud"); }));
+                };
+
+                "an ImControlDevice lists its entries above the target's available_devices; a device sends its id selector and device_values"_test = [&] {
+                    expect(g_state.waitUntil(ctx, "the entry 'off' applied at start", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off"); })) << fatal;
+                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    expect(control != nullptr) << fatal;
+                    const auto pick = [&](const char* item) {
+                        ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device"));
+                        ctx->ItemClick(std::format("//$FOCUSED/{}", item).c_str());
+                    };
+                    pick("Second microphone [b], 16 channels");
+                    expect(g_state.waitUntil(ctx, "the device's id selector and the device_values", [] { return blockHasStringKeyValuePair("deviceTarget", "device", "@id:b") && blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
+                    pick("off");
+                    expect(g_state.waitUntil(ctx, "the entry's values; the device stays", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off") && blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
+                };
+
                 "the graph model should ignore invalid selectors when parsing target_map"_test = [&] {
                     expect(g_state.waitUntil(ctx, "initially controlChoice has a target", [] { return getFirstControlledProperty("controlChoice").has_value(); }));
                     sendSetTargetMapMessage("controlChoice", "noSuchBlock:signal_type");
@@ -582,6 +623,7 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
     gr::registerBlock<opendigitizer::test::UiControlCompatibilityTarget>(registry);
+    gr::registerBlock<opendigitizer::test::UiControlDeviceTarget>(registry);
     g_state.toggle  = std::make_unique<StandaloneControl<DigitizerUi::ImControlToggle>>(gr::property_map{{"name", "standalone_toggle"}, {"label", "Enabled"}, {"value", false}, {"target_map", "TargetA,TargetB:enabled"}});
     g_state.trigger = std::make_unique<StandaloneControl<DigitizerUi::ImControlTrigger>>(gr::property_map{{"name", "standalone_trigger"}, {"label", "Fire"}, {"target_map", "TargetA:fire"}});
     g_state.text    = std::make_unique<StandaloneControl<DigitizerUi::ImControlText>>(gr::property_map{{"name", "standalone_text"}, {"label", "Title"}, {"value", "start"}, {"target_map", "TargetA:caption"}});

@@ -1,0 +1,370 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clock
+      sample_rate: 96000
+      chunk_size: 1024
+      n_samples_max: 0
+  - id: opendigitizer::localisation::PointSourceAudio
+    parameters:
+      name: simulatedMicrophones
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      source_position: [0.5, 1.0, 0.0]
+      orbit_radius: 0.4
+      orbit_period: 20
+      period: 0.5
+      sample_rate: 96000
+      noise: 0.02
+  - id: gr::audio::AudioSourceMultiplexed<float32>
+    parameters:
+      name: soundcard
+      n_outputs: 2
+      req_sample_rate: 96000
+  - id: gr::basic::Switch<float32>
+    parameters:
+      name: source
+      n_groups: 2
+      n_channels: 2
+      group: !!uint32 0
+  - id: DigitizerUi::ImControlDevice
+    parameters:
+      name: input
+      label: input
+      value: simulation
+      choices: ["simulation"]
+      target_map: "soundcard:device"
+      choice_values:
+        simulation:
+          "source:group": !!uint32 0
+      device_values:
+        "source:group": !!uint32 1
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass0
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 96000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger0
+      trigger_name: "audio0"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle0
+      n_samples: 19200
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass1
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 96000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger1
+      trigger_name: "audio1"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::blocks::trigger::Throttle<float32, false>
+    parameters:
+      name: throttle1
+      n_samples: 19200
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: locator
+      receiver_names: ["audio0", "audio1"]
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      roi: [-2.0, 2.0, 0.0, 3.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: events
+      signal_name: threshold
+      color: 2062260
+  - id: gr::blocks::trigger::MultiChannelRecorder<float32>
+    parameters:
+      name: window
+      n_inputs: 2
+      n_pre: 572
+      n_post: 2012
+      retrigger: ignore
+      holdoff: 0.2
+      emit_partial: false
+  - id: opendigitizer::localisation::DataSetToTensor<float32>
+    parameters:
+      name: frames
+  - id: gr::localisation::PairCrossCorrelation<float32>
+    parameters:
+      name: correlation
+      max_lag: 92
+      weighting: none
+      f_min: 300
+      f_max: 12000
+  - id: gr::localisation::PairDelay<float32>
+    parameters:
+      name: delays
+      max_lag: 92
+  - id: opendigitizer::localisation::PairDelayArrivals<float32>
+    parameters:
+      name: arrivals
+      receiver_names: ["audio0", "audio1"]
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: correlator
+      receiver_names: ["audio0", "audio1"]
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      roi: [-2.0, 2.0, 0.0, 3.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: correlated
+      signal_name: correlated
+      color: 16744206
+  - id: opendigitizer::ImPlotSink<gr::Tensor<float32>>
+    parameters:
+      name: lags
+      signal_name: pair correlation
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset0
+      trigger_name: "audio0"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot0
+      filter: audio0
+      n_pre: 960
+      n_post: 8640
+      holdoff_samples: 19200
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink0
+      dataset_index: 0
+      signal_name: audio0, triggered
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal0
+      signal_name: audio0
+      signal_unit: FS
+      required_size: 960000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: onset1
+      trigger_name: "audio1"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::basic::StreamToDataSet<float32, false>
+    parameters:
+      name: snapshot1
+      filter: audio0
+      n_pre: 960
+      n_post: 8640
+      holdoff_samples: 19200
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: snapshotSink1
+      dataset_index: 0
+      signal_name: audio1, triggered
+      signal_unit: FS
+      n_history: 1
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: signal1
+      signal_name: audio1
+      signal_unit: FS
+      required_size: 960000
+  - id: gr::filter::Delay<float32>
+    parameters:
+      name: lag1
+      delay: 9600
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: fft
+      fft_size: 8192
+      sample_rate: 96000
+      output_in_db: true
+      signal_name: audio0 spectrum
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrum
+      dataset_index: 0
+      signal_name: audio0 spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: threshold
+      label: threshold
+      unit: FS
+      value: 0.2
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "trigger0,trigger1,onset0,onset1:threshold"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: hysteresis
+      label: hysteresis
+      unit: FS
+      value: 0.1
+      min: 0
+      max: 0.5
+      step: 0.01
+      style: slider
+      target_map: "trigger0,trigger1,onset0,onset1:hysteresis"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: highpass
+      label: high-pass
+      unit: Hz
+      value: 200
+      min: 20
+      max: 2000
+      step: 10
+      style: slider
+      target_map: "highpass0,highpass1:f_high"
+connections:
+  - [clock, 0, simulatedMicrophones, 0]
+  - [simulatedMicrophones, [0, 0], source, [0, 0]]
+  - [simulatedMicrophones, [0, 1], source, [0, 1]]
+  - [soundcard, [0, 0], source, [0, 2]]
+  - [soundcard, [0, 1], source, [0, 3]]
+  - [source, [0, 0], highpass0, 0]
+  - [highpass0, 0, trigger0, 0]
+  - [trigger0, 1, throttle0, 1]
+  - [throttle0, 0, locator, 0]
+  - [throttle0, 0, events, 0]
+  - [source, [0, 1], highpass1, 0]
+  - [highpass1, 0, trigger1, 0]
+  - [trigger1, 1, throttle1, 1]
+  - [throttle1, 0, locator, 0]
+  - [throttle1, 0, events, 0]
+  - [locator, 0, events, 0]
+  - [highpass0, 0, window, [1, 0]]
+  - [highpass1, 0, window, [1, 1]]
+  - [throttle0, 0, window, 0]
+  - [throttle1, 0, window, 0]
+  - [window, 1, frames, 0]
+  - [frames, 0, correlation, 0]
+  - [correlation, 0, delays, 0]
+  - [delays, 0, arrivals, 0]
+  - [arrivals, 0, correlator, 0]
+  - [arrivals, 0, correlated, 0]
+  - [correlator, 0, correlated, 0]
+  - [correlation, 0, lags, 0]
+  - [highpass0, 0, onset0, 0]
+  - [snapshot0, 1, snapshotSink0, 0]
+  - [source, [0, 0], signal0, 0]
+  - [onset0, 1, snapshot0, 1]
+  - [highpass1, 0, onset1, 0]
+  - [snapshot1, 1, snapshotSink1, 0]
+  - [source, [0, 1], signal1, 0]
+  - [onset1, 1, lag1, 0]
+  - [lag1, 0, snapshot1, 1]
+  - [onset0, 0, snapshot1, 0]
+  - [source, [0, 0], fft, 0]
+  - [fft, 0, spectrum, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: events
+      block: events
+    - name: correlated
+      block: correlated
+    - name: lags
+      block: lags
+    - name: signal0
+      block: signal0
+    - name: signal1
+      block: signal1
+    - name: snapshotSink0
+      block: snapshotSink0
+    - name: snapshotSink1
+      block: snapshotSink1
+    - name: spectrum
+      block: spectrum
+  plots:
+    - name: Localisation
+      type: opendigitizer::charts::LocalisationChart
+      parameters:
+        receiver_names: ["audio0", "audio1"]
+        element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+        roi: [-2.0, 2.0, 0.0, 3.0]
+      sources:
+        - events
+        - correlated
+      rect: [0, 0, 3, 4]
+    - name: Last 10 s
+      type: XYChart
+      parameters:
+        history_seconds: 10
+        show_legend: true
+      axes:
+        - axis: Y
+          min: -1
+          max: 1
+          scale: SymLog
+          linear_threshold: 0.001
+      sources:
+        - signal0
+        - signal1
+      rect: [3, 0, 3, 1]
+    - name: Triggered
+      type: XYChart
+      parameters:
+        show_legend: true
+        tags_of_every_signal: true
+        n_history: 9600
+        max_history_count: 1
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+        - axis: Y
+          min: -1
+          max: 1
+          scale: SymLog
+          linear_threshold: 0.001
+      sources:
+        - snapshotSink0
+        - snapshotSink1
+      rect: [3, 1, 2, 1]
+    - name: Correlation
+      type: opendigitizer::charts::TensorRowsChart
+      parameters:
+        lag_columns: true
+        show_legend: true
+      sources:
+        - lags
+      rect: [5, 1, 1, 1]
+    - name: Spectrum
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        show_max_hold: true
+        n_history: 59
+        colormap: ImPlotColormap_Viridis
+      axes:
+        - axis: X
+          min: 0
+          max: NaN
+        - axis: Y
+          min: -120
+          max: -20
+      sources:
+        - spectrum
+      rect: [3, 2, 3, 2]

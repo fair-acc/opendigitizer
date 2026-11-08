@@ -1,0 +1,37 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: clock
+      sample_rate: 1000
+      chunk_size: 50
+      n_samples_max: 0
+  - id: opendigitizer::localisation::PointSourceArrivals
+    parameters:
+      name: squareArrivals
+      source_position: [0.3, 0.2, 0.0]
+      period: 0.2
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: squareLocator
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: squareEvents
+      signal_name: square events
+connections:
+  - [clock, 0, squareArrivals, 0]
+  - [squareArrivals, 0, squareLocator, 0]
+  - [squareArrivals, 0, squareEvents, 0]
+  - [squareLocator, 0, squareEvents, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: squareEvents
+      block: squareEvents
+  plots:
+    - name: Localisation
+      type: opendigitizer::charts::LocalisationChart
+      parameters:
+        reference_position: [0.3, 0.2]
+      sources:
+        - squareEvents
+      rect: [0, 0, 1, 1]

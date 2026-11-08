@@ -44,6 +44,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     A<int, "X-axis mode", gr::Visible>                                                                                                                                             x_axis_mode             = static_cast<int>(XAxisMode::RelativeTime);
     A<bool, "show legend", gr::Visible>                                                                                                                                            show_legend             = false;
     A<bool, "show tags", gr::Visible>                                                                                                                                              show_tags               = true;
+    A<bool, "tags of every signal", gr::Doc<"each signal's tags in its colour; false: the first signal's only">>                                                                   tags_of_every_signal    = false;
     A<bool, "show grid", gr::Visible>                                                                                                                                              show_grid               = true;
     A<bool, "anti-aliasing">                                                                                                                                                       anti_aliasing           = true;
     A<gr::Size_t, "max history count", gr::Limits<1U, 128U>>                                                                                                                       max_history_count       = 3U;
@@ -62,7 +63,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
     static constexpr SignalKind supportedSignals = SignalKind::Streaming | SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration);
+    GR_MAKE_REFLECTABLE(XYChart, chart_name, chart_title, data_sinks, x_axis_mode, show_legend, show_tags, tags_of_every_signal, show_grid, anti_aliasing, max_history_count, history_opacity_decay, history_vertical_offset, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, history_seconds, update_rate, gpu_acceleration);
 
     std::array<std::optional<AxisCategory>, 3UZ> _xCategories{};
     std::array<std::optional<AxisCategory>, 3UZ> _yCategories{};
@@ -225,8 +226,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 if (sink->hasDataSets()) {
                     drawDataSetSignal(*sink);
 
-                    // Draw timing events for DataSets (only for first sink to avoid clutter)
-                    if (show_tags.value && !tagsDrawnForFirstSink) {
+                    if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
                         auto allDataSets = sink->dataSets();
                         if (!allDataSets.empty()) {
                             tags::drawDataSetTimingEvents(allDataSets.back(), _xCategories[xAxisIdx].has_value() ? _xCategories[xAxisIdx]->scale : AxisScale::Linear, baseColor);
@@ -236,8 +236,7 @@ struct XYChart : gr::Block<XYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 } else {
                     drawStreamingSignal(*sink);
 
-                    // Draw streaming tags (only for first sink to avoid clutter)
-                    if (show_tags.value && !tagsDrawnForFirstSink) {
+                    if (show_tags.value && (tags_of_every_signal.value || !tagsDrawnForFirstSink)) {
                         std::size_t totalCount = sink->size();
                         std::size_t dataCount  = std::min(totalCount, static_cast<std::size_t>(n_history.value));
                         std::size_t offset     = totalCount - dataCount;

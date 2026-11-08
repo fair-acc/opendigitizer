@@ -1,0 +1,157 @@
+blocks:
+  - id: gr::audio::AudioSourceMultiplexed<float32>
+    parameters:
+      name: microphones
+      n_outputs: 4
+      req_sample_rate: 48000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: chirp
+      signal_type: LinearChirp
+      sample_rate: 48000
+      amplitude: 0.5
+      f_start: 2000
+      f_stop: 6000
+      duration: 0.005
+      period: 0.5
+      taper: 0.2
+      trigger_name: tx0
+  - id: gr::blocks::trigger::TagToEvent<float32>
+    parameters:
+      name: emission
+      filter: tx0
+  - id: gr::audio::AudioSink<float32>
+    parameters:
+      name: loudspeaker
+      n_inputs: 1
+      req_sample_rate: 48000
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass0
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger0
+      trigger_name: "audio0"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass1
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger1
+      trigger_name: "audio1"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass2
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger2
+      trigger_name: "audio2"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: highpass3
+      filter_type: IIR
+      filter_response: HIGHPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_high: 200
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: trigger3
+      trigger_name: "audio3"
+      threshold: 0.2
+      hysteresis: 0.1
+      edge: rising
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: locator
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+      mode: bistatic
+      transmitter_positions: !!float64 [[0.0, -1.0, 0.0]]
+      direct_path_guard: 0.002
+      timing_offsets: [0.0, 0.0, 0.0, 0.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: events
+      signal_name: arrivals and positions
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: highpass
+      label: high-pass
+      unit: Hz
+      value: 200
+      min: 20
+      max: 2000
+      step: 10
+      style: slider
+      target_map: "highpass0,highpass1,highpass2,highpass3:f_high"
+connections:
+  - [chirp, 0, emission, 0]
+  - [emission, 1, loudspeaker, 0]
+  - [emission, 0, locator, 0]
+  - [emission, 0, events, 0]
+  - [microphones, [0, 0], highpass0, 0]
+  - [highpass0, 0, trigger0, 0]
+  - [trigger0, 0, locator, 0]
+  - [trigger0, 0, events, 0]
+  - [microphones, [0, 1], highpass1, 0]
+  - [highpass1, 0, trigger1, 0]
+  - [trigger1, 0, locator, 0]
+  - [trigger1, 0, events, 0]
+  - [microphones, [0, 2], highpass2, 0]
+  - [highpass2, 0, trigger2, 0]
+  - [trigger2, 0, locator, 0]
+  - [trigger2, 0, events, 0]
+  - [microphones, [0, 3], highpass3, 0]
+  - [highpass3, 0, trigger3, 0]
+  - [trigger3, 0, locator, 0]
+  - [trigger3, 0, events, 0]
+  - [locator, 0, events, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: events
+      block: events
+  plots:
+    - name: Localisation
+      type: opendigitizer::charts::LocalisationChart
+      parameters:
+        receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+        element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+        roi: [-2.0, 2.0, -2.0, 2.0]
+        mode: bistatic
+        transmitter_positions: !!float64 [[0.0, -1.0, 0.0]]
+        direct_path_guard: 0.002
+        timing_offsets: [0.0, 0.0, 0.0, 0.0]
+      sources:
+        - events
+      rect: [0, 0, 1, 1]

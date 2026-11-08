@@ -57,6 +57,7 @@ enum class SignalKind : std::uint8_t {
     Streaming = 1 << 0U,
     Dataset1D = 1 << 1U,
     Image2D   = 1 << 2U,
+    Events    = 1 << 3U,               // dated trigger events, for event charts only
     All       = Streaming | Dataset1D, // 1D signals; Image2D only for image charts
 };
 constexpr SignalKind operator|(SignalKind a, SignalKind b) noexcept { //
@@ -104,7 +105,6 @@ public:
     [[nodiscard]] bool ownsLock() const noexcept { return _lock.owns_lock(); }
 };
 
-/// latest 2D frame of a Tensor<T> sink, row-major {rows, columns}; uint32 pixels are packed 0xAARRGGBB
 /// one tensor dimension's coordinates, from the producer's gr:axis_* tags; without them, the cell index
 struct ImageAxis {
     double      origin = 0.0; // of cell 0
@@ -115,6 +115,7 @@ struct ImageAxis {
 
 [[nodiscard]] constexpr double axisCoordinate(const ImageAxis& axis, std::size_t cell) noexcept { return axis.origin + axis.step * static_cast<double>(cell); }
 
+/// latest 2D frame of a Tensor<T> sink, row-major {rows, columns}; uint32 pixels are packed 0xAARRGGBB
 struct ImageFrame {
     std::variant<std::monostate, std::span<const std::uint32_t>, std::span<const float>, std::span<const double>> pixels;
     std::size_t                                                                                                   rows       = 0UZ;
@@ -161,6 +162,10 @@ struct SignalSink {
     [[nodiscard]] virtual SignalKind                          signalKind() const noexcept   = 0;
     /// the queued frame with generation `next`, else the oldest queued after it; 0 = the newest. Valid while holding dataGuard()
     [[nodiscard]] virtual ImageFrame imageFrame([[maybe_unused]] std::uint64_t next = 0U) const { return {}; }
+
+    /// an event sink's newest events, oldest first; empty for other sinks. Valid while holding dataGuard()
+    [[nodiscard]] virtual std::span<const gr::property_map> events() const { return {}; }
+    [[nodiscard]] virtual std::uint64_t                     eventGeneration() const noexcept { return 0U; }
 
     [[nodiscard]] virtual bool                      hasStreamingTags() const noexcept                                                                    = 0;
     [[nodiscard]] virtual std::pair<double, double> tagTimeRange() const noexcept                                                                        = 0;
@@ -620,6 +625,26 @@ struct SinkAdapter : public SignalSink {
             }
         }
         return {};
+    }
+
+    [[nodiscard]] std::span<const gr::property_map> events() const override {
+        auto* b = blockPtr();
+        if constexpr (requires { b->events(); }) {
+            if (b) {
+                return b->events();
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::uint64_t eventGeneration() const noexcept override {
+        auto* b = blockPtr();
+        if constexpr (requires { b->eventGeneration(); }) {
+            if (b) {
+                return b->eventGeneration();
+            }
+        }
+        return 0U;
     }
 
     [[nodiscard]] bool hasStreamingTags() const noexcept override {

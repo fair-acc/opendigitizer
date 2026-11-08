@@ -929,13 +929,16 @@ int main() {
         expect(eq(single.processOne(1.f, 3.f), -2.f));
     };
 
-    "the dashboard registry provides ImPlotSink for float64 and DataSet<float64>, and Arithmetic for both float types"_test = [] {
+    "the dashboard registry provides ImPlotSink for float64, DataSet<float64> and events, Arithmetic for both float types, and the localisation blocks"_test = [] {
         gr::BlockRegistry registry;
         DigitizerUi::registerDashboardBlocks(registry);
         for (const std::string_view name : {"opendigitizer::ImPlotSink<float32>", "opendigitizer::ImPlotSink<float64>", "opendigitizer::ImPlotSink<gr::DataSet<float32>>", "opendigitizer::ImPlotSink<gr::DataSet<float64>>"}) {
             expect(registry.contains(name)) << name;
         }
         expect(gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float32>") && gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float64>"));
+        for (const std::string_view name : {"opendigitizer::ImPlotSink<gr::pmt::ValueMap>", "opendigitizer::localisation::DelayLocator", "opendigitizer::localisation::PointSourceArrivals", "opendigitizer::charts::LocalisationChart"}) {
+            expect(registry.contains(name)) << name << "(the event sink's key spells gr::property_map as gr::pmt::ValueMap)";
+        }
     };
 
     "TensorRowsChart places and names traces by the frame's axis coordinates, else by index"_test = [] {

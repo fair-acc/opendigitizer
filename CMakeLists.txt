@@ -94,6 +94,7 @@ if(NOT EMSCRIPTEN)
 endif()
 
 add_subdirectory(src/blocks/video)
+add_subdirectory(src/blocks/localisation)
 add_subdirectory(src/ui)
 if(OPENDIGITIZER_ENABLE_TESTING AND NOT EMSCRIPTEN)
   add_subdirectory(src/ui/test/consumer ${CMAKE_BINARY_DIR}/src/ui/test/consumer)

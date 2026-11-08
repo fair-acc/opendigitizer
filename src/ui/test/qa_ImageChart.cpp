@@ -9,6 +9,7 @@
 #include <gnuradio-4.0/GrFourierBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
 #include <gnuradio-4.0/Graph_yaml_importer.hpp>
+#include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #if defined(OD_ACOUSTIC_CAMERA)
 #include <gnuradio-4.0/GrAudioBlocks.hpp>
 #include <gnuradio-4.0/GrLocalisationBlocks.hpp>
@@ -268,6 +269,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const auto browser = cmrc::ui_test_assets::get_filesystem().open("dashboards/browser/XtraAcousticCamera.grc");
                 keysResolve(std::string_view(browser.begin(), browser.end()), 4UZ);
             };
+
+#if defined(OD_TRIGGER_BLOCKS)
+            "the localisation dashboards' blocks, settings and connections resolve (per array native and browser, and the switchable one)"_test = [&keysResolve] {
+                for (const std::string_view array : {"Square", "Tetrahedron", "Line", "Uma16", "Stereo"}) {
+                    for (const auto& file : {cmrc::sample_dashboards::get_filesystem().open(std::format("assets/sampleDashboards/XtraLocalisation{}.grc", array)), cmrc::ui_test_assets::get_filesystem().open(std::format("dashboards/browser/XtraLocalisation{}.grc", array))}) {
+                        keysResolve(std::string_view(file.begin(), file.end()), 0UZ);
+                    }
+                }
+                for (const auto& switchable : {cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/XtraLocalisation.grc"), cmrc::ui_test_assets::get_filesystem().open("dashboards/browser/XtraLocalisation.grc")}) {
+                    keysResolve(std::string_view(switchable.begin(), switchable.end()), 0UZ);
+                }
+            };
+            "the loudspeaker echo dashboard's blocks, settings and connections resolve"_test = [&keysResolve] {
+                const auto file = cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/XtraLocalisationActive.grc");
+                keysResolve(std::string_view(file.begin(), file.end()), 0UZ);
+            };
+#endif
 #endif
 
             "a device setting switches the running camera, its status follows"_test = [ctx] {

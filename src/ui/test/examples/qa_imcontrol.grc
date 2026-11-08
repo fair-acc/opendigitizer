@@ -50,6 +50,53 @@ blocks:
       name: controlChoice
       label: Shape
       target_map: "signalGenerator1:signal_type"
+  - id: gr::basic::Selector<float32>
+    parameters:
+      name: selector
+      n_inputs: 2
+      n_outputs: 1
+      map_in: !!uint32 [0]
+      map_out: !!uint32 [0]
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: plotSink3
+      signal_name: routed
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: controlRoute
+      label: Route
+      value: first
+      choices: ["first", "second"]
+      choice_values: { first: !!uint32 [0], second: !!uint32 [1] }
+      target_map: "selector:map_in"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: controlPreset
+      label: Preset
+      value: quiet
+      choices: ["quiet", "loud"]
+      choice_values:
+        quiet:
+          "signalGenerator1,signalGenerator2:amplitude": 0.5
+          "plotSink3:signal_name": "routed quietly"
+        loud:
+          "signalGenerator1,signalGenerator2:amplitude": 8.0
+          "plotSink3:signal_name": "routed loudly"
+  - id: opendigitizer::test::UiControlDeviceTarget
+    parameters:
+      name: deviceTarget
+  - id: DigitizerUi::ImControlDevice
+    parameters:
+      name: controlDevice
+      label: Input
+      value: "off"
+      choices: ["off"]
+      choice_values:
+        "off":
+          "deviceTarget:route": "off"
+      device_values:
+        "deviceTarget:route": "device"
+      target_map: "deviceTarget:device"
   - id: DigitizerUi::ImPropertyReadout
     parameters:
       name: readout
@@ -57,9 +104,13 @@ blocks:
       target_map: "signalGenerator2:frequency"
 connections:
   - [clockSource1, 0, signalGenerator1, 0]
+  - [clockSource1, 0, deviceTarget, 0]
   - [signalGenerator1, 0, plotSink1, 0]
   - [clockSource1, 0, signalGenerator2, 0]
   - [signalGenerator2, 0, plotSink2, 0]
+  - [signalGenerator1, 0, selector, [1, 0]]
+  - [signalGenerator2, 0, selector, [1, 1]]
+  - [selector, [1, 0], plotSink3, 0]
 dashboard:
   layout: Free
   sources: []
