@@ -56,30 +56,42 @@ inline bool em_visibilitychange_callback(int, const EmscriptenVisibilityChangeEv
 }
 #endif
 
-/// Update or clear `#dashboard=` in the browser URL without reloading (WASM only).
-inline void setBrowserDashboardFragment([[maybe_unused]] std::string_view dashboardName) {
+/// Writes `text` to the system clipboard (WASM only). SDL3's Emscripten backend has no clipboard support, so
+/// ImGui::SetClipboardText never leaves the page; this must run shortly after a user click for the browser to allow it.
+inline void copyToBrowserClipboard([[maybe_unused]] const std::string& text) {
 #ifdef __EMSCRIPTEN__
-    const std::string name{dashboardName};
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
     // clang-format off
-    // MAIN_THREAD: window/history are only valid on the browser main thread (pthreads build).
-    // Use "" (not '') in JS — the C preprocessor rejects empty character literals.
+    // MAIN_THREAD: navigator/document are only valid on the browser main thread (pthreads build).
     MAIN_THREAD_EM_ASM(
         {
-            const name = UTF8ToString($0);
-            const hash = (window.location.hash || "").replace(/^#/, "");
-            const params = hash.length
-                ? hash.split("&").filter(function (p) { return p.length && p.indexOf("dashboard=") !== 0; })
-                : [];
-            if (name.length) {
-                params.unshift("dashboard=" + name);
+            const text = UTF8ToString($0);
+            const fallbackCopy = function () {
+                const previouslyFocused = document.activeElement;
+                const area = document.createElement("textarea");
+                area.value = text;
+                area.style.position = "fixed";
+                area.style.opacity = "0";
+                document.body.appendChild(area);
+                area.select();
+                try {
+                    document.execCommand("copy");
+                } catch (error) {
+                    console.error("copy to clipboard failed", error);
+                }
+                area.remove();
+                if (previouslyFocused && previouslyFocused.focus) {
+                    previouslyFocused.focus();
+                }
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
             }
-            const fragment = params.join("&");
-            const url = window.location.pathname + window.location.search + (fragment ? "#" + fragment : "");
-            history.replaceState(null, "", url);
         },
-        name.c_str());
+        text.c_str());
     // clang-format on
 #pragma clang diagnostic pop
 #endif

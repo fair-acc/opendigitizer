@@ -237,6 +237,7 @@ add_library(
   common/ImguiWrap.hpp
   common/LookAndFeel.hpp
   common/TouchHandler.hpp
+  utils/BrowserHistory.hpp
   utils/EmscriptenHelper.hpp
   utils/TransparentStringHash.hpp)
 target_include_directories(opendigitizer-ui-common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
