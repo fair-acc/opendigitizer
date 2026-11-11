@@ -274,13 +274,13 @@ struct LookAndFeel {
         float exportedTabPaddingH = 4.0f;
         float exportedTabPaddingV = 2.0f;
 
-        float nodeRounding                            = 0.f;
+        float nodeRounding                            = 6.f;
         float nodePadding                             = 13.f;
         float nodeBorderWidth                         = 1.5f;
         float subgraphBorderWidth                     = 3.f;
-        float imguiNodeEditorPortRounding             = 0.f;
+        float imguiNodeEditorPortRounding             = 2.f;
         float imguiNodeEditorGroupNodeRounding        = 6.f;
-        float rectangularPortRounding                 = 0.f;
+        float rectangularPortRounding                 = 2.f;
         float dataTypeIconLineThickness               = 1.f;
         float float64IconRingGapWidthPixels           = 1.f;
         float complexNumbersIconDotWidthFactor        = 1.5f; // relative to the regular single dot diameter
@@ -294,7 +294,7 @@ struct LookAndFeel {
         float linkStrength                            = 60.f;
         float newLinkThickness                        = 1.f;
         float highlightThickness                      = 2.f;  // drop target outline, pending connection line
-        float filterButtonOverhang                    = .25f; // fraction of the filter button outside the node, on each axis
+        float filterIconInset                         = .15f; // fraction of the filter icon inside the node's corner, on each axis
         float uiControlBlockDragHandleBorderThickness = 3.f;
         float uiControlRegionBorderThickness          = 2.f;
         float uiControlNotchLengthInwards             = 5.f;

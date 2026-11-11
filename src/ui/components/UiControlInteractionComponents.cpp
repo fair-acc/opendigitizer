@@ -119,40 +119,28 @@ void BlockDragConnectOverlay::draw() const {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(clipRect.Min, clipRect.Max, true);
     drawList->AddLine(lineStart, lineEnd, lineColor, thickness);
-    if (dropTargetOutline) {
-        const ImRect& node                     = dropTargetOutline->node;
-        const ImRect& filterButton             = dropTargetOutline->filterButton;
-        const auto    drawNodeOutlineClippedTo = [&](ImVec2 clipMin, ImVec2 clipMax) {
-            drawList->PushClipRect(clipMin, clipMax, true);
-            drawList->AddRect(node.Min, node.Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
-            drawList->PopClipRect();
-        };
-        drawNodeOutlineClippedTo(clipRect.Min, ImVec2{filterButton.Min.x, clipRect.Max.y});
-        drawNodeOutlineClippedTo(ImVec2{filterButton.Min.x, filterButton.Max.y}, clipRect.Max);
-        drawList->AddRect(filterButton.Min, filterButton.Max, lineColor, ImGui::GetStyle().FrameRounding, ImDrawFlags_None, 2.F * thickness);
+    if (dropTargetNode) {
+        const ImRect& node = *dropTargetNode;
+        drawList->AddRect(node.Min, node.Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
     }
     drawList->PopClipRect();
 }
 
 BlockDragConnectOverlay BlockDragConnectInteraction::createOverlayDescription(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) const {
-    const ImDrawList*                                         canvasDrawList = ImGui::GetWindowDrawList();
-    const UiGraphBlock*                                       dropTarget     = blockUnderMouse(drawnBlocks);
-    std::optional<BlockDragConnectOverlay::DropTargetOutline> dropTargetOutline;
+    const ImDrawList*     canvasDrawList = ImGui::GetWindowDrawList();
+    const UiGraphBlock*   dropTarget     = blockUnderMouse(drawnBlocks);
+    std::optional<ImRect> dropTargetNode;
     if (dropTarget && isCompatibleDropTarget(*dropTarget)) {
-        const auto   nodeId       = ax::NodeEditor::NodeId(dropTarget);
-        const ImVec2 position     = ax::NodeEditor::GetNodePosition(nodeId);
-        const ImVec2 size         = ax::NodeEditor::GetNodeSize(nodeId);
-        const ImRect filterButton = components::nodeFilterButtonRect(position + ImVec2{size.x, 0.F});
-        dropTargetOutline         = BlockDragConnectOverlay::DropTargetOutline{
-                    .node         = ImRect(ax::NodeEditor::CanvasToScreen(position), ax::NodeEditor::CanvasToScreen(position + size)),
-                    .filterButton = ImRect(ax::NodeEditor::CanvasToScreen(filterButton.Min), ax::NodeEditor::CanvasToScreen(filterButton.Max)),
-        };
+        const auto   nodeId   = ax::NodeEditor::NodeId(dropTarget);
+        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
+        const ImVec2 size     = ax::NodeEditor::GetNodeSize(nodeId);
+        dropTargetNode        = ImRect(ax::NodeEditor::CanvasToScreen(position), ax::NodeEditor::CanvasToScreen(position + size));
     }
     return BlockDragConnectOverlay{
-        .clipRect          = ImRect(ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMin()), ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMax())),
-        .lineStart         = ax::NodeEditor::CanvasToScreen(_startPosition),
-        .lineEnd           = ax::NodeEditor::CanvasToScreen(ImGui::GetMousePos()),
-        .dropTargetOutline = dropTargetOutline,
+        .clipRect       = ImRect(ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMin()), ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMax())),
+        .lineStart      = ax::NodeEditor::CanvasToScreen(_startPosition),
+        .lineEnd        = ax::NodeEditor::CanvasToScreen(ImGui::GetMousePos()),
+        .dropTargetNode = dropTargetNode,
     };
 }
 

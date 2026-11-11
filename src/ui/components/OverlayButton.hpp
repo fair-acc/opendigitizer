@@ -32,13 +32,13 @@ inline OverlayButtonState overlayButtonBehavior(const char* strId, const ImRect&
 /// Returns the area relative to @param nodeTopRight that the filter button covers. can be used to draw and to calculate outline locations
 inline ImRect nodeFilterButtonRect(ImVec2 nodeTopRight) {
     const float  sideLength = ImGui::GetTextLineHeight();
-    const float  overhang   = LookAndFeel::instance().flowgraph.filterButtonOverhang * sideLength;
-    const ImVec2 topRight{nodeTopRight.x + overhang, nodeTopRight.y - overhang};
+    const float  inset      = LookAndFeel::instance().flowgraph.filterIconInset * sideLength;
+    const ImVec2 topRight{nodeTopRight.x - inset, nodeTopRight.y + inset};
     return ImRect{ImVec2{topRight.x - sideLength, topRight.y}, ImVec2{topRight.x, topRight.y + sideLength}};
 }
 
-/// Uses OverlayButton to draw a button with a filter icon covering @param rect
-inline OverlayButtonState drawFilterToggleButton(const char* strId, const ImRect& rect, bool toggledOn, ImVec4 fillColor, ImVec4 outlineColor, float outlineThickness) {
+/// Uses OverlayButton to draw a frameless filter icon covering @param rect
+inline OverlayButtonState drawFilterToggleButton(const char* strId, const ImRect& rect, bool toggledOn) {
     using namespace std::string_view_literals;
     static constexpr auto filterIcon = "\u{f0b0}"sv;
 
@@ -51,14 +51,8 @@ inline OverlayButtonState drawFilterToggleButton(const char* strId, const ImRect
         return ImGui::CalcTextSize(filterIcon.data(), filterIcon.data() + filterIcon.size());
     }();
 
-    auto*       drawList = ImGui::GetWindowDrawList();
-    const float rounding = ImGui::GetStyle().FrameRounding;
-    drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fillColor), rounding);
-    if (toggledOn || state.hovered || state.held) {
-        drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(toggledOn || state.held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered), rounding);
-    }
-    drawList->AddRect(rect.Min, rect.Max, ImGui::GetColorU32(outlineColor), rounding, ImDrawFlags_None, outlineThickness);
-    drawList->AddText(font, fontSize, rect.GetCenter() - (iconSize / 2.F), ImGui::GetColorU32(toggledOn || state.hovered ? ImGuiCol_Text : ImGuiCol_TextDisabled), filterIcon.data(), filterIcon.data() + filterIcon.size());
+    const ImGuiCol iconColour = toggledOn || state.held ? ImGuiCol_ButtonActive : (state.hovered ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+    ImGui::GetWindowDrawList()->AddText(font, fontSize, rect.GetCenter() - (iconSize / 2.F), ImGui::GetColorU32(iconColour), filterIcon.data(), filterIcon.data() + filterIcon.size());
     return state;
 }
 } // namespace DigitizerUi::components
