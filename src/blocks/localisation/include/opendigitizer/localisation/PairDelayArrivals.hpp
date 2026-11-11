@@ -25,9 +25,7 @@ GR_REGISTER_BLOCK(opendigitizer::localisation::PairDelayArrivals, [T], [ float, 
 template<typename T>
 struct PairDelayArrivals : gr::Block<PairDelayArrivals<T>> {
     using Description = gr::Doc<R""(@brief Turns gr::localisation::PairDelay frames [P,C] (all pairs of M receivers in pairOf order, column 0 the delay t_i - t_j in s, column 2 the confidence) into M dated arrival events named by `receiver_names`.
-
-Receiver 0 arrives at the frame's time (its gr:trigger_time tag, else the previous frame's time plus `frame_period`), receiver j at that time
-minus the delay of pair (0, j). Frames in which one of these pairs' confidence is below `min_confidence` are dropped (PairDelay also emits frames of silence).
+Receiver 0 arrives at the frame's time, receiver j at that time minus the delay of pair (0, j); only these pairs gate.
 Receivers beyond `receiver_names` (when not empty) are unused inputs: they get no event and do not gate.)"">;
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
@@ -38,12 +36,12 @@ Receivers beyond `receiver_names` (when not empty) are unused inputs: they get n
     gr::TensorPortIn<T> in;
     gr::EventPortOut    evtOut{{.streamSlotsPerPublish = kMaxReceivers}};
 
-    ReceiverNames                                                                                                                                          receiver_names = {};
-    A<double, "frame_period", gr::Unit<"s">, gr::Doc<"time from one frame to the next, dating untagged frames; 0: only tagged frames">>                    frame_period   = 0.0;
-    A<double, "min_confidence", gr::Doc<"PairDelay's peak over its second peak; 0: every frame">>                                                          min_confidence = 0.0;
-    A<gr::Size_t, "n_frames", gr::Doc<"frames turned into arrivals">>                                                                                      n_frames       = 0U;
-    A<gr::Size_t, "n_refused", gr::Doc<"frames whose rows are no pair count, without columns, of over kMaxReceivers, undated or with a non-finite delay">> n_refused      = 0U;
-    A<gr::Size_t, "n_gated", gr::Doc<"frames below min_confidence">>                                                                                       n_gated        = 0U;
+    ReceiverNames                                                                                                                                                      receiver_names = {};
+    A<double, "frame_period", gr::Unit<"s">, gr::Doc<"time from one frame to the next, dating untagged frames after the last gr:trigger_time; 0: only tagged frames">> frame_period   = 0.0;
+    A<double, "min_confidence", gr::Doc<"PairDelay's peak over its second peak, below which a frame (e.g. of silence) is dropped; 0: every frame">>                    min_confidence = 0.0;
+    A<gr::Size_t, "n_frames", gr::Doc<"frames turned into arrivals">>                                                                                                  n_frames       = 0U;
+    A<gr::Size_t, "n_refused", gr::Doc<"frames whose rows are no pair count, without columns, of over kMaxReceivers, undated or with a non-finite delay">>             n_refused      = 0U;
+    A<gr::Size_t, "n_gated", gr::Doc<"frames below min_confidence">>                                                                                                   n_gated        = 0U;
 
     GR_MAKE_REFLECTABLE(PairDelayArrivals, in, evtOut, receiver_names, frame_period, min_confidence, n_frames, n_refused, n_gated);
 
@@ -56,16 +54,9 @@ Receivers beyond `receiver_names` (when not empty) are unused inputs: they get n
     }
 
     gr::work::Status processBulk(gr::InputSpanLike auto& inSpan, gr::OutputSpanLike auto& evtSpan) {
-        std::size_t emitted = 0UZ;
-        const auto  drain   = [&] {
-            while (!_pending.empty() && emitted < evtSpan.size() && gr::emit(evtSpan, emitted, gr::property_map_view{_pending.front()})) {
-                _pending.pop_front();
-                ++emitted;
-            }
-        };
-        drain();
-        std::size_t k = 0UZ;
-        for (; k < inSpan.size() && _pending.empty(); ++k) { // a frame is read once the previous one's arrivals have left
+        std::size_t emitted = emitPending(_pending, evtSpan);
+        std::size_t k       = 0UZ;
+        for (; k < inSpan.size() && _pending.empty(); ++k) {
             if (const auto tagged = triggerTimeAt(inSpan, k)) {
                 _frameTimeNs = tagged;
             } else if (_frameTimeNs && frame_period.value > 0.0) {
@@ -74,7 +65,7 @@ Receivers beyond `receiver_names` (when not empty) are unused inputs: they get n
                 _frameTimeNs.reset();
             }
             arrivalsOf(inSpan[k]);
-            drain();
+            emitted = emitPending(_pending, evtSpan, emitted);
         }
         std::ignore = inSpan.consume(k);
         evtSpan.publish(emitted);
@@ -102,7 +93,7 @@ Receivers beyond `receiver_names` (when not empty) are unused inputs: they get n
             n_refused = n_refused + 1U;
             return;
         }
-        const auto gates = [&](std::size_t j) { return static_cast<double>(frame.data()[(j - 1UZ) * C + kConfidenceColumn]) < min_confidence.value; }; // pair (0, j)
+        const auto gates = [&](std::size_t j) { return static_cast<double>(frame.data()[(j - 1UZ) * C + kConfidenceColumn]) < min_confidence.value; };
         if (C > kConfidenceColumn && min_confidence.value > 0.0 && std::ranges::any_of(std::views::iota(1UZ, named), gates)) {
             n_gated = n_gated + 1U;
             return;

@@ -10,5 +10,6 @@ target_link_libraries(
           gnuradio4::gr-localisation
           gnuradio4::gr-trigger
           gnuradio4::gr-filter
+          gnuradio4::gr-fourier
           opendigitizer-options)
 add_test(NAME qa_DelayLocalisation COMMAND qa_DelayLocalisation)

@@ -7,6 +7,7 @@
 #include <opendigitizer/localisation/DelayAssociation.hpp>
 #include <opendigitizer/localisation/DelayConstraints.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -16,6 +17,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <vector>
@@ -29,7 +31,7 @@
 
 namespace opendigitizer::charts {
 
-/// the latest result event of a DelayLocator: one whose trigger_meta_info carries `status`
+/// a DelayLocator's result event: one whose trigger_meta_info carries `status`
 struct LocatedResult {
     std::string          status;
     localisation::Point3 position{std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
@@ -56,10 +58,7 @@ struct LocatedResult {
 
 struct LocalisationChart : gr::Block<LocalisationChart, gr::Drawable<gr::UICategory::Content, "ImGui">>, Chart {
     using Description = gr::Doc<R""(@brief Draws TDOA hyperbolas or bistatic ellipses from dated arrival events, their intersections and the position a DelayLocator published.
-
-Event sinks feed it: arrival events named by `receiver_names` (emissions by `transmitter_names`) are associated as DelayLocator does
-(each receiver's latest arrival, `pairs` within `coincidence_window`); a DelayLocator's result events give the detected position.
-Each sink is a layer of its own (e.g. threshold onsets and correlated delays of one array), drawn in the sink's colour when there are several.)"">;
+Arrival events are associated as DelayLocator does; each event sink is a layer of its own (e.g. threshold onsets and correlated delays of one array), drawn in the sink's colour when there are several.)"">;
 
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
@@ -75,18 +74,18 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
     localisation::ReceiverNames          receiver_names           = {};
     localisation::TransmitterPositions   transmitter_positions    = localisation::kOneTransmitter;
     localisation::TransmitterNames       transmitter_names        = {};
-    gr::algorithm::PropagationSpeed      propagation_speed        = 343.0;
+    gr::algorithm::PropagationSpeed      propagation_speed        = localisation::kSpeedOfSoundInAir;
     localisation::PairSelectionSetting   pairs                    = localisation::PairSelection::sequential;
     localisation::PairList               pair_list                = {};
     localisation::CoincidenceWindow      coincidence_window       = 0.0;
     localisation::TimingOffsets          timing_offsets           = {};
     localisation::DirectPathGuard        direct_path_guard        = 0.0;
-    localisation::RegionOfInterest       roi                      = localisation::kDefaultRoi;
+    localisation::RegionOfInterest       roi                      = localisation::kDefaultRoi | std::ranges::to<std::vector>();
     localisation::ViewHeight             view_z                   = std::numeric_limits<double>::quiet_NaN();
-    localisation::CurveSegments          curve_segments           = 192U;
-    localisation::CandidateMergeDistance candidate_merge_distance = 0.02;
-    localisation::ConsensusDistance      consensus_distance       = 0.15;
-    localisation::MaxRangeResidual       max_range_residual       = 0.05;
+    localisation::CurveSegments          curve_segments           = static_cast<gr::Size_t>(localisation::SolverSettings{}.curveSegments);
+    localisation::CandidateMergeDistance candidate_merge_distance = localisation::SolverSettings{}.candidateMergeDistance;
+    localisation::ConsensusDistance      consensus_distance       = localisation::SolverSettings{}.consensusDistance;
+    localisation::MaxRangeResidual       max_range_residual       = localisation::SolverSettings{}.maxRangeResidual;
 
     A<bool, "show legend", gr::Visible>                                                                          show_legend         = true;
     A<bool, "show grid", gr::Visible>                                                                            show_grid           = true;
@@ -122,32 +121,50 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
         bool        status        = false;
     };
 
-    struct Layer {                          // one per data sink, associated and solved apart from the others
-        std::string                  label; // the sink's signal name
+    struct Layer { // one per data sink, associated and solved apart from the others
+        std::string                  label;
         std::uint32_t                colour = 0U;
-        localisation::Solution       traced{}; // curves and intersections of the sink's associated arrivals
+        localisation::Solution       traced{};
         std::vector<TracedCurve>     curves{};
         std::optional<LocatedResult> result{};
+    };
+
+    struct LastDraw {
+        std::size_t                                      receivers = 0UZ;
+        std::vector<DrawCounts>                          layers; // receivers in none
+        std::vector<std::optional<localisation::Point2>> positions;
     };
 
     std::optional<std::uint64_t>                      _tracedGeneration; // sum of the sinks' event generations the curves were traced for
     std::vector<Layer>                                _layers;
     std::size_t                                       _tracedEvents = 0UZ;
     std::map<std::string, std::uint64_t, std::less<>> _generationAtGeometry; // per sink: the events before the geometry changed belong to another array
-    DrawCounts                                        _drawn;                // in the last draw, over every layer
-    std::vector<DrawCounts>                           _drawnLayers;          // in the last draw, per layer (receivers in none)
-    std::vector<std::optional<localisation::Point2>>  _drawnPositions;       // in the last draw, per layer
-    std::optional<localisation::Point2>               _drawnPosition;        // in the last draw: the first layer's that has one
-    std::optional<std::array<double, 4>>              _fittedRoi;            // the roi the axes were last fitted to; then the user's pan and zoom
+    LastDraw                                          _lastDraw;
+    std::optional<std::array<double, 4>>              _fittedRoi; // the roi the axes were last fitted to; then the user's pan and zoom
 
     [[nodiscard]] static constexpr std::string_view                    chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                                     uniqueId() const noexcept { return this->unique_name; }
-    [[nodiscard]] const DrawCounts&                                    drawn() const noexcept { return _drawn; }
-    [[nodiscard]] std::optional<localisation::Point2>                  drawnPosition() const noexcept { return _drawnPosition; }
-    [[nodiscard]] std::span<const DrawCounts>                          drawnLayers() const noexcept { return _drawnLayers; }
-    [[nodiscard]] std::span<const std::optional<localisation::Point2>> drawnPositions() const noexcept { return _drawnPositions; }
+    [[nodiscard]] std::span<const DrawCounts>                          drawnLayers() const noexcept { return _lastDraw.layers; }
+    [[nodiscard]] std::span<const std::optional<localisation::Point2>> drawnPositions() const noexcept { return _lastDraw.positions; }
     [[nodiscard]] std::size_t                                          tracedEvents() const noexcept { return _tracedEvents; }
     [[nodiscard]] std::optional<std::uint64_t>                         tracedGeneration() const noexcept { return _tracedGeneration; }
+
+    [[nodiscard]] DrawCounts drawn() const noexcept {
+        DrawCounts total{.receivers = _lastDraw.receivers};
+        for (const DrawCounts& layer : _lastDraw.layers) {
+            total.curves += layer.curves;
+            total.curveLabels += layer.curveLabels;
+            total.intersections += layer.intersections;
+            total.position = total.position || layer.position;
+            total.status   = total.status || layer.status;
+        }
+        return total;
+    }
+
+    [[nodiscard]] std::optional<localisation::Point2> drawnPosition() const noexcept {
+        const auto first = std::ranges::find_if(_lastDraw.positions, [](const std::optional<localisation::Point2>& position) { return position.has_value(); });
+        return first != _lastDraw.positions.end() ? *first : std::nullopt;
+    }
 
     void reset() { requestRenderReset(); }
 
@@ -168,18 +185,12 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
     void resetRenderState() {
         _tracedGeneration.reset();
         _layers.clear();
-        _drawnLayers.clear();
-        _drawnPositions.clear();
-        _drawn = {};
-        _drawnPosition.reset();
+        _lastDraw = {};
         _fittedRoi.reset();
     }
 
     void traceIfChanged() {
-        std::uint64_t generation = 0U;
-        for (const auto& sink : _signalSinks) {
-            generation += sink->eventGeneration();
-        }
+        const std::uint64_t generation = std::ranges::fold_left(_signalSinks | std::views::transform([](const auto& sink) { return sink->eventGeneration(); }), std::uint64_t{0U}, std::plus<>{});
         if (_tracedGeneration == generation) {
             return;
         }
@@ -229,7 +240,6 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
 
     [[nodiscard]] static std::string curveAnnotation(const localisation::Constraint& constraint, const localisation::Geometry& g) { return std::format("{} {:.3f} ms", pairName(constraint, g), g.speed > 0.0 ? 1e3 * constraint.value / g.speed : std::numeric_limits<double>::quiet_NaN()); }
 
-    /// where a curve's label goes: its point farthest from the detected position (else the roi centre), clear of the roi edge
     [[nodiscard]] std::optional<localisation::Point2> annotationPoint(const std::vector<localisation::Point2>& curve, const std::optional<LocatedResult>& result) const {
         const std::array                    box    = localisation::roiOf(roi.value);
         const double                        margin = static_cast<double>(DigitizerUi::LookAndFeel::instance().chartStyle.localisationTagEdgeMargin) * std::min(box[1] - box[0], box[3] - box[2]);
@@ -238,9 +248,10 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
         std::optional<localisation::Point2> farthest;
         double                              distance = -1.0;
         for (const localisation::Point2& p : curve) {
-            const bool clear = p[0] > box[0] + margin && p[0] < box[1] - margin && p[1] > box[2] + margin && p[1] < box[3] - margin;
-            if (clear && std::hypot(p[0] - anchor[0], p[1] - anchor[1]) > distance) {
-                distance = std::hypot(p[0] - anchor[0], p[1] - anchor[1]);
+            const bool   clear      = p[0] > box[0] + margin && p[0] < box[1] - margin && p[1] > box[2] + margin && p[1] < box[3] - margin;
+            const double fromAnchor = std::hypot(p[0] - anchor[0], p[1] - anchor[1]);
+            if (clear && fromAnchor > distance) {
+                distance = fromAnchor;
                 farthest = p;
             }
         }
@@ -277,11 +288,8 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
         const auto&  style      = DigitizerUi::LookAndFeel::instance().chartStyle;
         const ImVec4 foreground = ImGui::GetStyleColorVec4(ImGuiCol_Text);
         const bool   layered    = _layers.size() > 1UZ; // a colour per sink; a single sink keeps a colour per curve
-        _drawn                  = {};
-        _drawnLayers.assign(_layers.size(), DrawCounts{});
-        _drawnPositions.assign(_layers.size(), std::nullopt);
-        _drawnPosition.reset();
-        const auto colourOf = [&](const Layer& layer, std::size_t n) { return layered ? sinkColor(layer.colour) : ImPlot::GetColormapColor(static_cast<int>(n)); };
+        _lastDraw               = {.receivers = 0UZ, .layers = std::vector<DrawCounts>(_layers.size()), .positions = std::vector<std::optional<localisation::Point2>>(_layers.size())};
+        const auto colourOf     = [&](const Layer& layer, std::size_t n) { return layered ? sinkColor(layer.colour) : ImPlot::GetColormapColor(static_cast<int>(n)); };
 
         for (std::size_t k = 0UZ; show_curves && k < _layers.size(); ++k) {
             const Layer& layer = _layers[k];
@@ -293,10 +301,10 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
                 const std::string legend = layered ? std::format("{}: {}", layer.label, curve.legend) : curve.legend;
                 ImPlot::SetNextLineStyle(colourOf(layer, n), style.localisationCurveWidth);
                 ImPlot::PlotLine(legend.c_str(), &curve.points[0][0], &curve.points[0][1], static_cast<int>(curve.points.size()), ImPlotLineFlags_SkipNaN, 0, static_cast<int>(sizeof(localisation::Point2)));
-                ++_drawnLayers[k].curves;
+                ++_lastDraw.layers[k].curves;
                 if (show_curve_labels && curve.annotationAt) {
                     ImPlot::Annotation((*curve.annotationAt)[0], (*curve.annotationAt)[1], colourOf(layer, n), ImVec2(0.f, 0.f), true, "%s", curve.annotation.c_str());
-                    ++_drawnLayers[k].curveLabels;
+                    ++_lastDraw.layers[k].curveLabels;
                 }
             }
         }
@@ -308,7 +316,7 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
                 if (show_receiver_names) {
                     ImPlot::PlotText(localisation::nameOf(names, i, prefix).c_str(), points[i][0], points[i][1], ImVec2(0.f, -style.localisationLabelOffset));
                 }
-                ++_drawn.receivers;
+                ++_lastDraw.receivers;
             }
         };
         if (show_receivers) {
@@ -321,7 +329,7 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
         const ImPlotRect limits = ImPlot::GetPlotLimits();
         for (std::size_t k = 0UZ; k < _layers.size(); ++k) {
             const Layer& layer  = _layers[k];
-            DrawCounts&  counts = _drawnLayers[k];
+            DrawCounts&  counts = _lastDraw.layers[k];
             for (std::size_t c = 0UZ; show_intersections && c < layer.traced.intersections.size(); ++c) {
                 const auto&  candidate = layer.traced.intersections[c];
                 const ImVec4 colour    = colourOf(layer, static_cast<std::size_t>(candidate.constraints[0]));
@@ -329,16 +337,15 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
                 ImPlot::PlotScatter("##intersections", &candidate.point[0], &candidate.point[1], 1);
                 ++counts.intersections;
             }
-            if (show_position && layer.result && layer.result->status == localisation::statusName(localisation::Status::valid) && std::isfinite(layer.result->position[0])) {
+            if (show_position && layer.result && layer.result->status == localisation::statusName(localisation::SolutionStatus::Valid) && std::isfinite(layer.result->position[0])) {
                 const auto&       p      = layer.result->position;
                 const ImVec4      colour = layered ? sinkColor(layer.colour) : foreground;
                 const std::string label  = layered ? layer.label : std::string("##position");
                 ImPlot::SetNextMarkerStyle(ImPlotMarker_Asterisk, style.localisationMeanMarkerSize, colour, style.localisationMeanMarkerWeight, colour);
                 ImPlot::PlotScatter(label.c_str(), &p[0], &p[1], 1);
                 ImPlot::PlotText(std::format("({:.3f}, {:.3f})", p[0], p[1]).c_str(), p[0], p[1], ImVec2(0.f, -style.localisationLabelOffset));
-                _drawnPositions[k] = localisation::Point2{p[0], p[1]};
-                _drawnPosition     = _drawnPosition ? _drawnPosition : _drawnPositions[k];
-                counts.position    = true;
+                _lastDraw.positions[k] = localisation::Point2{p[0], p[1]};
+                counts.position        = true;
             }
             if (show_status && layer.result) {
                 const std::string measured = std::isfinite(layer.result->rmsRangeResidual) ? std::format("{}  rms {:.3f} m", layer.result->status, layer.result->rmsRangeResidual) : layer.result->status;
@@ -348,11 +355,6 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
                 ImPlot::PlotText(status.c_str(), limits.X.Min, limits.Y.Max, ImVec2(style.localisationStatusPadding.x + size.x / 2.f, style.localisationStatusPadding.y + size.y / 2.f + row));
                 counts.status = true;
             }
-            _drawn.curves += counts.curves;
-            _drawn.curveLabels += counts.curveLabels;
-            _drawn.intersections += counts.intersections;
-            _drawn.position = _drawn.position || counts.position;
-            _drawn.status   = _drawn.status || counts.status;
         }
 
         if (reference_position.value.size() >= 2UZ) {

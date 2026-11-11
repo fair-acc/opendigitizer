@@ -19,8 +19,7 @@ GR_REGISTER_BLOCK(opendigitizer::localisation::DataSetToTensor, [T], [ float, do
 template<typename T>
 struct DataSetToTensor : gr::Block<DataSetToTensor<T>, gr::NoTagPropagation> {
     using Description = gr::Doc<R""(@brief one tensor [S,N] per DataSet of S signals of N samples, signal s in row s (e.g. a MultiChannelRecorder window for PairCrossCorrelation),
-each frame tagged gr:trigger_time (the DataSet's timestamp) and gr:sample_rate (its axis spacing).
-A DataSet without signals, whose values are not S x N, or whose axis gives no rate, is refused and counted in `n_refused`.)"">;
+each frame tagged gr:trigger_time (the DataSet's timestamp) and gr:sample_rate (its axis spacing).)"">;
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;

@@ -72,10 +72,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle0
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass1
@@ -92,10 +90,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle1
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass2
@@ -112,10 +108,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle2
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass3
@@ -132,10 +126,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle3
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass4
@@ -152,10 +144,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle4
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass5
@@ -172,10 +162,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle5
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass6
@@ -192,10 +180,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle6
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass7
@@ -212,10 +198,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle7
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass8
@@ -232,10 +216,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle8
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass9
@@ -252,10 +234,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle9
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass10
@@ -272,10 +252,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle10
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass11
@@ -292,10 +270,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle11
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass12
@@ -312,10 +288,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle12
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass13
@@ -332,10 +306,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle13
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass14
@@ -352,10 +324,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle14
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass15
@@ -372,10 +342,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle15
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: opendigitizer::localisation::DelayLocator
     parameters:
       name: locator
@@ -490,20 +458,229 @@ blocks:
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": none
+          "band0,band1,band2,band3:f_low": !!float32 300.0
+          "band0,band1,band2,band3:f_high": !!float32 12000.0
+          "smooth0,smooth1,smooth2,smooth3:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
+          "phaseFrames:filter": "off"
         "shaker (PHAT)":
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": phat
+          "band0,band1,band2,band3:f_low": !!float32 300.0
+          "band0,band1,band2,band3:f_high": !!float32 12000.0
+          "smooth0,smooth1,smooth2,smooth3:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
+          "phaseFrames:filter": "off"
         "fork 440 Hz":
           "continuousCorrelation:f_min": !!float32 400.0
           "continuousCorrelation:f_max": !!float32 480.0
           "continuousCorrelation:weighting": phat
+          "band0,band1,band2,band3:f_low": !!float32 400.0
+          "band0,band1,band2,band3:f_high": !!float32 480.0
+          "smooth0,smooth1,smooth2,smooth3:f_low": !!float32 50.0
           "simulatedMicrophones:tone_frequency": 440.0
           "simulatedMicrophones:pulse_width": 0.4
+          "phaseFrames:filter": ""
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band0
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify0
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth0
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger0
+      trigger_name: "audio0"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band1
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify1
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth1
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger1
+      trigger_name: "audio1"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band2
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify2
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth2
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger2
+      trigger_name: "audio2"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band3
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify3
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth3
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger3
+      trigger_name: "audio3"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: envelopeLocator
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+      pairs: sequential
+      pair_list: !!uint32 [0, 1]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: envelope
+      signal_name: envelope
+      color: 9725885
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: envelopeThreshold
+      label: envelope threshold
+      unit: FS
+      value: 0.1
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "envelopeTrigger0,envelopeTrigger1,envelopeTrigger2,envelopeTrigger3:threshold"
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: lissajousX
+      signal_name: band0
+      signal_unit: FS
+      required_size: 960
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: lissajousY
+      signal_name: band1
+      signal_unit: FS
+      required_size: 960
+  - id: gr::basic::StreamsToTensor<float32>
+    parameters:
+      name: phaseFrames
+      n_ports: 4
+      size: 2400
+      n_pre: 246
+      holdoff_samples: 19200
+      filter: "off"
+  - id: gr::blocks::fft::STFT<float32>
+    parameters:
+      name: phaseSpectra
+  - id: gr::localisation::PairCrossSpectra<float32>
+    parameters:
+      name: phaseCross
+  - id: gr::localisation::PhaseSlopeDelay<float32>
+    parameters:
+      name: phaseSlope
+      f_min: 435.0
+      f_max: 445.0
+      sample_rate: 48000
+  - id: opendigitizer::localisation::PairDelayArrivals<float32>
+    parameters:
+      name: phaseArrivals
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: phaseLocator
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+      pairs: sequential
+      pair_list: !!uint32 [0, 1]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: phase
+      signal_name: phase
+      color: 9197131
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: onset0
@@ -648,16 +825,16 @@ blocks:
       choices: ["stereo", "line", "line 0.3 m", "square", "tetrahedron", "UMA16"]
       choice_values:
         stereo:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1"]
-          "locator,correlator,continuousLocator,chart:roi": [-2.0, 2.0, 0.0, 3.0]
-          "locator,correlator,continuousLocator,chart:pairs": sequential
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [0, 1]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-2.0, 2.0, 0.0, 3.0]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": sequential
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [0, 1]
           "window:n_pre": !!uint32 290
           "window:n_post": !!uint32 290
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 50
           "chart:show_receiver_names": true
-          "continuousArrivals:receiver_names": ["audio0", "audio1"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio0", "audio1"]
           "simulatedMicrophones:source_position": [0.5, 1.0, 0.0]
           "simulatedMicrophones:orbit_radius": 0.4
           "simulatedMicrophones:orbit_period": 20
@@ -666,32 +843,36 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
           "fft,spectrum:signal_name": "audio0 spectrum"
           "onset0:trigger_name": audio0
+          "envelopeTrigger0:trigger_name": audio0
           "signal0:signal_name": audio0
           "snapshotSink0:signal_name": "audio0, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio1
+          "envelopeTrigger1:trigger_name": audio1
           "signal1:signal_name": audio1
           "snapshotSink1:signal_name": "audio1, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": unused2
+          "envelopeTrigger2:trigger_name": unused2
           "signal2:signal_name": unused2
           "snapshotSink2:signal_name": unused2
           "signal2,snapshotSink2:visible": false
           "onset3:trigger_name": unused3
+          "envelopeTrigger3:trigger_name": unused3
           "signal3:signal_name": unused3
           "snapshotSink3:signal_name": unused3
           "signal3,snapshotSink3:visible": false
         line:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
-          "locator,correlator,continuousLocator,chart:roi": [-8.0, 8.0, 0.0, 8.0]
-          "locator,correlator,continuousLocator,chart:pairs": sequential
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [0, 1]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-8.0, 8.0, 0.0, 8.0]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": sequential
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [0, 1]
           "window:n_pre": !!uint32 1508
           "window:n_post": !!uint32 1508
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 1268
           "chart:show_receiver_names": true
-          "continuousArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
           "simulatedMicrophones:source_position": [1.0, 4.0, 0.0]
           "simulatedMicrophones:orbit_radius": 2.5
           "simulatedMicrophones:orbit_period": 25
@@ -700,32 +881,36 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
           "fft,spectrum:signal_name": "audio0 spectrum"
           "onset0:trigger_name": audio0
+          "envelopeTrigger0:trigger_name": audio0
           "signal0:signal_name": audio0
           "snapshotSink0:signal_name": "audio0, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio1
+          "envelopeTrigger1:trigger_name": audio1
           "signal1:signal_name": audio1
           "snapshotSink1:signal_name": "audio1, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": audio2
+          "envelopeTrigger2:trigger_name": audio2
           "signal2:signal_name": audio2
           "snapshotSink2:signal_name": "audio2, triggered"
           "signal2,snapshotSink2:visible": true
           "onset3:trigger_name": audio3
+          "envelopeTrigger3:trigger_name": audio3
           "signal3:signal_name": audio3
           "snapshotSink3:signal_name": "audio3, triggered"
           "signal3,snapshotSink3:visible": true
         line 0.3 m:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [-0.05, 0.0, 0.0], [0.05, 0.0, 0.0], [0.15, 0.0, 0.0]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
-          "locator,correlator,continuousLocator,chart:roi": [-1.0, 1.0, 0.0, 1.5]
-          "locator,correlator,continuousLocator,chart:pairs": sequential
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [0, 1]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [-0.05, 0.0, 0.0], [0.05, 0.0, 0.0], [0.15, 0.0, 0.0]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-1.0, 1.0, 0.0, 1.5]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": sequential
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [0, 1]
           "window:n_pre": !!uint32 290
           "window:n_post": !!uint32 290
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 50
           "chart:show_receiver_names": true
-          "continuousArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
           "simulatedMicrophones:source_position": [0.2, 0.5, 0.0]
           "simulatedMicrophones:orbit_radius": 0.2
           "simulatedMicrophones:orbit_period": 20
@@ -734,32 +919,36 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
           "fft,spectrum:signal_name": "audio0 spectrum"
           "onset0:trigger_name": audio0
+          "envelopeTrigger0:trigger_name": audio0
           "signal0:signal_name": audio0
           "snapshotSink0:signal_name": "audio0, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio1
+          "envelopeTrigger1:trigger_name": audio1
           "signal1:signal_name": audio1
           "snapshotSink1:signal_name": "audio1, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": audio2
+          "envelopeTrigger2:trigger_name": audio2
           "signal2:signal_name": audio2
           "snapshotSink2:signal_name": "audio2, triggered"
           "signal2,snapshotSink2:visible": true
           "onset3:trigger_name": audio3
+          "envelopeTrigger3:trigger_name": audio3
           "signal3:signal_name": audio3
           "snapshotSink3:signal_name": "audio3, triggered"
           "signal3,snapshotSink3:visible": true
         square:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
-          "locator,correlator,continuousLocator,chart:roi": [-2.0, 2.0, -2.0, 2.0]
-          "locator,correlator,continuousLocator,chart:pairs": sequential
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [0, 1]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-2.0, 2.0, -2.0, 2.0]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": sequential
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [0, 1]
           "window:n_pre": !!uint32 486
           "window:n_post": !!uint32 486
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 246
           "chart:show_receiver_names": true
-          "continuousArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
           "simulatedMicrophones:source_position": [0.3, 0.2, 0.0]
           "simulatedMicrophones:orbit_radius": 0.6
           "simulatedMicrophones:orbit_period": 20
@@ -768,32 +957,36 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
           "fft,spectrum:signal_name": "audio0 spectrum"
           "onset0:trigger_name": audio0
+          "envelopeTrigger0:trigger_name": audio0
           "signal0:signal_name": audio0
           "snapshotSink0:signal_name": "audio0, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio1
+          "envelopeTrigger1:trigger_name": audio1
           "signal1:signal_name": audio1
           "snapshotSink1:signal_name": "audio1, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": audio2
+          "envelopeTrigger2:trigger_name": audio2
           "signal2:signal_name": audio2
           "snapshotSink2:signal_name": "audio2, triggered"
           "signal2,snapshotSink2:visible": true
           "onset3:trigger_name": audio3
+          "envelopeTrigger3:trigger_name": audio3
           "signal3:signal_name": audio3
           "snapshotSink3:signal_name": "audio3, triggered"
           "signal3,snapshotSink3:visible": true
         tetrahedron:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-0.15, -0.086603, 0.061237], [0.15, -0.086603, 0.061237], [0.0, 0.173205, 0.061237], [0.0, 0.0, -0.183712]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
-          "locator,correlator,continuousLocator,chart:roi": [-1.0, 1.0, -1.0, 1.0]
-          "locator,correlator,continuousLocator,chart:pairs": sequential
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [0, 1]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.15, -0.086603, 0.061237], [0.15, -0.086603, 0.061237], [0.0, 0.173205, 0.061237], [0.0, 0.0, -0.183712]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-1.0, 1.0, -1.0, 1.0]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": sequential
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [0, 1]
           "window:n_pre": !!uint32 290
           "window:n_post": !!uint32 290
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 50
           "chart:show_receiver_names": true
-          "continuousArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio0", "audio1", "audio2", "audio3"]
           "simulatedMicrophones:source_position": [0.1, -0.05, 0.05]
           "simulatedMicrophones:orbit_radius": 0.3
           "simulatedMicrophones:orbit_period": 15
@@ -802,32 +995,36 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio0
           "fft,spectrum:signal_name": "audio0 spectrum"
           "onset0:trigger_name": audio0
+          "envelopeTrigger0:trigger_name": audio0
           "signal0:signal_name": audio0
           "snapshotSink0:signal_name": "audio0, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio1
+          "envelopeTrigger1:trigger_name": audio1
           "signal1:signal_name": audio1
           "snapshotSink1:signal_name": "audio1, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": audio2
+          "envelopeTrigger2:trigger_name": audio2
           "signal2:signal_name": audio2
           "snapshotSink2:signal_name": "audio2, triggered"
           "signal2,snapshotSink2:visible": true
           "onset3:trigger_name": audio3
+          "envelopeTrigger3:trigger_name": audio3
           "signal3:signal_name": audio3
           "snapshotSink3:signal_name": "audio3, triggered"
           "signal3,snapshotSink3:visible": true
         UMA16:
-          "simulatedMicrophones,locator,correlator,continuousLocator,chart:element_positions": !!float64 [[-0.021, -0.063, 0.0], [-0.063, -0.063, 0.0], [-0.021, -0.021, 0.0], [-0.063, -0.021, 0.0], [-0.021, 0.021, 0.0], [-0.063, 0.021, 0.0], [-0.021, 0.063, 0.0], [-0.063, 0.063, 0.0], [0.063, 0.063, 0.0], [0.021, 0.063, 0.0], [0.063, 0.021, 0.0], [0.021, 0.021, 0.0], [0.063, -0.021, 0.0], [0.021, -0.021, 0.0], [0.063, -0.063, 0.0], [0.021, -0.063, 0.0]]
-          "locator,correlator,continuousLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3", "audio4", "audio5", "audio6", "audio7", "audio8", "audio9", "audio10", "audio11", "audio12", "audio13", "audio14", "audio15"]
-          "locator,correlator,continuousLocator,chart:roi": [-0.5, 0.5, -0.5, 0.5]
-          "locator,correlator,continuousLocator,chart:pairs": listed
-          "locator,correlator,continuousLocator,chart:pair_list": !!uint32 [1, 14, 14, 8, 8, 7]
+          "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.021, -0.063, 0.0], [-0.063, -0.063, 0.0], [-0.021, -0.021, 0.0], [-0.063, -0.021, 0.0], [-0.021, 0.021, 0.0], [-0.063, 0.021, 0.0], [-0.021, 0.063, 0.0], [-0.063, 0.063, 0.0], [0.063, 0.063, 0.0], [0.021, 0.063, 0.0], [0.063, 0.021, 0.0], [0.021, 0.021, 0.0], [0.063, -0.021, 0.0], [0.021, -0.021, 0.0], [0.063, -0.063, 0.0], [0.021, -0.063, 0.0]]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,arrivals,chart:receiver_names": ["audio0", "audio1", "audio2", "audio3", "audio4", "audio5", "audio6", "audio7", "audio8", "audio9", "audio10", "audio11", "audio12", "audio13", "audio14", "audio15"]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-0.5, 0.5, -0.5, 0.5]
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pairs": listed
+          "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:pair_list": !!uint32 [1, 14, 14, 8, 8, 7]
           "window:n_pre": !!uint32 273
           "window:n_post": !!uint32 273
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 33
           "chart:show_receiver_names": false
-          "continuousArrivals:receiver_names": ["audio1", "audio14", "audio7", "audio8"]
+          "continuousArrivals,phaseArrivals:receiver_names": ["audio1", "audio14", "audio7", "audio8"]
           "simulatedMicrophones:source_position": [0.15, 0.1, 0.0]
           "simulatedMicrophones:orbit_radius": 0.15
           "simulatedMicrophones:orbit_period": 20
@@ -836,18 +1033,22 @@ blocks:
           "snapshot0,snapshot1,snapshot2,snapshot3:filter": audio1
           "fft,spectrum:signal_name": "audio1 spectrum"
           "onset0:trigger_name": audio1
+          "envelopeTrigger0:trigger_name": audio1
           "signal0:signal_name": audio1
           "snapshotSink0:signal_name": "audio1, triggered"
           "signal0,snapshotSink0:visible": true
           "onset1:trigger_name": audio14
+          "envelopeTrigger1:trigger_name": audio14
           "signal1:signal_name": audio14
           "snapshotSink1:signal_name": "audio14, triggered"
           "signal1,snapshotSink1:visible": true
           "onset2:trigger_name": audio7
+          "envelopeTrigger2:trigger_name": audio7
           "signal2:signal_name": audio7
           "snapshotSink2:signal_name": "audio7, triggered"
           "signal2,snapshotSink2:visible": true
           "onset3:trigger_name": audio8
+          "envelopeTrigger3:trigger_name": audio8
           "signal3:signal_name": audio8
           "snapshotSink3:signal_name": "audio8, triggered"
           "signal3,snapshotSink3:visible": true
@@ -947,99 +1148,83 @@ connections:
   - [source, [0, 0], highpass0, 0]
   - [highpass0, 0, trigger0, 0]
   - [highpass0, 0, filtered, [1, 0]]
-  - [trigger0, 1, throttle0, 1]
-  - [throttle0, 0, locator, 0]
-  - [throttle0, 0, events, 0]
+  - [trigger0, 0, locator, 0]
+  - [trigger0, 0, events, 0]
   - [source, [0, 1], highpass1, 0]
   - [highpass1, 0, trigger1, 0]
   - [highpass1, 0, filtered, [1, 1]]
-  - [trigger1, 1, throttle1, 1]
-  - [throttle1, 0, locator, 0]
-  - [throttle1, 0, events, 0]
+  - [trigger1, 0, locator, 0]
+  - [trigger1, 0, events, 0]
   - [source, [0, 2], highpass2, 0]
   - [highpass2, 0, trigger2, 0]
   - [highpass2, 0, filtered, [1, 2]]
-  - [trigger2, 1, throttle2, 1]
-  - [throttle2, 0, locator, 0]
-  - [throttle2, 0, events, 0]
+  - [trigger2, 0, locator, 0]
+  - [trigger2, 0, events, 0]
   - [source, [0, 3], highpass3, 0]
   - [highpass3, 0, trigger3, 0]
   - [highpass3, 0, filtered, [1, 3]]
-  - [trigger3, 1, throttle3, 1]
-  - [throttle3, 0, locator, 0]
-  - [throttle3, 0, events, 0]
+  - [trigger3, 0, locator, 0]
+  - [trigger3, 0, events, 0]
   - [source, [0, 4], highpass4, 0]
   - [highpass4, 0, trigger4, 0]
   - [highpass4, 0, filtered, [1, 4]]
-  - [trigger4, 1, throttle4, 1]
-  - [throttle4, 0, locator, 0]
-  - [throttle4, 0, events, 0]
+  - [trigger4, 0, locator, 0]
+  - [trigger4, 0, events, 0]
   - [source, [0, 5], highpass5, 0]
   - [highpass5, 0, trigger5, 0]
   - [highpass5, 0, filtered, [1, 5]]
-  - [trigger5, 1, throttle5, 1]
-  - [throttle5, 0, locator, 0]
-  - [throttle5, 0, events, 0]
+  - [trigger5, 0, locator, 0]
+  - [trigger5, 0, events, 0]
   - [source, [0, 6], highpass6, 0]
   - [highpass6, 0, trigger6, 0]
   - [highpass6, 0, filtered, [1, 6]]
-  - [trigger6, 1, throttle6, 1]
-  - [throttle6, 0, locator, 0]
-  - [throttle6, 0, events, 0]
+  - [trigger6, 0, locator, 0]
+  - [trigger6, 0, events, 0]
   - [source, [0, 7], highpass7, 0]
   - [highpass7, 0, trigger7, 0]
   - [highpass7, 0, filtered, [1, 7]]
-  - [trigger7, 1, throttle7, 1]
-  - [throttle7, 0, locator, 0]
-  - [throttle7, 0, events, 0]
+  - [trigger7, 0, locator, 0]
+  - [trigger7, 0, events, 0]
   - [source, [0, 8], highpass8, 0]
   - [highpass8, 0, trigger8, 0]
   - [highpass8, 0, filtered, [1, 8]]
-  - [trigger8, 1, throttle8, 1]
-  - [throttle8, 0, locator, 0]
-  - [throttle8, 0, events, 0]
+  - [trigger8, 0, locator, 0]
+  - [trigger8, 0, events, 0]
   - [source, [0, 9], highpass9, 0]
   - [highpass9, 0, trigger9, 0]
   - [highpass9, 0, filtered, [1, 9]]
-  - [trigger9, 1, throttle9, 1]
-  - [throttle9, 0, locator, 0]
-  - [throttle9, 0, events, 0]
+  - [trigger9, 0, locator, 0]
+  - [trigger9, 0, events, 0]
   - [source, [0, 10], highpass10, 0]
   - [highpass10, 0, trigger10, 0]
   - [highpass10, 0, filtered, [1, 10]]
-  - [trigger10, 1, throttle10, 1]
-  - [throttle10, 0, locator, 0]
-  - [throttle10, 0, events, 0]
+  - [trigger10, 0, locator, 0]
+  - [trigger10, 0, events, 0]
   - [source, [0, 11], highpass11, 0]
   - [highpass11, 0, trigger11, 0]
   - [highpass11, 0, filtered, [1, 11]]
-  - [trigger11, 1, throttle11, 1]
-  - [throttle11, 0, locator, 0]
-  - [throttle11, 0, events, 0]
+  - [trigger11, 0, locator, 0]
+  - [trigger11, 0, events, 0]
   - [source, [0, 12], highpass12, 0]
   - [highpass12, 0, trigger12, 0]
   - [highpass12, 0, filtered, [1, 12]]
-  - [trigger12, 1, throttle12, 1]
-  - [throttle12, 0, locator, 0]
-  - [throttle12, 0, events, 0]
+  - [trigger12, 0, locator, 0]
+  - [trigger12, 0, events, 0]
   - [source, [0, 13], highpass13, 0]
   - [highpass13, 0, trigger13, 0]
   - [highpass13, 0, filtered, [1, 13]]
-  - [trigger13, 1, throttle13, 1]
-  - [throttle13, 0, locator, 0]
-  - [throttle13, 0, events, 0]
+  - [trigger13, 0, locator, 0]
+  - [trigger13, 0, events, 0]
   - [source, [0, 14], highpass14, 0]
   - [highpass14, 0, trigger14, 0]
   - [highpass14, 0, filtered, [1, 14]]
-  - [trigger14, 1, throttle14, 1]
-  - [throttle14, 0, locator, 0]
-  - [throttle14, 0, events, 0]
+  - [trigger14, 0, locator, 0]
+  - [trigger14, 0, events, 0]
   - [source, [0, 15], highpass15, 0]
   - [highpass15, 0, trigger15, 0]
   - [highpass15, 0, filtered, [1, 15]]
-  - [trigger15, 1, throttle15, 1]
-  - [throttle15, 0, locator, 0]
-  - [throttle15, 0, events, 0]
+  - [trigger15, 0, locator, 0]
+  - [trigger15, 0, events, 0]
   - [locator, 0, events, 0]
   - [highpass0, 0, window, [1, 0]]
   - [highpass1, 0, window, [1, 1]]
@@ -1057,22 +1242,22 @@ connections:
   - [highpass13, 0, window, [1, 13]]
   - [highpass14, 0, window, [1, 14]]
   - [highpass15, 0, window, [1, 15]]
-  - [throttle0, 0, window, 0]
-  - [throttle1, 0, window, 0]
-  - [throttle2, 0, window, 0]
-  - [throttle3, 0, window, 0]
-  - [throttle4, 0, window, 0]
-  - [throttle5, 0, window, 0]
-  - [throttle6, 0, window, 0]
-  - [throttle7, 0, window, 0]
-  - [throttle8, 0, window, 0]
-  - [throttle9, 0, window, 0]
-  - [throttle10, 0, window, 0]
-  - [throttle11, 0, window, 0]
-  - [throttle12, 0, window, 0]
-  - [throttle13, 0, window, 0]
-  - [throttle14, 0, window, 0]
-  - [throttle15, 0, window, 0]
+  - [trigger0, 0, window, 0]
+  - [trigger1, 0, window, 0]
+  - [trigger2, 0, window, 0]
+  - [trigger3, 0, window, 0]
+  - [trigger4, 0, window, 0]
+  - [trigger5, 0, window, 0]
+  - [trigger6, 0, window, 0]
+  - [trigger7, 0, window, 0]
+  - [trigger8, 0, window, 0]
+  - [trigger9, 0, window, 0]
+  - [trigger10, 0, window, 0]
+  - [trigger11, 0, window, 0]
+  - [trigger12, 0, window, 0]
+  - [trigger13, 0, window, 0]
+  - [trigger14, 0, window, 0]
+  - [trigger15, 0, window, 0]
   - [window, 1, frames, 0]
   - [frames, 0, correlation, 0]
   - [correlation, 0, delays, 0]
@@ -1091,6 +1276,45 @@ connections:
   - [continuousArrivals, 0, continuousLocator, 0]
   - [continuousArrivals, 0, continuous, 0]
   - [continuousLocator, 0, continuous, 0]
+  - [display, [1, 0], band0, 0]
+  - [band0, 0, rectify0, 0]
+  - [rectify0, 0, smooth0, 0]
+  - [smooth0, 0, envelopeTrigger0, 0]
+  - [envelopeTrigger0, 0, envelopeLocator, 0]
+  - [envelopeTrigger0, 0, envelope, 0]
+  - [display, [1, 1], band1, 0]
+  - [band1, 0, rectify1, 0]
+  - [rectify1, 0, smooth1, 0]
+  - [smooth1, 0, envelopeTrigger1, 0]
+  - [envelopeTrigger1, 0, envelopeLocator, 0]
+  - [envelopeTrigger1, 0, envelope, 0]
+  - [display, [1, 2], band2, 0]
+  - [band2, 0, rectify2, 0]
+  - [rectify2, 0, smooth2, 0]
+  - [smooth2, 0, envelopeTrigger2, 0]
+  - [envelopeTrigger2, 0, envelopeLocator, 0]
+  - [envelopeTrigger2, 0, envelope, 0]
+  - [display, [1, 3], band3, 0]
+  - [band3, 0, rectify3, 0]
+  - [rectify3, 0, smooth3, 0]
+  - [smooth3, 0, envelopeTrigger3, 0]
+  - [envelopeTrigger3, 0, envelopeLocator, 0]
+  - [envelopeTrigger3, 0, envelope, 0]
+  - [envelopeLocator, 0, envelope, 0]
+  - [band0, 0, lissajousX, 0]
+  - [band1, 0, lissajousY, 0]
+  - [envelopeTrigger0, 0, phaseFrames, 0]
+  - [band0, 0, phaseFrames, [1, 0]]
+  - [band1, 0, phaseFrames, [1, 1]]
+  - [band2, 0, phaseFrames, [1, 2]]
+  - [band3, 0, phaseFrames, [1, 3]]
+  - [phaseFrames, 0, phaseSpectra, 0]
+  - [phaseSpectra, 0, phaseCross, 0]
+  - [phaseCross, 0, phaseSlope, 0]
+  - [phaseSlope, 0, phaseArrivals, 0]
+  - [phaseArrivals, 0, phaseLocator, 0]
+  - [phaseArrivals, 0, phase, 0]
+  - [phaseLocator, 0, phase, 0]
   - [filtered, [1, 0], onset0, 0]
   - [snapshot0, 1, snapshotSink0, 0]
   - [display, [1, 0], signal0, 0]
@@ -1124,6 +1348,10 @@ dashboard:
       block: correlated
     - name: continuous
       block: continuous
+    - name: envelope
+      block: envelope
+    - name: phase
+      block: phase
     - name: lags
       block: lags
     - name: signal0
@@ -1144,6 +1372,10 @@ dashboard:
       block: snapshotSink3
     - name: spectrum
       block: spectrum
+    - name: lissajousX
+      block: lissajousX
+    - name: lissajousY
+      block: lissajousY
   plots:
     - name: Localisation
       type: opendigitizer::charts::LocalisationChart
@@ -1159,6 +1391,8 @@ dashboard:
         - events
         - correlated
         - continuous
+        - envelope
+        - phase
       rect: [0, 0, 3, 4]
     - name: Last 10 s
       type: XYChart
@@ -1222,4 +1456,12 @@ dashboard:
           max: -20
       sources:
         - spectrum
-      rect: [3, 2, 3, 2]
+      rect: [3, 2, 2, 2]
+    - name: Lissajous
+      type: opendigitizer::charts::YYChart
+      parameters:
+        scatter: true
+      sources:
+        - lissajousX
+        - lissajousY
+      rect: [5, 2, 1, 2]
