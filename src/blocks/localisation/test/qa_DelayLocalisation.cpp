@@ -462,6 +462,47 @@ const boost::ut::suite<"DelayLocator"> blockTests = [] {
             }
         }
     };
+
+    "sourcePoint places the source on each motion's path: fixed, circle, ellipse, sweep, approach, ladder, waypoints"_test = [] {
+        const std::vector<double> centre{0.4, 1.0, 0.0};
+        const std::vector<double> extent{0.3, 0.1};
+        const std::vector<double> waypoints{-0.5, 0.8, 0.0, 0.6, 1.5, 0.2};
+        constexpr double          kPeriod = 4.0;
+        const auto                near    = [](const Point3& p, const Point3& q) { return distance(p, q) < 1e-12; };
+        const auto                pointAt = [&](SourceMotion motion, double t) { return sourcePoint(motion, centre, extent, kPeriod, waypoints, t); };
+        const double              range   = std::hypot(0.4, 1.0);
+        expect(near(pointAt(SourceMotion::fixed, 1.0), {0.4, 1.0, 0.0}));
+        expect(near(pointAt(SourceMotion::circle, 0.0), {0.7, 1.0, 0.0}) && near(pointAt(SourceMotion::circle, 1.0), {0.4, 1.3, 0.0})) << "radius extent x";
+        expect(near(pointAt(SourceMotion::ellipse, 1.0), {0.4, 1.1, 0.0}) && near(pointAt(SourceMotion::ellipse, 2.0), {0.1, 1.0, 0.0})) << "semi-axes x, y";
+        expect(near(pointAt(SourceMotion::sweep, 1.0), {0.7, 1.0, 0.0}) && near(pointAt(SourceMotion::sweep, 3.0), {0.1, 1.0, 0.0})) << "across x";
+        expect(near(pointAt(SourceMotion::approach, 1.0), {0.4 * (1.0 + 0.1 / range), 1.0 + 0.1 / range, 0.0}) && near(pointAt(SourceMotion::approach, 3.0), {0.4 * (1.0 - 0.1 / range), 1.0 - 0.1 / range, 0.0})) << "along the origin's direction";
+        for (const auto& [t, factor] : {std::pair{0.5, 0.5}, std::pair{1.5, 1.0}, std::pair{2.5, 1.5}, std::pair{3.5, 2.0}, std::pair{4.5, 0.5}}) {
+            expect(near(pointAt(SourceMotion::ladder, t), {factor * 0.4, factor * 1.0, 0.0})) << t;
+        }
+        expect(near(pointAt(SourceMotion::waypoints, 1.0), {-0.5, 0.8, 0.0}) && near(pointAt(SourceMotion::waypoints, 3.0), {0.6, 1.5, 0.2}) && near(pointAt(SourceMotion::waypoints, 4.5), {-0.5, 0.8, 0.0}));
+        expect(near(sourcePoint(SourceMotion::waypoints, centre, extent, kPeriod, {}, 1.0), {0.4, 1.0, 0.0})) << "no waypoints: the centre";
+    };
+
+    "PointSourceArrivals on waypoints feeds the locator each waypoint in turn"_test = [&at] {
+        const std::vector<double> waypoints{-0.4, 0.7, 0.0, 0.5, 0.3, 0.0};
+        gr::Graph                 graph;
+        auto&                     clock    = graph.emplaceBlock<gr::basic::ClockSource<std::uint8_t>>({{"sample_rate", 1000.f}, {"n_samples_max", gr::Size_t{2500U}}, {"chunk_size", gr::Size_t{100U}}, {"use_internal_thread", false}});
+        auto&                     arrivals = graph.emplaceBlock<PointSourceArrivals>({{"source_motion", std::string("waypoints")}, {"waypoints", waypoints}, {"motion_period", 1.0}, {"period", 0.5}, {"n_events", gr::Size_t{4U}}});
+        auto&                     locator  = graph.emplaceBlock<DelayLocator>();
+        auto&                     results  = graph.emplaceBlock<EventLog>();
+        results._stopAfter                 = 4UZ;
+        expect(graph.connect<"out", "clk">(clock, arrivals).has_value());
+        expect(graph.connect<"evtOut", "evtIn">(arrivals, locator).has_value());
+        expect(graph.connect<"evtOut", "evtIn">(locator, results).has_value());
+        gr::scheduler::Simple sched;
+        expect(sched.exchange(std::move(graph)).has_value());
+        expect(sched.runAndWait().has_value());
+        expect(eq(results._events.size(), 4UZ)) << fatal;
+        for (std::size_t k = 0UZ; k < results._events.size(); ++k) {
+            const std::size_t w = k % 2UZ; // emission k at 0.5 k s, half a motion_period each
+            expect(statusOf(results._events[k]) == "Valid" && at(results._events[k], {waypoints[3UZ * w], waypoints[3UZ * w + 1UZ], 0.0})) << k << statusOf(results._events[k]);
+        }
+    };
 };
 
 const boost::ut::suite<"PairDelayArrivals"> converterTests = [] {

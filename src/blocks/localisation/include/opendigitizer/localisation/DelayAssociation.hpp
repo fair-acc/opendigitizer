@@ -44,9 +44,16 @@ using CurveSegments          = gr::Annotated<gr::Size_t, "curve_segments", gr::L
 using CandidateMergeDistance = gr::Annotated<double, "candidate_merge_distance", gr::Unit<"m">, gr::Doc<"intersections closer than this are one">>;
 using ConsensusDistance      = gr::Annotated<double, "consensus_distance", gr::Unit<"m">, gr::Doc<"accepted intersections within this form one solution">>;
 using MaxRangeResidual       = gr::Annotated<double, "max_range_residual", gr::Unit<"m">, gr::Doc<"a constraint supports a point within this range error">>;
-using SourcePosition         = gr::Annotated<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">>;
-using OrbitRadius            = gr::Annotated<double, "orbit_radius", gr::Unit<"m">, gr::Visible, gr::Doc<"of the source's circle around source_position in the xy plane, once per orbit_period">>;
-using OrbitPeriod            = gr::Annotated<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>;
+using SourcePosition         = gr::Annotated<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z: the source, or the centre of its motion">>;
+
+enum class SourceMotion : std::uint8_t { fixed, circle, ellipse, sweep, approach, ladder, waypoints };
+
+using SourceMotionSetting = gr::Annotated<SourceMotion, "source_motion", gr::Visible,
+    gr::Doc<"fixed; circle or ellipse around source_position; sweep: across x; approach: to and from the origin along source_position's direction; "
+            "ladder: at 0.5, 1, 1.5, 2 x source_position in turn; waypoints: each of `waypoints` in turn">>;
+using MotionExtent        = gr::Annotated<std::vector<double>, "motion_extent", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y: circle radius (x), ellipse semi-axes, sweep half-width (x), approach half-range (y)">>;
+using MotionPeriod        = gr::Annotated<double, "motion_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>, gr::Doc<"one turn, sweep, approach, ladder or tour of the waypoints">>;
+using Waypoints           = gr::Annotated<std::vector<double>, "waypoints", gr::Unit<"m">, gr::Doc<"x, y, z per point">>;
 
 inline const gr::Tensor<double> kDeckSquare        = gr::algorithm::geometry::grid(2UZ, 2UZ, 1.2);
 inline const gr::Tensor<double> kOneTransmitter    = gr::Tensor<double>(std::array{1UZ, 3UZ}, std::vector<double>{0.0, -1.0, 0.0});
@@ -130,10 +137,39 @@ struct Dated {
     return {{std::string(gr::tag::kTriggerName.key()), std::string(name)}, {std::string(gr::tag::kTriggerTime.key()), epochNs + static_cast<std::uint64_t>(wholeNs)}, {std::string(gr::tag::kTriggerOffset.key()), static_cast<float>(seconds - static_cast<double>(wholeNs) * 1e-9)}};
 }
 
-[[nodiscard]] inline Point3 orbitPoint(const std::vector<double>& centre, double radius, double period, double t) {
-    const Point3 base  = centre.size() == 3UZ ? Point3{centre[0], centre[1], centre[2]} : Point3{};
-    const double angle = 2.0 * std::numbers::pi * t / period;
-    return {base[0] + radius * std::cos(angle), base[1] + radius * std::sin(angle), base[2]};
+/// the source at time `t` s on `motion`'s path, one cycle per `period`; ladder and waypoints hold each position for an equal share of it
+[[nodiscard]] inline Point3 sourcePoint(SourceMotion motion, const std::vector<double>& centre, const std::vector<double>& extent, double period, const std::vector<double>& waypoints, double t) {
+    const Point3 c      = centre.size() == 3UZ ? Point3{centre[0], centre[1], centre[2]} : Point3{};
+    const double ex     = extent.empty() ? 0.0 : extent[0];
+    const double ey     = extent.size() > 1UZ ? extent[1] : ex;
+    const double angle  = 2.0 * std::numbers::pi * t / period;
+    const auto   stepOf = [&](std::size_t n) { return static_cast<std::size_t>(std::floor(t / period * static_cast<double>(n))) % n; };
+    switch (motion) {
+    case SourceMotion::fixed: return c;
+    case SourceMotion::circle: return {c[0] + ex * std::cos(angle), c[1] + ex * std::sin(angle), c[2]};
+    case SourceMotion::ellipse: return {c[0] + ex * std::cos(angle), c[1] + ey * std::sin(angle), c[2]};
+    case SourceMotion::sweep: return {c[0] + ex * std::sin(angle), c[1], c[2]};
+    case SourceMotion::approach: {
+        const double range = std::hypot(c[0], c[1], c[2]);
+        const Point3 along = range > 0.0 ? Point3{c[0] / range, c[1] / range, c[2] / range} : Point3{0.0, 1.0, 0.0};
+        const double shift = ey * std::sin(angle);
+        return {c[0] + shift * along[0], c[1] + shift * along[1], c[2] + shift * along[2]};
+    }
+    case SourceMotion::ladder: {
+        constexpr std::array kLadderFactors{0.5, 1.0, 1.5, 2.0};
+        const double         factor = kLadderFactors[stepOf(kLadderFactors.size())];
+        return {factor * c[0], factor * c[1], factor * c[2]};
+    }
+    case SourceMotion::waypoints: {
+        const std::size_t n = waypoints.size() / 3UZ;
+        if (n == 0UZ) {
+            return c;
+        }
+        const std::size_t k = stepOf(n);
+        return {waypoints[3UZ * k], waypoints[3UZ * k + 1UZ], waypoints[3UZ * k + 2UZ]};
+    }
+    }
+    return c;
 }
 
 struct Geometry {

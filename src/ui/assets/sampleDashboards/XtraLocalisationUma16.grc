@@ -9,9 +9,11 @@ blocks:
     parameters:
       name: simulatedMicrophones
       element_positions: !!float64 [[-0.021, -0.063, 0.0], [-0.063, -0.063, 0.0], [-0.021, -0.021, 0.0], [-0.063, -0.021, 0.0], [-0.021, 0.021, 0.0], [-0.063, 0.021, 0.0], [-0.021, 0.063, 0.0], [-0.063, 0.063, 0.0], [0.063, 0.063, 0.0], [0.021, 0.063, 0.0], [0.063, 0.021, 0.0], [0.021, 0.021, 0.0], [0.063, -0.021, 0.0], [0.021, -0.021, 0.0], [0.063, -0.063, 0.0], [0.021, -0.063, 0.0]]
+      source_motion: circle
       source_position: [0.15, 0.1, 0.0]
-      orbit_radius: 0.15
-      orbit_period: 20
+      motion_extent: [0.15, 0.075]
+      motion_period: 20
+      waypoints: [0.24, 0.36, 0.0, 0.0, 0.3, 0.0, 0.12, 0.11, 0.0, 0.06, 0.26, 0.0, 0.17, 0.17, 0.0]
       period: 0.5
       sample_rate: 48000
       noise: 0.02
@@ -664,6 +666,27 @@ blocks:
           "simulatedMicrophones:tone_frequency": 440.0
           "simulatedMicrophones:pulse_width": 0.4
           "phaseFrames:filter": ""
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: motion
+      label: source motion
+      value: "circle"
+      choices: ["circle", "fixed", "waypoints", "ellipse", "sweep", "approach", "ladder"]
+      choice_values:
+        "circle":
+          "simulatedMicrophones:source_motion": circle
+        "fixed":
+          "simulatedMicrophones:source_motion": fixed
+        "waypoints":
+          "simulatedMicrophones:source_motion": waypoints
+        "ellipse":
+          "simulatedMicrophones:source_motion": ellipse
+        "sweep":
+          "simulatedMicrophones:source_motion": sweep
+        "approach":
+          "simulatedMicrophones:source_motion": approach
+        "ladder":
+          "simulatedMicrophones:source_motion": ladder
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: onset1
