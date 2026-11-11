@@ -359,12 +359,11 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     drawlist->AddRectFilled({bb.minX, bb.maxY}, {bb.maxX, visibleRegionMax.y}, outerColor);                         // bottom middle between the two columns
 }
 
-FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                             //
-    UiGraphBlock&                                          block,                      //
-    std::span<const UiGraphPort* const>                    inputPorts,                 //
-    std::span<const UiGraphPort* const>                    outputPorts,                //
-    std::optional<components::PropertyConnectionIndicator> connectionPreview,          //
-    bool                                                   isUiControlConnectionTarget //
+FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
+    UiGraphBlock&                                          block,            //
+    std::span<const UiGraphPort* const>                    inputPorts,       //
+    std::span<const UiGraphPort* const>                    outputPorts,      //
+    std::optional<components::PropertyConnectionIndicator> connectionPreview //
 ) {
     const auto            blockId        = ax::NodeEditor::NodeId(std::addressof(block));
     const auto            isGroup        = block.isScheduler() || block.isGraph();
@@ -394,23 +393,10 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                      
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
     // draw a filter button over the top right corner of the node
-    const auto&  nodeEditorStyle          = ax::NodeEditor::GetStyle();
-    const ImVec2 nodeTopRight             = ImVec2{blockScreenPosition.x - nodeEditorStyle.NodePadding.x + blockSize.x, blockScreenPosition.y - nodeEditorStyle.NodePadding.y};
-    const ImVec4 filterButtonOutlineColor = [&] {
-        if (isUiControlConnectionTarget) {
-            return LookAndFeel::instance().palette().flowgraphUiControlPendingConnection;
-        }
-        if (ax::NodeEditor::IsNodeSelected(blockId)) {
-            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_SelNodeBorder];
-        }
-        if (ax::NodeEditor::GetHoveredNode() == blockId) {
-            return nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_HovNodeBorder];
-        }
-        return borderColor;
-    }();
-    const float filterButtonOutlineThickness = isUiControlConnectionTarget ? LookAndFeel::instance().flowgraph.highlightThickness : nodeEditorStyle.NodeBorderWidth;
-    const bool  isFilter                     = _filterBlock == std::addressof(block);
-    const auto  filterButton                 = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), components::nodeFilterButtonRect(nodeTopRight), isFilter, nodeEditorStyle.Colors[ax::NodeEditor::StyleColor_NodeBg], filterButtonOutlineColor, filterButtonOutlineThickness);
+    const auto&  nodeEditorStyle = ax::NodeEditor::GetStyle();
+    const ImVec2 nodeTopRight    = ImVec2{blockScreenPosition.x - nodeEditorStyle.NodePadding.x + blockSize.x, blockScreenPosition.y - nodeEditorStyle.NodePadding.y};
+    const bool   isFilter        = _filterBlock == std::addressof(block);
+    const auto   filterButton    = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), components::nodeFilterButtonRect(nodeTopRight), isFilter);
     if (filterButton.clicked) {
         _filterBlock = isFilter ? nullptr : std::addressof(block);
     }
@@ -762,7 +748,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
                                                             })
                                                                     : std::nullopt;
         const bool isUiControlConnectionTarget = pendingMultiSelect || isCompatibleWithDragSource(*block);
-        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview, isUiControlConnectionTarget);
+        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview);
         const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
         if (blockPosition.filterButtonHovered) {

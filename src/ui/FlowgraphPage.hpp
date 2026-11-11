@@ -241,12 +241,11 @@ public:
         float pinAreaHeight       = 0.F;
         bool  filterButtonHovered = false;
     };
-    NodeDrawResult drawNode(                                                      //
-        UiGraphBlock&                                          block,             //
-        std::span<const UiGraphPort* const>                    inputPorts,        //
-        std::span<const UiGraphPort* const>                    outputPorts,       //
-        std::optional<components::PropertyConnectionIndicator> connectionPreview, //
-        bool                                                   isUiControlConnectionTarget);
+    NodeDrawResult drawNode(                                                //
+        UiGraphBlock&                                          block,       //
+        std::span<const UiGraphPort* const>                    inputPorts,  //
+        std::span<const UiGraphPort* const>                    outputPorts, //
+        std::optional<components::PropertyConnectionIndicator> connectionPreview);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);
 

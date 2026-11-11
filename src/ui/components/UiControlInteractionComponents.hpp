@@ -117,15 +117,10 @@ public:
 ///
 /// all coordinates here are screen space, because they are intended to be drawn after the canvas is done
 struct BlockDragConnectOverlay {
-    struct DropTargetOutline {
-        ImRect node;
-        ImRect filterButton;
-    };
-
-    ImRect                           clipRect;
-    ImVec2                           lineStart;
-    ImVec2                           lineEnd;
-    std::optional<DropTargetOutline> dropTargetOutline;
+    ImRect                clipRect;
+    ImVec2                lineStart;
+    ImVec2                lineEnd;
+    std::optional<ImRect> dropTargetNode;
 
     void draw() const;
 };
