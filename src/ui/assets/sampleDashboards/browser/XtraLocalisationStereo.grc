@@ -65,10 +65,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle0
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass1
@@ -85,10 +83,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle1
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: opendigitizer::localisation::DelayLocator
     parameters:
       name: locator
@@ -186,6 +182,137 @@ blocks:
       step: 0.1
       style: slider
       target_map: "continuousArrivals:min_confidence"
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band0
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify0
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth0
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger0
+      trigger_name: "audio0"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band1
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify1
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth1
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger1
+      trigger_name: "audio1"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: envelopeLocator
+      receiver_names: ["audio0", "audio1"]
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      roi: [-2.0, 2.0, 0.0, 3.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: envelope
+      signal_name: envelope
+      color: 9725885
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: envelopeThreshold
+      label: envelope threshold
+      unit: FS
+      value: 0.1
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "envelopeTrigger0,envelopeTrigger1:threshold"
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: lissajousX
+      signal_name: band0
+      signal_unit: FS
+      required_size: 960
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: lissajousY
+      signal_name: band1
+      signal_unit: FS
+      required_size: 960
+  - id: gr::basic::StreamsToTensor<float32>
+    parameters:
+      name: phaseFrames
+      n_ports: 2
+      size: 2400
+      n_pre: 50
+      holdoff_samples: 19200
+      filter: "off"
+  - id: gr::blocks::fft::STFT<float32>
+    parameters:
+      name: phaseSpectra
+  - id: gr::localisation::PairCrossSpectra<float32>
+    parameters:
+      name: phaseCross
+  - id: gr::localisation::PhaseSlopeDelay<float32>
+    parameters:
+      name: phaseSlope
+      f_min: 435.0
+      f_max: 445.0
+      sample_rate: 48000
+  - id: opendigitizer::localisation::PairDelayArrivals<float32>
+    parameters:
+      name: phaseArrivals
+      receiver_names: ["audio0", "audio1"]
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: phaseLocator
+      receiver_names: ["audio0", "audio1"]
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      roi: [-2.0, 2.0, 0.0, 3.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: phase
+      signal_name: phase
+      color: 9197131
   - id: DigitizerUi::ImControlChoice
     parameters:
       name: band
@@ -197,20 +324,32 @@ blocks:
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": none
+          "band0,band1:f_low": !!float32 300.0
+          "band0,band1:f_high": !!float32 12000.0
+          "smooth0,smooth1:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
+          "phaseFrames:filter": "off"
         "shaker (PHAT)":
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": phat
+          "band0,band1:f_low": !!float32 300.0
+          "band0,band1:f_high": !!float32 12000.0
+          "smooth0,smooth1:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
+          "phaseFrames:filter": "off"
         "fork 440 Hz":
           "continuousCorrelation:f_min": !!float32 400.0
           "continuousCorrelation:f_max": !!float32 480.0
           "continuousCorrelation:weighting": phat
+          "band0,band1:f_low": !!float32 400.0
+          "band0,band1:f_high": !!float32 480.0
+          "smooth0,smooth1:f_low": !!float32 50.0
           "simulatedMicrophones:tone_frequency": 440.0
           "simulatedMicrophones:pulse_width": 0.4
+          "phaseFrames:filter": ""
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: onset0
@@ -338,19 +477,17 @@ connections:
   - [soundcard, [0, 3], unused3, 0]
   - [source, [0, 0], highpass0, 0]
   - [highpass0, 0, trigger0, 0]
-  - [trigger0, 1, throttle0, 1]
-  - [throttle0, 0, locator, 0]
-  - [throttle0, 0, events, 0]
+  - [trigger0, 0, locator, 0]
+  - [trigger0, 0, events, 0]
   - [source, [0, 1], highpass1, 0]
   - [highpass1, 0, trigger1, 0]
-  - [trigger1, 1, throttle1, 1]
-  - [throttle1, 0, locator, 0]
-  - [throttle1, 0, events, 0]
+  - [trigger1, 0, locator, 0]
+  - [trigger1, 0, events, 0]
   - [locator, 0, events, 0]
   - [highpass0, 0, window, [1, 0]]
   - [highpass1, 0, window, [1, 1]]
-  - [throttle0, 0, window, 0]
-  - [throttle1, 0, window, 0]
+  - [trigger0, 0, window, 0]
+  - [trigger1, 0, window, 0]
   - [window, 1, frames, 0]
   - [frames, 0, correlation, 0]
   - [correlation, 0, delays, 0]
@@ -367,6 +504,31 @@ connections:
   - [continuousArrivals, 0, continuousLocator, 0]
   - [continuousArrivals, 0, continuous, 0]
   - [continuousLocator, 0, continuous, 0]
+  - [source, [0, 0], band0, 0]
+  - [band0, 0, rectify0, 0]
+  - [rectify0, 0, smooth0, 0]
+  - [smooth0, 0, envelopeTrigger0, 0]
+  - [envelopeTrigger0, 0, envelopeLocator, 0]
+  - [envelopeTrigger0, 0, envelope, 0]
+  - [source, [0, 1], band1, 0]
+  - [band1, 0, rectify1, 0]
+  - [rectify1, 0, smooth1, 0]
+  - [smooth1, 0, envelopeTrigger1, 0]
+  - [envelopeTrigger1, 0, envelopeLocator, 0]
+  - [envelopeTrigger1, 0, envelope, 0]
+  - [envelopeLocator, 0, envelope, 0]
+  - [band0, 0, lissajousX, 0]
+  - [band1, 0, lissajousY, 0]
+  - [envelopeTrigger0, 0, phaseFrames, 0]
+  - [band0, 0, phaseFrames, [1, 0]]
+  - [band1, 0, phaseFrames, [1, 1]]
+  - [phaseFrames, 0, phaseSpectra, 0]
+  - [phaseSpectra, 0, phaseCross, 0]
+  - [phaseCross, 0, phaseSlope, 0]
+  - [phaseSlope, 0, phaseArrivals, 0]
+  - [phaseArrivals, 0, phaseLocator, 0]
+  - [phaseArrivals, 0, phase, 0]
+  - [phaseLocator, 0, phase, 0]
   - [highpass0, 0, onset0, 0]
   - [snapshot0, 1, snapshotSink0, 0]
   - [source, [0, 0], signal0, 0]
@@ -388,6 +550,10 @@ dashboard:
       block: correlated
     - name: continuous
       block: continuous
+    - name: envelope
+      block: envelope
+    - name: phase
+      block: phase
     - name: lags
       block: lags
     - name: signal0
@@ -400,6 +566,10 @@ dashboard:
       block: snapshotSink1
     - name: spectrum
       block: spectrum
+    - name: lissajousX
+      block: lissajousX
+    - name: lissajousY
+      block: lissajousY
   plots:
     - name: Localisation
       type: opendigitizer::charts::LocalisationChart
@@ -412,6 +582,8 @@ dashboard:
         - events
         - correlated
         - continuous
+        - envelope
+        - phase
       rect: [0, 0, 3, 4]
     - name: Last 10 s
       type: XYChart
@@ -471,4 +643,12 @@ dashboard:
           max: -20
       sources:
         - spectrum
-      rect: [3, 2, 3, 2]
+      rect: [3, 2, 2, 2]
+    - name: Lissajous
+      type: opendigitizer::charts::YYChart
+      parameters:
+        scatter: true
+      sources:
+        - lissajousX
+        - lissajousY
+      rect: [5, 2, 1, 2]

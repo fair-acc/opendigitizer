@@ -10,11 +10,11 @@ blocks:
       signal_type: LinearChirp
       sample_rate: 48000
       amplitude: 0.5
-      f_start: 2000
-      f_stop: 6000
+      f_start: 2000.0
+      f_stop: 6000.0
       duration: 0.005
-      period: 0.5
       taper: 0.2
+      period: 0.5
       trigger_name: tx0
   - id: gr::blocks::trigger::TagToEvent<float32>
     parameters:
@@ -34,13 +34,28 @@ blocks:
       filter_order: 2
       f_high: 200
       sample_rate: 48000
+  - id: gr::filter::Correlator<float32>
+    parameters:
+      name: matched0
+      lags: 64
+      f_start: 2000.0
+      f_stop: 6000.0
+      duration: 0.005
+      taper: 0.2
+      sample_rate: 48000
+      coefficient: true
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify0
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: trigger0
       trigger_name: "audio0"
-      threshold: 0.2
-      hysteresis: 0.1
+      threshold: 0.5
+      hysteresis: 0.25
       edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass1
@@ -50,13 +65,28 @@ blocks:
       filter_order: 2
       f_high: 200
       sample_rate: 48000
+  - id: gr::filter::Correlator<float32>
+    parameters:
+      name: matched1
+      lags: 64
+      f_start: 2000.0
+      f_stop: 6000.0
+      duration: 0.005
+      taper: 0.2
+      sample_rate: 48000
+      coefficient: true
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify1
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: trigger1
       trigger_name: "audio1"
-      threshold: 0.2
-      hysteresis: 0.1
+      threshold: 0.5
+      hysteresis: 0.25
       edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass2
@@ -66,13 +96,28 @@ blocks:
       filter_order: 2
       f_high: 200
       sample_rate: 48000
+  - id: gr::filter::Correlator<float32>
+    parameters:
+      name: matched2
+      lags: 64
+      f_start: 2000.0
+      f_stop: 6000.0
+      duration: 0.005
+      taper: 0.2
+      sample_rate: 48000
+      coefficient: true
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify2
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: trigger2
       trigger_name: "audio2"
-      threshold: 0.2
-      hysteresis: 0.1
+      threshold: 0.5
+      hysteresis: 0.25
       edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass3
@@ -82,13 +127,28 @@ blocks:
       filter_order: 2
       f_high: 200
       sample_rate: 48000
+  - id: gr::filter::Correlator<float32>
+    parameters:
+      name: matched3
+      lags: 64
+      f_start: 2000.0
+      f_stop: 6000.0
+      duration: 0.005
+      taper: 0.2
+      sample_rate: 48000
+      coefficient: true
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify3
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: trigger3
       trigger_name: "audio3"
-      threshold: 0.2
-      hysteresis: 0.1
+      threshold: 0.5
+      hysteresis: 0.25
       edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: opendigitizer::localisation::DelayLocator
     parameters:
       name: locator
@@ -114,25 +174,43 @@ blocks:
       step: 10
       style: slider
       target_map: "highpass0,highpass1,highpass2,highpass3:f_high"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: threshold
+      label: matched threshold
+      value: 0.5
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "trigger0,trigger1,trigger2,trigger3:threshold"
 connections:
   - [chirp, 0, emission, 0]
   - [emission, 1, loudspeaker, 0]
   - [emission, 0, locator, 0]
   - [emission, 0, events, 0]
   - [microphones, [0, 0], highpass0, 0]
-  - [highpass0, 0, trigger0, 0]
+  - [highpass0, 0, matched0, 0]
+  - [matched0, 0, rectify0, 0]
+  - [rectify0, 0, trigger0, 0]
   - [trigger0, 0, locator, 0]
   - [trigger0, 0, events, 0]
   - [microphones, [0, 1], highpass1, 0]
-  - [highpass1, 0, trigger1, 0]
+  - [highpass1, 0, matched1, 0]
+  - [matched1, 0, rectify1, 0]
+  - [rectify1, 0, trigger1, 0]
   - [trigger1, 0, locator, 0]
   - [trigger1, 0, events, 0]
   - [microphones, [0, 2], highpass2, 0]
-  - [highpass2, 0, trigger2, 0]
+  - [highpass2, 0, matched2, 0]
+  - [matched2, 0, rectify2, 0]
+  - [rectify2, 0, trigger2, 0]
   - [trigger2, 0, locator, 0]
   - [trigger2, 0, events, 0]
   - [microphones, [0, 3], highpass3, 0]
-  - [highpass3, 0, trigger3, 0]
+  - [highpass3, 0, matched3, 0]
+  - [matched3, 0, rectify3, 0]
+  - [rectify3, 0, trigger3, 0]
   - [trigger3, 0, locator, 0]
   - [trigger3, 0, events, 0]
   - [locator, 0, events, 0]

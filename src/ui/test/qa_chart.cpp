@@ -163,7 +163,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
 #if defined(OD_ACOUSTIC_CAMERA) && defined(OD_TRIGGER_BLOCKS)
-            "each localisation dashboard locates its simulated orbiting source in all three layers, stereo draws its one hyperbola, each shown channel marks its onset"_test = [ctx] {
+            "each localisation dashboard locates its simulated orbiting source in its four broadband layers (the fork arrays add a phase layer), stereo draws its one hyperbola, each shown channel marks its onset"_test = [ctx] {
                 for (const std::string_view array : {"Square", "Tetrahedron", "Line", "Uma16", "Stereo"}) {
                     g_state.dashboardPage.reset();
                     g_state.reload(cmrc::sample_dashboards::get_filesystem(), std::format("assets/sampleDashboards/XtraLocalisation{}.grc", array).c_str());
@@ -174,9 +174,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     };
                     const bool                     stereo = array == "Stereo";
                     const std::vector<std::size_t> shown  = array == "Stereo" ? std::vector<std::size_t>{0UZ, 1UZ} : array == "Uma16" ? std::vector<std::size_t>{1UZ, 14UZ, 7UZ, 8UZ} : std::vector<std::size_t>{0UZ};
-                    expect(g_state.waitUntil(ctx, std::format("{}: all three layers, threshold, correlated and continuous, draw {}", array, stereo ? "one hyperbola" : "a published position"), [&] {
+                    expect(g_state.waitUntil(ctx, std::format("{}: the threshold, correlated, continuous and envelope layers draw {}", array, stereo ? "one hyperbola" : "a published position"), [&] {
                         const auto* c = chart();
-                        return c != nullptr && c->drawnLayers().size() == 3UZ && std::ranges::all_of(std::views::iota(0UZ, 3UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
+                        return c != nullptr && c->drawnLayers().size() == (array == "Square" ? 4UZ : 5UZ) && std::ranges::all_of(std::views::iota(0UZ, 4UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
                     })) << array;
                     const auto newest = [](std::string_view name) -> std::optional<gr::DataSet<float>> {
                         const auto block = opendigitizer::test::findBlockInRootGraph(g_state.dashboard->session, name);
@@ -188,6 +188,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         return sink->dataSets().empty() ? std::nullopt : std::optional(sink->dataSets().back());
                     };
                     expect(g_state.waitUntil(ctx, std::format("{}: a triggered snapshot and a spectrum", array), [&] { return newest(std::format("snapshotSink{}", shown.front())) && newest("spectrum"); })) << array;
+                    if (array != "Square") { // the fork arrays: the first two band-passed channels against each other
+                        expect(g_state.waitUntil(ctx, std::format("{}: the Lissajous view draws its markers", array), [] {
+                            const auto window = std::ranges::find_if(g_state.dashboard->uiWindows, [](const auto& w) { return w.block && w.block->typeName().find("YYChart") != std::string_view::npos; });
+                            return window != g_state.dashboard->uiWindows.end() && static_cast<const opendigitizer::charts::YYChart*>(window->block->raw())->drawnMarkers() > 0UZ;
+                        })) << array;
+                    }
                     const auto onsetAt = [](std::string name) {
                         return [name = std::move(name)](const gr::DataSet<float>& ds) -> std::optional<std::ptrdiff_t> {
                             for (const auto& [index, map] : ds.timing_events | std::views::join) {
@@ -253,9 +259,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         ctx->ItemClick(std::format("//$FOCUSED/{}", name).c_str());
                     }
                     const bool stereo = name == "stereo";
-                    expect(g_state.waitUntil(ctx, std::format("{}: {} receivers and, threshold, correlated and continuous alike, {}", name, receivers, stereo ? "one hyperbola" : "a located position"), [&] {
+                    expect(g_state.waitUntil(ctx, std::format("{}: {} receivers and, threshold, correlated, continuous and envelope alike, {}", name, receivers, stereo ? "one hyperbola" : "a located position"), [&] {
                         const auto* c = chart();
-                        return c != nullptr && c->drawn().receivers == receivers && c->drawnLayers().size() == 3UZ && std::ranges::all_of(std::views::iota(0UZ, 3UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
+                        return c != nullptr && c->drawn().receivers == receivers && c->drawnLayers().size() == 5UZ && std::ranges::all_of(std::views::iota(0UZ, 4UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
                     })) << name;
                     const auto acrossAperture = static_cast<std::ptrdiff_t>(std::ceil(aperture / 343.0 * 48000.0)) + 2; // samples
                     for (std::size_t slot = 1UZ; slot < shown.size(); ++slot) {
@@ -285,10 +291,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const auto* c = chart();
                     return c != nullptr && std::ranges::all_of(opendigitizer::localisation::pointsOf(c->element_positions.value), [](const auto& p) { return std::abs(p[0]) <= 0.15 + 1e-9; });
                 }));
-                expect(g_state.waitUntil(ctx, "the continuous layer locates the fork on its orbit", [&] {
+                const auto onOrbit = [&](std::size_t layer) {
                     const auto* c = chart();
-                    return c != nullptr && c->drawnPositions().size() == 3UZ && c->drawnPositions()[2].transform([&](const auto& p) { return std::abs(std::hypot(p[0] - 0.2, p[1] - 0.5) - kOrbitRadius) < kForkTolerance; }).value_or(false);
-                }));
+                    return c != nullptr && c->drawnPositions().size() == 5UZ && c->drawnPositions()[layer].transform([&](const auto& p) { return std::abs(std::hypot(p[0] - 0.2, p[1] - 0.5) - kOrbitRadius) < kForkTolerance; }).value_or(false);
+                };
+                expect(g_state.waitUntil(ctx, "the continuous layer locates the fork on its orbit", [&] { return onOrbit(2UZ); }));
+                expect(g_state.waitUntil(ctx, "the phase layer, framed at the fork's envelope onsets, locates it on its orbit", [&] { return onOrbit(4UZ); }));
                 captureScreenshot(*ctx);
             };
 #endif

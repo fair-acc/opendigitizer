@@ -59,10 +59,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle0
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass1
@@ -79,10 +77,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle1
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass2
@@ -99,10 +95,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle2
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: gr::filter::BasicFilter<float32>
     parameters:
       name: highpass3
@@ -119,10 +113,8 @@ blocks:
       threshold: 0.2
       hysteresis: 0.1
       edge: rising
-  - id: gr::blocks::trigger::Throttle<float32, false>
-    parameters:
-      name: throttle3
-      n_samples: 9600
+      dead_time: 9600.0
+      dead_time_unit: samples
   - id: opendigitizer::localisation::DelayLocator
     parameters:
       name: locator
@@ -220,6 +212,152 @@ blocks:
       step: 0.1
       style: slider
       target_map: "continuousArrivals:min_confidence"
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band0
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify0
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth0
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger0
+      trigger_name: "audio0"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band1
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify1
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth1
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger1
+      trigger_name: "audio1"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band2
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify2
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth2
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger2
+      trigger_name: "audio2"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: band3
+      filter_type: IIR
+      filter_response: BANDPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 300.0
+      f_high: 12000.0
+      sample_rate: 48000
+  - id: gr::blocks::type::converter::Abs<float32>
+    parameters:
+      name: rectify3
+  - id: gr::filter::BasicFilter<float32>
+    parameters:
+      name: smooth3
+      filter_type: IIR
+      filter_response: LOWPASS
+      iir_design_method: BUTTERWORTH
+      filter_order: 2
+      f_low: 1000.0
+      sample_rate: 48000
+  - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
+    parameters:
+      name: envelopeTrigger3
+      trigger_name: "audio3"
+      threshold: 0.1
+      hysteresis: 0.05
+      edge: rising
+      dead_time: 9600.0
+      dead_time_unit: samples
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: envelopeLocator
+      receiver_names: ["audio0", "audio1", "audio2", "audio3"]
+      element_positions: !!float64 [[-0.6, -0.6, 0.0], [0.6, -0.6, 0.0], [-0.6, 0.6, 0.0], [0.6, 0.6, 0.0]]
+      roi: [-2.0, 2.0, -2.0, 2.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: envelope
+      signal_name: envelope
+      color: 9725885
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: envelopeThreshold
+      label: envelope threshold
+      unit: FS
+      value: 0.1
+      min: 0
+      max: 1
+      step: 0.01
+      style: slider
+      target_map: "envelopeTrigger0,envelopeTrigger1,envelopeTrigger2,envelopeTrigger3:threshold"
   - id: DigitizerUi::ImControlChoice
     parameters:
       name: band
@@ -231,12 +369,18 @@ blocks:
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": none
+          "band0,band1,band2,band3:f_low": !!float32 300.0
+          "band0,band1,band2,band3:f_high": !!float32 12000.0
+          "smooth0,smooth1,smooth2,smooth3:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
         "shaker (PHAT)":
           "continuousCorrelation:f_min": !!float32 300.0
           "continuousCorrelation:f_max": !!float32 12000.0
           "continuousCorrelation:weighting": phat
+          "band0,band1,band2,band3:f_low": !!float32 300.0
+          "band0,band1,band2,band3:f_high": !!float32 12000.0
+          "smooth0,smooth1,smooth2,smooth3:f_low": !!float32 1000.0
           "simulatedMicrophones:tone_frequency": 0.0
           "simulatedMicrophones:pulse_width": 0.0005
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
@@ -337,33 +481,29 @@ connections:
   - [soundcard, [0, 3], source, [0, 7]]
   - [source, [0, 0], highpass0, 0]
   - [highpass0, 0, trigger0, 0]
-  - [trigger0, 1, throttle0, 1]
-  - [throttle0, 0, locator, 0]
-  - [throttle0, 0, events, 0]
+  - [trigger0, 0, locator, 0]
+  - [trigger0, 0, events, 0]
   - [source, [0, 1], highpass1, 0]
   - [highpass1, 0, trigger1, 0]
-  - [trigger1, 1, throttle1, 1]
-  - [throttle1, 0, locator, 0]
-  - [throttle1, 0, events, 0]
+  - [trigger1, 0, locator, 0]
+  - [trigger1, 0, events, 0]
   - [source, [0, 2], highpass2, 0]
   - [highpass2, 0, trigger2, 0]
-  - [trigger2, 1, throttle2, 1]
-  - [throttle2, 0, locator, 0]
-  - [throttle2, 0, events, 0]
+  - [trigger2, 0, locator, 0]
+  - [trigger2, 0, events, 0]
   - [source, [0, 3], highpass3, 0]
   - [highpass3, 0, trigger3, 0]
-  - [trigger3, 1, throttle3, 1]
-  - [throttle3, 0, locator, 0]
-  - [throttle3, 0, events, 0]
+  - [trigger3, 0, locator, 0]
+  - [trigger3, 0, events, 0]
   - [locator, 0, events, 0]
   - [highpass0, 0, window, [1, 0]]
   - [highpass1, 0, window, [1, 1]]
   - [highpass2, 0, window, [1, 2]]
   - [highpass3, 0, window, [1, 3]]
-  - [throttle0, 0, window, 0]
-  - [throttle1, 0, window, 0]
-  - [throttle2, 0, window, 0]
-  - [throttle3, 0, window, 0]
+  - [trigger0, 0, window, 0]
+  - [trigger1, 0, window, 0]
+  - [trigger2, 0, window, 0]
+  - [trigger3, 0, window, 0]
   - [window, 1, frames, 0]
   - [frames, 0, correlation, 0]
   - [correlation, 0, delays, 0]
@@ -382,6 +522,31 @@ connections:
   - [continuousArrivals, 0, continuousLocator, 0]
   - [continuousArrivals, 0, continuous, 0]
   - [continuousLocator, 0, continuous, 0]
+  - [source, [0, 0], band0, 0]
+  - [band0, 0, rectify0, 0]
+  - [rectify0, 0, smooth0, 0]
+  - [smooth0, 0, envelopeTrigger0, 0]
+  - [envelopeTrigger0, 0, envelopeLocator, 0]
+  - [envelopeTrigger0, 0, envelope, 0]
+  - [source, [0, 1], band1, 0]
+  - [band1, 0, rectify1, 0]
+  - [rectify1, 0, smooth1, 0]
+  - [smooth1, 0, envelopeTrigger1, 0]
+  - [envelopeTrigger1, 0, envelopeLocator, 0]
+  - [envelopeTrigger1, 0, envelope, 0]
+  - [source, [0, 2], band2, 0]
+  - [band2, 0, rectify2, 0]
+  - [rectify2, 0, smooth2, 0]
+  - [smooth2, 0, envelopeTrigger2, 0]
+  - [envelopeTrigger2, 0, envelopeLocator, 0]
+  - [envelopeTrigger2, 0, envelope, 0]
+  - [source, [0, 3], band3, 0]
+  - [band3, 0, rectify3, 0]
+  - [rectify3, 0, smooth3, 0]
+  - [smooth3, 0, envelopeTrigger3, 0]
+  - [envelopeTrigger3, 0, envelopeLocator, 0]
+  - [envelopeTrigger3, 0, envelope, 0]
+  - [envelopeLocator, 0, envelope, 0]
   - [highpass0, 0, onset0, 0]
   - [snapshot0, 1, snapshotSink0, 0]
   - [source, [0, 0], signal0, 0]
@@ -397,6 +562,8 @@ dashboard:
       block: correlated
     - name: continuous
       block: continuous
+    - name: envelope
+      block: envelope
     - name: lags
       block: lags
     - name: signal0
@@ -417,6 +584,7 @@ dashboard:
         - events
         - correlated
         - continuous
+        - envelope
       rect: [0, 0, 3, 4]
     - name: Last 10 s
       type: XYChart

@@ -3,6 +3,7 @@
 
 #include "DelayConstraints.hpp"
 
+#include <gnuradio-4.0/Port.hpp>
 #include <gnuradio-4.0/Tag.hpp>
 #include <gnuradio-4.0/Tensor.hpp>
 #include <gnuradio-4.0/algorithm/ArrayGeometry.hpp>
@@ -11,10 +12,13 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <format>
+#include <functional>
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -40,12 +44,14 @@ using CurveSegments          = gr::Annotated<gr::Size_t, "curve_segments", gr::L
 using CandidateMergeDistance = gr::Annotated<double, "candidate_merge_distance", gr::Unit<"m">, gr::Doc<"intersections closer than this are one">>;
 using ConsensusDistance      = gr::Annotated<double, "consensus_distance", gr::Unit<"m">, gr::Doc<"accepted intersections within this form one solution">>;
 using MaxRangeResidual       = gr::Annotated<double, "max_range_residual", gr::Unit<"m">, gr::Doc<"a constraint supports a point within this range error">>;
+using SourcePosition         = gr::Annotated<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">>;
+using OrbitRadius            = gr::Annotated<double, "orbit_radius", gr::Unit<"m">, gr::Visible, gr::Doc<"of the source's circle around source_position in the xy plane, once per orbit_period">>;
+using OrbitPeriod            = gr::Annotated<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>;
 
-inline const gr::Tensor<double>  kDeckSquare     = gr::algorithm::geometry::grid(2UZ, 2UZ, 1.2);
-inline const gr::Tensor<double>  kOneTransmitter = gr::Tensor<double>(std::array{1UZ, 3UZ}, std::vector<double>{0.0, -1.0, 0.0});
-inline const std::vector<double> kDefaultRoi{-2.0, 2.0, -2.0, 2.0};
+inline const gr::Tensor<double> kDeckSquare        = gr::algorithm::geometry::grid(2UZ, 2UZ, 1.2);
+inline const gr::Tensor<double> kOneTransmitter    = gr::Tensor<double>(std::array{1UZ, 3UZ}, std::vector<double>{0.0, -1.0, 0.0});
+inline constexpr double         kSpeedOfSoundInAir = 343.0; // m/s
 
-/// whether a settings change makes earlier arrivals belong to another array
 [[nodiscard]] inline bool changesGeometry(const gr::property_map& oldSettings, const gr::property_map& newSettings) {
     return std::ranges::any_of(std::array{"mode", "element_positions", "receiver_names", "transmitter_positions", "transmitter_names", "pairs", "pair_list"}, [&](const char* key) {
         const auto now    = newSettings.find(std::pmr::string(key));
@@ -59,26 +65,23 @@ inline const std::vector<double> kDefaultRoi{-2.0, 2.0, -2.0, 2.0};
 [[nodiscard]] inline Point3 rowOf(const gr::Tensor<double>& positions, std::size_t m) noexcept { return {positions[m, 0UZ], positions[m, 1UZ], positions[m, 2UZ]}; }
 
 [[nodiscard]] inline std::vector<Point3> pointsOf(const gr::Tensor<double>& positions) {
-    std::vector<Point3> points;
-    for (std::size_t m = 0UZ; m < rowsOf(positions); ++m) {
-        points.push_back(rowOf(positions, m));
-    }
-    return points;
+    return std::views::iota(0UZ, rowsOf(positions)) | std::views::transform([&](std::size_t m) { return rowOf(positions, m); }) | std::ranges::to<std::vector>();
 }
 
-/// "audio0" for receiver 0 when `names` lists it, else the default "0" ("tx0" for transmitters)
+[[nodiscard]] inline double scaleOf(std::span<const Point3> foci) {
+    constexpr double kMinScale = 1.0; // m
+    return std::max(gr::algorithm::apertureOf(gr::algorithm::geometry::positionsOf(foci)), kMinScale);
+}
+
 [[nodiscard]] inline std::string nameOf(const std::vector<std::string>& names, std::size_t index, std::string_view defaultPrefix) { return index < names.size() ? names[index] : std::format("{}{}", defaultPrefix, index); }
 
 [[nodiscard]] inline std::optional<std::size_t> indexOf(std::string_view name, const std::vector<std::string>& names, std::size_t count, std::string_view defaultPrefix) {
-    for (std::size_t i = 0UZ; i < count; ++i) {
-        if (nameOf(names, i, defaultPrefix) == name) {
-            return i;
-        }
-    }
-    return std::nullopt;
+    const auto indices = std::views::iota(0UZ, count);
+    const auto found   = std::ranges::find_if(indices, [&](std::size_t i) { return nameOf(names, i, defaultPrefix) == name; });
+    return found != indices.end() ? std::optional{*found} : std::nullopt;
 }
 
-[[nodiscard]] inline std::vector<std::array<std::size_t, 2>> pairsOf(PairSelection selection, std::span<const gr::Size_t> listed, std::size_t M) {
+[[nodiscard]] inline std::vector<std::array<std::size_t, 2>> selectedPairs(PairSelection selection, std::span<const gr::Size_t> listed, std::size_t M) {
     std::vector<std::array<std::size_t, 2>> pairs;
     switch (selection) {
     case PairSelection::sequential:
@@ -87,10 +90,10 @@ inline const std::vector<double> kDefaultRoi{-2.0, 2.0, -2.0, 2.0};
         }
         break;
     case PairSelection::all:
-        for (std::size_t p = 0UZ; p < gr::algorithm::pairsOf(M); ++p) {
-            const auto pair = gr::algorithm::pairOf(p, M);
-            pairs.push_back({pair.i, pair.j});
-        }
+        pairs = std::views::iota(0UZ, gr::algorithm::pairsOf(M)) | std::views::transform([M](std::size_t p) {
+            const auto [i, j] = gr::algorithm::pairOf(p, M);
+            return std::array{i, j};
+        }) | std::ranges::to<std::vector>();
         break;
     case PairSelection::listed:
         for (std::size_t k = 0UZ; k + 1UZ < listed.size(); k += 2UZ) {
@@ -140,26 +143,27 @@ struct Geometry {
     std::vector<Point3>                     transmitters;
     std::vector<std::string>                transmitterNames;
     std::vector<std::array<std::size_t, 2>> pairs;
-    double                                  speed   = 343.0;
+    double                                  speed   = kSpeedOfSoundInAir;
     double                                  windowS = 0.0; // 0: from the geometry
     std::vector<double>                     offsetsS;
     double                                  directPathGuardS = 0.0;
-    std::array<double, 4>                   roi{-2.0, 2.0, -2.0, 2.0};
+    std::array<double, 4>                   roi              = kDefaultRoi;
 
     [[nodiscard]] double tolerance() const {
-        std::vector<Point3> foci = receivers;
+        constexpr double    kRelativeTolerance = 1e-9;
+        std::vector<Point3> foci               = receivers;
         foci.insert(foci.end(), transmitters.begin(), transmitters.end());
-        return 1e-9 * scaleOf(foci);
+        return kRelativeTolerance * scaleOf(foci);
     }
 
-    /// TDOA: 1.1 × the array's extent over c; bistatic: the longest transmitter → roi corner → receiver path over c
     [[nodiscard]] double window(double viewZ) const {
+        constexpr double kTdoaWindowMargin = 1.1;
         if (windowS > 0.0) {
             return windowS;
         }
-        const double c = speed > 0.0 ? speed : 343.0;
+        const double c = speed > 0.0 ? speed : kSpeedOfSoundInAir;
         if (mode == Mode::tdoa) {
-            return 1.1 * scaleOf(receivers) / c;
+            return kTdoaWindowMargin * scaleOf(receivers) / c;
         }
         double longest = 0.0;
         for (const Point3& s : transmitters) {
@@ -176,7 +180,7 @@ struct Geometry {
     [[nodiscard]] double offsetOf(std::size_t m) const noexcept { return m < offsetsS.size() ? offsetsS[m] : 0.0; }
 };
 
-[[nodiscard]] inline std::array<double, 4> roiOf(const std::vector<double>& roi) noexcept { return roi.size() == 4UZ ? std::array{roi[0], roi[1], roi[2], roi[3]} : std::array{-2.0, 2.0, -2.0, 2.0}; }
+[[nodiscard]] inline std::array<double, 4> roiOf(const std::vector<double>& roi) noexcept { return roi.size() == 4UZ ? std::array{roi[0], roi[1], roi[2], roi[3]} : kDefaultRoi; }
 
 [[nodiscard]] Geometry geometryOf(const auto& block) {
     return {.mode         = block.mode,
@@ -184,7 +188,7 @@ struct Geometry {
         .receiverNames    = block.receiver_names.value,
         .transmitters     = pointsOf(block.transmitter_positions.value), //
         .transmitterNames = block.transmitter_names.value,
-        .pairs            = pairsOf(block.pairs, block.pair_list.value, rowsOf(block.element_positions.value)),
+        .pairs            = selectedPairs(block.pairs, block.pair_list.value, rowsOf(block.element_positions.value)),
         .speed            = block.propagation_speed.value, //
         .windowS          = block.coincidence_window.value,
         .offsetsS         = block.timing_offsets.value,
@@ -192,7 +196,7 @@ struct Geometry {
         .roi              = roiOf(block.roi.value)};
 }
 
-[[nodiscard]] Settings solverSettingsOf(const auto& block, double viewZ) { return {.roi = roiOf(block.roi.value), .viewZ = viewZ, .curveSegments = block.curve_segments.value, .candidateMergeDistance = block.candidate_merge_distance.value, .consensusDistance = block.consensus_distance.value, .maxRangeResidual = block.max_range_residual.value}; }
+[[nodiscard]] SolverSettings solverSettingsOf(const auto& block, double viewZ) { return {.roi = roiOf(block.roi.value), .viewZ = viewZ, .curveSegments = block.curve_segments.value, .candidateMergeDistance = block.candidate_merge_distance.value, .consensusDistance = block.consensus_distance.value, .maxRangeResidual = block.max_range_residual.value}; }
 
 [[nodiscard]] inline double viewHeightOf(double viewZ, std::optional<double> located, const std::vector<Point3>& receivers) {
     if (std::isfinite(viewZ)) {
@@ -201,10 +205,7 @@ struct Geometry {
     if (located) {
         return *located;
     }
-    double sum = 0.0;
-    for (const Point3& p : receivers) {
-        sum += p[2];
-    }
+    const double sum = std::ranges::fold_left(receivers | std::views::transform([](const Point3& p) { return p[2]; }), 0.0, std::plus<>{});
     return receivers.empty() ? 0.0 : sum / static_cast<double>(receivers.size());
 }
 
@@ -222,9 +223,10 @@ struct Association {
 
 [[nodiscard]] inline Association associate(std::span<const Dated> events, const Geometry& geometry, double viewZ) {
     Association       association;
-    const std::size_t M        = geometry.receivers.size();
-    const double      windowS  = geometry.window(viewZ);
-    const auto        receiver = [&](const Dated& e) { return indexOf(e.name, geometry.receiverNames, M, ""); };
+    const std::size_t M         = geometry.receivers.size();
+    const double      windowS   = geometry.window(viewZ);
+    const double      tolerance = geometry.tolerance();
+    const auto        receiver  = [&](const Dated& e) { return indexOf(e.name, geometry.receiverNames, M, ""); };
     if (geometry.mode == Mode::bistatic) {
         const Dated* emission = nullptr;
         for (const Dated& e : events) {
@@ -253,16 +255,13 @@ struct Association {
         }
         for (std::size_t m = 0UZ; m < M; ++m) {
             if (echo[m]) {
-                association.constraints.push_back(bistaticConstraint(s, geometry.receivers[m], transmitterFocus(*association.transmitter), static_cast<int>(m), geometry.speed * *echo[m], geometry.tolerance()));
+                association.constraints.push_back(bistaticConstraint(s, geometry.receivers[m], transmitterFocus(*association.transmitter), static_cast<int>(m), geometry.speed * *echo[m], tolerance));
                 association.receivers.push_back(m);
             }
         }
         return association;
     }
-    std::vector<const Dated*> ordered;
-    for (const Dated& e : events) {
-        ordered.push_back(&e);
-    }
+    std::vector<const Dated*> ordered = events | std::views::transform([](const Dated& e) { return &e; }) | std::ranges::to<std::vector>();
     std::ranges::stable_sort(ordered, [](const Dated* a, const Dated* b) { return a->secondsAfter(b->ns) < b->offsetS; });
     std::vector<const Dated*> latest(M, nullptr);
     for (const Dated* e : ordered) {
@@ -290,10 +289,24 @@ struct Association {
     }
     for (const auto [i, j] : geometry.pairs) {
         if (std::ranges::contains(association.receivers, i) && std::ranges::contains(association.receivers, j)) {
-            association.constraints.push_back(tdoaConstraint(geometry.receivers[i], geometry.receivers[j], static_cast<int>(i), static_cast<int>(j), geometry.speed * (*association.onsetsS[i] - *association.onsetsS[j]), geometry.tolerance()));
+            association.constraints.push_back(tdoaConstraint(geometry.receivers[i], geometry.receivers[j], static_cast<int>(i), static_cast<int>(j), geometry.speed * (*association.onsetsS[i] - *association.onsetsS[j]), tolerance));
         }
     }
     return association;
+}
+
+/// moves events from the front of `pending` into the slots of `evtSpan` from `from` on until the span is full; returns one past the last slot filled
+[[nodiscard]] std::size_t emitPending(std::deque<gr::property_map>& pending, auto& evtSpan, std::size_t from = 0UZ) {
+    std::size_t next = from;
+    while (!pending.empty() && next < evtSpan.size()) {
+        const auto emitted = gr::emit(evtSpan, next, gr::property_map_view{pending.front()});
+        if (!emitted && emitted.error() != gr::EmitError::tooLarge) {
+            break;
+        }
+        next += emitted ? 1UZ : 0UZ;
+        pending.pop_front(); // an event too large for any slot is dropped, not retried
+    }
+    return next;
 }
 
 } // namespace opendigitizer::localisation

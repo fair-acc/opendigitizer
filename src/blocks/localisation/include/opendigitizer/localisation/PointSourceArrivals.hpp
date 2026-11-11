@@ -22,9 +22,7 @@ GR_REGISTER_BLOCK(opendigitizer::localisation::PointSourceArrivals)
 
 struct PointSourceArrivals : gr::Block<PointSourceArrivals> {
     using Description = gr::Doc<R""(@brief Arrival events of a point source at the receivers (and, bistatic, its emission), dated by the travel times, every `period` s of the `clk` stream.
-
-TDOA: one event per receiver at emission + |p - r| / c; bistatic: the transmitter's emission event, then each receiver's echo at
-emission + (|s - p| + |p - r|) / c. The source circles `source_position` in the xy plane with `orbit_radius` once per `orbit_period`.)"">;
+TDOA: one event per receiver at emission + |p - r| / c; bistatic: the transmitter's emission event, then each receiver's echo at emission + (|s - p| + |p - r|) / c.)"">;
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
@@ -37,10 +35,10 @@ emission + (|s - p| + |p - r|) / c. The source circles `source_position` in the 
     ReceiverNames                                                                                                                                                                  receiver_names        = {};
     TransmitterPositions                                                                                                                                                           transmitter_positions = kOneTransmitter;
     TransmitterNames                                                                                                                                                               transmitter_names     = {};
-    gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed     = 343.0;
-    A<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">>                                                                                      source_position       = std::vector{0.3, 0.2, 0.0};
-    A<double, "orbit_radius", gr::Unit<"m">, gr::Visible>                                                                                                                          orbit_radius          = 0.0;
-    A<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>                                                                                                                orbit_period          = 10.0;
+    gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed     = kSpeedOfSoundInAir;
+    SourcePosition                                                                                                                                                                 source_position       = std::vector{0.3, 0.2, 0.0};
+    OrbitRadius                                                                                                                                                                    orbit_radius          = 0.0;
+    OrbitPeriod                                                                                                                                                                    orbit_period          = 10.0;
     A<double, "period", gr::Unit<"s">, gr::Limits<1e-6, 1e6>, gr::Doc<"between emissions">>                                                                                        period                = 0.5;
     A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">, gr::Limits<0.f, std::numeric_limits<float>::max(), [](float rate) { return 0.f < rate; }>> sample_rate           = 1000.f;
     A<gr::Size_t, "n_events", gr::Doc<"emissions before the block stops; 0: unlimited">>                                                                                           n_events              = 0U;
@@ -87,15 +85,7 @@ emission + (|s - p| + |p - r|) / c. The source circles `source_position` in the 
             schedule(static_cast<double>(_emitted) * period.value);
             ++_emitted;
         }
-        std::size_t emitted = 0UZ;
-        while (!_pending.empty() && emitted < evtSpan.size()) {
-            if (!gr::emit(evtSpan, emitted, gr::property_map_view{_pending.front()})) {
-                break;
-            }
-            _pending.pop_front();
-            ++emitted;
-        }
-        evtSpan.publish(emitted);
+        evtSpan.publish(emitPending(_pending, evtSpan));
         const bool done = n_events > 0U && _emitted >= n_events && _pending.empty();
         return done ? gr::work::Status::DONE : gr::work::Status::OK;
     }
