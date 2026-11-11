@@ -23,15 +23,12 @@
 
 namespace opendigitizer::localisation {
 
-enum class DelayConvention : std::uint8_t { total, excess };
-
 enum class PairSelection : std::uint8_t { sequential, all, listed };
 
 using ModeSetting            = gr::Annotated<Mode, "mode", gr::Visible, gr::Doc<"tdoa: receiver-pair hyperbolas; bistatic: transmitter-receiver ellipses">>;
 using ReceiverNames          = gr::Annotated<std::vector<std::string>, "receiver_names", gr::Doc<"trigger_name of each element_positions row, e.g. audio0, audio1; empty: \"0\", \"1\", ...">>;
 using TransmitterPositions   = gr::Annotated<gr::Tensor<double>, "transmitter_positions", gr::Unit<"m">, gr::Doc<"[T,3], bistatic">>;
 using TransmitterNames       = gr::Annotated<std::vector<std::string>, "transmitter_names", gr::Doc<"trigger_name of each transmitter row; empty: \"tx0\", ...">>;
-using DelayConventionSetting = gr::Annotated<DelayConvention, "delay_convention", gr::Doc<"bistatic: total after the emission, or excess over the direct path">>;
 using PairSelectionSetting   = gr::Annotated<PairSelection, "pairs", gr::Visible, gr::Doc<"TDOA receiver pairs: sequential (0-1, 1-2, ...), all, or listed in pair_list">>;
 using PairList               = gr::Annotated<std::vector<gr::Size_t>, "pair_list", gr::Doc<"pairs: listed: receiver indices i0, j0, i1, j1, ...">>;
 using CoincidenceWindow      = gr::Annotated<double, "coincidence_window", gr::Unit<"s">, gr::Doc<"how far apart one event's arrivals may be; 0: from the geometry">>;
@@ -127,7 +124,7 @@ struct Dated {
 
 [[nodiscard]] inline gr::property_map datedEvent(std::string_view name, double seconds, std::uint64_t epochNs = 0U) {
     const auto wholeNs = static_cast<std::int64_t>(std::floor(seconds * 1e9));
-    return {{std::string(gr::tag::kTriggerName.key()), std::string(name)}, {std::string(gr::tag::kTriggerTime.key()), static_cast<std::uint64_t>(static_cast<std::int64_t>(epochNs) + wholeNs)}, {std::string(gr::tag::kTriggerOffset.key()), static_cast<float>(seconds - static_cast<double>(wholeNs) * 1e-9)}};
+    return {{std::string(gr::tag::kTriggerName.key()), std::string(name)}, {std::string(gr::tag::kTriggerTime.key()), epochNs + static_cast<std::uint64_t>(wholeNs)}, {std::string(gr::tag::kTriggerOffset.key()), static_cast<float>(seconds - static_cast<double>(wholeNs) * 1e-9)}};
 }
 
 [[nodiscard]] inline Point3 orbitPoint(const std::vector<double>& centre, double radius, double period, double t) {
@@ -147,7 +144,6 @@ struct Geometry {
     double                                  windowS = 0.0; // 0: from the geometry
     std::vector<double>                     offsetsS;
     double                                  directPathGuardS = 0.0;
-    DelayConvention                         convention       = DelayConvention::total;
     std::array<double, 4>                   roi{-2.0, 2.0, -2.0, 2.0};
 
     [[nodiscard]] double tolerance() const {
@@ -193,7 +189,6 @@ struct Geometry {
         .windowS          = block.coincidence_window.value,
         .offsetsS         = block.timing_offsets.value,
         .directPathGuardS = block.direct_path_guard.value,
-        .convention       = block.delay_convention,
         .roi              = roiOf(block.roi.value)};
 }
 
@@ -218,10 +213,11 @@ struct Geometry {
 /// emission and each receiver's first arrival after it (past the direct path plus its guard) within the window; arrivals before the
 /// emission are ignored
 struct Association {
-    std::vector<Constraint>    constraints;
-    std::vector<std::size_t>   receivers;
-    std::uint64_t              epochNs = 0U; // the earliest arrival used (TDOA) or the emission (bistatic)
-    std::optional<std::size_t> transmitter;
+    std::vector<Constraint>            constraints;
+    std::vector<std::size_t>           receivers;
+    std::vector<std::optional<double>> onsetsS;      // TDOA: per receiver, its onset after the newest one, offset subtracted
+    std::uint64_t                      epochNs = 0U; // the earliest arrival used (TDOA) or the emission (bistatic)
+    std::optional<std::size_t>         transmitter;
 };
 
 [[nodiscard]] inline Association associate(std::span<const Dated> events, const Geometry& geometry, double viewZ) {
@@ -257,8 +253,7 @@ struct Association {
         }
         for (std::size_t m = 0UZ; m < M; ++m) {
             if (echo[m]) {
-                const double path = geometry.convention == DelayConvention::total ? geometry.speed * *echo[m] : distance(s, geometry.receivers[m]) + geometry.speed * *echo[m];
-                association.constraints.push_back(bistaticConstraint(s, geometry.receivers[m], transmitterFocus(*association.transmitter), static_cast<int>(m), path, geometry.tolerance()));
+                association.constraints.push_back(bistaticConstraint(s, geometry.receivers[m], transmitterFocus(*association.transmitter), static_cast<int>(m), geometry.speed * *echo[m], geometry.tolerance()));
                 association.receivers.push_back(m);
             }
         }
@@ -284,17 +279,18 @@ struct Association {
     if (newest == nullptr) {
         return association;
     }
-    const auto timeOf   = [&](std::size_t m) { return latest[m]->secondsAfter(newest->ns) - geometry.offsetOf(m); };
     association.epochNs = newest->ns;
+    association.onsetsS.resize(M);
     for (std::size_t m = 0UZ; m < M; ++m) {
         if (latest[m] != nullptr && std::abs(latest[m]->secondsAfter(newest->ns)) <= windowS) {
             association.receivers.push_back(m);
-            association.epochNs = std::min(association.epochNs, latest[m]->ns);
+            association.onsetsS[m] = latest[m]->secondsAfter(newest->ns) - geometry.offsetOf(m);
+            association.epochNs    = std::min(association.epochNs, latest[m]->ns);
         }
     }
     for (const auto [i, j] : geometry.pairs) {
         if (std::ranges::contains(association.receivers, i) && std::ranges::contains(association.receivers, j)) {
-            association.constraints.push_back(tdoaConstraint(geometry.receivers[i], geometry.receivers[j], static_cast<int>(i), static_cast<int>(j), geometry.speed * (timeOf(i) - timeOf(j)), geometry.tolerance()));
+            association.constraints.push_back(tdoaConstraint(geometry.receivers[i], geometry.receivers[j], static_cast<int>(i), static_cast<int>(j), geometry.speed * (*association.onsetsS[i] - *association.onsetsS[j]), geometry.tolerance()));
         }
     }
     return association;

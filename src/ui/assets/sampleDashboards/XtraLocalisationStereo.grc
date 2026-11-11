@@ -94,7 +94,7 @@ blocks:
       name: window
       n_inputs: 2
       n_pre: 572
-      n_post: 2012
+      n_post: 572
       retrigger: ignore
       holdoff: 0.2
       emit_partial: false
@@ -116,6 +116,7 @@ blocks:
     parameters:
       name: arrivals
       receiver_names: ["audio0", "audio1"]
+      min_confidence: 2.0
   - id: opendigitizer::localisation::DelayLocator
     parameters:
       name: correlator
@@ -131,6 +132,74 @@ blocks:
     parameters:
       name: lags
       signal_name: pair correlation
+  - id: gr::basic::StreamsToTensor<float32>
+    parameters:
+      name: continuousFrames
+      n_ports: 2
+      size: 4800
+  - id: gr::localisation::PairCrossCorrelation<float32>
+    parameters:
+      name: continuousCorrelation
+      max_lag: 92
+      weighting: none
+      f_min: 300.0
+      f_max: 12000.0
+  - id: gr::localisation::PairDelay<float32>
+    parameters:
+      name: continuousDelays
+      max_lag: 92
+  - id: opendigitizer::localisation::PairDelayArrivals<float32>
+    parameters:
+      name: continuousArrivals
+      receiver_names: ["audio0", "audio1"]
+      min_confidence: 3.0
+      frame_period: 0.05
+  - id: opendigitizer::localisation::DelayLocator
+    parameters:
+      name: continuousLocator
+      receiver_names: ["audio0", "audio1"]
+      element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
+      roi: [-2.0, 2.0, 0.0, 3.0]
+  - id: opendigitizer::ImPlotSink<gr::pmt::ValueMap>
+    parameters:
+      name: continuous
+      signal_name: continuous
+      color: 2924588
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: continuousConfidence
+      label: continuous confidence
+      value: 3.0
+      min: 0
+      max: 10
+      step: 0.1
+      style: slider
+      target_map: "continuousArrivals:min_confidence"
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: band
+      label: band
+      value: "broadband"
+      choices: ["broadband", "shaker (PHAT)", "fork 440 Hz"]
+      choice_values:
+        "broadband":
+          "continuousCorrelation:f_min": !!float32 300.0
+          "continuousCorrelation:f_max": !!float32 12000.0
+          "continuousCorrelation:weighting": none
+          "simulatedMicrophones:tone_frequency": 0.0
+          "simulatedMicrophones:pulse_width": 0.0005
+        "shaker (PHAT)":
+          "continuousCorrelation:f_min": !!float32 300.0
+          "continuousCorrelation:f_max": !!float32 12000.0
+          "continuousCorrelation:weighting": phat
+          "simulatedMicrophones:tone_frequency": 0.0
+          "simulatedMicrophones:pulse_width": 0.0005
+        "fork 440 Hz":
+          "continuousCorrelation:f_min": !!float32 400.0
+          "continuousCorrelation:f_max": !!float32 480.0
+          "continuousCorrelation:weighting": phat
+          "simulatedMicrophones:tone_frequency": 440.0
+          "simulatedMicrophones:pulse_width": 0.4
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: onset0
@@ -238,6 +307,16 @@ blocks:
       step: 10
       style: slider
       target_map: "highpass0,highpass1:f_high"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: clapConfidence
+      label: clap confidence
+      value: 2.0
+      min: 0
+      max: 10
+      step: 0.1
+      style: slider
+      target_map: "arrivals:min_confidence"
 connections:
   - [clock, 0, simulatedMicrophones, 0]
   - [simulatedMicrophones, [0, 0], source, [0, 0]]
@@ -267,6 +346,14 @@ connections:
   - [arrivals, 0, correlated, 0]
   - [correlator, 0, correlated, 0]
   - [correlation, 0, lags, 0]
+  - [highpass0, 0, continuousFrames, [1, 0]]
+  - [highpass1, 0, continuousFrames, [1, 1]]
+  - [continuousFrames, 0, continuousCorrelation, 0]
+  - [continuousCorrelation, 0, continuousDelays, 0]
+  - [continuousDelays, 0, continuousArrivals, 0]
+  - [continuousArrivals, 0, continuousLocator, 0]
+  - [continuousArrivals, 0, continuous, 0]
+  - [continuousLocator, 0, continuous, 0]
   - [highpass0, 0, onset0, 0]
   - [snapshot0, 1, snapshotSink0, 0]
   - [source, [0, 0], signal0, 0]
@@ -286,6 +373,8 @@ dashboard:
       block: events
     - name: correlated
       block: correlated
+    - name: continuous
+      block: continuous
     - name: lags
       block: lags
     - name: signal0
@@ -302,12 +391,14 @@ dashboard:
     - name: Localisation
       type: opendigitizer::charts::LocalisationChart
       parameters:
+        name: chart
         receiver_names: ["audio0", "audio1"]
         element_positions: !!float64 [[-0.15, 0.0, 0.0], [0.15, 0.0, 0.0]]
         roi: [-2.0, 2.0, 0.0, 3.0]
       sources:
         - events
         - correlated
+        - continuous
       rect: [0, 0, 3, 4]
     - name: Last 10 s
       type: XYChart

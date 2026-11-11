@@ -394,7 +394,7 @@ inline constexpr double kTieDistance = 1e-6;
     const bool anyRefused = usable.size() < constraints.size();
     for (const Constraint& constraint : constraints) {
         if (!constraint.usable) {
-            solution.diagnostics += std::format("{}{}–{}: {}", solution.diagnostics.empty() ? "" : "; ", constraint.focusA, constraint.focusB, constraint.refusal);
+            solution.diagnostics += std::format("{}{}-{}: {}", solution.diagnostics.empty() ? "" : "; ", constraint.focusA, constraint.focusB, constraint.refusal);
         }
     }
     if (supportRank(constraints, usable) < kRequiredRank || usable.size() < 2UZ) {
@@ -402,17 +402,18 @@ inline constexpr double kTieDistance = 1e-6;
         return solution;
     }
 
-    std::vector<Intersection> raw;
-    std::vector<Point2>       crossings;
+    std::vector<Intersection>                     raw;
+    std::vector<Point2>                           crossings;
+    const double                                  gap    = settings.candidateMergeDistance;
+    const std::vector<std::vector<detail::Chunk>> chunks = usable | std::views::transform([&](std::size_t k) { return detail::chunksOf(solution.curves[k], gap); }) | std::ranges::to<std::vector>();
     for (std::size_t m = 0UZ; m < usable.size(); ++m) {
         for (std::size_t n = m + 1UZ; n < usable.size(); ++n) {
-            const std::size_t          i   = usable[m];
-            const std::size_t          j   = usable[n];
-            const std::vector<Point2>& u   = solution.curves[i];
-            const std::vector<Point2>& v   = solution.curves[j];
-            const double               gap = settings.candidateMergeDistance;
-            for (const auto& [uFirst, uLast, uBox] : detail::chunksOf(u, gap)) {
-                for (const auto& [vFirst, vLast, vBox] : detail::chunksOf(v, gap)) {
+            const std::size_t          i = usable[m];
+            const std::size_t          j = usable[n];
+            const std::vector<Point2>& u = solution.curves[i];
+            const std::vector<Point2>& v = solution.curves[j];
+            for (const auto& [uFirst, uLast, uBox] : chunks[m]) {
+                for (const auto& [vFirst, vLast, vBox] : chunks[n]) {
                     if (uBox[1] < vBox[0] || vBox[1] < uBox[0] || uBox[3] < vBox[2] || vBox[3] < uBox[2]) {
                         continue;
                     }

@@ -27,16 +27,6 @@
 
 namespace opendigitizer::localisation {
 
-/// GR4's `locate` result as points: after 6b29d783 every position that fits, nearest first; before, the one it converged to
-template<typename TLocated>
-[[nodiscard]] std::vector<Point3> pointsOfLocated(const TLocated& located) {
-    if constexpr (requires { located.front().point; }) {
-        return located | std::views::transform([](const auto& row) { return Point3{row.point[0], row.point[1], row.point[2]}; }) | std::ranges::to<std::vector>();
-    } else {
-        return {Point3{located.point[0], located.point[1], located.point[2]}};
-    }
-}
-
 GR_REGISTER_BLOCK(opendigitizer::localisation::DelayLocator)
 
 struct DelayLocator : gr::Block<DelayLocator> {
@@ -58,7 +48,6 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
     ReceiverNames                                                                                 receiver_names           = {};
     TransmitterPositions                                                                          transmitter_positions    = kOneTransmitter;
     TransmitterNames                                                                              transmitter_names        = {};
-    DelayConventionSetting                                                                        delay_convention         = DelayConvention::total;
     gr::algorithm::PropagationSpeed                                                               propagation_speed        = 343.0;
     PairSelectionSetting                                                                          pairs                    = PairSelection::sequential;
     PairList                                                                                      pair_list                = {};
@@ -76,12 +65,15 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
     A<gr::Size_t, "n_unmatched", gr::Doc<"events naming no receiver or transmitter, or undated">> n_unmatched       = 0U;
     A<gr::Size_t, "n_results_dropped", gr::Doc<"results a full evtOut refused">>                  n_results_dropped = 0U;
 
-    GR_MAKE_REFLECTABLE(DelayLocator, evtIn, evtOut, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, delay_convention, propagation_speed, pairs, pair_list, coincidence_window, timing_offsets, direct_path_guard, roi, view_z, curve_segments, candidate_merge_distance, consensus_distance, max_range_residual, trigger_name, n_results, n_unmatched, n_results_dropped);
+    GR_MAKE_REFLECTABLE(DelayLocator, evtIn, evtOut, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, propagation_speed, pairs, pair_list, coincidence_window, timing_offsets, direct_path_guard, roi, view_z, curve_segments, candidate_merge_distance, consensus_distance, max_range_residual, trigger_name, n_results, n_unmatched, n_results_dropped);
 
     static constexpr std::size_t kMaxRecentEvents      = 256UZ; // older ones cannot belong to the newest event
     static constexpr std::size_t kMaxDiagnosticsLength = 240UZ; // characters in the result event, which must fit a 1024-byte event slot
 
-    std::deque<Dated>            _recent;
+    Geometry                     _geometry;
+    double                       _viewZ = 0.0; // the planar view height, before any 3D solution
+    std::vector<Dated>           _recent;
+    Association                  _association; // of _recent
     std::optional<std::uint64_t> _publishedEpochNs;
     std::deque<gr::property_map> _pending;
 
@@ -89,23 +81,21 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
         if (trigger_name.value.empty()) {
             trigger_name = std::string(this->name.value);
         }
+        _geometry = geometryOf(*this);
+        _viewZ    = viewHeightOf(view_z.value, std::nullopt, _geometry.receivers);
         _recent.clear();
+        _association = {};
         _publishedEpochNs.reset();
         _pending.clear();
     }
 
     void settingsChanged(const gr::property_map& oldSettings, const gr::property_map& newSettings) {
+        _geometry = geometryOf(*this);
+        _viewZ    = viewHeightOf(view_z.value, std::nullopt, _geometry.receivers);
         if (changesGeometry(oldSettings, newSettings)) {
             _recent.clear();
         }
-    }
-
-    void stop() {
-        const Geometry g       = geometryOf(*this);
-        const auto     current = associate(std::vector(_recent.begin(), _recent.end()), g, viewHeightOf(view_z.value, std::nullopt, pointsOf(element_positions.value)));
-        if (!current.constraints.empty() && _publishedEpochNs != current.epochNs) {
-            publish(current, g);
-        }
+        _association = associate(_recent, _geometry, _viewZ);
     }
 
     gr::work::Status processBulk(gr::InputSpanLike auto& evtInSpan, gr::OutputSpanLike auto& evtOutSpan) {
@@ -127,24 +117,22 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
     }
 
     void admit(const gr::property_map& event) {
-        const auto     dated = datedOf(event);
-        const Geometry g     = geometryOf(*this);
+        const auto      dated = datedOf(event);
+        const Geometry& g     = _geometry;
         if (!dated || (!indexOf(dated->name, g.receiverNames, g.receivers.size(), "") && !(g.mode == Mode::bistatic && indexOf(dated->name, g.transmitterNames, g.transmitters.size(), "tx")))) {
             n_unmatched = n_unmatched + 1U;
             return;
         }
-        const double viewZ    = viewHeightOf(view_z.value, std::nullopt, pointsOf(element_positions.value));
-        const auto   previous = associate(std::vector(_recent.begin(), _recent.end()), g, viewZ);
-        if (!previous.constraints.empty() && _publishedEpochNs != previous.epochNs && dated->secondsAfter(previous.epochNs) > g.window(viewZ)) {
-            publish(previous, g);
+        if (!_association.constraints.empty() && _publishedEpochNs != _association.epochNs && dated->secondsAfter(_association.epochNs) > g.window(_viewZ)) {
+            publish(_association, g);
         }
         _recent.push_back(*dated);
-        while (_recent.size() > kMaxRecentEvents) {
-            _recent.pop_front();
+        if (_recent.size() > kMaxRecentEvents) {
+            _recent.erase(_recent.begin());
         }
-        const auto current = associate(std::vector(_recent.begin(), _recent.end()), g, viewZ);
-        if (complete(current, g) && _publishedEpochNs != current.epochNs) {
-            publish(current, g);
+        _association = associate(_recent, g, _viewZ);
+        if (complete(_association, g) && _publishedEpochNs != _association.epochNs) {
+            publish(_association, g);
         }
     }
 
@@ -169,13 +157,7 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
         if (highest - lowest <= g.tolerance()) {
             return {};
         }
-#if __has_include(<gnuradio-4.0/localisation/SourceLocation.hpp>)
-        std::vector<std::optional<double>> times(g.receivers.size());
-        for (const Dated& e : _recent) {
-            if (const auto m = indexOf(e.name, g.receiverNames, g.receivers.size(), ""); m && std::ranges::contains(present, *m)) {
-                times[*m] = e.secondsAfter(association.epochNs) - g.offsetOf(*m);
-            }
-        }
+#if __has_include(<gnuradio-4.0/localisation/SourceLocation.hpp>) // GR4 built with its localisation module
         gr::Tensor<double> positions(std::array{present.size(), 3UZ}, std::vector<double>(present.size() * 3UZ));
         for (std::size_t k = 0UZ; k < present.size(); ++k) {
             for (std::size_t c = 0UZ; c < 3UZ; ++c) {
@@ -185,14 +167,14 @@ candidate_spread, n_supporting, n_candidates, diagnostics}. LocalisationChart dr
         std::vector<double> pairDelays;
         for (std::size_t p = 0UZ; p < gr::algorithm::pairsOf(present.size()); ++p) {
             const auto [i, j] = gr::algorithm::pairOf(p, present.size());
-            pairDelays.push_back(times[present[i]].value_or(0.0) - times[present[j]].value_or(0.0));
+            pairDelays.push_back(*association.onsetsS[present[i]] - *association.onsetsS[present[j]]);
         }
         constexpr std::size_t kMaxIterations = 50UZ;
         const auto            located        = gr::localisation::locate(positions, pairDelays, g.speed, gr::algorithm::Field::near, kMaxIterations, 1e-9);
         if (!located) {
             return {};
         }
-        return pointsOfLocated(*located);
+        return *located | std::views::transform([](const gr::localisation::Located& row) { return Point3{row.point[0], row.point[1], row.point[2]}; }) | std::ranges::to<std::vector>();
 #else
         return {};
 #endif

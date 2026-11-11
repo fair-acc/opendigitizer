@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <numbers>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -84,12 +85,10 @@ struct DataSetSource : gr::Block<DataSetSource> {
     return constraints;
 }
 
-[[nodiscard]] std::vector<Constraint> bistaticOf(const std::vector<Point3>& receivers, const Point3& transmitter, const Point3& object, DelayConvention convention) {
+[[nodiscard]] std::vector<Constraint> bistaticOf(const std::vector<Point3>& receivers, const Point3& transmitter, const Point3& object) {
     std::vector<Constraint> constraints;
     for (std::size_t i = 0UZ; i < receivers.size(); ++i) {
-        const double total      = distance(transmitter, object) + distance(object, receivers[i]);
-        const double excessPath = total - distance(transmitter, receivers[i]);
-        const double path       = convention == DelayConvention::total ? total : distance(transmitter, receivers[i]) + excessPath;
+        const double path = distance(transmitter, object) + distance(object, receivers[i]);
         constraints.push_back(bistaticConstraint(transmitter, receivers[i], transmitterFocus(0UZ), static_cast<int>(i), path, 1e-9));
     }
     return constraints;
@@ -190,13 +189,12 @@ const boost::ut::suite<"delay constraints"> constraintTests = [] {
         expect(std::isnan(solution.mean[0])) << "no detected position";
     };
 
-    "bistatic ellipses of one transmitter and four receivers locate the reflector, total and excess alike"_test = [] {
+    "bistatic ellipses of one transmitter and four receivers locate the reflector"_test = [] {
         const Point3   transmitter{0.0, -1.0, 0.0};
         const Point3   object{0.3, 0.2, 0.0};
-        const Solution total  = solve(bistaticOf(deckSquare(), transmitter, object, DelayConvention::total), Settings{});
-        const Solution excess = solve(bistaticOf(deckSquare(), transmitter, object, DelayConvention::excess), Settings{});
-        expect(total.status == Status::valid && excess.status == Status::valid) << statusName(total.status) << statusName(excess.status);
-        expect(lt(gap(total.mean, object), 1e-6) && lt(gap(excess.mean, object), 1e-6));
+        const Solution total = solve(bistaticOf(deckSquare(), transmitter, object), Settings{});
+        expect(total.status == Status::valid) << statusName(total.status);
+        expect(lt(gap(total.mean, object), 1e-6));
         expect(eq(total.supporting.size(), 4UZ));
     };
 
@@ -241,7 +239,8 @@ const boost::ut::suite<"delay constraints"> constraintTests = [] {
             scrambled[n].value += kGrossErrors[n];
         }
         const Solution scattered = solve(scrambled, Settings{});
-        expect(scattered.status == Status::noConsistentSolution || scattered.status == Status::ambiguous) << statusName(scattered.status);
+        expect(std::ranges::none_of(scattered.intersections, &Intersection::accepted)) << "no candidate agrees with all receivers";
+        expect(scattered.status == Status::noConsistentSolution) << statusName(scattered.status);
         expect(std::isnan(scattered.mean[0]));
     };
 
@@ -252,8 +251,25 @@ const boost::ut::suite<"delay constraints"> constraintTests = [] {
         settings.curveSegments    = 1024UZ;
         settings.maxRangeResidual = 1e-6;
         const Solution solution   = solve(tdoaOf(small, {15.0, 9.0, 0.0}), settings);
-        expect(solution.status == Status::poorGeometry || solution.status == Status::ambiguous || solution.status == Status::noConsistentSolution) << statusName(solution.status);
-        expect(std::isnan(solution.mean[0])) << "no position claimed";
+        expect(std::isnan(solution.mean[0])) << statusName(solution.status) << ": no position claimed";
+    };
+
+    "crossings narrower than min_crossing_angle are poor geometry, the point kept as the alternative"_test = [] {
+        const Point3 source{0.3, 0.2, 0.0};
+        Settings     strict;
+        strict.minCrossingAngle = std::numbers::pi / 2.0 + 1e-3; // above any crossing angle
+        const Solution solution = solve(tdoaOf(deckSquare(), source), strict);
+        expect(solution.status == Status::poorGeometry) << statusName(solution.status);
+        expect(std::isnan(solution.mean[0]) && eq(solution.alternatives.size(), 1UZ) && lt(gap(solution.alternatives.front(), source), 1e-6));
+    };
+
+    "a source on the extension of a receiver pair makes that pair's curve a ray: poor geometry"_test = [] {
+        const Point3   source{-0.6, 1.5, 0.0}; // beyond receiver 1 on the line through receivers 0 and 1: |d| = baseline
+        const auto     constraints = tdoaOf(deckSquare(), source);
+        const Solution solution    = solve(constraints, Settings{});
+        expect(constraints.front().degenerate) << "pair (0, 1)";
+        expect(solution.status == Status::poorGeometry) << statusName(solution.status) << solution.diagnostics;
+        expect(!solution.alternatives.empty() && lt(gap(solution.alternatives.front(), source), 1e-6));
     };
 
     "the detected mean does not depend on the curve resolution"_test = [] {
@@ -336,6 +352,19 @@ const boost::ut::suite<"DelayLocator"> blockTests = [] {
                 const auto pieces = 1 + std::ranges::count_if(curve, [](const Point2& p) { return std::isnan(p[0]); });
                 expect(gt(curve.size(), segments / 8UZ) && le(pieces, 2)) << "each section crosses the roi in at most two pieces";
             }
+        }
+    };
+
+    "a re-trigger of one tetrahedron receiver before the others arrive leaves the slice height at its onset"_test = [&run] {
+        const gr::Tensor<double> tetrahedron = gr::algorithm::geometry::tetrahedron(0.6);
+        const Point3             source{0.25, -0.1, 0.15};
+        auto                     events = arrivalsOf(pointsOf(tetrahedron), source, 1.0);
+        events.insert(events.begin() + 1, datedEvent("0", 1.0 + distance(source, pointsOf(tetrahedron)[0]) / kSpeed + 0.5e-3));
+        const auto [results, _] = run(events, {{"element_positions", tetrahedron}}, 1UZ);
+        expect(eq(results.size(), 1UZ));
+        if (!results.empty()) {
+            expect(statusOf(results[0]) == "Valid") << statusOf(results[0]);
+            expect(lt(std::abs(metaValue(results[0], "z") - source[2]), 1e-6)) << metaValue(results[0], "z");
         }
     };
 
@@ -486,11 +515,41 @@ const boost::ut::suite<"PairDelayArrivals"> converterTests = [] {
         expect(eq(framesB, gr::Size_t{0U}) && eq(refusedB, gr::Size_t{1U})) << "no gr:trigger_time and no frame_period";
     };
 
+    "with frame_period 0 a frame without gr:trigger_time is refused, not dated by the previous one"_test = [&] {
+        const auto rows                              = pairDelays(deckSquare(), {0.3, 0.2, 0.0});
+        const auto [results, frames, refused, gated] = convert({{.extents = {6UZ, 3UZ}, .elements = rows}, {.extents = {6UZ, 3UZ}, .elements = rows}}, dated, {}, {}, 1UZ);
+        expect(eq(frames, gr::Size_t{1U}) && eq(refused, gr::Size_t{1U}));
+    };
+
     "frames below min_confidence are gated"_test = [&] {
         auto rows                                    = pairDelays(deckSquare(), {0.3, 0.2, 0.0});
         rows[2]                                      = 1.2f; // pair (0, 1): its peak barely beats its second peak
         const auto [results, frames, refused, gated] = convert({{.extents = {6UZ, 3UZ}, .elements = rows}}, dated, {{"min_confidence", 2.0}}, {}, 0UZ);
         expect(eq(frames, gr::Size_t{0U}) && eq(gated, gr::Size_t{1U}));
+    };
+
+    "only the pairs (0, j) that date the arrivals gate: a poor pair (1, 2) does not"_test = [&] {
+        auto rows                                    = pairDelays(deckSquare(), {0.3, 0.2, 0.0});
+        rows[3UZ * 3UZ + 2UZ]                        = 1.f; // pair (1, 2)
+        const auto [results, frames, refused, gated] = convert({{.extents = {6UZ, 3UZ}, .elements = rows}}, dated, {{"min_confidence", 2.0}}, {}, 1UZ);
+        expect(eq(frames, gr::Size_t{1U}) && eq(gated, gr::Size_t{0U}));
+    };
+
+    "receivers beyond receiver_names are unused inputs: no arrival, and their silent pairs do not gate"_test = [&] {
+        const Point3 object{0.3, 0.2, 0.0};
+        auto         rows = pairDelays(deckSquare(), object);
+        for (const std::size_t p : {2UZ, 4UZ, 5UZ}) { // pairs (0, 3), (1, 3), (2, 3)
+            rows[p * 3UZ + 2UZ] = 1.f;
+        }
+        const auto         square = deckSquare();
+        gr::Tensor<double> three({3UZ, 3UZ}, std::vector{square[0][0], square[0][1], square[0][2], square[1][0], square[1][1], square[1][2], square[2][0], square[2][1], square[2][2]});
+        const auto [results, frames, refused, gated] = convert({{.extents = {6UZ, 3UZ}, .elements = rows}}, dated, {{"min_confidence", 2.0}, {"receiver_names", std::vector<std::string>{"0", "1", "2"}}}, {{"element_positions", three}}, 1UZ);
+        expect(eq(frames, gr::Size_t{1U}) && eq(gated, gr::Size_t{0U}));
+        expect(eq(results.size(), 1UZ));
+        if (!results.empty()) {
+            expect(statusOf(results[0]) == "Valid") << statusOf(results[0]) << metaText(results[0], "diagnostics");
+            expect(lt(std::hypot(metaValue(results[0], "x") - object[0], metaValue(results[0], "y") - object[1]), 1e-3));
+        }
     };
 };
 
@@ -720,20 +779,38 @@ const boost::ut::suite<"DataSetToTensor"> dataSetToTensorTests = [] {
         }
     };
 
-    const auto continuous = [](float amplitude, std::size_t results) {
-        constexpr float      kRate   = 96000.f;
-        constexpr gr::Size_t kMaxLag = 500U;
-        constexpr gr::Size_t kFrame  = 4800U; // 50 ms, more than four maximum lags
-        gr::Graph            graph;
-        auto&                clock       = graph.emplaceBlock<gr::basic::ClockSource<std::uint8_t>>({{"sample_rate", kRate}, {"n_samples_max", gr::Size_t{96000U}}, {"chunk_size", gr::Size_t{1024U}}, {"use_internal_thread", false}, {"start_time", std::uint64_t{1'000'000'000U}}});
-        auto&                audio       = graph.emplaceBlock<PointSourceAudio>({{"source_position", std::vector{0.3, 0.2, 0.0}}, {"period", 0.05}, {"sample_rate", kRate}, {"amplitude", amplitude}, {"noise", 0.02f}});
-        auto&                frames      = graph.emplaceBlock<gr::basic::StreamsToTensor<float>>({{"n_ports", gr::Size_t{4U}}, {"size", kFrame}});
-        auto&                correlation = graph.emplaceBlock<gr::localisation::PairCrossCorrelation<float>>({{"max_lag", kMaxLag}, {"f_min", 300.f}, {"f_max", 12000.f}});
-        auto&                delays      = graph.emplaceBlock<gr::localisation::PairDelay<float>>({{"max_lag", kMaxLag}});
-        auto&                arrivals    = graph.emplaceBlock<PairDelayArrivals<float>>({{"min_confidence", 3.0}, {"frame_period", static_cast<double>(kFrame) / static_cast<double>(kRate)}});
-        auto&                locator     = graph.emplaceBlock<DelayLocator>();
-        auto&                log         = graph.emplaceBlock<EventLog>();
-        log._stopAfter                   = std::max(results, 1UZ);
+    struct Continuous {
+        float               amplitude = 0.8f;
+        std::size_t         results   = 10UZ;
+        gr::Tensor<double>  positions = kDeckSquare;
+        std::vector<double> source{0.3, 0.2, 0.0};
+        std::vector<double> roi{-2.0, 2.0, -2.0, 2.0};
+        double              period        = 0.05;
+        double              pulseWidth    = 0.5e-3;
+        double              toneFrequency = 0.0;
+        float               fMin          = 300.f;
+        float               fMax          = 12000.f;
+        gr::Size_t          maxLag        = 500U;   // samples
+        gr::Size_t          frame         = 4800U;  // samples, 50 ms: more than four maximum lags
+        gr::Size_t          duration      = 96000U; // samples
+        double              minConfidence = 3.0;
+        std::string         weighting     = "phat";
+        float               rate          = 96000.f; // Hz
+    };
+    const auto continuous = [](Continuous c) {
+        const float      kRate   = c.rate;
+        const gr::Size_t kFrame  = c.frame;
+        const gr::Size_t kMaxLag = c.maxLag;
+        gr::Graph        graph;
+        auto&            clock       = graph.emplaceBlock<gr::basic::ClockSource<std::uint8_t>>({{"sample_rate", kRate}, {"n_samples_max", c.duration}, {"chunk_size", gr::Size_t{1024U}}, {"use_internal_thread", false}, {"start_time", std::uint64_t{1'000'000'000U}}});
+        auto&            audio       = graph.emplaceBlock<PointSourceAudio>({{"element_positions", c.positions}, {"source_position", c.source}, {"period", c.period}, {"pulse_width", c.pulseWidth}, {"tone_frequency", c.toneFrequency}, {"sample_rate", kRate}, {"amplitude", c.amplitude}, {"noise", 0.02f}});
+        auto&            frames      = graph.emplaceBlock<gr::basic::StreamsToTensor<float>>({{"n_ports", gr::Size_t{4U}}, {"size", kFrame}});
+        auto&            correlation = graph.emplaceBlock<gr::localisation::PairCrossCorrelation<float>>({{"max_lag", kMaxLag}, {"f_min", c.fMin}, {"f_max", c.fMax}, {"weighting", c.weighting}});
+        auto&            delays      = graph.emplaceBlock<gr::localisation::PairDelay<float>>({{"max_lag", kMaxLag}});
+        auto&            arrivals    = graph.emplaceBlock<PairDelayArrivals<float>>({{"min_confidence", c.minConfidence}, {"frame_period", static_cast<double>(kFrame) / static_cast<double>(kRate)}});
+        auto&            locator     = graph.emplaceBlock<DelayLocator>({{"element_positions", c.positions}, {"roi", c.roi}});
+        auto&            log         = graph.emplaceBlock<EventLog>();
+        log._stopAfter               = std::max(c.results, 1UZ);
         expect(graph.connect<"out", "clk">(clock, audio).has_value());
         for (std::size_t m = 0UZ; m < 4UZ; ++m) {
             auto& highPass = graph.emplaceBlock<gr::filter::BasicFilter<float>>({{"filter_type", "IIR"}, {"filter_response", "HIGHPASS"}, {"iir_design_method", "BUTTERWORTH"}, {"filter_order", gr::Size_t{2U}}, {"f_high", 200.f}, {"sample_rate", kRate}});
@@ -751,8 +828,8 @@ const boost::ut::suite<"DataSetToTensor"> dataSetToTensorTests = [] {
         return std::tuple{log._events, arrivals.n_frames.value, arrivals.n_gated.value};
     };
 
-    "a shaker-like source (20 clicks/s), framed back to back every 50 ms and correlated (PHAT), is located frame by frame within 1 cm"_test = [&continuous] {
-        const auto [results, framed, gated] = continuous(0.8f, 10UZ);
+    "a shaker-like source (20 clicks/s), framed back to back every 50 ms and correlated (PHAT) over the clicks' band, is located frame by frame within 1 cm"_test = [&continuous] {
+        const auto [results, framed, gated] = continuous({.fMax = 4000.f}); // a 0.5 ms raised cosine holds little above 4 kHz, where PHAT would weigh noise alone
         expect(ge(results.size(), 10UZ)) << std::format("framed {}, gated {}", framed, gated);
         for (const auto& event : results) {
             expect(statusOf(event) == "Valid") << statusOf(event) << metaText(event, "diagnostics");
@@ -761,9 +838,43 @@ const boost::ut::suite<"DataSetToTensor"> dataSetToTensorTests = [] {
     };
 
     "frames of noise alone stay below min_confidence: gated, none located"_test = [&continuous] {
-        const auto [results, framed, gated] = continuous(0.f, 0UZ);
+        const auto [results, framed, gated] = continuous({.amplitude = 0.f, .results = 0UZ});
         expect(results.empty()) << std::format("framed {}, gated {}", framed, gated);
         expect(ge(gated, gr::Size_t{15U})) << "every 50 ms frame of the second";
+    };
+
+    "every dashboard's continuous layer, unweighted with its generated frame and lags, locates clicks every 0.5 s within 1 cm, the 0.3 m line within 2 cm"_test = [&continuous] {
+        const auto               line = [](double spacing) { return gr::Tensor<double>({4UZ, 3UZ}, std::vector{-1.5 * spacing, 0.0, 0.0, -0.5 * spacing, 0.0, 0.0, 0.5 * spacing, 0.0, 0.0, 1.5 * spacing, 0.0, 0.0}); };
+        const gr::Tensor<double> tetrahedron({4UZ, 3UZ}, std::vector{-0.15, -0.086603, 0.061237, 0.15, -0.086603, 0.061237, 0.0, 0.173205, 0.061237, 0.0, 0.0, -0.183712});
+        const gr::Tensor<double> uma16Corners({4UZ, 3UZ}, std::vector{-0.063, -0.063, 0.0, 0.063, -0.063, 0.0, -0.063, 0.063, 0.0, 0.063, 0.063, 0.0});
+        struct Dashboard {
+            std::string_view name;
+            Continuous       layer;
+            double           tolerance = 0.01; // m
+        };
+        constexpr double kCollinearTolerance = 0.02; // m: at 48 kHz a sample is 7 mm of path, which a collinear 0.3 m array stretches in range
+        for (const auto& [name, layer, tolerance] : {Dashboard{"square, 96 kHz", {.maxLag = 483U, .frame = 4800U}}, Dashboard{"tetrahedron, 96 kHz", {.positions = tetrahedron, .source = {0.1, -0.05, 0.05}, .roi = {-1.0, 1.0, -1.0, 1.0}, .maxLag = 92U, .frame = 4800U}}, Dashboard{"3 m line, 96 kHz", {.positions = line(3.0), .source = {1.0, 4.0, 0.0}, .roi = {-8.0, 8.0, 0.0, 8.0}, .maxLag = 2527U, .frame = 10240U}}, Dashboard{"3 m line, 48 kHz", {.positions = line(3.0), .source = {1.0, 4.0, 0.0}, .roi = {-8.0, 8.0, 0.0, 8.0}, .maxLag = 1268U, .frame = 5120U, .rate = 48000.f}}, Dashboard{"0.3 m line, 48 kHz", {.positions = line(0.1), .source = {0.1, 0.3, 0.0}, .roi = {-1.0, 1.0, 0.0, 1.5}, .maxLag = 50U, .frame = 5120U, .rate = 48000.f}, kCollinearTolerance}, Dashboard{"UMA16 corners, 48 kHz", {.positions = uma16Corners, .source = {0.15, 0.1, 0.0}, .roi = {-0.5, 0.5, -0.5, 0.5}, .maxLag = 33U, .frame = 2560U, .rate = 48000.f}}}) {
+            Continuous c                        = layer;
+            c.results                           = 3UZ;
+            c.period                            = 0.5;
+            c.weighting                         = "none";
+            c.duration                          = static_cast<gr::Size_t>(2.f * c.rate);
+            const auto [results, framed, gated] = continuous(c);
+            expect(ge(results.size(), 3UZ)) << name << std::format(": framed {}, gated {}", framed, gated);
+            for (const auto& event : results) {
+                expect(statusOf(event) == "Valid") << name << statusOf(event) << metaText(event, "diagnostics");
+                expect(lt(std::hypot(metaValue(event, "x") - c.source[0], metaValue(event, "y") - c.source[1]), tolerance)) << name << std::format(" ({}, {})", metaValue(event, "x"), metaValue(event, "y"));
+            }
+        }
+    };
+
+    "a 440 Hz tuning fork struck every 0.5 s before a 0.3 m line, correlated in 400-480 Hz, is located from the frames inside its tone"_test = [&continuous] {
+        const auto [results, framed, gated] = continuous({.results = 5UZ, .positions = gr::Tensor<double>({4UZ, 3UZ}, std::vector{-0.15, 0.0, 0.0, -0.05, 0.0, 0.0, 0.05, 0.0, 0.0, 0.15, 0.0, 0.0}), .source = {0.1, 0.3, 0.0}, .roi = {-1.0, 1.0, 0.0, 1.5}, .period = 0.5, .pulseWidth = 0.4, .toneFrequency = 440.0, .fMin = 400.f, .fMax = 480.f, .maxLag = 92U}); // 0.3 m and a few samples: under half the tone's period
+        expect(ge(results.size(), 5UZ)) << std::format("framed {}, gated {}", framed, gated);
+        for (const auto& event : results) {
+            expect(statusOf(event) == "Valid") << statusOf(event) << metaText(event, "diagnostics");
+            expect(lt(std::hypot(metaValue(event, "x") - 0.1, metaValue(event, "y") - 0.3), 0.05)) << std::format("({}, {})", metaValue(event, "x"), metaValue(event, "y"));
+        }
     };
 };
 

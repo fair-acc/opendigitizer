@@ -78,7 +78,28 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     static constexpr bool IsTensor    = gr::TensorLike<T>;
     static constexpr bool IsEvents    = std::is_same_v<T, gr::property_map>;
 
-    static constexpr SignalKind kSignalKind = IsEvents ? SignalKind::Events : IsTensor ? SignalKind::Image2D : IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
+    static constexpr SignalKind kSignalKind = []() consteval -> SignalKind {
+        if constexpr (IsEvents) {
+            return SignalKind::Events;
+        } else if constexpr (IsTensor) {
+            return SignalKind::Image2D;
+        } else if constexpr (IsDataSet) {
+            return SignalKind::Dataset1D;
+        } else {
+            return SignalKind::Streaming;
+        }
+    }();
+    static constexpr gr::Size_t kDefaultRequiredSize = []() consteval -> gr::Size_t {
+        if constexpr (IsTensor) {
+            return 1U;
+        } else if constexpr (IsEvents) {
+            return 64U;
+        } else if constexpr (IsDataSet) {
+            return static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize);
+        } else {
+            return 2048U;
+        }
+    }();
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
@@ -101,7 +122,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                             sample_rate       = 1000.0f;
     A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                         abscissa_quantity = "time";
     A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                           abscissa_unit     = "s";
-    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                             required_size     = IsTensor ? 1U : IsEvents ? 64U : gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
+    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                             required_size     = kDefaultRequiredSize;
     A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                                    dataset_index     = std::numeric_limits<gr::Size_t>::max();
     A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                               n_history         = 3U;
     A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>>          history_offset    = 0.01f;
@@ -142,11 +163,11 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     std::deque<std::conditional_t<IsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
     std::uint64_t                                               _frameGeneration = 0U; // of _frames.back(), counting every received frame
     std::vector<gr::property_map>                               _events;               // event sinks: the newest required_size events, owned
-    std::uint64_t                                               _eventGeneration = 0U;
-    std::array<ImageAxis, 2>                                    _axes{}; // Tensor<T> sinks: from the latest gr:axis_* tags
+    std::atomic<std::uint64_t>                                  _eventGeneration = 0U; // read by charts without the data guard
+    std::array<ImageAxis, 2>                                    _axes{};               // Tensor<T> sinks: from the latest gr:axis_* tags
 
     [[nodiscard]] std::span<const gr::property_map> events() const noexcept { return _events; }
-    [[nodiscard]] std::uint64_t                     eventGeneration() const noexcept { return _eventGeneration; }
+    [[nodiscard]] std::uint64_t                     eventGeneration() const noexcept { return _eventGeneration.load(std::memory_order_acquire); }
 
     [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const {
         if constexpr (IsTensor) {
@@ -543,7 +564,6 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] std::mutex&                 dataMutex() const { return *_dataMutex; }
     [[nodiscard]] std::shared_ptr<std::mutex> sharedDataMutex() const { return _dataMutex; }
 
-    /// the axes a producer such as gr::localisation::SteeredPowerMap publishes as gr:axis_origin/step/name/unit, one entry per tensor dimension
     void updateAxes(const gr::property_map& tag) {
         const auto field   = [&tag](std::string_view key) { return tag.find_value(key).value_or(gr::pmt::Value{}); };
         const auto doubles = [&field](std::string_view key) {
@@ -584,7 +604,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
             const std::size_t excess = _events.size() - std::min(_events.size(), static_cast<std::size_t>(required_size.value));
             _events.erase(_events.begin(), _events.begin() + static_cast<std::ptrdiff_t>(excess));
-            _eventGeneration += input.size();
+            _eventGeneration.fetch_add(input.size(), std::memory_order_release);
             std::ignore = input.consume(input.size());
             return gr::work::Status::OK;
         } else {
