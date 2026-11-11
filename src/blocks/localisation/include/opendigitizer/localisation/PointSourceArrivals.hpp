@@ -32,18 +32,18 @@ emission + (|s - p| + |p - r|) / c. The source circles `source_position` in the 
     gr::PortIn<std::uint8_t> clk;
     gr::EventPortOut         evtOut{{.streamSlotsPerPublish = 8UZ}};
 
-    ModeSetting                                                                               mode                  = Mode::tdoa;
-    gr::algorithm::ElementPositions                                                           element_positions     = kDeckSquare;
-    ReceiverNames                                                                             receiver_names        = {};
-    TransmitterPositions                                                                      transmitter_positions = kOneTransmitter;
-    TransmitterNames                                                                          transmitter_names     = {};
-    gr::algorithm::PropagationSpeed                                                           propagation_speed     = 343.0;
-    A<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">> source_position       = std::vector{0.3, 0.2, 0.0};
-    A<double, "orbit_radius", gr::Unit<"m">, gr::Visible>                                     orbit_radius          = 0.0;
-    A<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>                           orbit_period          = 10.0;
-    A<double, "period", gr::Unit<"s">, gr::Limits<1e-6, 1e6>, gr::Doc<"between emissions">>   period                = 0.5;
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">>       sample_rate           = 1000.f;
-    A<gr::Size_t, "n_events", gr::Doc<"emissions before the block stops; 0: unlimited">>      n_events              = 0U;
+    ModeSetting                                                                                                                                                                    mode                  = Mode::tdoa;
+    gr::algorithm::ElementPositions                                                                                                                                                element_positions     = kDeckSquare;
+    ReceiverNames                                                                                                                                                                  receiver_names        = {};
+    TransmitterPositions                                                                                                                                                           transmitter_positions = kOneTransmitter;
+    TransmitterNames                                                                                                                                                               transmitter_names     = {};
+    gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed     = 343.0;
+    A<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">>                                                                                      source_position       = std::vector{0.3, 0.2, 0.0};
+    A<double, "orbit_radius", gr::Unit<"m">, gr::Visible>                                                                                                                          orbit_radius          = 0.0;
+    A<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>                                                                                                                orbit_period          = 10.0;
+    A<double, "period", gr::Unit<"s">, gr::Limits<1e-6, 1e6>, gr::Doc<"between emissions">>                                                                                        period                = 0.5;
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">, gr::Limits<0.f, std::numeric_limits<float>::max(), [](float rate) { return 0.f < rate; }>> sample_rate           = 1000.f;
+    A<gr::Size_t, "n_events", gr::Doc<"emissions before the block stops; 0: unlimited">>                                                                                           n_events              = 0U;
 
     GR_MAKE_REFLECTABLE(PointSourceArrivals, clk, evtOut, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, propagation_speed, source_position, orbit_radius, orbit_period, period, sample_rate, n_events);
 
@@ -60,8 +60,11 @@ emission + (|s - p| + |p - r|) / c. The source circles `source_position` in the 
     [[nodiscard]] Point3 sourceAt(double t) const { return orbitPoint(source_position.value, orbit_radius.value, orbit_period.value, t); }
 
     void schedule(double emission) {
-        const Point3                                p = sourceAt(emission);
-        const double                                c = propagation_speed.value;
+        const Point3 p = sourceAt(emission);
+        const double c = propagation_speed.value;
+        if (!(c > 0.0 && std::isfinite(c))) {
+            return;
+        }
         std::vector<std::pair<double, std::string>> events;
         double                                      outbound = 0.0;
         if (mode == Mode::bistatic && rowsOf(transmitter_positions.value) > 0UZ) {

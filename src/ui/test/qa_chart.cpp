@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
@@ -120,7 +121,25 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 const auto [x, y] = *chart()->drawnPosition();
                 expect(lt(std::hypot(x - 0.3, y - 0.2), 1e-6)) << std::format("({}, {})", x, y);
-                expect(chart()->tracedGeneration().has_value() && le(chart()->tracedEvents(), static_cast<std::size_t>(*chart()->tracedGeneration()))) << "traced once per received event, not per draw";
+                std::optional<std::uint64_t> lastGeneration;
+                std::size_t                  lastTraced = 0UZ;
+                std::size_t                  changes    = 0UZ;
+                std::size_t                  retraced   = 0UZ; // traces at an unchanged event generation
+                expect(g_state.waitUntil(ctx, "three new event generations, each traced once", [&] {
+                    const auto* c = chart();
+                    if (c == nullptr || !c->tracedGeneration()) {
+                        return false;
+                    }
+                    if (lastGeneration == c->tracedGeneration()) {
+                        retraced += c->tracedEvents() - lastTraced;
+                    } else if (lastGeneration) {
+                        ++changes;
+                    }
+                    lastGeneration = c->tracedGeneration();
+                    lastTraced     = c->tracedEvents();
+                    return changes >= 3UZ;
+                }));
+                expect(eq(retraced, 0UZ)) << "traced once per received event, not per draw";
                 const auto& drawn = chart()->drawn();
                 expect(eq(drawn.receivers, 4UZ) && gt(drawn.intersections, 0UZ) && drawn.status && eq(drawn.curveLabels, 0UZ)) << "the defaults: receivers, intersections, status; no curve labels";
                 captureScreenshot(*ctx);
@@ -144,7 +163,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
 #if defined(OD_ACOUSTIC_CAMERA) && defined(OD_TRIGGER_BLOCKS)
-            "each localisation dashboard locates its simulated orbiting source, stereo draws its one hyperbola, each shown channel marks its onset"_test = [ctx] {
+            "each localisation dashboard locates its simulated orbiting source in all three layers, stereo draws its one hyperbola, each shown channel marks its onset"_test = [ctx] {
                 for (const std::string_view array : {"Square", "Tetrahedron", "Line", "Uma16", "Stereo"}) {
                     g_state.dashboardPage.reset();
                     g_state.reload(cmrc::sample_dashboards::get_filesystem(), std::format("assets/sampleDashboards/XtraLocalisation{}.grc", array).c_str());
@@ -155,9 +174,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     };
                     const bool                     stereo = array == "Stereo";
                     const std::vector<std::size_t> shown  = array == "Stereo" ? std::vector<std::size_t>{0UZ, 1UZ} : array == "Uma16" ? std::vector<std::size_t>{1UZ, 14UZ, 7UZ, 8UZ} : std::vector<std::size_t>{0UZ};
-                    expect(g_state.waitUntil(ctx, std::format("{}: both layers, threshold and correlated, draw {}", array, stereo ? "one hyperbola" : "a published position"), [&] {
+                    expect(g_state.waitUntil(ctx, std::format("{}: all three layers, threshold, correlated and continuous, draw {}", array, stereo ? "one hyperbola" : "a published position"), [&] {
                         const auto* c = chart();
-                        return c != nullptr && c->drawnLayers().size() == 2UZ && std::ranges::all_of(std::views::iota(0UZ, 2UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
+                        return c != nullptr && c->drawnLayers().size() == 3UZ && std::ranges::all_of(std::views::iota(0UZ, 3UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
                     })) << array;
                     const auto newest = [](std::string_view name) -> std::optional<gr::DataSet<float>> {
                         const auto block = opendigitizer::test::findBlockInRootGraph(g_state.dashboard->session, name);
@@ -226,7 +245,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     std::vector<std::size_t> shown;
                     double                   aperture; // m, between the farthest shown microphones
                 };
-                for (const auto& [name, receivers, shown, aperture] : {Preset{"square", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 1.7}, Preset{"stereo", 2UZ, {0UZ, 1UZ}, 0.3}, Preset{"line", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 9.0}, Preset{"tetrahedron", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 0.3}, Preset{"UMA16", 16UZ, {1UZ, 14UZ, 7UZ, 8UZ}, 0.18}}) {
+                for (const auto& [name, receivers, shown, aperture] : {Preset{"square", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 1.7}, Preset{"stereo", 2UZ, {0UZ, 1UZ}, 0.3}, Preset{"line", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 9.0}, Preset{"line 0.3 m", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 0.3}, Preset{"tetrahedron", 4UZ, {0UZ, 1UZ, 2UZ, 3UZ}, 0.3}, Preset{"UMA16", 16UZ, {1UZ, 14UZ, 7UZ, 8UZ}, 0.18}}) {
                     if (name != "square") { // the default, applied at start
                         const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("array").block;
                         expect(control != nullptr) << fatal;
@@ -234,9 +253,9 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                         ctx->ItemClick(std::format("//$FOCUSED/{}", name).c_str());
                     }
                     const bool stereo = name == "stereo";
-                    expect(g_state.waitUntil(ctx, std::format("{}: {} receivers and, threshold and correlated alike, {}", name, receivers, stereo ? "one hyperbola" : "a located position"), [&] {
+                    expect(g_state.waitUntil(ctx, std::format("{}: {} receivers and, threshold, correlated and continuous alike, {}", name, receivers, stereo ? "one hyperbola" : "a located position"), [&] {
                         const auto* c = chart();
-                        return c != nullptr && c->drawn().receivers == receivers && c->drawnLayers().size() == 2UZ && std::ranges::all_of(std::views::iota(0UZ, 2UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
+                        return c != nullptr && c->drawn().receivers == receivers && c->drawnLayers().size() == 3UZ && std::ranges::all_of(std::views::iota(0UZ, 3UZ), [&](std::size_t k) { return stereo ? c->drawnLayers()[k].curves == 1UZ : c->drawnPositions()[k].has_value(); });
                     })) << name;
                     const auto acrossAperture = static_cast<std::ptrdiff_t>(std::ceil(aperture / 343.0 * 48000.0)) + 2; // samples
                     for (std::size_t slot = 1UZ; slot < shown.size(); ++slot) {
@@ -246,6 +265,31 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     }
                     captureScreenshot(*ctx);
                 }
+            };
+
+            "the line's band choice 'fork 440 Hz' moves to the 0.3 m line and a struck fork, which the continuous layer locates"_test = [ctx] {
+                g_state.dashboardPage.reset();
+                g_state.reload(cmrc::sample_dashboards::get_filesystem(), "assets/sampleDashboards/XtraLocalisationLine.grc");
+                g_state.waitForScheduler(ctx);
+                const auto chart = [] {
+                    const auto window = std::ranges::find_if(g_state.dashboard->uiWindows, [](const auto& w) { return w.block && w.block->typeName().find("LocalisationChart") != std::string_view::npos; });
+                    return window == g_state.dashboard->uiWindows.end() ? nullptr : static_cast<const opendigitizer::charts::LocalisationChart*>(window->block->raw());
+                };
+                const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("band").block;
+                expect(control != nullptr) << fatal;
+                ctx->ItemClick(opendigitizer::test::controlItemId(ctx, "//Test Window/##Toolbar", control->blockUniqueName, "##band"));
+                ctx->ItemClick("//$FOCUSED/fork 440 Hz");
+                constexpr double kOrbitRadius   = 0.2;  // m, LINE_FORK's orbit around (0.2, 0.5)
+                constexpr double kForkTolerance = 0.05; // m, the fork's bound in qa_DelayLocalisation
+                expect(g_state.waitUntil(ctx, "the chart's receivers move to the 0.3 m line", [&] {
+                    const auto* c = chart();
+                    return c != nullptr && std::ranges::all_of(opendigitizer::localisation::pointsOf(c->element_positions.value), [](const auto& p) { return std::abs(p[0]) <= 0.15 + 1e-9; });
+                }));
+                expect(g_state.waitUntil(ctx, "the continuous layer locates the fork on its orbit", [&] {
+                    const auto* c = chart();
+                    return c != nullptr && c->drawnPositions().size() == 3UZ && c->drawnPositions()[2].transform([&](const auto& p) { return std::abs(std::hypot(p[0] - 0.2, p[1] - 0.5) - kOrbitRadius) < kForkTolerance; }).value_or(false);
+                }));
+                captureScreenshot(*ctx);
             };
 #endif
         };

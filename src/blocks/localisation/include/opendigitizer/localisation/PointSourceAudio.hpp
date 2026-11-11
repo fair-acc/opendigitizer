@@ -23,7 +23,7 @@ struct PointSourceAudio : gr::Block<PointSourceAudio> {
     using Description = gr::Doc<R""(@brief What the microphones at `element_positions` record of a point source that clicks every `period` s: `n_outputs` outputs
 (0: one per microphone), paced by `clk`.
 
-Each click is a raised-cosine pulse `pulse_width` s long, the same amplitude at every microphone (a threshold trigger then dates every
+Each click is a raised-cosine pulse `pulse_width` s long (with `tone_frequency` > 0 a tone under that envelope, e.g. a struck tuning fork), the same amplitude at every microphone (a threshold trigger then dates every
 channel alike), delayed by |p - r| / c to the sample's fraction; uniform noise of `noise` amplitude is added. Outputs without a
 microphone are silent, so `element_positions` may change while connected. The source circles `source_position` in the xy plane with
 `orbit_radius` once per `orbit_period`. Every output carries sample_rate and gr:trigger_time every `tag_interval` s, so a reader that
@@ -35,20 +35,21 @@ joins later, e.g. behind a Selector, is dated.)"">;
     gr::PortIn<std::uint8_t>        clk;
     std::vector<gr::PortOut<float>> out;
 
-    gr::algorithm::ElementPositions                                                           element_positions = kDeckSquare;
-    A<gr::Size_t, "n_outputs", gr::Doc<"fixed number of outputs, 0: one per microphone">>     n_outputs         = 0U;
-    gr::algorithm::PropagationSpeed                                                           propagation_speed = 343.0;
-    A<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">> source_position   = std::vector{0.3, 0.2, 0.0};
-    A<double, "orbit_radius", gr::Unit<"m">, gr::Visible>                                     orbit_radius      = 0.0;
-    A<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>                           orbit_period      = 10.0;
-    A<double, "period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>, gr::Doc<"between clicks">>      period            = 0.5;
-    A<double, "pulse_width", gr::Unit<"s">, gr::Limits<1e-6, 1.0>>                            pulse_width       = 0.5e-3;
-    A<float, "amplitude">                                                                     amplitude         = 0.8f;
-    A<float, "noise", gr::Doc<"uniform noise amplitude">>                                     noise             = 0.0f;
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">>       sample_rate       = 48000.f;
-    A<float, "tag_interval", gr::Unit<"s">, gr::Limits<1e-3f, 1e6f>>                          tag_interval      = 1.0f;
+    gr::algorithm::ElementPositions                                                                                                                                                element_positions = kDeckSquare;
+    A<gr::Size_t, "n_outputs", gr::Doc<"fixed number of outputs, 0: one per microphone">, gr::Limits<gr::Size_t(0), gr::Size_t(gr::algorithm::kMaxElements)>>                      n_outputs         = 0U;
+    gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed = 343.0;
+    A<std::vector<double>, "source_position", gr::Unit<"m">, gr::Visible, gr::Doc<"x, y, z">>                                                                                      source_position   = std::vector{0.3, 0.2, 0.0};
+    A<double, "orbit_radius", gr::Unit<"m">, gr::Visible>                                                                                                                          orbit_radius      = 0.0;
+    A<double, "orbit_period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>>                                                                                                                orbit_period      = 10.0;
+    A<double, "period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>, gr::Doc<"between clicks">>                                                                                           period            = 0.5;
+    A<double, "pulse_width", gr::Unit<"s">, gr::Limits<1e-6, 1.0>>                                                                                                                 pulse_width       = 0.5e-3;
+    A<double, "tone_frequency", gr::Unit<"Hz">, gr::Doc<"0: a click; else a tone under the pulse">>                                                                                tone_frequency    = 0.0;
+    A<float, "amplitude">                                                                                                                                                          amplitude         = 0.8f;
+    A<float, "noise", gr::Doc<"uniform noise amplitude">>                                                                                                                          noise             = 0.0f;
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">, gr::Limits<0.f, std::numeric_limits<float>::max(), [](float rate) { return 0.f < rate; }>> sample_rate       = 48000.f;
+    A<float, "tag_interval", gr::Unit<"s">, gr::Limits<1e-3f, 1e6f>>                                                                                                               tag_interval      = 1.0f;
 
-    GR_MAKE_REFLECTABLE(PointSourceAudio, clk, out, element_positions, n_outputs, propagation_speed, source_position, orbit_radius, orbit_period, period, pulse_width, amplitude, noise, sample_rate, tag_interval);
+    GR_MAKE_REFLECTABLE(PointSourceAudio, clk, out, element_positions, n_outputs, propagation_speed, source_position, orbit_radius, orbit_period, period, pulse_width, tone_frequency, amplitude, noise, sample_rate, tag_interval);
 
     std::uint64_t _samples    = 0U;
     std::uint64_t _anchorNs   = 1'000'000'000U; // the clock's first gr:trigger_time, dating sample 0
@@ -56,7 +57,7 @@ joins later, e.g. behind a Selector, is dated.)"">;
     std::size_t   _untilTag   = 0UZ;
     std::uint32_t _noiseState = 1U;
 
-    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) { out.resize(n_outputs.value > 0U ? n_outputs.value : rowsOf(element_positions.value)); }
+    void settingsChanged(const gr::property_map& /*oldSettings*/, const gr::property_map& /*newSettings*/) { out.resize(n_outputs.value > 0U ? n_outputs.value : std::min(rowsOf(element_positions.value), gr::algorithm::kMaxElements)); }
 
     void start() {
         _samples    = 0U;
@@ -68,9 +69,16 @@ joins later, e.g. behind a Selector, is dated.)"">;
     [[nodiscard]] Point3 sourceAt(double t) const { return orbitPoint(source_position.value, orbit_radius.value, orbit_period.value, t); }
 
     [[nodiscard]] double clickAt(double t, const Point3& receiver) const {
+        if (!(propagation_speed.value > 0.0)) {
+            return 0.0;
+        }
         const double emission = std::floor(t / period.value) * period.value;
         const double since    = t - emission - distance(sourceAt(emission), receiver) / propagation_speed.value;
-        return since >= 0.0 && since <= pulse_width.value ? 0.5 * (1.0 - std::cos(2.0 * std::numbers::pi * since / pulse_width.value)) : 0.0;
+        if (since < 0.0 || since > pulse_width.value) {
+            return 0.0;
+        }
+        const double envelope = 0.5 * (1.0 - std::cos(2.0 * std::numbers::pi * since / pulse_width.value));
+        return tone_frequency.value > 0.0 ? envelope * std::sin(2.0 * std::numbers::pi * tone_frequency.value * since) : envelope;
     }
 
     [[nodiscard]] float nextNoise() noexcept { // a 32-bit linear congruential generator, uniform in [-1, 1)

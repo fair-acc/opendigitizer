@@ -75,7 +75,6 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
     localisation::ReceiverNames          receiver_names           = {};
     localisation::TransmitterPositions   transmitter_positions    = localisation::kOneTransmitter;
     localisation::TransmitterNames       transmitter_names        = {};
-    localisation::DelayConventionSetting delay_convention         = localisation::DelayConvention::total;
     gr::algorithm::PropagationSpeed      propagation_speed        = 343.0;
     localisation::PairSelectionSetting   pairs                    = localisation::PairSelection::sequential;
     localisation::PairList               pair_list                = {};
@@ -104,7 +103,7 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
 
     static constexpr SignalKind supportedSignals = SignalKind::Events;
 
-    GR_MAKE_REFLECTABLE(LocalisationChart, chart_name, chart_title, data_sinks, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, delay_convention, propagation_speed, pairs, pair_list, coincidence_window, timing_offsets, direct_path_guard, roi, view_z, curve_segments, candidate_merge_distance, consensus_distance, max_range_residual, //
+    GR_MAKE_REFLECTABLE(LocalisationChart, chart_name, chart_title, data_sinks, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, propagation_speed, pairs, pair_list, coincidence_window, timing_offsets, direct_path_guard, roi, view_z, curve_segments, candidate_merge_distance, consensus_distance, max_range_residual, //
         show_legend, show_grid, show_receivers, show_receiver_names, show_curves, show_curve_labels, show_intersections, show_position, show_status, x_auto_scale, y_auto_scale, reference_position);
 
     struct TracedCurve {
@@ -169,6 +168,8 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
     void resetRenderState() {
         _tracedGeneration.reset();
         _layers.clear();
+        _drawnLayers.clear();
+        _drawnPositions.clear();
         _drawn = {};
         _drawnPosition.reset();
         _fittedRoi.reset();
@@ -220,10 +221,10 @@ Each sink is a layer of its own (e.g. threshold onsets and correlated delays of 
         ++_tracedEvents;
     }
 
-    /// "audio0–audio1" (TDOA) or "tx0+audio1" (bistatic)
+    /// "audio0-audio1" (TDOA) or "tx0+audio1" (bistatic)
     [[nodiscard]] static std::string pairName(const localisation::Constraint& constraint, const localisation::Geometry& g) {
         const auto focus = [&](int index) { return index >= 0 ? localisation::nameOf(g.receiverNames, static_cast<std::size_t>(index), "") : localisation::nameOf(g.transmitterNames, static_cast<std::size_t>(-1 - index), "tx"); };
-        return std::format("{}{}{}", focus(constraint.focusA), constraint.sign > 0.0 ? "+" : "–", focus(constraint.focusB));
+        return std::format("{}{}{}", focus(constraint.focusA), constraint.sign > 0.0 ? "+" : "-", focus(constraint.focusB));
     }
 
     [[nodiscard]] static std::string curveAnnotation(const localisation::Constraint& constraint, const localisation::Geometry& g) { return std::format("{} {:.3f} ms", pairName(constraint, g), g.speed > 0.0 ? 1e3 * constraint.value / g.speed : std::numeric_limits<double>::quiet_NaN()); }
