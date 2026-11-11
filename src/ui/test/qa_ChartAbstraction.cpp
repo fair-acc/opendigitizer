@@ -1,5 +1,6 @@
 #include "Setup.hpp"
 #include "TestSinks.hpp"
+#include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "charts/SpectrumHelper.hpp"
 
@@ -860,6 +861,28 @@ int main() {
         plot._tracesPerSink["sink"]._frameCount = 7UZ;
         plot.applyPendingRenderReset();
         expect(eq(plot._tracesPerSink.size(), 1UZ)) << "one reset() clears once";
+    };
+
+    "Arithmetic applies each operation and keeps the previous one for an unknown symbol"_test = [] {
+        const auto apply = [](auto& block, std::string symbol) {
+            std::ignore = block.settings().set({{"operation", std::move(symbol)}});
+            std::ignore = block.settings().activateContext();
+            std::ignore = block.settings().applyStagedParameters();
+        };
+        opendigitizer::Arithmetic<double> block;
+        block.init(std::make_shared<gr::Sequence>());
+        expect(eq(block.processOne(6.0, 3.0), 9.0)) << "the default +";
+        for (const auto& [symbol, expected] : {std::pair{"-", 3.0}, std::pair{"*", 18.0}, std::pair{"/", 2.0}, std::pair{"+", 9.0}}) {
+            apply(block, symbol);
+            expect(eq(block.processOne(6.0, 3.0), expected)) << symbol;
+        }
+        apply(block, "*");
+        apply(block, "%");
+        expect(eq(block.processOne(6.0, 3.0), 18.0) && block.operation.value == "*") << "an unknown symbol keeps the previous operation";
+        opendigitizer::Arithmetic<float> single;
+        single.init(std::make_shared<gr::Sequence>());
+        apply(single, "-");
+        expect(eq(single.processOne(1.f, 3.f), -2.f));
     };
 
     return 0;

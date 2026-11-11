@@ -186,6 +186,9 @@ struct ChartStyle {
     float  menuSettingWidgetWidth = 120.f;
     float  historyDepthDragWidth  = 60.f;
     float  historyDepthComboWidth = 65.f;
+
+    float scatterMarkerSize       = 2.f; // px, YYChart scatter markers
+    float scatterNewestMarkerSize = 5.f; // px, the newest point
 };
 
 /// dashboard look a host may set process-wide, for every DashboardView
