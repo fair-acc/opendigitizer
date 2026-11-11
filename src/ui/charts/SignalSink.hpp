@@ -6,6 +6,7 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/DataSet.hpp>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include <mutex>
 #include <span>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace opendigitizer {
@@ -54,7 +56,8 @@ enum class SignalKind : std::uint8_t {
     None      = 0,
     Streaming = 1 << 0U,
     Dataset1D = 1 << 1U,
-    All       = Streaming | Dataset1D,
+    Image2D   = 1 << 2U,
+    All       = Streaming | Dataset1D, // 1D signals; Image2D only for image charts
 };
 constexpr SignalKind operator|(SignalKind a, SignalKind b) noexcept { //
     return static_cast<SignalKind>(std::to_underlying(a) | std::to_underlying(b));
@@ -101,6 +104,25 @@ public:
     [[nodiscard]] bool ownsLock() const noexcept { return _lock.owns_lock(); }
 };
 
+/// latest 2D frame of a Tensor<T> sink, row-major {rows, columns}; uint32 pixels are packed 0xAARRGGBB
+/// one tensor dimension's coordinates, from the producer's gr:axis_* tags; without them, the cell index
+struct ImageAxis {
+    double      origin = 0.0; // of cell 0
+    double      step   = 1.0;
+    std::string name;
+    std::string unit;
+};
+
+[[nodiscard]] constexpr double axisCoordinate(const ImageAxis& axis, std::size_t cell) noexcept { return axis.origin + axis.step * static_cast<double>(cell); }
+
+struct ImageFrame {
+    std::variant<std::monostate, std::span<const std::uint32_t>, std::span<const float>, std::span<const double>> pixels;
+    std::size_t                                                                                                   rows       = 0UZ;
+    std::size_t                                                                                                   columns    = 0UZ;
+    std::uint64_t                                                                                                 generation = 0U; // changes with every new frame
+    std::array<ImageAxis, 2>                                                                                      axes{};          // {rows, columns}
+};
+
 /**
  * @brief Abstract interface for signal sink data access.
  *
@@ -137,6 +159,8 @@ struct SignalSink {
     [[nodiscard]] virtual std::size_t                         dataSetCount() const noexcept = 0;
     [[nodiscard]] virtual std::span<const gr::DataSet<float>> dataSets() const              = 0;
     [[nodiscard]] virtual SignalKind                          signalKind() const noexcept   = 0;
+    /// the queued frame with generation `next`, else the oldest queued after it; 0 = the newest. Valid while holding dataGuard()
+    [[nodiscard]] virtual ImageFrame imageFrame([[maybe_unused]] std::uint64_t next = 0U) const { return {}; }
 
     [[nodiscard]] virtual bool                      hasStreamingTags() const noexcept                                                                    = 0;
     [[nodiscard]] virtual std::pair<double, double> tagTimeRange() const noexcept                                                                        = 0;
@@ -586,6 +610,16 @@ struct SinkAdapter : public SignalSink {
             return b->signalKind();
         }
         return SignalKind::None;
+    }
+
+    [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const override {
+        auto* b = blockPtr();
+        if constexpr (requires { b->imageFrame(next); }) {
+            if (b) {
+                return b->imageFrame(next);
+            }
+        }
+        return {};
     }
 
     [[nodiscard]] bool hasStreamingTags() const noexcept override {

@@ -119,6 +119,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     ui_test_assets
     examples/fg_dipole_intensity_ramp.grc
     examples/qa_chart.grc
+    examples/qa_image_chart.grc
     examples/qa_grouping.grc
     examples/qa_layout.grc
     examples/qa_subgraph.grc
@@ -172,6 +173,18 @@ if(ENABLE_IMGUI_TEST_ENGINE)
   add_imgui_test(qa_filtercomboboxes)
   add_imgui_test(qa_keypad)
   add_imgui_test(qa_chart)
+  add_imgui_test(qa_ImageChart)
+  if(OD_ACOUSTIC_CAMERA)
+    cmrc_add_resources(
+      ui_test_assets
+      WHENCE
+      ../assets/sampleDashboards
+      PREFIX
+      dashboards
+      ../assets/sampleDashboards/browser/XtraAcousticCamera.grc)
+    target_link_libraries(qa_ImageChart PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
+    target_compile_definitions(qa_ImageChart PRIVATE OD_ACOUSTIC_CAMERA)
+  endif()
   add_imgui_test(qa_ChartFontSize)
   add_imgui_test(qa_chart_compatibility)
   add_imgui_test(qa_blockneighbourspreview)

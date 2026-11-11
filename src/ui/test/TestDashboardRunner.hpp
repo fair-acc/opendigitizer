@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <string_view>
 
 namespace opendigitizer::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
@@ -24,6 +25,14 @@ inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::D
         ctx->Yield();
     }
     ctx->SleepNoSkip(0.1f, 0.02f);
+}
+
+/// an item of an ImControl drawn in `windowRef`; ImGui::BeginCombo does not report its label to the test engine, so
+/// "**/##Label" does not find a control's dropdown
+inline ImGuiID controlItemId(ImGuiTestContext* ctx, const char* windowRef, std::string_view controlUniqueName, const char* itemLabel) {
+    const ImGuiWindow* window = ctx->WindowInfo(windowRef).Window;
+    IM_CHECK_RETV(window != nullptr, 0U);
+    return ImHashStr(itemLabel, 0UZ, ImHashStr(controlUniqueName.data(), controlUniqueName.size(), window->ID));
 }
 
 struct TestDashboardRunner {

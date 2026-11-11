@@ -91,6 +91,9 @@ endif()
 if(NOT TARGET raii_wrapper)
   add_subdirectory(../utils utils)
 endif()
+if(NOT TARGET od-video)
+  add_subdirectory(../blocks/video blocks/video)
+endif()
 
 cmrc_add_resource_library(
   ui_assets
@@ -120,7 +123,24 @@ cmrc_add_resource_library(
   assets/sampleDashboards/DemoDashboard.grc
   assets/sampleDashboards/PulsedPowerDemo.grc
   assets/sampleDashboards/StreamingStress.grc
-  assets/sampleDashboards/UIControlledSines.grc)
+  assets/sampleDashboards/UIControlledSines.grc
+  assets/sampleDashboards/XtraCameraDemo.grc)
+if((NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
+   AND TARGET gnuradio4::GrAudioBlocksShared
+   AND TARGET gnuradio4::GrLocalisationBlocksShared)
+  set(OD_ACOUSTIC_CAMERA ON)
+  if(EMSCRIPTEN) # browsers deliver two channels per source: the corner microphones from two stereo pair sources
+    cmrc_add_resources(
+      sample_dashboards
+      WHENCE
+      assets/sampleDashboards/browser
+      PREFIX
+      assets/sampleDashboards
+      assets/sampleDashboards/browser/XtraAcousticCamera.grc)
+  else()
+    cmrc_add_resources(sample_dashboards assets/sampleDashboards/XtraAcousticCamera.grc)
+  endif()
+endif()
 
 if(EMSCRIPTEN)
   message(STATUS "Detected emscripten webassembly build")
@@ -228,6 +248,10 @@ else() # native build
     target_link_options(${target_name} PRIVATE -fsanitize=address)
   endif()
 endif()
+if(OD_ACOUSTIC_CAMERA)
+  target_link_libraries(${target_name} PRIVATE gnuradio4::GrAudioBlocksShared gnuradio4::GrLocalisationBlocksShared)
+  target_compile_definitions(${target_name} PRIVATE OD_ACOUSTIC_CAMERA)
+endif()
 
 # each layer links only the one below; consumers pick the lowest layer they need via the opendigitizer:: aliases
 add_library(
@@ -292,6 +316,8 @@ target_sources(
             blocks/ImPlotSink.hpp
             charts/Chart.hpp
             charts/Charts.hpp
+            charts/ImageChart.hpp
+            charts/TensorRowsChart.hpp
             charts/SignalSink.hpp
             charts/SinkRegistry.hpp
             charts/SpectrumDensity.hpp
@@ -304,7 +330,12 @@ target_sources(
             charts/YYChart.hpp
             components/ColourManager.hpp
             utils/ShaderHelper.hpp)
-target_link_libraries(opendigitizer-charts INTERFACE opendigitizer-ui-components implot3d gnuradio4::vir)
+target_link_libraries(
+  opendigitizer-charts
+  INTERFACE opendigitizer-ui-components
+            implot3d
+            gnuradio4::vir
+            od-video)
 target_compile_definitions(opendigitizer-charts INTERFACE GR_MAX_WASM_THREAD_COUNT=${GR_MAX_WASM_THREAD_COUNT})
 if(NOT EMSCRIPTEN)
   target_compile_definitions(opendigitizer-charts INTERFACE GL_GLEXT_PROTOTYPES)
@@ -390,6 +421,7 @@ add_library(
   blocks/TagToSample.hpp
   blocks/TestSpectrumGenerator.hpp
   blocks/ImControl.hpp
+  blocks/ImControlCamera.hpp
   blocks/ImControlChoice.hpp
   blocks/ImControlColor.hpp
   blocks/ImControlNumber.hpp

@@ -1,0 +1,108 @@
+blocks:
+  - id: opendigitizer::video::CameraSource
+    parameters:
+      name: camera
+      device: test card
+      priority: requested
+      width: 64
+      height: 48
+      frame_rate: 60
+  - id: opendigitizer::video::GreyScale<float32>
+    parameters:
+      name: grey
+  - id: opendigitizer::ImPlotSink<gr::Tensor<uint32>>
+    parameters:
+      name: rgbSink
+      signal_name: camera RGB
+  - id: opendigitizer::ImPlotSink<gr::Tensor<float32>>
+    parameters:
+      name: lumaSink
+      signal_name: camera luma
+  - id: opendigitizer::video::CameraSource
+    parameters:
+      name: countedCamera
+      device: test card
+      priority: requested
+      width: 16
+      height: 12
+      frame_rate: 200
+      n_frames: 30
+  - id: opendigitizer::ImPlotSink<gr::Tensor<uint32>>
+    parameters:
+      name: backlogSink
+      signal_name: backlog
+      max_backlog: 64
+  - id: DigitizerUi::ImControlCamera
+    parameters:
+      name: cameraControl
+      label: camera
+      target_map: camera:device
+connections:
+  - [camera, 0, rgbSink, 0, 8]
+  - [camera, 0, grey, 0, 8]
+  - [grey, 0, lumaSink, 0, 8]
+  - [countedCamera, 0, backlogSink, 0, 64]
+dashboard:
+  layout: Free
+  sources:
+    - name: rgbSink
+      block: rgbSink
+    - name: lumaSink
+      block: lumaSink
+    - name: backlogSink
+      block: backlogSink
+  plots:
+    - name: Camera RGB
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - rgbSink
+      rect: [0, 0, 1, 1]
+    - name: Camera Luma
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - lumaSink
+      rect: [1, 0, 1, 1]
+    - name: Camera Luma CPU
+      type: opendigitizer::charts::ImageChart
+      parameters:
+        gpu_acceleration: false
+      sources:
+        - lumaSink
+      rect: [2, 0, 1, 1]
+    - name: Overlay CPU
+      type: opendigitizer::charts::ImageChart
+      parameters:
+        composition: overlay
+        gpu_acceleration: false
+        layer_max: [.nan, 0.6]
+        layer_colormaps: [Hot]
+      sources:
+        - rgbSink
+        - lumaSink
+      rect: [3, 0, 1, 1]
+    - name: Tiles
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - rgbSink
+        - lumaSink
+      rect: [0, 1, 1, 1]
+    - name: Overlay
+      type: opendigitizer::charts::ImageChart
+      parameters:
+        composition: overlay
+        layer_min: [.nan, 0.5]
+        layer_colormaps: [Hot]
+      sources:
+        - rgbSink
+        - lumaSink
+      rect: [1, 1, 1, 1]
+    - name: Backlog
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - backlogSink
+      rect: [2, 1, 1, 1]
+    - name: Rows
+      type: opendigitizer::charts::TensorRowsChart
+      sources:
+        - lumaSink
+      rect: [3, 1, 1, 1]

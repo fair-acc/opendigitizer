@@ -37,6 +37,10 @@
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
 
 #if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
+#if defined(OD_ACOUSTIC_CAMERA)
+#include <gnuradio-4.0/GrAudioBlocks.hpp>
+#include <gnuradio-4.0/GrLocalisationBlocks.hpp>
+#endif
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
 #include <gnuradio-4.0/GrElectricalBlocks.hpp>
 #include <gnuradio-4.0/GrFileIoBlocks.hpp>
@@ -242,6 +246,10 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrHttpBlocks(*registry);
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
+#endif
+#if defined(OD_ACOUSTIC_CAMERA)
+    gr::blocklib::initGrAudioBlocks(*registry);
+    gr::blocklib::initGrLocalisationBlocks(*registry);
 #endif
 
     // decimating BasicFilterProto variants: the ratio is the Resampling<in,out> template integers, and the

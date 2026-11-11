@@ -2,6 +2,7 @@
 #include "TestSinks.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "charts/ImageChart.hpp"
 #include "charts/SpectrumHelper.hpp"
 
 #include <boost/ut.hpp>
@@ -9,12 +10,17 @@
 #include <gnuradio-4.0/Scheduler.hpp>
 #include <gnuradio-4.0/fourier/fft.hpp>
 #include <gnuradio-4.0/testing/TagMonitors.hpp>
+#include <gnuradio-4.0/testing/TensorSource.hpp>
+#if __has_include(<gnuradio-4.0/localisation/PairCrossSpectra.hpp>)
+#include <gnuradio-4.0/localisation/PairCrossSpectra.hpp>
+#endif
 #include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <format>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -791,6 +797,8 @@ int main() {
         expect(!isCompatible(SignalKind::None, SignalKind::Dataset1D)) << "none vs dataset";
         expect(isCompatible(SignalKind::All, SignalKind::All)) << "all vs all";
         expect(isCompatible(SignalKind::All, SignalKind::Streaming)) << "all vs streaming";
+        expect(isCompatible(SignalKind::Image2D, SignalKind::Image2D)) << "image vs image";
+        expect(!isCompatible(SignalKind::Image2D, SignalKind::All)) << "image vs 1D charts";
     };
 
     "TestDataSetSink and TestStreamingSink return correct signalKind"_test = [] {
@@ -846,6 +854,8 @@ int main() {
         expectEntry.template operator()<SpectrumView>();
         expectEntry.template operator()<SurfacePlot>();
         expectEntry.template operator()<WaterfallPlot>();
+        expectEntry.template operator()<ImageChart>();
+        expectEntry.template operator()<TensorRowsChart>();
     };
 
     "a lifecycle reset() on a scheduler thread leaves render state to the render thread's next draw"_test = [] {
@@ -861,6 +871,40 @@ int main() {
         plot._tracesPerSink["sink"]._frameCount = 7UZ;
         plot.applyPendingRenderReset();
         expect(eq(plot._tracesPerSink.size(), 1UZ)) << "one reset() clears once";
+    };
+
+    "an ImPlotSink<Tensor> keeps the newest frame, or max_backlog frames in order, and clamps a request into what it holds"_test = [] {
+        using namespace std::string_literals;
+        const auto framesThrough = [](gr::Size_t backlog, std::vector<std::vector<std::size_t>> shapes, auto check) {
+            gr::Graph graph;
+            auto&     source = graph.emplaceBlock<gr::testing::TensorSource<float>>();
+            auto&     sink   = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>({{"max_backlog", backlog}});
+            for (std::size_t k = 0UZ; k < shapes.size(); ++k) {
+                const std::size_t n = std::ranges::fold_left(shapes[k], 1UZ, std::multiplies{});
+                source._frames.push_back({.extents = shapes[k], .elements = std::vector<float>(n, static_cast<float>(k + 1UZ))});
+            }
+            expect(graph.connect(source, "out"s, sink, "in"s).has_value());
+            gr::scheduler::Simple sched;
+            expect(sched.exchange(std::move(graph)).has_value());
+            expect(sched.runAndWait().has_value());
+            check(sink);
+        };
+        const std::vector<std::vector<std::size_t>> fiveFrames(5UZ, std::vector<std::size_t>{1UZ, 2UZ});
+        const auto                                  valueOf = [](const auto& frame) { return std::get<std::span<const float>>(frame.pixels).front(); };
+
+        framesThrough(2U, fiveFrames, [&](const auto& sink) {
+            expect(eq(sink.imageFrame().generation, 5U) && eq(valueOf(sink.imageFrame()), 5.f)) << "the newest";
+            expect(eq(sink.imageFrame(1U).generation, 3U) && eq(valueOf(sink.imageFrame(1U)), 3.f)) << "clamped to the oldest held";
+            expect(eq(valueOf(sink.imageFrame(4U)), 4.f) && eq(sink.imageFrame(9U).generation, 5U));
+        });
+        framesThrough(0U, fiveFrames, [](const auto& sink) { expect(eq(sink.imageFrame(1U).generation, 5U)) << "max_backlog 0 holds the newest only"; });
+        framesThrough(0U, {{3UZ}}, [](const auto& sink) { expect(eq(sink.imageFrame().generation, 0U)) << "a rank-1 tensor is no image"; });
+    };
+
+    "the image chart counts the frames between two shown ones and decimates its CPU fallback within budget"_test = [] {
+        expect(eq(skippedBetween(0U, 7U), 0U)) << "none before the first frame";
+        expect(eq(skippedBetween(3U, 4U), 0U) && eq(skippedBetween(3U, 9U), 5U) && eq(skippedBetween(9U, 9U), 0U));
+        expect(eq(cpuDecimationStep(48UZ, 64UZ, 4096UZ), 1UZ) && eq(cpuDecimationStep(1200UZ, 1920UZ, 4096UZ), 24UZ) && eq(cpuDecimationStep(10UZ, 10UZ, 0UZ), 10UZ));
     };
 
     "Arithmetic applies each operation and keeps the previous one for an unknown symbol"_test = [] {
@@ -884,6 +928,101 @@ int main() {
         apply(single, "-");
         expect(eq(single.processOne(1.f, 3.f), -2.f));
     };
+
+    "the dashboard registry provides ImPlotSink for float64 and DataSet<float64>, and Arithmetic for both float types"_test = [] {
+        gr::BlockRegistry registry;
+        DigitizerUi::registerDashboardBlocks(registry);
+        for (const std::string_view name : {"opendigitizer::ImPlotSink<float32>", "opendigitizer::ImPlotSink<float64>", "opendigitizer::ImPlotSink<gr::DataSet<float32>>", "opendigitizer::ImPlotSink<gr::DataSet<float64>>"}) {
+            expect(registry.contains(name)) << name;
+        }
+        expect(gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float32>") && gr::globalBlockRegistry().contains("opendigitizer::Arithmetic<float64>"));
+    };
+
+    "TensorRowsChart places and names traces by the frame's axis coordinates, else by index"_test = [] {
+        const opendigitizer::ImageAxis none{};
+        const opendigitizer::ImageAxis lag{.origin = -0.001, .step = 1.0 / 48000.0, .name = "lag", .unit = "s"};
+        const opendigitizer::ImageAxis pair{.origin = 0.0, .step = 1.0, .name = "pair", .unit = ""};
+        expect(eq(opendigitizer::axisCoordinate(none, 7UZ), 7.0) && lt(std::abs(opendigitizer::axisCoordinate(lag, 48UZ)), 1e-12)) << "lag 0 in the middle of 97 columns";
+        expect(axisTitle(none, "column") == "column" && axisTitle(lag, "column") == "lag [s]" && axisTitle(pair, "column") == "pair");
+        expect(rowLabel(none, 3UZ) == "row 3" && rowLabel(pair, 3UZ) == "pair 3");
+    };
+
+    "TensorRowsChart with lag_columns draws a cross-correlation frame against the lag in s"_test = [] {
+        const opendigitizer::ImageAxis lag = opendigitizer::charts::lagAxis(65UZ, 48000.0);
+        expect(eq(lag.origin, -32.0 / 48000.0) && eq(lag.step, 1.0 / 48000.0) && lag.name == "lag" && lag.unit == "s");
+        expect(lt(std::abs(opendigitizer::axisCoordinate(lag, 32UZ)), 1e-12)) << "lag 0 in the middle of 2 * 32 + 1 columns";
+
+        opendigitizer::charts::TensorRowsChart chart;
+        opendigitizer::ImageFrame              untagged{.pixels = {}, .rows = 3UZ, .columns = 65UZ};
+        expect(chart.columnAxis(untagged, 48000.f).name.empty()) << "off by default: the column index";
+        chart.lag_columns = true;
+        expect(chart.columnAxis(untagged, 48000.f).name == "lag" && eq(chart.columnAxis(untagged, 48000.f).step, 1.0 / 48000.0));
+        expect(chart.columnAxis(untagged, 0.f).name.empty()) << "no sample rate: the column index";
+        opendigitizer::ImageFrame tagged = untagged;
+        tagged.axes[1]                   = {.origin = -0.5, .step = 0.25, .name = "delay", .unit = "ms"};
+        expect(chart.columnAxis(tagged, 48000.f).name == "delay" && eq(chart.columnAxis(tagged, 48000.f).step, 0.25)) << "a gr:axis_* tag wins over lag_columns";
+    };
+
+#if __has_include(<gnuradio-4.0/localisation/PairCrossSpectra.hpp>)
+    "GR4 PairCrossCorrelation's lag axis tag and TensorRowsChart's lagAxis agree: origin -L/fs, step 1/fs, in s"_test = [] {
+        using namespace std::string_literals;
+        constexpr gr::Size_t kMaxLag = 32U;
+        constexpr float      kRate   = 48000.f;
+        gr::Graph            graph;
+        auto&                source      = graph.emplaceBlock<gr::testing::TensorSource<float>>();
+        auto&                correlation = graph.emplaceBlock<gr::localisation::PairCrossCorrelation<float>>({{"max_lag", kMaxLag}});
+        auto&                sink        = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>();
+        std::vector<float>   rows(3UZ * 256UZ);
+        for (std::size_t i = 0UZ; i < rows.size(); ++i) {
+            rows[i] = std::sin(0.37f * static_cast<float>(i)) + std::cos(1.3f * static_cast<float>(i % 256UZ));
+        }
+        source._frames.push_back({.extents = {3UZ, 256UZ}, .elements = rows});
+        source._sampleRate = kRate;
+        expect(graph.connect(source, "out"s, correlation, "in"s).has_value());
+        expect(graph.connect(correlation, "out"s, sink, "in"s).has_value());
+        gr::scheduler::Simple sched;
+        expect(sched.exchange(std::move(graph)).has_value());
+        expect(sched.runAndWait().has_value());
+        const auto                     frame = sink.imageFrame();
+        const opendigitizer::ImageAxis ours  = opendigitizer::charts::lagAxis(2UZ * kMaxLag + 1UZ, static_cast<double>(kRate));
+        expect(eq(frame.columns, 2UZ * kMaxLag + 1UZ) && frame.axes[1].name == "lag" && frame.axes[1].unit == "s") << frame.axes[1].name;
+        expect(lt(std::abs(frame.axes[1].origin - ours.origin), 1e-12) && lt(std::abs(frame.axes[1].step - ours.step), 1e-15)) << std::format("tag {} + {}, lagAxis {} + {}", frame.axes[1].origin, frame.axes[1].step, ours.origin, ours.step);
+    };
+#endif
+
+    "an ImPlotSink<Tensor> takes a frame's axes from its gr:axis_* tags"_test = [] {
+        using namespace std::string_literals;
+        gr::Graph                  graph;
+        auto&                      source = graph.emplaceBlock<gr::testing::TensorSource<float>>();
+        auto&                      sink   = graph.emplaceBlock<opendigitizer::ImPlotSink<gr::Tensor<float>>>();
+        gr::Tensor<gr::pmt::Value> names(gr::extents_from, {2UZ});
+        gr::Tensor<gr::pmt::Value> units(gr::extents_from, {2UZ});
+        names[0]         = gr::pmt::Value{"pair"};
+        names[1]         = gr::pmt::Value{"lag"};
+        units[0]         = gr::pmt::Value{""};
+        units[1]         = gr::pmt::Value{"s"};
+        source._firstTag = gr::property_map{{std::string(gr::tag::kAxisOrigin.key()), gr::Tensor<double>(gr::data_from, {0.0, -0.001})}, {std::string(gr::tag::kAxisStep.key()), gr::Tensor<double>(gr::data_from, {1.0, 1.0 / 48000.0})}, {std::string(gr::tag::kAxisName.key()), names}, {std::string(gr::tag::kAxisUnit.key()), units}};
+        source._frames.push_back({.extents = {2UZ, 97UZ}, .elements = std::vector<float>(2UZ * 97UZ, 1.f)});
+        source._sampleRate = 48000.f;
+        expect(graph.connect(source, "out"s, sink, "in"s).has_value());
+        gr::scheduler::Simple sched;
+        expect(sched.exchange(std::move(graph)).has_value());
+        expect(sched.runAndWait().has_value());
+        const auto frame = sink.imageFrame();
+        expect(eq(frame.axes[1].origin, -0.001) && eq(frame.axes[1].step, 1.0 / 48000.0) && frame.axes[1].name == "lag" && frame.axes[1].unit == "s");
+        expect(frame.axes[0].name == "pair" && eq(frame.axes[0].step, 1.0));
+        expect(eq(sink.sampleRate(), 48000.f)) << "the lag step of a TensorRowsChart with lag_columns";
+    };
+
+#if defined(OD_TRIGGER_BLOCKS)
+    "GR4's float level and Schmitt triggers, coincidence and EventToTag are available to dashboards under GR4's names"_test = [] {
+        gr::BlockRegistry registry;
+        DigitizerUi::registerDashboardBlocks(registry);
+        for (const std::string_view key : {"gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>", "gr::blocks::trigger::SchmittTrigger<float32, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>", "gr::blocks::trigger::Coincidence", "gr::blocks::trigger::EventToTag<float32>"}) {
+            expect(registry.contains(key)) << key;
+        }
+    };
+#endif
 
     return 0;
 }

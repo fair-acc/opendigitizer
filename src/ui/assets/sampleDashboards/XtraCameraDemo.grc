@@ -1,0 +1,50 @@
+blocks:
+  - id: opendigitizer::video::CameraSource
+    parameters:
+      name: camera
+      priority: requested
+      width: 640
+      height: 480
+      frame_rate: 25
+  - id: opendigitizer::ImPlotSink<gr::Tensor<uint32>>
+    parameters:
+      name: cameraSink
+      signal_name: camera
+  - id: opendigitizer::video::CameraSource
+    parameters:
+      name: testCard
+      device: test card
+      priority: requested
+      width: 320
+      height: 240
+      frame_rate: 10
+  - id: opendigitizer::ImPlotSink<gr::Tensor<uint32>>
+    parameters:
+      name: testCardSink
+      signal_name: test card
+  - id: DigitizerUi::ImControlCamera
+    parameters:
+      name: cameraControl
+      label: camera
+      target_map: camera:device
+connections:
+  - [camera, 0, cameraSink, 0, 4]
+  - [testCard, 0, testCardSink, 0, 4]
+dashboard:
+  layout: Free
+  sources:
+    - name: cameraSink
+      block: cameraSink
+    - name: testCardSink
+      block: testCardSink
+  plots:
+    - name: Camera
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - cameraSink
+      rect: [0, 0, 1, 1]
+    - name: Test card
+      type: opendigitizer::charts::ImageChart
+      sources:
+        - testCardSink
+      rect: [1, 0, 1, 1]

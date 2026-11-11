@@ -104,13 +104,16 @@ const DataTypeStyle& styleForDataType(std::string_view type) {
         {"std::complex<int32>"s, {0xff4CAF50}},                                         //
         {"std::complex<int64>"s, {0xff8BC34A}},                                         //
 
-        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},         //
-        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},   //
-        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},       //
-        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}}, //
-                                                                                                           //
-        {"event"s, {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}},                                     //
-        {"gr::Message"s, {0xffDBDBDB}},                                                                    //
+        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},           //
+        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},     //
+        {"gr::TensorView<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},       //
+        {"gr::TensorView<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}}, //
+        {"gr::TensorView<uint32>"s, {0xff009688, &drawGridWithCornerRing, &drawSolidCornerRingPort}},        //
+        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},         //
+        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}},   //
+                                                                                                             //
+        {"event"s, {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}},                                       //
+        {"gr::Message"s, {0xffDBDBDB}},                                                                      //
 
         {"Bits"s, {0xffEA80FC}},          //
         {"BusConnection"s, {0xffffffff}}, //

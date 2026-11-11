@@ -4,11 +4,13 @@
 /// Convenience header that includes all chart-related headers.
 
 #include "Chart.hpp"
+#include "ImageChart.hpp"
 #include "SignalSink.hpp"
 #include "SpectrumDensity.hpp"
 #include "SpectrumPlot.hpp"
 #include "SpectrumView.hpp"
 #include "SurfacePlot.hpp"
+#include "TensorRowsChart.hpp"
 #include "WaterfallPlot.hpp"
 #include "XYChart.hpp"
 #include "YYChart.hpp"

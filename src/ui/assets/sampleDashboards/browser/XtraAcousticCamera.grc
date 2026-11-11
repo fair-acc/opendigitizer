@@ -1,0 +1,108 @@
+blocks:
+  - id: opendigitizer::video::CameraSource
+    parameters:
+      name: camera
+      device: ""
+      priority: requested
+      width: 1920
+      height: 1200
+      frame_rate: 30
+  - id: opendigitizer::ImPlotSink<gr::Tensor<uint32>>
+    parameters:
+      name: cameraSink
+      signal_name: camera
+  - id: opendigitizer::video::BrowserMicrophonePairs
+    parameters:
+      name: microphones
+      pair_a: UMA16_PAIR_A
+      pair_b: UMA16_PAIR_B
+  - id: gr::basic::StreamsToTensor<float32>
+    parameters:
+      name: frames
+      n_ports: 4
+      size: 2048
+  - id: gr::localisation::PairCrossCorrelation<float32>
+    parameters:
+      name: correlation
+      max_lag: 32
+      f_min: 300
+      f_max: 12000
+  - id: opendigitizer::video::AcousticImage
+    parameters:
+      name: acousticImage
+      element_positions: !!float64 [[-0.063, -0.063, 0.0], [0.063, -0.063, 0.0], [-0.063, 0.063, 0.0], [0.063, 0.063, 0.0]]
+      width: 64
+      height: 40
+      field_of_view: 120
+      threshold: 0.7
+      flip_horizontal: true
+  - id: opendigitizer::ImPlotSink<gr::Tensor<float32>>
+    parameters:
+      name: acousticSink
+      signal_name: acoustic power
+  - id: DigitizerUi::ImControlCamera
+    parameters:
+      name: cameraControl
+      label: camera
+      target_map: camera:device
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: fieldOfView
+      label: lens FOV
+      unit: deg
+      value: 120
+      min: 30
+      max: 200
+      step: 5
+      style: sliderSpinner
+      target_map: "acousticImage:field_of_view"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: cut
+      label: cut
+      value: 0.7
+      min: 0
+      max: 1
+      step: 0.05
+      style: sliderSpinner
+      target_map: "acousticImage:threshold"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: flipHorizontal
+      label: flip H
+      value: true
+      target_map: "acousticImage:flip_horizontal"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: flipVertical
+      label: flip V
+      value: false
+      target_map: "acousticImage:flip_vertical"
+connections:
+  - [camera, 0, cameraSink, 0, 4]
+  - [microphones, [0, 0], frames, [1, 0]]
+  - [microphones, [0, 1], frames, [1, 1]]
+  - [microphones, [0, 2], frames, [1, 2]]
+  - [microphones, [0, 3], frames, [1, 3]]
+  - [frames, 0, correlation, 0]
+  - [correlation, 0, acousticImage, 0]
+  - [acousticImage, 0, acousticSink, 0, 8]
+dashboard:
+  layout: Free
+  sources:
+    - name: cameraSink
+      block: cameraSink
+    - name: acousticSink
+      block: acousticSink
+  plots:
+    - name: Acoustic camera
+      type: opendigitizer::charts::ImageChart
+      parameters:
+        composition: overlay
+        reverse_colormap: false
+        layer_min: [.nan, 0.001]
+        layer_colormaps: [Jet]
+      sources:
+        - cameraSink
+        - acousticSink
+      rect: [0, 0, 1, 1]
