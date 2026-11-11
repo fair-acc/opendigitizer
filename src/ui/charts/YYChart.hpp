@@ -28,32 +28,35 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
     template<typename T, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<T, description, Arguments...>;
 
-    A<std::string, "chart name", gr::Visible>              chart_name;
-    A<std::string, "chart title">                          chart_title;
-    A<std::vector<std::string>, "data sinks", gr::Visible> data_sinks    = {};
-    A<bool, "show legend", gr::Visible>                    show_legend   = false;
-    A<bool, "show grid", gr::Visible>                      show_grid     = true;
-    A<bool, "anti-aliasing">                               anti_aliasing = true;
-    A<int, "X-axis scale">                                 x_axis_scale  = static_cast<int>(AxisScale::Linear);
-    A<int, "Y-axis scale">                                 y_axis_scale  = static_cast<int>(AxisScale::Linear);
-    A<std::array<bool, 3UZ>, "X auto-scale">               x_auto_scale  = std::array{true, true, true};
-    A<std::array<bool, 3UZ>, "Y auto-scale">               y_auto_scale  = std::array{true, true, true};
-    A<std::array<double, 3UZ>, "X-axis min">               x_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "X-axis max">               x_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "Y-axis min">               y_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<std::array<double, 3UZ>, "Y-axis max">               y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
-    A<gr::Size_t, "history depth", gr::Unit<"samples">>    n_history     = kDefaultHistorySize;
+    A<std::string, "chart name", gr::Visible>                                         chart_name;
+    A<std::string, "chart title">                                                     chart_title;
+    A<std::vector<std::string>, "data sinks", gr::Visible>                            data_sinks    = {};
+    A<bool, "show legend", gr::Visible>                                               show_legend   = false;
+    A<bool, "show grid", gr::Visible>                                                 show_grid     = true;
+    A<bool, "anti-aliasing">                                                          anti_aliasing = true;
+    A<int, "X-axis scale">                                                            x_axis_scale  = static_cast<int>(AxisScale::Linear);
+    A<int, "Y-axis scale">                                                            y_axis_scale  = static_cast<int>(AxisScale::Linear);
+    A<std::array<bool, 3UZ>, "X auto-scale">                                          x_auto_scale  = std::array{true, true, true};
+    A<std::array<bool, 3UZ>, "Y auto-scale">                                          y_auto_scale  = std::array{true, true, true};
+    A<std::array<double, 3UZ>, "X-axis min">                                          x_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "X-axis max">                                          x_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis min">                                          y_min         = std::array{std::numeric_limits<double>::lowest(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<std::array<double, 3UZ>, "Y-axis max">                                          y_max         = std::array{std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
+    A<gr::Size_t, "history depth", gr::Unit<"samples">>                               n_history     = kDefaultHistorySize;
+    A<bool, "scatter", gr::Doc<"markers instead of a line, the newest point larger">> scatter       = false;
 
     static constexpr SignalKind supportedSignals = SignalKind::Streaming;
 
-    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history);
+    GR_MAKE_REFLECTABLE(YYChart, chart_name, chart_title, data_sinks, show_legend, show_grid, anti_aliasing, x_axis_scale, y_axis_scale, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, n_history, scatter);
 
     mutable std::array<std::string, 6UZ> _unitStringStorage{};
+    std::size_t                          _drawnMarkers = 0UZ; // in the last draw
 
     static constexpr std::string_view kChartTypeName = "YYChart";
 
     [[nodiscard]] static constexpr std::string_view chartTypeName() noexcept { return kChartTypeName; }
     [[nodiscard]] std::string_view                  uniqueId() const noexcept { return this->unique_name; }
+    [[nodiscard]] std::size_t                       drawnMarkers() const noexcept { return _drawnMarkers; }
 
     explicit YYChart(gr::property_map initParameters = {}) : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui">>(std::move(initParameters)) {}
 
@@ -63,6 +66,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
 
     gr::work::Status draw(const gr::property_map& config = {}) {
         [[maybe_unused]] auto [plotFlags, plotSize, showLegend, chartMode, showGrid, chartStyle] = prepareDrawPrologue(config);
+        _drawnMarkers                                                                            = 0UZ;
 
         if (_signalSinks.empty()) {
             drawEmptyPlot("No signals", plotFlags, plotSize, chartMode);
@@ -93,6 +97,25 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             y_axis_scale = static_cast<int>(scale);
             std::ignore  = this->settings().set({{"y_axis_scale", y_axis_scale.value}});
         }
+    }
+
+    /// a line, or with `scatter` one marker per point and the newest point larger, under the same legend entry
+    void plotSeries(const char* label, ImPlotGetter getter, void* data, std::size_t count, const ImVec4& colour, float lineWidth) {
+        if (count == 0UZ) {
+            return;
+        }
+        if (!scatter) {
+            ImPlot::SetNextLineStyle(colour, lineWidth);
+            ImPlot::PlotLineG(label, getter, data, static_cast<int>(count));
+            return;
+        }
+        const auto& style = DigitizerUi::LookAndFeel::instance().chartStyle;
+        ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, style.scatterMarkerSize, colour, IMPLOT_AUTO, colour);
+        ImPlot::PlotScatterG(label, getter, data, static_cast<int>(count));
+        const ImPlotPoint newest = getter(static_cast<int>(count - 1UZ), data);
+        ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, style.scatterNewestMarkerSize, colour, IMPLOT_AUTO, colour);
+        ImPlot::PlotScatter(label, &newest.x, &newest.y, 1);
+        _drawnMarkers += count;
     }
 
     void drawXYFallback(ImPlotFlags plotFlags, const ImVec2& size, ChartMode chartMode, bool showGrid = true) {
@@ -138,9 +161,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         }
         setupFinish();
 
-        ImVec4 lineColor = sinkColor(sinkPtr->color());
-        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkPtr));
-
         // clamp to n_history: show only the most recent samples
         std::size_t totalCount = sinkPtr->size();
         std::size_t dataCount  = totalCount;
@@ -157,7 +177,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         XYContext   ctx{sinkPtr.get(), offset};
         std::string signalLabel = plotLabel(*sinkPtr);
 
-        ImPlot::PlotLineG(
+        plotSeries(
             signalLabel.c_str(),
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       c         = static_cast<XYContext*>(user_data);
@@ -166,7 +186,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 double      y         = static_cast<double>(c->sink->yAt(actualIdx));
                 return ImPlotPoint(x, y);
             },
-            &ctx, static_cast<int>(dataCount));
+            &ctx, dataCount, sinkColor(sinkPtr->color()), seriesLineWidth(*sinkPtr));
 
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
@@ -237,10 +257,6 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             ImPlot::PlotLine(xLegendLabel.c_str(), &dummyX, &dummyY, 1, ImPlotLineFlags_NoClip);
         }
 
-        // Plot correlation line with Y signal's name as legend entry
-        ImVec4 lineColor = sinkColor(sinkYPtr->color());
-        ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
-
         struct CorrelationContext {
             const SignalSink* sink_x;
             const SignalSink* sink_y;
@@ -249,7 +265,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
         CorrelationContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
         std::string        yLegendLabel = plotLabel(*sinkYPtr);
 
-        ImPlot::PlotLineG(
+        plotSeries(
             yLegendLabel.c_str(),
             [](int idx, void* user_data) -> ImPlotPoint {
                 auto*       c         = static_cast<CorrelationContext*>(user_data);
@@ -258,7 +274,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                 double      y         = static_cast<double>(c->sink_y->yAt(actualIdx));
                 return ImPlotPoint(x, y);
             },
-            &ctx, static_cast<int>(count));
+            &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
 
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
@@ -391,12 +407,9 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
             std::size_t yAxisIdx = axis::findAxisForSink(sinkYPtr->uniqueName(), false, std::array<std::vector<std::string>, 3>{}, yAxisGroups);
             ImPlot::SetAxes(ImAxis_X1, static_cast<ImAxis>(ImAxis_Y1 + yAxisIdx));
 
-            ImVec4 lineColor = sinkColor(sinkYPtr->color());
-            ImPlot::SetNextLineStyle(lineColor, seriesLineWidth(*sinkYPtr));
-
             PlotContext ctx{sinkXPtr.get(), sinkYPtr.get(), offset};
             std::string yLabel = plotLabel(*sinkYPtr);
-            ImPlot::PlotLineG(
+            plotSeries(
                 yLabel.c_str(),
                 [](int idx, void* user_data) -> ImPlotPoint {
                     auto*       c         = static_cast<PlotContext*>(user_data);
@@ -405,7 +418,7 @@ struct YYChart : gr::Block<YYChart, gr::Drawable<gr::UICategory::Content, "ImGui
                     double      y         = static_cast<double>(c->sinkY->yAt(actualIdx));
                     return ImPlotPoint(x, y);
                 },
-                &ctx, static_cast<int>(count));
+                &ctx, count, sinkColor(sinkYPtr->color()), seriesLineWidth(*sinkYPtr));
         }
 
         tooltip::showPlotMouseTooltip();

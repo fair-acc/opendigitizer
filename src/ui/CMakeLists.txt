@@ -352,6 +352,10 @@ if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
               gnuradio4::GrMathBlocksShared
               gnuradio4::GrTestingBlocksShared)
 endif()
+if((NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS) AND TARGET gnuradio4::GrTriggerBlocksShared)
+  target_link_libraries(opendigitizer-charts INTERFACE gnuradio4::GrTriggerBlocksShared)
+  target_compile_definitions(opendigitizer-charts INTERFACE OD_TRIGGER_BLOCKS)
+endif()
 
 add_library(
   opendigitizer-dashboard STATIC

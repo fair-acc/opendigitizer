@@ -122,6 +122,7 @@ if(ENABLE_IMGUI_TEST_ENGINE)
     examples/qa_grouping.grc
     examples/qa_layout.grc
     examples/qa_subgraph.grc
+    examples/qa_yy_scatter.grc
     examples/qa_statusbar.grc
     examples/qa_controls.grc
     examples/qa_imcontrol.grc

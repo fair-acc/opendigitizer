@@ -1,0 +1,48 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: circleClock
+      chunk_size: 20
+      n_samples_max: 200
+      sample_rate: 1000
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: cosine
+      signal_type: Cos
+      frequency: 5
+  - id: gr::basic::SignalGenerator<float32>
+    parameters:
+      name: sine
+      signal_type: Sin
+      frequency: 5
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: cosineSink
+      signal_name: cosine
+      signal_unit: V
+  - id: opendigitizer::ImPlotSink<float32>
+    parameters:
+      name: sineSink
+      signal_name: sine
+      signal_unit: V
+connections:
+  - [circleClock, 0, cosine, 0]
+  - [circleClock, 0, sine, 0]
+  - [cosine, 0, cosineSink, 0]
+  - [sine, 0, sineSink, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: cosineSink
+      block: cosineSink
+    - name: sineSink
+      block: sineSink
+  plots:
+    - name: Circle
+      type: opendigitizer::charts::YYChart
+      parameters:
+        scatter: true
+      sources:
+        - cosineSink
+        - sineSink
+      rect: [0, 0, 1, 1]

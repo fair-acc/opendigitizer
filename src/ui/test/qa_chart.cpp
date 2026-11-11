@@ -20,6 +20,7 @@
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
+#include "charts/YYChart.hpp"
 
 #include <cmrc/cmrc.hpp>
 
@@ -75,6 +76,17 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *g_state.dashboard);
                 ut::expect(ut::eq(sinkPtr->size(), 2000UZ)) << "n_samples_max of SineClock in qa_chart.grc";
 
+                captureScreenshot(*ctx);
+            };
+
+            "YYChart scatter draws one marker per sine-cosine sample"_test = [ctx] {
+                g_state.dashboardPage.reset();
+                g_state.reload(cmrc::ui_test_assets::get_filesystem(), "examples/qa_yy_scatter.grc");
+                g_state.waitForScheduler(ctx);
+                expect(g_state.waitUntil(ctx, "200 markers drawn", [] {
+                    const auto window = std::ranges::find_if(g_state.dashboard->uiWindows, [](const auto& w) { return w.block && w.block->typeName().find("YYChart") != std::string_view::npos; });
+                    return window != g_state.dashboard->uiWindows.end() && static_cast<const opendigitizer::charts::YYChart*>(window->block->raw())->drawnMarkers() == 200UZ;
+                }));
                 captureScreenshot(*ctx);
             };
         };

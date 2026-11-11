@@ -23,6 +23,12 @@
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
 #include "components/ImGuiNotify.hpp"
+#if defined(OD_TRIGGER_BLOCKS)
+#include <gnuradio-4.0/trigger/Coincidence.hpp>
+#include <gnuradio-4.0/trigger/SchmittTrigger.hpp>
+#include <gnuradio-4.0/trigger/TagBridge.hpp>
+#include <gnuradio-4.0/trigger/ValueTrigger.hpp>
+#endif
 
 namespace DigitizerUi {
 
@@ -48,6 +54,12 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::LowPassFilter, float>(registry);
     std::ignore = gr::registerBlock<opendigitizer::PianoControl>(registry);
     std::ignore = gr::registerBlock<opendigitizer::SineOscillator, float>(registry);
+#if defined(OD_TRIGGER_BLOCKS) // float only, under GR4's names: the whole trigger blocklib adds 35 % to index.wasm
+    std::ignore = gr::registerBlock<gr::blocks::trigger::ValueTrigger<float, gr::blocks::trigger::ValueCondition::level>, "gr::blocks::trigger::LevelTrigger<float, gr::blocks::trigger::ValueCondition::level>">(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>, "gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>">(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::Coincidence>(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::EventToTag<float>>(registry);
+#endif
     gr::blocklib::initGrAudioBlocks(gr::globalBlockRegistry());
 }
 
