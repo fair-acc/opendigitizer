@@ -6,6 +6,7 @@
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
+#include "../components/AutoHide.hpp"
 #include "../components/ImGuiNotify.hpp"
 #include "../components/StyledStandardWidgets.hpp"
 
@@ -1101,7 +1102,8 @@ class ScopedChartStyle {
     bool _pushedFont = false;
 
 public:
-    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style) {
+    /// `legendVisibility` 0..1 scales the legend's background, border and text alpha (an auto-hiding legend's fade)
+    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style, float legendVisibility = 1.f) {
         if (style.labelFont != nullptr || style.labelFontSize) { // ImPlot measures and draws its text with the current font
             ImGui::PushFont(style.labelFont, style.labelFontSize.value_or(0.f));
             _pushedFont = true;
@@ -1126,6 +1128,11 @@ public:
         }
         if (style.legendAlpha) {
             pushAlpha(ImPlotCol_LegendBg, *style.legendAlpha);
+        }
+        if (legendVisibility < 1.f) {
+            for (const ImPlotCol colourId : {ImPlotCol_LegendBg, ImPlotCol_LegendBorder, ImPlotCol_LegendText}) {
+                pushAlpha(colourId, ImPlot::GetStyleColorVec4(colourId).w * legendVisibility);
+            }
         }
         if (style.lineWidth) {
             ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, *style.lineWidth);
@@ -1301,6 +1308,9 @@ struct Chart {
     }
 
     std::vector<std::shared_ptr<SignalSink>> _signalSinks;
+    DigitizerUi::components::AutoHide        _legendAutoHide; // LookAndFeel::autoHideLegends
+
+    [[nodiscard]] float legendVisibility() const noexcept { return 1.f - _legendAutoHide.hidden; }
 
     [[nodiscard]] auto enabledSinks() const {
         return _signalSinks | std::views::filter([](const auto& s) { return s && s->drawEnabled(); });
@@ -2101,9 +2111,20 @@ struct Chart {
             effectiveShowLegend = chartMode == ChartMode::Interaction && self.show_legend.value;
         }
 
-        float       layoutOffset = layoutMode ? DigitizerUi::LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
-        ImVec2      plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
-        ImPlotFlags plotFlags    = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
+        float  layoutOffset = layoutMode ? DigitizerUi::LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
+        ImVec2 plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
+        float  legendShown  = 1.f;
+        if (effectiveShowLegend && DigitizerUi::LookAndFeel::instance().autoHideLegends) { // active: the mouse moving within the drawn area
+            const ImGuiIO& io     = ImGui::GetIO();
+            const ImVec2   corner = ImGui::GetCursorScreenPos();
+            const bool     moving = ImRect(corner, corner + plotSize).Contains(io.MousePos) && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f);
+            legendShown           = 1.f - self._legendAutoHide.advance(moving, io.DeltaTime);
+            if (legendShown > 0.f) { // the countdown or the fade still running
+                DigitizerUi::globalFramePacer().requestFrame();
+            }
+            effectiveShowLegend = legendShown > 0.f;
+        }
+        ImPlotFlags plotFlags = ImPlotFlags_NoMouseText | ImPlotFlags_NoTitle | ImPlotFlags_NoMenus | ImPlotFlags_NoFrame;
         if (!effectiveShowLegend) {
             plotFlags |= ImPlotFlags_NoLegend;
         }
@@ -2117,7 +2138,7 @@ struct Chart {
             effectiveShowGrid = self.show_grid.value;
         }
 
-        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(DigitizerUi::LookAndFeel::instance().chartStyle)};
+        return DrawPrologue{.plotFlags = plotFlags, .plotSize = plotSize, .showLegend = effectiveShowLegend, .chartMode = chartMode, .showGrid = effectiveShowGrid, .style = ScopedChartStyle(DigitizerUi::LookAndFeel::instance().chartStyle, legendShown)};
     }
 
     template<typename Self>

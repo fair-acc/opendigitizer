@@ -188,6 +188,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
         };
 
         t->TestFunc = [](ImGuiTestContext* ctx) {
+            DigitizerUi::LookAndFeel::mutableInstance().autoHideLegends = false; // the captures below need a legend that stays
             ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
             ctx->Yield(10);
 
@@ -284,6 +285,27 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }));
                 expect(seeThrough->count(kLegendInside, isMagenta) > 100UZ);
                 expect(eq(opaque->count(kLegendInside, isMagenta), 0UZ));
+            };
+
+            "an auto-hiding legend fades without movement in its plot and returns when the mouse moves there"_test = [&] {
+                auto& look           = DigitizerUi::LookAndFeel::mutableInstance();
+                look.autoHideLegends = true;
+                g_state->drawn       = state.twoAxes.get();
+                g_state->mode        = Mode::Interaction;
+                auto& chart          = *state.twoAxes;
+                while (chart.legendVisibility() > 0.f) {
+                    ctx->Yield();
+                }
+                ctx->MouseMoveToPos(ImVec2(6.f, 6.f));
+                ctx->Yield();
+                expect(eq(chart.legendVisibility(), 0.f)) << "movement outside the plot does not reveal it";
+                ctx->MouseMoveToPos(ImVec2(kChartPos.x + 0.5f * kChartSize.x, kChartPos.y + 0.5f * kChartSize.y));
+                while (chart.legendVisibility() < 1.f) {
+                    ctx->Yield();
+                }
+                expect(eq(chart.legendVisibility(), 1.f)) << "movement in the plot shows it";
+                ctx->MouseMoveToPos(ImVec2(5.f, 5.f));
+                look.autoHideLegends = false;
             };
 
             "an axis colour draws the tick labels, axis label and ticks in that colour"_test = [&] {

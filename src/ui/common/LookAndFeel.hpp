@@ -358,6 +358,7 @@ struct LookAndFeel {
     float                     notificationRounding                    = .5f;
     float                     notificationBorderSize                  = 1.f;
     float                     autoHideDelaySeconds                    = 2.f;   // developer menu, menu button and dashboard bar controls
+    bool                      autoHideLegends                         = true;  // unlocked charts' legends: shown while the mouse moves in the plot, faded after the delay
     float                     autoHideRevealDistance                  = 100.f; // px around an auto-hidden control that brings it back
     float                     autoHideSlideSeconds                    = .5f;
     float                     devMenuButtonAlpha                      = 0.9f;
