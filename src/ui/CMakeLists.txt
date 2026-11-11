@@ -106,6 +106,7 @@ cmrc_add_resource_library(
   assets/fair-logo/FAIR_Logo_rgb_72dpi_dark.png
   assets/fontawesome/fa-regular-400.otf
   assets/fontawesome/fa-solid-900.otf
+  assets/roboto/Roboto-Medium-subscripts.ttf
   assets/xkcd/xkcd.otf
   assets/xkcd/xkcd-script.ttf)
 cmrc_add_resource_library(
@@ -125,6 +126,7 @@ cmrc_add_resource_library(
   assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc
   assets/sampleDashboards/PulsedPowerDemo.grc
+  assets/sampleDashboards/SpectrumRangeDemo.grc
   assets/sampleDashboards/StreamingStress.grc
   assets/sampleDashboards/UIControlledSines.grc
   assets/sampleDashboards/XtraCameraDemo.grc)
@@ -440,6 +442,8 @@ add_library(
   RemoteSignalSources.hpp
   Setup.cpp
   Setup.hpp
+  SetupLocalisationBlocks.cpp
+  SetupVideoBlocks.cpp
   StatusBarView.cpp
   StatusBarView.hpp
   ToolbarView.cpp
@@ -460,6 +464,7 @@ add_library(
   blocks/ImControlText.hpp
   blocks/ImControlToggle.hpp
   blocks/ImControlTrigger.hpp
+  blocks/ImControlValue.hpp
   blocks/ImPropertyReadout.hpp
   blocks/TargetMap.hpp
   blocks/DrawableBlockConfig.hpp
@@ -468,6 +473,7 @@ add_library(
   blocks/LowPassFilter.hpp
   blocks/PianoControl.hpp
   blocks/SineOscillator.hpp
+  blocks/ValueSource.hpp
   blocks/meta.hpp
   components/Block.cpp
   components/Block.hpp

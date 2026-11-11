@@ -456,20 +456,21 @@ void LookAndFeel::loadFonts() {
     static const std::vector<ImWchar> rangeLatinPlusExtended = {0x0020, 0x00FF,   // Basic Latin + Latin-1 Supplement (standard + extended ASCII)
         0x2200, 0x22FF,                                                           // Mathematical Operators (√, ∑, ∫, ≤, ≥, ≠, ∞, etc.)
         0, 0};
-    static const ImWchar              glyphRanges[]          = {// pick individual glyphs and specific sub-ranges rather than full range
-        0XF002, 0XF2ED,                   // 0xf002 is "magnifying glass", 0xf005 is "", 0xf2ed is "trash can"
-        0X2B, 0X2B,                       // plus
-        0XF055, 0XF055,                   // circle-plus
-        0XF201, 0XF83E,                   // fa-chart-line, fa-wave-square
-        0xF58D, 0xF58D,                   // grid layout
-        0XF7A5, 0XF7A5,                   // horizontal layout,
-        0xF248, 0xF248,                   // free layout,
-        0XF7A4, 0XF7A4,                   // vertical layout
-        0XEF808D, 0XEF808D,               // notification ICON_FA_XMARK
-        0XEF8198, 0XEF8198,               // notification ICON_FA_CIRCLE_CHECK
-        0XEF81B1, 0XEF81B1,               // notification ICON_FA_TRIANGLE_EXCLAMATION
-        0XEF81AA, 0XEF81AA,               // notification ICON_FA_CIRCLE_EXCLAMATION
-        0XEF819A, 0XEF819A,               // notification ICON_FA_CIRCLE_INFO
+    static const std::vector<ImWchar> rangeSubscripts        = {0x2080, 0x209C, 0}; // ₀…₉ ₊ ₋ ₌ ₍ ₎ ₐ…ₜ, from Roboto 2.138 (the imgui copy has none)
+    static const ImWchar              glyphRanges[]          = {                    // pick individual glyphs and specific sub-ranges rather than full range
+        0XF002, 0XF2ED,                                       // 0xf002 is "magnifying glass", 0xf005 is "", 0xf2ed is "trash can"
+        0X2B, 0X2B,                                           // plus
+        0XF055, 0XF055,                                       // circle-plus
+        0XF201, 0XF83E,                                       // fa-chart-line, fa-wave-square
+        0xF58D, 0xF58D,                                       // grid layout
+        0XF7A5, 0XF7A5,                                       // horizontal layout,
+        0xF248, 0xF248,                                       // free layout,
+        0XF7A4, 0XF7A4,                                       // vertical layout
+        0XEF808D, 0XEF808D,                                   // notification ICON_FA_XMARK
+        0XEF8198, 0XEF8198,                                   // notification ICON_FA_CIRCLE_CHECK
+        0XEF81B1, 0XEF81B1,                                   // notification ICON_FA_TRIANGLE_EXCLAMATION
+        0XEF81AA, 0XEF81AA,                                   // notification ICON_FA_CIRCLE_EXCLAMATION
+        0XEF819A, 0XEF819A,                                   // notification ICON_FA_CIRCLE_INFO
         0, 0};
 
     static ImFontConfig config;
@@ -487,6 +488,10 @@ void LookAndFeel::loadFonts() {
                 ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(secondaryFont.begin()), static_cast<int>(secondaryFont.size()), loadFontSize, &config, secondaryRanges.data());
                 config.MergeMode = false;
             }
+            const auto subscripts = cmrc::ui_assets::get_filesystem().open("assets/roboto/Roboto-Medium-subscripts.ttf");
+            config.MergeMode      = true;
+            ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<char*>(subscripts.begin()), static_cast<int>(subscripts.size()), loadFontSize, &config, rangeSubscripts.data());
+            config.MergeMode = false;
             return resultFont;
         };
 

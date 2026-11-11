@@ -49,9 +49,25 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
     A<double, "Y-axis min"> y_min        = std::numeric_limits<double>::lowest();
     A<double, "Y-axis max"> y_max        = std::numeric_limits<double>::max();
 
+    RangeStyleSetting      range_style     = RangeStyle::hidden;
+    RangeMinSetting        range_min       = std::numeric_limits<double>::quiet_NaN();
+    RangeMaxSetting        range_max       = std::numeric_limits<double>::quiet_NaN();
+    RangeMinWidthSetting   range_min_width = 0.0;
+    RangeColorSetting      range_color     = 0U;
+    RangeMinTargetsSetting range_min_targets;
+    RangeMaxTargetsSetting range_max_targets;
+    F0StyleSetting         f0_style = MarkerStyle::hidden;
+    F0Setting              f0       = std::numeric_limits<double>::quiet_NaN();
+    F0ColorSetting         f0_color = 0U;
+    F0TargetsSetting       f0_targets;
+    FollowInputsSetting    follow_inputs     = true;
+    SnapToBinsSetting      snap_to_bins      = true;
+    RangeLabelsSetting     show_range_labels = true;
+    F0LabelsSetting        show_f0_labels    = true;
+
     static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, orientation, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
+    GR_MAKE_REFLECTABLE(WaterfallPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, n_history, colormap, gpu_acceleration, orientation, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     struct RenderInfo {
         double freqMin;
@@ -140,6 +156,7 @@ struct WaterfallPlot : gr::Block<WaterfallPlot, gr::Drawable<gr::UICategory::Con
         } else if (_waterfall.filledRows() > 0 && _lastRenderInfo) {
             _waterfall.render(_lastRenderInfo->freqMin, _lastRenderInfo->freqMax, timeLo, timeHi, newestLeading, horizontal);
         }
+        drawFrequencyMarkers(0UZ, horizontal ? ImAxis_Y1 : ImAxis_X1);
 
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);

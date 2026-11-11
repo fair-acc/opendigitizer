@@ -49,9 +49,25 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
     A<double, "Y-axis min"> y_min        = -120.0;
     A<double, "Y-axis max"> y_max        = 0.0;
 
+    RangeStyleSetting      range_style     = RangeStyle::hidden;
+    RangeMinSetting        range_min       = std::numeric_limits<double>::quiet_NaN();
+    RangeMaxSetting        range_max       = std::numeric_limits<double>::quiet_NaN();
+    RangeMinWidthSetting   range_min_width = 0.0;
+    RangeColorSetting      range_color     = 0U;
+    RangeMinTargetsSetting range_min_targets;
+    RangeMaxTargetsSetting range_max_targets;
+    F0StyleSetting         f0_style = MarkerStyle::hidden;
+    F0Setting              f0       = std::numeric_limits<double>::quiet_NaN();
+    F0ColorSetting         f0_color = 0U;
+    F0TargetsSetting       f0_targets;
+    FollowInputsSetting    follow_inputs     = true;
+    SnapToBinsSetting      snap_to_bins      = true;
+    RangeLabelsSetting     show_range_labels = true;
+    F0LabelsSetting        show_f0_labels    = true;
+
     static constexpr SignalKind supportedSignals = SignalKind::Dataset1D;
 
-    GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max);
+    GR_MAKE_REFLECTABLE(SpectrumPlot, chart_name, chart_title, data_sinks, show_legend, show_grid, show_max_hold, show_min_hold, show_average, trace_color, decay_tau_frames, x_auto_scale, y_auto_scale, x_min, x_max, y_min, y_max, range_style, range_min, range_max, range_min_width, range_color, range_min_targets, range_max_targets, f0_style, f0, f0_color, f0_targets, follow_inputs, snap_to_bins, show_range_labels, show_f0_labels);
 
     std::unordered_map<std::string, TraceAccumulator> _tracesPerSink;
     std::unordered_map<std::string, std::size_t>      _lastSampleCountPerSink;
@@ -85,6 +101,7 @@ struct SpectrumPlot : gr::Block<SpectrumPlot, gr::Drawable<gr::UICategory::Conte
         setupAxes(plotSize, showGrid);
         setupFinish();
         drawSpectrumSignals();
+        drawFrequencyMarkers(0UZ);
         tooltip::showPlotMouseTooltip();
         handleCommonInteractions(chartMode);
         DigitizerUi::TouchHandler<>::EndZoomablePlot();

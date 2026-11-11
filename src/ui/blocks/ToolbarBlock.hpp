@@ -11,6 +11,7 @@
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/StyledStandardWidgets.hpp"
+#include "TargetMap.hpp"
 
 namespace DigitizerUi {
 namespace play_stop {
@@ -262,6 +263,20 @@ inline void sendSettings(gr::MsgPortOutBuiltin& port, const std::string& targetB
         return;
     }
     gr::emit<gr::message::Command::Set>(port, std::move(settings), {.endpoint = gr::block::property::kSetting, .serviceName = targetBlock});
+}
+
+/// sets `payload` on every "BlockA,BlockB:setting" entry of `targetMap`; an ill-formed map sends nothing
+inline void sendToTargets(gr::MsgPortOutBuiltin& port, std::string_view targetMap, const auto& payload) {
+    const auto targets = TargetMap::fromString(targetMap);
+    if (!targets) {
+        return;
+    }
+    for (const TargetEntry& target : targets->entries()) {
+        if (target.isGlob()) {
+            continue; // TODO: GR4 support
+        }
+        sendSettings(port, target.blockTarget, gr::property_map{{std::pmr::string(target.propertyName), payload}});
+    }
 }
 } // namespace toolbar
 } // namespace DigitizerUi
