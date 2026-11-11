@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <format>
 #include <functional>
@@ -24,6 +25,7 @@
 #include <gnuradio-4.0/HistoryBuffer.hpp>
 #include <gnuradio-4.0/PmtTypeHelpers.hpp>
 #include <gnuradio-4.0/Tag.hpp>
+#include <gnuradio-4.0/Tensor.hpp>
 
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
@@ -65,7 +67,7 @@ T getValueOrDefault(const gr::property_map& map, std::string_view key, const T& 
 using charts::tags::drawDataSetTimingEvents;
 using charts::tags::drawTags;
 
-GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>)
+GR_REGISTER_BLOCK(opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>)
 
 template<typename T>
 struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Content, "ImGui">> {
@@ -73,13 +75,14 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     using LineStyle                   = opendigitizer::LineStyle;
     static constexpr bool IsStreaming = std::is_arithmetic_v<T>;
     static constexpr bool IsDataSet   = gr::DataSetLike<T>;
+    static constexpr bool IsTensor    = gr::TensorLike<T>;
 
-    static constexpr SignalKind kSignalKind = IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
+    static constexpr SignalKind kSignalKind = IsTensor ? SignalKind::Image2D : IsDataSet ? SignalKind::Dataset1D : SignalKind::Streaming;
 
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
-    gr::PortIn<T> in;
+    std::conditional_t<IsTensor, gr::TensorPortIn<ValueType>, gr::PortIn<T>> in;
 
     ManagedColour _colour;
 
@@ -94,17 +97,18 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     A<float, "min", gr::Doc<"Minimum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_min = std::numeric_limits<float>::lowest();
     A<float, "max", gr::Doc<"Maximum expected value for the signal">, gr::Limits<std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()>> signal_max = std::numeric_limits<float>::max();
 
-    A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                    sample_rate       = 1000.0f;
-    A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                abscissa_quantity = "time";
-    A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                  abscissa_unit     = "s";
-    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                    required_size     = gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
-    A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                           dataset_index     = std::numeric_limits<gr::Size_t>::max();
-    A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                      n_history         = 3U;
-    A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>> history_offset    = 0.01f;
-    A<bool, "plot tags", gr::Doc<"true: draw the timing tags">>                                                                                              plot_tags         = true;
+    A<float, "sample rate", gr::Doc<"Sampling frequency in Hz">, gr::Unit<"Hz">, gr::Limits<float(0), std::numeric_limits<float>::max()>>                             sample_rate       = 1000.0f;
+    A<std::string, "abscissa quantity", gr::Doc<"Physical quantity of the primary (X) axis">>                                                                         abscissa_quantity = "time";
+    A<std::string, "abscissa unit", gr::Doc<"Unit of measurement of the primary (X) axis">>                                                                           abscissa_unit     = "s";
+    A<gr::Size_t, "required buffer size", gr::Doc<"Minimum number of samples to retain">>                                                                             required_size     = IsTensor ? 1U : gr::DataSetLike<T> ? static_cast<gr::Size_t>(charts::Chart::kDefaultDataSetHistorySize) : 2048U;
+    A<gr::Size_t, "dataset index", gr::Doc<"Index of the dataset, if applicable">>                                                                                    dataset_index     = std::numeric_limits<gr::Size_t>::max();
+    A<gr::Size_t, "history length", gr::Doc<"Number of samples retained for historical visualization">>                                                               n_history         = 3U;
+    A<float, "history offset", gr::Doc<"Time offset for historical data display">, gr::Unit<"s">, gr::Limits<float(0.0), std::numeric_limits<float>::max()>>          history_offset    = 0.01f;
+    A<bool, "plot tags", gr::Doc<"true: draw the timing tags">>                                                                                                       plot_tags         = true;
+    A<gr::Size_t, "max backlog", gr::Limits<0U, 256U>, gr::Doc<"Tensor frames queued for in-order display; 0 = newest only (skipped frames are shown by the chart)">> max_backlog       = 0U;
 
     GR_MAKE_REFLECTABLE(ImPlotSink, in, visible, signal_name, color, line_style, line_width, signal_quantity, signal_unit, signal_min, signal_max, sample_rate, abscissa_quantity, abscissa_unit, required_size, //
-        dataset_index, n_history, history_offset, plot_tags);
+        dataset_index, n_history, history_offset, plot_tags, max_backlog);
 
     double _xUtcOffset = [] {
         using namespace std::chrono;
@@ -133,6 +137,25 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     // DataSet cache for float conversion
     mutable std::vector<gr::DataSet<float>> _dsCache;
+
+    std::deque<std::conditional_t<IsTensor, T, std::monostate>> _frames;               // Tensor<T> sinks: the newest max_backlog + 1 frames
+    std::uint64_t                                               _frameGeneration = 0U; // of _frames.back(), counting every received frame
+    std::array<ImageAxis, 2>                                    _axes{};               // Tensor<T> sinks: from the latest gr:axis_* tags
+
+    [[nodiscard]] ImageFrame imageFrame(std::uint64_t next = 0U) const {
+        if constexpr (IsTensor) {
+            if (_frames.empty()) {
+                return {};
+            }
+            const std::uint64_t oldest     = _frameGeneration + 1U - _frames.size();
+            const std::uint64_t generation = next == 0U ? _frameGeneration : std::clamp(next, oldest, _frameGeneration);
+            const T&            frame      = *std::next(_frames.begin(), static_cast<std::ptrdiff_t>(generation - oldest));
+            if (frame.rank() == 2UZ) {
+                return {.pixels = std::span<const ValueType>(frame.data(), frame.size()), .rows = frame.extents()[0], .columns = frame.extents()[1], .generation = generation, .axes = _axes};
+            }
+        }
+        return {};
+    }
 
     // Adapter for SinkRegistry registration (shared ownership with registry)
     std::shared_ptr<SignalSink> _sinkAdapter;
@@ -514,8 +537,66 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
     [[nodiscard]] std::mutex&                 dataMutex() const { return *_dataMutex; }
     [[nodiscard]] std::shared_ptr<std::mutex> sharedDataMutex() const { return _dataMutex; }
 
+    /// the axes a producer such as gr::localisation::SteeredPowerMap publishes as gr:axis_origin/step/name/unit, one entry per tensor dimension
+    void updateAxes(const gr::property_map& tag) {
+        const auto field   = [&tag](std::string_view key) { return tag.find_value(key).value_or(gr::pmt::Value{}); };
+        const auto doubles = [&field](std::string_view key) {
+            const gr::pmt::Value value = field(key);
+            const auto           view  = value.get_if<gr::TensorView<double>>();
+            return view ? std::vector<double>(view->begin(), view->end()) : std::vector<double>{};
+        };
+        const auto strings = [&field](std::string_view key) {
+            const gr::pmt::Value value = field(key);
+            const auto           view  = value.get_if<gr::TensorView<gr::pmt::Value>>();
+            return view ? *view | std::views::transform([](const gr::pmt::Value& v) { return v.value_or(std::string{}); }) | std::ranges::to<std::vector>() : std::vector<std::string>{};
+        };
+        const std::vector<double>      origins = doubles(gr::tag::kAxisOrigin.key());
+        const std::vector<double>      steps   = doubles(gr::tag::kAxisStep.key());
+        const std::vector<std::string> names   = strings(gr::tag::kAxisName.key());
+        const std::vector<std::string> units   = strings(gr::tag::kAxisUnit.key());
+        for (std::size_t d = 0UZ; d < _axes.size(); ++d) {
+            if (d < origins.size()) {
+                _axes[d].origin = origins[d];
+            }
+            if (d < steps.size()) {
+                _axes[d].step = steps[d];
+            }
+            if (d < names.size()) {
+                _axes[d].name = names[d];
+            }
+            if (d < units.size()) {
+                _axes[d].unit = units[d];
+            }
+        }
+    }
+
     gr::work::Status processBulk(gr::InputSpanLike auto& input) noexcept {
         std::lock_guard lock(*_dataMutex);
+        if constexpr (IsTensor) {
+            for (const auto& [relIndex, tagMapRef] : input.tags()) {
+                updateAxes(tagMapRef.get());
+            }
+            const std::size_t keep = static_cast<std::size_t>(max_backlog.value) + 1UZ;
+            for (std::size_t i = input.size() - std::min(input.size(), keep); i < input.size(); ++i) {
+                T recycled{}; // the dropped oldest frame's buffer, reused when its extents match
+                if (_frames.size() >= keep) {
+                    recycled = std::move(_frames.front());
+                    _frames.pop_front();
+                }
+                const auto& frame = input[i];
+                if (!std::ranges::equal(recycled.extents(), frame.extents())) {
+                    recycled.resize(frame.extents());
+                }
+                std::copy_n(frame.data(), frame.size(), recycled.data());
+                _frames.push_back(std::move(recycled));
+            }
+            while (_frames.size() > keep) {
+                _frames.pop_front();
+            }
+            _frameGeneration += input.size();
+            _sample_count += input.size();
+            return gr::work::Status::OK;
+        }
 
         for (const auto& [relIndex, tagMapRef] : input.tags()) {
             if (relIndex < 0) {
@@ -596,6 +677,9 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         using enum AxisScale;
+        if constexpr (IsTensor) {
+            return gr::work::Status::OK;
+        }
 
         if (!isTabVisible()) {
             return gr::work::Status::OK;

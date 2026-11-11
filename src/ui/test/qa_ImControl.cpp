@@ -86,13 +86,6 @@ bool containsMatchingMessage(const std::vector<gr::Message>& messages, std::stri
 DrawableBlockConfig controlledParsedConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return DrawableBlockConfig{.firstControlledProperty = {.value = value, .hints = {.choices = choices}}, .aggregateControlledPropertyHints = {.choices = choices}}; }
 gr::property_map    controlledConfig(gr::pmt::Value value, std::vector<std::string> choices = {}) { return controlledParsedConfig(std::move(value), std::move(choices)).toMap().value_or(gr::property_map{}); }
 
-/// ImGui::BeginCombo does not report its label to the test engine, so "**/##Label" does not find the dropdown of an ImControlChoice
-ImGuiID choiceComboId(ImGuiTestContext* ctx, const char* windowRef, std::string_view controlUniqueName, const char* comboLabel) {
-    const ImGuiWindow* window = ctx->WindowInfo(windowRef).Window;
-    expect(window != nullptr) << fatal << windowRef;
-    return ImHashStr(comboLabel, 0UZ, ImHashStr(controlUniqueName.data(), controlUniqueName.size(), window->ID));
-}
-
 /// the InvisibleButton covering the whole keyboard of @param piano, drawn in the "pianoPanel" window
 ImGuiTestItemInfo pianoKeyboardInfo(ImGuiTestContext* ctx, const opendigitizer::PianoControl& piano) {
     const ImGuiWindow* window = ctx->WindowInfo("//pianoPanel").Window;
@@ -282,7 +275,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Sin")) << fatal;
                     const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlChoice").block;
                     expect(control != nullptr) << fatal;
-                    ctx->ItemClick(choiceComboId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Shape"));
+                    ctx->ItemClick(controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##Shape"));
                     ctx->ItemClick("//$FOCUSED/Cos");
                     expect(g_state.waitUntil(ctx, "both the target and the control block contain the newly set value", [] { return blockHasStringKeyValuePair("signalGenerator1", "signal_type", "Cos") && blockHasStringKeyValuePair("controlChoice", "value", "Cos"); }));
                 };
@@ -395,7 +388,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 "ImControlChoice has all its options and sends the expected settings message"_test = [&] {
                     std::ignore = g_state.choice->takeSent();
                     expect(g_state.choice->block.value == "Sin") << fatal << "choice is initialized with the value of the target (this is passed to controlledConfig())";
-                    ctx->ItemClick(choiceComboId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform"));
+                    ctx->ItemClick(controlItemId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform"));
                     for (const char* expectedComboEntry : {"Sin", "Cos", "Square"}) {
                         expect(ctx->ItemExists(std::format("//$FOCUSED/{}", expectedComboEntry).c_str())) << expectedComboEntry;
                     }
@@ -406,7 +399,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 };
 
                 "if an ImControlChoice does not have options then it is just disabled"_test = [&] {
-                    const auto                   disabled  = [&] { return (ctx->ItemInfo(choiceComboId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform")).ItemFlags & ImGuiItemFlags_Disabled) != 0; };
+                    const auto                   disabled  = [&] { return (ctx->ItemInfo(controlItemId(ctx, "//uiControlPanel", g_state.choice->block.unique_name, "##Waveform")).ItemFlags & ImGuiItemFlags_Disabled) != 0; };
                     Digitizer::utils::scope_exit tellAgain = [] { g_state.includeControlledPropertyInConfig = true; };
                     expect(!disabled()) << fatal << "enabled while draw() is told the choices";
                     g_state.includeControlledPropertyInConfig = false; // pretend it is not connected to anything

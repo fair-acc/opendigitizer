@@ -187,6 +187,11 @@ struct ChartStyle {
     float  historyDepthDragWidth  = 60.f;
     float  historyDepthComboWidth = 65.f;
 
+    float       imageTileGap       = .04f;          // between ImageChart tiles, as a fraction of the larger tile extent
+    std::size_t imageCpuMaxCells   = 512UZ * 512UZ; // ImageChart CPU heatmap budget; larger frames are decimated
+    std::size_t imageCpuMaxRects   = 120UZ * 120UZ; // CPU cells of a layer with transparency: 4 vertices each, within 16-bit indices (WebGL2)
+    ImVec2      imageStatusPadding = {6.f, 4.f};    // skipped-frame indicator, from the plot's top-left corner
+
     float scatterMarkerSize       = 2.f; // px, YYChart scatter markers
     float scatterNewestMarkerSize = 5.f; // px, the newest point
 };

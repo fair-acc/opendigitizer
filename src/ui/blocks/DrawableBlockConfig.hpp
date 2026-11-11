@@ -124,6 +124,9 @@ struct DrawableBlockConfig {
                 if (const auto targetPropertyName = controlledProperty->get_if<std::string_view>("target_property_name"sv)) {
                     result.targetPropertyName = *targetPropertyName;
                 }
+                if (const auto targetSettings = controlledProperty->get_if<gr::property_map_view>("target_settings"sv)) {
+                    result.targetSettings = gr::property_map(*targetSettings);
+                }
             }
             return result;
         }
@@ -146,6 +149,9 @@ struct DrawableBlockConfig {
             if (!targetPropertyName.empty()) {
                 map->emplace("target_property_name"sv, targetPropertyName);
             }
+            if (!targetSettings.empty()) {
+                map->emplace("target_settings"sv, targetSettings);
+            }
             return map;
         }
 
@@ -159,6 +165,8 @@ struct DrawableBlockConfig {
         // sometimes empty for testing purposes
         std::string targetBlockName    = {};
         std::string targetPropertyName = {};
+        // the target block's settings a control lists in its `target_settings_keys` setting
+        gr::property_map targetSettings = {};
     };
 
     [[nodiscard]] static constexpr DrawableBlockConfig fromMap(const gr::property_map& configMap) {

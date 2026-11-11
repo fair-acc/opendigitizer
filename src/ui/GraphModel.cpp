@@ -821,8 +821,18 @@ std::vector<UiGraphModel::BlockPointerPropertyNamePair> UiGraphModel::resolveCon
 }
 
 void UiGraphModel::aggregateAndApplyControlledProperties(DrawableBlockConfig& config, const UiGraphBlock& control) {
-    const auto controlled                   = resolveControlledProperties(control).value_or(std::vector<BlockPointerPropertyNamePair>{});
-    config.firstControlledProperty          = firstControlledPropertyConfig(controlled);
+    const auto controlled          = resolveControlledProperties(control).value_or(std::vector<BlockPointerPropertyNamePair>{});
+    config.firstControlledProperty = firstControlledPropertyConfig(controlled);
+    const gr::pmt::Value keys      = control.blockSettings.find_value(std::string_view("target_settings_keys")).value_or(gr::pmt::Value{});
+    const auto           keyList   = keys.get_if<gr::TensorView<gr::pmt::Value>>();
+    if (keyList && !controlled.empty()) {
+        for (const gr::pmt::Value& key : *keyList) {
+            const std::string name = key.value_or(std::string{});
+            if (const auto value = controlled.front().block->blockSettings.find_value(std::string_view(name)); value.has_value()) {
+                config.firstControlledProperty.targetSettings.insert_or_assign(name, *value);
+            }
+        }
+    }
     config.aggregateControlledPropertyHints = aggregatePropertyHints(controlled);
 }
 

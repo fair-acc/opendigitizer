@@ -8,6 +8,7 @@
 
 #include "LogHistory.hpp"
 #include "blocks/GainEnvelope.hpp"
+#include "blocks/ImControlCamera.hpp"
 #include "blocks/ImControlChoice.hpp"
 #include "blocks/ImControlColor.hpp"
 #include "blocks/ImControlNumber.hpp"
@@ -23,6 +24,12 @@
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
 #include "components/ImGuiNotify.hpp"
+
+#include <opendigitizer/video/AcousticImage.hpp>
+#include <opendigitizer/video/BrowserMicrophonePairs.hpp>
+#include <opendigitizer/video/CameraSource.hpp>
+#include <opendigitizer/video/ImageTransforms.hpp>
+
 #if defined(OD_TRIGGER_BLOCKS)
 #include <gnuradio-4.0/trigger/Coincidence.hpp>
 #include <gnuradio-4.0/trigger/SchmittTrigger.hpp>
@@ -41,11 +48,29 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<SpectrumDensity>(registry);
     std::ignore = gr::registerBlock<WaterfallPlot>(registry);
     std::ignore = gr::registerBlock<SurfacePlot>(registry);
-    std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, gr::DataSet<float>, gr::UncertainValue<float>>(registry);
+    std::ignore = gr::registerBlock<ImageChart>(registry);
+    std::ignore = gr::registerBlock<TensorRowsChart>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::CameraSource>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::GreyScale, float, double, std::uint32_t>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::ImageCrop, float, double, std::uint32_t>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::ImageResize, float, double, std::uint32_t>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::ImageDistortion, float, double, std::uint32_t>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::video::AcousticImage>(registry);
+#if defined(__EMSCRIPTEN__)
+    std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry);
+#endif
+#if defined(OD_TRIGGER_BLOCKS) // float only, under GR4's names: the whole trigger blocklib adds 35 % to index.wasm
+    std::ignore = gr::registerBlock<gr::blocks::trigger::ValueTrigger<float, gr::blocks::trigger::ValueCondition::level>, "gr::blocks::trigger::LevelTrigger<float, gr::blocks::trigger::ValueCondition::level>">(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>, "gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>">(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::Coincidence>(registry);
+    std::ignore = gr::registerBlock<gr::blocks::trigger::EventToTag<float>>(registry);
+#endif
     std::ignore = gr::registerBlock<ImControlNumber>(registry);
     std::ignore = gr::registerBlock<ImControlToggle>(registry);
     std::ignore = gr::registerBlock<ImControlTrigger>(registry);
     std::ignore = gr::registerBlock<ImControlText>(registry);
+    std::ignore = gr::registerBlock<ImControlCamera>(registry);
     std::ignore = gr::registerBlock<ImControlChoice>(registry);
     std::ignore = gr::registerBlock<ImControlColor>(registry);
     std::ignore = gr::registerBlock<ImPropertyReadout>(registry);
@@ -54,12 +79,6 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     std::ignore = gr::registerBlock<opendigitizer::LowPassFilter, float>(registry);
     std::ignore = gr::registerBlock<opendigitizer::PianoControl>(registry);
     std::ignore = gr::registerBlock<opendigitizer::SineOscillator, float>(registry);
-#if defined(OD_TRIGGER_BLOCKS) // float only, under GR4's names: the whole trigger blocklib adds 35 % to index.wasm
-    std::ignore = gr::registerBlock<gr::blocks::trigger::ValueTrigger<float, gr::blocks::trigger::ValueCondition::level>, "gr::blocks::trigger::LevelTrigger<float, gr::blocks::trigger::ValueCondition::level>">(registry);
-    std::ignore = gr::registerBlock<gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>, "gr::blocks::trigger::SchmittTrigger<float, gr::trigger::InterpolationMethod::LINEAR_INTERPOLATION>">(registry);
-    std::ignore = gr::registerBlock<gr::blocks::trigger::Coincidence>(registry);
-    std::ignore = gr::registerBlock<gr::blocks::trigger::EventToTag<float>>(registry);
-#endif
     gr::blocklib::initGrAudioBlocks(gr::globalBlockRegistry());
 }
 
