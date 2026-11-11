@@ -175,12 +175,12 @@ blocks:
 connections:
   - [ClockSource, 0, DipoleCurrentGenerator, 0]
   - [DipoleCurrentGenerator, 0, DipoleCurrentSink, 0]
-  - [DipoleCurrentGenerator, 0, toDipoleDataSet, 0]
-  - [toDipoleDataSet, 0, DipoleCurrentDataSetSink, 0]
+  - [DipoleCurrentGenerator, 0, toDipoleDataSet, 1]
+  - [toDipoleDataSet, 1, DipoleCurrentDataSetSink, 0]
   - [ClockSource, 0, IntensityGenerator, 0]
   - [IntensityGenerator, 0, IntensitySink, 0]
-  - [IntensityGenerator, 0, toIntensityDataSet, 0]
-  - [toIntensityDataSet, 0, IntensityDataSetSink, 0]
+  - [IntensityGenerator, 0, toIntensityDataSet, 1]
+  - [toIntensityDataSet, 1, IntensityDataSetSink, 0]
 dashboard:
   layout: Free
   sources:

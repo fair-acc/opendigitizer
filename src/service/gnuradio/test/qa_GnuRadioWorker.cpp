@@ -973,8 +973,8 @@ blocks:
       name: test_sink
       signal_name: Signal_A
 connections:
-  - [count, 0, stream_to_dataset, 0]
-  - [stream_to_dataset, 0, test_sink, 0]
+  - [count, 0, stream_to_dataset, 1]
+  - [stream_to_dataset, 1, test_sink, 0]
 )";
         std::vector<float>         receivedData;
         std::atomic<std::size_t>   receivedCount        = 0;
