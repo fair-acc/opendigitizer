@@ -4,6 +4,7 @@
 #include "SignalSink.hpp"
 #include "SinkRegistry.hpp"
 
+#include "../blocks/ToolbarBlock.hpp"
 #include "../common/ImguiWrap.hpp"
 #include "../common/LookAndFeel.hpp"
 #include "../components/AutoHide.hpp"
@@ -45,6 +46,25 @@
 namespace opendigitizer::charts {
 
 enum class XAxisMode : std::uint8_t { UtcTime, RelativeTime, SampleIndex };
+
+enum class RangeStyle : std::uint8_t { hidden, lines, shaded, both };
+enum class MarkerStyle : std::uint8_t { hidden, solid, dashed };
+
+using RangeStyleSetting      = gr::Annotated<RangeStyle, "range style", gr::Visible, gr::Doc<"frequency range: hidden, lines, shaded or both">>;
+using RangeMinSetting        = gr::Annotated<double, "range min", gr::Unit<"Hz">, gr::Doc<"input: the range's lower edge; NaN: the visible span, inset">>;
+using RangeMaxSetting        = gr::Annotated<double, "range max", gr::Unit<"Hz">, gr::Doc<"input: the range's upper edge; NaN: the visible span, inset">>;
+using RangeMinWidthSetting   = gr::Annotated<double, "range min width", gr::Unit<"Hz">, gr::Doc<"the dragged edges stay at least this far apart">>;
+using RangeColorSetting      = gr::Annotated<std::uint32_t, "range color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour of the range (0xRRGGBB); 0: LookAndFeel's orange">>;
+using RangeMinTargetsSetting = gr::Annotated<std::string, "range min targets", gr::Doc<"'BlockA,BlockB:setting' the dragged lower edge is sent to, on release">>;
+using RangeMaxTargetsSetting = gr::Annotated<std::string, "range max targets", gr::Doc<"'BlockA,BlockB:setting' the dragged upper edge is sent to, on release">>;
+using F0StyleSetting         = gr::Annotated<MarkerStyle, "f0 style", gr::Visible, gr::Doc<"f0 marker: hidden, solid or dashed">>;
+using F0Setting              = gr::Annotated<double, "f0", gr::Unit<"Hz">, gr::Doc<"input: the f0 marker; NaN: the range's centre">>;
+using F0ColorSetting         = gr::Annotated<std::uint32_t, "f0 color", gr::Visible, gr::Unit<"Color">, gr::Doc<"RGB colour of f0 (0xRRGGBB); 0: LookAndFeel's orange">>;
+using F0TargetsSetting       = gr::Annotated<std::string, "f0 targets", gr::Doc<"'BlockA,BlockB:setting' the dragged f0 is sent to, on release">>;
+using FollowInputsSetting    = gr::Annotated<bool, "follow inputs", gr::Visible, gr::Doc<"true: range and f0 follow their inputs; a drag clears it">>;
+using SnapToBinsSetting      = gr::Annotated<bool, "snap to bins", gr::Doc<"released handles move to the nearest frequency bin of the first sink">>;
+using RangeLabelsSetting     = gr::Annotated<bool, "range labels", gr::Doc<"f₋ and f₊ with their frequencies on the axis">>;
+using F0LabelsSetting        = gr::Annotated<bool, "f0 labels", gr::Doc<"f₀ with its frequency on the axis">>;
 
 enum class AxisScale {
     Linear = 0,    // standard linear scale [min, max]
@@ -1102,8 +1122,7 @@ class ScopedChartStyle {
     bool _pushedFont = false;
 
 public:
-    /// `legendVisibility` 0..1 scales the legend's background, border and text alpha (an auto-hiding legend's fade)
-    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style, float legendVisibility = 1.f) {
+    explicit ScopedChartStyle(const DigitizerUi::ChartStyle& style, float legendAlphaScale = 1.f) {
         if (style.labelFont != nullptr || style.labelFontSize) { // ImPlot measures and draws its text with the current font
             ImGui::PushFont(style.labelFont, style.labelFontSize.value_or(0.f));
             _pushedFont = true;
@@ -1129,9 +1148,9 @@ public:
         if (style.legendAlpha) {
             pushAlpha(ImPlotCol_LegendBg, *style.legendAlpha);
         }
-        if (legendVisibility < 1.f) {
+        if (legendAlphaScale < 1.f) {
             for (const ImPlotCol colourId : {ImPlotCol_LegendBg, ImPlotCol_LegendBorder, ImPlotCol_LegendText}) {
-                pushAlpha(colourId, ImPlot::GetStyleColorVec4(colourId).w * legendVisibility);
+                pushAlpha(colourId, ImPlot::GetStyleColorVec4(colourId).w * legendAlphaScale);
             }
         }
         if (style.lineWidth) {
@@ -1308,9 +1327,236 @@ struct Chart {
     }
 
     std::vector<std::shared_ptr<SignalSink>> _signalSinks;
-    DigitizerUi::components::AutoHide        _legendAutoHide; // LookAndFeel::autoHideLegends
+    DigitizerUi::components::AutoHide        _legendAutoHide;
+
+    struct FrequencyMarkers { // the spectrum charts' range and f0 handles, shared by a chart's frequency panes
+        static constexpr std::size_t         kPanes = 2UZ;
+        std::optional<std::array<double, 2>> draggedRange; // override the inputs while follow_inputs is false
+        std::optional<double>                draggedF0;
+        std::array<bool, kPanes>             rangeHeld{};
+        std::array<bool, kPanes>             f0Held{};
+        std::optional<std::array<ImVec2, 3>> drawnHandles; // pane 0's last draw, screen points on low, high and f0, for tests
+        std::vector<std::string>             drawnLabels;  // pane 0's last draw
+    };
+    FrequencyMarkers _markers;
 
     [[nodiscard]] float legendVisibility() const noexcept { return 1.f - _legendAutoHide.hidden; }
+
+    template<typename Self>
+    [[nodiscard]] std::array<double, 2> shownRange(this const Self& self) noexcept {
+        return self._markers.draggedRange.value_or(std::array{self.range_min.value, self.range_max.value});
+    }
+    template<typename Self>
+    [[nodiscard]] double shownF0(this const Self& self) noexcept {
+        return self._markers.draggedF0.value_or(self.f0.value);
+    }
+    [[nodiscard]] std::optional<std::array<ImVec2, 3>> drawnHandles() const noexcept { return _markers.drawnHandles; }
+    [[nodiscard]] std::span<const std::string>         drawnMarkerLabels() const noexcept { return _markers.drawnLabels; }
+
+    /// calls `fn` with the first sink's newest DataSet frequency axis, under its data guard; false without one
+    template<typename TFn>
+    bool withNewestBins(TFn&& fn) const {
+        for (const auto& sink : _signalSinks) {
+            if (!sink || !sink->hasDataSets()) {
+                continue;
+            }
+            const auto guard    = sink->dataGuard();
+            const auto dataSets = sink->dataSets();
+            if (dataSets.empty() || dataSets.back().axis_values.empty() || dataSets.back().axis_values[0].empty()) {
+                continue;
+            }
+            fn(std::span<const float>(dataSets.back().axis_values[0]));
+            return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] double nearestBin(double frequency, double atLeast = -std::numeric_limits<double>::infinity()) const {
+        double nearest = frequency;
+        withNewestBins([&](std::span<const float> bins) {
+            auto       candidates = bins | std::views::filter([atLeast](float bin) { return static_cast<double>(bin) >= atLeast; });
+            const auto closest    = std::ranges::min_element(candidates, {}, [frequency](float bin) { return std::abs(static_cast<double>(bin) - frequency); });
+            if (closest != candidates.end()) {
+                nearest = static_cast<double>(*closest);
+            }
+        });
+        return nearest;
+    }
+
+    template<typename Self>
+    void placeUnsetMarkers(this Self& self, const ImPlotRange& visible) {
+        std::optional<std::array<double, 2>> spectrum;
+        self.withNewestBins([&](std::span<const float> bins) {
+            const auto [lowest, highest] = std::ranges::minmax(bins);
+            spectrum                     = std::array{static_cast<double>(lowest), static_cast<double>(highest)};
+        });
+        if (!spectrum) {
+            return;
+        }
+        const double low  = std::max(visible.Min, (*spectrum)[0]);
+        const double high = std::min(visible.Max, (*spectrum)[1]);
+        if (!(high > low)) { // the axis has not fitted the spectrum yet
+            return;
+        }
+        const double     inset      = DigitizerUi::LookAndFeel::instance().chartStyle.markerInitialInset * (high - low);
+        const bool       rangeShown = self.range_style.value != RangeStyle::hidden;
+        gr::property_map placed;
+        const auto       place = [&](auto& setting, double value, std::string_view key, std::string_view targets) {
+            setting.value                 = value;
+            placed[std::pmr::string(key)] = value;
+            DigitizerUi::toolbar::sendToTargets(self.msgOut, targets, value);
+        };
+        if (rangeShown && std::isnan(self.range_min.value)) {
+            place(self.range_min, low + inset, "range_min", self.range_min_targets.value);
+        }
+        if (rangeShown && std::isnan(self.range_max.value)) {
+            place(self.range_max, high - inset, "range_max", self.range_max_targets.value);
+        }
+        if (self.f0_style.value != MarkerStyle::hidden && std::isnan(self.f0.value)) {
+            const double centre = 0.5 * (self.range_min.value + self.range_max.value);
+            place(self.f0, std::isfinite(centre) ? centre : 0.5 * (low + high), "f0", self.f0_targets.value);
+        }
+        if (!placed.empty()) {
+            std::ignore = self.settings().set(placed);
+        }
+    }
+
+    template<typename Self>
+    void drawFrequencyMarkers(this Self& self, std::size_t pane, ImAxis frequencyAxis = ImAxis_X1) {
+        const auto&       look     = DigitizerUi::LookAndFeel::instance().chartStyle;
+        const bool        onY      = frequencyAxis != ImAxis_X1;
+        const ImPlotRect  limits   = ImPlot::GetPlotLimits();
+        const ImPlotRange other    = onY ? limits.X : limits.Y;
+        const auto        toPixels = [&](double f, double across) { return onY ? ImPlot::PlotToPixels(across, f) : ImPlot::PlotToPixels(f, across); };
+        const auto        point    = [&](double f) { return toPixels(f, 0.5 * (other.Min + other.Max)); };
+        const auto        colour   = [](std::uint32_t rgb, ImVec4 fallback) { return rgb == 0U ? fallback : sinkColor(rgb); };
+        const auto        drag     = [&](int id, double* f, ImVec4 col, float width, bool* held) { return onY ? ImPlot::DragLineY(id, f, col, width, ImPlotDragToolFlags_NoFit, nullptr, nullptr, held) : ImPlot::DragLineX(id, f, col, width, ImPlotDragToolFlags_NoFit, nullptr, nullptr, held); };
+        const auto        label    = [&](std::string_view name, double f, ImVec4 col) {
+            std::array<char, 32> text{};
+            axis::formatMetric(f, text.data(), static_cast<int>(text.size()), const_cast<char*>("Hz"));
+            std::string tag = std::format("{} {}", name, text.data());
+            if (onY) {
+                ImPlot::TagY(f, col, "%s", tag.c_str());
+            } else {
+                ImPlot::TagX(f, col, "%s", tag.c_str());
+            }
+            if (pane == 0UZ) {
+                self._markers.drawnLabels.push_back(std::move(tag));
+            }
+        };
+        auto& m = self._markers;
+        if (pane == 0UZ) {
+            m.drawnLabels.clear();
+        }
+        const bool rangeShown = self.range_style.value != RangeStyle::hidden;
+        const bool f0Shown    = self.f0_style.value != MarkerStyle::hidden;
+        const auto rangeUnset = [&] { return std::isnan(self.range_min.value) || std::isnan(self.range_max.value); };
+        const auto f0Unset    = [&] { return std::isnan(self.f0.value); };
+        if ((rangeShown && rangeUnset()) || (f0Shown && f0Unset())) {
+            self.placeUnsetMarkers(onY ? limits.Y : limits.X);
+        }
+        std::array<ImVec2, 3> handles{ImVec2{-1.f, -1.f}, ImVec2{-1.f, -1.f}, ImVec2{-1.f, -1.f}};
+        bool                  rangeHeld     = false;
+        bool                  f0Held        = false;
+        const auto            stopFollowing = [&] {
+            if (self.follow_inputs.value) {
+                self.follow_inputs.value = false;
+                std::ignore              = self.settings().set({{"follow_inputs", false}});
+            }
+        };
+
+        if (rangeShown && (m.draggedRange || !rangeUnset())) {
+            const ImVec4 col    = colour(self.range_color.value, look.frequencyMarkerColour);
+            const bool   lines  = self.range_style.value == RangeStyle::lines || self.range_style.value == RangeStyle::both;
+            const bool   shaded = self.range_style.value == RangeStyle::shaded || self.range_style.value == RangeStyle::both;
+            auto [low, high]    = self.shownRange();
+            if (shaded) {
+                const ImVec2 a = toPixels(low, other.Min);
+                const ImVec2 b = toPixels(high, other.Max);
+                ImPlot::PushPlotClipRect();
+                ImPlot::GetPlotDrawList()->AddRectFilled(ImMin(a, b), ImMax(a, b), ImGui::GetColorU32(ImVec4(col.x, col.y, col.z, look.rangeFillAlpha)));
+                ImPlot::PopPlotClipRect();
+            }
+            const ImVec4 edge      = lines ? col : ImVec4(col.x, col.y, col.z, look.rangeFillAlpha); // shaded only: faint, still draggable
+            bool         lowHeld   = false;
+            bool         highHeld  = false;
+            const bool   lowMoved  = drag(0, &low, edge, look.rangeLineWidth, &lowHeld);
+            const bool   highMoved = drag(1, &high, edge, look.rangeLineWidth, &highHeld);
+            if (lowMoved || highMoved) {
+                const double minWidth = std::max(0.0, self.range_min_width.value);
+                if (high - low < minWidth) {
+                    if (lowMoved) {
+                        low = high - minWidth;
+                    } else {
+                        high = low + minWidth;
+                    }
+                }
+                m.draggedRange = std::array{std::min(low, high), std::max(low, high)};
+                stopFollowing();
+            }
+            rangeHeld  = lowHeld || highHeld;
+            handles[0] = point(low);
+            handles[1] = point(high);
+            if (self.show_range_labels.value) {
+                label("f\u208B", low, col);
+                label("f\u208A", high, col);
+            }
+        }
+
+        if (f0Shown && (m.draggedF0 || !f0Unset())) {
+            const ImVec4 col    = colour(self.f0_color.value, look.frequencyMarkerColour);
+            const bool   dashed = self.f0_style.value == MarkerStyle::dashed;
+            double       f      = self.shownF0();
+            bool         held   = false;
+            const bool   moved  = drag(2, &f, dashed ? ImVec4(col.x, col.y, col.z, 0.f) : col, look.rangeLineWidth, &held); // dashed: drawn below
+            if (dashed) {
+                const ImVec2 from = ImMin(toPixels(f, other.Min), toPixels(f, other.Max));
+                const ImVec2 to   = ImMax(toPixels(f, other.Min), toPixels(f, other.Max));
+                const float  span = onY ? to.x - from.x : to.y - from.y;
+                const float  dash = std::max(look.f0DashLength, 1.f);
+                ImPlot::PushPlotClipRect();
+                const auto nDashes = static_cast<std::size_t>(std::ceil(std::max(0.f, span / (2.f * dash))));
+                for (std::size_t k = 0UZ; k < nDashes; ++k) {
+                    const float  at  = static_cast<float>(k) * 2.f * dash;
+                    const float  end = std::min(at + dash, span);
+                    const ImVec2 a   = onY ? ImVec2(from.x + at, from.y) : ImVec2(from.x, from.y + at);
+                    const ImVec2 b   = onY ? ImVec2(from.x + end, from.y) : ImVec2(from.x, from.y + end);
+                    ImPlot::GetPlotDrawList()->AddLine(a, b, ImGui::GetColorU32(col), look.rangeLineWidth);
+                }
+                ImPlot::PopPlotClipRect();
+            }
+            if (moved) {
+                m.draggedF0 = f;
+                stopFollowing();
+            }
+            f0Held     = held;
+            handles[2] = point(f);
+            if (self.show_f0_labels.value) {
+                label("f\u2080", f, col);
+            }
+        }
+
+        if (pane == 0UZ) {
+            m.drawnHandles = handles;
+        }
+        const std::size_t p = std::min(pane, FrequencyMarkers::kPanes - 1UZ);
+        if (m.rangeHeld[p] && !rangeHeld && m.draggedRange) {
+            if (self.snap_to_bins.value) {
+                (*m.draggedRange)[0] = self.nearestBin((*m.draggedRange)[0]);
+                (*m.draggedRange)[1] = self.nearestBin((*m.draggedRange)[1], (*m.draggedRange)[0] + std::max(0.0, self.range_min_width.value));
+            }
+            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.range_min_targets.value, (*m.draggedRange)[0]);
+            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.range_max_targets.value, (*m.draggedRange)[1]);
+        }
+        if (m.f0Held[p] && !f0Held && m.draggedF0) {
+            if (self.snap_to_bins.value) {
+                *m.draggedF0 = self.nearestBin(*m.draggedF0);
+            }
+            DigitizerUi::toolbar::sendToTargets(self.msgOut, self.f0_targets.value, *m.draggedF0);
+        }
+        m.rangeHeld[p] = rangeHeld;
+        m.f0Held[p]    = f0Held;
+    }
 
     [[nodiscard]] auto enabledSinks() const {
         return _signalSinks | std::views::filter([](const auto& s) { return s && s->drawEnabled(); });
@@ -2114,7 +2360,7 @@ struct Chart {
         float  layoutOffset = layoutMode ? DigitizerUi::LookAndFeel::instance().dashboardStyle.layoutModeChartInset : 0.f;
         ImVec2 plotSize     = ImGui::GetContentRegionAvail() - ImVec2(2 * layoutOffset, 2 * layoutOffset);
         float  legendShown  = 1.f;
-        if (effectiveShowLegend && DigitizerUi::LookAndFeel::instance().autoHideLegends) { // active: the mouse moving within the drawn area
+        if (effectiveShowLegend && DigitizerUi::LookAndFeel::instance().autoHideLegends) {
             const ImGuiIO& io     = ImGui::GetIO();
             const ImVec2   corner = ImGui::GetCursorScreenPos();
             const bool     moving = ImRect(corner, corner + plotSize).Contains(io.MousePos) && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f);
@@ -2145,6 +2391,12 @@ struct Chart {
     void handleSettingsChanged(this Self& self, const gr::property_map& newSettings) {
         if (newSettings.contains("data_sinks")) {
             self.onDataSinksChanged(self.data_sinks.value);
+        }
+        if constexpr (requires { self.follow_inputs; }) {
+            if (self.follow_inputs.value) {
+                self._markers.draggedRange.reset();
+                self._markers.draggedF0.reset();
+            }
         }
         if constexpr (requires { self.n_history; }) {
             if (newSettings.contains("n_history")) {

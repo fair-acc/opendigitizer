@@ -1,0 +1,171 @@
+blocks:
+  - id: gr::basic::ClockSource
+    parameters:
+      name: SpectrumClock
+      sample_rate: 25
+      chunk_size: 1
+      n_samples_max: 0
+  - id: opendigitizer::TestSpectrumGenerator<float32>
+    parameters:
+      name: SpectrumGenerator
+      spectrum_size: 4096
+      center_freq: 100e6
+      signal_bandwidth: 1e6
+      clock_rate: 25
+      seed: 42
+      show_schottky: true
+      show_interference_lines: true
+      show_sweep_line: true
+      log_interval: 0
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: spectrumSink
+      dataset_index: 0
+      signal_name: spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: rangeMin
+      label: f₋
+      unit: Hz
+      value: 99.8e6
+      min: 99.5e6
+      max: 100.5e6
+      step: 1e3
+      style: slider
+      target_map: "spectrum,spectrumPlot:range_min"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: rangeMax
+      label: f₊
+      unit: Hz
+      value: 100.2e6
+      min: 99.5e6
+      max: 100.5e6
+      step: 1e3
+      style: slider
+      target_map: "spectrum,spectrumPlot:range_max"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: f0Control
+      label: f₀
+      unit: Hz
+      value: 100.0e6
+      min: 99.5e6
+      max: 100.5e6
+      step: 1e3
+      style: slider
+      target_map: "spectrum,spectrumPlot:f0"
+  - id: opendigitizer::ValueSource<float64>
+    parameters:
+      name: fminSource
+  - id: opendigitizer::ValueSource<float64>
+    parameters:
+      name: fmaxSource
+  - id: opendigitizer::ValueSource<float64>
+    parameters:
+      name: f0Source
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: fminSink
+      signal_name: f₋
+      signal_unit: Hz
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: fmaxSink
+      signal_name: f₊
+      signal_unit: Hz
+  - id: opendigitizer::ImPlotSink<float64>
+    parameters:
+      name: f0Sink
+      signal_name: f₀
+      signal_unit: Hz
+  - id: opendigitizer::ImControlValue<float64>
+    parameters:
+      name: fminDisplay
+      label: f₋
+      unit: Hz
+      width: 12
+      precision: 1
+  - id: opendigitizer::ImControlValue<float64>
+    parameters:
+      name: fmaxDisplay
+      label: f₊
+      unit: Hz
+      width: 12
+      precision: 1
+  - id: opendigitizer::ImControlValue<float64>
+    parameters:
+      name: f0Display
+      label: f₀
+      unit: Hz
+      width: 12
+      precision: 1
+connections:
+  - [SpectrumClock, 0, SpectrumGenerator, 0]
+  - [SpectrumGenerator, 0, spectrumSink, 0]
+  - [fminSource, 0, fminSink, 0]
+  - [fminSource, 0, fminDisplay, 0]
+  - [fmaxSource, 0, fmaxSink, 0]
+  - [fmaxSource, 0, fmaxDisplay, 0]
+  - [f0Source, 0, f0Sink, 0]
+  - [f0Source, 0, f0Display, 0]
+dashboard:
+  layout: Free
+  sources:
+    - name: spectrumSink
+      block: spectrumSink
+    - name: fminSink
+      block: fminSink
+    - name: fmaxSink
+      block: fmaxSink
+    - name: f0Sink
+      block: f0Sink
+  plots:
+    - name: Spectrum
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        name: spectrum
+        range_style: both
+        range_min: 99.8e6
+        range_max: 100.2e6
+        range_min_width: 10e3
+        range_min_targets: "fminSource:value"
+        range_max_targets: "fmaxSource:value"
+        f0_style: dashed
+        f0: 100.0e6
+        f0_targets: "f0Source:value"
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          format: MetricInline
+      sources:
+        - spectrumSink
+      rect: [0, 0, 1, 1]
+    - name: Spectrum (lines)
+      type: opendigitizer::charts::SpectrumPlot
+      parameters:
+        name: spectrumPlot
+        range_style: lines # range_min, range_max, f0 unset: the visible spectrum 5 % inset, f0 its centre
+        f0_style: solid
+      sources:
+        - spectrumSink
+      rect: [1, 0, 1, 1]
+    - name: Range over time
+      type: XYChart
+      parameters:
+        show_legend: true
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          scale: Time
+      sources:
+        - fminSink
+        - fmaxSink
+        - f0Sink
+      rect: [0, 1, 2, 1]

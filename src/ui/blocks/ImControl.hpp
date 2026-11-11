@@ -179,18 +179,7 @@ public:
     }
 
     /// Send a settings update message to every block identified by the target_map
-    void sendToTargets(const auto& payload) {
-        const auto targets = TargetMap::fromString(target_map);
-        if (!targets) {
-            return; // this is reported during settingsChanged()
-        }
-        for (const TargetEntry& target : targets->entries()) {
-            if (target.isGlob()) {
-                continue; // TODO: GR4 support
-            }
-            toolbar::sendSettings(this->msgOut, target.blockTarget, gr::property_map{{std::pmr::string(target.propertyName), payload}});
-        }
-    }
+    void sendToTargets(const auto& payload) { toolbar::sendToTargets(this->msgOut, target_map, payload); } // an ill-formed map is reported during settingsChanged()
 
     /// Sends each "BlockA,BlockB:property" key's value, every block's settings in one message
     void sendByTarget(const gr::property_map& valuesByTarget) {

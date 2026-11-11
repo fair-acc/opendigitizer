@@ -180,7 +180,12 @@ struct ChartStyle {
     float  minHoldTraceAlpha      = .5f;
     float  averageTraceAlpha      = .7f;
     ImVec2 spectrumFitPadding     = {0.f, .05f};
-    float  menuSpinnerSpacing     = 2.f; // between the spinner buttons and their drag field
+    ImVec4 frequencyMarkerColour  = {.95f, .55f, .1f, 1.f}; // spectrum charts' frequency range and f0: orange, legible on light and dark
+    float  rangeFillAlpha         = .2f;                    // the range's shaded area: 80 % translucent
+    float  rangeLineWidth         = 2.f;                    // px, the range's edges and the f0 line
+    float  f0DashLength           = 6.f;                    // px, dash and gap of a dashed f0
+    double markerInitialInset     = .05;                    // an unset range starts this fraction of the visible span inside its edges
+    float  menuSpinnerSpacing     = 2.f;                    // between the spinner buttons and their drag field
     float  menuAxisLimitDragWidth = 70.f;
     float  menuAxisComboWidth     = 80.f;
     float  menuSettingWidgetWidth = 120.f;

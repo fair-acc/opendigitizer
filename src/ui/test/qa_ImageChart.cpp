@@ -12,6 +12,7 @@
 #include <gnuradio-4.0/basic/SignalGenerator.hpp>
 #if defined(OD_ACOUSTIC_CAMERA)
 #include <gnuradio-4.0/GrAudioBlocks.hpp>
+#include <gnuradio-4.0/GrFilterBlocks.hpp>
 #include <gnuradio-4.0/GrLocalisationBlocks.hpp>
 #endif
 #include <gnuradio-4.0/Scheduler.hpp>
@@ -22,6 +23,7 @@
 
 #include "TestingBlockInspectionUtils.hpp"
 #include "blocks/ImControlCamera.hpp"
+#include "blocks/TestSpectrumGenerator.hpp"
 #include "charts/ImageChart.hpp"
 #include "charts/TensorRowsChart.hpp"
 
@@ -262,6 +264,11 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
             };
 
+            "the spectrum range demo's blocks, settings and connections resolve"_test = [&keysResolve] {
+                const auto file = cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/SpectrumRangeDemo.grc");
+                keysResolve(std::string_view(file.begin(), file.end()), 0UZ);
+            };
+
 #if defined(OD_ACOUSTIC_CAMERA)
             "the acoustic-camera dashboards' blocks, settings and connections resolve (native and browser)"_test = [&keysResolve] {
                 const auto native = cmrc::sample_dashboards::get_filesystem().open("assets/sampleDashboards/XtraAcousticCamera.grc");
@@ -309,8 +316,10 @@ int main(int argc, char* argv[]) {
     gr::blocklib::initGrBasicBlocks(registry);
     gr::blocklib::initGrFourierBlocks(registry);
     gr::blocklib::initGrTestingBlocks(registry);
-#if defined(OD_ACOUSTIC_CAMERA)
+    std::ignore = gr::registerBlock<opendigitizer::TestSpectrumGenerator, float>(registry); // the spectrum range demo's, as in the application
+#if defined(OD_ACOUSTIC_CAMERA)                                                             // the localisation dashboards' blocks, as in the application
     gr::blocklib::initGrAudioBlocks(registry);
+    gr::blocklib::initGrFilterBlocks(registry);
     gr::blocklib::initGrLocalisationBlocks(registry);
     std::ignore = gr::registerBlock<opendigitizer::video::BrowserMicrophonePairs>(registry); // the browser variant's, built not started
 #endif
