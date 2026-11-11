@@ -37,13 +37,15 @@ TDOA: one event per receiver at emission + |p - r| / c; bistatic: the transmitte
     TransmitterNames                                                                                                                                                               transmitter_names     = {};
     gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed     = kSpeedOfSoundInAir;
     SourcePosition                                                                                                                                                                 source_position       = std::vector{0.3, 0.2, 0.0};
-    OrbitRadius                                                                                                                                                                    orbit_radius          = 0.0;
-    OrbitPeriod                                                                                                                                                                    orbit_period          = 10.0;
+    SourceMotionSetting                                                                                                                                                            source_motion         = SourceMotion::fixed;
+    MotionExtent                                                                                                                                                                   motion_extent         = std::vector{0.0, 0.0};
+    MotionPeriod                                                                                                                                                                   motion_period         = 10.0;
+    Waypoints                                                                                                                                                                      waypoints             = {};
     A<double, "period", gr::Unit<"s">, gr::Limits<1e-6, 1e6>, gr::Doc<"between emissions">>                                                                                        period                = 0.5;
     A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">, gr::Limits<0.f, std::numeric_limits<float>::max(), [](float rate) { return 0.f < rate; }>> sample_rate           = 1000.f;
     A<gr::Size_t, "n_events", gr::Doc<"emissions before the block stops; 0: unlimited">>                                                                                           n_events              = 0U;
 
-    GR_MAKE_REFLECTABLE(PointSourceArrivals, clk, evtOut, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, propagation_speed, source_position, orbit_radius, orbit_period, period, sample_rate, n_events);
+    GR_MAKE_REFLECTABLE(PointSourceArrivals, clk, evtOut, mode, element_positions, receiver_names, transmitter_positions, transmitter_names, propagation_speed, source_position, source_motion, motion_extent, motion_period, waypoints, period, sample_rate, n_events);
 
     std::uint64_t                _samples = 0U;
     std::uint64_t                _emitted = 0U;
@@ -55,7 +57,7 @@ TDOA: one event per receiver at emission + |p - r| / c; bistatic: the transmitte
         _pending.clear();
     }
 
-    [[nodiscard]] Point3 sourceAt(double t) const { return orbitPoint(source_position.value, orbit_radius.value, orbit_period.value, t); }
+    [[nodiscard]] Point3 sourceAt(double t) const { return sourcePoint(source_motion.value, source_position.value, motion_extent.value, motion_period.value, waypoints.value, t); }
 
     void schedule(double emission) {
         const Point3 p = sourceAt(emission);

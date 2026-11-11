@@ -36,8 +36,10 @@ Outputs without a microphone are silent, so `element_positions` may change while
     A<gr::Size_t, "n_outputs", gr::Doc<"fixed number of outputs, 0: one per microphone">, gr::Limits<gr::Size_t(0), gr::Size_t(gr::algorithm::kMaxElements)>>                      n_outputs         = 0U;
     gr::algorithm::PropagationSpeed                                                                                                                                                propagation_speed = kSpeedOfSoundInAir;
     SourcePosition                                                                                                                                                                 source_position   = std::vector{0.3, 0.2, 0.0};
-    OrbitRadius                                                                                                                                                                    orbit_radius      = 0.0;
-    OrbitPeriod                                                                                                                                                                    orbit_period      = 10.0;
+    SourceMotionSetting                                                                                                                                                            source_motion     = SourceMotion::fixed;
+    MotionExtent                                                                                                                                                                   motion_extent     = std::vector{0.0, 0.0};
+    MotionPeriod                                                                                                                                                                   motion_period     = 10.0;
+    Waypoints                                                                                                                                                                      waypoints         = {};
     A<double, "period", gr::Unit<"s">, gr::Limits<1e-3, 1e6>, gr::Doc<"between clicks">>                                                                                           period            = 0.5;
     A<double, "pulse_width", gr::Unit<"s">, gr::Limits<1e-6, 1.0>, gr::Doc<"of the raised-cosine click">>                                                                          pulse_width       = 0.5e-3;
     A<double, "tone_frequency", gr::Unit<"Hz">, gr::Doc<"0: a click; else a tone under the pulse, e.g. a struck tuning fork">>                                                     tone_frequency    = 0.0;
@@ -46,7 +48,7 @@ Outputs without a microphone are silent, so `element_positions` may change while
     A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of clk; forwarded from upstream">, gr::Limits<0.f, std::numeric_limits<float>::max(), [](float rate) { return 0.f < rate; }>> sample_rate       = 48000.f;
     A<float, "tag_interval", gr::Unit<"s">, gr::Limits<1e-3f, 1e6f>, gr::Doc<"between each output's sample_rate and gr:trigger_time tags, dating a reader that joins later">>      tag_interval      = 1.0f;
 
-    GR_MAKE_REFLECTABLE(PointSourceAudio, clk, out, element_positions, n_outputs, propagation_speed, source_position, orbit_radius, orbit_period, period, pulse_width, tone_frequency, amplitude, noise, sample_rate, tag_interval);
+    GR_MAKE_REFLECTABLE(PointSourceAudio, clk, out, element_positions, n_outputs, propagation_speed, source_position, source_motion, motion_extent, motion_period, waypoints, period, pulse_width, tone_frequency, amplitude, noise, sample_rate, tag_interval);
 
     std::uint64_t         _samples  = 0U;
     std::uint64_t         _anchorNs = 1'000'000'000U; // the clock's first gr:trigger_time, dating sample 0
@@ -63,7 +65,7 @@ Outputs without a microphone are silent, so `element_positions` may change while
         _rng      = gr::rng::Xoshiro256pp{};
     }
 
-    [[nodiscard]] Point3 sourceAt(double t) const { return orbitPoint(source_position.value, orbit_radius.value, orbit_period.value, t); }
+    [[nodiscard]] Point3 sourceAt(double t) const { return sourcePoint(source_motion.value, source_position.value, motion_extent.value, motion_period.value, waypoints.value, t); }
 
     [[nodiscard]] double clickAt(double t, const Point3& receiver) const {
         if (!(propagation_speed.value > 0.0)) {

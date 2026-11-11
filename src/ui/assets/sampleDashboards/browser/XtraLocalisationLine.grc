@@ -9,9 +9,11 @@ blocks:
     parameters:
       name: simulatedMicrophones
       element_positions: !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
+      source_motion: circle
       source_position: [1.0, 4.0, 0.0]
-      orbit_radius: 2.5
-      orbit_period: 25
+      motion_extent: [2.5, 1.25]
+      motion_period: 25
+      waypoints: [-4.76, 6.39, 0.0, -4.49, 6.1, 0.0, -0.45, 5.02, 0.0, 1.6, 2.37, 0.0, -4.32, 2.08, 0.0]
       period: 0.5
       sample_rate: 48000
       noise: 0.02
@@ -424,7 +426,9 @@ blocks:
           "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
           "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-8.0, 8.0, 0.0, 8.0]
           "simulatedMicrophones:source_position": [1.0, 4.0, 0.0]
-          "simulatedMicrophones:orbit_radius": 2.5
+          "simulatedMicrophones:motion_extent": [2.5, 1.25]
+          "simulatedMicrophones:motion_period": 25
+          "simulatedMicrophones:waypoints": [-4.76, 6.39, 0.0, -4.49, 6.1, 0.0, -0.45, 5.02, 0.0, 1.6, 2.37, 0.0, -4.32, 2.08, 0.0]
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 1268
           "window:n_pre": !!uint32 1508
           "window:n_post": !!uint32 1508
@@ -441,7 +445,9 @@ blocks:
           "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-4.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [1.5, 0.0, 0.0], [4.5, 0.0, 0.0]]
           "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-8.0, 8.0, 0.0, 8.0]
           "simulatedMicrophones:source_position": [1.0, 4.0, 0.0]
-          "simulatedMicrophones:orbit_radius": 2.5
+          "simulatedMicrophones:motion_extent": [2.5, 1.25]
+          "simulatedMicrophones:motion_period": 25
+          "simulatedMicrophones:waypoints": [-4.76, 6.39, 0.0, -4.49, 6.1, 0.0, -0.45, 5.02, 0.0, 1.6, 2.37, 0.0, -4.32, 2.08, 0.0]
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 1268
           "window:n_pre": !!uint32 1508
           "window:n_post": !!uint32 1508
@@ -458,11 +464,34 @@ blocks:
           "simulatedMicrophones,locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:element_positions": !!float64 [[-0.15, 0.0, 0.0], [-0.05, 0.0, 0.0], [0.05, 0.0, 0.0], [0.15, 0.0, 0.0]]
           "locator,correlator,continuousLocator,envelopeLocator,phaseLocator,chart:roi": [-1.0, 1.0, 0.0, 1.5]
           "simulatedMicrophones:source_position": [0.2, 0.5, 0.0]
-          "simulatedMicrophones:orbit_radius": 0.2
+          "simulatedMicrophones:motion_extent": [0.2, 0.1]
+          "simulatedMicrophones:motion_period": 20
+          "simulatedMicrophones:waypoints": [-0.56, 0.83, 0.0, 0.29, 0.64, 0.0, 0.1, 0.46, 0.0, -0.44, 0.5, 0.0, -0.2, 0.87, 0.0]
           "correlation,delays,continuousCorrelation,continuousDelays:max_lag": !!uint32 50
           "window:n_pre": !!uint32 290
           "window:n_post": !!uint32 290
           "phaseFrames:filter": ""
+  - id: DigitizerUi::ImControlChoice
+    parameters:
+      name: motion
+      label: source motion
+      value: "circle"
+      choices: ["circle", "fixed", "waypoints", "ellipse", "sweep", "approach", "ladder"]
+      choice_values:
+        "circle":
+          "simulatedMicrophones:source_motion": circle
+        "fixed":
+          "simulatedMicrophones:source_motion": fixed
+        "waypoints":
+          "simulatedMicrophones:source_motion": waypoints
+        "ellipse":
+          "simulatedMicrophones:source_motion": ellipse
+        "sweep":
+          "simulatedMicrophones:source_motion": sweep
+        "approach":
+          "simulatedMicrophones:source_motion": approach
+        "ladder":
+          "simulatedMicrophones:source_motion": ladder
   - id: gr::blocks::trigger::LevelTrigger<float32, gr::blocks::trigger::ValueCondition::level>
     parameters:
       name: onset0
