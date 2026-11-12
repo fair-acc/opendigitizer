@@ -4,6 +4,8 @@
 #include "../common/LookAndFeel.hpp"
 
 #include <imgui_internal.h>
+#include <imgui_toggle.h>
+#include <imgui_toggle_palette.h>
 
 #include <cstdint>
 #include <print>
@@ -21,8 +23,6 @@ namespace {
 
 using SpectrumColor = std::uint32_t SpectrumSchemeKeywordColors::*;
 
-constexpr float kSpectrumCheckboxRounding       = 2.f;
-constexpr float kSpectrumCheckboxBorderSize     = 2.f;
 constexpr float kSpectrumTreeNodeHighlightAlpha = 0.15f;
 
 ImVec4 spectrumTone(SpectrumColor tone, float alpha = 1.f) {
@@ -30,8 +30,6 @@ ImVec4 spectrumTone(SpectrumColor tone, float alpha = 1.f) {
     color.w      = alpha;
     return color;
 }
-
-ImU32 spectrumToneU32(SpectrumColor tone, float alpha = 1.f) { return ImGui::GetColorU32(spectrumTone(tone, alpha)); } // includes the BeginDisabled() alpha
 
 ImVec2 buttonFramePadding() { return ImGui::GetStyle().FramePadding * LookAndFeel::instance().buttonFramePaddingMultiplier; }
 
@@ -44,78 +42,7 @@ auto colorDependingOnInteraction(bool hovered, bool held, T idle, T hover, T pre
     }
 }
 
-ImVec4 spectrumCheckboxColor(bool hovered, bool held) {
-    return colorDependingOnInteraction(hovered, held, ImGui::GetStyleColorVec4(ImGuiCol_Button), ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-    // return colorDependingOnInteraction(hovered, held, &SpectrumSchemeKeywordColors::blue500, &SpectrumSchemeKeywordColors::blue600, &SpectrumSchemeKeywordColors::blue700);
-}
-
-bool spectrumCheckbox(const char* label, bool* v) {
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (window->SkipItems) {
-        return false;
-    }
-
-    ImGuiContext&     g         = *GImGui;
-    const ImGuiStyle& style     = g.Style;
-    const ImGuiID     id        = window->GetID(label);
-    const ImVec2      labelSize = ImGui::CalcTextSize(label, nullptr, true);
-
-    const float  squareSize = ImGui::GetFrameHeight();
-    const ImVec2 position   = window->DC.CursorPos;
-    const ImRect totalBoundingBox(position, position + ImVec2(squareSize + (labelSize.x > 0.f ? style.ItemInnerSpacing.x + labelSize.x : 0.f), labelSize.y + style.FramePadding.y * 2.f));
-    ImGui::ItemSize(totalBoundingBox, style.FramePadding.y);
-    const bool isVisible     = ImGui::ItemAdd(totalBoundingBox, id);
-    const bool isMultiSelect = (g.LastItemData.ItemFlags & ImGuiItemFlags_IsMultiSelect) != 0;
-    if (!isVisible && (!isMultiSelect || !g.BoxSelectState.UnclipMode || !g.BoxSelectState.UnclipRect.Overlaps(totalBoundingBox))) {
-        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable | (*v ? ImGuiItemStatusFlags_Checked : 0));
-        return false;
-    }
-
-    bool checked = *v;
-    if (isMultiSelect) {
-        ImGui::MultiSelectItemHeader(id, &checked, nullptr);
-    }
-    bool hovered = false;
-    bool held    = false;
-    bool pressed = ImGui::ButtonBehavior(totalBoundingBox, id, &hovered, &held);
-    if (isMultiSelect) {
-        ImGui::MultiSelectItemFooter(id, &checked, &pressed);
-    } else if (pressed) {
-        checked = !checked;
-    }
-    if (*v != checked) {
-        *v      = checked;
-        pressed = true;
-        ImGui::MarkItemEdited(id);
-    }
-
-    const ImRect checkBoundingBox(position, position + ImVec2(squareSize, squareSize));
-    const ImRect boxBoundingBox(checkBoundingBox.Min + ImVec2(style.FramePadding.y, style.FramePadding.y), checkBoundingBox.Max - ImVec2(style.FramePadding.y, style.FramePadding.y));
-    const bool   mixedValue = (g.LastItemData.ItemFlags & ImGuiItemFlags_MixedValue) != 0;
-    if (isVisible) {
-        ImGui::RenderNavCursor(totalBoundingBox, id);
-        const ImU32 fillColor = ImGui::GetColorU32((spectrumCheckboxColor(hovered, held)));
-        const ImU32 markColor = ImGui::GetColorU32(ButtonContentsColor());
-        if (mixedValue) {
-            window->DrawList->AddRectFilled(boxBoundingBox.Min, boxBoundingBox.Max, fillColor, kSpectrumCheckboxRounding);
-            const float pad = ImMax(1.f, IM_TRUNC(squareSize / 3.6f));
-            window->DrawList->AddRectFilled(boxBoundingBox.Min + ImVec2(pad, pad), boxBoundingBox.Max - ImVec2(pad, pad), markColor, style.FrameRounding);
-        } else if (*v) {
-            window->DrawList->AddRectFilled(boxBoundingBox.Min, boxBoundingBox.Max, fillColor, kSpectrumCheckboxRounding);
-            const float pad = ImMax(1.f, IM_TRUNC(squareSize / 4.f));
-            ImGui::RenderCheckMark(window->DrawList, checkBoundingBox.Min + ImVec2(pad, pad), markColor, squareSize - pad * 2.f);
-        } else {
-            const ImU32 borderColor = spectrumToneU32(colorDependingOnInteraction(hovered, held, &SpectrumSchemeKeywordColors::gray600, &SpectrumSchemeKeywordColors::gray700, &SpectrumSchemeKeywordColors::gray800));
-            window->DrawList->AddRect(boxBoundingBox.Min, boxBoundingBox.Max, borderColor, kSpectrumCheckboxRounding, ImDrawFlags_None, kSpectrumCheckboxBorderSize);
-        }
-    }
-    if (isVisible && labelSize.x > 0.f) {
-        ImGui::RenderText(ImVec2(checkBoundingBox.Max.x + style.ItemInnerSpacing.x, checkBoundingBox.Min.y + style.FramePadding.y), label);
-    }
-
-    IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable | (*v ? ImGuiItemStatusFlags_Checked : 0));
-    return pressed;
-}
+ImVec4 spectrumSelectedColor(bool hovered, bool held) { return colorDependingOnInteraction(hovered, held, ImGui::GetStyleColorVec4(ImGuiCol_Button), ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered), ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)); }
 
 bool spectrumRadioButton(const char* label, bool active) {
 #ifndef NDEBUG
@@ -226,7 +153,7 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
         drawList->AddRectFilled(ImVec2(frame.Min.x, knobCenter.y - halfThickness), ImVec2(knobCenter.x - floatSliderDragHandleWidth, knobCenter.y + halfThickness), filledColor, halfThickness);
     }
     if (knobCenter.x + floatSliderDragHandleWidth < frame.Max.x) {
-        drawList->AddRectFilled(ImVec2(knobCenter.x + floatSliderDragHandleWidth, knobCenter.y - halfThickness), ImVec2(frame.Max.x, knobCenter.y + halfThickness), ImGui::GetColorU32(lookAndFeel.palette().sliderTrackInactive), halfThickness);
+        drawList->AddRectFilled(ImVec2(knobCenter.x + floatSliderDragHandleWidth, knobCenter.y - halfThickness), ImVec2(frame.Max.x, knobCenter.y + halfThickness), ImGui::GetColorU32(lookAndFeel.palette().widgetTrackInactive), halfThickness);
     }
     ImGui::RenderNavCursor(frame, id);
 
@@ -330,13 +257,43 @@ SliderAction SliderScalar(const char* label, const SliderScalarParameters& param
     return action;
 }
 
-bool Checkbox(const char* label, bool* v) {
-    switch (LookAndFeel::instance().theme) {
-    case LookAndFeel::Theme::Classic: return ImGui::Checkbox(label, v);
-    case LookAndFeel::Theme::Advanced: return spectrumCheckbox(label, v);
-    }
-    std::unreachable();
+bool Checkbox(const char* label, bool* value) {
+    const LookAndFeel&       lookAndFeel            = LookAndFeel::instance();
+    const ImVec4             knobColor              = lookAndFeel.palette().toggleKnob;
+    const ImVec4             toggleSwitchOffBgColor = lookAndFeel.palette().widgetTrackInactive;
+    const ImGuiTogglePalette switchOffPalette       = {
+              .Knob        = knobColor,
+              .KnobHover   = knobColor,
+              .Frame       = toggleSwitchOffBgColor,
+              .FrameHover  = ImLerp(toggleSwitchOffBgColor, ImVec4(0.f, 0.f, 0.f, toggleSwitchOffBgColor.w), lookAndFeel.toggleHoveredDarkenPercentage),
+              .FrameBorder = {},
+              .FrameShadow = {},
+              .KnobBorder  = {},
+              .KnobShadow  = {},
+              .A11yGlyph   = {},
+    };
+    const ImGuiTogglePalette switchOnPalette = {
+        .Knob        = knobColor,
+        .KnobHover   = knobColor,
+        .Frame       = ImGui::GetStyleColorVec4(ImGuiCol_Button),
+        .FrameHover  = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered),
+        .FrameBorder = {},
+        .FrameShadow = {},
+        .KnobBorder  = {},
+        .KnobShadow  = {},
+        .A11yGlyph   = {},
+    };
+    return ImGui::Toggle(label, value,
+        ImGuiToggleConfig{
+            .Flags             = ImGuiToggleFlags_Animated,
+            .AnimationDuration = lookAndFeel.toggleAnimationSeconds,
+            .WidthRatio        = lookAndFeel.toggleWidthFrameHeightRatio,
+            .On                = {.KnobInset = lookAndFeel.toggleKnobInset, .Palette = &switchOnPalette},
+            .Off               = {.KnobInset = lookAndFeel.toggleKnobInset, .Palette = &switchOffPalette},
+        });
 }
+
+float toggleSwitchWidth() { return ImGui::GetFrameHeight() * LookAndFeel::instance().toggleWidthFrameHeightRatio; }
 
 bool RadioButton(const char* label, bool active) {
     switch (LookAndFeel::instance().theme) {
@@ -397,7 +354,7 @@ ImVec2 CalcButtonSize(const char* label) {
 
 ImVec4 SelectableBackgroundColor(bool selected, bool hovered, bool held) {
     if (selected && LookAndFeel::instance().theme == LookAndFeel::Theme::Advanced) {
-        return spectrumCheckboxColor(hovered, held);
+        return spectrumSelectedColor(hovered, held);
     }
     return ImGui::GetStyleColorVec4((held && hovered) ? ImGuiCol_HeaderActive : hovered ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
 }

@@ -337,7 +337,7 @@ add_library(
 target_link_libraries(
   opendigitizer-ui-components
   PRIVATE opendigitizer-options
-  PUBLIC opendigitizer-look-and-feel imguidatepicker)
+  PUBLIC opendigitizer-look-and-feel imguidatepicker imgui_toggle)
 
 add_library(opendigitizer-charts INTERFACE)
 target_sources(

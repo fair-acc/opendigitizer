@@ -84,7 +84,8 @@ struct Palette {
 
     ImVec4 toolbarLineColor;
 
-    ImVec4 sliderTrackInactive;
+    ImVec4 widgetTrackInactive; // slider track right of the knob, toggle switch track when off
+    ImVec4 toggleKnob;
 
     ImVec4 flowgraphBg;
     ImVec4 flowgraphNodeBg;
@@ -383,6 +384,10 @@ struct LookAndFeel {
     float                     sliderImGuiStyleGrabFrameHeightRatio    = .75f;
     float                     sliderTextInputMinWidthEms              = 3.5f;
     float                     sliderNumberLabelMaxWidthEms            = 4.f;
+    float                     toggleWidthFrameHeightRatio             = 1.75f;
+    float                     toggleKnobInset                         = 2.f;
+    float                     toggleHoveredDarkenPercentage           = .15f;
+    float                     toggleAnimationSeconds                  = .12f;
     float                     searchHighlightRounding                 = 0.f;
     float                     selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
     float                     notificationRounding                    = .5f;

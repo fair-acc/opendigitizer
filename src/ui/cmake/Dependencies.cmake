@@ -32,6 +32,12 @@ FetchContent_Declare(
     ${CMAKE_CURRENT_LIST_DIR}/patches/imguidatepicker-make-datepicker-just-a-popup.patch EXCLUDE_FROM_ALL SYSTEM)
 
 FetchContent_Declare(
+  imgui_toggle
+  GIT_REPOSITORY https://github.com/cmdwtf/imgui_toggle.git
+  GIT_TAG 7c8898099a7ed84946dcaefd910e2ef983494fa1 # latest as of 2026-10-08
+  EXCLUDE_FROM_ALL SYSTEM)
+
+FetchContent_Declare(
   imgui-node-editor
   # Upstream https://github.com/thedmd/imgui-node-editor.git
   GIT_REPOSITORY https://github.com/fair-acc/imgui-node-editor.git
@@ -64,6 +70,7 @@ set(FETCH_CONTENT_UI_TARGETS
     implot
     implot3d
     imguidatepicker
+    imgui_toggle
     imgui-node-editor
     stb
     opencmw-cpp
@@ -236,6 +243,12 @@ target_link_libraries(implot PUBLIC imgui)
 add_library(imguidatepicker OBJECT ${imguidatepicker_SOURCE_DIR}/ImGuiDatePicker.cpp)
 target_include_directories(imguidatepicker SYSTEM BEFORE PUBLIC ${imguidatepicker_SOURCE_DIR})
 target_link_libraries(imguidatepicker PUBLIC imgui $<TARGET_OBJECTS:imgui>)
+
+add_library(
+  imgui_toggle OBJECT ${imgui_toggle_SOURCE_DIR}/imgui_toggle.cpp ${imgui_toggle_SOURCE_DIR}/imgui_toggle_palette.cpp
+                      ${imgui_toggle_SOURCE_DIR}/imgui_toggle_renderer.cpp)
+target_include_directories(imgui_toggle SYSTEM BEFORE PUBLIC ${imgui_toggle_SOURCE_DIR})
+target_link_libraries(imgui_toggle PUBLIC imgui $<TARGET_OBJECTS:imgui>)
 
 add_library(
   implot3d STATIC

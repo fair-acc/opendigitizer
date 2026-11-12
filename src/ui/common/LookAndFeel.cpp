@@ -62,7 +62,8 @@ Palette classicPalette(LookAndFeel::Style style) {
         .notificationWindowBg = dark ? rgba(0x202020) : rgba(0xFFFFFF),
         .toolbarLineColor     = dark ? quarterTransparentWhite : quarterTransparentBlack,
 
-        .sliderTrackInactive = dark ? rgba(0x5A5A5A) : rgba(0xBDBDBD),
+        .widgetTrackInactive = dark ? rgba(0x5A5A5A) : rgba(0xBDBDBD),
+        .toggleKnob          = white,
 
         .flowgraphBg                           = dark ? rgba(0x202020) : rgba(0xFFFFFF),
         .flowgraphNodeBg                       = dark ? rgba(0x333333) : rgba(0xEFEAFF),
@@ -217,7 +218,8 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .notificationWindowBg = rgba(c.gray50),
         .toolbarLineColor     = rgba(c.gray300),
 
-        .sliderTrackInactive = rgba(c.gray500),
+        .widgetTrackInactive = rgba(c.gray500),
+        .toggleKnob          = white,
 
         .flowgraphBg                           = dark ? rgba(c.gray50) : rgba(c.gray200),
         .flowgraphNodeBg                       = dark ? rgba(c.gray200) : rgba(c.gray50),

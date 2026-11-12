@@ -22,9 +22,10 @@
  */
 namespace DigitizerUi {
 
-bool Checkbox(const char* label, bool* v);
-bool RadioButton(const char* label, bool active);
-bool RadioButton(const char* label, int* v, int vButton);
+bool                Checkbox(const char* label, bool* value);
+[[nodiscard]] float toggleSwitchWidth(); // without the label
+bool                RadioButton(const char* label, bool active);
+bool                RadioButton(const char* label, int* v, int vButton);
 
 bool ArrowButton(const char* strId, ImGuiDir dir);
 
