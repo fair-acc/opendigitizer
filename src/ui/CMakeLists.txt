@@ -324,6 +324,7 @@ add_library(
   components/SearchAndFilterComponents.cpp
   components/SearchAndFilterComponents.hpp
   components/SelectedLabelsView.hpp
+  components/SliderAndSpinner.hpp
   components/SortFilterModel.hpp
   components/SortFilterTreeModel.hpp
   components/Splitter.cpp

@@ -40,7 +40,7 @@ struct SliderDoubleTarget : gr::Block<SliderDoubleTarget> {
     gr::PortIn<float>  in;
     gr::PortOut<float> out;
 
-    gr::Annotated<double, "double value in 0..10", gr::Visible, gr::Limits<0., 10.>> value = 1.;
+    gr::Annotated<double, "value", gr::Visible, gr::Limits<0., 10.>> value = 1.;
 
     GR_MAKE_REFLECTABLE(SliderDoubleTarget, in, out, value);
 

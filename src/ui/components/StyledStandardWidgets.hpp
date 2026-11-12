@@ -5,6 +5,10 @@
 
 #include <imgui.h>
 
+#include <cstdint>
+#include <optional>
+#include <tuple>
+
 /*
  * Functions that replace imgui equivalents and offer customization points for
  * styling the widgets, though they may just call the default imgui
@@ -23,6 +27,37 @@ bool RadioButton(const char* label, bool active);
 bool RadioButton(const char* label, int* v, int vButton);
 
 bool ArrowButton(const char* strId, ImGuiDir dir);
+
+/// A way of converting to and from the variants of enum ImGuiDataType_ and actual types at compile time
+using ImGuiNumberTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, std::uint64_t, float, double>;
+
+template<typename T>
+concept ImGuiNumber = []<typename... Number>(std::tuple<Number...>*) { return (std::same_as<T, Number> || ...); }(static_cast<ImGuiNumberTypes*>(nullptr));
+
+template<ImGuiNumber T>
+[[nodiscard]] constexpr ImGuiDataType imguiDataType() {
+    return []<std::size_t... index>(std::index_sequence<index...>) { return static_cast<ImGuiDataType>(((std::is_same_v<T, std::tuple_element_t<index, ImGuiNumberTypes>> ? index : 0UZ) + ...)); }(std::make_index_sequence<std::tuple_size_v<ImGuiNumberTypes>>());
+}
+
+enum class SliderAction {
+    NotEdited,
+    DraggedSlider,
+    TypedInTextField,
+    SteppedWithSpinner,
+};
+
+[[nodiscard]] float sliderNumberLabelMaxWidth();
+
+struct SliderScalarParameters {
+    ImGuiDataType    dataType;
+    void*            data;
+    const void*      min;
+    const void*      max;
+    const char*      format           = nullptr;
+    ImGuiSliderFlags flags            = 0;
+    float            numberLabelWidth = sliderNumberLabelMaxWidth();
+};
+SliderAction SliderScalar(const char* label, const SliderScalarParameters& parameters);
 
 bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags = 0);
 using ComboBox = stdex::c_resource<bool, BeginCombo, ImGui::EndCombo>;
