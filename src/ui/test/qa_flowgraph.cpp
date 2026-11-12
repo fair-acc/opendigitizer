@@ -206,15 +206,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         return nullptr;
     }
 
-    // do Yield(2) before calling this if the node was just created
-    static ImVec2 nodeCentreOnScreen(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
+    static ImRect getBlockRegionCanvasSpace(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
         editor.makeCurrent();
         const auto   nodeId   = ax::NodeEditor::NodeId(block);
         const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
-        const ImVec2 size     = ax::NodeEditor::GetNodeSize(nodeId);
-        expect(position.x < FLT_MAX && position.y < FLT_MAX) << fatal << "the node editor does not know about this block yet";
-        expect(size.x > 0.f && size.y > 0.f) << fatal << "the node has not been laid out yet, probably do Yield(2) in the test";
-        return ax::NodeEditor::CanvasToScreen(position + size * 0.5f);
+        return ImRect(position, position + ax::NodeEditor::GetNodeSize(nodeId));
+    }
+
+    // do Yield(2) before calling this if the node was just created
+    static ImVec2 nodeCentreOnScreen(DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block) {
+        const ImRect node = getBlockRegionCanvasSpace(editor, block);
+        expect(node.Min.x < FLT_MAX && node.Min.y < FLT_MAX) << fatal << "the node editor does not know about this block yet";
+        expect(node.GetWidth() > 0.f && node.GetHeight() > 0.f) << fatal << "the node has not been laid out yet, probably do Yield(2) in the test";
+        return ax::NodeEditor::CanvasToScreen(node.GetCenter());
     }
 
     static void clickNode(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* block, ImGuiMouseButton button) {
@@ -453,11 +457,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
             for (const float fractionY : {0.5f, 0.1f, 0.9f}) {
                 const ImVec2 screenPos{view.Min.x + view.GetWidth() * fractionX, view.Min.y + view.GetHeight() * fractionY};
                 const ImVec2 canvasPos = ax::NodeEditor::ScreenToCanvas(screenPos);
-                const bool   onNode    = std::ranges::any_of(g_state.blocks(), [&](const auto& block) {
-                    const auto   nodeId   = ax::NodeEditor::NodeId(block.get());
-                    const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
-                    return ImRect(position, position + ax::NodeEditor::GetNodeSize(nodeId)).Contains(canvasPos);
-                });
+                const bool   onNode    = std::ranges::any_of(g_state.blocks(), [&](const auto& block) { return getBlockRegionCanvasSpace(editor, block.get()).Contains(canvasPos); });
                 if (!onNode) {
                     return screenPos;
                 }
@@ -1892,12 +1892,43 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
                     expect(ge(button.Min.x, nodePosition.x) && le(button.Max.x, nodePosition.x + nodeSize.x)) << "drawn between the min and max X of the block";
                 };
 
-                "pressing the dot of a target removes that entry from the target_map"_test = [&] {
+                "pressing the line above the dot of a target removes that entry from the target_map"_test = [&] {
                     clickCanvasItem(ctx, editor, specificTargetUnlinkButton);
                     g_state.waitUntil(ctx, "the entry naming a block has been removed", [] { return getTargetMapForBlock("controlA").empty(); });
                     clickCanvasItem(ctx, editor, globTargetUnlinkButton);
                     g_state.waitUntil(ctx, "the glob entry has been removed", [] { return getTargetMapForBlock("controlB").empty(); });
                     expect(getTargetMapForBlock("controlC") == "sinkB:signal_quantity" && getTargetMapForBlock("controlD") == "sinkB:signal_quantity") << "other control blocks keep their targets";
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "UI control drag handle");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto& editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+
+                const DigitizerUi::UiGraphBlock* control = findRootChildByName("controlA");
+                expect(control != nullptr) << fatal;
+
+                "even if there are not control targets, the handle is still present"_test = [&] {
+                    clickCanvasItem(ctx, editor, "**/controlA.target.sinkA:signal_quantity.unlink");
+                    expect(g_state.waitUntil(ctx, "the target has been removed", [] { return getTargetMapForBlock("controlA").empty(); })) << fatal;
+                    expect(g_state.waitUntil(ctx, "the line segment of the target is gone", [&] { return !ctx->ItemExists("**/controlA.target.sinkA:signal_quantity.unlink"); }));
+                    expect(ge(canvasItemRect(ctx, "**/controlA.uiDragHandle").Min.y, getBlockRegionCanvasSpace(editor, control).Max.y)) << "below the block";
+                    captureScreenshot(*ctx);
+                };
+
+                "drag the drag handle to begin making a connection"_test = [&] {
+                    pressAndHoldUiControlDragHandle(ctx, editor, control);
+                    ctx->MouseMoveToPos(nodeCentreOnScreen(editor, control));
+                    ctx->MouseUp(ImGuiMouseButton_Left);
+                    expect(g_state.waitUntil(ctx, "the drag has ended", [&] { return !editor._blockDragConnect.has_value(); }));
+                    expect(frontmostPopupId() == 0u) << "no property selector opens";
                 };
 
                 finishUiControlTest();

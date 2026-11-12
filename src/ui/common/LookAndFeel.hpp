@@ -92,7 +92,6 @@ struct Palette {
     ImVec4 flowgraphNodeBorder;
     ImVec4 flowgraphSubgraphBorder;
     ImVec4 flowgraphSubgraphBorderText;
-    ImVec4 flowgraphUiControlFill;
     ImVec4 flowgraphUiControlHighlight;
     ImVec4 flowgraphUiControlConnectionIndicator;
     ImVec4 flowgraphUiControlPendingConnection;
@@ -279,45 +278,45 @@ struct LookAndFeel {
         float exportedTabPaddingH = 4.0f;
         float exportedTabPaddingV = 2.0f;
 
-        float nodeRounding                            = 6.f;
-        float nodePadding                             = 13.f;
-        float nodeBorderWidth                         = 1.5f;
-        float subgraphBorderWidth                     = 3.f;
-        float imguiNodeEditorPortRounding             = 2.f;
-        float imguiNodeEditorGroupNodeRounding        = 6.f;
-        float rectangularPortRounding                 = 2.f;
-        float dataTypeIconLineThickness               = 1.f;
-        float float64IconRingGapWidthPixels           = 1.f;
-        float complexNumbersIconDotWidthFactor        = 1.5f; // relative to the regular single dot diameter
-        float complexNumbersIconDotPairGap            = 1.f;
-        float containerIconsCornerRingRadiusFactor    = 0.25f; // relative to shape size
-        float containerIconsCornerRingInsetFactor     = 0.1f;  // relative to shape size
-        float dataSetIconWaveAmplitudeFactor          = 0.1f;
-        int   dataSetIconNumLineSegmentsPerWave       = 16;
-        float pinArrowSize                            = 10.f;
-        float pinArrowWidth                           = 10.f;
-        float linkStrength                            = 60.f;
-        float newLinkThickness                        = 1.f;
-        float highlightThickness                      = 2.f; // drop target outline, pending connection line
-        float dropTargetOutlineThickness              = 4.f;
-        float menuButtonInset                         = .15f; // fraction of the block menu button inside the node's corner, on each axis
-        float menuButtonRounding                      = 4.f;
-        float uiControlBlockDragHandleBorderThickness = 3.f;
-        float uiControlRegionBorderThickness          = 2.f;
-        float uiControlNotchLengthInwards             = 5.f;
-        float uiControlNotchLengthOutwards            = 5.f;
-        float uiControlTargetLineThickness            = 1.f;
-        float uiControlTargetDotRadius                = 3.f;
-        float uiControlTargetRowSpacing               = 2.f;
-        float previewBorderThickness                  = 2.f;
-        float filteredOutBlockAlpha                   = .25f;
-        float controlsBarHeight                       = 37.f;
-        float controlsBarPadding                      = 16.f;
-        float nestedEditorInset                       = 16.f;
-        float computeDomainTagMaxOffset               = 30.f; // from the left edge of the subgraph
-        float computeDomainTagOffsetRatio             = .2f;  // of the space available for the tag
-        float uiControlRegionGap                      = 16.f; // around the UI control block region and between its blocks
-        float uiControlDragHandleIconSize             = 12.f;
+        float nodeRounding                         = 6.f;
+        float nodePadding                          = 13.f;
+        float nodeBorderWidth                      = 1.5f;
+        float subgraphBorderWidth                  = 3.f;
+        float imguiNodeEditorPortRounding          = 2.f;
+        float imguiNodeEditorGroupNodeRounding     = 6.f;
+        float rectangularPortRounding              = 2.f;
+        float dataTypeIconLineThickness            = 1.f;
+        float float64IconRingGapWidthPixels        = 1.f;
+        float complexNumbersIconDotWidthFactor     = 1.5f; // relative to the regular single dot diameter
+        float complexNumbersIconDotPairGap         = 1.f;
+        float containerIconsCornerRingRadiusFactor = 0.25f; // relative to shape size
+        float containerIconsCornerRingInsetFactor  = 0.1f;  // relative to shape size
+        float dataSetIconWaveAmplitudeFactor       = 0.1f;
+        int   dataSetIconNumLineSegmentsPerWave    = 16;
+        float pinArrowSize                         = 10.f;
+        float pinArrowWidth                        = 10.f;
+        float linkStrength                         = 60.f;
+        float newLinkThickness                     = 1.f;
+        float highlightThickness                   = 2.f; // drop target outline, pending connection line
+        float dropTargetOutlineThickness           = 4.f;
+        float menuButtonInset                      = .15f; // fraction of the block menu button inside the node's corner, on each axis
+        float menuButtonRounding                   = 4.f;
+        float uiControlRegionBorderThickness       = 2.f;
+        float uiControlNotchLengthInwards          = 5.f;
+        float uiControlNotchLengthOutwards         = 5.f;
+        float uiControlTargetLineThickness         = 1.f;
+        float uiControlTargetDotRadius             = 3.f;
+        float uiControlTargetRowSpacing            = 2.f;
+        float previewBorderThickness               = 2.f;
+        float filteredOutBlockAlpha                = .25f;
+        float controlsBarHeight                    = 37.f;
+        float controlsBarPadding                   = 16.f;
+        float nestedEditorInset                    = 16.f;
+        float computeDomainTagMaxOffset            = 30.f; // from the left edge of the subgraph
+        float computeDomainTagOffsetRatio          = .2f;  // of the space available for the tag
+        float uiControlRegionGap                   = 16.f; // around the UI control block region and between its blocks
+        float uiControlDragHandleRadius            = 5.f;
+        float uiControlDragHandleHoveredRadius     = 6.f;
 
         float  previewBlockInnerPadding = 5.f; // per side
         float  previewBlockHeight       = 35.f;

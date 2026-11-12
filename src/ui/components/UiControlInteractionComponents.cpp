@@ -30,6 +30,8 @@ namespace {
     return ax::NodeEditor::GetStyle().NodePadding.x - DigitizerUi::LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards + ImGui::GetStyle().ItemInnerSpacing.x;
 }
 
+[[nodiscard]] ImVec4 DigitizerUi::Palette::*unlinkPaletteColor(bool pressed) { return pressed ? &DigitizerUi::Palette::flowgraphUiControlUnlinkPressed : &DigitizerUi::Palette::flowgraphUiControlUnlink; }
+
 void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, bool pressed) {
     using namespace DigitizerUi;
     using namespace std::string_view_literals;
@@ -40,13 +42,32 @@ void drawUnlinkIcon(ImDrawList* drawList, ImVec2 center, float iconFontSize, boo
         IMW::FontWithSize fontChange(iconFont, iconFontSize);
         return ImGui::CalcTextSize(unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
     }();
-    const auto iconColor = LookAndFeel::getColorU32ImGui(pressed ? &Palette::flowgraphUiControlUnlinkPressed : &Palette::flowgraphUiControlUnlink);
+    const auto iconColor = LookAndFeel::getColorU32ImGui(unlinkPaletteColor(pressed));
     drawList->AddText(iconFont, iconFontSize, center - (iconSize / 2.F), iconColor, unlinkIcon.data(), unlinkIcon.data() + unlinkIcon.size());
 }
 
 [[nodiscard]] float uiControlTargetRowHeight() { return DigitizerUi::LookAndFeel::instance().fontTiny()->LegacySize; }
 
 [[nodiscard]] float uiControlTargetRowPitch() { return uiControlTargetRowHeight() + DigitizerUi::LookAndFeel::instance().flowgraph.uiControlTargetRowSpacing; }
+
+[[nodiscard]] std::size_t uiControlTargetEntryCount(const DigitizerUi::UiGraphBlock& control) {
+    const auto targets = control.uiControlTargetMap();
+    return targets ? targets->entries().size() : 0UZ;
+}
+
+[[nodiscard]] std::size_t uiControlTargetRowCount(std::size_t entryCount) {
+    // max of 1 because we always draw one notch for the drag-connect handle
+    return std::max(entryCount, 1UZ);
+}
+
+[[nodiscard]] float uiControlOutgoingConnectionRowCenterOffsetFromBlockBottom(std::size_t index) { //
+    return ImGui::GetStyle().ItemSpacing.y + (uiControlTargetRowHeight() / 2.F) + (static_cast<float>(index) * uiControlTargetRowPitch());
+}
+
+[[nodiscard]] ImVec2 uiControlDragHandleHitboxSize() {
+    const auto& flowgraphLookAndFeel = DigitizerUi::LookAndFeel::instance().flowgraph;
+    return ImVec2{flowgraphLookAndFeel.pinWidth, flowgraphLookAndFeel.pinHeight};
+}
 
 /// Draws the text @param outsideLabel to the left of the block, and a notch indicating the connection
 /// from that to whatever text is inside the block at the current cursor position.
@@ -91,7 +112,8 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
         const ImU32 insideColor = ImGui::GetColorU32(ImGuiCol_Text);
         fgDrawList->AddRectFilledMultiColor(ImVec2{blockLeft - LookAndFeel::instance().flowgraph.uiControlNotchLengthOutwards, centerY - .5F}, ImVec2{blockLeft + LookAndFeel::instance().flowgraph.uiControlNotchLengthInwards, centerY + .5F}, color, insideColor, insideColor, color);
     }
-    fgDrawList->AddText(font, font->LegacySize, labelPosition, color, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
+    const ImU32 labelColor = notch.hovered || notch.held ? LookAndFeel::getColorU32ImGui(unlinkPaletteColor(notch.held)) : color;
+    fgDrawList->AddText(font, font->LegacySize, labelPosition, labelColor, outsideLabel.data(), outsideLabel.data() + outsideLabel.size());
     return result;
 }
 
@@ -283,103 +305,89 @@ TargetMap UiControlPropertyLinkPopup::withSelectionApplied(TargetMap targets, co
     return uiControlConnectionLabelGap() + widestLabel;
 }
 
-bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition) {
-    const ImVec4 nodePadding  = ax::NodeEditor::GetStyle().NodePadding;
-    const auto   blockTopLeft = blockStartCursorPosition - ImVec2{nodePadding.x, nodePadding.y};
-    const ImVec2 handleSize{std::max(availableWidth - (nodePadding.x * 2.F), ImGui::GetFrameHeight()), ImGui::GetFrameHeight()};
-
-    using namespace std::string_view_literals;
-    static constexpr auto dragDropIcon = "\u{f58d}"sv;
-
-    // horizontally center drag drop handle. recalculate offset from left, so it is easier to adjust width without messing up the drawing
-    const ImVec2 cursorBefore = ImGui::GetCursorPos();
-    const ImVec2 min          = ImVec2{blockTopLeft.x, ImGui::GetCursorScreenPos().y} + ImVec2{(availableWidth - handleSize.x) / 2.f, ImGui::GetStyle().FramePadding.y};
-    const ImVec2 max          = min + handleSize;
-
-    ImGui::SetCursorScreenPos(min);
-    ImGui::InvisibleButton(label, handleSize);
-    const bool held    = ImGui::IsItemActive();
-    const bool hovered = ImGui::IsItemHovered();
-
-    // change color based on interaction. ImGui::GetColorU32 applies the global style alpha, so the
-    // handle is greyed out along with the rest of a node that is filtered out
-    ImVec4 fill = LookAndFeel::instance().palette().flowgraphUiControlFill;
-    if (hovered || held) {
-        fill.w = held ? 1.F : std::min(fill.w * 2.F, 1.F);
+std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node) {
+    if (!control.usesTargetMap()) {
+        return std::nullopt;
     }
-    const auto fillColor      = ImGui::GetColorU32(fill);
-    const auto highlightColor = ImGui::GetColorU32(LookAndFeel::instance().palette().flowgraphUiControlHighlight);
-
-    // calculate positioning for icon to center it in the button
-    const float  fontSize = LookAndFeel::instance().flowgraph.uiControlDragHandleIconSize;
-    ImFont*      font     = LookAndFeel::instance().fontIconsSolidLarge;
-    const ImVec2 iconSize = [font, fontSize] {
-        IMW::FontWithSize fontChange(font, fontSize);
-        return ImGui::CalcTextSize(dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
-    }();
-    const ImVec2 iconOffset = ((max - min) / 2.F) - iconSize / 2.F;
-
-    auto* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(min, max, fillColor, ImGui::GetStyle().FrameRounding);
-    drawList->AddRect(min, max, highlightColor, ImGui::GetStyle().FrameRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.uiControlBlockDragHandleBorderThickness);
-    drawList->AddText(font, fontSize, min + iconOffset, highlightColor, dragDropIcon.data(), dragDropIcon.data() + dragDropIcon.size());
-
-    ImGui::SetCursorPos({cursorBefore.x, cursorBefore.y + handleSize.y + (ImGui::GetStyle().FramePadding.y * 2.F)});
-    return held;
-}
-
-void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node) {
-    const auto targets = control.uiControlTargetMap();
-    if (!targets || targets->entries().empty()) {
-        return;
-    }
+    const auto                         targets = control.uiControlTargetMap();
+    const std::span<const TargetEntry> entries = targets ? targets->entries() : std::span<const TargetEntry>{};
 
     const auto&  flowgraphLookAndFeel = LookAndFeel::instance().flowgraph;
     const float  rowHeight            = uiControlTargetRowHeight();
-    const float  rowPitch             = uiControlTargetRowPitch();
     const float  lineX                = node.Min.x + ax::NodeEditor::GetStyle().NodePadding.x;
-    const float  firstDotY            = node.Max.y + ImGui::GetStyle().ItemSpacing.y + (rowHeight / 2.F);
-    const float  lastDotY             = firstDotY + (static_cast<float>(targets->entries().size() - 1UZ) * rowPitch);
     const ImVec4 color                = LookAndFeel::instance().palette().flowgraphUiControlConnectionIndicator;
+    const auto   calculateRowCenter   = [&](std::size_t index) { return ImVec2{lineX, node.Max.y + uiControlOutgoingConnectionRowCenterOffsetFromBlockBottom(index)}; };
+    const auto   lastRowIndex         = uiControlTargetRowCount(entries.size()) - 1UZ;
+    const ImVec2 handleHitboxSize     = uiControlDragHandleHitboxSize();
+    const auto   lineSegmentAboveRow  = [&](std::size_t index) {
+        const float top = index == 0UZ ? node.Max.y : calculateRowCenter(index - 1UZ).y;
+        return ImRect{ImVec2{lineX - (handleHitboxSize.x / 2.F), top}, ImVec2{lineX + (handleHitboxSize.x / 2.F), calculateRowCenter(index).y}};
+    };
+    const float labelLeft = lineX + (handleHitboxSize.x / 2.F) + ImGui::GetStyle().ItemInnerSpacing.x;
+
+    const ImVec2 dragHandleTopCenter   = calculateRowCenter(lastRowIndex);
+    const auto   dragHandleInteraction = components::overlayButtonBehavior( //
+        std::format("{}.uiDragHandle", control.blockName).c_str(),        //
+        ImRect{dragHandleTopCenter - ImVec2{handleHitboxSize.x / 2.F, 0.F}, dragHandleTopCenter + ImVec2{handleHitboxSize.x / 2.F, handleHitboxSize.y}});
+    const bool   isDragHandleActive    = dragHandleInteraction.hovered || dragHandleInteraction.held;
+    if (isDragHandleActive) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    // part of the reason for GetColorU32 here is to apply the style alpha, for greying out the node when it is filtered
+    const ImU32 lineColor = ImGui::GetColorU32(isDragHandleActive ? LookAndFeel::instance().palette().flowgraphUiControlHighlight : color);
 
     auto*             drawList = ImGui::GetWindowDrawList();
     IMW::FontWithSize font(LookAndFeel::instance().fontTiny(), rowHeight);
     IMW::StyleColor   textColor(ImGuiCol_Text, color);
     // AddLine offsets its endpoints by half a pixel but AddCircleFilled does not, so this is required to draw a circle centered on the line
     const float lineHalfThickness = flowgraphLookAndFeel.uiControlTargetLineThickness / 2.F;
-    drawList->AddRectFilled(ImVec2{lineX - lineHalfThickness, node.Max.y}, ImVec2{lineX + lineHalfThickness, lastDotY}, ImGui::GetColorU32(color));
+    const auto  drawLineSegment   = [&](const ImRect& segment) { drawList->AddRectFilled(ImVec2{lineX - lineHalfThickness, segment.Min.y}, ImVec2{lineX + lineHalfThickness, segment.Max.y}, lineColor); };
+
+    if (entries.empty()) {
+        drawLineSegment(lineSegmentAboveRow(0UZ));
+    }
 
     std::size_t index = 0;
-    for (const auto& entry : targets->entries()) {
+    for (const auto& entry : entries) {
         Digitizer::utils::scope_exit increment = [&index] { ++index; };
 
         const std::string text      = std::format("{}:{}", entry.isGlob() ? "*" : entry.blockTarget, entry.propertyName);
-        const ImVec2      dotCenter = ImVec2{lineX, firstDotY + (static_cast<float>(index) * rowPitch)};
-        const ImVec2      halfRowHeight{rowHeight / 2.F, rowHeight / 2.F};
-        const ImRect      dotRect{dotCenter - halfRowHeight, dotCenter + halfRowHeight};
+        const ImVec2      dotCenter = calculateRowCenter(index);
+        const ImRect      segment   = lineSegmentAboveRow(index);
 
-        const auto unlinkInteractionState = components::overlayButtonBehavior(std::format("{}.target.{}.unlink", control.blockName, text).c_str(), dotRect);
+        const auto unlinkInteractionState = components::overlayButtonBehavior(std::format("{}.target.{}.unlink", control.blockName, text).c_str(), segment);
         if (unlinkInteractionState.hovered || unlinkInteractionState.held) {
-            drawUnlinkIcon(drawList, dotCenter, rowHeight, unlinkInteractionState.held);
+            drawUnlinkIcon(drawList, segment.GetCenter(), rowHeight, unlinkInteractionState.held);
         } else {
-            drawList->AddCircleFilled(dotCenter, flowgraphLookAndFeel.uiControlTargetDotRadius, ImGui::GetColorU32(color));
+            drawLineSegment(segment);
+        }
+        if (index != lastRowIndex) {
+            drawList->AddCircleFilled(dotCenter, flowgraphLookAndFeel.uiControlTargetDotRadius, lineColor);
         }
 
-        const ImVec2 textMin{dotRect.Max.x + ImGui::GetStyle().ItemInnerSpacing.x, dotRect.Min.y};
-        ImGui::RenderTextEllipsis(drawList, textMin, ImVec2{node.Max.x, dotRect.Max.y}, node.Max.x, text.c_str(), nullptr, nullptr);
+        IMW::StyleColor labelColor(ImGuiCol_Text, unlinkInteractionState.hovered || unlinkInteractionState.held ? LookAndFeel::instance().palette().*unlinkPaletteColor(unlinkInteractionState.held) : color);
+        ImGui::RenderTextEllipsis(drawList, ImVec2{labelLeft, dotCenter.y - (rowHeight / 2.F)}, ImVec2{node.Max.x, dotCenter.y + (rowHeight / 2.F)}, node.Max.x, text.c_str(), nullptr, nullptr);
 
         if (unlinkInteractionState.clicked) {
             graphModel.removeUiControlConnection(control.blockUniqueName, entry.isGlob() ? std::string_view("*") : std::string_view(entry.blockTarget), entry.propertyName);
         }
     }
+
+    const float  dragHandleRadius = isDragHandleActive ? flowgraphLookAndFeel.uiControlDragHandleHoveredRadius : flowgraphLookAndFeel.uiControlDragHandleRadius;
+    const ImVec2 dragHandleCenter = dragHandleTopCenter + ImVec2{0.F, dragHandleRadius};
+    drawList->AddCircleFilled(dragHandleCenter, dragHandleRadius, lineColor);
+    if (!dragHandleInteraction.held) {
+        return std::nullopt;
+    }
+    return dragHandleCenter;
 }
 
 [[nodiscard]] float uiControlTargetListHeight(const UiGraphBlock& block) {
-    const auto targets = block.uiControlTargetMap();
-    if (!block.isUiControl() || !targets || targets->entries().empty()) {
+    if (!block.isUiControl() || !block.usesTargetMap()) {
         return 0.F;
     }
-    return ImGui::GetStyle().ItemSpacing.y + (static_cast<float>(targets->entries().size()) * uiControlTargetRowPitch());
+    const float lastRowCenterOffset = uiControlOutgoingConnectionRowCenterOffsetFromBlockBottom(uiControlTargetRowCount(uiControlTargetEntryCount(block)) - 1UZ);
+    return lastRowCenterOffset + std::max(uiControlTargetRowHeight() / 2.F, uiControlDragHandleHitboxSize().y);
 }
 
 constexpr std::size_t kUiControlRegionMinimumNodesOnFirstRow = 3UZ;

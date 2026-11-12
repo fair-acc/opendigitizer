@@ -200,20 +200,16 @@ private:
     void applySelection(UiGraphModel& model);
 };
 
-/// Uses @param blockStartCursorPosition to deduce the horizontal and vertical padding used when drawing the block.
-/// Returns true while a drag is happening and false otherwise
-bool drawUiControlDragDropHandle(const char* label, float availableWidth, ImVec2 blockStartCursorPosition);
-
 struct UiControlConnectionNotchResult {
     float labelHeight  = 0.F;
     bool  labelClicked = false;
     bool  notchClicked = false;
 };
 
-/// Draws the target_map entries of @param control below @param node, with remove operations to unlink each connection
-void drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node);
+/// Draws the target_map entries of @param control below @param node, with remove operations to unlink each connection, and a drag handle for creating new connections
+std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const UiGraphBlock& control, const ImRect& node);
 
-/// Height of the area below the block which is reserved for the target list drawn by drawUiControlTargetList
+/// Height of the area below the block which is reserved for the target list and drag handle drawn by drawUiControlTargetList
 [[nodiscard]] float uiControlTargetListHeight(const UiGraphBlock& block);
 
 /// Width of the area to the left of the block which is reserved for UI control connection labels
