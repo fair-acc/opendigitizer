@@ -3,14 +3,9 @@
 #include "../common/LookAndFeel.hpp"
 #include "../utils/TransparentStringHash.hpp"
 
-#include <imgui_internal.h>
+#include <gnuradio-4.0/Tag.hpp>
 
-#include <algorithm>
-#include <print>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <imgui_internal.h>
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
@@ -104,16 +99,16 @@ const DataTypeStyle& styleForDataType(std::string_view type) {
         {"std::complex<int32>"s, {0xff4CAF50}},                                         //
         {"std::complex<int64>"s, {0xff8BC34A}},                                         //
 
-        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},           //
-        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},     //
-        {"gr::TensorView<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},       //
-        {"gr::TensorView<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}}, //
-        {"gr::TensorView<uint32>"s, {0xff009688, &drawGridWithCornerRing, &drawSolidCornerRingPort}},        //
-        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},         //
-        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}},   //
-                                                                                                             //
-        {"event"s, {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}},                                       //
-        {"gr::Message"s, {0xffDBDBDB}},                                                                      //
+        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                      //
+        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},                //
+        {"gr::TensorView<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                  //
+        {"gr::TensorView<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},            //
+        {"gr::TensorView<uint32>"s, {0xff009688, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                   //
+        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},                    //
+        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}},              //
+                                                                                                                        //
+        {std::string(gr::meta::type_name<gr::property_map_view>()), {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}}, //
+        {"gr::Message"s, {0xffDBDBDB}},                                                                                 //
 
         {"Bits"s, {0xffEA80FC}},          //
         {"BusConnection"s, {0xffffffff}}, //
