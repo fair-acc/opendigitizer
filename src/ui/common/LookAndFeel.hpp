@@ -84,6 +84,8 @@ struct Palette {
 
     ImVec4 toolbarLineColor;
 
+    ImVec4 sliderTrackInactive;
+
     ImVec4 flowgraphBg;
     ImVec4 flowgraphNodeBg;
     ImVec4 flowgraphNodeBorder;
@@ -230,7 +232,7 @@ struct DashboardStyle {
     float toolbarBlockButtonRoundingRatio = .5f; // of the button size, .5 is a circle
     float toolbarControlInputWidth        = 110.f;
     float toolbarControlMinimumWidth      = 60.f;
-    float toolbarControlSliderWidth       = 160.f;
+    float toolbarControlSliderTrackWidth  = 115.f;
     float newChartPopupWidth              = 300.f;
 
     struct DragAreaInteractionState {
@@ -375,6 +377,12 @@ struct LookAndFeel {
     ImVec2                    removeContextPopupSize                  = {600.f, 100.f};
     float                     editableStringListInputWidthEms         = 12.f;
     float                     sortArrowScale                          = .75f;
+    float                     sliderTrackThickness                    = 4.f;
+    float                     sliderKnobRadiusFrameHeightRatio        = .35f;
+    float                     sliderKnobRingThickness                 = 3.f;
+    float                     sliderImGuiStyleGrabFrameHeightRatio    = .75f;
+    float                     sliderTextInputMinWidthEms              = 3.5f;
+    float                     sliderNumberLabelMaxWidthEms            = 4.f;
     float                     searchHighlightRounding                 = 0.f;
     float                     selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
     float                     notificationRounding                    = .5f;

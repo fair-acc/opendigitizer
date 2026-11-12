@@ -449,7 +449,7 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
         gr::pmt::ValueVisitor([&out, &meta, label]<typename T>(const T& num) {
             if constexpr (std::floating_point<T>) {
                 auto temp = static_cast<double>(num);
-                if (ImGui::SliderScalar(label, ImGuiDataType_Double, &temp, &*meta.minValue, &*meta.maxValue, "%g", {})) {
+                if (DigitizerUi::SliderScalar(label, {.dataType = ImGuiDataType_Double, .data = &temp, .min = &*meta.minValue, .max = &*meta.maxValue, .format = "%g"}) != DigitizerUi::SliderAction::NotEdited) {
                     out = static_cast<T>(temp);
                 }
             } else if constexpr (std::integral<T>) {
@@ -459,12 +459,9 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                 assert(*meta.maxValue >= -int64Max && *meta.maxValue < int64Max && "overflow would occur when casting maxValue to double");
                 const auto minValue = static_cast<std::int64_t>(*meta.minValue);
                 const auto maxValue = static_cast<std::int64_t>(*meta.maxValue);
-                if (ImGui::SliderScalar(label, ImGuiDataType_S64, &temp, &minValue, &maxValue, "%lld", {})) {
+                if (DigitizerUi::SliderScalar(label, {.dataType = ImGuiDataType_S64, .data = &temp, .min = &minValue, .max = &maxValue, .format = "%lld"}) != DigitizerUi::SliderAction::NotEdited) {
                     out = static_cast<T>(temp);
                 }
-            }
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on slider converts it to a text input
             }
         }).visit(currentPropertyValue);
         break;
@@ -477,10 +474,10 @@ gr::pmt::Value editBlockProperty(const char* label, const std::string& propertyN
                 T temp = num;
                 if (InputKeypad<>::edit(propertyName, label, &temp, meta.unit)) {
                     if (meta.minValue) {
-                        temp = std::max(temp, control::clampedTo<T>(*meta.minValue));
+                        temp = std::max(temp, clampedTo<T>(*meta.minValue));
                     }
                     if (meta.maxValue) {
-                        temp = std::min(temp, control::clampedTo<T>(*meta.maxValue));
+                        temp = std::min(temp, clampedTo<T>(*meta.maxValue));
                     }
                     out = static_cast<T>(temp);
                 }

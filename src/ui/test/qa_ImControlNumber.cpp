@@ -141,12 +141,12 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the slider sets the frequency of its target"_test = [&] {
-                ctx->ItemInputValue("**/##Level", 4.f);
+                ctx->ItemInputValue("**/##Level/##value", 4.f);
                 expect(g_state.waitUntil(ctx, "frequency reaches what was inputted by slider", [] { return blockHasBasicTypeKeyValuePair<double>("SignalGenerator2", "frequency", 4.0); }));
             };
 
             "the slider spinner's '*' entry is not dispatched yet"_test = [&] {
-                ctx->ItemInputValue("**/##Gain", "80");
+                ctx->ItemInputValue("**/##Gain/##value", "80");
                 ctx->Yield(10);
                 expect(blockHasBasicTypeKeyValuePair<float>("SignalGenerator1", "amplitude", 2.5f) && blockHasBasicTypeKeyValuePair<float>("SignalGenerator2", "amplitude", 2.5f)) << "'*:amplitude' sets nothing";
             };
@@ -173,7 +173,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "dragging the slider moves the value in steps of the last typed value's significant digit"_test = [&] {
-                ctx->ItemInputValue("**/##Coarse", "4");
+                ctx->ItemInputValue("**/##Coarse/##value", "4");
                 expect(g_state.waitUntil(ctx, "the 0..10 float32 slider has the expected value", [] { return g_state.coarseControl->block.value == 4.; })) << fatal;
                 ctx->ItemDragWithDelta("**/##Coarse", ImVec2(37.f, 0.f));
                 expect(g_state.waitUntil(ctx, "the drag moved the value", [] { return g_state.coarseControl->block.value != 4.; })) << fatal;
@@ -181,13 +181,15 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 expect(eq(dragged, std::round(dragged))) << std::format("dragged to {}: whole numbers", dragged);
             };
 
-            "right clicking slider temporarily converts it to a text input"_test = [&] {
-                const ImGuiID sliderId = ctx->ItemInfo("**/##Coarse").ID;
-                ctx->ItemClick("**/##Coarse", ImGuiMouseButton_Right);
-                expect(ImGui::TempInputIsActive(sliderId)) << fatal << "the slider is a text input";
-                ctx->KeyCharsReplaceEnter("6.5");
-                expect(!ImGui::TempInputIsActive(sliderId)) << "enter confirms changes";
-                expect(g_state.waitUntil(ctx, "value is updated when using the textInput", [] { return g_state.coarseControl->block.value == 6.5; }));
+            "typing into a float slider's text field in order to be more precise than dragging"_test = [&] {
+                ctx->ItemInputValue("**/##Coarse/##value", "6.5");
+                expect(g_state.waitUntil(ctx, "value is updated", [] { return g_state.coarseControl->block.value == 6.5; }));
+            };
+
+            "typing into a slider's text field still respects the min/max range"_test = [&] {
+                const double maximum = 10.; // the max hint of coarseControl
+                ctx->ItemInputValue("**/##Coarse/##value", "1000");
+                expect(g_state.waitUntil(ctx, "value is clamped", [maximum] { return g_state.coarseControl->block.value == maximum; }));
             };
 
             "the toolbar fits its host: natural row, shrunk row, two rows, then without labels"_test = [&] {
@@ -195,12 +197,14 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const DigitizerUi::DashboardStyle& toolbar    = DigitizerUi::LookAndFeel::instance().dashboardStyle;
                 const auto                         labelWidth = [&](const char* label) { return ImGui::CalcTextSize(label).x + style.ItemInnerSpacing.x; };
                 const std::array<const char*, 4UZ> labels{"Amplitude", "Frequency", "Level", "Gain"};
-                const float                        spinner = 2.f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
-                const float                        input   = toolbar.toolbarControlInputWidth;
-                const float                        slider  = toolbar.toolbarControlSliderWidth;
-                const float                        least   = toolbar.toolbarControlMinimumWidth;
-                const std::array<float, 4UZ>       naturalWidget{input, input + spinner, slider, slider + spinner};
-                const std::array<float, 4UZ>       minimumWidget{least, least + spinner, least, least + spinner};
+                const float                        spinner   = 2.f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
+                const float                        input     = toolbar.toolbarControlInputWidth;
+                const float                        track     = toolbar.toolbarControlSliderTrackWidth;
+                const float                        least     = toolbar.toolbarControlMinimumWidth;
+                const float                        levelText = style.ItemInnerSpacing.x + ImGui::CalcTextSize("10").x;    // Level's max, in steps of 1
+                const float                        gainText  = style.ItemInnerSpacing.x + ImGui::CalcTextSize("100 %").x; // Gain's max, in steps of 1
+                const std::array<float, 4UZ>       naturalWidget{input, input + spinner, track + levelText, track + gainText + spinner};
+                const std::array<float, 4UZ>       minimumWidget{least, least + spinner, least + levelText, least + gainText + spinner};
                 std::array<float, 4UZ>             minimum{};
                 float                              naturalRow = 3.f * toolbar.toolbarItemSpacing;
                 float                              minimumRow = 3.f * toolbar.toolbarItemSpacing;
@@ -233,20 +237,24 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     const ImRect host(kHostPos, kHostPos + ImVec2(g_state.hostWidth, kHostSize.y));
                     return std::ranges::all_of(frames, [&](const ImRect& rect) { return host.Contains(rect); });
                 };
-                const auto  sliderWidth    = [&] { return ctx->ItemInfo("**/##Level").RectFull.GetWidth(); };
+                const auto  trackWidth     = [&] { return ctx->ItemInfo("**/##Level").RectFull.GetWidth(); };
                 const float rowStart       = kHostPos.x + style.WindowPadding.x + toolbar.toolbarLeftPadding;
                 const auto  firstFrameLeft = [&] { return ctx->ItemInfo("**/##Amplitude").RectFull.Min.x; };
 
                 layoutAt(naturalRow + 40.f);
                 auto frames = visibleFrames();
                 expect(eq(frames.size(), 4UZ) && eq(rowsOf(frames), 1UZ) && insideHost(frames)) << "one row";
-                expect(std::abs(sliderWidth() - slider) < 1.f) << std::format("the slider at its natural {} px: {}", slider, sliderWidth());
+                expect(std::abs(trackWidth() - track) < 1.f) << std::format("the slider (exluding the number label) at its natural {} px: {}", track, trackWidth());
+                const ImRect gainValue = ctx->ItemInfo("**/##Gain/##value").RectFull;
+                expect(std::abs(gainValue.Min.x - ctx->ItemInfo("**/##Gain").RectFull.Max.x - style.ItemInnerSpacing.x) < 1.f) << "no gap between number label and slider";
+                expect(std::abs(ctx->ItemInfo("**/##Gain/-").RectFull.Min.x - gainValue.Max.x - style.ItemInnerSpacing.x) < 1.f) << "no gap between number label and spinner";
+                expect(std::abs(gainValue.GetWidth() - ImGui::CalcTextSize("100 %").x) < 1.f) << "the number label is as wide as the widest value in the range";
                 expect(std::abs(firstFrameLeft() - rowStart - labelWidth("Amplitude")) < 1.f) << "the label comes first, then its field";
 
                 layoutAt(0.5f * (naturalRow + minimumRow));
                 frames = visibleFrames();
                 expect(eq(frames.size(), 4UZ) && eq(rowsOf(frames), 1UZ) && insideHost(frames)) << "still one row";
-                expect(sliderWidth() > least && sliderWidth() < slider) << std::format("the slider shrunk to {} px", sliderWidth());
+                expect(trackWidth() > least && trackWidth() < track) << std::format("the track shrunk to {} px", trackWidth());
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + ImVec2(g_state.hostWidth, kHostSize.y)));
 
                 layoutAt(std::max(minimum[0] + minimum[1], minimum[2] + minimum[3]) + toolbar.toolbarItemSpacing + 1.f);
@@ -277,7 +285,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "the value sent by a control has the type of its first controlled property"_test = [&] {
-                ctx->ItemInputValue("**/##Steps", 7);
+                ctx->ItemInputValue("**/##Steps/##value", 7);
                 const auto steps = g_state.steps->takeSent();
                 expect(sentExactly<std::int16_t>(steps, "TargetA", "received", 7) && sentExactly<std::int16_t>(steps, "TargetB", "received", 7)) << "an int16 7 to TargetA and TargetB";
                 ctx->ItemInputValue("**/##Ratio", "80.5");
@@ -305,10 +313,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
 
             "number input is clamped to the target property's min and max"_test = [&] {
                 std::ignore = g_state.steps->takeSent();
-                ctx->ItemInputValue("**/##Steps", 500);
+                ctx->ItemInputValue("**/##Steps/##value", 500);
                 const auto above = g_state.steps->takeSent();
                 expect(!above.empty() && sentExactly<std::int16_t>(std::vector<gr::Message>{above.back()}, "TargetB", "received", 10)) << "clamped to max";
-                ctx->ItemInputValue("**/##Steps", -500);
+                ctx->ItemInputValue("**/##Steps/##value", -500);
                 const auto below = g_state.steps->takeSent();
                 expect(!below.empty() && sentExactly<std::int16_t>(std::vector<gr::Message>{below.back()}, "TargetB", "received", -10)) << "clamped to min";
             };
@@ -351,7 +359,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             };
 
             "a slider starting at 0 steps by a tenth of its range at most"_test = [&] {
-                ctx->ItemDragWithDelta("**/##Fraction", ImVec2(40.f, 0.f));
+                ctx->ItemDragWithDelta("**/##Fraction", ImVec2(ctx->ItemInfo("**/##Fraction").RectFull.GetWidth() / 4.f, 0.f));
                 const double dragged = g_state.fraction->block.value;
                 expect(dragged > 0. && dragged < 1.) << std::format("0..1 dragged a quarter to {}, not to an end", dragged);
                 expect(std::abs(dragged * 10. - std::round(dragged * 10.)) < 1e-9) << std::format("{} is on the 0.1 grid", dragged);

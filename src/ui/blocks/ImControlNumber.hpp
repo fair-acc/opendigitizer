@@ -2,6 +2,7 @@
 #define OPENDIGITIZER_UI_BLOCKS_IMCONTROLNUMBER_HPP
 
 #include "../components/Keypad.hpp"
+#include "../components/SliderAndSpinner.hpp"
 #include "../components/StyledStandardWidgets.hpp"
 #include "ImControl.hpp"
 
@@ -10,51 +11,18 @@
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/formatter/ValueFormatter.hpp>
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <ranges>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <utility>
-
 namespace DigitizerUi {
 
 enum class NumberStyle { field, spinBox, slider, sliderSpinner };
 
 namespace control {
-using NumberTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, std::uint64_t, float, double>; // in ImGuiDataType order
 
 [[nodiscard]] bool withNumberType(std::string_view valueType, auto&& fn) {
-    return []<typename... T>(std::string_view name, auto& call, std::tuple<T...>*) { return ((name == gr::meta::type_name<T>() && (call.template operator()<T>(), true)) || ...); }(valueType, fn, static_cast<NumberTypes*>(nullptr));
+    return []<typename... T>(std::string_view name, auto& call, std::tuple<T...>*) { return ((name == gr::meta::type_name<T>() && (call.template operator()<T>(), true)) || ...); }(valueType, fn, static_cast<ImGuiNumberTypes*>(nullptr));
 }
 
 [[nodiscard]] inline std::string numberTypeNames() {
-    return []<typename... T>(std::tuple<T...>*) { return std::array{std::string(gr::meta::type_name<T>())...} | std::views::join_with(';') | std::ranges::to<std::string>(); }(static_cast<NumberTypes*>(nullptr));
-}
-
-template<typename T>
-[[nodiscard]] constexpr ImGuiDataType imguiDataType() {
-    return []<std::size_t... index>(std::index_sequence<index...>) { return static_cast<ImGuiDataType>(((std::is_same_v<T, std::tuple_element_t<index, NumberTypes>> ? index : 0UZ) + ...)); }(std::make_index_sequence<std::tuple_size_v<NumberTypes>>());
-}
-
-template<typename T>
-[[nodiscard]] T clampedTo(double number) {
-    if constexpr (std::is_floating_point_v<T>) {
-        return static_cast<T>(std::clamp(number, static_cast<double>(std::numeric_limits<T>::lowest()), static_cast<double>(std::numeric_limits<T>::max())));
-    } else {
-        if (std::isnan(number) || number <= static_cast<double>(std::numeric_limits<T>::lowest())) {
-            return std::numeric_limits<T>::lowest();
-        }
-        if (number >= static_cast<double>(std::numeric_limits<T>::max())) {
-            return std::numeric_limits<T>::max();
-        }
-        return static_cast<T>(number);
-    }
+    return []<typename... T>(std::tuple<T...>*) { return std::array{std::string(gr::meta::type_name<T>())...} | std::views::join_with(';') | std::ranges::to<std::string>(); }(static_cast<ImGuiNumberTypes*>(nullptr));
 }
 
 template<typename T>
@@ -90,15 +58,13 @@ public:
     explicit ImControlNumber(gr::property_map initParameters = {}) : ImControl<ImControlNumber>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const auto   parsedConfig     = DrawableBlockConfig::fromMap(config);
-        const double lowerLimit       = std::max(parsedConfig.aggregateControlledPropertyHints.min.value_or(std::numeric_limits<double>::lowest()), min);
-        const double upperLimit       = std::min(parsedConfig.aggregateControlledPropertyHints.max.value_or(std::numeric_limits<double>::max()), max);
-        const auto   drawnStyle       = getBestStyle(style, lowerLimit, upperLimit);
-        const auto [natural, minimum] = naturalAndMinimumWidgetWidth(drawnStyle);
-        const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
+        const auto   parsedConfig = DrawableBlockConfig::fromMap(config);
+        const double lowerLimit   = std::max(parsedConfig.aggregateControlledPropertyHints.min.value_or(std::numeric_limits<double>::lowest()), min);
+        const double upperLimit   = std::min(parsedConfig.aggregateControlledPropertyHints.max.value_or(std::numeric_limits<double>::max()), max);
+        const auto   drawnStyle   = getBestStyle(style, lowerLimit, upperLimit);
         loadValueIfConnectionChanged(value, parsedConfig);
         const std::string type  = numberTypeName(parsedConfig.firstControlledProperty);
-        const bool        known = control::withNumberType(type, [&]<typename T>() { drawNumber<T>(layout, drawnStyle, lowerLimit, upperLimit); });
+        const bool        known = control::withNumberType(type, [&]<typename T>() { drawNumber<T>(parsedConfig, drawnStyle, lowerLimit, upperLimit); });
         if (!known) {
             ImGui::TextUnformatted(std::format("{}: unknown number type '{}'", label, type).c_str());
         }
@@ -111,8 +77,6 @@ private:
         const bool        isNumber       = control::withNumberType(controlledType, []<typename T>() { /* just checking if any type is correct */ });
         return isNumber ? controlledType : std::string("float64");
     }
-
-    [[nodiscard]] static float spinnerWidth() { return 2.f * (ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x); }
 
     [[nodiscard]] static double significantStep(double number) { return components::computeIncrementNonZero(std::format("{:.4f}", number)); }
 
@@ -127,79 +91,59 @@ private:
         return desiredStyle;
     }
 
-    [[nodiscard]] static std::pair<float, float> naturalAndMinimumWidgetWidth(NumberStyle style) {
-        const DashboardStyle& dashboardStyle = LookAndFeel::instance().dashboardStyle;
+    [[nodiscard]] static std::pair<float, float> naturalAndMinimumWidgetWidth(NumberStyle style, float numberLabelWidth) {
+        const DashboardStyle& dashboardStyle             = LookAndFeel::instance().dashboardStyle;
+        const float           numberLabelAndSpacingWidth = ImGui::GetStyle().ItemInnerSpacing.x + numberLabelWidth;
+        const float           sliderNatural              = dashboardStyle.toolbarControlSliderTrackWidth + numberLabelAndSpacingWidth;
+        const float           sliderMinimum              = dashboardStyle.toolbarControlMinimumWidth + numberLabelAndSpacingWidth;
         switch (style) {
         case NumberStyle::field: return {dashboardStyle.toolbarControlInputWidth, dashboardStyle.toolbarControlMinimumWidth};
-        case NumberStyle::spinBox: return {dashboardStyle.toolbarControlInputWidth + spinnerWidth(), dashboardStyle.toolbarControlMinimumWidth + spinnerWidth()};
-        case NumberStyle::slider: return {dashboardStyle.toolbarControlSliderWidth, dashboardStyle.toolbarControlMinimumWidth};
-        case NumberStyle::sliderSpinner: return {dashboardStyle.toolbarControlSliderWidth + spinnerWidth(), dashboardStyle.toolbarControlMinimumWidth + spinnerWidth()};
+        case NumberStyle::spinBox: return {dashboardStyle.toolbarControlInputWidth + calculateSpinnerWidth(), dashboardStyle.toolbarControlMinimumWidth + calculateSpinnerWidth()};
+        case NumberStyle::slider: return {sliderNatural, sliderMinimum};
+        case NumberStyle::sliderSpinner: return {sliderNatural + calculateSpinnerWidth(), sliderMinimum + calculateSpinnerWidth()};
         }
         std::unreachable();
     }
 
     template<typename T>
-    void drawNumber(const SizeAndLayout& layout, NumberStyle drawnStyle, double lowerLimit, double upperLimit) {
+    void drawNumber(const DrawableBlockConfig& parsedConfig, NumberStyle drawnStyle, double lowerLimit, double upperLimit) {
         if (!_stepOfEnteredValue) {
             _stepOfEnteredValue = significantStep(value);
         }
         const bool        isSlider    = drawnStyle == NumberStyle::slider || drawnStyle == NumberStyle::sliderSpinner;
         const double      derivedStep = isSlider ? std::min(*_stepOfEnteredValue, significantStep((upperLimit - lowerLimit) / 10.)) : *_stepOfEnteredValue;
-        T                 number      = control::clampedTo<T>(value);
-        const T           lower       = control::clampedTo<T>(lowerLimit);
-        const T           upper       = std::max(lower, control::clampedTo<T>(upperLimit));
-        const T           stepSize    = std::max(control::clampedTo<T>(step != 0. ? step : derivedStep), std::is_integral_v<T> ? T{1} : T{});
-        const auto        dataType    = control::imguiDataType<T>();
+        T                 number      = clampedTo<T>(value);
+        const T           lower       = clampedTo<T>(lowerLimit);
+        const T           upper       = std::max(lower, clampedTo<T>(upperLimit));
+        const T           stepSize    = std::max(clampedTo<T>(step != 0. ? step : derivedStep), std::is_integral_v<T> ? T{1} : T{});
+        const auto        dataType    = imguiDataType<T>();
         const std::string format      = control::printfFormat<T>(unit);
         const std::string id          = "##" + label;
-        const auto        onStepGrid  = [gridStep = static_cast<double>(stepSize)](double candidate) { return control::clampedTo<T>(std::is_floating_point_v<T> ? std::round(candidate / gridStep) * gridStep : candidate); };
-        bool              typed       = false;
-        bool              changed     = false;
-        const auto        field       = [&](float fieldWidth) {
+        const auto [natural, minimum] = naturalAndMinimumWidgetWidth(drawnStyle, calculateNumberLabelWidthForRange(lower, upper, stepSize, format.c_str()));
+        const SizeAndLayout layout    = prepareDraw(parsedConfig, natural, minimum, labelWidth());
+        bool                typed     = false;
+        bool                changed   = false;
+        const auto          field     = [&](float fieldWidth) {
             ImGui::SetNextItemWidth(fieldWidth);
             typed  = ImGui::InputScalar(id.c_str(), dataType, &number, nullptr, nullptr, format.c_str());
             number = std::clamp(number, lower, upper);
             changed |= typed;
         };
-        const auto slider = [&](float sliderWidth) {
+        const auto slider = [&](float sliderWidth, bool showSpinner) {
             ImGui::SetNextItemWidth(sliderWidth);
-            if (ImGui::SliderScalar(id.c_str(), dataType, &number, &lower, &upper, format.c_str())) {
-                typed   = ImGui::TempInputIsActive(ImGui::GetItemID()); // Ctrl+click turns the slider into a text field
-                number  = std::clamp(typed ? number : onStepGrid(static_cast<double>(number)), lower, upper);
-                changed = true;
-            }
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                ImGui::SetKeyboardFocusHere(-1); // keyboard focus on slider converts it to a text input
-            }
-        };
-        const auto spinner = [&] {
-            IMW::ChangeStrId spinnerScope(id.c_str());
-            ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
-            const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
-            ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (DigitizerUi::Button("-", buttonSize)) {
-                number  = std::clamp(onStepGrid(static_cast<double>(number) - static_cast<double>(stepSize)), lower, upper);
-                changed = true;
-            }
-            ImGui::SameLine(0.f, ImGui::GetStyle().ItemInnerSpacing.x);
-            if (DigitizerUi::Button("+", buttonSize)) {
-                number  = std::clamp(onStepGrid(static_cast<double>(number) + static_cast<double>(stepSize)), lower, upper);
-                changed = true;
-            }
-            ImGui::PopItemFlag();
+            const SliderAction action = sliderAndSpinner(id.c_str(), &number, {.min = lower, .max = upper, .stepSize = stepSize, .format = format.c_str(), .showSpinner = showSpinner});
+            typed                     = action == SliderAction::TypedInTextField;
+            changed                   = action != SliderAction::NotEdited;
         };
         drawWithLabelAndTooltip(layout, [&](float width) {
             switch (drawnStyle) {
             case NumberStyle::field: field(width); break;
             case NumberStyle::spinBox:
-                field(width - spinnerWidth());
-                spinner();
+                field(width - calculateSpinnerWidth());
+                changed |= drawSpinnerButtons(id.c_str(), &number, lower, upper, stepSize);
                 break;
-            case NumberStyle::slider: slider(width); break;
-            case NumberStyle::sliderSpinner:
-                slider(width - spinnerWidth());
-                spinner();
-                break;
+            case NumberStyle::slider: slider(width, false); break;
+            case NumberStyle::sliderSpinner: slider(width, true); break;
             }
         });
         if (typed) {

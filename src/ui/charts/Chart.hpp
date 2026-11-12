@@ -2229,7 +2229,7 @@ struct Chart {
                 return std::format("{:.1f} ms", seconds * 1e3);
             };
 
-            if (ImGui::SliderFloat("##historySlider", &bestIdx, kTimeSliderMin, kTimeSliderMax, formatTimeStop(kTimeStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), ImGuiSliderFlags_NoInput)) {
+            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &kTimeSliderMin, .max = &kTimeSliderMax, .format = formatTimeStop(kTimeStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
                 std::size_t idx        = static_cast<std::size_t>(std::clamp(std::round(bestIdx), kTimeSliderMin, kTimeSliderMax));
                 double      seconds    = kTimeStops[idx];
                 gr::Size_t  newSamples = static_cast<gr::Size_t>(std::ceil(seconds * static_cast<double>(sampleRate)));
@@ -2266,7 +2266,7 @@ struct Chart {
                 return std::format("{}", samples);
             };
 
-            if (ImGui::SliderFloat("##historySlider", &bestIdx, kSampleSliderMin, kSampleSliderMax, formatSampleStop(kSampleStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), ImGuiSliderFlags_NoInput)) {
+            if (DigitizerUi::SliderScalar("##historySlider", {.dataType = ImGuiDataType_Float, .data = &bestIdx, .min = &kSampleSliderMin, .max = &kSampleSliderMax, .format = formatSampleStop(kSampleStops[static_cast<std::size_t>(std::round(bestIdx))]).c_str(), .flags = ImGuiSliderFlags_NoInput}) != DigitizerUi::SliderAction::NotEdited) {
                 auto idx       = static_cast<std::size_t>(std::clamp(std::round(bestIdx), kSampleSliderMin, kSampleSliderMax));
                 self.n_history = std::clamp(kSampleStops[idx], kMinSamples, kMaxSamples);
                 scheduleResize();
@@ -2583,18 +2583,26 @@ struct Chart {
             ImGui::SetNextItemWidth(kWidgetWidth);
             float val = static_cast<float>(field.value);
             if constexpr (hasLimits) {
-                constexpr float lo = static_cast<float>(LimitType::MinRange);
-                constexpr float hi = static_cast<float>(LimitType::MaxRange);
-                if (ImGui::SliderFloat(label.c_str(), &val, lo, hi, "%.2f", sliderFlags)) {
+                constexpr float              kMin = static_cast<float>(LimitType::MinRange);
+                constexpr float              kMax = static_cast<float>(LimitType::MaxRange);
+                const SliderScalarParameters sliderParams{
+                    .dataType = ImGuiDataType_Float,
+                    .data     = &val,
+                    .min      = &kMin,
+                    .max      = &kMax,
+                    .format   = "%.2f",
+                    .flags    = sliderFlags,
+                };
+                if (DigitizerUi::SliderScalar(label.c_str(), sliderParams) != DigitizerUi::SliderAction::NotEdited) {
                     field = static_cast<ValueType>(val);
                 }
                 detail::onScrollWheel([&](float wheel) {
                     if constexpr (useLog) {
                         val *= std::pow(1.1f, wheel);
                     } else {
-                        val += wheel * (hi - lo) * 0.01f;
+                        val += wheel * (kMax - kMin) * 0.01f;
                     }
-                    field = static_cast<ValueType>(std::clamp(val, lo, hi));
+                    field = static_cast<ValueType>(std::clamp(val, kMin, kMax));
                 });
             } else {
                 if (ImGui::DragFloat(label.c_str(), &val, 0.01f, 0.0f, 0.0f, "%.2f")) {
@@ -2621,9 +2629,17 @@ struct Chart {
                 ImGui::SetNextItemWidth(kWidgetWidth);
                 int val = static_cast<int>(field.value);
                 if constexpr (hasLimits) {
-                    constexpr int lo = static_cast<int>(LimitType::MinRange);
-                    constexpr int hi = static_cast<int>(LimitType::MaxRange);
-                    if (ImGui::SliderInt(label.c_str(), &val, lo, hi, "%d", sliderFlags)) {
+                    constexpr int                kMin = static_cast<int>(LimitType::MinRange);
+                    constexpr int                kMax = static_cast<int>(LimitType::MaxRange);
+                    const SliderScalarParameters sliderParams{
+                        .dataType = ImGuiDataType_S32,
+                        .data     = &val,
+                        .min      = &kMin,
+                        .max      = &kMax,
+                        .format   = "%d",
+                        .flags    = sliderFlags,
+                    };
+                    if (DigitizerUi::SliderScalar(label.c_str(), sliderParams) != DigitizerUi::SliderAction::NotEdited) {
                         field = static_cast<ValueType>(val);
                     }
                     detail::onScrollWheel([&](float wheel) {
@@ -2632,9 +2648,9 @@ struct Chart {
                             if (newVal == val) {
                                 newVal += (wheel > 0.0f) ? 1 : -1;
                             }
-                            val = std::clamp(newVal, lo, hi);
+                            val = std::clamp(newVal, kMin, kMax);
                         } else {
-                            val = std::clamp(val + static_cast<int>(wheel) * std::max(1, (hi - lo) / 100), lo, hi);
+                            val = std::clamp(val + static_cast<int>(wheel) * std::max(1, (kMax - kMin) / 100), kMin, kMax);
                         }
                         field = static_cast<ValueType>(val);
                     });
