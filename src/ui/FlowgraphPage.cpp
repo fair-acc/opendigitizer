@@ -456,10 +456,8 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
             drawUiControlWidget(block, blockSize.x);
         }
         const ImVec2 nodeTopLeft = blockScreenPosition - ImVec2{nodeEditorStyle.NodePadding.x, nodeEditorStyle.NodePadding.y};
-        components::drawUiControlTargetList(*_graphModel, block, ImRect{nodeTopLeft, nodeTopLeft + blockSize});
-
-        if (block.usesTargetMap() && components::drawUiControlDragDropHandle(std::format("{}.uiDragHandle", block.blockName).c_str(), blockSize.x, blockScreenPosition) && !_blockDragConnect) {
-            _blockDragConnect.emplace(block.blockUniqueName, ImGui::GetMousePos());
+        if (const auto heldHandleCenter = components::drawUiControlTargetList(*_graphModel, block, ImRect{nodeTopLeft, nodeTopLeft + blockSize}); heldHandleCenter && !_blockDragConnect) {
+            _blockDragConnect.emplace(block.blockUniqueName, *heldHandleCenter);
         }
     }
 
