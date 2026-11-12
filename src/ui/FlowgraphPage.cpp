@@ -384,21 +384,19 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
     ImGui::SetCursorScreenPos(blockScreenPosition - ImVec2{0.f, ImGui::GetFontBaked()->FindGlyph('H')->Y0});
     ImGui::TextUnformatted(simplerName(block.blockName).c_str());
     {
-        // make sure the title does not overlap with the filter button
-        const float filterButtonWidthInsideNode = -components::nodeFilterButtonRect(ImVec2{}).Min.x;
-        const float titleRightPadding           = std::max(0.f, filterButtonWidthInsideNode - ax::NodeEditor::GetStyle().NodePadding.z) + ImGui::GetStyle().ItemInnerSpacing.x;
+        const float menuButtonWidthInsideNode = -components::nodeMenuButtonRect(ImVec2{}).Min.x;
+        const float titleRightPadding         = std::max(0.f, menuButtonWidthInsideNode - ax::NodeEditor::GetStyle().NodePadding.z) + ImGui::GetStyle().ItemInnerSpacing.x;
         ImGui::SameLine(0.f, 0.f);
         ImGui::Dummy(ImVec2{titleRightPadding, 0.f});
     }
     auto blockSize = ax::NodeEditor::GetNodeSize(blockId);
 
-    // draw a filter button over the top right corner of the node
     const auto&  nodeEditorStyle = ax::NodeEditor::GetStyle();
     const ImVec2 nodeTopRight    = ImVec2{blockScreenPosition.x - nodeEditorStyle.NodePadding.x + blockSize.x, blockScreenPosition.y - nodeEditorStyle.NodePadding.y};
-    const bool   isFilter        = _filterBlock == std::addressof(block);
-    const auto   filterButton    = components::drawFilterToggleButton(std::format("{}.filterButton", block.blockName).c_str(), components::nodeFilterButtonRect(nodeTopRight), isFilter);
-    if (filterButton.clicked) {
-        _filterBlock = isFilter ? nullptr : std::addressof(block);
+
+    if (components::drawMenuButton(std::format("{}.menuButton", block.blockName).c_str(), components::nodeMenuButtonRect(nodeTopRight)).clicked) {
+        // defer opening the popup so that we always open it from the same context in the ID stack (same as when doing right click)
+        _blockContextMenuRequest = std::addressof(block);
     }
 
     const auto controlledProperties = _graphModel->uiControlledProperties(block);
@@ -497,14 +495,14 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
     registerPins(inputPorts, position, ax::NodeEditor::PinKind::Input);
     registerPins(outputPorts, blockScreenPosition, ax::NodeEditor::PinKind::Output);
 
-    return NodeDrawResult{.topLeft = position, .pinAreaHeight = pinAreaHeight, .filterButtonHovered = filterButton.hovered};
+    return NodeDrawResult{.topLeft = position, .pinAreaHeight = pinAreaHeight};
 }
 
-std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) {
+std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks) {
     if (!_blockDragConnect) {
         return std::nullopt;
     }
-    auto overlay = _blockDragConnect->createOverlayDescription(drawnBlocks, isCompatibleDropTarget);
+    auto overlay = _blockDragConnect->createOverlayDescription();
     if (!_blockDragConnect->update(drawnBlocks)) {
         return overlay;
     }
@@ -668,6 +666,9 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     makeCurrent();
     dropReferencesToDeletedBlocks();
 
+    std::vector<UiGraphBlock*> drawnBlocks = graphBlocks;
+    drawnBlocks.insert(drawnBlocks.end(), controlBlocks.cbegin(), controlBlocks.cend());
+
     for (const auto& block : graphBlocks) {
         if (block->storedXY) {
             ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), {block->storedXY->x, block->storedXY->y});
@@ -696,6 +697,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             }
         }
     };
+    const UiGraphBlock* dragConnectDropTarget = _blockDragConnect ? components::BlockDragConnectInteraction::blockUnderMouse(drawnBlocks) : nullptr; // canvas space mouse
 
     std::optional<BoundingBox> boundingBox;
     const auto                 addRectangleToBoundingBox = [&boundingBox](ImVec2 rectPosition, ImVec2 rectSize) {
@@ -751,13 +753,6 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview);
         const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
-        if (blockPosition.filterButtonHovered) {
-            // node editor tooltips need a suspended canvas, see imgui-node-editor/examples/widgets-example
-            ax::NodeEditor::Suspend();
-            ImGui::SetTooltip("Filter");
-            ax::NodeEditor::Resume();
-        }
-
         // The input/output pins are drawn after ending the node because otherwise
         // drawing them would increase the node size, which we need to know to correctly place the
         // output pins, and that would cause the nodes to continuously grow in width
@@ -796,10 +791,11 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
             drawPorts(outputPorts, blockPosition.topLeft.x + blockSize.x, false);
         }
 
-        // show rectangular highlights for blocks that would be selected by a multi-select, or *could* be selected by a drag select
+        // draw highlight borders around potential UI control selection targets
         if (isUiControlConnectionTarget) {
-            const auto nodePosition = ax::NodeEditor::GetNodePosition(blockId);
-            ImGui::GetWindowDrawList()->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, LookAndFeel::instance().flowgraph.highlightThickness);
+            const auto  nodePosition = ax::NodeEditor::GetNodePosition(blockId);
+            const float thickness    = block == dragConnectDropTarget ? LookAndFeel::instance().flowgraph.dropTargetOutlineThickness : LookAndFeel::instance().flowgraph.highlightThickness;
+            ax::NodeEditor::GetNodeBackgroundDrawList(blockId)->AddRect(nodePosition, nodePosition + blockSize, LookAndFeel::getColorU32ImGui(&Palette::flowgraphUiControlPendingConnection), LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, thickness);
         }
     };
 
@@ -873,9 +869,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         }
     }
 
-    std::vector<UiGraphBlock*> drawnBlocks = graphBlocks;
-    drawnBlocks.insert(drawnBlocks.end(), controlBlocks.cbegin(), controlBlocks.cend());
-    auto dragConnectOverlay = this->handleUiControlDragConnect(drawnBlocks, isCompatibleWithDragSource);
+    auto dragConnectOverlay = this->handleUiControlDragConnect(drawnBlocks);
 
     // fade out the bounding box effect. though handlePinDrag() may call drawBoundingBoxExterior() and stop this from happening
     this->_wasHoveringBoundingBoxExteriorThisFrame = false;
@@ -1066,18 +1060,17 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
     // we draw this before we draw the graph, because this may want to request that some nodes be highlighted when the user is hovering certain options
     drawUiControlPopups();
 
-    auto originalFilterBlock = _filterBlock;
     if (const auto dragConnectOverlay = drawGraph(contentSize)) {
         dragConnectOverlay->draw();
     }
 
-    // don't open properties pane if just clicking on the filter button
-    const bool filterButtonPressed = originalFilterBlock != _filterBlock;
+    // don't open properties pane if just clicking on the block menu button
+    const bool blockMenuButtonPressed = _blockContextMenuRequest != nullptr;
 
     const auto mouseDrag         = ImLengthSqr(ImGui::GetMouseDragDelta(ImGuiMouseButton_Right));
     const auto backgroundClicked = ax::NodeEditor::GetBackgroundClickButtonIndex();
 
-    if (!filterButtonPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+    if (!blockMenuButtonPressed && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && mouseDrag < 200 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
         auto n     = ax::NodeEditor::GetHoveredNode();
         auto block = n.AsPointer<UiGraphBlock>();
 
@@ -1104,6 +1097,10 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
             _selectedBlock = block;
         }
     }
+    if (blockMenuButtonPressed) {
+        ImGui::OpenPopup("block_ctx_menu");
+        _selectedBlock = std::exchange(_blockContextMenuRequest, nullptr);
+    }
 
     if (backgroundClicked == ImGuiMouseButton_Right && mouseDrag < 200) {
         ImGui::OpenPopup("ctx_menu");
@@ -1114,6 +1111,10 @@ void FlowgraphEditor::draw(const ImVec2& contentTopLeft, const ImVec2& contentSi
         if (ImGui::MenuItem("Refresh graph")) {
             _graphModel->requestFullUpdate();
             _graphModel->requestAvailableBlocksTypesUpdate();
+        }
+
+        if (_filterBlock != nullptr && ImGui::MenuItem("Remove filter")) {
+            _filterBlock = nullptr;
         }
 
         drawGroupingMenuItems(selectedBlockUniqueNames());
@@ -1211,6 +1212,11 @@ void FlowgraphEditor::drawBlockContextMenu() {
         // the block was deleted while the menu was open
         ImGui::CloseCurrentPopup();
         return;
+    }
+
+    const bool isFilter = _filterBlock == _selectedBlock;
+    if (ImGui::MenuItem(isFilter ? "Remove filter" : "Filter")) {
+        _filterBlock = isFilter ? nullptr : _selectedBlock;
     }
 
     if (ImGui::MenuItem("Delete this block")) {

@@ -77,7 +77,9 @@ private:
     void drawUiControlPopups();
 
     /// Check how the user is interacting with UI blocks, if they are dragging a connection, and what valid blocks are available as targets for it. Returns a description of what to draw
-    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget);
+    [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks);
+
+    UiGraphBlock* _blockContextMenuRequest = nullptr;
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;
@@ -238,8 +240,7 @@ public:
     struct NodeDrawResult {
         ImVec2 topLeft;
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
-        float pinAreaHeight       = 0.F;
-        bool  filterButtonHovered = false;
+        float pinAreaHeight = 0.F;
     };
     NodeDrawResult drawNode(                                                //
         UiGraphBlock&                                          block,       //

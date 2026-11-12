@@ -95,19 +95,6 @@ DigitizerUi::components::UiControlConnectionNotchResult drawUiControlConnectionN
     return result;
 }
 
-/// Must be called while the node editor is active so that coordinates (including mouse coordinates) are in canvas space
-[[nodiscard]] const DigitizerUi::UiGraphBlock* blockUnderMouse(std::span<DigitizerUi::UiGraphBlock* const> drawnBlocks) {
-    const ImVec2                     mousePosition = ImGui::GetMousePos();
-    const DigitizerUi::UiGraphBlock* found         = nullptr;
-    for (const DigitizerUi::UiGraphBlock* candidate : drawnBlocks) {
-        const auto   nodeId   = ax::NodeEditor::NodeId(candidate);
-        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
-        if (ImRect(position, position + ax::NodeEditor::GetNodeSize(nodeId)).Contains(mousePosition)) {
-            found = candidate;
-        }
-    }
-    return found;
-}
 } // namespace
 
 namespace DigitizerUi::components {
@@ -119,29 +106,29 @@ void BlockDragConnectOverlay::draw() const {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(clipRect.Min, clipRect.Max, true);
     drawList->AddLine(lineStart, lineEnd, lineColor, thickness);
-    if (dropTargetNode) {
-        const ImRect& node = *dropTargetNode;
-        drawList->AddRect(node.Min, node.Max, lineColor, LookAndFeel::instance().flowgraph.nodeRounding, ImDrawFlags_None, 2.F * thickness);
-    }
     drawList->PopClipRect();
 }
 
-BlockDragConnectOverlay BlockDragConnectInteraction::createOverlayDescription(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) const {
-    const ImDrawList*     canvasDrawList = ImGui::GetWindowDrawList();
-    const UiGraphBlock*   dropTarget     = blockUnderMouse(drawnBlocks);
-    std::optional<ImRect> dropTargetNode;
-    if (dropTarget && isCompatibleDropTarget(*dropTarget)) {
-        const auto   nodeId   = ax::NodeEditor::NodeId(dropTarget);
-        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
-        const ImVec2 size     = ax::NodeEditor::GetNodeSize(nodeId);
-        dropTargetNode        = ImRect(ax::NodeEditor::CanvasToScreen(position), ax::NodeEditor::CanvasToScreen(position + size));
-    }
+BlockDragConnectOverlay BlockDragConnectInteraction::createOverlayDescription() const {
+    const ImDrawList* canvasDrawList = ImGui::GetWindowDrawList();
     return BlockDragConnectOverlay{
-        .clipRect       = ImRect(ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMin()), ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMax())),
-        .lineStart      = ax::NodeEditor::CanvasToScreen(_startPosition),
-        .lineEnd        = ax::NodeEditor::CanvasToScreen(ImGui::GetMousePos()),
-        .dropTargetNode = dropTargetNode,
+        .clipRect  = ImRect(ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMin()), ax::NodeEditor::CanvasToScreen(canvasDrawList->GetClipRectMax())),
+        .lineStart = ax::NodeEditor::CanvasToScreen(_startPosition),
+        .lineEnd   = ax::NodeEditor::CanvasToScreen(ImGui::GetMousePos()),
     };
+}
+
+const UiGraphBlock* BlockDragConnectInteraction::blockUnderMouse(std::span<UiGraphBlock* const> drawnBlocks) {
+    const ImVec2        mousePosition = ImGui::GetMousePos();
+    const UiGraphBlock* found         = nullptr;
+    for (const UiGraphBlock* candidate : drawnBlocks) {
+        const auto   nodeId   = ax::NodeEditor::NodeId(candidate);
+        const ImVec2 position = ax::NodeEditor::GetNodePosition(nodeId);
+        if (ImRect(position, position + ax::NodeEditor::GetNodeSize(nodeId)).Contains(mousePosition)) {
+            found = candidate;
+        }
+    }
+    return found;
 }
 
 bool BlockDragConnectInteraction::update(std::span<UiGraphBlock* const> drawnBlocks) {

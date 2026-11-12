@@ -98,6 +98,8 @@ struct Palette {
     ImVec4 flowgraphUiControlPendingConnection;
     ImVec4 flowgraphUiControlUnlink;
     ImVec4 flowgraphUiControlUnlinkPressed;
+    ImVec4 flowgraphNodeMenuButtonHovered;
+    ImVec4 flowgraphNodeMenuButtonActive;
 
     ImVec4 flowgraphBoundingBoxExteriorSelection;
     ImVec4 flowgraphBoundingBoxExteriorSelectionOutline;
@@ -296,8 +298,10 @@ struct LookAndFeel {
         float pinArrowWidth                           = 10.f;
         float linkStrength                            = 60.f;
         float newLinkThickness                        = 1.f;
-        float highlightThickness                      = 2.f;  // drop target outline, pending connection line
-        float filterIconInset                         = .15f; // fraction of the filter icon inside the node's corner, on each axis
+        float highlightThickness                      = 2.f; // drop target outline, pending connection line
+        float dropTargetOutlineThickness              = 4.f;
+        float menuButtonInset                         = .15f; // fraction of the block menu button inside the node's corner, on each axis
+        float menuButtonRounding                      = 4.f;
         float uiControlBlockDragHandleBorderThickness = 3.f;
         float uiControlRegionBorderThickness          = 2.f;
         float uiControlNotchLengthInwards             = 5.f;

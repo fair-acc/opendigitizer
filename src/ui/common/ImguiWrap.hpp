@@ -7,6 +7,7 @@
 #include <c_resource.hpp>
 
 #include <algorithm>
+#include <string_view>
 
 namespace DigitizerUi::IMW {
 
@@ -104,6 +105,10 @@ struct WidgetSize {
 /// Calculate the width and height a button will take up with the current style
 /// and a given label. Buttons have a fixed size.
 ImVec2 CalcButtonSize(const char* label);
+
+/// Calculate the area covered by the drawn pixels of the single UTF-8 encoded @param glyph, relative to the position
+/// passed to AddText(). Unlike ImGui::CalcTextSize(), this excludes the advance and the font's ascent and descent
+ImRect calcGlyphBounds(ImFont* font, float fontSize, std::string_view glyph);
 
 /// Calculates how big a series of buttons will be if they are all drawn on the
 /// same line, calcButtonSize gives the size of one of them

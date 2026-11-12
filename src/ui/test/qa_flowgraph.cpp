@@ -424,16 +424,20 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         ctx->Yield();
     }
 
-    static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control, ImVec2 dropScreenPos) {
-        // avoid the edit panel covering things which might happen depending on previous UI state, maybe there was just a drag going on and releasing caused a block to be selected
-        editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
-        ctx->Yield();
+    static void pressAndHoldUiControlDragHandle(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control) {
         ctx->MouseTeleportToPos(centerUiControlDragHandleInView(ctx, editor, control));
         ctx->Yield();
         ctx->MouseDown(ImGuiMouseButton_Left);
         ctx->Yield();
         expect(editor._blockDragConnect.has_value()) << fatal << "pressing the handle starts a drag";
         ctx->MouseLiftDragThreshold(ImGuiMouseButton_Left);
+    }
+
+    static void dragUiControlDragHandleToPosition(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor, const DigitizerUi::UiGraphBlock* control, ImVec2 dropScreenPos) {
+        // avoid the edit panel covering things which might happen depending on previous UI state, maybe there was just a drag going on and releasing caused a block to be selected
+        editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
+        ctx->Yield();
+        pressAndHoldUiControlDragHandle(ctx, editor, control);
         ctx->Yield();
         ctx->MouseMoveToPos(dropScreenPos);
         ctx->Yield();
@@ -461,6 +465,16 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
         expect(false) << fatal << "flowgraph view is completely full of blocks?";
         return {};
+    }
+
+    static ImGuiID rightClickBackgroundAndReturnContextMenu(ImGuiTestContext* ctx, DigitizerUi::FlowgraphEditor& editor) {
+        ctx->MouseMoveToPos(findEmptySpotInFlowgraph(editor));
+        ctx->Yield();
+        ctx->MouseClick(ImGuiMouseButton_Right);
+        ctx->Yield();
+        const ImGuiID contextMenuId = frontmostPopupId();
+        expect(contextMenuId != 0u) << fatal << "right-clicking the graph background should open its context menu";
+        return contextMenuId;
     }
 
     static ImGuiID getFrontmostPopupID(ImGuiTestContext* ctx, std::source_location location = std::source_location::current()) {
@@ -1891,22 +1905,81 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp { // NOSONAR (more metho
         }
 
         {
-            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Filter toggle button of a block");
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Filter and Remove filter actions");
             t->SetVarsDataType<TestState>();
             t->GuiFunc = uiControlGuiFunc;
 
-            t->TestFunc = [](ImGuiTestContext* ctx) {
+            t->TestFunc = [](ImGuiTestContext* ctx) { // NOSONAR test lambda length
                 auto&                            editor = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
                 const DigitizerUi::UiGraphBlock* sink   = findRootChildByName("sinkA");
                 expect(sink != nullptr) << fatal;
 
-                "clicking the button toggles the filter"_test = [&] {
+                "filter a block from its context menu"_test = [&] {
                     expect(editor._filterBlock == nullptr) << fatal << "no filter is set after loading";
-                    clickCanvasItem(ctx, editor, "**/sinkA.filterButton");
-                    expect(editor._filterBlock == sink);
+                    clickInBlockContextMenu(ctx, editor, sink, "Filter");
+                    expect(editor._filterBlock == sink) << fatal;
+                    expect(frontmostPopupId() == 0u) << "the menu closes";
                     captureScreenshot(*ctx);
-                    clickCanvasItem(ctx, editor, "**/sinkA.filterButton");
+                };
+
+                "remove filter context menu item is present for filtered block"_test = [&] {
+                    clickInBlockContextMenu(ctx, editor, sink, "Remove filter");
+                    expect(editor._filterBlock == nullptr) << fatal;
+                };
+
+                "remove filter context menu option when right clicking background of flowgraph"_test = [&] {
+                    expect(editor._filterBlock == nullptr) << fatal;
+                    ctx->SetRef(rightClickBackgroundAndReturnContextMenu(ctx, editor));
+                    expect(!ctx->ItemExists("Remove filter"));
+                    ctx->PopupCloseAll();
+                    ctx->Yield();
+
+                    clickInBlockContextMenu(ctx, editor, sink, "Filter");
+                    expect(editor._filterBlock == sink) << fatal;
+                    ctx->SetRef(rightClickBackgroundAndReturnContextMenu(ctx, editor));
+                    ctx->ItemClick("Remove filter");
+                    ctx->Yield();
+                    ctx->SetRef("Test Window");
                     expect(editor._filterBlock == nullptr);
+                    expect(frontmostPopupId() == 0u) << "context menu closed";
+                };
+
+                finishUiControlTest();
+            };
+        }
+
+        {
+            ImGuiTest* t = IM_REGISTER_TEST(engine(), "flowgraph", "Block menu button");
+            t->SetVarsDataType<TestState>();
+            t->GuiFunc = uiControlGuiFunc;
+
+            t->TestFunc = [](ImGuiTestContext* ctx) {
+                auto&                            editor     = loadUiControlGraph(ctx, "examples/qa_uicontrol_connections.grc");
+                const DigitizerUi::UiGraphBlock* sink       = findRootChildByName("sinkA");
+                const char*                      menuButton = "**/sinkA.menuButton";
+                expect(sink != nullptr) << fatal;
+
+                "blocks have menu button"_test = [&] {
+                    for (const char* blockName : {"sinkA", "sinkB", "controlA"}) {
+                        expect(ctx->ItemExists(std::format("**/{}.menuButton", blockName).c_str())) << blockName;
+                    }
+                };
+
+                "opening menu with left click"_test = [&] {
+                    editor._editPaneContext.setSelectedBlock(nullptr, nullptr);
+                    ctx->Yield();
+                    clickCanvasItem(ctx, editor, menuButton);
+                    const ImGuiID contextMenuId = frontmostPopupId();
+                    expect(contextMenuId != 0u) << fatal << "the menu opens";
+                    expect(editor._selectedBlock == sink);
+                    expect(!editor._editPaneContext.selectedBlock()) << "clicking the button does not select the block";
+
+                    ctx->SetRef(contextMenuId);
+                    ctx->ItemClick("Filter");
+                    ctx->Yield();
+                    ctx->SetRef("Test Window");
+                    expect(editor._filterBlock == sink) << "the menu is the block context menu";
+                    expect(frontmostPopupId() == 0u) << "the menu closes";
                 };
 
                 finishUiControlTest();

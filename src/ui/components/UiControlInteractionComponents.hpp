@@ -117,10 +117,9 @@ public:
 ///
 /// all coordinates here are screen space, because they are intended to be drawn after the canvas is done
 struct BlockDragConnectOverlay {
-    ImRect                clipRect;
-    ImVec2                lineStart;
-    ImVec2                lineEnd;
-    std::optional<ImRect> dropTargetNode;
+    ImRect clipRect;
+    ImVec2 lineStart;
+    ImVec2 lineEnd;
 
     void draw() const;
 };
@@ -146,7 +145,10 @@ public:
     [[nodiscard]] bool cancelled() const { return _cancelled; }
 
     /// This must be called while the node editor is active because it relies on canvas space coordinates
-    [[nodiscard]] BlockDragConnectOverlay createOverlayDescription(std::span<UiGraphBlock* const> drawnBlocks, const std::function<bool(const UiGraphBlock&)>& isCompatibleDropTarget) const;
+    [[nodiscard]] BlockDragConnectOverlay createOverlayDescription() const;
+
+    /// This must be called while the node editor is active because it relies on canvas space coordinates
+    [[nodiscard]] static const UiGraphBlock* blockUnderMouse(std::span<UiGraphBlock* const> drawnBlocks);
 
     /// Returns true if the drag has completed or been cancelled.
     /// This must be called within the node editor's canvas scope, so the mouse position is in canvas space
