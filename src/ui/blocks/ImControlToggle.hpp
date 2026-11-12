@@ -24,8 +24,8 @@ struct ImControlToggle : ImControl<ImControlToggle> {
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const float         checkboxSize = ImGui::GetFrameHeight();
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, checkboxSize, checkboxSize, labelWidth());
+        const float         toggleWidth  = DigitizerUi::toggleSwitchWidth();
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, toggleWidth, toggleWidth, labelWidth());
         loadValueIfConnectionChanged(value, parsedConfig);
         drawWithLabelAndTooltip(layout, [this](float) {
             const std::string id = "##" + label;
