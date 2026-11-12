@@ -12,8 +12,14 @@
 #include <cstring>
 #include <limits>
 #include <print>
+#include <string_view>
 #include <utility>
 #include <vector>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/html5.h>
+#include <tuple>
+#endif
 
 #include "../utils/ShaderHelper.hpp"
 #include <imgui.h>
@@ -21,6 +27,21 @@
 #include <implot_internal.h>
 
 namespace opendigitizer::charts {
+
+/// llvmpipe, softpipe or SwiftShader (headless browsers, CI): there one quad per segment costs more than ImPlot's CPU path
+[[nodiscard]] inline bool softwareRasteriser() {
+#if defined(__EMSCRIPTEN__)
+    constexpr GLenum kUnmaskedRenderer = 0x9246; // UNMASKED_RENDERER_WEBGL: WebGL masks GL_RENDERER
+    std::ignore                        = emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "WEBGL_debug_renderer_info");
+    const GLubyte* name                = glGetString(kUnmaskedRenderer);
+    while (glGetError() != GL_NO_ERROR) {
+    }
+#else
+    const GLubyte* name = glGetString(GL_RENDERER);
+#endif
+    const std::string_view renderer = name != nullptr ? reinterpret_cast<const char*>(name) : "";
+    return std::ranges::any_of(std::array<std::string_view, 4UZ>{"llvmpipe", "softpipe", "SwiftShader", "Software Rasterizer"}, [renderer](std::string_view software) { return renderer.contains(software); });
+}
 
 // one instanced quad per line segment, after R. Terrell, "Instanced line rendering," 2019
 struct GpuLineProgram {
@@ -38,7 +59,8 @@ struct GpuLineProgram {
     };
 
     Handles handles;
-    bool    _compileAttempted = false;
+    bool    _compileAttempted       = false;
+    bool    allowSoftwareRasteriser = false; // true: the GPU path even where softwareRasteriser(), e.g. to compare both paths
 
     GpuLineProgram()                                 = default;
     GpuLineProgram(const GpuLineProgram&)            = delete;
@@ -53,6 +75,10 @@ struct GpuLineProgram {
     [[nodiscard]] bool available() {
         if (!_compileAttempted) {
             _compileAttempted = true;
+            if (!allowSoftwareRasteriser && softwareRasteriser()) {
+                std::println(stderr, "[XYChart] software rasteriser, streaming traces are drawn on the CPU");
+                return false;
+            }
             compile();
             if (handles.program == 0) {
                 std::println(stderr, "[XYChart] GPU line shaders unavailable, streaming traces are drawn on the CPU");

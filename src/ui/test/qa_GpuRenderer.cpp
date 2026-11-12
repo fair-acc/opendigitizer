@@ -34,13 +34,14 @@ struct TestState {
 TestState* gState = nullptr;
 
 std::unique_ptr<XYChart> makeChart(std::string name, bool gpuAcceleration) {
-    auto chart                    = std::make_unique<XYChart>();
-    chart->chart_name.value       = std::move(name);
-    chart->data_sinks.value       = {"gpu_line"};
-    chart->show_legend.value      = false;
-    chart->n_history.value        = 500U;
-    chart->update_rate.value      = 0.f;
-    chart->gpu_acceleration.value = gpuAcceleration;
+    auto chart                                     = std::make_unique<XYChart>();
+    chart->chart_name.value                        = std::move(name);
+    chart->data_sinks.value                        = {"gpu_line"};
+    chart->show_legend.value                       = false;
+    chart->n_history.value                         = 500U;
+    chart->update_rate.value                       = 0.f;
+    chart->gpu_acceleration.value                  = gpuAcceleration;
+    chart->_gpuLineProgram.allowSoftwareRasteriser = true; // compares both paths on CI's llvmpipe too
     return chart;
 }
 
