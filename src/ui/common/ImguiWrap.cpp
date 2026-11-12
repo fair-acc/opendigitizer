@@ -35,6 +35,15 @@ static WidgetSize CalcFramedLabelSize(const std::string& label) {
 
 ImVec2 CalcButtonSize(const char* label) { return ImGui::CalcTextSize(label) + framePad(); }
 
+ImRect calcGlyphBounds(ImFont* font, float fontSize, std::string_view glyph) {
+    unsigned int codepoint = 0;
+    ImTextCharFromUtf8(&codepoint, glyph.data(), glyph.data() + glyph.size());
+    ImFontBaked*       baked     = font->GetFontBaked(fontSize);
+    const ImFontGlyph* fontGlyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
+    const float        scale     = fontSize / baked->Size;
+    return ImRect{ImVec2{fontGlyph->X0, fontGlyph->Y0} * scale, ImVec2{fontGlyph->X1, fontGlyph->Y1} * scale};
+}
+
 WidgetSize CalcCheckboxSize(const char* label) {
     const auto [labelMinSize, labelSize, _] = calculateLabelMinAndPreferredSize(label);
     const float boxSize                     = ImGui::GetFrameHeight();

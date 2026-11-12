@@ -76,6 +76,8 @@ Palette classicPalette(LookAndFeel::Style style) {
         .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
         .flowgraphUiControlUnlink              = rgba(0xD32F2F),
         .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
+        .flowgraphNodeMenuButtonHovered        = dark ? rgba(0xFFFFFF, 0x20) : rgba(0x000000, 0x14),
+        .flowgraphNodeMenuButtonActive         = dark ? rgba(0xFFFFFF, 0x33) : rgba(0x000000, 0x26),
 
         .flowgraphBoundingBoxExteriorSelection               = rgba(0x8684F5, 0x33),
         .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(0x806AF7),
@@ -232,6 +234,8 @@ Palette spectrumPalette(LookAndFeel::Style style) {
         .flowgraphUiControlPendingConnection   = rgba(c.blue500),
         .flowgraphUiControlUnlink              = rgba(c.red500),
         .flowgraphUiControlUnlinkPressed       = rgba(c.red700),
+        .flowgraphNodeMenuButtonHovered        = dark ? rgba(c.gray400) : rgba(c.gray200),
+        .flowgraphNodeMenuButtonActive         = dark ? rgba(c.gray500) : rgba(c.gray300),
 
         .flowgraphBoundingBoxExteriorSelection               = rgba(c.blue400, 0x22),
         .flowgraphBoundingBoxExteriorSelectionOutline        = rgba(c.blue500),
