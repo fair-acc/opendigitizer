@@ -60,7 +60,9 @@ struct SliderScalarParameters {
 };
 SliderAction SliderScalar(const char* label, const SliderScalarParameters& parameters);
 
-bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags = 0);
+/// combo box in the style of SliderScalar: the value sits on the window background inside a thin rounded outline with a line-drawn chevron
+bool                BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags = 0);
+[[nodiscard]] float comboWidthForText(float textWidth); // of a BeginCombo() whose value is textWidth wide, capped at LookAndFeel::comboTextMaxWidthEms
 using ComboBox = stdex::c_resource<bool, BeginCombo, ImGui::EndCombo>;
 
 bool TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags = 0);

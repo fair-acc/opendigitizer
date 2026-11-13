@@ -209,6 +209,8 @@ bool sliderNumberLabelOrTextInput(const char* valueLabel, const SliderScalarPara
     return false;
 }
 
+float comboChevronWidth() { return LookAndFeel::instance().comboChevronWidthEms * ImGui::GetFontSize(); }
+
 } // namespace
 
 float sliderNumberLabelMaxWidth() { return LookAndFeel::instance().sliderNumberLabelMaxWidthEms * ImGui::GetFontSize(); }
@@ -311,7 +313,54 @@ bool ArrowButton(const char* strId, ImGuiDir dir) {
     std::unreachable();
 }
 
-bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags) { return ImGui::BeginCombo(label, previewValue, flags); }
+float comboWidthForText(float textWidth) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    return ImMin(textWidth, LookAndFeel::instance().comboTextMaxWidthEms * ImGui::GetFontSize()) + comboChevronWidth() + style.ItemInnerSpacing.x + 2.f * style.FramePadding.x;
+}
+
+bool BeginCombo(const char* label, const char* previewValue, ImGuiComboFlags flags) {
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (window->SkipItems || (flags & ImGuiComboFlags_NoPreview) != 0) {
+        return ImGui::BeginCombo(label, previewValue, flags);
+    }
+    const ImGuiStyle&  style       = ImGui::GetStyle();
+    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
+    const char*        previewEnd  = previewValue ? ImGui::FindRenderedTextEnd(previewValue) : nullptr;
+    if ((flags & ImGuiComboFlags_WidthFitPreview) != 0) {
+        ImGui::SetNextItemWidth(comboWidthForText(previewValue ? ImGui::CalcTextSize(previewValue, previewEnd).x : 0.f));
+    }
+    const ImRect frame    = {window->DC.CursorPos, window->DC.CursorPos + ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight())};
+    const float  rounding = ImGui::GetFrameHeight() * lookAndFeel.sliderKnobRadiusFrameHeightRatio;
+
+    // Dear ImGui handles the item, the popup and the label; it draws neither frame, arrow button nor value
+    const bool open = [&] {
+        IMW::StyleColor    frameBackground(ImGuiCol_FrameBg, ImVec4{});
+        IMW::StyleColor    frameBackgroundHovered(ImGuiCol_FrameBgHovered, ImVec4{});
+        IMW::StyleColor    popupBorder(ImGuiCol_Border, lookAndFeel.palette().widgetTrackInactive);
+        IMW::StyleFloatVar frameBorder(ImGuiStyleVar_FrameBorderSize, 0.f);
+        IMW::StyleFloatVar popupBorderSize(ImGuiStyleVar_PopupBorderSize, lookAndFeel.comboOutlineThickness);
+        IMW::StyleFloatVar popupRounding(ImGuiStyleVar_PopupRounding, rounding);
+        return ImGui::BeginCombo(label, nullptr, (flags & ~ImGuiComboFlags_WidthFitPreview) | ImGuiComboFlags_NoArrowButton);
+    }();
+    if (!open && !ImGui::IsItemVisible()) {
+        return false;
+    }
+    const bool  hovered      = !open && ImGui::IsItemHovered();
+    const ImU32 outlineColor = open ? ImGui::GetColorU32(ImGuiCol_Button) : hovered ? ImGui::GetColorU32(ImGuiCol_ButtonHovered) : ImGui::GetColorU32(lookAndFeel.palette().widgetTrackInactive);
+    const float outlineInset = lookAndFeel.comboOutlineThickness / 2.f;
+    window->DrawList->AddRect(frame.Min + ImVec2(outlineInset, outlineInset), frame.Max - ImVec2(outlineInset, outlineInset), outlineColor, rounding, ImDrawFlags_None, lookAndFeel.comboOutlineThickness);
+
+    const float  chevronHalfWidth = comboChevronWidth() / 2.f;
+    const ImVec2 chevronCenter    = {frame.Max.x - style.FramePadding.x - chevronHalfWidth, frame.GetCenter().y};
+    const ImVec2 chevron[]        = {chevronCenter + ImVec2(-chevronHalfWidth, -chevronHalfWidth / 2.f), chevronCenter + ImVec2(0.f, chevronHalfWidth / 2.f), chevronCenter + ImVec2(chevronHalfWidth, -chevronHalfWidth / 2.f)};
+    window->DrawList->AddPolyline(chevron, IM_COUNTOF(chevron), ImGui::GetColorU32(ImGuiCol_Button), ImDrawFlags_None, lookAndFeel.comboChevronThickness);
+
+    if (previewValue) {
+        const float valueMaxX = chevronCenter.x - chevronHalfWidth - style.ItemInnerSpacing.x;
+        ImGui::RenderTextEllipsis(window->DrawList, frame.Min + style.FramePadding, ImVec2(valueMaxX, frame.Max.y), valueMaxX, previewValue, previewEnd, nullptr);
+    }
+    return open;
+}
 
 bool TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags) {
     switch (LookAndFeel::instance().theme) {
