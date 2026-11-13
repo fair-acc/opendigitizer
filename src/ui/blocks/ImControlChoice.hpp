@@ -51,9 +51,7 @@ A choice's `choice_values` entry is sent instead: to target_map, or without targ
             if (offered.empty()) {
                 return style.toolbarControlInputWidth;
             }
-            const float widestText  = std::ranges::max(offered | std::views::transform([](const std::string& choice) { return ImGui::CalcTextSize(choice.c_str()).x; }));
-            const float arrowButton = ImGui::GetFrameHeight();
-            return widestText + 2.f * ImGui::GetStyle().FramePadding.x + arrowButton;
+            return std::max(style.toolbarControlMinimumWidth, comboWidthForText(std::ranges::max(offered | std::views::transform([](const std::string& choice) { return ImGui::CalcTextSize(choice.c_str()).x; }))));
         }();
         SizeAndLayout layout    = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
         layout.hasAnyConnection = layout.hasAnyConnection || explicitChoices;

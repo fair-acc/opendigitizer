@@ -47,15 +47,32 @@ template<typename T>
     }
 }
 
+/// a device of `available_devices` without its " [id]" suffix
+[[nodiscard]] inline std::string_view deviceName(std::string_view device) { return device.substr(0UZ, device.rfind(" [")); }
+
+/// whether `device` is the one `selected` names, or the target's `active_device` where it has one
+[[nodiscard]] inline bool isSelectedDevice(std::string_view device, std::string_view active, std::string_view selected) { return active.empty() ? opendigitizer::video::deviceSelector(device) == selected : device.starts_with(std::string(active) + " ["); }
+
+/// width at which pickDevice() shows any of its values without truncating it: the `fixed` entries, the device names, or `selected` while it names none of them
+[[nodiscard]] inline float pickDeviceWidth(const gr::property_map& target, std::string_view selected, std::span<const std::string> fixed = {}) {
+    const auto devices     = targetSetting<std::vector<std::string>>(target, "available_devices");
+    const auto active      = targetSetting<std::string>(target, "active_device");
+    const auto textWidth   = [](std::string_view text) { return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x; };
+    const bool isListed    = std::ranges::contains(fixed, selected) || std::ranges::any_of(devices, [&](const std::string& device) { return isSelectedDevice(device, active, selected); });
+    const auto widestOf    = [&](const auto& texts, float widest) { return std::ranges::fold_left(texts, widest, [&](float width, std::string_view text) { return std::max(width, textWidth(text)); }); };
+    const auto deviceNames = devices | std::views::transform([](const std::string& device) { return deviceName(device); });
+    return comboWidthForText(widestOf(deviceNames, widestOf(fixed, isListed ? 0.f : textWidth(selected))));
+}
+
 /// combobox of `fixed` entries above the target's `available_devices`, showing the entry or device `selected` names (a device: the
 /// target's `active_device` where it has one); returns the entry picked, or the "@id:<id>" selector of the device picked
 [[nodiscard]] inline std::optional<std::string> pickDevice(const char* id, const gr::property_map& target, std::string_view selected, std::span<const std::string> fixed = {}) {
     const auto                 devices = targetSetting<std::vector<std::string>>(target, "available_devices");
     const auto                 active  = targetSetting<std::string>(target, "active_device");
     const bool                 isFixed = std::ranges::contains(fixed, selected);
-    const auto                 isShown = [&](const std::string& device) { return !isFixed && (active.empty() ? opendigitizer::video::deviceSelector(device) == selected : device.starts_with(active + " [")); };
+    const auto                 isShown = [&](const std::string& device) { return !isFixed && isSelectedDevice(device, active, selected); };
     const auto                 shown   = std::ranges::find_if(devices, isShown);
-    const std::string          preview = shown == devices.end() ? std::string(selected) : shown->substr(0UZ, shown->rfind(" ["));
+    const std::string          preview = shown == devices.end() ? std::string(selected) : std::string(deviceName(*shown));
     std::optional<std::string> picked;
     if (auto combo = DigitizerUi::ComboBox(id, preview.c_str(), 0)) {
         for (const std::string& entry : fixed) {
@@ -96,7 +113,8 @@ picking a device also sends `device_values` so, e.g., one list switches a Select
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
         const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
         const auto&         style        = LookAndFeel::instance().dashboardStyle;
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, style.toolbarControlInputWidth, style.toolbarControlMinimumWidth, labelWidth());
+        const float         inputWidth   = std::max(style.toolbarControlMinimumWidth, pickDeviceWidth(parsedConfig.firstControlledProperty.targetSettings, value, choices));
+        const SizeAndLayout layout       = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
         if (choices.empty()) {
             loadValueIfConnectionChanged(value, parsedConfig);
         } else if (!value.empty() && !std::exchange(_appliedAtStart, true)) {

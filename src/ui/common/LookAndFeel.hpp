@@ -394,6 +394,10 @@ struct LookAndFeel {
     float                     toggleKnobInset                         = 2.f;
     float                     toggleHoveredDarkenPercentage           = .15f;
     float                     toggleAnimationSeconds                  = .12f;
+    float                     comboOutlineThickness                   = 1.5f;
+    float                     comboChevronThickness                   = 2.f;
+    float                     comboChevronWidthEms                    = .55f;
+    float                     comboTextMaxWidthEms                    = 16.f; // longer values are drawn with an ellipsis
     float                     searchHighlightRounding                 = 0.f;
     float                     selectedLabelRoundingPercentage         = 1.f; // percentage of the label height
     float                     notificationRounding                    = .5f;

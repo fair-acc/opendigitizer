@@ -2,9 +2,12 @@
 
 #include <boost/ut.hpp>
 
+#include <common/LookAndFeel.hpp>
 #include <components/StyledStandardWidgets.hpp>
 
+#include <array>
 #include <cmath>
+#include <format>
 #include <utility>
 
 using namespace boost;
@@ -17,8 +20,11 @@ constexpr float  kSliderWidth = 400.f;
 constexpr float  kSliderMin   = 0.f;
 constexpr float  kSliderMax   = 10.f;
 
+constexpr std::array<const char*, 2UZ> kComboChoices{"160 Hz", "440 Hz"};
+
 struct TestState {
-    float sliderValue = 1.f;
+    float       sliderValue = 1.f;
+    std::size_t comboChoice = 0UZ;
 };
 
 TestState g_state;
@@ -112,6 +118,48 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->KeyCharsReplaceEnter("6");
                 expect(eq(g_state.sliderValue, 6.f));
                 expect(!isTextInputActive());
+            };
+        };
+
+        ImGuiTest* comboTest = IM_REGISTER_TEST(engine(), "styledwidgets", "combo");
+
+        comboTest->GuiFunc = [](ImGuiTestContext*) {
+            ImGui::SetNextWindowPos(kWindowPos);
+            ImGui::SetNextWindowSize(kWindowSize);
+            IMW::Window window("Widgets", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::SetNextItemWidth(DigitizerUi::comboWidthForText(ImGui::CalcTextSize(kComboChoices[1]).x));
+            if (auto combo = DigitizerUi::ComboBox("##combo", kComboChoices[g_state.comboChoice], 0)) {
+                for (std::size_t i = 0UZ; i < kComboChoices.size(); ++i) {
+                    if (DigitizerUi::Selectable(kComboChoices[i], i == g_state.comboChoice)) {
+                        g_state.comboChoice = i;
+                    }
+                }
+            }
+        };
+
+        comboTest->TestFunc = [](ImGuiTestContext* ctx) {
+            ctx->SetRef("//Widgets");
+
+            "combo is wide enough for its value and its chevron"_test = [&] {
+                const float valueWidth = ImGui::CalcTextSize(kComboChoices[1]).x;
+                expect(gt(ctx->ItemInfo("##combo").RectFull.GetWidth(), valueWidth + ImGui::GetFontSize() * DigitizerUi::LookAndFeel::instance().comboChevronWidthEms));
+                captureWindow(ctx);
+            };
+
+            "clicking anywhere in the combo opens its list, and picking an entry selects it"_test = [&] {
+                const ImRect frame = ctx->ItemInfo("##combo").RectFull;
+                ctx->MouseMoveToPos(ImVec2(frame.Min.x + ImGui::GetStyle().FramePadding.x, frame.GetCenter().y));
+                ctx->MouseClick();
+                captureWindow(ctx);
+                ctx->ItemClick(std::format("//$FOCUSED/{}", kComboChoices[1]).c_str());
+                expect(eq(g_state.comboChoice, 1UZ));
+                captureWindow(ctx);
+            };
+
+            "combo width stops growing at the cap, beyond which the value is drawn with an ellipsis"_test = [&] {
+                const float cap = ImGui::GetFontSize() * DigitizerUi::LookAndFeel::instance().comboTextMaxWidthEms;
+                expect(lt(DigitizerUi::comboWidthForText(cap / 2.f), DigitizerUi::comboWidthForText(cap)));
+                expect(eq(DigitizerUi::comboWidthForText(cap), DigitizerUi::comboWidthForText(2.f * cap)));
             };
         };
     }
