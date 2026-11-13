@@ -21,6 +21,7 @@ struct DataTypeStyle {
 };
 
 [[nodiscard]] const DataTypeStyle& styleForDataType(std::string_view type);
+[[nodiscard]] bool                 isEventDataType(std::string_view type);
 [[nodiscard]] std::uint32_t        darkenOrLighten(std::uint32_t color);
 [[nodiscard]] std::uint32_t        withStyleAlpha(std::uint32_t color, float styleAlpha);
 [[nodiscard]] float                pinLocalPositionY(std::size_t index, std::size_t numPins, float blockHeight, float pinHeight);

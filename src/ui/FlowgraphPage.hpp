@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 struct TestState;
@@ -80,6 +81,8 @@ private:
     [[nodiscard]] std::optional<components::BlockDragConnectOverlay> handleUiControlDragConnect(std::span<UiGraphBlock* const> drawnBlocks);
 
     UiGraphBlock* _blockContextMenuRequest = nullptr;
+
+    std::unordered_map<const UiGraphPort*, ImVec2> _pinPivots;
 
     // set from within a context menu, handled once the menu popup is closed (a modal opened from inside a popup would be nested in it)
     std::optional<std::vector<std::string>> _pendingGroupBlocksRequest;

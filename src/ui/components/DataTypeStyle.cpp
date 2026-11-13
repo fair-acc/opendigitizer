@@ -57,12 +57,26 @@ void drawPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2&
     style.drawShape(drawList, (min + max) * 0.5f, std::min(max.x - min.x, max.y - min.y), withStyleAlpha(style.color(), alpha));
 }
 
-void drawHoveredPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float /*alpha*/, void* userData) {
-    const auto& style = *static_cast<const DataTypeStyle*>(userData);
-    style.drawShapeSolid(drawList, (min + max) * 0.5f, std::min(max.x - min.x, max.y - min.y), LookAndFeel::getColorU32ImGui(&Palette::flowgraphPinRect));
+void drawHoveredPinForNodeEditor(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, float alpha, void* userData) {
+    const auto&  style  = *static_cast<const DataTypeStyle*>(userData);
+    const ImVec2 center = (min + max) * 0.5f;
+    const float  size   = std::min(max.x - min.x, max.y - min.y);
+    style.drawShapeSolid(drawList, center, size + (2.f * LookAndFeel::instance().flowgraph.pinHoverHaloWidth), LookAndFeel::getColorU32ImGui(&Palette::flowgraphPinRect));
+    style.drawShapeSolid(drawList, center, size, LookAndFeel::getColorU32ImGui(&Palette::flowgraphBg));
+    style.drawShape(drawList, center, size, withStyleAlpha(style.color(), alpha));
 }
 
 std::uint32_t DataTypeStyle::color() const { return rgbToImGuiABGR(colorARGB & 0x00ffffff, static_cast<std::uint8_t>(colorARGB >> 24)); }
+
+namespace {
+constexpr std::uint32_t kUntypedColorARGB = 0xff74879A;
+const DataTypeStyle     kEventStyle{0xffAD55EE, &drawDiamond, &drawSolidDiamondPort};
+} // namespace
+
+bool isEventDataType(std::string_view type) {
+    static const std::string kEventPortType(gr::meta::type_name<gr::property_map_view>());
+    return type == kEventPortType || type == "event"sv || type == "gr::Message"sv;
+}
 
 const DataTypeStyle& styleForDataType(std::string_view type) {
     using DataTypeStyleMap = std::unordered_map<std::string, DataTypeStyle, opendigitizer::TransparentStringHash, std::equal_to<>>;
@@ -99,26 +113,27 @@ const DataTypeStyle& styleForDataType(std::string_view type) {
         {"std::complex<int32>"s, {0xff4CAF50}},                                         //
         {"std::complex<int64>"s, {0xff8BC34A}},                                         //
 
-        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                      //
-        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},                //
-        {"gr::TensorView<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                  //
-        {"gr::TensorView<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},            //
-        {"gr::TensorView<uint32>"s, {0xff009688, &drawGridWithCornerRing, &drawSolidCornerRingPort}},                   //
-        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},                    //
-        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}},              //
-                                                                                                                        //
-        {std::string(gr::meta::type_name<gr::property_map_view>()), {0xffAD55EE, &drawDiamond, &drawSolidDiamondPort}}, //
-        {"gr::Message"s, {0xffDBDBDB}},                                                                                 //
+        {"gr::Tensor<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},           //
+        {"gr::Tensor<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}},     //
+        {"gr::TensorView<float32>"s, {0xffFF6905, &drawGridWithCornerRing, &drawSolidCornerRingPort}},       //
+        {"gr::TensorView<float64>"s, {0xff009DA8, &drawGridWithCornerDoubleRing, &drawSolidCornerRingPort}}, //
+        {"gr::TensorView<uint32>"s, {0xff009688, &drawGridWithCornerRing, &drawSolidCornerRingPort}},        //
+        {"gr::DataSet<float32>"s, {0xffF50057, &drawWavesWithCornerRing, &drawSolidCornerRingPort}},         //
+        {"gr::DataSet<float64>"s, {0xff8BC34A, &drawWavesWithCornerDoubleRing, &drawSolidCornerRingPort}},   //
+                                                                                                             //
+        {std::string(gr::meta::type_name<gr::property_map_view>()), kEventStyle},                            //
+        {"event"s, kEventStyle},                                                                             //
+        {"gr::Message"s, kEventStyle},                                                                       //
 
-        {"Bits"s, {0xffEA80FC}},          //
-        {"BusConnection"s, {0xffffffff}}, //
-        {"Wildcard"s, {0xffffffff}},      //
-        {"Untyped"s, {0xffffffff}},       //
+        {"Bits"s, {0xffEA80FC}},                 //
+        {"BusConnection"s, {kUntypedColorARGB}}, //
+        {"Wildcard"s, {kUntypedColorARGB}},      //
+        {"Untyped"s, {kUntypedColorARGB}},       //
     });
 
     auto it = styles.find(type);
     if (it == styles.cend()) {
-        static const DataTypeStyle none{0x00000000};
+        static const DataTypeStyle none{kUntypedColorARGB};
         return none;
     }
     return it->second;

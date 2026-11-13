@@ -116,18 +116,16 @@ template<ImGuiNumber T>
 
 /// Draw a slider for editing a numeric value. Only draws the slider and not the text input.
 bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImGuiDataType dataType, void* data, const void* min, const void* max, const char* format, ImGuiSliderFlags flags) {
-    const ImGuiStyle&  style          = ImGui::GetStyle();
-    const LookAndFeel& lookAndFeel    = LookAndFeel::instance();
-    const bool         isClassicTheme = lookAndFeel.theme == LookAndFeel::Theme::Classic;
-    const ImRect       frame          = {ImGui::GetCursorScreenPos(), ImGui::GetCursorScreenPos() + ImVec2(width, ImGui::GetFrameHeight())};
+    const ImGuiStyle&  style       = ImGui::GetStyle();
+    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
+    const ImRect       frame       = {ImGui::GetCursorScreenPos(), ImGui::GetCursorScreenPos() + ImVec2(width, ImGui::GetFrameHeight())};
     ImGui::ItemSize(frame, style.FramePadding.y);
     if (!ImGui::ItemAdd(frame, id)) {
         return false;
     }
-    bool held = false;
-    ImGui::ButtonBehavior(frame, id, nullptr, &held, ImGuiButtonFlags_PressedOnClick);
+    ImGui::ButtonBehavior(frame, id, nullptr, nullptr, ImGuiButtonFlags_PressedOnClick);
 
-    const float floatSliderDragHandleWidth = isClassicTheme ? style.GrabMinSize / 2.f : ImGui::GetFrameHeight() * lookAndFeel.sliderKnobRadiusFrameHeightRatio;
+    const float floatSliderDragHandleWidth = ImGui::GetFrameHeight() * lookAndFeel.sliderKnobRadiusFrameHeightRatio;
     ImRect      imguiDragRect{}; // where imgui would draw the rectangular drag handle
     const bool  changed = [&] {
         IMW::StyleFloatVar         grabSize(ImGuiStyleVar_GrabMinSize, floatSliderDragHandleWidth * 2.f);
@@ -157,13 +155,7 @@ bool sliderImpl([[maybe_unused]] const char* label, ImGuiID id, float width, ImG
     }
     ImGui::RenderNavCursor(frame, id);
 
-    // draw drag handle
-    if (isClassicTheme) {
-        const ImVec2 halfGrabSize = {floatSliderDragHandleWidth, ImGui::GetFrameHeight() * lookAndFeel.sliderImGuiStyleGrabFrameHeightRatio / 2.f};
-        drawList->AddRectFilled(knobCenter - halfGrabSize, knobCenter + halfGrabSize, ImGui::GetColorU32(held ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), style.GrabRounding);
-    } else {
-        drawList->AddCircle(knobCenter, floatSliderDragHandleWidth - (lookAndFeel.sliderKnobRingThickness / 2.f), filledColor, 0, lookAndFeel.sliderKnobRingThickness);
-    }
+    drawList->AddCircle(knobCenter, floatSliderDragHandleWidth - (lookAndFeel.sliderKnobRingThickness / 2.f), filledColor, 0, lookAndFeel.sliderKnobRingThickness);
 
     [[maybe_unused]] ImGuiContext& g = *GImGui;
     IMGUI_TEST_ENGINE_ITEM_INFO(id, label, ImGui::GetItemStatusFlags());

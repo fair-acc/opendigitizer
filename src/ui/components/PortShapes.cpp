@@ -203,9 +203,9 @@ void drawDot(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) { dra
 
 void drawRingedDot(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) {
     const auto& lookAndFeel = flowgraphLookAndFeel();
-    const float thickness   = lookAndFeel.dataTypeIconLineThickness;
-    drawList->AddCircle(center, size / 2.f - thickness / 2.f, color, 0, thickness);
-    drawList->AddCircleFilled(center, std::max(0.f, size / 2.f - thickness - lookAndFeel.float64IconRingGapWidthPixels), color);
+    const ImU32 ringColor   = (color & IM_COL32_A_MASK) | (IM_COL32_WHITE & ~IM_COL32_A_MASK);
+    drawList->AddCircleFilled(center, size / 2.f, color);
+    drawList->AddCircle(center, size / 2.f * lookAndFeel.float64InnerRingRadiusRatio, ringColor, 0, lookAndFeel.dataTypeIconLineThickness);
 }
 
 void drawDotPair(ImDrawList* drawList, ImVec2 center, float size, ImU32 color) {

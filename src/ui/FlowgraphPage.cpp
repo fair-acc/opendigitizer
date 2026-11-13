@@ -33,6 +33,8 @@
 
 #include "scope_exit.hpp"
 
+#include <cmath>
+
 using namespace std::string_literals;
 
 namespace {
@@ -94,10 +96,33 @@ bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_vie
     return &control != &block && block.isConnectableProperty(hoveredProperty, control.uiControlCompatibleTypeMap());
 }
 
+void drawDashedLink(ImDrawList* drawList, ImVec2 start, ImVec2 end, ImU32 color) {
+    const auto&  lookAndFeel  = LookAndFeel::instance().flowgraph;
+    const ImVec2 arrowBase    = end - ImVec2{lookAndFeel.pinArrowSize, 0.f};
+    const float  halfDistance = ImLength(arrowBase - start) * .5f;
+    const float  strength     = halfDistance < lookAndFeel.linkStrength ? lookAndFeel.linkStrength * ImSin(IM_PI * .5f * halfDistance / lookAndFeel.linkStrength) : lookAndFeel.linkStrength;
+    const ImVec2 control0     = start + ImVec2{strength, 0.f};
+    const ImVec2 control1     = arrowBase - ImVec2{strength, 0.f};
+    const float  period       = lookAndFeel.eventLinkDashLength + lookAndFeel.eventLinkGapLength;
+    const int    nSamples     = std::max(16, static_cast<int>(halfDistance));
+    ImVec2       previous     = start;
+    float        travelled    = 0.f;
+    for (int i = 1; i <= nSamples; ++i) {
+        const ImVec2 point = ImBezierCubicCalc(start, control0, control1, arrowBase, static_cast<float>(i) / static_cast<float>(nSamples));
+        if (std::fmod(travelled, period) < lookAndFeel.eventLinkDashLength) {
+            drawList->AddLine(previous, point, color);
+        }
+        travelled += ImLength(point - previous);
+        previous = point;
+    }
+    const ImVec2 halfArrowWidth{0.f, lookAndFeel.pinArrowWidth * .5f};
+    drawList->AddTriangleFilled(end, arrowBase + halfArrowWidth, arrowBase - halfArrowWidth, color);
+}
+
 } // namespace
 
 /// Style can be null if drawn client side (which node editor supports for rectangular port shapes)
-void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size, const DataTypeStyle* style) {
+ImVec2 addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2& p, ImVec2 size, const DataTypeStyle* style) {
     const bool   input = kind == ax::NodeEditor::PinKind::Input;
     const ImVec2 min   = input ? p - ImVec2(size.x, 0) : p;
     const ImVec2 max   = input ? p + ImVec2(0, size.y) : p + size;
@@ -120,6 +145,7 @@ void addPin(ax::NodeEditor::PinId id, ax::NodeEditor::PinKind kind, const ImVec2
     if (input) {
         ax::NodeEditor::PopStyleVar(3);
     }
+    return pivot;
 };
 
 std::string getDefaultExportedName(const UiGraphPort* port) { return std::format("{}.{}", port->ownerBlock ? port->ownerBlock->blockName : "UNKNOWN", port->portName); }
@@ -473,7 +499,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
 
     // Register ports with node editor, actual drawing comes later
     auto* exportTarget = exportPortTargetBlock();
-    auto  registerPins = [exportTarget, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
+    auto  registerPins = [this, exportTarget, &blockSize, pinAreaHeight](auto& ports, auto position, auto pinType) {
         if (pinType == ax::NodeEditor::PinKind::Output) {
             position.x += blockSize.x - ax::NodeEditor::GetStyle().NodePadding.x;
         }
@@ -485,7 +511,7 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
             auto portDisplayName = exportedPortShortenedDisplayName(ports[i], exportTarget);
             auto info            = calculatePinDrawInfo(portDisplayName, i, ports.size(), position.x, blockY, pinAreaHeight, isInput);
             auto pinPos          = isInput ? ImVec2{info.topLeft.x + info.size.x, info.topLeft.y} : info.topLeft;
-            addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size, portDisplayName ? nullptr : &styleForDataType(ports[i]->portType));
+            _pinPivots[ports[i]] = addPin(ax::NodeEditor::PinId(ports[i]), pinType, pinPos, info.size, portDisplayName ? nullptr : &styleForDataType(ports[i]->portType));
         }
     };
 
@@ -663,6 +689,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
     makeCurrent();
     dropReferencesToDeletedBlocks();
+    _pinPivots.clear();
 
     std::vector<UiGraphBlock*> drawnBlocks = graphBlocks;
     drawnBlocks.insert(drawnBlocks.end(), controlBlocks.cbegin(), controlBlocks.cend());
@@ -861,9 +888,15 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
         if (!std::any_of(filteredOutNodes.begin(), filteredOutNodes.end(), [&](const ax::NodeEditor::NodeId& nodeId) { //
                 return nodeId == sourceBlockId || nodeId == destinationBlockId;
             })) {
+            const bool isEventLink = isEventDataType(edge.edgeSourcePort->portType);
             ax::NodeEditor::Link(ax::NodeEditor::LinkId(&edge), //
                 ax::NodeEditor::PinId(edge.edgeSourcePort),     //
-                ax::NodeEditor::PinId(edge.edgeDestinationPort), linkColor(*edge.edgeSourcePort));
+                ax::NodeEditor::PinId(edge.edgeDestinationPort), isEventLink ? ImVec4{} : linkColor(*edge.edgeSourcePort));
+            const auto start = _pinPivots.find(edge.edgeSourcePort);
+            const auto end   = _pinPivots.find(edge.edgeDestinationPort);
+            if (isEventLink && start != _pinPivots.end() && end != _pinPivots.end()) {
+                drawDashedLink(ImGui::GetWindowDrawList(), start->second, end->second, ImGui::GetColorU32(linkColor(*edge.edgeSourcePort)));
+            }
         }
     }
 
