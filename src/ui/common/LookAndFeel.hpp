@@ -287,6 +287,10 @@ struct LookAndFeel {
         float rectangularPortRounding              = 2.f;
         float dataTypeIconLineThickness            = 1.f;
         float float64IconRingGapWidthPixels        = 1.f;
+        float float64InnerRingRadiusRatio          = .55f; // of the dot radius
+        float pinHoverHaloWidth                    = 2.f;
+        float eventLinkDashLength                  = 6.f;
+        float eventLinkGapLength                   = 4.f;
         float complexNumbersIconDotWidthFactor     = 1.5f; // relative to the regular single dot diameter
         float complexNumbersIconDotPairGap         = 1.f;
         float containerIconsCornerRingRadiusFactor = 0.25f; // relative to shape size
@@ -384,7 +388,6 @@ struct LookAndFeel {
     float                     sliderTrackThickness                    = 4.f;
     float                     sliderKnobRadiusFrameHeightRatio        = .35f;
     float                     sliderKnobRingThickness                 = 3.f;
-    float                     sliderImGuiStyleGrabFrameHeightRatio    = .75f;
     float                     sliderTextInputMinWidthEms              = 3.5f;
     float                     sliderNumberLabelMaxWidthEms            = 4.f;
     float                     toggleWidthFrameHeightRatio             = 1.75f;

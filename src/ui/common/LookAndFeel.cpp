@@ -71,7 +71,7 @@ Palette classicPalette(LookAndFeel::Style style) {
         .flowgraphSubgraphBorder               = rgba(0xDFA32B),
         .flowgraphSubgraphBorderText           = black,
         .flowgraphUiControlHighlight           = rgba(uiControlHighlight),
-        .flowgraphUiControlConnectionIndicator = rgba(0x555555),
+        .flowgraphUiControlConnectionIndicator = dark ? rgba(0xA0A0A0) : rgba(0x555555),
         .flowgraphUiControlPendingConnection   = rgba(uiControlHighlight),
         .flowgraphUiControlUnlink              = rgba(0xD32F2F),
         .flowgraphUiControlUnlinkPressed       = rgba(0xFF8A80),
