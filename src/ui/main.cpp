@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
@@ -37,11 +38,13 @@
 #include <gnuradio-4.0/filter/time_domain_filter.hpp>
 
 #if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
-#if defined(OD_ACOUSTIC_CAMERA)
+#include <gnuradio-4.0/GrAnalogBlocks.hpp>
 #include <gnuradio-4.0/GrAudioBlocks.hpp>
+#if defined(OD_ACOUSTIC_CAMERA)
 #include <gnuradio-4.0/GrLocalisationBlocks.hpp>
 #endif
 #include <gnuradio-4.0/GrBasicBlocks.hpp>
+#include <gnuradio-4.0/GrDigitalBlocks.hpp>
 #include <gnuradio-4.0/GrElectricalBlocks.hpp>
 #include <gnuradio-4.0/GrFileIoBlocks.hpp>
 #include <gnuradio-4.0/GrFilterBlocks.hpp>
@@ -49,6 +52,7 @@
 #include <gnuradio-4.0/GrHttpBlocks.hpp>
 #include <gnuradio-4.0/GrMathBlocks.hpp>
 #include <gnuradio-4.0/GrTestingBlocks.hpp>
+#include <gnuradio-4.0/sdr/RTL2832Source.hpp>
 #endif
 
 #include "blocks/Arithmetic.hpp"
@@ -57,6 +61,11 @@
 #include "blocks/StridedWindow.hpp"
 #include "blocks/TagToSample.hpp"
 #include "blocks/TestSpectrumGenerator.hpp"
+
+#if !defined(__EMSCRIPTEN__) || defined(OD_WASM_STATIC_BLOCKLIBS)
+#include "blocks/ImControlRTL2832Connect.hpp"
+#include "charts/RDSView.hpp"
+#endif
 
 #include <version.hpp>
 
@@ -246,9 +255,14 @@ int main(int argc, char** argv) {
     gr::blocklib::initGrHttpBlocks(*registry);
     gr::blocklib::initGrMathBlocks(*registry);
     gr::blocklib::initGrTestingBlocks(*registry);
+    gr::blocklib::initGrAnalogBlocks(*registry);
+    gr::blocklib::initGrAudioBlocks(*registry);
+    gr::blocklib::initGrDigitalBlocks(*registry);
+    gr::registerBlock<opendigitizer::charts::RDSView>(*registry);
+    gr::registerBlock<DigitizerUi::ImControlRTL2832Connect>(*registry);
+    gr::registerBlock<gr::blocks::sdr::RTL2832Source<std::complex<float>>, "">(*registry);
 #endif
 #if defined(OD_ACOUSTIC_CAMERA)
-    gr::blocklib::initGrAudioBlocks(*registry);
     gr::blocklib::initGrLocalisationBlocks(*registry);
 #endif
 
@@ -256,6 +270,7 @@ int main(int argc, char** argv) {
     // gr::filter blocklib registers only the <1,1> identity (used by PulsedPowerDemo.grc).
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<100UZ, 1UZ, false>>, "">(*registry);
     gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<40UZ, 1UZ, false>>, "">(*registry);
+    gr::registerBlock<gr::filter::BasicFilterProto<float, gr::Resampling<1UZ, 1UZ, false>>, "gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>">(*registry);
 
     // strided windowing in front of the FFT (the gr4 FFT has no Stride<>); see PulsedPowerDemo.grc
     gr::registerBlock<opendigitizer::StridedWindow<float>, "">(*registry);

@@ -71,6 +71,7 @@ if(EMSCRIPTEN)
       -pthread
       "-sFETCH=1" # needed for file_io
       "--bind" # needed for Clipboard
+      "SHELL:-s EXPORTED_RUNTIME_METHODS=['wasmMemory']" # needed for the WebUSB bulk read of RTL2832Source
   )
 endif()
 
@@ -125,6 +126,7 @@ cmrc_add_resource_library(
   assets/sampleDashboards/SynthesizerDemoDashboard.grc
   assets/sampleDashboards/PropertyControlDashboard.grc
   assets/sampleDashboards/DemoDashboard.grc
+  assets/sampleDashboards/FMRadio.grc
   assets/sampleDashboards/PulsedPowerDemo.grc
   assets/sampleDashboards/SpectrumRangeDemo.grc
   assets/sampleDashboards/StreamingStress.grc
@@ -346,6 +348,7 @@ target_sources(
             HEADERS
             FILES
             blocks/ImPlotSink.hpp
+            blocks/TagSink.hpp
             charts/Chart.hpp
             charts/Charts.hpp
             charts/ImageChart.hpp
@@ -466,6 +469,7 @@ add_library(
   blocks/ImControlToggle.hpp
   blocks/ImControlTrigger.hpp
   blocks/ImControlValue.hpp
+  blocks/ImControlRTL2832Connect.hpp
   blocks/ImPropertyReadout.hpp
   blocks/TargetMap.hpp
   blocks/DrawableBlockConfig.hpp
@@ -476,6 +480,7 @@ add_library(
   blocks/SineOscillator.hpp
   blocks/ValueSource.hpp
   blocks/meta.hpp
+  charts/RDSView.hpp
   components/Block.cpp
   components/Block.hpp
   components/BlockNeighboursPreview.cpp
@@ -545,6 +550,13 @@ target_link_libraries(
   PUBLIC opendigitizer-flowgraph-editor opendigitizer_version stb)
 if(NOT EMSCRIPTEN)
   target_link_libraries(${target_name}lib PUBLIC fair-picoscope) # PicoScope blocks (gr-digitizers), native-only
+endif()
+if(NOT EMSCRIPTEN OR OD_WASM_STATIC_BLOCKLIBS)
+  target_link_libraries(${target_name}lib PUBLIC gnuradio4::GrAnalogBlocksShared gnuradio4::GrAudioBlocksShared
+                                                 gnuradio4::GrDigitalBlocksShared)
+  if(TARGET gr-sdr)
+    target_link_libraries(${target_name}lib PUBLIC gr-sdr)
+  endif()
 endif()
 
 foreach(

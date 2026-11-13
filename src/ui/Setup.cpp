@@ -23,6 +23,7 @@
 #include "blocks/PianoControl.hpp"
 #include "blocks/SineOscillator.hpp"
 #include "blocks/StatusBarBlock.hpp"
+#include "blocks/TagSink.hpp"
 #include "blocks/ValueSource.hpp"
 #include "charts/Charts.hpp"
 #include "components/ColourManager.hpp"
@@ -45,6 +46,7 @@ void registerDashboardBlocks(gr::BlockRegistry& registry) {
     registerVideoBlocks(registry);
     registerLocalisationBlocks(registry);
     std::ignore = gr::registerBlock<opendigitizer::ImPlotSink, float, double, gr::DataSet<float>, gr::DataSet<double>, gr::UncertainValue<float>, gr::Tensor<float>, gr::Tensor<double>, gr::Tensor<std::uint32_t>, gr::property_map>(registry);
+    std::ignore = gr::registerBlock<opendigitizer::TagSink, std::uint8_t, float>(registry);
     std::ignore = gr::registerBlock<ImControlNumber>(registry);
     std::ignore = gr::registerBlock<ImControlToggle>(registry);
     std::ignore = gr::registerBlock<ImControlTrigger>(registry);

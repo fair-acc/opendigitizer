@@ -1,0 +1,278 @@
+blocks:
+  - id: gr::blocks::sdr::RTL2832Source<complex<float32>>
+    parameters:
+      name: RTLSDR
+      frequency: 89550000
+      sample_rate: 2400000
+      auto_gain: false
+      gain: 30
+      emit_timing_tags: false
+      dc_blocker_enabled: false
+  - id: gr::filter::FrequencyXlatingFilter<complex<float32>>
+    parameters:
+      name: Channel
+      frequency: -250000
+      sample_rate: 2400000
+      cutoff: 110000
+      decimation: 10
+      filter_domain: Time
+  - id: gr::analog::FMDemodulator<float32>
+    parameters:
+      name: FMDemodulator
+  - id: gr::analog::FMStereoDecoder<float32>
+    parameters:
+      name: StereoDecoder
+      sample_rate: 240000
+  - id: gr::analog::FMDeemphasis<float32>
+    parameters:
+      name: DeemphasisLeft
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>
+    parameters:
+      name: AudioFilterLeft
+      sample_rate: 240000
+      filter_type: FIR
+      filter_order: 8
+      f_low: 15000
+      decimation: 5
+  - id: gr::blocks::math::MultiplyConst<float32, std::multiplies<float32>>
+    parameters:
+      name: VolumeLeft
+      value: 1
+  - id: gr::analog::FMDeemphasis<float32>
+    parameters:
+      name: DeemphasisRight
+  - id: gr::filter::BasicFilterProto<float32, gr::Resampling<1, 1, false>>
+    parameters:
+      name: AudioFilterRight
+      sample_rate: 240000
+      filter_type: FIR
+      filter_order: 8
+      f_low: 15000
+      decimation: 5
+  - id: gr::blocks::math::MultiplyConst<float32, std::multiplies<float32>>
+    parameters:
+      name: VolumeRight
+      value: 1
+  - id: gr::audio::AudioSinkMultiplexed<float32>
+    parameters:
+      name: Speaker
+      n_inputs: 2
+      io_buffer_size: 2
+  - id: DigitizerUi::ImControlRTL2832Connect
+    parameters:
+      name: uiConnect
+      label: RTL-SDR
+      target_map: "RTLSDR:device_index"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiVolume
+      label: Volume
+      value: 1
+      min: 0
+      max: 2
+      step: 0.05
+      style: sliderSpinner
+      target_map: "VolumeLeft,VolumeRight:value"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiStereoThreshold
+      label: Stereo threshold
+      value: 0.02
+      min: 0.01
+      max: 0.2
+      step: 0.01
+      style: sliderSpinner
+      target_map: "StereoDecoder:pilot_threshold"
+  - id: DigitizerUi::ImControlToggle
+    parameters:
+      name: uiAutoGain
+      label: Auto gain
+      value: false
+      target_map: "RTLSDR:auto_gain"
+  - id: DigitizerUi::ImControlNumber
+    parameters:
+      name: uiGain
+      label: RF gain
+      unit: dB
+      value: 30
+      min: 0
+      max: 50
+      step: 1
+      style: sliderSpinner
+      target_map: "RTLSDR:gain"
+  - id: gr::filter::HilbertTransform<float32, gr::filter::HilbertOutput::complex>
+    parameters:
+      name: RDSAnalytic
+  - id: gr::filter::FrequencyXlatingFilter<complex<float32>>
+    parameters:
+      name: RDSChannel
+      frequency: 57000
+      sample_rate: 240000
+      cutoff: 3000
+      decimation: 10
+  - id: gr::digital::RootRaisedCosineFilter<float32>
+    parameters:
+      name: RDSMatchedFilter
+      samples_per_symbol: 10
+      excess_bandwidth: 1
+  - id: gr::digital::SymbolSync<float32>
+    parameters:
+      name: RDSSymbolSync
+      samples_per_symbol: 10.105263
+      excess_bandwidth: 1
+  - id: gr::digital::CostasLoop<float32>
+    parameters:
+      name: RDSCostas
+      sample_rate: 2375
+      loop_bandwidth: 20
+      min_frequency: -100
+      max_frequency: 100
+  - id: gr::testing::NullSink<float32>
+    parameters:
+      name: RDSOffsetSink
+  - id: gr::digital::ManchesterDecoder<float32>
+    parameters:
+      name: RDSManchester
+  - id: gr::digital::DifferentialDecoder
+    parameters:
+      name: RDSDifferential
+  - id: gr::digital::RDSDecoder
+    parameters:
+      name: RDSDecoder
+  - id: opendigitizer::TagSink<uint8>
+    parameters:
+      name: RDSStation
+      signal_name: RDS
+      tag_keys:
+        - rds_programme_identification
+        - rds_synchronised
+        - rds_tmc_event
+  - id: gr::blocks::fft::FFT<float32, gr::DataSet<float32>>
+    parameters:
+      name: MPXFFT
+      fft_size: 8192
+      sample_rate: 240000
+      window: Hann
+      output_in_db: true
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: MPXSpectrumPlot
+      signal_name: MPX spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+      dataset_index: 0
+  - id: gr::basic::KeepMInN<complex<float32>>
+    parameters:
+      name: RFWindow
+      m: 8192
+      n: 98304
+  - id: gr::blocks::fft::FFT<complex<float32>, gr::DataSet<float32>>
+    parameters:
+      name: RFFFT
+      fft_size: 8192
+      sample_rate: 2400000
+      window: Hann
+      output_in_db: true
+  - id: opendigitizer::ImPlotSink<gr::DataSet<float32>>
+    parameters:
+      name: RFSpectrumPlot
+      signal_name: RF spectrum
+      abscissa_quantity: frequency
+      abscissa_unit: Hz
+      signal_quantity: magnitude
+      signal_unit: dB
+      dataset_index: 0
+connections:
+  - [ RTLSDR, 0, Channel, 0, 1048576 ]
+  - [ Channel, 0, FMDemodulator, 0 ]
+  - [ FMDemodulator, 0, StereoDecoder, 0 ]
+  - [ StereoDecoder, 0, DeemphasisLeft, 0 ]
+  - [ StereoDecoder, 1, DeemphasisRight, 0 ]
+  - [ DeemphasisLeft, 0, AudioFilterLeft, 0 ]
+  - [ DeemphasisRight, 0, AudioFilterRight, 0 ]
+  - [ AudioFilterLeft, 0, VolumeLeft, 0 ]
+  - [ AudioFilterRight, 0, VolumeRight, 0 ]
+  - [ VolumeLeft, 0, Speaker, [ 0, 0 ] ]
+  - [ VolumeRight, 0, Speaker, [ 0, 1 ] ]
+  - [ FMDemodulator, 0, RDSAnalytic, 0 ]
+  - [ RDSAnalytic, 0, RDSChannel, 0 ]
+  - [ RDSChannel, 0, RDSMatchedFilter, 0 ]
+  - [ RDSMatchedFilter, 0, RDSSymbolSync, 0 ]
+  - [ RDSSymbolSync, 0, RDSCostas, 0 ]
+  - [ RDSCostas, 0, RDSManchester, 0 ]
+  - [ RDSCostas, 1, RDSOffsetSink, 0 ]
+  - [ RDSManchester, 0, RDSDifferential, 0 ]
+  - [ RDSDifferential, 0, RDSDecoder, 0 ]
+  - [ RDSDecoder, 0, RDSStation, 0 ]
+  - [ FMDemodulator, 0, MPXFFT, 0 ]
+  - [ MPXFFT, 0, MPXSpectrumPlot, 0 ]
+  - [ RTLSDR, 0, RFWindow, 0, 1048576 ]
+  - [ RFWindow, 0, RFFFT, 0 ]
+  - [ RFFFT, 0, RFSpectrumPlot, 0 ]
+dashboard:
+  layout: Free
+  sources:
+    - name: RFSpectrumPlot
+      block: RFSpectrumPlot
+    - name: RDSStation
+      block: RDSStation
+    - name: MPXSpectrumPlot
+      block: MPXSpectrumPlot
+  plots:
+    - name: RF spectrum
+      type: opendigitizer::charts::SpectrumView
+      parameters:
+        top_pane_mode: Density
+        show_current_overlay: true
+        show_max_hold: false
+        show_min_hold: false
+        show_average: false
+        colormap: ImPlotColormap_Jet
+        n_history: 512
+        f0_style: solid
+        f0: -250000
+        f0_targets: "Channel:frequency;RDSPanel:channel_frequency"
+      axes:
+        - axis: X
+          min: NaN
+          max: NaN
+          format: Metric
+        - axis: Y
+          min: NaN
+          max: NaN
+        - axis: Z
+          min: NaN
+          max: NaN
+      sources:
+        - RFSpectrumPlot
+      rect: [ 0, 0, 5, 4 ]
+    - name: RDS station
+      type: opendigitizer::charts::RDSView
+      parameters:
+        name: RDSPanel
+        tuner: "RTLSDR:frequency"
+        station_frequency: 89300000
+        channel_frequency: -250000
+      sources:
+        - RDSStation
+      rect: [ 5, 0, 3, 6 ]
+    - name: MPX spectrum
+      type: opendigitizer::charts::SpectrumDensity
+      parameters:
+        colormap: ImPlotColormap_Jet
+        show_average: true
+        show_current_overlay: false
+        trace_decay_tau_frames: 100
+      axes:
+        - axis: X
+          min: 0
+          max: 80000
+          format: Metric
+        - axis: Y
+          min: -100
+          max: 0
+      sources:
+        - MPXSpectrumPlot
+      rect: [ 0, 4, 5, 2 ]

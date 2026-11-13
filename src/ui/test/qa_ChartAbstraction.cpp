@@ -2,7 +2,9 @@
 #include "TestSinks.hpp"
 #include "blocks/Arithmetic.hpp"
 #include "blocks/ImPlotSink.hpp"
+#include "blocks/TagSink.hpp"
 #include "charts/ImageChart.hpp"
+#include "charts/RDSView.hpp"
 #include "charts/SpectrumHelper.hpp"
 
 #include <boost/ut.hpp>
@@ -1026,6 +1028,49 @@ int main() {
         }
     };
 #endif
+
+    "RDSView reads the tags of a TagSink"_test = [] {
+        using gr::digital::RDSDecoder;
+        const auto station = [](std::string_view radioText) { return gr::property_map{{RDSDecoder::kProgrammeIdentificationKey, std::uint16_t{0xD3C3U}}, {RDSDecoder::kProgrammeServiceNameKey, std::string("GR4 RDS")}, {RDSDecoder::kRadioTextKey, std::string(radioText)}}; };
+        gr::Graph  graph;
+        auto&      source = graph.emplaceBlock<gr::testing::TagSource<std::uint8_t>>({{"n_samples_max", gr::Size_t{100U}}, {"mark_tag", false}});
+        source._tags.push_back({10UZ, station("first")});
+        source._tags.push_back({20UZ, gr::property_map{{"other_key", 1.f}}});
+        source._tags.push_back({30UZ, station("second")});
+        source._tags.push_back({40UZ, gr::property_map{{RDSDecoder::kTrafficEventKey, std::uint16_t{101U}}}});
+        auto& sink = graph.emplaceBlock<opendigitizer::TagSink<std::uint8_t>>({{"tag_keys", gr::pmt::Value{std::vector{std::string(RDSDecoder::kProgrammeIdentificationKey), std::string(RDSDecoder::kTrafficEventKey)}}}});
+        expect(graph.connect<"out", "in">(source, sink).has_value());
+        gr::scheduler::Simple<> scheduler;
+        expect(scheduler.exchange(std::move(graph)).has_value());
+        expect(scheduler.runAndWait().has_value());
+
+        opendigitizer::charts::RDSView::Reception reception;
+        std::size_t                               kept = 0UZ;
+        sink.forEachTag([&](double utcSeconds, const gr::property_map& tagMap) {
+            reception.add(utcSeconds, tagMap);
+            ++kept;
+        });
+        expect(eq(kept, 3UZ));
+        expect(eq(reception.station.programmeServiceName, std::string("GR4 RDS")));
+        expect(eq(reception.station.radioText, std::string("second")));
+        expect(fatal(eq(reception.earlier.size(), 1UZ)));
+        expect(eq(reception.earlier.front().title, std::string("first")));
+        expect(eq(reception.trafficMessages.size(), 1UZ));
+    };
+
+    "RDSView tunes the tuner centre"_test = [] {
+        opendigitizer::charts::RDSView view(gr::property_map{{"tuner", std::string("RTLSDR:frequency")}, {"station_frequency", 89.3e6}, {"channel_frequency", -250e3}});
+        view.init(view.progress);
+        gr::MsgPortIn in;
+        expect(fatal(view.msgOut.connect(in).has_value()));
+        view.tune(89.5e6);
+        auto messages = in.streamReader().get();
+        expect(fatal(eq(messages.size(), 1UZ)));
+        expect(eq(messages[0UZ].serviceName, std::string("RTLSDR")));
+        expect(fatal(messages[0UZ].data.has_value()));
+        expect(eq(messages[0UZ].data->value_or<double>("frequency", 0.0), 89.75e6));
+        expect(messages.consume(messages.size()));
+    };
 
     return 0;
 }
