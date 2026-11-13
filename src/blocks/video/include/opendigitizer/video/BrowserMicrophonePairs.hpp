@@ -54,6 +54,8 @@ namespace opendigitizer::video {
     return (std::ranges::distance(scores.begin(), std::ranges::max_element(scores)) - steps) * q;
 }
 
+enum class PairAlignment : std::uint8_t { continuous, once, off };
+
 /// four time-aligned microphone streams (pair A left/right, pair B left/right) from two stereo sources; pushed blocks of
 /// interleaved frames, pair B shifted by whole quanta until its first channel lines up with pair A's
 struct PairAligner {
@@ -64,14 +66,23 @@ struct PairAligner {
     static constexpr double      kWindowSeconds      = 0.5;
     static constexpr double      kMaxBacklogSeconds  = 1.0;
 
-    std::size_t        maxAcoustic = 24UZ;    // frames; these three follow the sample rate (48 kHz until set)
-    std::size_t        window      = 24000UZ; // frames per estimate
-    std::size_t        maxBacklog  = 48000UZ; // frames held for output; older ones are dropped
-    std::vector<float> a, b;                  // interleaved pairs from aHead/bHead on not yet output
-    std::size_t        aHead = 0UZ, bHead = 0UZ;
-    std::vector<float> historyA, historyB; // first channels of the aligned output, for the next estimate
-    std::ptrdiff_t     lag     = 0;        // applied: pair B advanced by lag (> 0) or pair A by -lag
-    std::size_t        dropped = 0UZ;      // frames dropped for the backlog bound, since last taken
+    std::size_t                   maxAcoustic = 24UZ;    // frames; these three follow the sample rate (48 kHz until set)
+    std::size_t                   window      = 24000UZ; // frames per estimate
+    std::size_t                   maxBacklog  = 48000UZ; // frames held for output; older ones are dropped
+    std::vector<float>            a, b;                  // interleaved pairs from aHead/bHead on not yet output
+    std::size_t                   aHead = 0UZ, bHead = 0UZ;
+    std::vector<float>            historyA, historyB; // first channels of the aligned output, for the next estimate
+    std::ptrdiff_t                lag     = 0;        // applied: pair B advanced by lag (> 0) or pair A by -lag
+    std::ptrdiff_t                owed    = 0;        // part of lag not yet skipped, for want of buffered frames
+    std::size_t                   dropped = 0UZ;      // frames dropped for the backlog bound, since last taken
+    PairAlignment                 mode    = PairAlignment::continuous;
+    bool                          locked  = false;
+    std::optional<std::ptrdiff_t> candidate; // once: the previous window's estimate, applied when the next one agrees
+
+    void unlock() noexcept {
+        locked = false;
+        candidate.reset();
+    }
 
     void push(std::span<const float> frames) {
         for (std::size_t i = 0UZ; i + kChannels <= frames.size(); i += kChannels) {
@@ -80,6 +91,7 @@ struct PairAligner {
             b.push_back(frames[i + 2UZ]);
             b.push_back(frames[i + 3UZ]);
         }
+        skipOwed();
         if (const std::size_t excess = available() > maxBacklog ? available() - maxBacklog : 0UZ; excess > 0UZ) {
             aHead += 2UZ * excess;
             bHead += 2UZ * excess;
@@ -91,6 +103,14 @@ struct PairAligner {
                 *head = 0UZ;
             }
         }
+    }
+
+    void skipOwed() noexcept {
+        std::vector<float>& lagging = owed > 0 ? b : a;
+        std::size_t&        head    = owed > 0 ? bHead : aHead;
+        const std::size_t   n       = std::min((lagging.size() - head) / 2UZ, static_cast<std::size_t>(std::abs(owed)));
+        head += 2UZ * n;
+        owed -= owed > 0 ? static_cast<std::ptrdiff_t>(n) : -static_cast<std::ptrdiff_t>(n);
     }
 
     [[nodiscard]] std::size_t available() const noexcept { return std::min(a.size() - aHead, b.size() - bHead) / 2UZ; }
@@ -107,15 +127,26 @@ struct PairAligner {
         bHead += 2UZ * n;
         historyA.insert(historyA.end(), channels[0].begin(), channels[0].begin() + static_cast<std::ptrdiff_t>(n));
         historyB.insert(historyB.end(), channels[2].begin(), channels[2].begin() + static_cast<std::ptrdiff_t>(n));
+        if (dropped > 0UZ) {
+            unlock();
+        }
         bool changed = false;
         if (historyA.size() >= window) {
-            const std::ptrdiff_t residual = quantisedLag(historyA, historyB, kQuantum, kMaxSteps, maxAcoustic).value_or(0);
+            const bool     estimating = mode == PairAlignment::continuous || (mode == PairAlignment::once && !locked);
+            const auto     estimate   = estimating ? quantisedLag(historyA, historyB, kQuantum, kMaxSteps, maxAcoustic) : std::nullopt;
+            std::ptrdiff_t residual   = 0;
+            if (mode == PairAlignment::continuous) {
+                residual = estimate.value_or(0);
+            } else if (estimating) {
+                locked    = estimate.has_value() && candidate == estimate;
+                residual  = locked ? *estimate : 0;
+                candidate = locked ? std::nullopt : estimate;
+            }
             historyA.clear();
             historyB.clear();
             if (residual != 0) {
-                std::vector<float>& lagging = residual > 0 ? b : a;
-                std::size_t&        head    = residual > 0 ? bHead : aHead;
-                head                        = std::min(lagging.size(), head + 2UZ * static_cast<std::size_t>(std::abs(residual)));
+                owed += residual;
+                skipOwed();
                 lag += residual;
                 changed = true;
             }
@@ -232,7 +263,8 @@ struct BrowserCapture {
 struct BrowserMicrophonePairs : gr::Block<BrowserMicrophonePairs> {
     using Description = gr::Doc<R""(@brief Four time-aligned microphone streams (pair A left/right, pair B left/right) from two browser stereo sources, e.g. PipeWire remap sources of one array.
 
-Chrome captures at most two channels per source; pair B is shifted by whole render quanta until it lines up with pair A, re-estimated every half second.
+Chrome captures at most two channels per source; pair B is shifted by whole render quanta until it lines up with pair A, estimated every half second.
+`align: once` holds the first estimate two consecutive windows agree on, until frames are dropped or the sources reopen: for first microphones of the pairs more than about 1.6 m (48 kHz) or 0.7 m (96 kHz) apart.
 At most one second is held: older frames are dropped and counted in `gr:n_dropped_samples`.
 Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
@@ -240,12 +272,14 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
 
     std::array<gr::PortOut<float>, PairAligner::kChannels> out;
 
-    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>  pair_a      = "UMA16_PAIR_A";
-    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">> pair_b      = "UMA16_PAIR_B";
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                       sample_rate = 48000.f;
-    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                            available_devices;
+    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>     pair_a      = "UMA16_PAIR_A";
+    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">>    pair_b      = "UMA16_PAIR_B";
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                          sample_rate = 48000.f;
+    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                               available_devices;
+    A<PairAlignment, "align", gr::Visible, gr::Doc<"continuous: re-estimated every half second; once: held after two agreeing estimates; off">> align = PairAlignment::continuous;
+    A<std::int64_t, "lag", gr::Unit<"samples">, gr::Doc<"applied, read-only: pair B advanced by lag (> 0) or pair A by -lag">>                  lag   = 0;
 
-    GR_MAKE_REFLECTABLE(BrowserMicrophonePairs, out, pair_a, pair_b, sample_rate, available_devices);
+    GR_MAKE_REFLECTABLE(BrowserMicrophonePairs, out, pair_a, pair_b, sample_rate, available_devices, align, lag);
 
     PairAligner                             _aligner;
     std::vector<float>                      _staging;              // written by JS on the main thread
@@ -266,6 +300,8 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         _aligner.maxAcoustic = framesOf(PairAligner::kMaxAcousticSeconds);
         _aligner.window      = framesOf(PairAligner::kWindowSeconds);
         _aligner.maxBacklog  = framesOf(PairAligner::kMaxBacklogSeconds);
+        _aligner.mode        = align.value;
+        _aligner.unlock();
 #if defined(__EMSCRIPTEN__)
         _capture.block = reinterpret_cast<std::uintptr_t>(this);
         wasm::openPairs(_capture.block, pair_a.value.c_str(), pair_b.value.c_str(), static_cast<double>(sample_rate.value));
@@ -283,6 +319,9 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         if (_capture.block != 0U && (changed("pair_a") || changed("pair_b"))) {
             _capture.close();
             start();
+        } else if (changed("align")) {
+            _aligner.mode = align.value;
+            _aligner.unlock();
         }
     }
 
@@ -321,6 +360,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         }
         if (_aligner.pop(channels, n)) {
             gr::log::info("BrowserMicrophonePairs: pair B lags pair A by {} samples", _aligner.lag);
+            std::ignore = this->settings().setStaged({{"lag", std::int64_t{_aligner.lag}}});
         }
         gr::property_map tag;
         if (!std::exchange(_tagged, true)) {

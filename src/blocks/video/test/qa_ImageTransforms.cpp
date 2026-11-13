@@ -583,6 +583,46 @@ const boost::ut::suite<"browser microphone pairs"> browserMicrophonePairTests = 
         const std::span<const float> tailA(alignedA.end() - 8000, alignedA.end()), tailB(alignedB.end() - 8000, alignedB.end());
         expect(eq(quantisedLag(tailA, tailB, 256UZ, 4UZ, 24UZ).value_or(0), 0z)) << "aligned to within the acoustic delay";
     };
+
+    "browser microphone pairs: align once holds the agreed lag against a far-side sound, re-estimating after dropped frames"_test = [] {
+        std::vector<float> noise(60000UZ);
+        std::ranges::generate(noise, [state = 7U]() mutable {
+            state = state * 1664525U + 1013904223U;
+            return static_cast<float>(state >> 8U) / 16777216.f - 0.5f;
+        });
+        constexpr std::size_t kSideSoundFrom = 18000UZ; // from here on pair B's microphone hears the sound 515 samples later
+        constexpr std::size_t kNoDrop        = std::numeric_limits<std::size_t>::max();
+        const auto            run            = [&noise](PairAlignment mode, std::size_t dropAt) {
+            PairAligner aligner;
+            aligner.mode   = mode;
+            aligner.window = 6000UZ;
+            std::array<std::vector<float>, 4UZ> out;
+            for (std::size_t chunk = 0UZ; chunk < 48000UZ; chunk += 1000UZ) {
+                std::vector<float> frames;
+                for (std::size_t i = chunk; i < chunk + 1000UZ; ++i) {
+                    const std::size_t delay = i < kSideSoundFrom ? 259UZ : 259UZ + 515UZ;
+                    frames.insert(frames.end(), {noise[10000UZ + i], 0.f, noise[10000UZ + i - delay], 0.f});
+                }
+                aligner.push(frames);
+                aligner.dropped     = chunk == dropAt ? 1UZ : 0UZ;
+                const std::size_t n = aligner.available();
+                for (auto& o : out) {
+                    o.resize(n);
+                }
+                std::array<std::span<float>, 4UZ> spans{out[0], out[1], out[2], out[3]};
+                std::ignore = aligner.pop(spans, n);
+            }
+            return aligner;
+        };
+        const auto continuous = run(PairAlignment::continuous, kNoDrop);
+        expect(eq(continuous.lag, 768z)) << "continuous: the side sound's delay taken for two more quanta";
+        const auto once = run(PairAlignment::once, kNoDrop);
+        expect(once.locked && eq(once.lag, 256z)) << "once: held";
+        const auto reopened = run(PairAlignment::once, 24000UZ);
+        expect(eq(reopened.lag, 768z)) << "once: re-estimated after dropped frames";
+        const auto off = run(PairAlignment::off, kNoDrop);
+        expect(eq(off.lag, 0z)) << "off: never shifted";
+    };
 };
 
 int main() { return boost::ut::cfg<boost::ut::override>.run(); }
