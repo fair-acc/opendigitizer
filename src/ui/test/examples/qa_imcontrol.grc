@@ -91,6 +91,7 @@ blocks:
       label: Input
       value: "off"
       choices: ["off"]
+      fallback: "off"
       choice_values:
         "off":
           "deviceTarget:route": "off"
