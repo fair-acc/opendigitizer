@@ -637,6 +637,7 @@ struct ImPlotSink : gr::Block<ImPlotSink<T>, gr::Drawable<gr::UICategory::Conten
             }
             _frameGeneration += input.size();
             _sample_count += input.size();
+            _totalSampleCount += input.size();
             return gr::work::Status::OK;
         }
 
