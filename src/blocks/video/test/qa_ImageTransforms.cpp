@@ -18,6 +18,7 @@
 #include <memory>
 #include <numbers>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -567,6 +568,38 @@ const boost::ut::suite<"browser microphone pairs"> browserMicrophonePairTests = 
         std::ranges::copy(message, block.errorBuffer(message.size() + 1UZ));
         block.failed();
         expect(eq(stagedState(), "failed"s));
+    };
+
+    "browser microphone pairs: exact digital silence for kStallSeconds counts as stalled, the first sound as open again"_test = [] {
+        BrowserMicrophonePairs block;
+        block.init(std::make_shared<gr::Sequence>());
+        block._silentLimit     = 1000UZ;
+        const auto stagedState = [&block] {
+            block.stageReports();
+            const auto state = block.settings().stagedParameters().find_value("device_state");
+            return state ? state->value_or(std::string{}) : std::string{};
+        };
+        const auto write = [&block](std::size_t frames, std::optional<std::size_t> soundAt) {
+            float* staging = block.buffer(frames * PairAligner::kChannels);
+            std::fill_n(staging, frames * PairAligner::kChannels, 0.f);
+            if (soundAt) {
+                staging[*soundAt * PairAligner::kChannels + 3UZ] = 1e-6f;
+            }
+            block.written(frames * PairAligner::kChannels);
+        };
+        block.stateReported(1UZ);
+        write(600UZ, std::nullopt);
+        expect(eq(stagedState(), "open"s)) << "600 silent frames: below the limit";
+        write(600UZ, std::nullopt);
+        expect(eq(stagedState(), "stalled"s)) << "1200 silent frames across two writes";
+        write(600UZ, 0UZ);
+        expect(eq(stagedState(), "open"s)) << "a single non-zero sample, on the last channel";
+        write(400UZ, std::nullopt);
+        expect(eq(stagedState(), "open"s)) << "599 + 400 trailing zeros, counted from the sound";
+        write(1UZ, std::nullopt);
+        expect(eq(stagedState(), "stalled"s));
+        block.stateReported(0UZ);
+        expect(eq(stagedState(), "waiting"s)) << "the browser's state while not open";
     };
 
     "browser microphone pairs: the buffering offset is a whole number of quanta, removed by the aligner"_test = [] {
