@@ -317,13 +317,13 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
 
     std::array<gr::PortOut<float>, PairAligner::kChannels> out;
 
-    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>                                                 pair_a      = "UMA16_PAIR_A";
-    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">>                                                pair_b      = "UMA16_PAIR_B";
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                                                                      sample_rate = 48000.f;
-    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                                                                           available_devices;
-    A<PairAlignment, "align", gr::Visible, gr::Doc<"continuous: re-estimated every half second; once: held after two agreeing estimates; off">>                                             align = PairAlignment::continuous;
-    A<std::int64_t, "lag", gr::Unit<"samples">, gr::Doc<"applied, read-only: pair B advanced by lag (> 0) or pair A by -lag">>                                                              lag   = 0;
-    A<std::string, "device_state", gr::Doc<"read-only: waiting (sources missing or no frames yet), open (delivering), stalled (nothing for 1.5 s) or failed (permission or device error)">> device_state;
+    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>                                                                         pair_a      = "UMA16_PAIR_A";
+    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">>                                                                        pair_b      = "UMA16_PAIR_B";
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                                                                                              sample_rate = 48000.f;
+    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                                                                                                   available_devices;
+    A<PairAlignment, "align", gr::Visible, gr::Doc<"continuous: re-estimated every half second; once: held after two agreeing estimates; off">>                                                                     align = PairAlignment::continuous;
+    A<std::int64_t, "lag", gr::Unit<"samples">, gr::Doc<"applied, read-only: pair B advanced by lag (> 0) or pair A by -lag">>                                                                                      lag   = 0;
+    A<std::string, "device_state", gr::Doc<"read-only: waiting (sources missing or no frames yet), open (delivering), stalled (no frames, or only exact zeros, for 1.5 s) or failed (permission or device error)">> device_state;
 
     GR_MAKE_REFLECTABLE(BrowserMicrophonePairs, out, pair_a, pair_b, sample_rate, available_devices, align, lag, device_state);
 
@@ -331,15 +331,18 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     static constexpr std::array<std::string_view, 3> kDeviceStates{"waiting", "open", "stalled"}; // by the code JS reports
 
     PairAligner                             _aligner;
-    std::vector<float>                      _staging;              // written by JS on the main thread
-    std::vector<float>                      _pending;              // guarded by _mutex, at most _aligner.maxBacklog frames
-    std::size_t                             _droppedPending = 0UZ; // frames, guarded by _mutex
-    std::vector<float>                      _taken;                // _pending swapped out, processed without the lock
-    std::string                             _errorText;            // written by JS on the main thread
-    std::string                             _devicesText;          // written by JS on the main thread
-    std::optional<std::vector<std::string>> _devices;              // reported and not yet staged, guarded by _mutex
-    std::string                             _error;                // guarded by _mutex
-    std::optional<std::string>              _state;                // reported and not yet staged, guarded by _mutex
+    std::vector<float>                      _staging;                // written by JS on the main thread
+    std::vector<float>                      _pending;                // guarded by _mutex, at most _aligner.maxBacklog frames
+    std::size_t                             _droppedPending = 0UZ;   // frames, guarded by _mutex
+    std::vector<float>                      _taken;                  // _pending swapped out, processed without the lock
+    std::string                             _errorText;              // written by JS on the main thread
+    std::string                             _devicesText;            // written by JS on the main thread
+    std::optional<std::vector<std::string>> _devices;                // reported and not yet staged, guarded by _mutex
+    std::string                             _error;                  // guarded by _mutex
+    std::string                             _browserState;           // as JS reported it, guarded by _mutex
+    std::size_t                             _silentFrames = 0UZ;     // trailing frames of exact zeros on all channels, guarded by _mutex
+    std::size_t                             _silentLimit  = 72000UZ; // kStallSeconds of frames (48 kHz until started)
+    std::string                             _stagedState;
     std::mutex                              _mutex;
     bool                                    _tagged = false;
     BrowserCapture                          _capture;
@@ -352,6 +355,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         _aligner.maxBacklog  = framesOf(PairAligner::kMaxBacklogSeconds);
         _aligner.mode        = align.value;
         _aligner.unlock();
+        _silentLimit = framesOf(kStallSeconds);
 #if defined(__EMSCRIPTEN__)
         _capture.block = reinterpret_cast<std::uintptr_t>(this);
         wasm::openPairs(_capture.block, pair_a.value.c_str(), pair_b.value.c_str(), static_cast<double>(sample_rate.value), kStallSeconds);
@@ -437,6 +441,9 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
             _droppedPending += frames - kept + oldestDropped;
             const auto from = _staging.begin() + static_cast<std::ptrdiff_t>((frames - kept) * PairAligner::kChannels);
             _pending.insert(_pending.end(), from, from + static_cast<std::ptrdiff_t>(kept * PairAligner::kChannels));
+            const std::ranges::reverse_view newestFirst(std::span<const float>(_staging.data(), frames * PairAligner::kChannels));
+            const auto                      zeros = static_cast<std::size_t>(std::ranges::distance(newestFirst.begin(), std::ranges::find_if(newestFirst, [](float x) { return x != 0.f; })));
+            _silentFrames                         = zeros == frames * PairAligner::kChannels ? _silentFrames + frames : zeros / PairAligner::kChannels;
         }
         this->notifyProgress();
     }
@@ -445,22 +452,23 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     void stageReports() {
         std::string                             error;
         std::optional<std::vector<std::string>> devices;
-        std::optional<std::string>              state;
+        std::string                             state;
         {
             std::lock_guard lock(_mutex);
             error   = std::exchange(_error, {});
             devices = std::exchange(_devices, std::nullopt);
-            state   = std::exchange(_state, std::nullopt);
+            state   = _browserState == kDeviceStates[1] && _silentFrames >= _silentLimit ? std::string(kDeviceStates[2]) : _browserState; // a disconnected loopback source delivers exact zeros
         }
         gr::property_map staged;
         if (devices) {
             staged.insert_or_assign(std::pmr::string("available_devices"), gr::Tensor<gr::pmt::Value>(gr::data_from, *devices | std::views::transform([](const std::string& d) { return gr::pmt::Value(d); }) | std::ranges::to<std::vector>()));
         }
-        if (state) {
-            if (*state == kDeviceStates[0] && device_state.value != *state) {
+        if (!state.empty() && state != _stagedState) {
+            if (state == kDeviceStates[0]) {
                 gr::log::info("BrowserMicrophonePairs: waiting for {}, {}", pair_a.value, pair_b.value);
             }
-            staged.insert_or_assign(std::pmr::string("device_state"), *state);
+            staged.insert_or_assign(std::pmr::string("device_state"), state);
+            _stagedState = std::move(state);
         }
         if (!staged.empty()) {
             std::ignore = this->settings().setStaged(staged);
@@ -473,7 +481,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     void stateReported(std::size_t code) {
         {
             std::lock_guard lock(_mutex);
-            _state = std::string(kDeviceStates[std::min(code, kDeviceStates.size() - 1UZ)]);
+            _browserState = std::string(kDeviceStates[std::min(code, kDeviceStates.size() - 1UZ)]);
         }
         this->notifyProgress();
     }
@@ -486,8 +494,8 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     void failed() {
         {
             std::lock_guard lock(_mutex);
-            _error = _errorText.c_str();
-            _state = "failed";
+            _error        = _errorText.c_str();
+            _browserState = "failed";
         }
         this->notifyProgress();
     }
