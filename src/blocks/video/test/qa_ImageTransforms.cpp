@@ -549,6 +549,26 @@ const boost::ut::suite<"browser microphone pairs"> browserMicrophonePairTests = 
         expect(eq(block._droppedPending, 23UZ));
     };
 
+    "browser microphone pairs: the browser's device states are staged as device_state, a failure as 'failed'"_test = [] {
+        BrowserMicrophonePairs block;
+        block.init(std::make_shared<gr::Sequence>());
+        const auto stagedState = [&block] {
+            block.stageReports();
+            const auto state = block.settings().stagedParameters().find_value("device_state");
+            return state ? state->value_or(std::string{}) : std::string{};
+        };
+        block.stateReported(0UZ);
+        expect(eq(stagedState(), "waiting"s)) << "sources missing";
+        block.stateReported(1UZ);
+        expect(eq(stagedState(), "open"s));
+        block.stateReported(2UZ);
+        expect(eq(stagedState(), "stalled"s)) << "nothing delivered for kStallSeconds";
+        const std::string_view message = "NotReadableError";
+        std::ranges::copy(message, block.errorBuffer(message.size() + 1UZ));
+        block.failed();
+        expect(eq(stagedState(), "failed"s));
+    };
+
     "browser microphone pairs: the buffering offset is a whole number of quanta, removed by the aligner"_test = [] {
         std::vector<float> noise(40000UZ);
         std::ranges::generate(noise, [state = 1U]() mutable {
