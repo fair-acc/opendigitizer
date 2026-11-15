@@ -164,10 +164,10 @@ EMSCRIPTEN_KEEPALIVE inline char __em_lib_deps_od_microphones[] __attribute__((s
 // clang-format off
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
-inline void openPairs(std::uintptr_t block, const char* labelA, const char* labelB, double sampleRate) {
-    MAIN_THREAD_EM_ASM({ ((block, labelA, labelB, sampleRate) => {
+inline void openPairs(std::uintptr_t block, const char* labelA, const char* labelB, double sampleRate, double stallSeconds) {
+    MAIN_THREAD_EM_ASM({ ((block, labelA, labelB, sampleRate, stallMs) => {
     const labels = [UTF8ToString(labelA), UTF8ToString(labelB)];
-    const state  = { stopped: false };
+    const state  = { stopped: false, opening: false, permitted: false, reported: -1 };
     (globalThis.__odMicrophonePairs = globalThis.__odMicrophonePairs || new Map()).set(block, state);
     const fail = (message) => {
         if (state.stopped) { return; }
@@ -176,53 +176,97 @@ inline void openPairs(std::uintptr_t block, const char* labelA, const char* labe
         stringToUTF8(text, _od_microphones_error_buffer(block, size), size);
         _od_microphones_failed(block);
     };
-    (async () => {
-        const live = function() { if (state.stopped) { throw new Error('stopped'); } }; // after every await: a stop may have come
-        (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(function(t) { t.stop(); });
-        live();
+    const report = function(code) { if (!state.stopped && state.reported !== code) { state.reported = code; _od_microphones_state(block, code); } }; // 0 waiting, 1 open, 2 stalled
+    state.release = function() {
+        clearInterval(state.watchdog);
+        if (state.streams) { state.streams.forEach(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); }); }
+        if (state.context) { state.context.close(); }
+        state.streams = state.context = state.watchdog = undefined;
+    };
+    const onError = function(error) {
+        state.release();
+        state.reported = -1;
+        fail(error);
+    };
+    const live = function() { if (state.stopped) { throw new Error('stopped'); } }; // after every await: a stop may have come
+    const listInputs = async function() {
         const inputs = (await navigator.mediaDevices.enumerateDevices()).filter(function(d) { return d.kind === 'audioinput'; });
         live();
         const list   = inputs.map(function(d) { return (d.label || 'microphone').replaceAll('\n', ' ') + ' [' + d.deviceId + ']'; }).join('\n');
         const size   = lengthBytesUTF8(list) + 1;
         stringToUTF8(list, _od_microphones_devices_buffer(block, size), size);
         _od_microphones_devices_reported(block);
-        const pairs  = labels.map(function(l) { return inputs.find(function(d) { return l.startsWith('@id:') ? d.deviceId === l.slice(4) : d.label.includes(l); }); });
-        if (pairs.some(function(d) { return !d; })) { throw new Error('microphone pairs ' + labels.join(', ') + ' not found (uma16-browser-pairs.sh setup)'); }
-        state.streams = await Promise.all(pairs.map(function(d) { return navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: d.deviceId }, channelCount: { exact: 2 }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }));
-        if (state.stopped) { state.streams.forEach(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); }); return; }
-        state.context = new AudioContext({ sampleRate: sampleRate });
-        await state.context.resume();
-        live();
-        const merger = state.context.createChannelMerger(4);
-        state.streams.forEach(function(s, k) {
-            const split = state.context.createChannelSplitter(2);
-            state.context.createMediaStreamSource(s).connect(split);
-            split.connect(merger, 0, 2 * k);
-            split.connect(merger, 1, 2 * k + 1);
-        });
-        const code = 'class OdPairs extends AudioWorkletProcessor { constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; }'
-            + ' process(inputs) { const i = inputs[0]; if (i.length === 4) { for (let f = 0; f < i[0].length; ++f, ++this.n) { for (let c = 0; c < 4; ++c) { this.buf[4 * this.n + c] = i[c][f]; } }'
-            + ' if (this.n === 1024) { this.port.postMessage(this.buf); this.buf = new Float32Array(4096); this.n = 0; } } return true; } }'
-            + ' registerProcessor("od-pairs", OdPairs);';
-        await state.context.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
-        live();
-        const node = new AudioWorkletNode(state.context, 'od-pairs', { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 4, channelCountMode: 'explicit', channelInterpretation: 'discrete' });
-        merger.connect(node);
-        node.port.onmessage = function(e) {
-            if (state.stopped) { return; }
-            const ptr = _od_microphones_buffer(block, e.data.length);
-            new Float32Array(wasmMemory.buffer, ptr, e.data.length).set(e.data);
-            _od_microphones_written(block, e.data.length);
-        };
-    })().catch(function(error) {
-        if (state.stopped) { // closePairs ran meanwhile: release what was opened after it
-            if (state.streams) { state.streams.forEach(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); }); }
-            if (state.context) { state.context.close(); }
-            return;
+        return inputs;
+    };
+    const open = async function() {
+        if (state.opening) { state.again = true; return; } // a device change while opening: look once more afterwards
+        if (state.context) { return; }
+        state.opening = true;
+        state.again   = false;
+        try {
+            if (!state.permitted) { // device labels need the permission; no microphone at all is waited for, not failed
+                const any = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(function(error) { if (error.name === 'NotFoundError') { return undefined; } throw error; });
+                live();
+                if (!any) { report(0); return; }
+                any.getTracks().forEach(function(t) { t.stop(); });
+                state.permitted = true;
+            }
+            const inputs = await listInputs();
+            const pairs  = labels.map(function(l) { return inputs.find(function(d) { return l.startsWith('@id:') ? d.deviceId === l.slice(4) : d.label.includes(l); }); });
+            if (pairs.some(function(d) { return !d; })) { report(0); return; }
+            const opened  = await Promise.allSettled(pairs.map(function(d) { return navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: d.deviceId }, channelCount: { exact: 2 }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }));
+            const refused = opened.find(function(r) { return r.status === 'rejected'; });
+            state.streams = opened.filter(function(r) { return r.status === 'fulfilled'; }).map(function(r) { return r.value; });
+            if (refused) {
+                state.release();
+                if (refused.reason.name === 'NotFoundError' || refused.reason.name === 'OverconstrainedError') { report(0); return; } // gone since listed
+                throw refused.reason;
+            }
+            live();
+            state.context = new AudioContext({ sampleRate: sampleRate });
+            await state.context.resume();
+            live();
+            const merger = state.context.createChannelMerger(4);
+            state.streams.forEach(function(s, k) {
+                const split = state.context.createChannelSplitter(2);
+                state.context.createMediaStreamSource(s).connect(split);
+                split.connect(merger, 0, 2 * k);
+                split.connect(merger, 1, 2 * k + 1);
+            });
+            const code = 'class OdPairs extends AudioWorkletProcessor { constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; }'
+                + ' process(inputs) { const i = inputs[0]; if (i.length === 4) { for (let f = 0; f < i[0].length; ++f, ++this.n) { for (let c = 0; c < 4; ++c) { this.buf[4 * this.n + c] = i[c][f]; } }'
+                + ' if (this.n === 1024) { this.port.postMessage(this.buf); this.buf = new Float32Array(4096); this.n = 0; } } return true; } }'
+                + ' registerProcessor("od-pairs", OdPairs);';
+            await state.context.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+            live();
+            const node = new AudioWorkletNode(state.context, 'od-pairs', { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 4, channelCountMode: 'explicit', channelInterpretation: 'discrete' });
+            merger.connect(node);
+            node.port.onmessage = function(e) {
+                if (state.stopped) { return; }
+                state.last = performance.now();
+                report(1);
+                const ptr = _od_microphones_buffer(block, e.data.length);
+                new Float32Array(wasmMemory.buffer, ptr, e.data.length).set(e.data);
+                _od_microphones_written(block, e.data.length);
+            };
+            state.last     = performance.now();
+            state.watchdog = setInterval(function() { if (performance.now() - state.last > stallMs) { report(2); } }, stallMs / 4);
+            state.streams.forEach(function(s) { s.getTracks().forEach(function(t) { t.addEventListener('ended', function() { // unplugged
+                if (state.stopped) { return; }
+                state.release();
+                report(0);
+                open().catch(onError);
+            }); }); });
+        } finally {
+            state.opening = false;
+            if (state.again && !state.context && !state.stopped) { open().catch(onError); }
         }
-        fail(error);
-    });
-    })($0, $1, $2, $3); }, block, labelA, labelB, sampleRate);
+    };
+    state.onDeviceChange = function() { (state.context ? listInputs() : open()).catch(onError); };
+    navigator.mediaDevices.addEventListener('devicechange', state.onDeviceChange);
+    report(0); // until the first frames
+    open().catch(onError);
+    })($0, $1, $2, $3, $4); }, block, labelA, labelB, sampleRate, 1000.0 * stallSeconds);
 }
 
 inline void closePairs(std::uintptr_t block) {
@@ -231,8 +275,8 @@ inline void closePairs(std::uintptr_t block) {
     const state = all && all.get(block);
     if (!state) { return; }
     state.stopped = true;
-    if (state.streams) { state.streams.forEach(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); }); }
-    if (state.context) { state.context.close(); }
+    navigator.mediaDevices.removeEventListener('devicechange', state.onDeviceChange);
+    state.release();
     all.delete(block);
     })($0); }, block);
 }
@@ -266,20 +310,25 @@ struct BrowserMicrophonePairs : gr::Block<BrowserMicrophonePairs> {
 Chrome captures at most two channels per source; pair B is shifted by whole render quanta until it lines up with pair A, estimated every half second.
 `align: once` holds the first estimate two consecutive windows agree on, until frames are dropped or the sources reopen: for first microphones of the pairs more than about 1.6 m (48 kHz) or 0.7 m (96 kHz) apart.
 At most one second is held: older frames are dropped and counted in `gr:n_dropped_samples`.
+Missing sources are waited for (`device_state: waiting`) and opened when they appear; an unplugged one is waited for again.
 Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     template<typename U, gr::meta::fixed_string description = "", typename... Arguments>
     using A = gr::Annotated<U, description, Arguments...>;
 
     std::array<gr::PortOut<float>, PairAligner::kChannels> out;
 
-    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>     pair_a      = "UMA16_PAIR_A";
-    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">>    pair_b      = "UMA16_PAIR_B";
-    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                          sample_rate = 48000.f;
-    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                               available_devices;
-    A<PairAlignment, "align", gr::Visible, gr::Doc<"continuous: re-estimated every half second; once: held after two agreeing estimates; off">> align = PairAlignment::continuous;
-    A<std::int64_t, "lag", gr::Unit<"samples">, gr::Doc<"applied, read-only: pair B advanced by lag (> 0) or pair A by -lag">>                  lag   = 0;
+    A<std::string, "pair a", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the first stereo source; a change reopens both">>                                                 pair_a      = "UMA16_PAIR_A";
+    A<std::string, "pair b", gr::Visible, gr::Doc<"label substring or '@id:<deviceId>' of the second stereo source; a change reopens both">>                                                pair_b      = "UMA16_PAIR_B";
+    A<float, "sample_rate", gr::Unit<"Hz">, gr::Doc<"of the browser's audio context">>                                                                                                      sample_rate = 48000.f;
+    A<std::vector<std::string>, "available_devices", gr::Doc<"the browser's audio inputs as 'label [deviceId]'">>                                                                           available_devices;
+    A<PairAlignment, "align", gr::Visible, gr::Doc<"continuous: re-estimated every half second; once: held after two agreeing estimates; off">>                                             align = PairAlignment::continuous;
+    A<std::int64_t, "lag", gr::Unit<"samples">, gr::Doc<"applied, read-only: pair B advanced by lag (> 0) or pair A by -lag">>                                                              lag   = 0;
+    A<std::string, "device_state", gr::Doc<"read-only: waiting (sources missing or no frames yet), open (delivering), stalled (nothing for 1.5 s) or failed (permission or device error)">> device_state;
 
-    GR_MAKE_REFLECTABLE(BrowserMicrophonePairs, out, pair_a, pair_b, sample_rate, available_devices, align, lag);
+    GR_MAKE_REFLECTABLE(BrowserMicrophonePairs, out, pair_a, pair_b, sample_rate, available_devices, align, lag, device_state);
+
+    static constexpr double                          kStallSeconds = 1.5;
+    static constexpr std::array<std::string_view, 3> kDeviceStates{"waiting", "open", "stalled"}; // by the code JS reports
 
     PairAligner                             _aligner;
     std::vector<float>                      _staging;              // written by JS on the main thread
@@ -290,6 +339,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
     std::string                             _devicesText;          // written by JS on the main thread
     std::optional<std::vector<std::string>> _devices;              // reported and not yet staged, guarded by _mutex
     std::string                             _error;                // guarded by _mutex
+    std::optional<std::string>              _state;                // reported and not yet staged, guarded by _mutex
     std::mutex                              _mutex;
     bool                                    _tagged = false;
     BrowserCapture                          _capture;
@@ -304,7 +354,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         _aligner.unlock();
 #if defined(__EMSCRIPTEN__)
         _capture.block = reinterpret_cast<std::uintptr_t>(this);
-        wasm::openPairs(_capture.block, pair_a.value.c_str(), pair_b.value.c_str(), static_cast<double>(sample_rate.value));
+        wasm::openPairs(_capture.block, pair_a.value.c_str(), pair_b.value.c_str(), static_cast<double>(sample_rate.value), kStallSeconds);
 #endif
     }
 
@@ -327,21 +377,12 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
 
     template<gr::OutputSpanLike TOut>
     [[nodiscard]] gr::work::Status processBulk(const std::span<TOut>& outputs) {
-        std::string                             error;
-        std::optional<std::vector<std::string>> devices;
         {
             std::lock_guard lock(_mutex);
             std::swap(_pending, _taken);
             _aligner.dropped += std::exchange(_droppedPending, 0UZ);
-            error   = std::exchange(_error, {});
-            devices = std::exchange(_devices, std::nullopt);
         }
-        if (devices) { // staged, not assigned: settings subscribers such as the UI are notified
-            std::ignore = this->settings().setStaged({{"available_devices", gr::Tensor<gr::pmt::Value>(gr::data_from, *devices | std::views::transform([](const std::string& d) { return gr::pmt::Value(d); }) | std::ranges::to<std::vector>())}});
-        }
-        if (!error.empty()) {
-            this->emitErrorMessage("BrowserMicrophonePairs", gr::Error(std::move(error)));
-        }
+        stageReports();
         _aligner.push(_taken);
         _taken.clear();
         std::size_t n = _aligner.available();
@@ -400,6 +441,43 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         this->notifyProgress();
     }
 
+    /// stages what JS reported (staged, not assigned: settings subscribers such as the UI are notified) and emits its error
+    void stageReports() {
+        std::string                             error;
+        std::optional<std::vector<std::string>> devices;
+        std::optional<std::string>              state;
+        {
+            std::lock_guard lock(_mutex);
+            error   = std::exchange(_error, {});
+            devices = std::exchange(_devices, std::nullopt);
+            state   = std::exchange(_state, std::nullopt);
+        }
+        gr::property_map staged;
+        if (devices) {
+            staged.insert_or_assign(std::pmr::string("available_devices"), gr::Tensor<gr::pmt::Value>(gr::data_from, *devices | std::views::transform([](const std::string& d) { return gr::pmt::Value(d); }) | std::ranges::to<std::vector>()));
+        }
+        if (state) {
+            if (*state == kDeviceStates[0] && device_state.value != *state) {
+                gr::log::info("BrowserMicrophonePairs: waiting for {}, {}", pair_a.value, pair_b.value);
+            }
+            staged.insert_or_assign(std::pmr::string("device_state"), *state);
+        }
+        if (!staged.empty()) {
+            std::ignore = this->settings().setStaged(staged);
+        }
+        if (!error.empty()) {
+            this->emitErrorMessage("BrowserMicrophonePairs", gr::Error(std::move(error)));
+        }
+    }
+
+    void stateReported(std::size_t code) {
+        {
+            std::lock_guard lock(_mutex);
+            _state = std::string(kDeviceStates[std::min(code, kDeviceStates.size() - 1UZ)]);
+        }
+        this->notifyProgress();
+    }
+
     [[nodiscard]] char* errorBuffer(std::size_t size) {
         _errorText.assign(size, '\0');
         return _errorText.data();
@@ -409,6 +487,7 @@ Browser (WASM) only; elsewhere the outputs stay empty.)"">;
         {
             std::lock_guard lock(_mutex);
             _error = _errorText.c_str();
+            _state = "failed";
         }
         this->notifyProgress();
     }
@@ -434,6 +513,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE inline char*  od_microphones_error_buffer(std::u
 extern "C" EMSCRIPTEN_KEEPALIVE inline void   od_microphones_failed(std::uintptr_t block) { reinterpret_cast<BrowserMicrophonePairs*>(block)->failed(); }
 extern "C" EMSCRIPTEN_KEEPALIVE inline char*  od_microphones_devices_buffer(std::uintptr_t block, std::size_t size) { return reinterpret_cast<BrowserMicrophonePairs*>(block)->devicesBuffer(size); }
 extern "C" EMSCRIPTEN_KEEPALIVE inline void   od_microphones_devices_reported(std::uintptr_t block) { reinterpret_cast<BrowserMicrophonePairs*>(block)->devicesReported(); }
+extern "C" EMSCRIPTEN_KEEPALIVE inline void   od_microphones_state(std::uintptr_t block, std::size_t code) { reinterpret_cast<BrowserMicrophonePairs*>(block)->stateReported(code); }
 #endif
 
 } // namespace opendigitizer::video
