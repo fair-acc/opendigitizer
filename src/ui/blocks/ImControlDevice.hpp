@@ -95,47 +95,66 @@ template<typename T>
 struct ImControlDevice : ImControl<ImControlDevice> {
     using Description = gr::Doc<R""(@brief UI control that picks one of the target's `available_devices` (target_map '<block>:device', e.g. an AudioSource) and sends its "@id:<id>" selector.
 Entries of `choices` are listed above the devices: picking one sends its `choice_values` entry, which maps "BlockA,BlockB:setting" keys to values;
-picking a device also sends `device_values` so, e.g., one list switches a Selector between a simulation and the soundcard. `value` is applied at start.)"">;
+picking a device also sends `device_values` so, e.g., one list switches a Selector between a simulation and the soundcard. `value` is applied at start.
+`fallback`, one of `choices`, is applied and shown while the picked device's target reports a `device_state` other than "open"; the device's `device_values` return with "open".)"">;
 
     std::string                    value; // entry or device selector last sent
     std::vector<std::string>       choices;
     gr::property_map               choice_values;
     gr::property_map               device_values;
+    std::string                    fallback;
     const std::string              compatible_type_map = "string";
-    const std::vector<std::string> target_settings_keys{"available_devices", "active_device"};
+    const std::vector<std::string> target_settings_keys{"available_devices", "active_device", "device_state"};
 
-    GR_MAKE_REFLECTABLE(ImControlDevice, value, choices, choice_values, device_values, compatible_type_map, target_settings_keys);
+    GR_MAKE_REFLECTABLE(ImControlDevice, value, choices, choice_values, device_values, fallback, compatible_type_map, target_settings_keys);
 
     bool _appliedAtStart = false;
+    bool _fallenBack     = false;
 
     explicit ImControlDevice(gr::property_map initParameters = {}) : ImControl<ImControlDevice>(std::move(initParameters)) {}
 
     gr::work::Status draw(const gr::property_map& config = {}) noexcept {
-        const auto          parsedConfig = DrawableBlockConfig::fromMap(config);
-        const auto&         style        = LookAndFeel::instance().dashboardStyle;
-        const float         inputWidth   = std::max(style.toolbarControlMinimumWidth, pickDeviceWidth(parsedConfig.firstControlledProperty.targetSettings, value, choices));
-        const SizeAndLayout layout       = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
+        const auto  parsedConfig = DrawableBlockConfig::fromMap(config);
+        const auto& target       = parsedConfig.firstControlledProperty.targetSettings;
+        const auto& style        = LookAndFeel::instance().dashboardStyle;
         if (choices.empty()) {
             loadValueIfConnectionChanged(value, parsedConfig);
         } else if (!value.empty() && !std::exchange(_appliedAtStart, true)) {
             apply(value);
         }
+        followDeviceState(targetSetting<std::string>(target, "device_state"));
+        const std::string&  shown      = _fallenBack ? fallback : value;
+        const float         inputWidth = std::max(style.toolbarControlMinimumWidth, pickDeviceWidth(target, shown, choices));
+        const SizeAndLayout layout     = prepareDraw(parsedConfig, inputWidth, style.toolbarControlMinimumWidth, labelWidth());
         drawWithLabelAndTooltip(layout, [&](float width) {
             IMW::Disabled cannotOpen(parsedConfig.drawingContext == DrawableBlockConfig::DrawingContext::FlowgraphView);
             ImGui::SetNextItemWidth(width);
-            if (auto picked = pickDevice("##device", parsedConfig.firstControlledProperty.targetSettings, value, choices)) {
+            if (auto picked = pickDevice("##device", target, shown, choices)) {
                 value       = std::move(*picked);
+                _fallenBack = false;
                 std::ignore = settings().setStaged({{"value", value}});
                 apply(value);
             }
         });
         if (browserTestHooks()) {
-            publishForBrowserTests("odDevices", std::string_view(this->name), jsonArray(targetSetting<std::vector<std::string>>(parsedConfig.firstControlledProperty.targetSettings, "available_devices")));
+            publishForBrowserTests("odDevices", std::string_view(this->name), jsonArray(targetSetting<std::vector<std::string>>(target, "available_devices")));
         }
         return gr::work::Status::OK;
     }
 
 private:
+    void followDeviceState(std::string_view state) {
+        if (state.empty() || !std::ranges::contains(choices, fallback) || std::ranges::contains(choices, value)) {
+            return;
+        }
+        if (state != "open" && !_fallenBack) {
+            _fallenBack = true;
+            apply(fallback);
+        } else if (state == "open" && std::exchange(_fallenBack, false)) {
+            sendByTarget(device_values);
+        }
+    }
+
     void apply(const std::string& entryOrDevice) {
         if (!std::ranges::contains(choices, entryOrDevice)) {
             sendToTargets(entryOrDevice);

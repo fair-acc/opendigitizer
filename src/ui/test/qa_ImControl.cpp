@@ -98,14 +98,16 @@ std::size_t countMessagesSettingKey(const std::vector<gr::Message>& messages, st
     return static_cast<std::size_t>(std::ranges::count_if(messages, [key](const gr::Message& message) { return message.data && message.data->contains(key); }));
 }
 
-void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) {
+void sendSetting(const std::string& block, const std::string& key, const std::string& value) {
     gr::Message message;
     message.cmd         = gr::message::Command::Set;
-    message.serviceName = control;
+    message.serviceName = block;
     message.endpoint    = gr::block::property::kSetting;
-    message.data        = gr::property_map{{"target_map", targetMap}};
+    message.data        = gr::property_map{{key, value}};
     g_state.dashboard->session.sendMessage(std::move(message));
 }
+
+void sendSetTargetMapMessage(const std::string& control, const std::string& targetMap) { sendSetting(control, "target_map", targetMap); }
 } // namespace
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
@@ -319,6 +321,23 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     expect(g_state.waitUntil(ctx, "the device's id selector and the device_values", [] { return blockHasStringKeyValuePair("deviceTarget", "device", "@id:b") && blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
                     pick("off");
                     expect(g_state.waitUntil(ctx, "the entry's values; the device stays", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off") && blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
+                };
+
+                "an ImControlDevice falls back to its fallback entry while the target's device is not open, and returns to the device"_test = [&] {
+                    const DigitizerUi::UiGraphBlock* control = g_state.dashboard->session.graphModel.recursiveFindBlockByName("controlDevice").block;
+                    expect(control != nullptr) << fatal;
+                    const ImGuiID comboId = controlItemId(ctx, "//Host/##Toolbar", control->blockUniqueName, "##device");
+                    sendSetting("deviceTarget", "device_state", "open");
+                    ctx->ItemClick(comboId);
+                    ctx->ItemClick("//$FOCUSED/Second microphone [b], 16 channels");
+                    expect(g_state.waitUntil(ctx, "the device picked", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); })) << fatal;
+                    sendSetting("deviceTarget", "device_state", "waiting");
+                    expect(g_state.waitUntil(ctx, "the fallback's values while the device is missing; the pick is kept", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off") && blockHasStringKeyValuePair("controlDevice", "value", "@id:b"); }));
+                    sendSetting("deviceTarget", "device_state", "open");
+                    expect(g_state.waitUntil(ctx, "the device's values once it is open again", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "device") && blockHasStringKeyValuePair("deviceTarget", "device", "@id:b"); }));
+                    ctx->ItemClick(comboId);
+                    ctx->ItemClick("//$FOCUSED/off");
+                    expect(g_state.waitUntil(ctx, "back on the entry", [] { return blockHasStringKeyValuePair("deviceTarget", "route", "off"); }));
                 };
 
                 "the graph model should ignore invalid selectors when parsing target_map"_test = [&] {

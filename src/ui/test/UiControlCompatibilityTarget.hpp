@@ -43,8 +43,9 @@ struct UiControlDeviceTarget : gr::Block<UiControlDeviceTarget> {
     std::string              device;
     std::vector<std::string> available_devices{"First microphone [a], 2 channels", "Second microphone [b], 16 channels"};
     std::string              route = "none"; // set by the picker's entries and devices alike
+    std::string              device_state;
 
-    GR_MAKE_REFLECTABLE(UiControlDeviceTarget, clk, device, available_devices, route);
+    GR_MAKE_REFLECTABLE(UiControlDeviceTarget, clk, device, available_devices, route, device_state);
 
     void processOne(std::uint8_t) {}
 };
