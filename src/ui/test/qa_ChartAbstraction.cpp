@@ -898,6 +898,7 @@ int main() {
             expect(eq(sink.imageFrame().generation, 5U) && eq(valueOf(sink.imageFrame()), 5.f)) << "the newest";
             expect(eq(sink.imageFrame(1U).generation, 3U) && eq(valueOf(sink.imageFrame(1U)), 3.f)) << "clamped to the oldest held";
             expect(eq(valueOf(sink.imageFrame(4U)), 4.f) && eq(sink.imageFrame(9U).generation, 5U));
+            expect(eq(sink.totalSampleCount(), 5UZ)) << "every frame counted, also those not held";
         });
         framesThrough(0U, fiveFrames, [](const auto& sink) { expect(eq(sink.imageFrame(1U).generation, 5U)) << "max_backlog 0 holds the newest only"; });
         framesThrough(0U, {{3UZ}}, [](const auto& sink) { expect(eq(sink.imageFrame().generation, 0U)) << "a rank-1 tensor is no image"; });
