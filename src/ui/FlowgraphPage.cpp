@@ -395,11 +395,12 @@ void FlowgraphEditor::drawBoundingBoxExterior(const BoundingBox& canvasSpacingBo
     drawlist->AddRectFilled({bb.minX, bb.maxY}, {bb.maxX, visibleRegionMax.y}, outerColor);                         // bottom middle between the two columns
 }
 
-FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
-    UiGraphBlock&                                          block,            //
-    std::span<const UiGraphPort* const>                    inputPorts,       //
-    std::span<const UiGraphPort* const>                    outputPorts,      //
-    std::optional<components::PropertyConnectionIndicator> connectionPreview //
+FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                       //
+    UiGraphBlock&                                          block,                //
+    const UiGraphModel::ControlledPropertyMap&             controlledProperties, //
+    std::span<const UiGraphPort* const>                    inputPorts,           //
+    std::span<const UiGraphPort* const>                    outputPorts,          //
+    std::optional<components::PropertyConnectionIndicator> connectionPreview     //
 ) {
     const auto            blockId        = ax::NodeEditor::NodeId(std::addressof(block));
     const auto            isGroup        = block.isScheduler() || block.isGraph();
@@ -434,8 +435,6 @@ FlowgraphEditor::NodeDrawResult FlowgraphEditor::drawNode(                   //
         // defer opening the popup so that we always open it from the same context in the ID stack (same as when doing right click)
         _blockContextMenuRequest = std::addressof(block);
     }
-
-    const auto controlledProperties = _graphModel->uiControlledProperties(block);
 
     // Draw block properties
     {
@@ -749,8 +748,8 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     };
 
     // the UI connection labels need to be added to the bounding box of the block so that auto-layout takes them into account
-    const auto addBlockToBoundingBox = [this, &addRectangleToBoundingBox](const UiGraphBlock& block, ImVec2 blockPosition) {
-        const ImVec2 labelsSize{components::uiControlConnectionLabelsWidth(*_graphModel, block), 0.F};
+    const auto addBlockToBoundingBox = [&addRectangleToBoundingBox](const UiGraphBlock& block, ImVec2 blockPosition, float connectionLabelsWidth) {
+        const ImVec2 labelsSize{connectionLabelsWidth, 0.F};
         addRectangleToBoundingBox(blockPosition - labelsSize, ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(&block)) + labelsSize);
     };
 
@@ -760,7 +759,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     // over-reserved, but minimizes allocations
     filteredOutNodes.reserve(_filterBlock ? graphBlocks.size() : 0);
 
-    const auto drawBlock = [&](UiGraphBlock* block) {
+    const auto drawBlock = [&](UiGraphBlock* block, const UiGraphModel::ControlledPropertyMap& controlledProperties) {
         const auto blockId     = ax::NodeEditor::NodeId(block);
         auto       inputPorts  = displayedPorts(*block, block->inputPorts());
         auto       outputPorts = displayedPorts(*block, block->outputPorts());
@@ -785,7 +784,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
                                                             })
                                                                     : std::nullopt;
         const bool isUiControlConnectionTarget = pendingMultiSelect || isCompatibleWithDragSource(*block);
-        const auto blockPosition               = this->drawNode(*block, inputPorts, outputPorts, connectionPreview);
+        const auto blockPosition               = this->drawNode(*block, controlledProperties, inputPorts, outputPorts, connectionPreview);
         const auto blockSize                   = ax::NodeEditor::GetNodeSize(blockId);
 
         // The input/output pins are drawn after ending the node because otherwise
@@ -836,18 +835,20 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
     // draw blocks before arranging Ui control block region, whose size depends on the space taken up by non-ui-control blocks
     for (auto& block : graphBlocks) {
-        drawBlock(block);
+        const auto controlledProperties = _graphModel->uiControlledProperties(*block);
+        drawBlock(block, controlledProperties);
         if (block->storedXY) {
-            addBlockToBoundingBox(*block, ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block)));
+            addBlockToBoundingBox(*block, ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block)), components::uiControlConnectionLabelsWidth(controlledProperties));
         }
     }
 
     for (auto& block : graphBlocks) {
         if (!block->storedXY) {
-            const auto   bounds = boundingBox.value_or(defaultBoundingBox);
-            const ImVec2 position{bounds.minX + components::uiControlConnectionLabelsWidth(*_graphModel, *block), bounds.maxY + 32.f};
+            const auto   bounds                = boundingBox.value_or(defaultBoundingBox);
+            const float  connectionLabelsWidth = components::uiControlConnectionLabelsWidth(*_graphModel, *block);
+            const ImVec2 position{bounds.minX + connectionLabelsWidth, bounds.maxY + 32.f};
             ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), position);
-            addBlockToBoundingBox(*block, position);
+            addBlockToBoundingBox(*block, position, connectionLabelsWidth);
         }
     }
 
@@ -856,7 +857,9 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     if (uiControlRegionBounds) {
         components::drawUiControlRegionBackgroundRect(*uiControlRegionBounds);
     }
-    std::ranges::for_each(controlBlocks, drawBlock);
+    for (UiGraphBlock* control : controlBlocks) {
+        drawBlock(control, _graphModel->uiControlledProperties(*control));
+    }
 
     // the node editor restores the previous view when resized: a fit followed by a resize is repeated
     const ImVec2 canvasSize    = ax::NodeEditor::GetScreenSize();
