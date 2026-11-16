@@ -343,9 +343,16 @@ public:
 
     [[nodiscard]] UiGraphBlock* rootGraphBlock();
 
+    struct ParsedUiControlTargetMap {
+        UiGraphBlock* control = nullptr;
+        TargetMap     targets;
+    };
+    [[nodiscard]] std::vector<ParsedUiControlTargetMap> parseAllUiControlTargetMaps();
+
     using ControlledPropertyMap = std::map<std::string, std::vector<UiGraphBlock*>, std::less<>>;
     /// Returns a map of properties of the target block to a list of UI control blocks which have a connection to that property
-    [[nodiscard]] ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock);
+    [[nodiscard]] static ControlledPropertyMap uiControlledProperties(const UiGraphBlock& targetBlock, std::span<const ParsedUiControlTargetMap> parsedUiControlTargetMaps);
+    [[nodiscard]] ControlledPropertyMap        uiControlledProperties(const UiGraphBlock& targetBlock) { return uiControlledProperties(targetBlock, parseAllUiControlTargetMaps()); }
 
     /// Return a list of the names of all properties in all blocks which have a type listed in the "compatible_type_map" setting of this control block
     [[nodiscard]] std::vector<std::string> globConnectableProperties(const UiGraphBlock& control);
