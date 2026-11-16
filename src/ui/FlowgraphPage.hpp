@@ -245,10 +245,11 @@ public:
         // to prevent pins from overlapping with other content, only place them on some top portion of the node
         float pinAreaHeight = 0.F;
     };
-    NodeDrawResult drawNode(                                                //
-        UiGraphBlock&                                          block,       //
-        std::span<const UiGraphPort* const>                    inputPorts,  //
-        std::span<const UiGraphPort* const>                    outputPorts, //
+    NodeDrawResult drawNode(                                                         //
+        UiGraphBlock&                                          block,                //
+        const UiGraphModel::ControlledPropertyMap&             controlledProperties, //
+        std::span<const UiGraphPort* const>                    inputPorts,           //
+        std::span<const UiGraphPort* const>                    outputPorts,          //
         std::optional<components::PropertyConnectionIndicator> connectionPreview);
 
     void handlePinDrag(BoundingBox boundingBox, ImVec4 linkColor);

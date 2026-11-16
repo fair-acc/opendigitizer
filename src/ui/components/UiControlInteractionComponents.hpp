@@ -212,9 +212,12 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
 /// Height of the area below the block which is reserved for the target list and drag handle drawn by drawUiControlTargetList
 [[nodiscard]] float uiControlTargetListHeight(const UiGraphBlock& block);
 
+[[nodiscard]] float uiControlConnectionLabelsWidth(const UiGraphModel::ControlledPropertyMap& controlledProperties);
 /// Width of the area to the left of the block which is reserved for UI control connection labels
 /// Must be called while the editor is active
-[[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block);
+[[nodiscard]] inline float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block) { //
+    return uiControlConnectionLabelsWidth(graphModel.uiControlledProperties(block));
+}
 
 /// Sets UI control blocks' positions based on the number of UI blocks and the region occupied by non-UI blocks.
 /// This creates a wrapped row at the top of the graph view which is separate from the regular block nodes

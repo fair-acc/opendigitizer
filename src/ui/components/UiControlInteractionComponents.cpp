@@ -291,8 +291,7 @@ TargetMap UiControlPropertyLinkPopup::withSelectionApplied(TargetMap targets, co
     return targets;
 }
 
-[[nodiscard]] float uiControlConnectionLabelsWidth(UiGraphModel& graphModel, const UiGraphBlock& block) {
-    const auto controlledProperties = graphModel.uiControlledProperties(block);
+[[nodiscard]] float uiControlConnectionLabelsWidth(const UiGraphModel::ControlledPropertyMap& controlledProperties) {
     if (controlledProperties.empty()) {
         return 0.F;
     }
