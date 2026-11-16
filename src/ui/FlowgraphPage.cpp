@@ -97,6 +97,16 @@ bool isPendingMultiSelectConnection(const UiGraphBlock& control, std::string_vie
 }
 
 void drawDashedLink(ImDrawList* drawList, ImVec2 start, ImVec2 end, ImU32 color) {
+    const int                    previousDrawChannel = drawList->_Splitter._Current;
+    Digitizer::utils::scope_exit restoreDrawChannel  = [drawList, previousDrawChannel] { drawList->ChannelsSetCurrent(previousDrawChannel); };
+
+    // this is the "z index" (channel) that imgui node editor uses between edges and nodes. We need to use it to
+    // guarantee that these dashed edges draw with the same behavior as regular edges (underneath nodes)
+    //
+    // see c_LinkChannel_Links in imgui node editor and surrounding code
+    constexpr int kImGuiNodeEditorEdgeDrawChannel = 7;
+    drawList->ChannelsSetCurrent(kImGuiNodeEditorEdgeDrawChannel);
+
     const auto&  lookAndFeel  = LookAndFeel::instance().flowgraph;
     const ImVec2 arrowBase    = end - ImVec2{lookAndFeel.pinArrowSize, 0.f};
     const float  halfDistance = ImLength(arrowBase - start) * .5f;
