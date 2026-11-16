@@ -1044,9 +1044,13 @@ BlockPropertyHints UiGraphBlock::propertyHints(std::string_view property) const 
 }
 
 bool UiGraphBlock::isUiControl() const {
-    const auto drawable = blockMetaInformation.find_value(std::string("Drawable"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{});
-    const auto info     = drawable.get_if<gr::property_map>();
-    return info && info->find_value(std::string("Category"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(std::string()) == "Toolbar";
+    using namespace std::string_view_literals;
+    const auto drawable = blockMetaInformation.get_if<gr::property_map_view>("Drawable"sv);
+    if (!drawable) {
+        return false;
+    }
+    const auto category = drawable->get_if<std::string_view>("Category"sv);
+    return category && *category == "Toolbar"sv;
 }
 
 bool UiGraphBlock::isViewOnlyUiControl() const { return blockMetaInformation.find_value(std::string("viewonly_ui_control"), std::pmr::get_default_resource()).value_or(gr::pmt::Value{}).value_or(false); }
