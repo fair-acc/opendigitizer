@@ -223,7 +223,9 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
 /// This creates a wrapped row at the top of the graph view which is separate from the regular block nodes
 /// Each block is given extra room on its left for UI control connection source labels
 /// Must be called while the editor is active
-[[nodiscard]] std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(UiGraphModel& graphModel, std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds);
+[[nodiscard]] std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion( //
+    std::span<const UiGraphModel::ParsedUiControlTargetMap> parsedUiControlTargetMaps,  //
+    std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds);
 
 /// Must be called while the editor is active, outside of a node
 void drawUiControlRegionBackgroundRect(const ImRect& region);

@@ -683,9 +683,10 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
     const auto* exportTarget = exportPortTargetBlock();
 
-    const std::vector<UiGraphBlock*> graphBlocks   = nodeBlocks(*rootBlock);
-    const std::vector<UiGraphBlock*> controlBlocks = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
-    const auto&                      graphEdges    = rootBlock->childEdges;
+    const std::vector<UiGraphBlock*> graphBlocks               = nodeBlocks(*rootBlock);
+    const std::vector<UiGraphBlock*> controlBlocks             = showUiControlBlocks ? uiControlBlocks(*_graphModel) : std::vector<UiGraphBlock*>{};
+    const auto&                      graphEdges                = rootBlock->childEdges;
+    const auto                       parsedUiControlTargetMaps = _graphModel->parseAllUiControlTargetMaps();
 
     const std::optional<std::string_view> multiSelectHoveredProperty       = _uiControlMultiSelectPopup ? _uiControlMultiSelectPopup->hoveredProperty() : std::nullopt;
     const UiGraphBlock*                   multiSelectControl               = multiSelectHoveredProperty ? _graphModel->recursiveFindBlockByUniqueName(_uiControlMultiSelectPopup->controlUniqueName()).block : nullptr;
@@ -835,7 +836,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
 
     // draw blocks before arranging Ui control block region, whose size depends on the space taken up by non-ui-control blocks
     for (auto& block : graphBlocks) {
-        const auto controlledProperties = _graphModel->uiControlledProperties(*block);
+        const auto controlledProperties = UiGraphModel::uiControlledProperties(*block, parsedUiControlTargetMaps);
         drawBlock(block, controlledProperties);
         if (block->storedXY) {
             addBlockToBoundingBox(*block, ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(block)), components::uiControlConnectionLabelsWidth(controlledProperties));
@@ -845,7 +846,7 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     for (auto& block : graphBlocks) {
         if (!block->storedXY) {
             const auto   bounds                = boundingBox.value_or(defaultBoundingBox);
-            const float  connectionLabelsWidth = components::uiControlConnectionLabelsWidth(*_graphModel, *block);
+            const float  connectionLabelsWidth = components::uiControlConnectionLabelsWidth(UiGraphModel::uiControlledProperties(*block, parsedUiControlTargetMaps));
             const ImVec2 position{bounds.minX + connectionLabelsWidth, bounds.maxY + 32.f};
             ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(block), position);
             addBlockToBoundingBox(*block, position, connectionLabelsWidth);
@@ -853,12 +854,12 @@ std::optional<components::BlockDragConnectOverlay> FlowgraphEditor::drawGraph(co
     }
 
     const auto graphBounds           = boundingBox.value_or(defaultBoundingBox);
-    const auto uiControlRegionBounds = components::calculateAndArrangeUiControlBlocksDesignatedRegion(*_graphModel, controlBlocks, ImRect(ImVec2{graphBounds.minX, graphBounds.minY}, ImVec2{graphBounds.maxX, graphBounds.maxY}));
+    const auto uiControlRegionBounds = components::calculateAndArrangeUiControlBlocksDesignatedRegion(parsedUiControlTargetMaps, controlBlocks, ImRect(ImVec2{graphBounds.minX, graphBounds.minY}, ImVec2{graphBounds.maxX, graphBounds.maxY}));
     if (uiControlRegionBounds) {
         components::drawUiControlRegionBackgroundRect(*uiControlRegionBounds);
     }
     for (UiGraphBlock* control : controlBlocks) {
-        drawBlock(control, _graphModel->uiControlledProperties(*control));
+        drawBlock(control, UiGraphModel::uiControlledProperties(*control, parsedUiControlTargetMaps));
     }
 
     // the node editor restores the previous view when resized: a fit followed by a resize is repeated

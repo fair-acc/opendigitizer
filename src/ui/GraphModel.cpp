@@ -757,20 +757,28 @@ UiGraphBlock* UiGraphModel::rootGraphBlock() {
     return root;
 }
 
-UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const UiGraphBlock& targetBlock) {
-    ControlledPropertyMap result;
+std::vector<UiGraphModel::ParsedUiControlTargetMap> UiGraphModel::parseAllUiControlTargetMaps() {
+    std::vector<ParsedUiControlTargetMap> result;
     for (const auto& uiControlBlock : rootGraphBlock()->childBlocks) {
         if (!uiControlBlock->isUiControl()) {
             continue;
         }
-        const auto targets = uiControlBlock->uiControlTargetMap();
+        auto targets = uiControlBlock->uiControlTargetMap();
         if (!targets) {
             continue;
         }
+        result.push_back({.control = uiControlBlock.get(), .targets = std::move(*targets)});
+    }
+    return result;
+}
+
+UiGraphModel::ControlledPropertyMap UiGraphModel::uiControlledProperties(const UiGraphBlock& targetBlock, std::span<const ParsedUiControlTargetMap> parsedUiControlTargetMaps) {
+    ControlledPropertyMap result;
+    for (const auto& [control, targets] : parsedUiControlTargetMaps) {
         // iterate the settings so as to retain ordering of properties
         for (const auto& [propertyKey, _] : targetBlock.blockSettings) {
-            if (targets->relationshipToTarget(targetBlock.blockName, propertyKey) != TargetRelationship::NotTargeting) {
-                result[std::string(propertyKey)].push_back(uiControlBlock.get());
+            if (targets.relationshipToTarget(targetBlock.blockName, propertyKey) != TargetRelationship::NotTargeting) {
+                result[std::string(propertyKey)].push_back(control);
             }
         }
     }

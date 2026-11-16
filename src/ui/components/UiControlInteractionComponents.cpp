@@ -391,20 +391,21 @@ std::optional<ImVec2> drawUiControlTargetList(UiGraphModel& graphModel, const Ui
 
 constexpr std::size_t kUiControlRegionMinimumNodesOnFirstRow = 3UZ;
 
-std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(UiGraphModel& graphModel, std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds) {
+std::optional<ImRect> calculateAndArrangeUiControlBlocksDesignatedRegion(std::span<const UiGraphModel::ParsedUiControlTargetMap> parsedUiControlTargetMaps, std::span<UiGraphBlock* const> controlBlocks, const ImRect& graphBounds) {
     if (controlBlocks.empty()) {
         return std::nullopt;
     }
-    const auto nodeSizes = controlBlocks | std::views::transform([&graphModel](const UiGraphBlock* block) {
+    const auto connectionLabelsWidth = [parsedUiControlTargetMaps](const UiGraphBlock& block) { return uiControlConnectionLabelsWidth(UiGraphModel::uiControlledProperties(block, parsedUiControlTargetMaps)); };
+    const auto nodeSizes             = controlBlocks | std::views::transform([&connectionLabelsWidth](const UiGraphBlock* block) {
         const ImVec2 size = ax::NodeEditor::GetNodeSize(ax::NodeEditor::NodeId(block));
-        return flowgraph_layout::Size{.width = uiControlConnectionLabelsWidth(graphModel, *block) + size.x, .height = size.y + uiControlTargetListHeight(*block)};
+        return flowgraph_layout::Size{.width = connectionLabelsWidth(*block) + size.x, .height = size.y + uiControlTargetListHeight(*block)};
     }) | std::ranges::to<std::vector>();
-    const auto rows      = flowgraph_layout::computeFixedBlockWrappingWithGap(nodeSizes, graphBounds.GetWidth(), LookAndFeel::instance().flowgraph.uiControlRegionGap, kUiControlRegionMinimumNodesOnFirstRow);
+    const auto rows                  = flowgraph_layout::computeFixedBlockWrappingWithGap(nodeSizes, graphBounds.GetWidth(), LookAndFeel::instance().flowgraph.uiControlRegionGap, kUiControlRegionMinimumNodesOnFirstRow);
 
     // imgui node editor floors node positions internally
     const ImVec2 topLeft = ImFloor(ImVec2{graphBounds.Min.x, graphBounds.Min.y - LookAndFeel::instance().flowgraph.uiControlRegionGap - rows.containerSize.height});
     for (std::size_t i = 0UZ; i < controlBlocks.size(); ++i) {
-        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(controlBlocks[i]), ImFloor(topLeft + ImVec2{rows.offsets[i].x + uiControlConnectionLabelsWidth(graphModel, *controlBlocks[i]), rows.offsets[i].y}));
+        ax::NodeEditor::SetNodePosition(ax::NodeEditor::NodeId(controlBlocks[i]), ImFloor(topLeft + ImVec2{rows.offsets[i].x + connectionLabelsWidth(*controlBlocks[i]), rows.offsets[i].y}));
     }
     return ImRect(topLeft, topLeft + ImVec2{rows.containerSize.width, rows.containerSize.height});
 }
