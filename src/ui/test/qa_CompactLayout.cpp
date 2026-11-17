@@ -39,11 +39,16 @@ struct TestState : opendigitizer::test::TestDashboardRunner {
 
 TestState* g_state = nullptr;
 
+std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*g_state->dashboard); }
+
+ImRect viewportRect() { return ImRect(ImVec2{}, ImGui::GetIO().DisplaySize); }
+
 bool expectedCompact() {
     const ImVec2 size = ImGui::GetIO().DisplaySize;
     return std::min(size.x, size.y) < DigitizerUi::LookAndFeel::instance().compactEnterShortSide;
 }
 
+bool expectedPortrait() { return ImGui::GetIO().DisplaySize.y > ImGui::GetIO().DisplaySize.x; }
 } // namespace
 
 struct TestApp : public DigitizerUi::test::ImGuiTestApp {
@@ -91,6 +96,31 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 ctx->Yield();
                 expect(eq(lookAndFeel.compact, expectedCompact())) << "the next frame follows the window again";
                 expect(eq(ImGui::GetStyle().FontScaleMain, expectedCompact() ? lookAndFeel.compactFontScale : 1.f));
+            };
+
+            "charts stack in a column in portrait and in a grid in landscape, and the stored layout is saved"_test = [&] {
+                while (state.dashboard->session.graphModel.recursiveGatherPlotSinks().size() < 6UZ) {
+                    ctx->Yield();
+                }
+                opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *state.dashboard);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
+
+                std::set<float> lefts;
+                std::set<float> tops;
+                for (const ImGuiWindow* window : chartWindows()) {
+                    expect(window != nullptr) << fatal;
+                    expect(viewportRect().Contains(ImRect(window->Pos, window->Pos + window->Size))) << std::format("chart '{}' on screen", window->Name);
+                    lefts.insert(window->Pos.x);
+                    tops.insert(window->Pos.y);
+                }
+                if (expectedCompact() && expectedPortrait()) {
+                    expect(eq(lefts.size(), 1UZ)) << "one column";
+                    expect(eq(tops.size(), chartWindows().size())) << "one chart per row";
+                } else if (expectedCompact()) {
+                    expect(gt(lefts.size(), 1UZ) && gt(tops.size(), 1UZ)) << "a grid";
+                }
+                expect(state.page->saveLayoutConfiguration().first == DigitizerUi::DockingLayoutType::Free) << "the .grc's Free layout is what gets saved";
+                captureScreenshot(*ctx, viewportRect());
             };
 
             state.showSelection = false;

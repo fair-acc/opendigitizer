@@ -46,6 +46,8 @@ public:
 private:
     void setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription);
 
+    [[nodiscard]] static DockingLayoutType shownLayoutType(DockingLayoutType stored);
+
     struct PendingTransmutation {
         std::string chartId;
         std::string newChartType;

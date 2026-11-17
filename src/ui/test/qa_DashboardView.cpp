@@ -57,31 +57,7 @@ TestState* g_state = nullptr;
 
 const ImGuiWindow* hostWindow() { return ImGui::FindWindowByName("Host"); }
 
-std::vector<const ImGuiWindow*> chartWindows() {
-    std::vector<const ImGuiWindow*> windows;
-    for (const auto& uiWindow : g_state->dashboard->uiWindows) {
-        if (uiWindow.block) {
-            windows.push_back(ImGui::FindWindowByName(uiWindow.window->name.c_str()));
-        }
-    }
-    return windows;
-}
-
-void waitForStableCharts(ImGuiTestContext* ctx) {
-    std::vector<ImRect> previous;
-    std::size_t         stableFrames = 0UZ;
-    for (std::size_t frame = 0UZ; frame < 300UZ && stableFrames < 5UZ; ++frame) {
-        ctx->Yield();
-        std::vector<ImRect> current;
-        for (const auto* window : chartWindows()) {
-            current.push_back(window ? ImRect(window->Pos, window->Pos + window->Size) : ImRect());
-        }
-        const bool same = current.size() == previous.size() && std::ranges::equal(current, previous, [](const ImRect& a, const ImRect& b) { return a.Min == b.Min && a.Max == b.Max; });
-        stableFrames    = (same && !current.empty()) ? stableFrames + 1UZ : 0UZ;
-        previous        = std::move(current);
-    }
-    expect(stableFrames >= 5UZ) << fatal << "chart windows settle";
-}
+std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*g_state->dashboard); }
 
 ImRect chartsBounds() {
     ImRect bounds(ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()), ImVec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()));
@@ -196,7 +172,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 opendigitizer::test::waitUntilAllSamplesDrawn(ctx, *state.dashboard);
                 const ImRect regionRect(kHostPos, kHostPos + kHostSize);
                 const auto   expectDockedInRegion = [&](std::string_view when) {
-                    waitForStableCharts(ctx);
+                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                     for (const ImGuiWindow* window : chartWindows()) {
                         expect(window != nullptr) << fatal;
                         const ImRect rect(window->Pos, window->Pos + window->Size);
@@ -235,7 +211,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 }
                 for (const Mode mode : {Mode::View, Mode::Interaction}) {
                     state.mode = mode;
-                    waitForStableCharts(ctx);
+                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                     const ImGuiWindow* host = hostWindow();
                     expect(host != nullptr) << fatal;
                     const ImRect hostRect(host->Pos, host->Pos + host->Size);
@@ -255,7 +231,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 const ImRect hostRect(kHostPos, kHostPos + kHostSize);
                 const auto   magentaShare = [&](bool background) {
                     state.background = background;
-                    waitForStableCharts(ctx);
+                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                     ctx->Yield(3);
                     const CapturedPixels pixels  = capturePixels(*ctx, chartsBounds());
                     const auto           magenta = std::ranges::count_if(pixels.rgba, [](unsigned int c) { return (c & 0xFFU) > 240U && ((c >> 8U) & 0xFFU) < 15U && ((c >> 16U) & 0xFFU) > 240U; });
@@ -283,7 +259,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                     return window ? window->Size : ImVec2{};
                 };
                 const auto expectCellRatios = [&](std::string_view view) {
-                    waitForStableCharts(ctx);
+                    opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                     const float widthRatio  = size("Plot1").x / std::max(1.f, size("Plot2").x);
                     const float heightRatio = size("Plot4").y / std::max(1.f, size("Plot3").y);
                     expect(widthRatio > 2.5f && widthRatio < 3.5f) << std::format("{}: Plot1 is {:.2f} times as wide as Plot2, the cells 3", view, widthRatio);
@@ -308,7 +284,7 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 state.dashboard->windowLayout = saved;
                 state.mode                    = Mode::View;
                 state.view                    = std::make_unique<DigitizerUi::DashboardView>();
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 const auto width = [](const char* name) {
                     const ImGuiWindow* window = ImGui::FindWindowByName(name);
                     return window ? window->Size.x : 0.f;
@@ -339,10 +315,10 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a legend on top moves the charts below it"_test = [&] {
                 state.mode   = Mode::View;
                 state.legend = LegendPosition::Bottom;
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 const float topWithLegendBelow = topOfCharts();
                 state.legend                   = LegendPosition::Top;
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 expect(topOfCharts() > topWithLegendBelow + 10.f) << std::format("top of charts {} with the legend on top, {} with it below", topOfCharts(), topWithLegendBelow);
                 captureScreenshot(*ctx, ImRect(kHostPos, kHostPos + kHostSize));
                 state.legend = LegendPosition::Bottom;
@@ -351,19 +327,19 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
             "a legend on the left or right narrows the charts from that side, inside the host"_test = [&] {
                 state.mode   = Mode::View;
                 state.legend = LegendPosition::Bottom;
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendBelow = chartsBounds();
                 const ImRect hostRect(kHostPos, kHostPos + kHostSize);
 
                 state.legend = LegendPosition::Left;
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendLeft = chartsBounds();
                 expect(withLegendLeft.Min.x > withLegendBelow.Min.x + 30.f) << std::format("left edge {} with the legend on the left, {} with it below", withLegendLeft.Min.x, withLegendBelow.Min.x);
                 expect(hostRect.Contains(withLegendLeft));
                 captureScreenshot(*ctx, hostRect);
 
                 state.legend = LegendPosition::Right;
-                waitForStableCharts(ctx);
+                opendigitizer::test::waitForStableCharts(ctx, *state.dashboard);
                 const ImRect withLegendRight = chartsBounds();
                 expect(withLegendRight.Max.x < withLegendBelow.Max.x - 30.f) << std::format("right edge {} with the legend on the right, {} with it below", withLegendRight.Max.x, withLegendBelow.Max.x);
                 expect(hostRect.Contains(withLegendRight));

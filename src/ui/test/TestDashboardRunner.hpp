@@ -13,6 +13,7 @@
 #include <chrono>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 namespace opendigitizer::test {
 inline const auto     defaultGRCFilesystem = cmrc::sample_dashboards::get_filesystem();
@@ -25,6 +26,31 @@ inline void waitUntilAllSamplesDrawn(ImGuiTestContext* ctx, const DigitizerUi::D
         ctx->Yield();
     }
     ctx->SleepNoSkip(0.1f, 0.02f);
+}
+
+inline std::vector<const ImGuiWindow*> chartWindows(const DigitizerUi::Dashboard& dashboard) {
+    std::vector<const ImGuiWindow*> windows;
+    for (const auto& uiWindow : dashboard.uiWindows) {
+        if (uiWindow.block) {
+            windows.push_back(ImGui::FindWindowByName(uiWindow.window->name.c_str()));
+        }
+    }
+    return windows;
+}
+
+inline void waitForStableCharts(ImGuiTestContext* ctx, const DigitizerUi::Dashboard& dashboard) {
+    constexpr std::size_t kStableFrames = 5UZ;
+    std::vector<ImRect>   previous;
+    for (std::size_t stableFrames = 0UZ; stableFrames < kStableFrames;) {
+        ctx->Yield();
+        std::vector<ImRect> current;
+        for (const ImGuiWindow* window : chartWindows(dashboard)) {
+            current.push_back(window ? ImRect(window->Pos, window->Pos + window->Size) : ImRect());
+        }
+        const bool same = !current.empty() && std::ranges::equal(current, previous, [](const ImRect& a, const ImRect& b) { return a.Min == b.Min && a.Max == b.Max; });
+        stableFrames    = same ? stableFrames + 1UZ : 0UZ;
+        previous        = std::move(current);
+    }
 }
 
 /// an item of an ImControl drawn in `windowRef`; ImGui::BeginCombo does not report its label to the test engine, so
