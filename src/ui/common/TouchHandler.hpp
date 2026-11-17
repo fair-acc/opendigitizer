@@ -1,6 +1,7 @@
 #ifndef OPENDIGITIZER_TOUCHHANDLER_HPP
 #define OPENDIGITIZER_TOUCHHANDLER_HPP
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <chrono>
@@ -19,10 +20,32 @@
 
 #include <SDL3/SDL.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include "../common/LookAndFeel.hpp"
 #include "stdex/cast.hpp"
 
 namespace gr::od {
+
+/// In a browser: whether the browser reports a touchscreen as the primary pointing device, so a laptop with a
+/// touchscreen and a mouse does not count. Natively SDL does not tell which pointing device is the primary one, a
+/// connected touchscreen counts
+[[nodiscard]] inline bool isTouchscreenPrimaryPointer() {
+#ifdef __EMSCRIPTEN__
+    return EM_ASM_INT({ return globalThis.matchMedia && globalThis.matchMedia('(pointer: coarse)').matches ? 1 : 0; }) != 0;
+#else
+    int                touchDeviceCount = 0;
+    SDL_TouchID* const touchDevices     = SDL_GetTouchDevices(&touchDeviceCount);
+    if (touchDevices == nullptr) {
+        return false;
+    }
+    const bool hasTouchscreen = std::any_of(touchDevices, touchDevices + touchDeviceCount, [](SDL_TouchID touchDevice) { return SDL_GetTouchDeviceType(touchDevice) == SDL_TOUCH_DEVICE_DIRECT; });
+    SDL_free(touchDevices);
+    return hasTouchscreen;
+#endif
+}
 
 template<typename ClockSourceType = std::chrono::system_clock, bool zoomViaMouseWheel = false>
 struct TouchHandler {
