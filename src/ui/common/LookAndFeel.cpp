@@ -11,19 +11,7 @@ CMRC_DECLARE(ui_assets);
 
 enum FontSizeIndex { FontSizeTiny = 0, FontSizeSmall, FontSizeNormal, FontSizeBig, FontSizeBigger, FontSizeLarge, FontSizeCount };
 
-template<size_t sizeIndex>
-requires(sizeIndex < FontSizeCount)
-static float fontSize(const DigitizerUi::LookAndFeel& instance) {
-    using Sizes = std::array<float, FontSizeCount>;
-    if (std::abs(instance.verticalDPI - instance.defaultDPI) < 8.f) {
-        return Sizes{12, 17, 20, 24, 28, 46}[sizeIndex]; // 28" monitor
-    } else if (instance.verticalDPI > 200) {
-        return Sizes{8, 13, 16, 22, 23, 38}[sizeIndex]; // likely mobile monitor
-    } else if (std::abs(instance.defaultDPI - instance.verticalDPI) >= 8.f) {
-        return Sizes{12, 18, 22, 26, 30, 46}[sizeIndex]; // likely large fixed display monitor
-    }
-    return Sizes{12, 16, 18, 24, 26, 46}[sizeIndex]; // default
-};
+constexpr std::array<float, FontSizeCount> kFontSizes{12, 17, 20, 24, 28, 46};
 
 namespace DigitizerUi {
 
@@ -447,7 +435,17 @@ void LookAndFeel::applyTheme() {
     notificationRounding             = pick(lookAndFeelDefaults.notificationRounding, 4.f);
 }
 
-[[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return fontSize<3>(*this) * 1.7f; }
+void LookAndFeel::updateFormFactor(ImVec2 viewportSize) {
+    const float shortSide = std::min(viewportSize.x, viewportSize.y);
+    if (shortSide <= 0.f) {
+        return;
+    }
+    compact                         = shortSide < (compact ? compactLeaveShortSide : compactEnterShortSide);
+    portrait                        = viewportSize.y > viewportSize.x;
+    ImGui::GetStyle().FontScaleMain = compact ? compactFontScale : 1.f;
+}
+
+[[nodiscard]] float LookAndFeel::mainWindowIconButtonSize() const noexcept { return kFontSizes[FontSizeBig] * 1.7f; }
 
 void LookAndFeel::loadFonts() {
     // static const ImWchar fullRange[] = {
@@ -501,12 +499,12 @@ void LookAndFeel::loadFonts() {
         };
 
         auto& lookAndFeel              = LookAndFeel::mutableInstance();
-        lookAndFeel._fontTiny[index]   = loadFont(fontSize<FontSizeTiny>(lookAndFeel));
-        lookAndFeel._fontSmall[index]  = loadFont(fontSize<FontSizeSmall>(lookAndFeel));
-        lookAndFeel._fontNormal[index] = loadFont(fontSize<FontSizeNormal>(lookAndFeel));
-        lookAndFeel._fontBig[index]    = loadFont(fontSize<FontSizeBig>(lookAndFeel));
-        lookAndFeel._fontBigger[index] = loadFont(fontSize<FontSizeBigger>(lookAndFeel));
-        lookAndFeel._fontLarge[index]  = loadFont(fontSize<FontSizeLarge>(lookAndFeel));
+        lookAndFeel._fontTiny[index]   = loadFont(kFontSizes[FontSizeTiny]);
+        lookAndFeel._fontSmall[index]  = loadFont(kFontSizes[FontSizeSmall]);
+        lookAndFeel._fontNormal[index] = loadFont(kFontSizes[FontSizeNormal]);
+        lookAndFeel._fontBig[index]    = loadFont(kFontSizes[FontSizeBig]);
+        lookAndFeel._fontBigger[index] = loadFont(kFontSizes[FontSizeBigger]);
+        lookAndFeel._fontLarge[index]  = loadFont(kFontSizes[FontSizeLarge]);
     };
 
     loadDefaultFont(cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), cmrc::fonts::get_filesystem().open("Roboto-Medium.ttf"), 0, rangeLatinPlusExtended);
@@ -519,11 +517,11 @@ void LookAndFeel::loadFonts() {
     };
 
     auto& lookAndFeel               = LookAndFeel::mutableInstance();
-    lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize<0>(lookAndFeel));
-    lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize<1>(lookAndFeel));
-    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", fontSize<3>(lookAndFeel));
-    lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize<0>(lookAndFeel));
-    lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize<1>(lookAndFeel));
-    lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", fontSize<3>(lookAndFeel));
+    lookAndFeel.fontIcons           = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeTiny]);
+    lookAndFeel.fontIconsBig        = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeSmall]);
+    lookAndFeel.fontIconsLarge      = loadIconsFont("assets/fontawesome/fa-regular-400.otf", kFontSizes[FontSizeBig]);
+    lookAndFeel.fontIconsSolid      = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeTiny]);
+    lookAndFeel.fontIconsSolidBig   = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeSmall]);
+    lookAndFeel.fontIconsSolidLarge = loadIconsFont("assets/fontawesome/fa-solid-900.otf", kFontSizes[FontSizeBig]);
 }
 } // namespace DigitizerUi

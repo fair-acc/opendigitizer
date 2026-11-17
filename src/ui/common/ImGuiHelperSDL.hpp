@@ -217,6 +217,7 @@ inline bool isWindowEventForOtherWindow(const SDL_Event& e, SDL_Window* w) {
 [[maybe_unused]] inline bool newFrame() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
+    DigitizerUi::LookAndFeel::mutableInstance().updateFormFactor(ImGui::GetIO().DisplaySize);
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos({0, 0});
