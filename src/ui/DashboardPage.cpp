@@ -461,6 +461,12 @@ void DashboardPage::drawNewPlotModal() {
     }
 }
 
-std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const { return {_view.dockSpace().layoutType(), _view.dockSpace().saveFreeLayout()}; }
+std::pair<DockingLayoutType, gr::property_map> DashboardPage::saveLayoutConfiguration() const {
+    const gr::property_map& liveFreeLayout = _view.dockSpace().saveFreeLayout();
+    if (_dashboard == nullptr) {
+        return {_view.dockSpace().layoutType(), liveFreeLayout};
+    }
+    return {_dashboard->layoutType, liveFreeLayout.empty() ? _dashboard->windowLayout : liveFreeLayout};
+}
 
 } // namespace DigitizerUi

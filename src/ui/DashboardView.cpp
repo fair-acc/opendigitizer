@@ -50,6 +50,14 @@ void DashboardView::processPendingRequests() {
     _pendingRemovals.clear();
 }
 
+DockingLayoutType DashboardView::shownLayoutType(DockingLayoutType stored) {
+    const LookAndFeel& lookAndFeel = LookAndFeel::instance();
+    if (!lookAndFeel.compact) {
+        return stored;
+    }
+    return lookAndFeel.portrait ? DockingLayoutType::Column : DockingLayoutType::Grid;
+}
+
 DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode) { return draw(dashboard, mode, Options{}); }
 
 void DashboardView::setLayout(DockingLayoutType type, const std::optional<gr::property_map>& freeLayoutDescription) {
@@ -98,9 +106,8 @@ DashboardView::Result DashboardView::draw(Dashboard& dashboard, Mode mode, const
     }
     if (!_layoutApplied) {
         setLayout(dashboard.layoutType, dashboard.windowLayout.empty() ? std::nullopt : std::optional<gr::property_map>(dashboard.windowLayout));
-    } else if (dashboard.layoutType != _dockSpace.layoutType()) {
-        _dockSpace.setLayoutType(dashboard.layoutType);
     }
+    _dockSpace.setLayoutType(shownLayoutType(dashboard.layoutType));
     opendigitizer::charts::g_chartRequests = std::addressof(_chartRequests);
     processPendingRequests();
 
