@@ -97,7 +97,7 @@ private:
     void                     drawCurrentDashboardPanel(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage);
     void                     drawSearchInput();
     void                     drawMatchAnyOrAllFiltersCombo();
-    void                     drawSortByCombo();
+    void                     drawSortByCombo(const char* rowLabel);
     void                     drawActiveFilterTags();
     [[nodiscard]] ViewResult drawDashboardTable(const Dashboard* optionalDashboard, ImVec2 size);
     [[nodiscard]] ViewResult drawDashboardFileTree(ImVec2 size);
@@ -113,6 +113,7 @@ private:
     void                     drawSaveAsDialog(Dashboard* optionalDashboard, DashboardPage* optionalDashboardPage);
     void                     drawOAuthPopup();
     void                     drawAddSourcePopup();
+    void                     drawFilterAndViewOptions();
 
     [[nodiscard]] std::optional<FavoritesFilter> hasActiveFavoritesFilter();
     void                                         useSortFilterParams(components::SortFilterModelParams&& params);
@@ -151,6 +152,7 @@ private:
     components::EditableStringList m_customTreeKeyEditor; // like m_customTreeKeys but it may contain empty items, used for the editor in the UI
     bool                           m_scrollToSelected = false;
     bool                           m_scrollToTop      = false;
+    bool                           _filtersShown      = false;
     std::optional<bool>            m_treeSetAllOpen;
     DashboardStorageInfo*          m_storageInfoHovered = nullptr;
 };
