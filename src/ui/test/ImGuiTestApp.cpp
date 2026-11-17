@@ -17,6 +17,7 @@
 #include <gnuradio-4.0/PluginLoader.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -144,7 +145,7 @@ void ImGuiTestApp::initImGui() {
     _app->DpiAware        = false;
     _app->SrgbFramebuffer = false;
     _app->ClearColor      = ImVec4(0.120f, 0.120f, 0.120f, 1.000f);
-    _app->InitCreateWindow(&(*_app), "Test", ImVec2(1600, 1000));
+    _app->InitCreateWindow(&(*_app), "Test", _options.windowSize);
     if (_options.useInteractiveMode || _options.keepGui || std::getenv("OPENDIGITIZER_RUN_TESTS_ON_SCREEN") != nullptr) {
         SDL_ShowWindow(imgui_helper::g_Window);
     }
@@ -276,7 +277,7 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     auto      hasArgument = [args](std::string_view arg) { return std::any_of(std::cbegin(args), std::cend(args), [arg](const char* v) { return arg == v; }); };
 
     if (hasArgument("--help") || hasArgument("-h")) {
-        std::println(stdout, "Usage: {} [--keep-gui][--interactive][--filter <test name pattern>]\nThe window is hidden unless one of these flags is passed or OPENDIGITIZER_RUN_TESTS_ON_SCREEN is set.", argv[0]);
+        std::println(stdout, "Usage: {} [--keep-gui][--interactive][--filter <test name pattern>][--window <width>x<height>]\nThe window is hidden unless one of these flags is passed or OPENDIGITIZER_RUN_TESTS_ON_SCREEN is set.", argv[0]);
     }
 
     TestOptions options;
@@ -286,6 +287,19 @@ TestOptions TestOptions::fromArgs(int argc, char* argv[]) {
     for (auto it = std::cbegin(args); it != std::cend(args); ++it) {
         if (std::string_view(*it) == "--filter" && std::next(it) != std::cend(args)) {
             options.testFilter = *std::next(it);
+        }
+        if (std::string_view(*it) == "--window" && std::next(it) != std::cend(args)) {
+            const std::string_view size      = *std::next(it);
+            const std::size_t      separator = size.find('x');
+            int                    width     = 0;
+            int                    height    = 0;
+            if (separator != std::string_view::npos) {
+                std::from_chars(size.data(), size.data() + separator, width);
+                std::from_chars(size.data() + separator + 1, size.data() + size.size(), height);
+            }
+            if (width > 0 && height > 0) {
+                options.windowSize = ImVec2{static_cast<float>(width), static_cast<float>(height)};
+            }
         }
     }
 

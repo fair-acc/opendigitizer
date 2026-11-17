@@ -350,8 +350,11 @@ struct LookAndFeel {
 
     bool                      prototypeMode = false;
     std::chrono::milliseconds execTime; /// time it took to handle events and draw one frame
-    float                     defaultDPI  = 76.2f;
-    float                     verticalDPI = defaultDPI;
+    float                     compactEnterShortSide = 600.f;
+    float                     compactLeaveShortSide = 640.f;
+    float                     compactFontScale      = .75f;
+    bool                      compact               = false;
+    bool                      portrait              = false;
     ImFont*                   fontIcons;
     ImFont*                   fontIconsBig;
     ImFont*                   fontIconsLarge;
@@ -455,6 +458,7 @@ struct LookAndFeel {
 
     void loadFonts();
     void applyTheme();
+    void updateFormFactor(ImVec2 viewportSize);
 
 private:
     std::array<ImFont*, 2> _fontTiny   = {nullptr, nullptr}; // [0] production, [1] prototype

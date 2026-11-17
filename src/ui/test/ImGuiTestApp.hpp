@@ -44,6 +44,8 @@ struct TestOptions {
     // run only the tests whose name matches this imgui-test-engine filter pattern
     std::string testFilter{};
 
+    ImVec2 windowSize{1600.f, 1000.f};
+
     // Returns a good default for TestOptions but influenced by program arguments
     static TestOptions fromArgs(int argc, char** argv);
 };

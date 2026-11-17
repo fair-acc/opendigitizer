@@ -41,6 +41,26 @@ inline void TextRight(const std::string_view text, float rightInset) {
     ImGui::Text("%s", text.data());
 }
 
+inline void textFitted(std::string_view text, ImFont* font, float minSize, float left, float right, auto&& topForHeight) {
+    const float available = right - left;
+    if (available <= 0.f) {
+        return;
+    }
+    float size = font->LegacySize;
+    {
+        IMW::Font   measured(font);
+        const float width = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+        if (width > available) {
+            size = std::max(minSize, size * available / width);
+        }
+    }
+    IMW::FontWithSize sized(font, size);
+    const ImVec2      textSize = ImGui::CalcTextSize(text.data(), text.data() + text.size());
+    const ImVec2      min      = ImGui::GetWindowPos() + ImVec2{left + std::max(0.f, 0.5f * (available - textSize.x)), topForHeight(textSize.y)};
+    const ImVec2      max{ImGui::GetWindowPos().x + right, min.y + textSize.y};
+    ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), min, max, max.x, text.data(), text.data() + text.size(), &textSize);
+}
+
 inline bool LoadTextureFromFile(const char* filename, GLuint* out_texture, ImVec2& textureSize) {
     // Load from file
     int image_width  = 0;
@@ -142,22 +162,33 @@ public:
 
         // draw title
         const ImVec2 localLogoSize = logoSize * (headerHeight / logoSize.y);
-        {
-            IMW::Font  font(title_font);
-            const auto titleSize = ImGui::CalcTextSize(title.data());
-            // suppress title if it doesn't fit or is likely to overlap
-            if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
-                TextCentered(title);
+        ImVec2       posBeneathClock;
+        if (LookAndFeel::instance().compact) {
+            const float spacing    = ImGui::GetStyle().ItemSpacing.x;
+            const float titleLeft  = topLeft.x + (editable ? iconButtonSize + LookAndFeel::instance().appHeaderMenuToLogoGap : 0.f) + localLogoSize.x + spacing;
+            const float titleRight = ImGui::GetWindowSize().x - clockRightInset - utcStringSize.x - spacing;
+            textFitted(title, title_font, LookAndFeel::instance().fontNormal()->LegacySize, titleLeft, titleRight, verticallyCentredY);
+            ImGui::SetCursorPos(ImVec2{topLeft.x, verticallyCentredY(ImGui::GetTextLineHeight())});
+            TextRight(utcClock, clockRightInset);
+            posBeneathClock = ImVec2{topLeft.x, topLeft.y + headerHeight + ImGui::GetStyle().ItemSpacing.y};
+        } else {
+            {
+                IMW::Font  font(title_font);
+                const auto titleSize = ImGui::CalcTextSize(title.data());
+                // suppress title if it doesn't fit or is likely to overlap
+                if (0.5f * ImGui::GetIO().DisplaySize.x > (0.5f * titleSize.x + utcStringSize.x)) {
+                    TextCentered(title);
+                }
             }
-        }
 
-        ImGui::SameLine();
-        auto pos = ImGui::GetCursorPos();
-        TextRight(localClock, clockRightInset);
-        pos.y += ImGui::GetTextLineHeightWithSpacing();
-        ImGui::SetCursorPos(pos);
-        TextRight(utcClock, clockRightInset);
-        auto posBeneathClock = ImGui::GetCursorPos();
+            ImGui::SameLine();
+            auto pos = ImGui::GetCursorPos();
+            TextRight(localClock, clockRightInset);
+            pos.y += ImGui::GetTextLineHeightWithSpacing();
+            ImGui::SetCursorPos(pos);
+            TextRight(utcClock, clockRightInset);
+            posBeneathClock = ImGui::GetCursorPos();
+        }
 
         // left menu
         VerticalPopupMenu<1> leftMenu;
