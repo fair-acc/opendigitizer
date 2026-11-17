@@ -26,8 +26,8 @@ const expect = (condition, description) => {
 const server = await startServer(path.resolve(webDirectory));
 const browser = await launchBrowser(["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]);
 try {
-  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraLocalisationStereo`));
-  console.log(`opened ${server.origin}/index.html#dashboard=XtraLocalisationStereo`);
+  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#/dashboard/XtraLocalisationStereo`));
+  console.log(`opened ${server.origin}/index.html#/dashboard/XtraLocalisationStereo`);
   const input = await page.waitFor(`globalThis.odDevices?.input?.length > 0 && globalThis.odDevices.input`, "the browser's audio inputs in the input list", 60_000);
   expect(input.every((d) => /^.+ \[.+\]$/.test(d)), `listed as 'label [deviceId]' (got ${input.join(", ")})`);
   expect(input.some((d) => d.startsWith("Fake")), "Chrome's fake microphones among them");

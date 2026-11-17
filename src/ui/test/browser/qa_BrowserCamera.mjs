@@ -85,9 +85,9 @@ execFileSync(y4mTool, [clip, "640", "480", "25", "100"]);
 const server = await startServer(path.resolve(webDirectory));
 const browser = await launchBrowser(["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-video-capture=${clip}`, "--autoplay-policy=no-user-gesture-required"]);
 try {
-  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#dashboard=XtraCameraDemo`, kMockedControls));
+  const page = (globalThis.lastPage = await openPage(browser, `${server.origin}/index.html#/dashboard/XtraCameraDemo`, kMockedControls));
   await page.command("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
-  console.log(`opened ${server.origin}/index.html#dashboard=XtraCameraDemo`);
+  console.log(`opened ${server.origin}/index.html#/dashboard/XtraCameraDemo`);
   for (const name of ["Test card", "Camera"]) {
     await page.waitFor(`(globalThis.odImageCharts?.[${JSON.stringify(name)}]?.shown ?? 0) > 0`, `a frame in '${name}'`, 120_000);
     console.log(`'${name}' shows frames`);
