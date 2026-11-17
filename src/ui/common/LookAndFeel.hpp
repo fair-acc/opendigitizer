@@ -256,6 +256,7 @@ struct OpenDashboardPageStyle {
     float  dashboardPreviewSpectrumWaterfallGap    = 2.f;
     float  sidebarWidthRatio                       = .25f; // of the available width
     float  sidebarMaxWidth                         = 320.f;
+    float  compactFiltersMaxHeightRatio            = .5f; // of the height below the search field
     ImVec2 saveAsPopupSize                         = {600.f, 300.f};
     float  oauthPopupWidth                         = 500.f;
     float  addSourcePopupWidth                     = 600.f;

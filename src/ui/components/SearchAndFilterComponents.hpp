@@ -65,7 +65,7 @@ struct SearchSortInput {
 
     std::string text;
 
-    [[nodiscard]] Event draw(const char* strId, const char* hint, bool sortingBySearch);
+    [[nodiscard]] Event draw(const char* strId, const char* hint, bool sortingBySearch, float trailingWidth = 0.f);
 };
 
 [[nodiscard]] std::optional<std::size_t> drawFilterTags(const char* strId, std::span<const std::unique_ptr<SortFilterModelFilter>> filters, const std::function<std::string(const SortFilterModelFilter&)>& labelFor);

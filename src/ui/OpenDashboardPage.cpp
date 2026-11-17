@@ -35,12 +35,16 @@ namespace {
 constexpr const char*                  addSourcePopupId = "Include path in dashboard search##addSourcePopup";
 [[maybe_unused]] constexpr const char* oauthPopupId     = "OAuth/RBAC"; // unused in emscripten builds
 
-constexpr const char* kIconSave    = "\u{f0c7}";
-constexpr const char* kIconSaveAs  = "\u{f56e}";
-constexpr const char* kIconClose   = "\u{f00d}";
-constexpr const char* kIconStar    = "\u{f005}";
-constexpr const char* kIconPlus    = "\u{f067}";
-constexpr const char* kIconArrowUp = "\u{f062}";
+constexpr const char* kIconSave           = "\u{f0c7}";
+constexpr const char* kIconSaveAs         = "\u{f56e}";
+constexpr const char* kIconClose          = "\u{f00d}";
+constexpr const char* kIconFilter         = "\u{f0b0}";
+constexpr const char* kIconLoad           = "\u{f07c}";
+constexpr const char* kIconNewWindow      = "\u{f35d}";
+constexpr const char* kIconEmptyDashboard = "\u{f15b}";
+constexpr const char* kIconStar           = "\u{f005}";
+constexpr const char* kIconPlus           = "\u{f067}";
+constexpr const char* kIconArrowUp        = "\u{f062}";
 
 constexpr const char* kLastUsedText = "Last used";
 
@@ -102,47 +106,13 @@ void drawRowLabel(const char* label) {
     ImGui::SameLine();
 }
 
-bool doIconTextButton(const char* label, const char* icon, ImVec2 size) {
-    const ImRect buttonBoundingBox{ImGui::GetCursorScreenPos(), ImGui::GetCursorScreenPos() + size};
-    const auto   id = ImGui::GetID(label);
-
-    ImGui::ItemSize(size, ImGui::GetStyle().FramePadding.y);
-    if (!ImGui::ItemAdd(buttonBoundingBox, id)) {
-        return false;
-    }
-
-    bool       hovered{};
-    bool       held{};
-    const bool pressed = ImGui::ButtonBehavior(buttonBoundingBox, id, &hovered, &held, ImGuiButtonFlags_None);
-
-    const ImU32 col = ImGui::GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
-    // RenderFrame, RenderNavCursor, and RenderTextClipped are all very internal functions used to
-    // implement ButtonEx(), we use them here just to enable us to draw multiple fonts in a button
-    ImGui::RenderNavCursor(buttonBoundingBox, id);
-    ImGui::RenderFrame(buttonBoundingBox.Min, buttonBoundingBox.Max, col, true, ImGui::GetStyle().FrameRounding);
-
-    auto         framePadding = ImGui::GetStyle().FramePadding;
-    ImVec2       textCursor   = buttonBoundingBox.Min + framePadding;
-    ImVec2       textMax      = buttonBoundingBox.Max - framePadding;
-    const ImVec2 labelSize    = ImGui::CalcTextSize(label, nullptr, true);
-
-    const ImVec2    align{0.5f, 0.5f}; // ImGui::GetStyle().ButtonTextAlign is typical but we wouldn't automatically respect that as expected
-    IMW::StyleColor contentsColor(ImGuiCol_Text, ButtonContentsColor());
+bool doIconButton(const char* tooltip, const char* icon, ImVec2 size) {
+    bool pressed = false;
     {
         IMW::Font iconFont(LookAndFeel::instance().fontIconsSolidLarge);
-
-        ImVec2      iconSize       = ImGui::CalcTextSize(icon);
-        const float availableWidth = textMax.x - textCursor.x;
-        const float gap            = ImGui::GetStyle().ItemInnerSpacing.x;
-        const float totalWidth     = iconSize.x + gap + labelSize.x;
-        const float padding        = (availableWidth - totalWidth) / 2.f;
-        textCursor.x += padding;
-        textMax = ImVec2{textCursor.x + totalWidth, textMax.y};
-        ImGui::RenderTextClipped(textCursor, ImVec2{textCursor.x + iconSize.x, textMax.y}, icon, nullptr, &iconSize, align, &buttonBoundingBox);
-        textCursor.x += iconSize.x + gap;
+        pressed = DigitizerUi::Button(std::format("{}###{}", icon, tooltip).c_str(), size);
     }
-    ImGui::RenderTextClipped(textCursor, textMax, label, nullptr, &labelSize, align, &buttonBoundingBox);
-
+    ImGui::SetItemTooltip("%s", tooltip);
     return pressed;
 }
 
@@ -605,8 +575,21 @@ void OpenDashboardPage::setDashboardsSort(components::SortFilterModelSortStrateg
 }
 
 void OpenDashboardPage::drawSearchInput() {
-    const bool sortingBySearch = m_sortFilterModel.scoreEvaluator() != nullptr;
-    switch (m_searchInput.draw("##dashboardSearch", "Search dashboards...", sortingBySearch)) {
+    const bool  sortingBySearch = m_sortFilterModel.scoreEvaluator() != nullptr;
+    const bool  compact         = LookAndFeel::instance().compact;
+    const float toggleSize      = [] {
+        IMW::Font font(LookAndFeel::instance().fontBig());
+        return ImGui::GetFrameHeight();
+    }();
+    const auto event = m_searchInput.draw("##dashboardSearch", "Search dashboards...", sortingBySearch, compact ? toggleSize + ImGui::GetStyle().ItemSpacing.x : 0.f);
+    if (compact) {
+        ImGui::SameLine();
+        IMW::StyleColor shown(ImGuiCol_Button, ImGui::GetStyleColorVec4(_filtersShown ? ImGuiCol_ButtonActive : ImGuiCol_Button));
+        if (doIconButton("Filter and view options", kIconFilter, ImVec2{toggleSize, toggleSize})) {
+            _filtersShown = !_filtersShown;
+        }
+    }
+    switch (event) {
     case components::SearchSortInput::Event::none: break;
     case components::SearchSortInput::Event::wantsDefaultSort: setDashboardsSort(std::make_unique<DashboardComparator>(dashboards(), DashboardSortKind::lastUsed)); break;
     case components::SearchSortInput::Event::wantsRelevanceSort: setDashboardsSort(makeRelevanceSortStrategy()); break;
@@ -620,7 +603,7 @@ components::SortFilterModelSortStrategy OpenDashboardPage::makeRelevanceSortStra
     return components::makeSimpleSortFilterModelSortByScoreStrategy(std::move(scoreFunction));
 }
 
-void OpenDashboardPage::drawSortByCombo() {
+void OpenDashboardPage::drawSortByCombo(const char* rowLabel) {
     enum SortOptionIndex : std::size_t { mostRecentlyUsed, leastRecentlyUsed, byName, byNameReversed, bySource, bySourceReversed, byRelevance };
     const std::array<components::SortOption, 7> sortOptions{{
         {"by most recently used"},
@@ -644,7 +627,7 @@ void OpenDashboardPage::drawSortByCombo() {
         }
     }
 
-    const auto chosen = components::drawSortByCombo("##sortByCombo", "           Sort dashboards ", sortOptions, currentIndex);
+    const auto chosen = components::drawSortByCombo("##sortByCombo", rowLabel, sortOptions, currentIndex);
     if (!chosen.has_value()) {
         return;
     }
@@ -693,12 +676,15 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
     m_scrollToTop      = false;
     m_scrollToSelected = false;
 
-    constexpr static auto columnHeaderLabels = std::to_array<std::string>({"", "", "Dashboard", "Source", kLastUsedText});
-    const std::array      fixedColumnWidths{starButtonWidth + 2.f * ImGui::GetStyle().CellPadding.x, previewWidth + 2.f * ImGui::GetStyle().CellPadding.x, 0.f, 0.f, 0.f};
+    const bool                         withSource                  = !(LookAndFeel::instance().compact && LookAndFeel::instance().portrait);
+    constexpr static auto              kColumnHeaderLabels         = std::to_array<std::string>({"", "", "Dashboard", "Source", kLastUsedText});
+    constexpr static auto              kColumnHeaderLabelsNoSource = std::to_array<std::string>({"", "", "Dashboard", kLastUsedText});
+    const std::array                   fixedColumnWidths{starButtonWidth + 2.f * ImGui::GetStyle().CellPadding.x, previewWidth + 2.f * ImGui::GetStyle().CellPadding.x, 0.f, 0.f, 0.f};
+    const std::span<const std::string> columns = withSource ? std::span<const std::string>(kColumnHeaderLabels) : std::span<const std::string>(kColumnHeaderLabelsNoSource);
 
-    constexpr std::size_t kNameColumn     = 2UZ;
-    constexpr std::size_t kSourceColumn   = 3UZ;
-    constexpr std::size_t kLastUsedColumn = 4UZ;
+    constexpr std::size_t kNameColumn    = 2UZ;
+    constexpr std::size_t kSourceColumn  = 3UZ;
+    const std::size_t     lastUsedColumn = withSource ? 4UZ : 3UZ;
 
     using SortMarker = components::VirtualScrollTableParams::SortMarker;
     std::optional<SortMarker> sortMarker;
@@ -711,9 +697,13 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
             return direction == ImGuiSortDirection_Ascending ? ImGuiSortDirection_Descending : ImGuiSortDirection_Ascending;
         };
         switch (dashboardComparator->kind) {
-        case DashboardSortKind::lastUsed: sortMarker = SortMarker{.columnIndex = kLastUsedColumn, .direction = flipIfReversed(ImGuiSortDirection_Descending)}; break;
+        case DashboardSortKind::lastUsed: sortMarker = SortMarker{.columnIndex = lastUsedColumn, .direction = flipIfReversed(ImGuiSortDirection_Descending)}; break;
         case DashboardSortKind::name: sortMarker = SortMarker{.columnIndex = kNameColumn, .direction = flipIfReversed(ImGuiSortDirection_Ascending)}; break;
-        case DashboardSortKind::source: sortMarker = SortMarker{.columnIndex = kSourceColumn, .direction = flipIfReversed(ImGuiSortDirection_Ascending)}; break;
+        case DashboardSortKind::source:
+            if (withSource) {
+                sortMarker = SortMarker{.columnIndex = kSourceColumn, .direction = flipIfReversed(ImGuiSortDirection_Ascending)};
+            }
+            break;
         }
     }
 
@@ -721,8 +711,8 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
         {
             .numElements       = shownItems.size(),
             .elementHeight     = elementHeight,
-            .columns           = columnHeaderLabels,
-            .fixedColumnWidths = fixedColumnWidths,
+            .columns           = columns,
+            .fixedColumnWidths = std::span<const float>(fixedColumnWidths).first(columns.size()),
             .scrollToElement   = scrollToRow,
             .columnHeaderFont  = LookAndFeel::instance().fontSmall(),
             .sortMarker        = sortMarker,
@@ -794,8 +784,10 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
             ImGui::TableNextColumn();
             drawCenteredText(description->name.c_str());
 
-            ImGui::TableNextColumn();
-            drawCenteredText(description->storageInfo->path.c_str());
+            if (withSource) {
+                ImGui::TableNextColumn();
+                drawCenteredText(description->storageInfo->path.c_str());
+            }
 
             ImGui::TableNextColumn();
             if (description->lastUsed) {
@@ -807,9 +799,9 @@ OpenDashboardPage::ViewResult OpenDashboardPage::drawDashboardTable(const Dashbo
     }
     if (table.clickedColumn == kNameColumn) {
         result.dashboardAction = DashboardAction::sortByName;
-    } else if (table.clickedColumn == kSourceColumn) {
+    } else if (withSource && table.clickedColumn == kSourceColumn) {
         result.dashboardAction = DashboardAction::sortBySource;
-    } else if (table.clickedColumn == kLastUsedColumn) {
+    } else if (table.clickedColumn == lastUsedColumn) {
         result.dashboardAction = DashboardAction::sortByLastUsed;
     }
 
@@ -1032,11 +1024,21 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         subtitleHeight = ImGui::GetTextLineHeightWithSpacing();
     }
 
+    const char* title      = hasDashboardAndDescription ? optionalDashboard->description->name.c_str() : "No dashboard currently open";
+    float       titleWidth = 0.f;
+    {
+        IMW::Font titleFont(LookAndFeel::instance().fontBigger());
+        titleWidth = ImGui::CalcTextSize(title).x;
+    }
+
+    const float  buttonSide    = LookAndFeel::instance().mainWindowIconButtonSize();
+    const float  buttonsWidth  = 3.f * buttonSide + 2.f * panelItemSpacing;
     const ImVec2 panelStart    = ImGui::GetCursorScreenPos();
     const float  panelWidth    = ImGui::GetContentRegionAvail().x;
     const float  previewHeight = std::max(titleHeight + subtitleHeight, ImGui::GetFrameHeight() * 2.f);
     const float  previewWidth  = previewHeight * DashboardPreview::preferredAspectRatio;
-    const float  panelHeight   = previewHeight + 2.f * panelPadding;
+    const bool   buttonsBelow  = panelPadding + previewWidth + panelItemSpacing + titleWidth + panelItemSpacing + buttonsWidth + panelPadding > panelWidth;
+    const float  panelHeight   = previewHeight + 2.f * panelPadding + (buttonsBelow ? panelItemSpacing + buttonSide : 0.f);
 
     ImGui::GetWindowDrawList()->AddRectFilled(panelStart, panelStart + ImVec2{panelWidth, panelHeight}, ImGui::ColorConvertFloat4ToU32(LookAndFeel::instance().palette().currentDashboardPanelBg), ImGui::GetStyle().ChildRounding);
 
@@ -1061,7 +1063,7 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         {
             IMW::Font titleFont(LookAndFeel::instance().fontBigger());
             ImGui::SetCursorScreenPos(textStart);
-            ImGui::TextUnformatted(hasDashboardAndDescription ? optionalDashboard->description->name.c_str() : "No dashboard currently open");
+            ImGui::TextUnformatted(title);
         }
         if (hasDashboardAndDescription) {
             IMW::Font subtitleFont(LookAndFeel::instance().fontBig());
@@ -1071,17 +1073,8 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
     }
 
     // save / save as / close buttons
-    const auto iconTextButtonWidth = [](const char* label, const char* icon) {
-        float iconWidth = 0.f;
-        {
-            IMW::Font iconFont(LookAndFeel::instance().fontIconsSolidLarge);
-            iconWidth = ImGui::CalcTextSize(icon).x;
-        }
-        return 4.f * ImGui::GetStyle().FramePadding.x + iconWidth + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label, nullptr, true).x;
-    };
-    const float  buttonWidth = std::max({iconTextButtonWidth("Save", kIconSave), iconTextButtonWidth("Save as", kIconSaveAs), iconTextButtonWidth("Close", kIconClose)});
-    const ImVec2 buttonSize{buttonWidth, previewHeight};
-    const ImVec2 buttonStart{panelStart.x + panelWidth - panelPadding - 3.f * buttonWidth - 2.f * panelItemSpacing, previewStart.y};
+    const ImVec2 buttonSize{buttonSide, buttonSide};
+    const ImVec2 buttonStart{panelStart.x + panelWidth - panelPadding - buttonsWidth, buttonsBelow ? previewEnd.y + panelItemSpacing : previewStart.y + 0.5f * (previewHeight - buttonSide)};
 
     {
         const bool dashboardLoaded = optionalDashboard != nullptr && optionalDashboard->isInitialised;
@@ -1090,18 +1083,18 @@ void OpenDashboardPage::drawCurrentDashboardPanel(Dashboard* optionalDashboard, 
         {
             IMW::Disabled inMemoryDisabled(dashboardLoaded && optionalDashboard->description->storageInfo->isInMemoryDashboardStorage());
             ImGui::SetCursorScreenPos(buttonStart);
-            if (doIconTextButton("Save", kIconSave, buttonSize) && dashboardLoaded) {
+            if (doIconButton("Save", kIconSave, buttonSize) && dashboardLoaded) {
                 saveWithLiveLayout(*optionalDashboard, optionalDashboardPage);
             }
         }
 
         ImGui::SetCursorScreenPos(buttonStart + ImVec2{buttonSize.x + panelItemSpacing, 0});
-        if (doIconTextButton("Save as", kIconSaveAs, buttonSize)) {
+        if (doIconButton("Save as", kIconSaveAs, buttonSize)) {
             ImGui::OpenPopup("saveAsDialog");
         }
 
         ImGui::SetCursorScreenPos(buttonStart + ImVec2{(buttonSize.x + panelItemSpacing) * 2.f, 0});
-        if (doIconTextButton("Close", kIconClose, buttonSize)) {
+        if (doIconButton("Close", kIconClose, buttonSize)) {
             requestCloseDashboard();
         }
     }
@@ -1127,8 +1120,16 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
     const float sidebarRatio    = LookAndFeel::instance().openDashboardPageStyle.sidebarWidthRatio;
     const float sidebarMaxWidth = LookAndFeel::instance().openDashboardPageStyle.sidebarMaxWidth;
 
-    const float sidebarWidth     = std::max(components::DateFilterRow::rowWidth(kLastUsedText), std::min(ImGui::GetContentRegionAvail().x * sidebarRatio, sidebarMaxWidth));
-    const float mainContentWidth = ImGui::GetContentRegionAvail().x - sidebarWidth - ImGui::GetStyle().ItemSpacing.x;
+    const bool  compact          = LookAndFeel::instance().compact;
+    const bool  compactPortrait  = compact && LookAndFeel::instance().portrait;
+    const float sidebarWidth     = compact ? 0.f : std::max(components::DateFilterRow::rowWidth(kLastUsedText), std::min(ImGui::GetContentRegionAvail().x * sidebarRatio, sidebarMaxWidth));
+    const float mainContentWidth = compact ? ImGui::GetContentRegionAvail().x : ImGui::GetContentRegionAvail().x - sidebarWidth - ImGui::GetStyle().ItemSpacing.x;
+
+    if (compact && _filtersShown) {
+        ImGui::SetNextWindowSizeConstraints(ImVec2{0.f, 0.f}, ImVec2{mainContentWidth, ImGui::GetContentRegionAvail().y * LookAndFeel::instance().openDashboardPageStyle.compactFiltersMaxHeightRatio});
+        IMW::Child filters("##dashboardFilters", ImVec2{mainContentWidth, 0.f}, ImGuiChildFlags_AutoResizeY, 0);
+        drawFilterAndViewOptions();
+    }
 
     std::shared_ptr<const DashboardDescription> dashboardToLoad;
 
@@ -1144,8 +1145,10 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
             ImGui::TextUnformatted("Show dashboards which match");
             ImGui::SameLine();
             drawMatchAnyOrAllFiltersCombo();
-            ImGui::SameLine();
-            drawSortByCombo();
+            if (!compactPortrait) {
+                ImGui::SameLine();
+            }
+            drawSortByCombo(compactPortrait ? "Sort dashboards " : "           Sort dashboards ");
         }
         ImGui::Spacing();
 
@@ -1175,38 +1178,30 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 
         drawViewOverlayButtons(viewTopLeft, viewSize);
 
-        const auto buttonSize = ImVec2{0, buttonHeight};
+        const ImVec2 buttonSize{buttonHeight, buttonHeight};
         {
             IMW::Disabled disabled(m_selectedDashboard == nullptr);
-            const auto    loadButtonSize = ImVec2{DigitizerUi::CalcButtonSize("Load").x, buttonHeight};
-            if (DigitizerUi::TextButton("Load", loadButtonSize) && m_selectedDashboard != nullptr) {
+            if (doIconButton("Load", kIconLoad, buttonSize) && m_selectedDashboard != nullptr) {
                 // it is okay to override dashboardToLoad because there is only one interaction per frame
                 dashboardToLoad = m_selectedDashboard;
             }
         }
         ImGui::SameLine();
 
-        constexpr const char* openEmptyDashboardButtonLabel     = "Open empty dashboard";
-        constexpr const char* openNewDigitizerWindowButtonlabel = "Open a new Digitizer Window";
-
-        auto openButtonsTotalWidth = IMW::CalcAdjacentButtonSizes(std::array{openEmptyDashboardButtonLabel, openNewDigitizerWindowButtonlabel}, DigitizerUi::CalcButtonSize).x;
-
+        float openButtonsTotalWidth = 2.f * buttonSize.x + ImGui::GetStyle().ItemSpacing.x;
 #ifndef __EMSCRIPTEN__
         constexpr const char* openOAuthPopupLabel = "OAuth/RBAC";
         if (LookAndFeel::instance().prototypeMode) {
             openButtonsTotalWidth += ImGui::GetStyle().ItemSpacing.x + DigitizerUi::CalcButtonSize(openOAuthPopupLabel).x;
         }
 #endif
-
-        wrapIfTooLarge(openButtonsTotalWidth, mainContentWidth);
-
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2{std::max(0.f, ImGui::GetContentRegionAvail().x - openButtonsTotalWidth), 0});
 
-        if (DigitizerUi::TextButton(openEmptyDashboardButtonLabel, buttonSize)) {
+        if (doIconButton("Open empty dashboard", kIconEmptyDashboard, buttonSize)) {
             requestLoadDashboard(nullptr);
         }
         ImGui::SameLine();
-        if (DigitizerUi::TextButton(openNewDigitizerWindowButtonlabel, buttonSize)) {
+        if (doIconButton("Open a new Digitizer Window", kIconNewWindow, buttonSize)) {
             // TODO: ivan
             // app->openNewWindow();
         }
@@ -1214,7 +1209,7 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 #ifndef __EMSCRIPTEN__
         if (LookAndFeel::instance().prototypeMode) {
             ImGui::SameLine();
-            if (DigitizerUi::TextButton("OAuth/RBAC", buttonSize)) {
+            if (DigitizerUi::TextButton(openOAuthPopupLabel, ImVec2{0.f, buttonHeight})) {
                 ImGui::OpenPopup(oauthPopupId);
             }
         }
@@ -1222,22 +1217,10 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
 #endif
     }
 
-    ImGui::SameLine();
-
-    {
+    if (!compact) {
+        ImGui::SameLine();
         IMW::Child sidebar("##dashboardSidebar", ImVec2{0.f, 0.f}, 0, 0);
-
-        ImGui::SeparatorText("Filter options");
-        drawDateFilter();
-        drawFavoritesFilter();
-        drawTagFilter();
-        drawKeyValueFilter();
-
-        drawSourcesSection();
-        drawAddSourcePopup(); // drawSourcesSection() may open the popup
-
-        ImGui::SeparatorText("View options");
-        drawViewOptionsSection();
+        drawFilterAndViewOptions();
     }
 
     ImGui::Unindent(leftPadding);
@@ -1245,6 +1228,20 @@ void OpenDashboardPage::draw(Dashboard* optionalDashboard, DashboardPage* option
     if (dashboardToLoad) {
         requestLoadDashboard(dashboardToLoad);
     }
+}
+
+void OpenDashboardPage::drawFilterAndViewOptions() {
+    ImGui::SeparatorText("Filter options");
+    drawDateFilter();
+    drawFavoritesFilter();
+    drawTagFilter();
+    drawKeyValueFilter();
+
+    drawSourcesSection();
+    drawAddSourcePopup(); // drawSourcesSection() may open the popup
+
+    ImGui::SeparatorText("View options");
+    drawViewOptionsSection();
 }
 
 void OpenDashboardPage::drawAddSourcePopup() {

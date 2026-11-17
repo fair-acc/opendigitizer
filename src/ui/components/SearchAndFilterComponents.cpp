@@ -181,7 +181,7 @@ std::optional<std::size_t> drawSortByCombo(const char* strId, const char* rowLab
     return chosen;
 }
 
-SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint, bool sortingBySearch) {
+SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint, bool sortingBySearch, float trailingWidth) {
     IMW::Font font(LookAndFeel::instance().fontBig());
 
     const float inputFrameHeight = ImGui::GetFrameHeight();
@@ -191,7 +191,7 @@ SearchSortInput::Event SearchSortInput::draw(const char* strId, const char* hint
         drawVerticallyCenteredText(kIconSearch, inputFrameHeight);
     }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - trailingWidth);
 
     bool edited = false;
     {

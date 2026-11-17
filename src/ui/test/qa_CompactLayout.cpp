@@ -39,6 +39,15 @@ struct TestState : opendigitizer::test::TestDashboardRunner {
 
 TestState* g_state = nullptr;
 
+const ImGuiWindow* activeWindowNamed(std::string_view part) {
+    for (const ImGuiWindow* window : GImGui->Windows) {
+        if (window->WasActive && std::string_view(window->Name).find(part) != std::string_view::npos) {
+            return window;
+        }
+    }
+    return nullptr;
+}
+
 std::vector<const ImGuiWindow*> chartWindows() { return opendigitizer::test::chartWindows(*g_state->dashboard); }
 
 ImRect viewportRect() { return ImRect(ImVec2{}, ImGui::GetIO().DisplaySize); }
@@ -123,6 +132,46 @@ struct TestApp : public DigitizerUi::test::ImGuiTestApp {
                 captureScreenshot(*ctx, viewportRect());
             };
 
+            "the selection page fits the window, with icon buttons, and the filters behind a toggle in the compact layout"_test = [&] {
+                state.showSelection = true;
+                while (!ctx->ItemExists("**/###Open a new Digitizer Window")) {
+                    ctx->Yield();
+                }
+                const auto openNewWindowButton = ctx->ItemInfo("**/###Open a new Digitizer Window");
+                expect(openNewWindowButton.ID != 0) << fatal;
+                expect(viewportRect().Contains(openNewWindowButton.RectFull)) << "the bottom buttons on screen";
+                for (const char* button : {"**/###Save", "**/###Save as", "**/###Close", "**/###Load", "**/###Open empty dashboard"}) {
+                    const auto info = ctx->ItemInfo(button);
+                    expect(info.ID != 0 && viewportRect().Contains(info.RectFull)) << std::format("'{}' on screen", button);
+                }
+                ctx->MouseMove("**/###Open empty dashboard");
+                while (activeWindowNamed("##Tooltip") == nullptr) {
+                    ctx->Yield();
+                }
+                ctx->MouseMove("**/##dashboardSearch");
+
+                if (!expectedCompact()) {
+                    expect(activeWindowNamed("##dashboardSidebar") != nullptr) << "the sidebar beside the table";
+                    captureScreenshot(*ctx, viewportRect());
+                    return;
+                }
+                expect(activeWindowNamed("##dashboardSidebar") == nullptr) << "no sidebar";
+                expect(activeWindowNamed("##dashboardFilters") == nullptr) << "filters collapsed";
+                captureScreenshot(*ctx, viewportRect());
+
+                ctx->ItemClick("**/###Filter and view options");
+                while (activeWindowNamed("##dashboardFilters") == nullptr) {
+                    ctx->Yield();
+                }
+                const ImGuiWindow* filters = activeWindowNamed("##dashboardFilters");
+                expect(filters != nullptr) << fatal << "filters shown after the toggle";
+                expect(viewportRect().Contains(ImRect(filters->Pos, filters->Pos + filters->Size))) << "filters on screen";
+                captureScreenshot(*ctx, viewportRect());
+                ctx->ItemClick("**/###Filter and view options");
+                while (activeWindowNamed("##dashboardFilters") != nullptr) {
+                    ctx->Yield();
+                }
+            };
             state.showSelection = false;
         };
     }
